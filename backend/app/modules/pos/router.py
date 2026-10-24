@@ -171,15 +171,6 @@ class CreateRegisterRequest(BaseModel):
     profile_id: UUID | None = None
 
 
-class OpenSessionRequest(BaseModel):
-    opening_float: str = Field(default="0.00", pattern=_MONEY)
-    profile_id: UUID | None = None
-    cashier_user_id: UUID | None = None
-    # The drawer's float PER METHOD (ERPNext's per-method opening entry);
-    # values are money strings, validated in the service.
-    floats_by_method: dict[str, str] | None = None
-
-
 class ScanRequest(BaseModel):
     identifier_type: str = Field(min_length=1, max_length=31)
     value: str = Field(min_length=1, max_length=255)
@@ -193,20 +184,6 @@ class QuoteRequest(BaseModel):
 class TenderLine(BaseModel):
     method: str = Field(pattern="^(cash|card|wallet|bank_transfer)$")
     amount: str = Field(pattern=_MONEY)
-
-
-class SellRequest(BaseModel):
-    # Optional ONLY when held_cart_id names the cart whose lines are the sale.
-    items: list[dict] | None = None
-    customer_id: UUID | None = None
-    # Legacy single-tender shape; or pass `tenders` for a split payment.
-    method: str | None = Field(default=None, pattern="^(cash|card|wallet|bank_transfer)$")
-    amount: str | None = Field(default=None, pattern=_MONEY)
-    tenders: list[TenderLine] | None = None
-    discount_total: str | None = Field(default=None, pattern=_MONEY)
-    tendered_cash: str | None = Field(default=None, pattern=_MONEY)
-    # Atomic resume: the cart's lines become this sale inside one transaction.
-    held_cart_id: UUID | None = None
 
 
 class RecordSaleRequest(BaseModel):
@@ -251,16 +228,6 @@ class HoldCartRequest(BaseModel):
     customer_id: UUID | None = None
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     label: str | None = Field(default=None, max_length=127)
-
-
-class RefundRequest(BaseModel):
-    order_id: UUID
-    amount: str = Field(pattern=_MONEY)
-    method: str = Field(default="cash", pattern="^(cash|card|wallet|bank_transfer)$")
-    reason: str = Field(default="customer_return", max_length=31)
-    # Deprecated and ignored: a money-only refund never restocks (it cannot know which goods came
-    # back). Use /returns, which is line-aware. Kept so older clients still validate.
-    restock: bool = False
 
 
 class ReturnLine(BaseModel):
@@ -314,8 +281,10 @@ def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> d
             {
                 # The day is recorded, not counted: the closing balance is derived from the
                 # invoices and returns, and there is no counted figure or variance.
-                "closing_balance": str(pos_session.expected_cash),
-                "closed_at": pos_session.closed_at.isoformat(),
+                "closing_balance": (
+                    None if pos_session.expected_cash is None else str(pos_session.expected_cash)
+                ),
+                "closed_at": pos_session.closed_at.isoformat() if pos_session.closed_at else None,
             }
         )
     elif inflow is not None:
@@ -356,21 +325,6 @@ async def create_register(body: CreateRegisterRequest, ctx: PosWriteCtx):
 @router.get("/registers")
 async def list_registers(ctx: TenantCtxDep):
     return [_register_out(r) for r in await PosService.list_registers(ctx.session, ctx.tenant_id)]
-
-
-@router.post("/registers/{register_id}/sessions", status_code=201)
-async def open_session(register_id: UUID, body: OpenSessionRequest, ctx: PosWriteCtx):
-    pos_session = await PosService.open_session(
-        ctx.session,
-        ctx.tenant_id,
-        register_id,
-        opening_float=body.opening_float,
-        opened_by=ctx.user.id,
-        profile_id=body.profile_id,
-        cashier_user_id=body.cashier_user_id,
-        floats_by_method=body.floats_by_method,
-    )
-    return _session_out(pos_session)
 
 
 @router.get("/sessions")
@@ -482,30 +436,6 @@ async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteC
         note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,
     )
-
-
-@router.post("/sessions/{session_id}/sell")
-async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx, override: OverrideDep):
-    """§189: the whole sell is one command chain in one transaction."""
-    tenders = (
-        [{"method": t.method, "amount": t.amount} for t in body.tenders] if body.tenders else None
-    )
-    result = await PosService.sell(
-        ctx.session,
-        ctx.tenant_id,
-        session_id,
-        customer_id=body.customer_id,
-        items=body.items,
-        tenders=tenders,
-        method=body.method,
-        amount=body.amount,
-        discount_total=body.discount_total,
-        tendered_cash=body.tendered_cash,
-        held_cart_id=body.held_cart_id,
-        actor_user_id=ctx.user.id,
-        shift_override=override.active,
-    )
-    return {k: str(v) for k, v in result.items()}
 
 
 @router.post("/sessions/{session_id}/close")
@@ -726,27 +656,6 @@ async def release_held_cart(held_cart_id: UUID, ctx: PosWriteCtx):
 
 
 # ------------------------------------------------------------- refunds ----
-
-
-@router.post("/sessions/{session_id}/refunds", status_code=201)
-async def refund(session_id: UUID, body: RefundRequest, ctx: PosWriteCtx, override: OverrideDep):
-    """Refund a POS sale by AMOUNT — the money-only path (goodwill, adjust).
-
-    For returning goods, use ``/returns``: it is line-aware, priced at the
-    original sale, and allocates the money across the original tenders.
-    """
-    return await PosService.refund(
-        ctx.session,
-        ctx.tenant_id,
-        session_id,
-        order_id=body.order_id,
-        amount=body.amount,
-        method=body.method,
-        reason=body.reason,
-        restock=False,
-        actor_user_id=ctx.user.id,
-        shift_override=override.active,
-    )
 
 
 @router.post("/sessions/{session_id}/returns", status_code=201)

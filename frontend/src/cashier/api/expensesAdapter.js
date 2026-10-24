@@ -62,9 +62,8 @@ export function normalizeAmountInput(raw) {
 
 /**
  * Validate a new expense. Returns { ok:true, payload } or { ok:false, error }.
- * `openSessionId` is the open shift (or null): a cash expense needs it.
  */
-export function buildExpense(form, { openSessionId = null } = {}) {
+export function buildExpense(form) {
   if (!form.categoryId) return { ok: false, error: "اختر التصنيف" };
   const description = String(form.description ?? "").trim();
   if (!description) return { ok: false, error: "اكتب بيان المصروف" };
@@ -81,9 +80,7 @@ export function buildExpense(form, { openSessionId = null } = {}) {
       amount,
       payment_method: form.payment,
       expense_date: form.date,
-      // A cash expense needs no shift: it is a record. With a shift open it also leaves that drawer
-      // (so the close balances); with none, nothing moves. Only cash ever carries a shift.
-      ...(form.payment === "cash" && openSessionId ? { session_id: openSessionId } : {}),
+      // An expense is a record, never a drawer movement: it carries no shift, open or not.
     },
   };
 }

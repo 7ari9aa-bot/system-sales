@@ -35,7 +35,6 @@ const EXPORT_COLUMNS = [
 
 import SupplierFormDialog from "@/cashier/components/suppliers/SupplierFormDialog";
 import SupplierPaymentDialog from "@/cashier/components/suppliers/SupplierPaymentDialog";
-import { useShiftState } from "@/cashier/api/useShifts";
 import { useCatalog } from "@/cashier/api/usePosSale";
 import { sumMoney, toMinor } from "@/cashier/api/money";
 import { purchasingErrorMessage, suppliersSummary } from "@/cashier/api/purchasingAdapter";
@@ -47,8 +46,6 @@ export default function SuppliersPage() {
   const variants = useMemo(() => Object.fromEntries((catalog.data ?? []).map((v) => [v.id, v])), [catalog.data]);
   const orders = usePurchaseOrders({ suppliers: names, variants });
   const returns = useSupplierReturns({ suppliers: names, variants });
-  const shiftState = useShiftState();
-  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
 
   const createSupplier = useCreateSupplier();
   const updateSupplier = useUpdateSupplier();
@@ -215,7 +212,6 @@ export default function SuppliersPage() {
         onOpenChange={(open) => !open && setPaying(null)}
         supplier={paying?.supplier ?? null}
         order={paying?.order ?? null}
-        openSessionId={openSessionId}
         onSubmit={submitPayment}
         pending={paySupplier.isPending}
         error={paySupplier.error ? purchasingErrorMessage(paySupplier.error) : null}

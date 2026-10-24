@@ -14,43 +14,32 @@ beforeEach(() => {
   calls.length = 0;
 });
 
-describe("money never leaves as a float or a negative", () => {
-  it("sell sends wire strings, tenders summed from cents", async () => {
-    const intent = newIntent();
-    await posApi.sell("s1", {
-      items: [{ variant_id: "v1", quantity: 2 }],
-      tenders: [
-        { method: "cash", amount: 10.1 },
-        { method: "card", amount: "20.20" },
-      ],
-      tenderedCash: 20,
-    }, intent);
+describe("a recorded sale carries no payment and never a bad figure", () => {
+  it("recordSale sends the items, the discount as a wire string, and no tender", async () => {
+    await posApi.recordSale(
+      "r1",
+      { items: [{ variant_id: "v1", quantity: 2 }], discountTotal: 5.5, note: "  gift  " },
+      newIntent(),
+    );
     const body = calls[0].body;
-    expect(body.tenders).toEqual([
-      { method: "cash", amount: "10.10" },
-      { method: "card", amount: "20.20" },
-    ]);
-    expect(body.tendered_cash).toBe("20.00");
+    expect(calls[0].path).toBe("/pos/registers/r1/sales");
+    expect(body.discount_total).toBe("5.50");
+    expect(body.note).toBe("gift");
+    expect(body.tenders).toBeUndefined();
+    expect(body.tendered_cash).toBeUndefined();
   });
 
-  it("refuses a negative amount before any request is made", async () => {
+  it("refuses a negative discount before any request is made", async () => {
     await expect(
-      posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "cash", amount: -5 }] }, newIntent()),
+      posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 1 }], discountTotal: -5 }, newIntent()),
     ).rejects.toThrow(/negative/i);
     expect(calls).toHaveLength(0);
   });
 
-  it("refuses a malformed method before any request is made", async () => {
-    await expect(
-      posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "bitcoin", amount: 1 }] }, newIntent()),
-    ).rejects.toThrow(/method/i);
-    expect(calls).toHaveLength(0);
-  });
-
   it("refuses an empty cart and a non-positive quantity", async () => {
-    await expect(posApi.sell("s1", { items: [], tenders: [{ method: "cash", amount: 1 }] }, newIntent())).rejects.toThrow(/item/i);
+    await expect(posApi.recordSale("r1", { items: [] }, newIntent())).rejects.toThrow(/item/i);
     await expect(
-      posApi.sell("s1", { items: [{ variant_id: "v", quantity: 0 }], tenders: [{ method: "cash", amount: 1 }] }, newIntent()),
+      posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 0 }] }, newIntent()),
     ).rejects.toThrow(/quantity/i);
     expect(calls).toHaveLength(0);
   });
@@ -59,8 +48,7 @@ describe("money never leaves as a float or a negative", () => {
 describe("retry safety: one intent = one Idempotency-Key", () => {
   it("every money call carries the key of its intent", async () => {
     const intent = newIntent();
-    await posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "cash", amount: 5 }] }, intent);
-    await posApi.refund("s1", { orderId: "o1", amount: 5, method: "cash" }, newIntent());
+    await posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 1 }] }, intent);
     await posApi.returnSale("s1", { orderId: "o1", lines: [{ variant_id: "v", quantity: 1 }] }, newIntent());
     await posApi.exchange("s1", { orderId: "o1", returnLines: [{ variant_id: "v", quantity: 1 }], newLines: [{ variant_id: "w", quantity: 1 }] }, newIntent());
     for (const c of calls) expect(c.headers["Idempotency-Key"]).toMatch(/^[\w-]{16,}$/);
@@ -69,9 +57,9 @@ describe("retry safety: one intent = one Idempotency-Key", () => {
 
   it("re-sending the SAME intent re-sends the SAME key (a retry, not a second sale)", async () => {
     const intent = newIntent();
-    const cart = { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "cash", amount: 5 }] };
-    await posApi.sell("s1", cart, intent);
-    await posApi.sell("s1", cart, intent);
+    const cart = { items: [{ variant_id: "v", quantity: 1 }] };
+    await posApi.recordSale("r1", cart, intent);
+    await posApi.recordSale("r1", cart, intent);
     expect(calls[0].headers["Idempotency-Key"]).toBe(calls[1].headers["Idempotency-Key"]);
   });
 
@@ -80,7 +68,7 @@ describe("retry safety: one intent = one Idempotency-Key", () => {
   });
 
   it("calling a money endpoint without an intent is a programming error", async () => {
-    await expect(posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "cash", amount: 1 }] })).rejects.toThrow(/intent/i);
+    await expect(posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 1 }] })).rejects.toThrow(/intent/i);
     expect(calls).toHaveLength(0);
   });
 });
@@ -89,7 +77,7 @@ describe("routes", () => {
   it("hits the documented paths", async () => {
     await posApi.listRegisters();
     await posApi.listProfiles();
-    await posApi.openSession("r1", { openingFloat: 100, floatsByMethod: { cash: 100 } });
+    await posApi.openDay("r1", "100.00");
     await posApi.closePreview("s1");
     await posApi.closeSession("s1");
     await posApi.scan("s1", { identifierType: "barcode", value: "123" });
@@ -97,13 +85,13 @@ describe("routes", () => {
     expect(calls.map((c) => `${c.method ?? "GET"} ${c.path}`)).toEqual([
       "GET /pos/registers",
       "GET /pos/profiles",
-      "POST /pos/registers/r1/sessions",
+      "POST /pos/registers/r1/open-day",
       "GET /pos/sessions/s1/close-preview",
       "POST /pos/sessions/s1/close",
       "POST /pos/sessions/s1/scan",
       "GET /pos/sessions/s1/held-carts",
     ]);
-    expect(calls[2].body).toEqual({ opening_float: "100.00", floats_by_method: { cash: "100.00" } });
+    expect(calls[2].body).toEqual({ opening_float: "100.00" });
     expect(calls[4].body).toEqual({}); // nothing is counted at the close
   });
 

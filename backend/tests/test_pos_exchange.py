@@ -138,11 +138,12 @@ async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
     assert result["return_receipt_number"].startswith("POS-RET-")
     assert result["new_receipt_number"].startswith("POS-")
 
-    # The drawer never moved for the swap: the credit's refund legs and the
-    # funding payments are the double-entry pair (in 15 + 15, out 15).
+    # The exchange records goods and values only. The old sale keeps its own payments (30 in), but
+    # the exchange adds no refund, no payment and no drawer movement.
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("30.00")
-    assert detail["outflow"] == Decimal("15.00")
+    assert detail["inflow"] == Decimal("15.00")
+    assert detail["outflow"] == Decimal("0.00")
+    assert result["by_method"] == []
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     # The close records the day, not payment methods: opening 0 + invoices (25 + 25)
@@ -181,15 +182,12 @@ async def test_exchange_for_a_pricier_item_charges_the_difference(db, tenant_ctx
     )
     assert Decimal(result["net"]) == Decimal("15.00")
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    # Double-entry: sale cash 25 in + funding 25 in − refund 25 out + tender
-    # 15 in − change 5 out → inflow 65, outflow 30, expected 40. The customer
-    # physically paid 15 net.
-    assert detail["inflow"] == Decimal("65.00")
-    assert detail["outflow"] == Decimal("25.00")
+    # The 15 difference is shown, never settled: only the old sale's own 25 is in the drawer.
+    assert detail["inflow"] == Decimal("25.00")
+    assert detail["outflow"] == Decimal("0.00")
 
 
-async def test_exchange_tenders_must_total_the_difference(db, tenant_ctx):
-    from app.modules.errors import ValidationError
+async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, tenant_ctx):
     from app.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
@@ -205,19 +203,24 @@ async def test_exchange_tenders_must_total_the_difference(db, tenant_ctx):
         items=[{"variant_id": str(sold_variant.id), "quantity": 1}],
         method="cash",
     )
-    with pytest.raises(ValidationError):
-        await PosService.exchange(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            order_id=sold["order_id"],
-            return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
-            new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
-            tenders=[{"method": "cash", "amount": "20.00"}],  # net is 15
-        )
+    # The cashier does not settle money: tenders that do not match the difference are not an
+    # error, they are simply not used. The difference is reported and nothing is charged.
+    result = await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=sold["order_id"],
+        return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
+        new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
+        tenders=[{"method": "cash", "amount": "20.00"}],  # net is 15
+    )
+    assert Decimal(result["net"]) == Decimal("15.00")
+    assert result["by_method"] == []
+    detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
+    assert detail["inflow"] == Decimal("25.00")  # only the old sale's own payment
 
 
-async def test_exchange_for_a_cheaper_item_refunds_via_original_tenders(db, tenant_ctx):
+async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
     from app.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
@@ -246,14 +249,12 @@ async def test_exchange_for_a_cheaper_item_refunds_via_original_tenders(db, tena
         return_lines=[{"variant_id": str(sold_variant.id), "quantity": 2}],
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
     )
-    # The FULL return value refunds across the original tenders, cash first:
-    # 30 cash leaves the drawer, 20 card is refunded — and the 10 replacement
-    # is funded from the card credit.
+    # The value difference (-40) is shown, never settled: no refund leg is written against the
+    # old sale's tenders and no cash leaves the drawer.
     assert Decimal(result["net"]) == Decimal("-40.00")
-    assert result["by_method"] == [
-        {"method": "cash", "amount": "30.00"},
-        {"method": "card", "amount": "20.00"},
-    ]
+    assert result["by_method"] == []
+    detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
+    assert detail["outflow"] == Decimal("0.00")
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     # Opening 20 + invoices (50 sale + 10 replacement) - returns 50 = 30. No per-method split.

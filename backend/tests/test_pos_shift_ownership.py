@@ -188,24 +188,14 @@ async def _grant(ctx, method="POST", path="/pos/test"):
 
 
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
-    from app.modules.pos.router import (
-        SellRequest,
-        close_session,
-        sell,
-    )
+    from app.modules.pos.router import close_session
 
-    shift, _h, stranger, variant, customer = await _owned_shift(db, tenant_ctx)
+    shift, _h, stranger, _variant, _customer = await _owned_shift(db, tenant_ctx)
     staff = await _stranger_ctx(db, tenant_ctx, stranger, "staff")
     manager = await _stranger_ctx(db, tenant_ctx, stranger, "manager")
-    sale = SellRequest(
-        items=_items(variant), customer_id=customer.id, method="cash", amount="50.00"
-    )
 
-    with pytest.raises(PermissionDeniedError):
-        await sell(shift.id, sale, staff, await _grant(staff))
     with pytest.raises(PermissionDeniedError):
         await close_session(shift.id, staff, await _grant(staff))
 
-    assert (await sell(shift.id, sale, manager, await _grant(manager)))["grand_total"] == "50.00"
     closed = await close_session(shift.id, manager, await _grant(manager))
     assert closed["status"] == "CLOSED"

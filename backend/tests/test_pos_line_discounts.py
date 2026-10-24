@@ -20,20 +20,6 @@ SELL_PATH = "/api/v1/pos/sessions/{session_id}/sell"
 # --------------------------------------------------------- DB-free guards --
 
 
-def test_sell_wire_accepts_per_line_discounts() -> None:
-    from app.modules.pos.router import SellRequest
-
-    body = SellRequest(
-        items=[
-            {"variant_id": str(uuid.uuid4()), "quantity": 2, "discount_pct": "10.00"},
-            {"variant_id": str(uuid.uuid4()), "quantity": 1},
-        ],
-        method="cash",
-    )
-    assert body.items[0]["discount_pct"] == "10.00"
-    assert "discount_pct" not in body.items[1]
-
-
 def test_line_discount_pct_bounds() -> None:
     from app.modules.errors import ValidationError
     from app.modules.pos.service import PosService

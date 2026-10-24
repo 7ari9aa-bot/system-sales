@@ -102,7 +102,7 @@ export function buildPurchaseOrder(form) {
 }
 
 /** Validate a payment to a supplier. `owed` is the order's remaining balance (wire text) or null. */
-export function buildPayment(form, { openSessionId = null, owed = null } = {}) {
+export function buildPayment(form, { owed = null } = {}) {
   if (!form.supplierId) return { ok: false, error: "اختر المورد" };
   const amount = parsePayment(form.amount);
   if (!amount) return { ok: false, error: "المبلغ لازم يكون رقمًا أكبر من صفر وبحد أقصى خانتين عشريتين" };
@@ -118,8 +118,7 @@ export function buildPayment(form, { openSessionId = null, owed = null } = {}) {
       amount,
       method: form.method,
       ...(form.orderId ? { purchase_order_id: form.orderId } : {}),
-      // A cash payment needs no shift: it is a record. With a shift open it also leaves that drawer.
-      ...(form.method === "cash" && openSessionId ? { session_id: openSessionId } : {}),
+      // A supplier payment is a record, never a drawer movement: it carries no shift.
       ...(note ? { note } : {}),
     },
   };

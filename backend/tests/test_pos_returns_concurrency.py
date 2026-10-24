@@ -270,7 +270,7 @@ async def _shelf(factory, tenant_id, variant_id) -> int:
 async def test_a_losing_return_leaves_neither_money_nor_shelf_behind(committed_tenant) -> None:
     """A losing return is refused, and must leave NOTHING behind.
 
-    No restocked unit, no return line, no drawer pay-out."""
+    No restocked unit, no return line, and never a drawer pay-out."""
     factory, tenant_id = committed_tenant
     shift_id, variant_id, order_id = await _sell(factory, tenant_id, qty_sold=3)
     shelf_after_sale = await _shelf(factory, tenant_id, variant_id)
@@ -308,7 +308,7 @@ async def test_a_losing_return_leaves_neither_money_nor_shelf_behind(committed_t
                 {"t": tenant_id, "s": shift_id},
             )
         ).scalar_one()
-    assert Decimal(paid_out) == Decimal("50.00"), f"drawer paid out {paid_out}, expected 50.00"
+    assert Decimal(paid_out) == Decimal("0.00"), f"drawer paid out {paid_out}, expected nothing"
 
 
 async def _second_variant(factory, tenant_id) -> uuid.UUID:

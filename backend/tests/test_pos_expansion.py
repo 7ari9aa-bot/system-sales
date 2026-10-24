@@ -25,7 +25,6 @@ PROFILE_PATH = "/api/v1/pos/profiles/{profile_id}"
 PROFILE_USERS_PATH = "/api/v1/pos/profiles/{profile_id}/users"
 SCAN_PATH = "/api/v1/pos/sessions/{session_id}/scan"
 QUOTE_PATH = "/api/v1/pos/sessions/{session_id}/quote"
-SELL_PATH = "/api/v1/pos/sessions/{session_id}/sell"
 CLOSE_PATH = "/api/v1/pos/sessions/{session_id}/close"
 
 
@@ -40,35 +39,10 @@ def test_profile_routes_are_mounted() -> None:
         PROFILE_USERS_PATH,
         SCAN_PATH,
         QUOTE_PATH,
-        SELL_PATH,
         CLOSE_PATH,
     } <= paths
     # the close is not a drawer count any more: the reconciliation route is gone
     assert "/api/v1/pos/sessions/{session_id}/reconciliation" not in paths
-
-
-def test_sell_wire_accepts_split_tender_and_discount() -> None:
-    from app.modules.pos.router import SellRequest
-
-    body = SellRequest(
-        items=[{"variant_id": str(uuid.uuid4()), "quantity": 2}],
-        tenders=[
-            {"method": "cash", "amount": "30.00"},
-            {"method": "card", "amount": "20.00"},
-        ],
-        discount_total="5.00",
-        tendered_cash="50.00",
-    )
-    assert len(body.tenders) == 2
-    assert body.discount_total == "5.00"
-
-
-def test_sell_wire_accepts_legacy_single_tender() -> None:
-    from app.modules.pos.router import SellRequest
-
-    body = SellRequest(items=[{"variant_id": str(uuid.uuid4()), "quantity": 1}], method="cash")
-    assert body.method == "cash"
-    assert body.tenders is None
 
 
 def test_close_takes_no_counted_figure() -> None:

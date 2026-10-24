@@ -37,12 +37,12 @@ const asKey = (c) => `${c.method} ${norm(c.path.replace(/\/[0-9a-f-]{8,}|\/(s1|r
 
 const I = () => newIntent();
 const L = [{ variant_id: "v1", quantity: 1 }];
-const T = [{ method: "cash", amount: 1 }];
 
 describe("cashier client <-> committed OpenAPI lock", () => {
   it("the lock is loaded and has POS routes (guards against a vacuous pass)", () => {
     expect(live.size).toBeGreaterThan(100);
-    expect(live.has("POST /pos/sessions/{}/sell")).toBe(true);
+    expect(live.has("POST /pos/registers/{}/open-day")).toBe(true);
+    expect(live.has("POST /pos/sessions/{}/sell")).toBe(false);
   });
 
   it("every call posApi can make exists in the backend contract", async () => {
@@ -59,14 +59,13 @@ describe("cashier client <-> committed OpenAPI lock", () => {
     await posApi.sessionItems("s1");
     await posApi.heldCarts("s1");
     await posApi.dailyReport();
-    await posApi.openSession("r1", { openingFloat: 1 });
+    await posApi.openDay("r1", 1);
     await posApi.closeSession("s1", { countedCash: 1 });
     await posApi.scan("s1", { identifierType: "barcode", value: "1" });
     await posApi.quote("s1", { items: L });
     await posApi.holdCart("s1", { items: L });
     await posApi.releaseHeldCart("h1");
-    await posApi.sell("s1", { items: L, tenders: T }, I());
-    await posApi.refund("s1", { orderId: "o1", amount: 1 }, I());
+    await posApi.recordSale("r1", { items: L }, I());
     await posApi.returnSale("s1", { orderId: "o1", lines: L }, I());
     await posApi.exchange("s1", { orderId: "o1", returnLines: L, newLines: L }, I());
     await posApi.stocktakes();

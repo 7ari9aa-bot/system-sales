@@ -30,26 +30,16 @@ from tests.test_order_idempotency import MemoryStore
 
 KEY_HEADER = "Idempotency-Key"
 SESSION = "33333333-3333-3333-3333-333333333333"
+REGISTER = "55555555-5555-5555-5555-555555555555"
 ORDER = "44444444-4444-4444-4444-444444444444"
 VARIANT = "22222222-2222-2222-2222-222222222222"
 
-SELL_BODY = {
-    "items": [{"variant_id": VARIANT, "quantity": 2}],
-    "tenders": [{"method": "cash", "amount": "50.00"}],
-}
-OTHER_SELL_BODY = {
-    "items": [{"variant_id": VARIANT, "quantity": 3}],
-    "tenders": [{"method": "cash", "amount": "75.00"}],
-}
+SELL_BODY = {"items": [{"variant_id": VARIANT, "quantity": 2}]}
+OTHER_SELL_BODY = {"items": [{"variant_id": VARIANT, "quantity": 3}]}
 
 # (method path suffix, body, PosService method it must reach exactly once)
 MONEY_ROUTES = {
-    "sell": (f"/api/v1/pos/sessions/{SESSION}/sell", SELL_BODY, "sell"),
-    "refund": (
-        f"/api/v1/pos/sessions/{SESSION}/refunds",
-        {"order_id": ORDER, "amount": "10.00", "method": "cash"},
-        "refund",
-    ),
+    "sell": (f"/api/v1/pos/registers/{REGISTER}/sales", SELL_BODY, "record_sale"),
     "return": (
         f"/api/v1/pos/sessions/{SESSION}/returns",
         {"order_id": ORDER, "lines": [{"variant_id": VARIANT, "quantity": 1}]},
@@ -100,12 +90,12 @@ def test_pos_is_on_the_idempotency_allow_list() -> None:
 async def test_sell_replays_and_charges_once(monkeypatch) -> None:
     calls: list[dict] = []
 
-    async def fake_sell(session, tenant_id, session_id, **kwargs):
+    async def fake_sell(session, tenant_id, register_id, **kwargs):
         calls.append(kwargs)
         n = len(calls)
-        return {"order_id": uuid.uuid4(), "number": f"POS-{n:04d}", "grand_total": "50.00"}
+        return _sale_result(n)
 
-    monkeypatch.setattr(PosService, "sell", staticmethod(fake_sell))
+    monkeypatch.setattr(PosService, "record_sale", staticmethod(fake_sell))
     app = _build_app(MemoryStore(), uuid.uuid4())
     path = MONEY_ROUTES["sell"][0]
 
@@ -113,8 +103,8 @@ async def test_sell_replays_and_charges_once(monkeypatch) -> None:
         first = await client.post(path, json=SELL_BODY, headers={KEY_HEADER: "sell-1"})
         second = await client.post(path, json=SELL_BODY, headers={KEY_HEADER: "sell-1"})
 
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
     assert second.json() == first.json(), "a retry must return the FIRST sale's receipt"
     assert second.headers.get("idempotency-replayed") == "true"
     assert len(calls) == 1, "a retried Pay tap must not sell twice"
@@ -123,11 +113,11 @@ async def test_sell_replays_and_charges_once(monkeypatch) -> None:
 async def test_sell_key_reuse_with_a_different_cart_is_refused(monkeypatch) -> None:
     calls: list[dict] = []
 
-    async def fake_sell(session, tenant_id, session_id, **kwargs):
+    async def fake_sell(session, tenant_id, register_id, **kwargs):
         calls.append(kwargs)
-        return {"order_id": uuid.uuid4(), "number": "POS-0001", "grand_total": "50.00"}
+        return _sale_result(1)
 
-    monkeypatch.setattr(PosService, "sell", staticmethod(fake_sell))
+    monkeypatch.setattr(PosService, "record_sale", staticmethod(fake_sell))
     app = _build_app(MemoryStore(), uuid.uuid4())
     path = MONEY_ROUTES["sell"][0]
 
@@ -143,11 +133,11 @@ async def test_sell_without_a_key_keeps_the_old_behaviour(monkeypatch) -> None:
     """Opt-in: existing clients that send no key are unchanged."""
     calls: list[dict] = []
 
-    async def fake_sell(session, tenant_id, session_id, **kwargs):
+    async def fake_sell(session, tenant_id, register_id, **kwargs):
         calls.append(kwargs)
-        return {"order_id": uuid.uuid4(), "number": f"POS-{len(calls):04d}", "grand_total": "50.00"}
+        return _sale_result(len(calls))
 
-    monkeypatch.setattr(PosService, "sell", staticmethod(fake_sell))
+    monkeypatch.setattr(PosService, "record_sale", staticmethod(fake_sell))
     app = _build_app(MemoryStore(), uuid.uuid4())
     path = MONEY_ROUTES["sell"][0]
 
@@ -158,9 +148,9 @@ async def test_sell_without_a_key_keeps_the_old_behaviour(monkeypatch) -> None:
     assert len(calls) == 2
 
 
-@pytest.mark.parametrize("name", ["refund", "return", "exchange"])
+@pytest.mark.parametrize("name", ["return", "exchange"])
 async def test_every_other_pos_money_route_is_retry_safe(monkeypatch, name) -> None:
-    """refund / return / exchange: a replay must not repeat the effect."""
+    """return / exchange: a replay must not repeat the effect."""
     path, body, service_method = MONEY_ROUTES[name]
     calls: list[int] = []
 
@@ -184,6 +174,16 @@ async def test_every_other_pos_money_route_is_retry_safe(monkeypatch, name) -> N
     assert len(calls) == 1
 
 
+def _sale_result(n: int) -> dict:
+    return {
+        "order_id": uuid.uuid4(),
+        "order_number": f"ORD-{n:04d}",
+        "receipt_id": uuid.uuid4(),
+        "receipt_number": f"POS-{n:04d}",
+        "grand_total": "50.00",
+    }
+
+
 def _fake_result(name: str) -> Any:
     """The exact shape each route reads from its service call."""
 
@@ -203,20 +203,19 @@ def _fake_result(name: str) -> Any:
 # ---------------------------------------------------------------------------
 
 
-async def test_a_retried_sell_charges_once_against_the_database(db, tenant_ctx) -> None:
-    """The cashier-visible promise: tap Pay twice, the customer pays ONCE."""
-    from decimal import Decimal
-
+async def test_a_retried_sale_is_recorded_once_against_the_database(db, tenant_ctx) -> None:
+    """The cashier-visible promise: tap Save twice, the sale is recorded ONCE."""
     import sqlalchemy as sa
 
     from app.modules.inventory.service import InventoryService
     from app.modules.orders.models import Order
+    from tests._pos_helpers import start_day
     from tests.test_order_idempotency import SessionStore
     from tests.test_pos_flow import _register, _sellable_variant
 
     tenant_id = tenant_ctx.tenant_id
     register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(db, tenant_id, register.id)
+    await start_day(db, tenant_ctx, register.id)
     variant = await _sellable_variant(db, tenant_ctx)  # 5 on hand, price 25.00
 
     app = _build_app(SessionStore(db), tenant_id)
@@ -224,7 +223,7 @@ async def test_a_retried_sell_charges_once_against_the_database(db, tenant_ctx) 
     async def _ctx() -> TenantContext:
         return TenantContext(
             session=db,
-            # the drawer row has a real FK to users: the actor must be the seeded owner
+            # the receipt row has a real FK to users: the actor must be the seeded owner
             user=AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_id, role_code="owner"),
             tenant_id=tenant_id,
             role_code="owner",
@@ -232,20 +231,16 @@ async def test_a_retried_sell_charges_once_against_the_database(db, tenant_ctx) 
         )
 
     app.dependency_overrides[get_tenant_ctx] = _ctx
-    path = f"/api/v1/pos/sessions/{pos_session.id}/sell"
-    body = {
-        "items": [{"variant_id": str(variant.id), "quantity": 1}],
-        "tenders": [{"method": "cash", "amount": "25.00"}],
-        "tendered_cash": "30.00",
-    }
-    key = f"sell-{uuid.uuid4().hex}"
+    path = f"/api/v1/pos/registers/{register.id}/sales"
+    body = {"items": [{"variant_id": str(variant.id), "quantity": 1}]}
+    key = f"sale-{uuid.uuid4().hex}"
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         first = await client.post(path, json=body, headers={KEY_HEADER: key})
         second = await client.post(path, json=body, headers={KEY_HEADER: key})
 
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
     assert second.json() == first.json(), "the retry must hand back the SAME receipt"
     assert second.headers.get("idempotency-replayed") == "true"
 
@@ -263,6 +258,3 @@ async def test_a_retried_sell_charges_once_against_the_database(db, tenant_ctx) 
     balances = await InventoryService.list_balances(db, tenant_id)
     mine = [b for b in balances if b.variant_id == variant.id]
     assert mine and mine[0].on_hand == 4, f"stock decremented twice: on_hand={mine[0].on_hand}"
-
-    detail = await PosService.get_session(db, tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("25.00"), f"drawer booked cash twice: {detail['inflow']}"

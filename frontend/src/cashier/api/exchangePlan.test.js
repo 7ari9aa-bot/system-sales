@@ -83,17 +83,11 @@ describe("sendExchange", () => {
 
 describe("needsPayment", () => {
   const paid = { tenders: [{ method: "cash", amount: "100.00" }] };
-  const unpaid = { tenders: [] };
 
-  it("an old sale that took payments still settles a difference the customer owes", () => {
-    expect(needsPayment(paid, 5000)).toBe(true);
-  });
-  it("a sale recorded with no payment never asks for one: the difference is only shown", () => {
-    expect(needsPayment(unpaid, 5000)).toBe(false);
-    expect(needsPayment({}, 5000)).toBe(false);
+  it("never asks for money, even when the customer owes a difference on an old paid sale", () => {
+    expect(needsPayment(paid, 5000)).toBe(false);
+    expect(needsPayment({ tenders: [] }, 5000)).toBe(false);
     expect(needsPayment(undefined, 5000)).toBe(false);
-  });
-  it("nothing is asked when the customer owes nothing or the shop owes the customer", () => {
     expect(needsPayment(paid, 0)).toBe(false);
     expect(needsPayment(paid, -4000)).toBe(false);
   });

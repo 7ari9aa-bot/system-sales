@@ -17,7 +17,6 @@ import { exportCsv } from "@/cashier/lib/exportCsv";
 import { useAuth } from "@/lib/AuthContext";
 import { EXPENSE_METHODS, expenseErrorMessage, filterExpenses, summarize } from "@/cashier/api/expensesAdapter";
 import { useExpenseCategories, useExpenses, usePostExpense, useVoidExpense } from "@/cashier/api/useExpenses";
-import { useShiftState } from "@/cashier/api/useShifts";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/2115fad41_generated_image.png";
@@ -41,8 +40,6 @@ export default function ExpensesPage() {
   const categoriesQ = useExpenseCategories();
   const categories = categoriesQ.data ?? [];
   const { data: rows = [], isLoading, error: loadError, refetch } = useExpenses({ categories, users });
-  const shiftState = useShiftState();
-  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
   const post = usePostExpense();
   const voidMut = useVoidExpense();
 
@@ -166,7 +163,6 @@ export default function ExpensesPage() {
         onOpenChange={setDialogOpen}
         categories={categories}
         methods={EXPENSE_METHODS}
-        openSessionId={openSessionId}
         onSubmit={saveExpense}
         pending={post.isPending}
         error={post.error ? expenseErrorMessage(post.error) : null}

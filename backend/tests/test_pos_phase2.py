@@ -22,7 +22,6 @@ from app.modules.errors import ValidationError
 
 HELD_CARTS_PATH = "/api/v1/pos/sessions/{session_id}/held-carts"
 HELD_CART_PATH = "/api/v1/pos/held-carts/{held_cart_id}"
-REFUND_PATH = "/api/v1/pos/sessions/{session_id}/refunds"
 
 
 # --------------------------------------------------------- DB-free guards --
@@ -30,7 +29,7 @@ REFUND_PATH = "/api/v1/pos/sessions/{session_id}/refunds"
 
 def test_phase_two_routes_are_mounted() -> None:
     paths = set(create_app().openapi()["paths"])
-    assert {HELD_CARTS_PATH, HELD_CART_PATH, REFUND_PATH} <= paths
+    assert {HELD_CARTS_PATH, HELD_CART_PATH} <= paths
 
 
 def test_hold_cart_wire_validates() -> None:
@@ -49,22 +48,6 @@ def test_hold_cart_wire_needs_at_least_one_item() -> None:
 
     with pytest.raises(PydanticValidationError):
         HoldCartRequest(items=[])
-
-
-def test_refund_wire_defaults_to_cash_and_no_restock() -> None:
-    from app.modules.pos.router import RefundRequest
-
-    body = RefundRequest(order_id=uuid.uuid4(), amount="25.00")
-    assert body.method == "cash"
-    assert body.restock is False
-    assert body.reason == "customer_return"
-
-
-def test_refund_wire_refuses_unknown_method() -> None:
-    from app.modules.pos.router import RefundRequest
-
-    with pytest.raises(PydanticValidationError):
-        RefundRequest(order_id=uuid.uuid4(), amount="25.00", method="crypto")
 
 
 def test_clean_held_items_normalises_and_refuses_junk() -> None:

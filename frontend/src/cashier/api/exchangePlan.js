@@ -14,12 +14,12 @@ export function differenceMinor(saleDetail, returnLines, newTotal) {
 }
 
 /**
- * Does this exchange need the customer's payment recorded? Only when the customer owes a difference
- * AND the original sale took payments (an old sale: the backend still settles it through tenders).
- * A sale recorded with no payment has nothing to settle: the difference is shown, never charged.
+ * The cashier never takes payment. An exchange records the goods and the value; a difference the
+ * customer owes is shown on the screen and is never charged, whatever the original sale took.
+ * Kept as a function so the screen has one place that answers "ask for money?": always no.
  */
-export function needsPayment(detail, diffMinor) {
-  return settlementKind(diffMinor) === "pay" && (detail?.tenders?.length ?? 0) > 0;
+export function needsPayment(_detail, _diffMinor) {
+  return false;
 }
 
 export function settlementKind(diffMinor) {

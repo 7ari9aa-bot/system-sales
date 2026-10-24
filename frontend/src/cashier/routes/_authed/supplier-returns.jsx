@@ -19,7 +19,6 @@ import {
   returnsSummary,
 } from "@/cashier/api/purchasingAdapter";
 import { useCatalog } from "@/cashier/api/usePosSale";
-import { useShiftState } from "@/cashier/api/useShifts";
 import {
   useAcceptSupplierReturn,
   useCreateSupplierReturn,
@@ -55,8 +54,6 @@ export default function SupplierReturnsPage() {
   const orders = usePurchaseOrders({ suppliers: names, variants });
   const orderNumbers = useMemo(() => Object.fromEntries((orders.data ?? []).map((o) => [o.id, o.number])), [orders.data]);
   const returns = useSupplierReturns({ suppliers: names, variants, orders: orderNumbers });
-  const shiftState = useShiftState();
-  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
   const create = useCreateSupplierReturn();
   const accept = useAcceptSupplierReturn();
   const reject = useRejectSupplierReturn();
@@ -95,7 +92,7 @@ export default function SupplierReturnsPage() {
   function decide(ret, accepted) {
     const slot = `${accepted ? "accept" : "reject"}:${ret.id}`;
     const done = { onSuccess: () => toast.success(accepted ? `تم قبول المرتجع ${ret.number}` : `تم رفض المرتجع ${ret.number}: البضاعة رجعت للمخزن`) };
-    if (accepted) accept.mutate({ slot, id: ret.id, sessionId: ret.settlement === "cash" ? openSessionId : null }, done);
+    if (accepted) accept.mutate({ slot, id: ret.id }, done);
     else reject.mutate({ slot, id: ret.id }, done);
   }
 

@@ -156,7 +156,7 @@ async def _customer(db, tenant_ctx):
     )
 
 
-async def test_line_return_refunds_through_the_original_tenders(db, tenant_ctx):
+async def test_line_return_records_value_without_refunding_the_original_tenders(db, tenant_ctx):
     from sqlalchemy import select
 
     from app.modules.pos.models import PosCashMovement, PosReceipt
@@ -185,9 +185,9 @@ async def test_line_return_refunds_through_the_original_tenders(db, tenant_ctx):
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
-    # 25 gross, no discount → the oldest captured tender (cash) eats it all.
+    # 25 gross, no discount. The value is recorded; the old sale's tenders are not refunded.
     assert Decimal(result["refunded_total"]) == Decimal("25.00")
-    assert result["by_method"] == [{"method": "cash", "amount": "25.00"}]
+    assert result["by_method"] == []
     assert result["receipt_number"].startswith("POS-RET-")
 
     return_receipt = (
@@ -209,8 +209,9 @@ async def test_line_return_refunds_through_the_original_tenders(db, tenant_ctx):
         .scalars()
         .all()
     )
+    # The old sale's own cash row stays; the return adds no drawer movement.
     reasons = {r.reason for r in cash_rows}
-    assert reasons == {"cash_sale", "cash_refund"}
+    assert reasons == {"cash_sale"}
 
 
 async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
@@ -373,7 +374,7 @@ async def test_card_only_return_leaves_the_drawer_alone(db, tenant_ctx):
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
-    assert result["by_method"] == [{"method": "card", "amount": "25.00"}]
+    assert result["by_method"] == []
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     # opening 10 + invoice 50 - return 25 = 35; the close has no per-method split or variance.

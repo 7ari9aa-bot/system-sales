@@ -130,8 +130,8 @@ describe("buildPayment", () => {
     expect("session_id" in r.payload).toBe(false);
     expect(r.payload).toMatchObject({ amount: "400.00", purchase_order_id: "po1" });
   });
-  it("a cash payment is tied to the open shift", () => {
-    expect(buildPayment({ ...base, method: "cash" }, { openSessionId: "sess" }).payload.session_id).toBe("sess");
+  it("a cash payment never carries a shift, even when one is open: the backend refuses it", () => {
+    expect("session_id" in buildPayment({ ...base, method: "cash" }, { openSessionId: "sess" }).payload).toBe(false);
   });
   it("a cash payment with no open shift is accepted: it is a record, and it carries no shift", () => {
     const r = buildPayment({ ...base, method: "cash" }, { openSessionId: null });

@@ -44,8 +44,8 @@ describe("buildExpense", () => {
     });
     expect("session_id" in r.payload).toBe(false);
   });
-  it("a CASH expense is tied to the open shift", () => {
-    expect(buildExpense({ ...ok, payment: "cash" }, { openSessionId: "s9" }).payload.session_id).toBe("s9");
+  it("a CASH expense never carries a shift, even when one is open: the backend refuses it", () => {
+    expect("session_id" in buildExpense({ ...ok, payment: "cash" }, { openSessionId: "s9" }).payload).toBe(false);
   });
   it("a CASH expense with no open shift is accepted: it is a record, and it carries no shift", () => {
     const r = buildExpense({ ...ok, payment: "cash" }, { openSessionId: null });

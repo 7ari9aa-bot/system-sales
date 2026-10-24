@@ -34,26 +34,6 @@ def test_phase1_routes_are_mounted() -> None:
     assert {SESSIONS_PATH, CLOSE_PREVIEW_PATH, SESSION_RECEIPTS_PATH, RECEIPT_PATH} <= paths
 
 
-def test_open_session_wire_accepts_per_method_floats() -> None:
-    from app.modules.pos.router import OpenSessionRequest
-
-    body = OpenSessionRequest(
-        opening_float="50.00",
-        floats_by_method={"cash": "50.00", "card": "20.00"},
-    )
-    assert body.floats_by_method == {"cash": "50.00", "card": "20.00"}
-
-
-def test_sell_wire_accepts_held_cart_resume() -> None:
-    from app.modules.pos.router import SellRequest
-
-    body = SellRequest(
-        items=[{"variant_id": str(uuid.uuid4()), "quantity": 1}],
-        held_cart_id=uuid.uuid4(),
-    )
-    assert body.held_cart_id is not None
-
-
 def test_profile_wire_accepts_default_method() -> None:
     from app.modules.pos.router import CreateProfileRequest
 

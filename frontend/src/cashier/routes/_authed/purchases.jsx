@@ -13,7 +13,6 @@ import PurchaseFormDialog from "@/cashier/components/purchases/PurchaseFormDialo
 import PurchaseDetailsDialog from "@/cashier/components/purchases/PurchaseDetailsDialog";
 import SupplierPaymentDialog from "@/cashier/components/suppliers/SupplierPaymentDialog";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { useShiftState } from "@/cashier/api/useShifts";
 import { useCatalog } from "@/cashier/api/usePosSale";
 import {
   PAYMENT_LABEL,
@@ -55,8 +54,6 @@ export default function PurchasesPage() {
   const catalog = useCatalog();
   const variants = useMemo(() => Object.fromEntries((catalog.data ?? []).map((v) => [v.id, v])), [catalog.data]);
   const orders = usePurchaseOrders({ suppliers: names, variants });
-  const shiftState = useShiftState();
-  const openSessionId = shiftState.data?.status === "open" ? shiftState.data.session.id : null;
 
   const createOrder = useCreatePurchaseOrder();
   const receiveOrder = useReceivePurchaseOrder();
@@ -252,7 +249,6 @@ export default function PurchasesPage() {
         onOpenChange={(open) => !open && setPaying(null)}
         supplier={paySupplierRow}
         order={paying ? (rows.find((o) => o.id === paying.order.id) ?? paying.order) : null}
-        openSessionId={openSessionId}
         onSubmit={submitPayment}
         pending={paySupplier.isPending}
         error={paySupplier.error ? purchasingErrorMessage(paySupplier.error) : null}

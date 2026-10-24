@@ -788,8 +788,9 @@ class PosService:
         """The register's OPEN session for today, or None when the day has not been started.
 
         Read-only apart from one thing: a session left open from a previous merchant day is
-        closed (nobody counted the drawer at the end of that day, so its closing figures stay
-        empty) and None is returned, so the next sale cannot happen until a new day is started.
+        closed through the normal close (its closing balance is computed from the invoices and
+        returns and stored, and the close event is emitted) and None is returned, so the next
+        sale cannot happen until a new day is started.
         """
         tz = await PosService._shop_timezone(session, tenant_id)
         current = (
@@ -807,9 +808,9 @@ class PosService:
             PosService._ensure_session_current(current, tz=tz)
             return current
         except ConflictError:
-            current.status = "CLOSED"
-            current.closed_at = datetime.now(UTC)
-            await session.flush()
+            # Nobody closed that day by hand: close it the SAME way, so it keeps its closing
+            # balance and announces ``pos.session.closed`` like any other close.
+            await PosService._record_close(session, tenant_id, current, closed_by=None)
             return None
 
     @staticmethod
@@ -847,6 +848,17 @@ class PosService:
         register = await PosService._get_register(session, tenant_id, register_id)
         if not register.is_active:
             raise ConflictError(f"register {register.code} is not active")
+        # A profile that names its operators is restricted to them: the general ``orders:write``
+        # permission is not enough to start a day on it. An ungranted profile stays open to every
+        # holder of that permission (``can_operate`` decides, exactly as it did for the old open).
+        if (
+            register.profile_id is not None
+            and actor_user_id is not None
+            and not await PosProfileService.can_operate(
+                session, tenant_id, register.profile_id, actor_user_id
+            )
+        ):
+            raise ConflictError("this user does not operate this POS profile")
         for _attempt in range(3):
             current = await PosService._today_session(session, tenant_id, register)
             if current is not None:
@@ -857,6 +869,7 @@ class PosService:
                         tenant_id=tenant_id,
                         register_id=register.id,
                         profile_id=register.profile_id,
+                        opened_by_user_id=actor_user_id,
                         status="OPEN",
                         opening_float=opening,
                     )
@@ -1277,12 +1290,29 @@ class PosService:
         difference is already inside both figures). No payment, drawer
         movement or refund is created here.
         """
-        from app.core.events.writer import add_outbox_event
-
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
+        await PosService._record_close(session, tenant_id, pos_session, closed_by=closed_by)
+        return pos_session
+
+    @staticmethod
+    async def _record_close(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        *,
+        closed_by: UUID | None,
+    ) -> None:
+        """Compute, store and announce the day's closing balance, then mark it CLOSED.
+
+        The ONE place a day is closed, so a day closed by hand and a day closed automatically
+        (a previous day nobody closed) carry the same stored balance and emit the same
+        ``pos.session.closed`` event under the same rules.
+        """
+        from app.core.events.writer import add_outbox_event
+
         closing = (await PosService._day_totals(session, tenant_id, pos_session))["closing_balance"]
 
         pos_session.status = "CLOSED"
@@ -1361,7 +1391,6 @@ class PosService:
             },
             producer="pos",
         )
-        return pos_session
 
     @staticmethod
     async def _day_totals(
@@ -2895,21 +2924,12 @@ class PosService:
         )
         plan: list[tuple[OrderPayment, Decimal]] = []
         remaining = refund_total
-        # A sale recorded WITHOUT a payment (the cashier layer does not move money) has no tender to
-        # refund against: the return records the goods and the invoice value only. The test is "this
-        # order never had ANY payment row", not "no captured one": a paid sale whose payments were
-        # fully refunded still has rows, and must keep failing loudly rather than slip into
-        # this path.
-        never_paid = (
-            await session.execute(
-                select(func.count())
-                .select_from(OrderPayment)
-                .where(OrderPayment.tenant_id == tenant_id, OrderPayment.order_id == order_id)
-            )
-        ).scalar_one() == 0
-        if never_paid:
-            captured = []
-            remaining = Decimal("0")
+        # The cashier layer does not move money, so a return NEVER refunds against a tender: it
+        # records the goods and the invoice value only. That holds for an old sale that did take
+        # payments too: its payments and refunds stay exactly as they were (history is kept), but
+        # returning it from the cashier creates no new Refund, OrderPayment or drawer movement.
+        captured = []
+        remaining = Decimal("0")
         for payment in captured:
             if remaining <= 0:
                 break
@@ -3264,18 +3284,12 @@ class PosService:
         )
         plan: list[tuple[OrderPayment, Decimal]] = []
         remaining = return_total
-        # Same rule as return_sale: an order that never had ANY payment row has no tender to credit.
-        # The exchange then records the goods and the values, and the difference is only reported.
-        never_paid = (
-            await session.execute(
-                select(func.count())
-                .select_from(OrderPayment)
-                .where(OrderPayment.tenant_id == tenant_id, OrderPayment.order_id == order_id)
-            )
-        ).scalar_one() == 0
-        if never_paid:
-            captured = []
-            remaining = Decimal("0")
+        # Same rule as return_sale: the cashier layer never moves money, so an exchange records the
+        # goods and the values and the difference is only reported. An old sale that took payments
+        # keeps its payments untouched, but nothing new is refunded, charged or put in the drawer.
+        never_paid = True
+        captured = []
+        remaining = Decimal("0")
         for payment in captured:
             if remaining <= 0:
                 break

@@ -97,17 +97,6 @@ export const posApi = {
     post(`/pos/registers/${seg(registerId)}/open-day`, { opening_float: String(openingFloat) }),
 
   /* ---- shift ---- */
-  openSession: async (registerId, { openingFloat = 0, floatsByMethod, profileId } = {}) =>
-    post(
-      `/pos/registers/${seg(registerId)}/sessions`,
-      compact({
-        opening_float: toWire(openingFloat),
-        floats_by_method: floatsByMethod
-          ? Object.fromEntries(Object.entries(floatsByMethod).map(([k, v]) => [method(k), toWire(v)]))
-          : undefined,
-        profile_id: profileId,
-      }),
-    ),
   // The close records the day; nothing is counted, so there is no body to send.
   closeSession: async (id) => post(`/pos/sessions/${seg(id)}/close`, {}),
 
@@ -195,22 +184,6 @@ export const posApi = {
   variantCostHistory: (id) => api(`/variant-costs/${seg(id)}/history`),
 
   /* ---- money (intent required) ---- */
-  sell: async (id, { items, customerId, tenders: t, discountTotal, tenderedCash, heldCartId }, intent) => {
-    const headers = needIntent(intent);
-    const useHeld = heldCartId && !items;
-    return post(
-      `/pos/sessions/${seg(id)}/sell`,
-      compact({
-        items: useHeld ? undefined : lines(items),
-        customer_id: customerId,
-        tenders: tenders(t),
-        discount_total: opt(discountTotal),
-        tendered_cash: opt(tenderedCash),
-        held_cart_id: heldCartId,
-      }),
-      headers,
-    );
-  },
   /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
   recordSale: async (registerId, { items, customerId, discountTotal, note }, intent) =>
     post(
@@ -221,12 +194,6 @@ export const posApi = {
         discount_total: opt(discountTotal),
         note: String(note ?? "").trim() || undefined,
       }),
-      needIntent(intent),
-    ),
-  refund: async (id, { orderId, amount, method: m = "cash", reason, restock = false }, intent) =>
-    post(
-      `/pos/sessions/${seg(id)}/refunds`,
-      compact({ order_id: orderId, amount: toWire(amount), method: method(m), reason, restock }),
       needIntent(intent),
     ),
   returnSale: async (id, { orderId, lines: l, restock = false }, intent) =>

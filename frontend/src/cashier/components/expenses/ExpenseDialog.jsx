@@ -13,7 +13,7 @@ const blank = () => ({ categoryId: "", description: "", amount: "", payment: "ca
 
 // تسجيل مصروف جديد. المصروف المسجَّل ما بيتعدّلش: التصحيح بإلغائه وتسجيل مصروف صحيح.
 // النقدي مسجَّل بدون وردية. لو فيه وردية مفتوحة بيتحسب على درجها، وإلا بيتسجَّل فقط.
-export default function ExpenseDialog({ open, onOpenChange, categories, methods, openSessionId, onSubmit, pending, error }) {
+export default function ExpenseDialog({ open, onOpenChange, categories, methods, onSubmit, pending, error }) {
   const [form, setForm] = useState(blank);
   const [localError, setLocalError] = useState("");
 
@@ -25,8 +25,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const amount = normalizeAmountInput(form.amount);
-  const cashWithoutShift = form.payment === "cash" && !openSessionId;
-  const built = buildExpense(form, { openSessionId });
+  const built = buildExpense(form);
 
   function submit() {
     if (!built.ok) {
@@ -95,11 +94,6 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
           </div>
         </div>
 
-        {cashWithoutShift && (
-          <p role="status" className="rounded-md border border-[#EBD9A8] bg-[#FFF8E5] px-3 py-2 text-xs font-semibold text-[#8A6100]">
-            اليوم لم يبدأ: المصروف هيتسجّل، لكن ما هيتخصمش من الدرج. لو دفعته من الدرج، ابدأ اليوم الأول.
-          </p>
-        )}
         {shown && (
           <p role="alert" className="rounded-md border border-[#F1C7C3] bg-[#FDECEA] px-3 py-2 text-xs font-semibold text-[#B3261E]">
             {shown}
