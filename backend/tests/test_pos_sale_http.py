@@ -48,7 +48,7 @@ async def _post(ctx, path, body):
 
 async def _shop(db, tenant_ctx):
     shift, variant, customer = await till(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
     await start_day(db, tenant_ctx, shift.register_id)
     return shift.register_id, variant, customer
 
@@ -186,7 +186,7 @@ async def test_asking_for_the_session_never_opens_a_day(db, tenant_ctx) -> None:
     from app.modules.pos.models import PosSession
 
     shift, _variant, _customer = await till(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
     ctx = await ctx_for(db, tenant_ctx, "owner")
 
     r = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/working-session", {})
@@ -207,7 +207,7 @@ async def test_open_day_needs_a_balance_and_keeps_the_first_one(db, tenant_ctx) 
     from app.modules.pos.models import PosSession
 
     shift, _variant, _customer = await till(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
     ctx = await ctx_for(db, tenant_ctx, "owner")
     url = f"/api/v1/pos/registers/{shift.register_id}/open-day"
 
@@ -234,7 +234,7 @@ async def test_open_day_needs_a_balance_and_keeps_the_first_one(db, tenant_ctx) 
 
 async def test_a_sale_is_refused_until_the_day_is_started(db, tenant_ctx) -> None:
     shift, variant, customer = await till(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
     ctx = await ctx_for(db, tenant_ctx, "owner")
     body = {"items": [{"variant_id": str(variant.id), "quantity": 1}]}
 

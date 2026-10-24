@@ -104,12 +104,8 @@ async def test_profile_scopes_scan_and_browse(db, tenant_ctx):
     from app.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
-    inside = await CatalogService.create_category(
-        db, tenant_ctx.tenant_id, name="داخل النطاق"
-    )
-    outside = await CatalogService.create_category(
-        db, tenant_ctx.tenant_id, name="خارج النطاق"
-    )
+    inside = await CatalogService.create_category(db, tenant_ctx.tenant_id, name="داخل النطاق")
+    outside = await CatalogService.create_category(db, tenant_ctx.tenant_id, name="خارج النطاق")
     variant_in = await _sellable_variant(db, tenant_ctx, category_id=inside.id)
     variant_out = await _sellable_variant(db, tenant_ctx, category_id=outside.id)
 
@@ -288,9 +284,7 @@ async def test_daily_projection_is_idempotent(db, tenant_ctx):
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
-    await PosService.close_session(
-        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="15.00"
-    )
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
 
     business_date = date.fromisoformat(datetime.now(UTC).date().isoformat())
     written = await PosService.upsert_daily_projection(
@@ -312,12 +306,11 @@ async def test_daily_projection_is_idempotent(db, tenant_ctx):
     assert row.invoice_count == 1
     assert Decimal(str(row.sales_total)) == Decimal("30.00")
     assert Decimal(str(row.returns_total)) == Decimal("30.00")
-    assert Decimal(str(row.variance_total)) == Decimal("5.00")
+    assert Decimal(str(row.variance_total)) == Decimal("0.00")  # nothing is counted any more
+    assert row.by_method == []
 
     # A redelivered event REWRITES the same truth — never doubles it.
-    await PosService.upsert_daily_projection(
-        db, tenant_ctx.tenant_id, business_date=business_date
-    )
+    await PosService.upsert_daily_projection(db, tenant_ctx.tenant_id, business_date=business_date)
     rows = (
         (
             await db.execute(

@@ -197,9 +197,9 @@ async def test_line_return_refunds_through_the_original_tenders(db, tenant_ctx):
     )
     assert return_receipt.kind == "return"
 
-    # The drawer arithmetic nets the refund: float 0 + 30 − 25 = 5.
+    # The day's balance nets the return: opening 0 + invoice 50 - return 25 = 25.
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["expected_now"] == Decimal("5.00")
+    assert detail["expected_now"] == Decimal("25.00")
     cash_rows = (
         (
             await db.execute(
@@ -376,17 +376,8 @@ async def test_card_only_return_leaves_the_drawer_alone(db, tenant_ctx):
     assert result["by_method"] == [{"method": "card", "amount": "25.00"}]
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    by_method = {r["method"]: Decimal(r["expected"]) for r in preview["by_method"]}
-    assert by_method["card"] == Decimal("25.00")  # 50 − 25
-    assert by_method["cash"] == Decimal("10.00")  # float untouched
+    # opening 10 + invoice 50 - return 25 = 35; the close has no per-method split or variance.
+    assert Decimal(preview["closing_balance"]) == Decimal("35.00")
 
-    closed = await PosService.close_session(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        counted_cash="10.00",
-        counted_by_method={"cash": "10.00", "card": "25.00"},
-    )
-    rows = await PosService.list_reconciliation(db, tenant_ctx.tenant_id, closed.id)
-    card = next(r for r in rows if r.method == "card")
-    assert Decimal(str(card.variance)) == Decimal("0.00")
+    closed = await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
+    assert closed.variance is None

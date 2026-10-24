@@ -42,55 +42,16 @@ export default function shiftColumns({ onClose, onDetails, onReport }) {
     },
     { key: "status", header: "الحالة", headerClassName: TH, className: TD, render: (r) => <StatusBadge kind="shift" value={r.status} /> },
     { key: "openingCash", header: "رصيد البداية", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.openingCash)}</span> },
-    { key: "cashSales", header: "مبيعات نقدية", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.cashSales)}</span> },
+    { key: "salesTotal", header: "إجمالي الفواتير", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.salesTotal)}</span> },
     {
-      key: "nonCashSales",
-      header: "مبيعات غير نقدية",
+      key: "returnsTotal",
+      header: "المرتجعات",
       headerClassName: TH,
       className: TD,
       align: "end",
-      render: (r) => <span className={`${CELL_NUM} text-[#7A766C]`}>{fmtMoney(r.nonCashSales)}</span>,
+      render: (r) => <span className={`${CELL_NUM} text-rose-600`}>−{fmtMoney(r.returnsTotal)}</span>,
     },
-    {
-      key: "returnsCash",
-      header: "مرتجعات",
-      headerClassName: TH,
-      className: TD,
-      align: "end",
-      render: (r) => <span className={`${CELL_NUM} text-rose-600`}>−{fmtMoney(r.returnsCash)}</span>,
-    },
-    {
-      key: "expensesCash",
-      header: "مصروفات",
-      headerClassName: TH,
-      className: TD,
-      align: "end",
-      render: (r) => <span className={`${CELL_NUM} text-rose-600`}>−{fmtMoney(r.expensesCash)}</span>,
-    },
-    { key: "expected", header: "المتوقع", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.expected)}</span> },
-    {
-      key: "actual",
-      header: "الفعلي",
-      headerClassName: TH,
-      className: TD,
-      align: "end",
-      render: (r) => <span className={`${CELL_NUM} font-semibold`}>{r.actual == null ? "—" : fmtMoney(r.actual)}</span>,
-    },
-    {
-      key: "difference",
-      header: "الفرق",
-      headerClassName: TH,
-      className: TD,
-      align: "end",
-      render: (r) =>
-        r.actual == null ? (
-          <span className={CELL_EMPTY}>—</span>
-        ) : (
-          <span className={cn(CELL_NUM, "font-semibold", differenceTone(r.difference))}>
-            {r.difference > 0 ? `+${fmtMoney(r.difference)}` : fmtMoney(r.difference)}
-          </span>
-        ),
-    },
+    { key: "closingBalance", header: "رصيد نهاية اليوم", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.closingBalance)}</span> },
     {
       key: "actions",
       header: "إجراءات",

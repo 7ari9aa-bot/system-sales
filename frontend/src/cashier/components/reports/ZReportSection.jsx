@@ -4,8 +4,8 @@ import ReportTable from "@/cashier/components/reports/ReportTable";
 import { CELL_ACCENT, CELL_MAIN, CELL_NUM } from "@/cashier/components/ui-kit/ledgerStyles";
 import { SHIFT_STATUS, fmtDate, fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
-// تقرير Z (إغلاق اليوم): ملخص كل وردية في صف واحد ثم تسوية النقدية.
-// النقدية المتوقعة = رصيد البداية + مبيعات نقدي − مرتجعات نقدي − مصروفات نقدي (نفس معادلة شاشة الورديات).
+// تقرير Z (إغلاق اليوم): ملخص كل يوم في صف واحد، يسجّل ما حدث دون جرد للدرج.
+// رصيد نهاية اليوم = رصيد البداية + الفواتير − المرتجعات (يحسبه الباك إند، والاستبدال داخل الرقمين).
 export default function ZReportSection({ rows }) {
   const sum = (key) => +rows.reduce((s, r) => s + (r[key] ?? 0), 0).toFixed(2);
   const closed = rows.filter((r) => r.status === "closed");
@@ -13,12 +13,10 @@ export default function ZReportSection({ rows }) {
 
   const totals = {
     invoices: sum("invoices"),
-    cashSales: sum("cashSales"),
-    nonCashSales: sum("nonCashSales"),
-    returnsCash: sum("returnsCash"),
-    expensesCash: sum("expensesCash"),
-    expected: sum("expected"),
-    difference: +closed.reduce((s, r) => s + r.difference, 0).toFixed(2),
+    salesTotal: sum("salesTotal"),
+    returnsTotal: sum("returnsTotal"),
+    exchangeDifference: sum("exchangeDifference"),
+    closingBalance: sum("closingBalance"),
   };
 
   const columns = [
@@ -46,35 +44,19 @@ export default function ZReportSection({ rows }) {
     },
     { key: "invoices", header: "الفواتير", align: "center", render: (r) => <span className={CELL_NUM}>{fmtInt(r.invoices)}</span> },
     { key: "openingCash", header: "رصيد البداية", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.openingCash)}</span> },
-    { key: "cashSales", header: "مبيعات نقدي", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.cashSales)}</span> },
-    { key: "nonCashSales", header: "مبيعات غير نقدية", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.nonCashSales)}</span> },
-    { key: "returnsCash", header: "مرتجعات نقدي", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{fmtMoney(r.returnsCash)}</span> },
-    { key: "expensesCash", header: "مصروفات نقدي", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{fmtMoney(r.expensesCash)}</span> },
-    { key: "expected", header: "المتوقع في الدرج", align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.expected)}</span> },
-    {
-      key: "difference",
-      header: "الفرق عند العدّ",
-      align: "end",
-      render: (r) =>
-        r.status === "open" ? (
-          <span className="text-[12px] text-[#7A766C]">لم تُغلق</span>
-        ) : (
-          <span className={`${CELL_NUM} ${r.difference === 0 ? "text-emerald-600" : r.difference > 0 ? "text-amber-600" : "text-rose-600"}`}>
-            {r.difference === 0 ? "مطابقة" : `${r.difference > 0 ? "+" : ""}${fmtMoney(r.difference)}`}
-          </span>
-        ),
-    },
+    { key: "salesTotal", header: "إجمالي الفواتير", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.salesTotal)}</span> },
+    { key: "returnsTotal", header: "المرتجعات", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>−{fmtMoney(r.returnsTotal)}</span> },
+    { key: "exchangeDifference", header: "فرق الاستبدال", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.exchangeDifference)}</span> },
+    { key: "closingBalance", header: "رصيد نهاية اليوم", align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.closingBalance)}</span> },
   ];
 
   const footTotals = {
     number: "الإجمالي",
     invoices: fmtInt(totals.invoices),
-    cashSales: fmtMoney(totals.cashSales),
-    nonCashSales: fmtMoney(totals.nonCashSales),
-    returnsCash: fmtMoney(totals.returnsCash),
-    expensesCash: fmtMoney(totals.expensesCash),
-    expected: fmtMoney(totals.expected),
-    difference: closed.length ? fmtMoney(totals.difference) : "—",
+    salesTotal: fmtMoney(totals.salesTotal),
+    returnsTotal: fmtMoney(totals.returnsTotal),
+    exchangeDifference: fmtMoney(totals.exchangeDifference),
+    closingBalance: fmtMoney(totals.closingBalance),
   };
 
   return (
@@ -92,8 +74,8 @@ export default function ZReportSection({ rows }) {
       </div>
 
       <ReportTable
-        title="تقرير Z — إغلاق الورديات"
-        description="لكل وردية: المبيعات النقدية وغير النقدية، النقدية الخارجة، والمتوقع في الدرج مقابل المعدود"
+        title="تقرير Z — إغلاق الأيام"
+        description="لكل يوم: رصيد البداية، إجمالي الفواتير، المرتجعات، فرق الاستبدال، ورصيد نهاية اليوم"
         columns={columns}
         rows={rows}
         totals={footTotals}

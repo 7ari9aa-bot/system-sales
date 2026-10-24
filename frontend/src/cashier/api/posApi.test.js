@@ -91,7 +91,7 @@ describe("routes", () => {
     await posApi.listProfiles();
     await posApi.openSession("r1", { openingFloat: 100, floatsByMethod: { cash: 100 } });
     await posApi.closePreview("s1");
-    await posApi.closeSession("s1", { countedCash: 95 });
+    await posApi.closeSession("s1");
     await posApi.scan("s1", { identifierType: "barcode", value: "123" });
     await posApi.heldCarts("s1");
     expect(calls.map((c) => `${c.method ?? "GET"} ${c.path}`)).toEqual([
@@ -104,7 +104,7 @@ describe("routes", () => {
       "GET /pos/sessions/s1/held-carts",
     ]);
     expect(calls[2].body).toEqual({ opening_float: "100.00", floats_by_method: { cash: "100.00" } });
-    expect(calls[4].body).toEqual({ counted_cash: "95.00" });
+    expect(calls[4].body).toEqual({}); // nothing is counted at the close
   });
 
   it("encodes path segments", async () => {

@@ -71,7 +71,6 @@ export const posApi = {
   listSessions: (query = "") => api(`/pos/sessions${query ? `?${query}` : ""}`),
   getSession: (id) => api(`/pos/sessions/${seg(id)}`),
   closePreview: (id) => api(`/pos/sessions/${seg(id)}/close-preview`),
-  reconciliation: (id) => api(`/pos/sessions/${seg(id)}/reconciliation`),
   report: (id) => api(`/pos/sessions/${seg(id)}/report`),
   /* ---- catalog (read-only): products with variants, and stock per variant/warehouse ---- */
   products: () => api("/products?limit=500"),
@@ -109,16 +108,8 @@ export const posApi = {
         profile_id: profileId,
       }),
     ),
-  closeSession: async (id, { countedCash, countedByMethod }) =>
-    post(
-      `/pos/sessions/${seg(id)}/close`,
-      compact({
-        counted_cash: toWire(countedCash),
-        counted_by_method: countedByMethod
-          ? Object.fromEntries(Object.entries(countedByMethod).map(([k, v]) => [method(k), toWire(v)]))
-          : undefined,
-      }),
-    ),
+  // The close records the day; nothing is counted, so there is no body to send.
+  closeSession: async (id) => post(`/pos/sessions/${seg(id)}/close`, {}),
 
   /* ---- cart ---- */
   scan: (id, { identifierType, value }) =>

@@ -39,7 +39,6 @@ from app.modules.pos.models import (
     PosReturnLine,
     PosSession,
     PosSessionFloat,
-    PosSessionReconciliation,
 )
 from app.modules.pos.profiles import PosProfileService
 
@@ -310,8 +309,8 @@ class PosService:
         """The session plus its live cash position — what the closing screen shows."""
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        expected_now = (await PosService._expected_by_method(session, tenant_id, pos_session))[
-            "cash"
+        expected_now = (await PosService._day_totals(session, tenant_id, pos_session))[
+            "closing_balance"
         ]
         floats = (
             (
@@ -1266,21 +1265,17 @@ class PosService:
         tenant_id: UUID,
         session_id: UUID,
         *,
-        counted_cash: object,
-        counted_by_method: dict | None = None,
         closed_by: UUID | None = None,
         shift_override: bool = False,
     ) -> PosSession:
-        """OPEN → CLOSED; the POS cash reconciliation (§188) happens here.
+        """OPEN → CLOSED. The day is RECORDED, never counted.
 
-        expected = opening float + cash in − cash out, computed from the rows.
-        The variance is stored, never applied to anything — the merchant
-        decides what a short drawer means.
-
-        When ``counted_by_method`` is supplied, one reconciliation row per
-        method is written (expected from the session's payments vs the counted
-        figure), so a merchant taking card and wallet sees the truth about each
-        instead of a single cash pair (§188).
+        The close is not a drawer count: nobody types a counted figure and no
+        shortage or surplus is computed. What it stores is the day's closing
+        balance, derived from the ledgers: opening balance + every invoice
+        − every return (an exchange is a return plus a new sale, so its value
+        difference is already inside both figures). No payment, drawer
+        movement or refund is created here.
         """
         from app.core.events.writer import add_outbox_event
 
@@ -1288,27 +1283,12 @@ class PosService:
         PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
-        counted = to_money(counted_cash, "counted_cash")
-        if counted < 0:
-            raise ValidationError("counted_cash must not be negative")
-        expected = (await PosService._expected_by_method(session, tenant_id, pos_session))["cash"]
-        variance = counted - expected
-
-        # Per-method reconciliation, written BEFORE the status flips so the rows
-        # belong to the same transaction as the close.
-        # ``counted_cash`` is the closer's cash count. When no per-method figure for cash
-        # came with it, it still IS the cash figure: without this a short drawer was
-        # recorded as "matched" in the reconciliation and the shift report.
-        counted_for_rows = dict(counted_by_method or {})
-        counted_for_rows.setdefault("cash", counted)
-        recon_rows = await PosService._write_reconciliation(
-            session, tenant_id, pos_session, counted_for_rows
-        )
+        closing = (await PosService._day_totals(session, tenant_id, pos_session))["closing_balance"]
 
         pos_session.status = "CLOSED"
-        pos_session.counted_cash = counted
-        pos_session.expected_cash = expected
-        pos_session.variance = variance
+        # Closing balance lives in ``expected_cash`` (an existing column, kept so no table
+        # changes); counted/variance stay NULL because nothing is counted any more.
+        pos_session.expected_cash = closing
         pos_session.closed_by_user_id = closed_by
         pos_session.closed_at = datetime.now(UTC)
         # A parked cart is a basket, not a sale: it books no money and reserves no stock.
@@ -1366,18 +1346,7 @@ class PosService:
                 "pos.session.closed": True,
                 "session_id": str(pos_session.id),
                 "register_id": str(pos_session.register_id),
-                "expected": str(expected),
-                "counted": str(counted),
-                "variance": str(variance),
-                "by_method": [
-                    {
-                        "method": r.method,
-                        "expected": str(r.expected_amount),
-                        "counted": str(r.counted_amount),
-                        "variance": str(r.variance),
-                    }
-                    for r in recon_rows
-                ],
+                "closing_balance": str(closing),
                 # Projection seed figures — the worker RECOMPUTES these from
                 # the ledgers (idempotent), the payload rides for consumers
                 # that never touch the database.
@@ -1395,175 +1364,21 @@ class PosService:
         return pos_session
 
     @staticmethod
-    async def _expected_by_method(
+    async def _day_totals(
         session: AsyncSession, tenant_id: UUID, pos_session: PosSession
-    ) -> dict[str, Decimal]:
-        """What each payment method SHOULD hold, per the ledgers (§188).
+    ) -> dict[str, Decimal | int]:
+        """Everything that happened in the day, as arithmetic over the ledgers.
 
-        Cash speaks the drawer's arithmetic: float + cash in − cash out (the
-        cash rows are net — change never leaves a second hole). Every other
-        method is its captured payments minus the refunds placed against them,
-        so a refunded card sale no longer makes the close report lie. Cash is
-        always present: the drawer holds its float even on a card-only shift.
-        """
-        from app.modules.orders.models import Order, OrderPayment, Refund
-
-        # Semi-join, never a row-multiplying join: an order carries BOTH its
-        # sale and its return receipt, and joining payments on receipts would
-        # count every payment once per receipt. The session's orders come from
-        # an IN-subquery, so each payment is summed exactly once.
-        session_orders = select(PosReceipt.order_id).where(
-            PosReceipt.tenant_id == tenant_id,
-            PosReceipt.session_id == pos_session.id,
-        )
-        payment_totals = dict(
-            (
-                await session.execute(
-                    select(
-                        OrderPayment.method,
-                        func.coalesce(func.sum(OrderPayment.amount), 0),
-                    )
-                    .where(
-                        OrderPayment.tenant_id == tenant_id,
-                        OrderPayment.order_id.in_(session_orders),
-                    )
-                    .group_by(OrderPayment.method)
-                )
-            ).all()
-        )
-        refund_totals = dict(
-            (
-                await session.execute(
-                    select(
-                        OrderPayment.method,
-                        func.coalesce(func.sum(Refund.amount), 0),
-                    )
-                    .select_from(Refund)
-                    .join(OrderPayment, Refund.payment_id == OrderPayment.id)
-                    .where(
-                        Refund.tenant_id == tenant_id,
-                        Refund.status != "rejected",
-                        OrderPayment.order_id.in_(session_orders),
-                    )
-                    .group_by(OrderPayment.method)
-                )
-            ).all()
-        )
-        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
-        # The shop is cash only and a recorded sale books no money, so the day's expected drawer
-        # is opening + the day's sales. An order that carries a payment came from the older paid
-        # flow (its cash is already in the drawer rows, its card money is tracked per method), so
-        # only orders with NO payment count here: never twice, never card money as cash.
-        unpaid = PosReceipt.order_id.not_in(select(OrderPayment.order_id))
-        unpaid_sold = (
-            await session.execute(
-                select(func.coalesce(func.sum(Order.grand_total), 0))
-                .select_from(PosReceipt)
-                .join(Order, Order.id == PosReceipt.order_id)
-                .where(
-                    PosReceipt.tenant_id == tenant_id,
-                    PosReceipt.session_id == pos_session.id,
-                    PosReceipt.kind == "sale",
-                    unpaid,
-                )
-            )
-        ).scalar_one()
-        unpaid_returned = (
-            await session.execute(
-                select(func.coalesce(func.sum(PosReturnLine.refund_total), 0))
-                .select_from(PosReturnLine)
-                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
-                .where(
-                    PosReturnLine.tenant_id == tenant_id,
-                    PosReceipt.session_id == pos_session.id,
-                    unpaid,
-                )
-            )
-        ).scalar_one()
-        recorded = to_money(Decimal(unpaid_sold) - Decimal(unpaid_returned), "recorded_sales")
-        expected: dict[str, Decimal] = {
-            "cash": Decimal(pos_session.opening_float) + inflow - outflow + recorded
-        }
-        for method in set(payment_totals) | set(refund_totals):
-            if method == "cash":
-                continue
-            expected[method] = to_money(payment_totals.get(method, 0), "expected") - to_money(
-                refund_totals.get(method, 0), "refunded"
-            )
-        return expected
-
-    @staticmethod
-    async def _write_reconciliation(
-        session: AsyncSession,
-        tenant_id: UUID,
-        pos_session: PosSession,
-        counted_by_method: dict,
-    ) -> list[PosSessionReconciliation]:
-        """One reconciliation row per method the session actually saw.
-
-        Expected comes from the ledgers (``_expected_by_method``); counted
-        comes from the closer. A method the closer counted but the session
-        never took is still recorded (expected 0) — an unexplained surplus is
-        a finding, never a silent correction (§188).
-        """
-        expected_by_method = await PosService._expected_by_method(session, tenant_id, pos_session)
-        methods = set(expected_by_method) | set(counted_by_method)
-        rows: list[PosSessionReconciliation] = []
-        for method in sorted(methods):
-            expected_method = to_money(expected_by_method.get(method, 0), "expected")
-            counted_raw = counted_by_method.get(method)
-            counted_method = (
-                to_money(counted_raw, "counted") if counted_raw is not None else expected_method
-            )
-            row = PosSessionReconciliation(
-                tenant_id=tenant_id,
-                session_id=pos_session.id,
-                method=method,
-                expected_amount=expected_method,
-                counted_amount=counted_method,
-                variance=counted_method - expected_method,
-            )
-            session.add(row)
-            rows.append(row)
-        await session.flush()
-        return rows
-
-    @staticmethod
-    async def list_reconciliation(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> list[PosSessionReconciliation]:
-        rows = (
-            (
-                await session.execute(
-                    select(PosSessionReconciliation)
-                    .where(
-                        PosSessionReconciliation.tenant_id == tenant_id,
-                        PosSessionReconciliation.session_id == session_id,
-                    )
-                    .order_by(PosSessionReconciliation.method.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows)
-
-    # ------------------------------------------------------- close preview ----
-
-    @staticmethod
-    async def close_preview(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
-        """What the close screen counts against — ERPNext's ``get_invoices``.
-
-        Per-method expected figures, the session's sales summary, and the live
-        drawer arithmetic — all read-only, so the cashier sees the target
-        before typing a single counted number.
+        closing balance = opening balance + invoices − returns.
+        The POS records, it never settles: no payment method, no tender, no drawer count.
+        A return receipt points at the same order as its sale, so sales are counted on
+        ``kind == 'sale'`` receipts only and returns on the return lines, never both.
+        An exchange is a return receipt plus a new sale receipt (paired by
+        ``exchange_return_receipt_id``), so its value difference is already inside both sums;
+        it is also reported on its own line.
         """
         from app.modules.orders.models import Order
 
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
-        expected = await PosService._expected_by_method(session, tenant_id, pos_session)
-        # Sales figures count SALE receipts only — a return receipt points at
-        # the same order and would double-count its total.
         sales = (
             await session.execute(
                 select(
@@ -1580,19 +1395,131 @@ class PosService:
                 )
             )
         ).one()
-        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
+        returns = (
+            await session.execute(
+                select(
+                    func.count(func.distinct(PosReturnLine.receipt_id)),
+                    func.coalesce(func.sum(PosReturnLine.refund_total), 0),
+                )
+                .select_from(PosReturnLine)
+                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
+                .where(
+                    PosReturnLine.tenant_id == tenant_id,
+                    PosReceipt.session_id == pos_session.id,
+                )
+            )
+        ).one()
+        opening = to_money(pos_session.opening_float, "opening_balance")
+        sales_total = to_money(sales[1], "sales_total")
+        returns_total = to_money(returns[1], "returns_total")
+        return {
+            "opening_balance": opening,
+            "invoice_count": int(sales[0]),
+            "sales_total": sales_total,
+            "taxes_total": to_money(sales[2], "taxes_total"),
+            "return_count": int(returns[0]),
+            "returns_total": returns_total,
+            "net_sales": sales_total - returns_total,
+            "closing_balance": opening + sales_total - returns_total,
+        }
+
+    @staticmethod
+    async def _day_documents(
+        session: AsyncSession, tenant_id: UUID, pos_session: PosSession
+    ) -> dict[str, list[dict]]:
+        """The day's return and exchange invoices, one summary row each."""
+        from app.modules.orders.models import Order
+
+        returned = {
+            rid: (cnt, total)
+            for rid, cnt, total in (
+                await session.execute(
+                    select(
+                        PosReturnLine.receipt_id,
+                        func.coalesce(func.sum(PosReturnLine.quantity), 0),
+                        func.coalesce(func.sum(PosReturnLine.refund_total), 0),
+                    )
+                    .select_from(PosReturnLine)
+                    .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
+                    .where(
+                        PosReturnLine.tenant_id == tenant_id,
+                        PosReceipt.session_id == pos_session.id,
+                    )
+                    .group_by(PosReturnLine.receipt_id)
+                )
+            ).all()
+        }
+        receipts = (
+            (
+                await session.execute(
+                    select(PosReceipt)
+                    .where(
+                        PosReceipt.tenant_id == tenant_id,
+                        PosReceipt.session_id == pos_session.id,
+                    )
+                    .order_by(PosReceipt.issued_at.asc(), PosReceipt.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_id = {r.id: r for r in receipts}
+        sale_total = {
+            r.id: to_money(total, "total")
+            for r, total in (
+                await session.execute(
+                    select(PosReceipt, Order.grand_total)
+                    .join(Order, Order.id == PosReceipt.order_id)
+                    .where(
+                        PosReceipt.tenant_id == tenant_id,
+                        PosReceipt.session_id == pos_session.id,
+                        PosReceipt.kind == "sale",
+                    )
+                )
+            ).all()
+        }
+        exchange_return_ids = {
+            r.exchange_return_receipt_id for r in receipts if r.exchange_return_receipt_id
+        }
+        returns_out: list[dict] = []
+        exchanges_out: list[dict] = []
+        for r in receipts:
+            if r.kind == "return":
+                units, total = returned.get(r.id, (0, Decimal("0")))
+                row = {
+                    "receipt_id": str(r.id),
+                    "receipt_number": r.number,
+                    "issued_at": r.issued_at.isoformat(),
+                    "units": int(units),
+                    "total": str(to_money(total, "total")),
+                }
+                if r.id in exchange_return_ids:
+                    new_sale = next(
+                        (x for x in receipts if x.exchange_return_receipt_id == r.id), None
+                    )
+                    new_total = (
+                        sale_total.get(new_sale.id, Decimal("0")) if new_sale else Decimal("0")
+                    )
+                    row["new_receipt_number"] = new_sale.number if new_sale else None
+                    row["new_total"] = str(new_total)
+                    row["difference"] = str(new_total - to_money(total, "total"))
+                    exchanges_out.append(row)
+                else:
+                    returns_out.append(row)
+        _ = by_id
+        return {"returns": returns_out, "exchanges": exchanges_out}
+
+    # ------------------------------------------------------- close preview ----
+
+    @staticmethod
+    async def close_preview(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
+        """What the close will record: the day's figures and the closing balance. Read-only."""
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        totals = await PosService._day_totals(session, tenant_id, pos_session)
         return {
             "session_id": pos_session.id,
             "status": pos_session.status,
-            "by_method": [
-                {"method": method, "expected": str(expected[method])} for method in sorted(expected)
-            ],
-            "invoice_count": int(sales[0]),
-            "sales_total": str(to_money(sales[1], "sales_total")),
-            "taxes_total": str(to_money(sales[2], "taxes_total")),
-            "opening_float": str(pos_session.opening_float),
-            "cash_in": str(inflow),
-            "cash_out": str(outflow),
+            **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()},
         }
 
     # ------------------------------------------------------------- lookup ----
@@ -1890,76 +1817,15 @@ class PosService:
 
     @staticmethod
     async def session_report(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
-        """The shift's report — per method, cash trail, sales, returns.
+        """The day's report: opening balance, invoices, returns, exchanges, closing balance.
 
-        An OPEN session reports live figures; a CLOSED one replays the stored
-        reconciliation rows. Either way it is arithmetic over rows — expected
-        is computed, never remembered (§188).
+        Live while the day is OPEN, the same arithmetic after it CLOSES: it is computed from the
+        ledgers every time, never remembered, and it carries no counted figure and no variance.
         """
-        from app.modules.orders.models import Order
-
         pos_session = await PosService._get_session(session, tenant_id, session_id)
-        if pos_session.status == "CLOSED":
-            recon = await PosService.list_reconciliation(session, tenant_id, session_id)
-            by_method = [
-                {
-                    "method": r.method,
-                    "expected": str(r.expected_amount),
-                    "counted": str(r.counted_amount),
-                    "variance": str(r.variance),
-                }
-                for r in recon
-            ]
-        else:
-            expected = await PosService._expected_by_method(session, tenant_id, pos_session)
-            by_method = [
-                {"method": m, "expected": str(expected[m]), "counted": None, "variance": None}
-                for m in sorted(expected)
-            ]
-        sales = (
-            await session.execute(
-                select(
-                    func.count(PosReceipt.id),
-                    func.coalesce(func.sum(Order.grand_total), 0),
-                )
-                .select_from(PosReceipt)
-                .join(Order, Order.id == PosReceipt.order_id)
-                .where(
-                    PosReceipt.tenant_id == tenant_id,
-                    PosReceipt.session_id == pos_session.id,
-                    PosReceipt.kind == "sale",
-                )
-            )
-        ).one()
-        returns_row = (
-            await session.execute(
-                select(
-                    func.count(func.distinct(PosReturnLine.receipt_id)),
-                    func.coalesce(func.sum(PosReturnLine.refund_total), 0),
-                )
-                .select_from(PosReturnLine)
-                .join(PosReceipt, PosReceipt.id == PosReturnLine.receipt_id)
-                .where(
-                    PosReturnLine.tenant_id == tenant_id,
-                    PosReceipt.session_id == pos_session.id,
-                )
-            )
-        ).one()
-        cash_rows = (
-            (
-                await session.execute(
-                    select(PosCashMovement)
-                    .where(
-                        PosCashMovement.tenant_id == tenant_id,
-                        PosCashMovement.session_id == pos_session.id,
-                    )
-                    .order_by(PosCashMovement.created_at.asc(), PosCashMovement.id.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
+        totals = await PosService._day_totals(session, tenant_id, pos_session)
+        docs = await PosService._day_documents(session, tenant_id, pos_session)
+        exchange_diff = sum((Decimal(x["difference"]) for x in docs["exchanges"]), Decimal("0"))
         return {
             "session": {
                 "id": str(pos_session.id),
@@ -1972,48 +1838,23 @@ class PosService:
                 "opened_at": pos_session.opened_at.isoformat(),
                 "closed_at": (pos_session.closed_at.isoformat() if pos_session.closed_at else None),
             },
-            "by_method": by_method,
-            # Session-level rollups for the report header: expected sums every
-            # method's target; variance exists only once the shift is counted.
-            "expected_total": str(
-                to_money(
-                    sum((Decimal(r["expected"]) for r in by_method), Decimal("0")),
-                    "expected_total",
-                )
-            ),
-            "variance_total": (
-                str(
-                    to_money(
-                        sum(
-                            (Decimal(r["variance"]) for r in by_method if r["variance"]),
-                            Decimal("0"),
-                        ),
-                        "variance_total",
-                    )
-                )
-                if pos_session.status == "CLOSED"
-                else None
-            ),
-            "opening_float": str(pos_session.opening_float),
-            "cash_in": str(inflow),
-            "cash_out": str(outflow),
+            "opening_balance": str(totals["opening_balance"]),
             "sales": {
-                "invoice_count": int(sales[0]),
-                "total": str(to_money(sales[1], "sales")),
+                "invoice_count": totals["invoice_count"],
+                "total": str(totals["sales_total"]),
             },
             "returns": {
-                "return_count": int(returns_row[0]),
-                "total": str(to_money(returns_row[1], "returns")),
+                "return_count": totals["return_count"],
+                "total": str(totals["returns_total"]),
+                "documents": docs["returns"],
             },
-            "cash_movements": [
-                {
-                    "direction": r.direction,
-                    "reason": r.reason,
-                    "amount": str(r.amount),
-                    "created_at": r.created_at.isoformat(),
-                }
-                for r in cash_rows
-            ],
+            "exchanges": {
+                "exchange_count": len(docs["exchanges"]),
+                "difference_total": str(to_money(exchange_diff, "exchange_difference")),
+                "documents": docs["exchanges"],
+            },
+            "net_sales": str(totals["net_sales"]),
+            "closing_balance": str(totals["closing_balance"]),
         }
 
     # ----------------------------------------------------- daily projection --
@@ -2092,21 +1933,6 @@ class PosService:
                     )
                 )
             ).one()
-            method_rows = (
-                await session.execute(
-                    select(
-                        PosSessionReconciliation.method,
-                        func.coalesce(func.sum(PosSessionReconciliation.expected_amount), 0),
-                        func.coalesce(func.sum(PosSessionReconciliation.counted_amount), 0),
-                        func.coalesce(func.sum(PosSessionReconciliation.variance), 0),
-                    )
-                    .where(
-                        PosSessionReconciliation.tenant_id == tenant_id,
-                        PosSessionReconciliation.session_id.in_(session_ids),
-                    )
-                    .group_by(PosSessionReconciliation.method)
-                )
-            ).all()
             session.add(
                 PosDailySales(
                     tenant_id=tenant_id,
@@ -2118,22 +1944,9 @@ class PosService:
                     sales_total=to_money(sales_total, "sales_total"),
                     returns_total=to_money(returns_total, "returns_total"),
                     taxes_total=to_money(taxes_total, "taxes_total"),
-                    variance_total=to_money(
-                        sum(
-                            (Decimal(str(s.variance or 0)) for s in sessions),
-                            Decimal("0"),
-                        ),
-                        "variance_total",
-                    ),
-                    by_method=[
-                        {
-                            "method": method,
-                            "expected": str(to_money(m_expected, "expected")),
-                            "counted": str(to_money(m_counted, "counted")),
-                            "variance": str(to_money(m_variance, "variance")),
-                        }
-                        for method, m_expected, m_counted, m_variance in method_rows
-                    ],
+                    # Nothing is counted any more: old columns stay (history kept), zero/empty.
+                    variance_total=Decimal("0"),
+                    by_method=[],
                 )
             )
             written += 1

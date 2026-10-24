@@ -260,10 +260,10 @@ async def test_stale_session_refuses_to_sell(db, tenant_ctx):
     # Reading and closing a stale session stay allowed — the day must close.
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
     assert preview["status"] == "OPEN"
-    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
 
 
-async def test_close_preview_shows_per_method_targets(db, tenant_ctx):
+async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tenant_ctx):
     from app.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
@@ -284,52 +284,11 @@ async def test_close_preview_shows_per_method_targets(db, tenant_ctx):
         ],
     )
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    by_method = {r["method"]: Decimal(r["expected"]) for r in preview["by_method"]}
-    assert by_method["cash"] == Decimal("65.00")  # float 50 + cash leg 15
-    assert by_method["card"] == Decimal("10.00")
+    # The close records the day, not payment methods: opening 50 + one 25 invoice = 75.
+    assert Decimal(preview["closing_balance"]) == Decimal("75.00")
+    assert "by_method" not in preview
     assert preview["invoice_count"] == 1
     assert Decimal(preview["sales_total"]) == Decimal("25.00")
-
-
-async def test_card_refund_nets_in_the_close_arithmetic(db, tenant_ctx):
-    from app.modules.pos.service import PosService
-
-    register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
-    variant = await _sellable_variant(db, tenant_ctx)
-    customer = await _customer(db, tenant_ctx)
-    sold = await PosService.sell(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        customer_id=customer.id,
-        items=[{"variant_id": str(variant.id), "quantity": 1}],
-        method="card",
-    )
-    await PosService.refund(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        order_id=sold["order_id"],
-        amount="10.00",
-        method="card",
-    )
-    preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    by_method = {r["method"]: Decimal(r["expected"]) for r in preview["by_method"]}
-    assert by_method["card"] == Decimal("15.00")  # 25 captured − 10 refunded
-    assert by_method["cash"] == Decimal("0.00")  # float only
-
-    closed = await PosService.close_session(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        counted_cash="0.00",
-        counted_by_method={"cash": "0.00", "card": "15.00"},
-    )
-    rows = await PosService.list_reconciliation(db, tenant_ctx.tenant_id, closed.id)
-    card = next(r for r in rows if r.method == "card")
-    assert Decimal(str(card.expected_amount)) == Decimal("15.00")
-    assert Decimal(str(card.variance)) == Decimal("0.00")
 
 
 async def test_held_cart_resume_is_atomic(db, tenant_ctx):
@@ -397,7 +356,6 @@ async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
         db,
         tenant_ctx.tenant_id,
         sessions[0].id,
-        counted_cash="0.00",
         closed_by=tenant_ctx.user.id,
     )
     updated = await PosProfileService.update(db, tenant_ctx.tenant_id, profile.id, is_active=False)
@@ -504,7 +462,7 @@ async def test_closing_a_shift_clears_its_parked_carts_and_only_its_own(db, tena
     survivor = await PosService.hold_cart(db, tenant_ctx.tenant_id, theirs.id, items=line)
 
     assert len(await PosService.list_held_carts(db, tenant_ctx.tenant_id, mine.id)) == 2
-    await PosService.close_session(db, tenant_ctx.tenant_id, mine.id, counted_cash="0")
+    await PosService.close_session(db, tenant_ctx.tenant_id, mine.id)
 
     assert await PosService.list_held_carts(db, tenant_ctx.tenant_id, mine.id) == []
     with pytest.raises(NotFoundError):

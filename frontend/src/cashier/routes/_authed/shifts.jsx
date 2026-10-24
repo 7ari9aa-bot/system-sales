@@ -63,17 +63,16 @@ export default function ShiftsPage() {
     );
   }
 
-  function submitClose({ actual }) {
+  function submitClose() {
     const shift = closing;
     closeShift.mutate(
-      { sessionId: shift.id, countedCash: actual },
+      { sessionId: shift.id },
       {
         onSuccess: (closed) => {
-          const diff = Number(closed?.variance ?? 0);
           setClosing(null);
-          toast.success(`تم إغلاق الوردية ${shift.number} — ${diff === 0 ? "الخزنة مطابقة" : `فرق ${fmtMoney(diff)}`}`);
-          // The day's report opens right after closing: sales, invoice count and every invoice.
-          setReport({ ...shift, status: "closed", closedAt: closed?.closed_at ?? new Date().toISOString(), actual: Number(closed?.counted_cash ?? shift.actual ?? 0) });
+          toast.success(`تم إغلاق اليوم ${shift.number} — رصيد النهاية ${fmtMoney(Number(closed?.closing_balance ?? 0))}`);
+          // The day's report opens right after closing: sales, returns, exchanges and the closing balance.
+          setReport({ ...shift, status: "closed", closedAt: closed?.closed_at ?? new Date().toISOString(), closingBalance: Number(closed?.closing_balance ?? shift.closingBalance ?? 0) });
         },
       },
     );
@@ -128,7 +127,7 @@ export default function ShiftsPage() {
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
             <span>
-              {fmtInt(filtered.length)} وردية • مبيعات نقدية {fmtMoney(summary.cashSales)} • فروق {fmtMoney(summary.differences)}
+              {fmtInt(filtered.length)} يوم • المبيعات {fmtMoney(summary.salesTotal)} • المرتجعات {fmtMoney(summary.returnsTotal)}
             </span>
           </div>
         }
@@ -141,9 +140,9 @@ export default function ShiftsPage() {
             value: summary.open ? summary.open.employee : "لا توجد",
             hint: summary.open ? `بدأ ${fmtTime(summary.open.date)} برصيد ${fmtMoney(summary.open.openingCash)}` : "ابدأ اليوم لبدء البيع",
           },
-          { label: "النقدية المتوقعة", value: fmtMoney(summary.open?.expected ?? 0), hint: "رصيد بداية اليوم + مبيعات اليوم", accent: true },
-          { label: "خزنة الورديات المغلقة", value: fmtMoney(summary.collected), hint: `${fmtInt(summary.closedCount)} وردية مغلقة` },
-          { label: "إجمالي الفروق", value: fmtMoney(summary.differences), hint: "مجموع الفروق في العدّ" },
+          { label: "رصيد نهاية اليوم", value: fmtMoney(summary.open?.closingBalance ?? 0), hint: "رصيد البداية + الفواتير − المرتجعات", accent: true },
+          { label: "إجمالي المبيعات", value: fmtMoney(summary.salesTotal), hint: `${fmtInt(summary.closedCount)} يوم مغلق` },
+          { label: "إجمالي المرتجعات", value: fmtMoney(summary.returnsTotal), hint: "فواتير الإرجاع" },
         ]}
       />
 

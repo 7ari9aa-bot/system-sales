@@ -52,7 +52,6 @@ describe("cashier client <-> committed OpenAPI lock", () => {
     await posApi.listSessions("status=OPEN");
     await posApi.getSession("s1");
     await posApi.closePreview("s1");
-    await posApi.reconciliation("s1");
     await posApi.report("s1");
     await posApi.receipts("s1");
     await posApi.receipt("s1");

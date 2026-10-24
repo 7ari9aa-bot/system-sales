@@ -89,9 +89,7 @@ async def test_browse_shows_price_and_stock(db, tenant_ctx):
 
     page = await PosService.browse(db, tenant_ctx.tenant_id, pos_session.id)
     assert page["total"] >= 1
-    mine = next(
-        item for item in page["items"] if item["variant_id"] == str(variant.id)
-    )
+    mine = next(item for item in page["items"] if item["variant_id"] == str(variant.id))
     assert mine["unit_price"] == "25.00"
     assert mine["available"] == 7
 
@@ -108,20 +106,14 @@ async def test_browse_searches_by_title_and_skips_unsellable(db, tenant_ctx):
     draft = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title="برادة شاي", slug=f"d-{uuid.uuid4().hex[:10]}"
     )
-    await CatalogService.add_variant(
-        db, tenant_ctx.tenant_id, draft.id, title="علبة", price="9.00"
-    )
+    await CatalogService.add_variant(db, tenant_ctx.tenant_id, draft.id, title="علبة", price="9.00")
 
-    found = await PosService.browse(
-        db, tenant_ctx.tenant_id, pos_session.id, q="برادة"
-    )
+    found = await PosService.browse(db, tenant_ctx.tenant_id, pos_session.id, q="برادة")
     # The active product matches through its product title; the draft does not.
     assert any(item["variant_id"] == str(variant.id) for item in found["items"])
     assert found["total"] == 1
 
-    by_scan = await PosService.browse(
-        db, tenant_ctx.tenant_id, pos_session.id, q="برادة قهوة"
-    )
+    by_scan = await PosService.browse(db, tenant_ctx.tenant_id, pos_session.id, q="برادة قهوة")
     assert any(item["variant_id"] == str(variant.id) for item in by_scan["items"])
 
 
@@ -157,21 +149,20 @@ async def test_report_reconciles_the_day(db, tenant_ctx):
     assert live["sales"]["invoice_count"] == 1
     assert Decimal(live["sales"]["total"]) == Decimal("50.00")
     assert Decimal(live["returns"]["total"]) == Decimal("25.00")
-    by_method = {r["method"]: Decimal(r["expected"]) for r in live["by_method"]}
-    # cash: float 20 + sale 30 − refund 25 = 25; card: 20 − 0 = 20.
-    assert by_method["cash"] == Decimal("25.00")
-    assert by_method["card"] == Decimal("20.00")
-    assert {m["reason"] for m in live["cash_movements"]} == {"cash_sale", "cash_refund"}
+    # The user's own example: opening 20 + invoices 50 - returns 25 = 45. One line each.
+    assert Decimal(live["opening_balance"]) == Decimal("20.00")
+    assert Decimal(live["net_sales"]) == Decimal("25.00")
+    assert Decimal(live["closing_balance"]) == Decimal("45.00")
+    assert live["returns"]["documents"][0]["total"] == "25.00"
+    assert live["exchanges"]["exchange_count"] == 0
+    assert "by_method" not in live and "variance_total" not in live
 
     await PosService.close_session(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
-        counted_cash="25.00",
-        counted_by_method={"cash": "23.00", "card": "20.00"},
     )
     closed = await PosService.session_report(db, tenant_ctx.tenant_id, pos_session.id)
     assert closed["session"]["status"] == "CLOSED"
-    rows = {r["method"]: Decimal(r["variance"]) for r in closed["by_method"]}
-    assert rows["cash"] == Decimal("-2.00")  # a short drawer is a record
-    assert rows["card"] == Decimal("0.00")
+    assert Decimal(closed["closing_balance"]) == Decimal("45.00")  # same figure once closed
+    assert closed["returns"]["return_count"] == 1

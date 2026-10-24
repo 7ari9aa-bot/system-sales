@@ -34,18 +34,10 @@ export default function ShiftDetailsDialog({ open, onOpenChange, shift }) {
         </div>
 
         <div className="rounded-xl border border-border p-3">
-          <Row label="رصيد البداية" value={fmtMoney(shift.openingCash)} />
-          <Row label="مبيعات نقدية" value={fmtMoney(shift.cashSales)} />
-          <Row label="مبيعات غير نقدية" value={fmtMoney(shift.nonCashSales)} />
-          <Row label="مرتجعات نقدية" value={`−${fmtMoney(shift.returnsCash)}`} tone="text-rose-600" />
-          <Row label="مصروفات نقدية" value={`−${fmtMoney(shift.expensesCash)}`} tone="text-rose-600" />
-          <Row label="النقدية المتوقعة" value={fmtMoney(shift.expected)} tone="font-bold" />
-          <Row label="النقدية الفعلية" value={shift.actual == null ? "—" : fmtMoney(shift.actual)} tone="font-bold" />
-          <Row
-            label="الفرق"
-            value={shift.actual == null ? "—" : shift.difference === 0 ? "مطابق" : fmtMoney(shift.difference)}
-            tone={shift.difference === 0 ? "text-emerald-600" : shift.difference > 0 ? "text-sky-600" : "text-rose-600"}
-          />
+          <Row label="رصيد بداية اليوم" value={fmtMoney(shift.openingCash)} />
+          <Row label="إجمالي الفواتير" value={fmtMoney(shift.salesTotal)} />
+          <Row label="إجمالي المرتجعات" value={`−${fmtMoney(shift.returnsTotal)}`} tone="text-rose-600" />
+          <Row label="رصيد نهاية اليوم" value={fmtMoney(shift.closingBalance)} tone="font-bold" />
         </div>
 
         {shift.note && <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">{shift.note}</p>}

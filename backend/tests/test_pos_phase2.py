@@ -174,7 +174,7 @@ async def test_held_cart_cannot_be_parked_on_a_closed_session(db, tenant_ctx):
 
     warehouse, variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=3)
     pos_session = await _open_session(db, tenant_ctx, warehouse)
-    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
     with pytest.raises(ConflictError):
         await PosService.hold_cart(
             db,
@@ -282,7 +282,7 @@ async def test_refund_of_a_foreign_session_is_refused(db, tenant_ctx):
         method="cash",
         amount="5.00",
     )
-    await PosService.close_session(db, tenant_ctx.tenant_id, first.id, counted_cash="5.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, first.id)
 
     # A SECOND open session on a different register must not refund the first's
     # sale — that would move money between two drawers.

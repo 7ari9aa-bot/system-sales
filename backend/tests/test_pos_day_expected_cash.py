@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 
 async def _expected(db, tenant_ctx, shift) -> Decimal:
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, shift.id)
-    return Decimal(next(m["expected"] for m in preview["by_method"] if m["method"] == "cash"))
+    return Decimal(preview["closing_balance"])
 
 
 async def _record(db, tenant_ctx, shift, variant, qty=1) -> dict:
@@ -47,25 +47,23 @@ async def test_the_live_figure_and_the_close_figure_agree(db, tenant_ctx) -> Non
     expected = await _expected(db, tenant_ctx, shift)
 
     live = await PosService.get_session(db, tenant_ctx.tenant_id, shift.id)
-    closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, shift.id, counted_cash=str(expected)
-    )
+    closed = await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
 
     assert Decimal(live["expected_now"]) == expected
     assert Decimal(closed.expected_cash) == expected
-    assert Decimal(closed.variance) == Decimal("0.00")
+    assert closed.variance is None  # nothing is counted, so nothing can be short or over
 
 
-async def test_a_short_count_shows_the_shortage(db, tenant_ctx) -> None:
+async def test_closing_never_computes_a_shortage(db, tenant_ctx) -> None:
     shift, variant, _c = await till(db, tenant_ctx)
     await _record(db, tenant_ctx, shift, variant, qty=1)
     expected = await _expected(db, tenant_ctx, shift)
 
-    closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, shift.id, counted_cash=str(expected - Decimal("5.00"))
-    )
+    closed = await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
 
-    assert Decimal(closed.variance) == Decimal("-5.00")
+    assert closed.variance is None
+    assert closed.counted_cash is None
+    assert Decimal(closed.expected_cash) == expected
 
 
 async def test_a_sale_from_the_paid_flow_is_not_counted_twice(db, tenant_ctx) -> None:
@@ -85,7 +83,9 @@ async def test_a_sale_from_the_paid_flow_is_not_counted_twice(db, tenant_ctx) ->
     assert await _expected(db, tenant_ctx, shift) == base + Decimal("100.00")
 
 
-async def test_a_card_sale_is_never_counted_as_drawer_cash(db, tenant_ctx) -> None:
+async def test_every_invoice_counts_in_the_closing_balance_whatever_the_tender(
+    db, tenant_ctx
+) -> None:
     from tests.test_pos_returns import _register, _sellable_variant
 
     register = await _register(db, tenant_ctx)
@@ -101,5 +101,6 @@ async def test_a_card_sale_is_never_counted_as_drawer_cash(db, tenant_ctx) -> No
         method="card",
     )
 
-    # Card money is not in the drawer: the expected cash does not move.
-    assert await _expected(db, tenant_ctx, shift) == base
+    # The POS records invoices, it does not settle them: a 25.00 invoice adds 25.00 to the day's
+    # closing balance whatever tender the older paid flow attached to it.
+    assert await _expected(db, tenant_ctx, shift) == base + Decimal("25.00")

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 417,
-    "sha256": "1df990eedaeee3be7bdbf84e217500287975b9e6e4dcfdc3f3849b5ca35b4760",
+    "operations": 416,
+    "sha256": "7a0a1637b9fb395f1b13f3c53e38c56839d6b1a45d0c1bc829879e03d013ea2f",
     "typed_operations": 257
   },
   "spec": {
@@ -3460,34 +3460,6 @@
             "period_end"
           ],
           "title": "ClosePeriodRequest",
-          "type": "object"
-        },
-        "CloseSessionRequest": {
-          "properties": {
-            "counted_by_method": {
-              "anyOf": [
-                {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Counted By Method"
-            },
-            "counted_cash": {
-              "pattern": "^\\d+(\\.\\d{1,2})?$",
-              "title": "Counted Cash",
-              "type": "string"
-            }
-          },
-          "required": [
-            "counted_cash"
-          ],
-          "title": "CloseSessionRequest",
           "type": "object"
         },
         "Comparison": {
@@ -52042,16 +52014,6 @@
               }
             }
           ],
-          "requestBody": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CloseSessionRequest"
-                }
-              }
-            },
-            "required": true
-          },
           "responses": {
             "200": {
               "content": {
@@ -52878,111 +52840,6 @@
             }
           },
           "summary": "List Receipts",
-          "tags": [
-            "pos"
-          ]
-        }
-      },
-      "/api/v1/pos/sessions/{session_id}/reconciliation": {
-        "get": {
-          "operationId": "get_reconciliation_api_v1_pos_sessions__session_id__reconciliation_get",
-          "parameters": [
-            {
-              "in": "path",
-              "name": "session_id",
-              "required": true,
-              "schema": {
-                "format": "uuid",
-                "title": "Session Id",
-                "type": "string"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-tenant-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Tenant-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-workspace-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Workspace-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-location-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Location-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "authorization",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Authorization"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {}
-                }
-              },
-              "description": "Successful Response"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              },
-              "description": "Validation Error"
-            }
-          },
-          "summary": "Get Reconciliation",
           "tags": [
             "pos"
           ]

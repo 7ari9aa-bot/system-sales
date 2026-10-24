@@ -222,7 +222,7 @@ async def test_a_closed_shift_is_two_events_that_page_without_loss_or_repeat(
     same row and drop one at a page boundary (or repeat it); the event key tells them apart."""
     for _ in range(3):
         shift = await _shift(db, tenant_ctx)
-        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="100.00")
+        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
     everything, _ = await ActivityService.feed(
         db, tenant_ctx.tenant_id, kinds=("shift",), limit=200
     )

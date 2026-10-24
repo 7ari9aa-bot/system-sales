@@ -1,14 +1,10 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
-import { Input } from "@/cashier/components/ui/input";
-import { Label } from "@/cashier/components/ui/label";
 import { fmtMoney } from "@/cashier/lib/format";
-import { cn } from "@/cashier/lib/utils";
 
-// إغلاق الوردية: مقارنة النقدية المتوقعة بالمبلغ الفعلي المعدود وحساب الفرق.
-// `preview` = the backend's close-preview (expected cash computed from the ledger, not on the client).
+// إغلاق اليوم: تسجيل لما حدث فقط (رصيد البداية + الفواتير − المرتجعات)، وليس جردًا للدرج.
+// `preview` = the backend's close-preview (every figure computed from the ledger, not on the client).
 /** Arabic number agreement: 1 = singular, 2 = dual, 3-10 = plural noun, 11+ = singular noun. */
 export function heldInvoicesPhrase(n) {
   if (n === 1) return "توجد فاتورة معلقة";
@@ -18,67 +14,43 @@ export function heldInvoicesPhrase(n) {
 }
 
 export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null }) {
-  const [actual, setActual] = useState("");
-
-  const cash = preview?.by_method?.find((m) => m.method === "cash");
-  const expected = cash ? Number(cash.expected) : null;
-  const cashIn = Number(preview?.cash_in ?? 0);
-  const cashOut = Number(preview?.cash_out ?? 0);
-
-  useEffect(() => {
-    if (open) setActual("");
-  }, [open, shift?.id]);
-
   if (!shift) return null;
 
-  const ready = expected !== null && actual !== "" && Number.isFinite(Number(actual)) && Number(actual) >= 0;
-  const counted = Number(actual) || 0;
-  const difference = expected === null ? 0 : Math.round((counted - expected) * 100) / 100;
+  const ready = Boolean(preview) && !previewLoading;
+  const money = (v) => (ready ? fmtMoney(Number(v ?? 0)) : "…");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-heading text-base">إغلاق الوردية {shift.number}</DialogTitle>
+          <DialogTitle className="font-heading text-base">إغلاق اليوم {shift.number}</DialogTitle>
           <DialogDescription>
-            {shift.employee} • رصيد البداية {fmtMoney(shift.openingCash)} • النقدية المتوقعة {expected === null ? "…" : fmtMoney(expected)}
+            {shift.employee} • رصيد البداية {fmtMoney(shift.openingCash)} • رصيد نهاية اليوم {money(preview?.closing_balance)}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs">
             <div className="num flex justify-between py-0.5">
-              <span className="text-muted-foreground">رصيد البداية</span>
-              <span>{fmtMoney(Number(preview?.opening_float ?? shift.openingCash))}</span>
+              <span className="text-muted-foreground">رصيد بداية اليوم</span>
+              <span>{money(preview?.opening_balance ?? shift.openingCash)}</span>
             </div>
             <div className="num flex justify-between py-0.5">
-              <span className="text-muted-foreground">وارد الخزنة (مبيعات نقدية وإيداعات)</span>
-              <span>{fmtMoney(cashIn)}</span>
+              <span className="text-muted-foreground">إجمالي الفواتير ({ready ? preview.invoice_count : "…"})</span>
+              <span>{money(preview?.sales_total)}</span>
             </div>
             <div className="num flex justify-between py-0.5">
-              <span className="text-muted-foreground">منصرف من الخزنة</span>
-              <span className="text-rose-600">−{fmtMoney(cashOut)}</span>
+              <span className="text-muted-foreground">إجمالي المرتجعات ({ready ? preview.return_count : "…"})</span>
+              <span className="text-rose-600">−{money(preview?.returns_total)}</span>
             </div>
             <div className="num mt-1 flex justify-between border-t border-border pt-1.5 font-bold">
-              <span>المتوقع في الخزنة</span>
-              <span>{previewLoading || expected === null ? "…" : fmtMoney(expected)}</span>
+              <span>رصيد نهاية اليوم</span>
+              <span>{money(preview?.closing_balance)}</span>
             </div>
           </div>
-
-          <div>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">النقدية الفعلية المعدودة</Label>
-            <Input type="number" min={0} value={actual} onChange={(e) => setActual(e.target.value)} className="num" />
-          </div>
-
-          {ready ? <div
-            className={cn(
-              "num flex items-center justify-between rounded-xl border p-3 text-sm font-bold",
-              difference === 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : difference > 0 ? "border-sky-200 bg-sky-50 text-sky-700" : "border-rose-200 bg-rose-50 text-rose-700",
-            )}
-          >
-            <span>{difference === 0 ? "الخزنة مطابقة" : difference > 0 ? "فرق زيادة" : "فرق عجز"}</span>
-            <span>{difference > 0 ? `+${fmtMoney(difference)}` : fmtMoney(difference)}</span>
-          </div> : null}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            الإغلاق يسجّل ما حدث في اليوم فقط. لا يُطلب عدّ الدرج ولا يُحسب عجز أو زيادة.
+          </p>
 
           {heldCount > 0 ? (
             <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
@@ -106,9 +78,9 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
           <Button
             className="font-bold"
             disabled={!ready || pending}
-            onClick={() => onSubmit({ actual: counted })}
+            onClick={() => onSubmit()}
           >
-            {pending ? "جارٍ الإغلاق…" : heldCount > 0 ? "تأكيد الإغلاق وتصفير المعلقة" : "تأكيد إغلاق الوردية"}
+            {pending ? "جارٍ الإغلاق…" : heldCount > 0 ? "تأكيد الإغلاق وتصفير المعلقة" : "تأكيد إغلاق اليوم"}
           </Button>
         </DialogFooter>
       </DialogContent>

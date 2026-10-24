@@ -33,9 +33,7 @@ async def _sale_then_next_day(db, tenant_ctx, *, qty=2, price="25.00"):
         items=[{"variant_id": str(variant.id), "quantity": qty}],
         tenders=[{"method": "cash", "amount": str(Decimal(price) * qty)}],
     )
-    await PosService.close_session(
-        db, tenant_ctx.tenant_id, first.id, counted_cash=str(Decimal(price) * qty)
-    )
+    await PosService.close_session(db, tenant_ctx.tenant_id, first.id)
     second = await PosService.open_session(
         db, tenant_ctx.tenant_id, register.id, opening_float="100.00"
     )

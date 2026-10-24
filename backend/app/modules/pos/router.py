@@ -246,12 +246,6 @@ class RecordSaleOut(BaseModel):
     grand_total: str
 
 
-class CloseSessionRequest(BaseModel):
-    counted_cash: str = Field(pattern=_MONEY)
-    # Optional per-method counts; keys are payment methods, values are counts.
-    counted_by_method: dict[str, str] | None = None
-
-
 class HoldCartRequest(BaseModel):
     items: list[dict] = Field(min_length=1)
     customer_id: UUID | None = None
@@ -318,9 +312,9 @@ def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> d
     if pos_session.status == "CLOSED":
         out.update(
             {
-                "counted_cash": str(pos_session.counted_cash),
-                "expected_cash": str(pos_session.expected_cash),
-                "variance": str(pos_session.variance),
+                # The day is recorded, not counted: the closing balance is derived from the
+                # invoices and returns, and there is no counted figure or variance.
+                "closing_balance": str(pos_session.expected_cash),
                 "closed_at": pos_session.closed_at.isoformat(),
             }
         )
@@ -515,36 +509,15 @@ async def sell(session_id: UUID, body: SellRequest, ctx: PosWriteCtx, override: 
 
 
 @router.post("/sessions/{session_id}/close")
-async def close_session(
-    session_id: UUID, body: CloseSessionRequest, ctx: PosWriteCtx, override: OverrideDep
-):
+async def close_session(session_id: UUID, ctx: PosWriteCtx, override: OverrideDep):
     pos_session = await PosService.close_session(
         ctx.session,
         ctx.tenant_id,
         session_id,
-        counted_cash=body.counted_cash,
-        counted_by_method=body.counted_by_method,
         closed_by=ctx.user.id,
         shift_override=override.active,
     )
     return _session_out(pos_session)
-
-
-@router.get("/sessions/{session_id}/reconciliation")
-async def get_reconciliation(session_id: UUID, ctx: TenantCtxDep):
-    rows = await PosService.list_reconciliation(ctx.session, ctx.tenant_id, session_id)
-    return [
-        {
-            "method": r.method,
-            "expected_amount": str(r.expected_amount),
-            "counted_amount": str(r.counted_amount),
-            "variance": str(r.variance),
-        }
-        for r in rows
-    ]
-
-
-# ------------------------------------------------------------- receipts ----
 
 
 @router.get("/receipts/search")
@@ -643,8 +616,6 @@ async def daily_report(
             "sales_total": str(r.sales_total),
             "returns_total": str(r.returns_total),
             "taxes_total": str(r.taxes_total),
-            "variance_total": str(r.variance_total),
-            "by_method": list(r.by_method or []),
         }
         for r in rows
     ]

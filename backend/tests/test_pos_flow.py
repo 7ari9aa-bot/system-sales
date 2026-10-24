@@ -119,7 +119,7 @@ async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     assert detail["inflow"] == Decimal("25.00")
 
 
-async def test_close_stores_the_variance_and_publishes_once(db, tenant_ctx):
+async def test_close_stores_the_closing_balance_and_publishes_once(db, tenant_ctx):
     from decimal import Decimal
 
     register = await _register(db, tenant_ctx)
@@ -134,17 +134,14 @@ async def test_close_stores_the_variance_and_publishes_once(db, tenant_ctx):
         items=[{"variant_id": variant.id, "quantity": 1}],
     )
 
-    closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="30.00"
-    )
+    closed = await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
     assert closed.status == "CLOSED"
+    # closing balance = opening + invoices - returns; nothing is counted, so no variance exists
     assert closed.expected_cash == Decimal("25.00")
-    assert closed.counted_cash == Decimal("30.00")
-    assert closed.variance == Decimal("5.00")
+    assert closed.counted_cash is None
+    assert closed.variance is None
     with pytest.raises(ConflictError):
-        await PosService.close_session(
-            db, tenant_ctx.tenant_id, pos_session.id, counted_cash="30.00"
-        )
+        await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
     events = (
         (
             await db.execute(
@@ -170,7 +167,7 @@ async def test_sell_on_a_closed_session_is_refused(db, tenant_ctx):
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id, counted_cash="0.00")
+    await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
     with pytest.raises(ConflictError):
         await PosService.sell(
             db,
@@ -221,10 +218,9 @@ async def test_sell_validates_every_line_before_touching_anything(db, tenant_ctx
     assert [r for r in reserved if r.variant_id == variant.id] == []
 
 
-async def test_close_with_only_counted_cash_records_the_cash_shortage(db, tenant_ctx):
-    """A closer who sends ``counted_cash`` but no per-method figures must not turn a
-    short drawer into a "matched" one: the cash reconciliation row has to carry the
-    shortage, otherwise the shift report and Z-report hide the shortfall."""
+async def test_close_records_the_day_never_a_count_or_a_shortage(db, tenant_ctx):
+    """The close is not a drawer count: no counted figure, no variance, no reconciliation rows.
+    The report carries opening balance, invoices, returns and the derived closing balance."""
     from decimal import Decimal
 
     register = await _register(db, tenant_ctx)
@@ -237,20 +233,16 @@ async def test_close_with_only_counted_cash_records_the_cash_shortage(db, tenant
         pos_session.id,
         customer_id=customer.id,
         items=[{"variant_id": variant.id, "quantity": 1}],
-    )  # 25.00 cash into the drawer
+    )  # 25.00
 
-    closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, pos_session.id, counted_cash="20.00"
-    )
-    assert closed.variance == Decimal("-5.00")
-
-    rows = {
-        r.method: r
-        for r in await PosService.list_reconciliation(db, tenant_ctx.tenant_id, pos_session.id)
-    }
-    assert rows["cash"].expected_amount == Decimal("25.00")
-    assert rows["cash"].counted_amount == Decimal("20.00")
-    assert rows["cash"].variance == Decimal("-5.00")
+    closed = await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
+    assert closed.counted_cash is None
+    assert closed.variance is None
 
     report = await PosService.session_report(db, tenant_ctx.tenant_id, pos_session.id)
-    assert Decimal(report["variance_total"]) == Decimal("-5.00")
+    assert "variance_total" not in report
+    assert "by_method" not in report
+    assert Decimal(report["sales"]["total"]) == Decimal("25.00")
+    assert Decimal(report["closing_balance"]) == Decimal(report["opening_balance"]) + Decimal(
+        "25.00"
+    )

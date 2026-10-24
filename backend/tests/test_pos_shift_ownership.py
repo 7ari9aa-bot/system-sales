@@ -111,16 +111,13 @@ async def test_a_drawer_with_no_holder_behaves_as_before(db, tenant_ctx):
 async def test_a_stranger_cannot_close_it(db, tenant_ctx):
     shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
     with pytest.raises(PermissionDeniedError, match="drawer"):
-        await PosService.close_session(
-            db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00", closed_by=stranger.id
-        )
+        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, closed_by=stranger.id)
 
 
 async def test_a_manager_can_close_an_absent_cashiers_drawer(db, tenant_ctx):
     shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
     closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, shift.id,
-        counted_cash="0.00", closed_by=stranger.id, shift_override=True,
+        db, tenant_ctx.tenant_id, shift.id, closed_by=stranger.id, shift_override=True,
     )  # fmt: skip
     assert closed.status == "CLOSED"
 
@@ -192,7 +189,6 @@ async def _grant(ctx, method="POST", path="/pos/test"):
 
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
     from app.modules.pos.router import (
-        CloseSessionRequest,
         SellRequest,
         close_session,
         sell,
@@ -208,12 +204,8 @@ async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenan
     with pytest.raises(PermissionDeniedError):
         await sell(shift.id, sale, staff, await _grant(staff))
     with pytest.raises(PermissionDeniedError):
-        await close_session(
-            shift.id, CloseSessionRequest(counted_cash="0.00"), staff, await _grant(staff)
-        )
+        await close_session(shift.id, staff, await _grant(staff))
 
     assert (await sell(shift.id, sale, manager, await _grant(manager)))["grand_total"] == "50.00"
-    closed = await close_session(
-        shift.id, CloseSessionRequest(counted_cash="45.00"), manager, await _grant(manager)
-    )
+    closed = await close_session(shift.id, manager, await _grant(manager))
     assert closed["status"] == "CLOSED"

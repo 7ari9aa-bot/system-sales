@@ -83,8 +83,13 @@ async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
         db, tenant_ctx.tenant_id, product.id, title="وحدة", price=price
     )
     await InventoryService.move(
-        db, tenant_ctx.tenant_id, variant.id, warehouse.id,
-        direction="in", quantity=stock, reason="purchase",
+        db,
+        tenant_ctx.tenant_id,
+        variant.id,
+        warehouse.id,
+        direction="in",
+        quantity=stock,
+        reason="purchase",
     )
     return variant
 
@@ -140,10 +145,11 @@ async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
     assert detail["outflow"] == Decimal("15.00")
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    by_method = {r["method"]: Decimal(r["expected"]) for r in preview["by_method"]}
-    # card: captured 10 + funded 10 − refunded 10 = 10; cash: in 30 − out 15 = 15.
-    assert by_method["card"] == Decimal("10.00")
-    assert by_method["cash"] == Decimal("15.00")
+    # The close records the day, not payment methods: opening 0 + invoices (25 + 25)
+    # - returns 25 = 25.
+    assert Decimal(preview["closing_balance"]) == Decimal("25.00")
+    assert Decimal(preview["sales_total"]) == Decimal("50.00")
+    assert Decimal(preview["returns_total"]) == Decimal("25.00")
     assert preview["invoice_count"] == 2  # the sale AND its replacement
 
 
@@ -201,7 +207,9 @@ async def test_exchange_tenders_must_total_the_difference(db, tenant_ctx):
     )
     with pytest.raises(ValidationError):
         await PosService.exchange(
-            db, tenant_ctx.tenant_id, pos_session.id,
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
             order_id=sold["order_id"],
             return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
             new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
@@ -248,12 +256,8 @@ async def test_exchange_for_a_cheaper_item_refunds_via_original_tenders(db, tena
     ]
 
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    by_method = {r["method"]: Decimal(r["expected"]) for r in preview["by_method"]}
-    # cash: float 20 + 30 in from the sale − 30 out as the refund = 20 (the
-    # double-entry legs cancel; the drawer keeps its float); card: 20 captured
-    # + 10 funded − 20 refunded = 10.
-    assert by_method["cash"] == Decimal("20.00")
-    assert by_method["card"] == Decimal("10.00")
+    # Opening 20 + invoices (50 sale + 10 replacement) - returns 50 = 30. No per-method split.
+    assert Decimal(preview["closing_balance"]) == Decimal("30.00")
 
 
 async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
@@ -273,14 +277,18 @@ async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
         items=[{"variant_id": str(sold_variant.id), "quantity": 2}],
     )
     await PosService.exchange(
-        db, tenant_ctx.tenant_id, pos_session.id,
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
         order_id=sold["order_id"],
         return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
     )
     with pytest.raises(ConflictError):
         await PosService.exchange(
-            db, tenant_ctx.tenant_id, pos_session.id,
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
             order_id=sold["order_id"],
             return_lines=[{"variant_id": str(sold_variant.id), "quantity": 2}],
             new_lines=[{"variant_id": str(new_variant.id), "quantity": 2}],
@@ -304,17 +312,15 @@ async def test_exchange_event_is_staged(db, tenant_ctx):
         items=[{"variant_id": str(sold_variant.id), "quantity": 1}],
     )
     await PosService.exchange(
-        db, tenant_ctx.tenant_id, pos_session.id,
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
         order_id=sold["order_id"],
         return_lines=[{"variant_id": str(sold_variant.id), "quantity": 1}],
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
     )
     staged = (
-        (
-            await db.execute(
-                select(OutboxEvent).where(OutboxEvent.aggregate_type == "pos_session")
-            )
-        )
+        (await db.execute(select(OutboxEvent).where(OutboxEvent.aggregate_type == "pos_session")))
         .scalars()
         .all()
     )

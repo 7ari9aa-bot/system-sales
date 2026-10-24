@@ -8,8 +8,21 @@ import { fmtDateTime, fmtInt, fmtMoney } from "@/cashier/lib/format";
 export function dayReportFigures(shift, sales = []) {
   const { total, pieces } = totalsOf(sales);
   const opening = Number(shift?.openingCash ?? 0);
-  const counted = shift?.actual == null ? null : Number(shift.actual);
-  return { invoices: sales.length, pieces, total, opening, counted, closed: shift?.status === "closed" || shift?.closedAt != null };
+  const returns = Number(shift?.returnsTotal ?? 0);
+  // Opening + invoices - returns, from the backend's own report. Nothing is counted at the drawer.
+  const closing = Number(shift?.closingBalance ?? opening + total - returns);
+  return {
+    invoices: sales.length,
+    pieces,
+    total,
+    opening,
+    returns,
+    closing,
+    returnDocs: shift?.returnDocs ?? [],
+    exchangeDocs: shift?.exchangeDocs ?? [],
+    exchangeDifference: Number(shift?.exchangeDifference ?? 0),
+    closed: shift?.status === "closed" || shift?.closedAt != null,
+  };
 }
 
 function Row({ label, value, strong }) {
@@ -17,6 +30,24 @@ function Row({ label, value, strong }) {
     <div className="flex items-center justify-between border-b border-border/70 py-2 text-sm last:border-0">
       <span className="text-muted-foreground">{label}</span>
       <span className={`num ${strong ? "font-bold" : "font-medium"}`}>{value}</span>
+    </div>
+  );
+}
+
+function DocList({ title, docs, exchange = false }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold text-muted-foreground">{title}</p>
+      <div className="overflow-hidden rounded-xl border border-border">
+        {docs.map((d) => (
+          <div key={d.receipt_id} className="flex items-center justify-between border-b border-border/70 px-3 py-2.5 text-sm last:border-0">
+            <span className="num font-bold text-[#d9600a]">{d.receipt_number}</span>
+            <span className="num text-xs text-muted-foreground">{fmtDateTime(d.issued_at)}</span>
+            <span className="num text-xs text-muted-foreground">{fmtInt(d.units)} قطعة</span>
+            <span className="num font-bold">{exchange ? `${fmtMoney(Number(d.total))} ← ${fmtMoney(Number(d.new_total))}` : fmtMoney(Number(d.total))}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -40,12 +71,18 @@ export default function DayReport({ open, onOpenChange, shift }) {
         </DialogHeader>
 
         <div className="rounded-xl border border-border p-3">
-          <Row label="بدأ اليوم والدرج فيه" value={fmtMoney(f.opening)} />
+          <Row label="رصيد بداية اليوم" value={fmtMoney(f.opening)} />
           <Row label="عدد الفواتير" value={fmtInt(f.invoices)} />
           <Row label="عدد القطع المباعة" value={fmtInt(f.pieces)} />
           <Row label="إجمالي المبيعات" value={fmtMoney(f.total)} strong />
-          {f.counted != null ? <Row label="انتهى اليوم والدرج فيه" value={fmtMoney(f.counted)} strong /> : null}
+          <Row label={`المرتجعات (${fmtInt(f.returnDocs.length)})`} value={`−${fmtMoney(f.returns)}`} />
+          <Row label="رصيد نهاية اليوم" value={fmtMoney(f.closing)} strong />
         </div>
+
+        {f.returnDocs.length > 0 ? <DocList title="فواتير الإرجاع" docs={f.returnDocs} /> : null}
+        {f.exchangeDocs.length > 0 ? (
+          <DocList title={`فواتير الاستبدال • فرق القيمة ${fmtMoney(f.exchangeDifference)}`} docs={f.exchangeDocs} exchange />
+        ) : null}
 
         <div>
           <p className="mb-2 text-xs font-semibold text-muted-foreground">فواتير اليوم (اضغط على أي فاتورة لتفاصيلها)</p>

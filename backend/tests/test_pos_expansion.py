@@ -27,7 +27,6 @@ SCAN_PATH = "/api/v1/pos/sessions/{session_id}/scan"
 QUOTE_PATH = "/api/v1/pos/sessions/{session_id}/quote"
 SELL_PATH = "/api/v1/pos/sessions/{session_id}/sell"
 CLOSE_PATH = "/api/v1/pos/sessions/{session_id}/close"
-RECON_PATH = "/api/v1/pos/sessions/{session_id}/reconciliation"
 
 
 # --------------------------------------------------------- DB-free guards --
@@ -43,8 +42,9 @@ def test_profile_routes_are_mounted() -> None:
         QUOTE_PATH,
         SELL_PATH,
         CLOSE_PATH,
-        RECON_PATH,
     } <= paths
+    # the close is not a drawer count any more: the reconciliation route is gone
+    assert "/api/v1/pos/sessions/{session_id}/reconciliation" not in paths
 
 
 def test_sell_wire_accepts_split_tender_and_discount() -> None:
@@ -71,11 +71,11 @@ def test_sell_wire_accepts_legacy_single_tender() -> None:
     assert body.tenders is None
 
 
-def test_close_wire_accepts_per_method_counts() -> None:
-    from app.modules.pos.router import CloseSessionRequest
+def test_close_takes_no_counted_figure() -> None:
+    """The close is not a drawer count: the route has no body model asking for one."""
+    import app.modules.pos.router as router
 
-    body = CloseSessionRequest(counted_cash="100.00", counted_by_method={"cash": "100.00"})
-    assert body.counted_by_method == {"cash": "100.00"}
+    assert not hasattr(router, "CloseSessionRequest")
 
 
 def test_change_arithmetic_is_exact() -> None:

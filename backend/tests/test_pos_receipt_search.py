@@ -39,9 +39,7 @@ async def _sale_on_a_closed_shift(db, tenant_ctx, *, qty=3):
         items=[{"variant_id": str(variant.id), "quantity": qty}],
         tenders=[{"method": "cash", "amount": paid}],
     )
-    await PosService.close_session(
-        db, tenant_ctx.tenant_id, first.id, counted_cash=paid, closed_by=uid
-    )
+    await PosService.close_session(db, tenant_ctx.tenant_id, first.id, closed_by=uid)
     second = await PosService.open_session(
         db, tenant_ctx.tenant_id, register.id, opened_by=uid, cashier_user_id=uid
     )
