@@ -520,6 +520,8 @@ _READ_CALLS = frozenset({"select", "update", "delete", "insert", "get"})
 #: built. Wiring a reader for one means DELETING its entry here — the positive
 #: assertion then keeps it read.
 TABLES_NEVER_READ: dict[str, str] = {
+    # The cashier no longer hands a drawer over; the table is kept as history by decision.
+    "PosSessionHandover": "drawer hand-over removed from the cashier; rows kept as history.",
     # §12.6 vision attributes — written by the indexer wave, but the READER
     # is the M2 Decision Engine's attribute-consistency factor; naming the
     # wait here until that factor lands and deletes this entry.

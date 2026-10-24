@@ -35,7 +35,6 @@ async def _expense(db, tenant_ctx, shift, amount="10.00", desc="x"):
         description=desc,
         amount=amount,
         payment_method="cash",
-        session_id=shift.id,
     )
 
 
