@@ -5,10 +5,11 @@ import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import { fmtMoney } from "@/cashier/lib/format";
 import { useOpenChoice } from "@/cashier/api/useShifts";
+import { parseOpeningBalance } from "@/cashier/api/shiftState";
 
-const EMPTY = { openingCash: "0", registerId: "" };
+const EMPTY = { openingCash: "", registerId: "" };
 
-// فتح وردية جديدة: الموظف المسؤول ورصيد البداية في الخزنة.
+// بداية اليوم: رصيد الدرج الفعلي إجباري، ولا توجد قيمة افتراضية.
 export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending = false, error = null }) {
   const [form, setForm] = useState(EMPTY);
 
@@ -19,21 +20,21 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending 
   const choice = useOpenChoice(open);
   const free = choice.data?.status === "choose" ? choice.data.free : [];
   const mustPick = free.length > 1; // one free drawer is taken for you; a real choice is never guessed
-  const opening = Number(form.openingCash) || 0;
-  const canSubmit = opening >= 0 && !pending && (!mustPick || Boolean(form.registerId));
+  const opening = parseOpeningBalance(form.openingCash);
+  const canSubmit = opening !== null && !pending && (!mustPick || Boolean(form.registerId));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-heading text-base">فتح وردية جديدة</DialogTitle>
-          <DialogDescription>تُفتح الوردية باسم المستخدم الحالي. حدّد رصيد البداية الموجود في الخزنة قبل بدء البيع.</DialogDescription>
+          <DialogTitle className="font-heading text-base">بداية اليوم</DialogTitle>
+          <DialogDescription>عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي. لا يمكن البيع قبل تسجيله.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
           <div>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">رصيد البداية في الخزنة</Label>
-            <Input type="number" min={0} value={form.openingCash} onChange={(e) => setForm((prev) => ({ ...prev, openingCash: e.target.value }))} className="num" />
+            <Label className="mb-1.5 block text-xs text-muted-foreground">رصيد الدرج في بداية اليوم</Label>
+            <Input inputMode="decimal" autoComplete="off" placeholder="0.00" value={form.openingCash} onChange={(e) => setForm((prev) => ({ ...prev, openingCash: e.target.value }))} className="num" />
           </div>
           {mustPick ? (
             <div>
@@ -52,7 +53,7 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending 
             </div>
           ) : choice.data?.status === "none" ? (
             <p role="status" className="text-xs font-semibold text-amber-700">
-              {choice.data.reason === "all_busy" ? "كل أجهزة الكاشير عليها ورديات مفتوحة." : "لا يوجد جهاز كاشير نشط بعد؛ سيُجهَّز عند أول فتح."}
+              {choice.data.reason === "all_busy" ? "كل أجهزة الكاشير بدأ عليها يوم مفتوح." : "لا يوجد جهاز كاشير نشط بعد؛ سيُجهَّز عند أول فتح."}
             </p>
           ) : null}
           {error ? <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p> : null}
@@ -60,7 +61,7 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending 
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <p className="num text-xs text-muted-foreground">
-            رصيد الافتتاح: <span className="font-bold text-foreground">{fmtMoney(opening)}</span>
+            رصيد الافتتاح: <span className="font-bold text-foreground">{opening === null ? "—" : fmtMoney(Number(opening))}</span>
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -71,7 +72,7 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending 
               disabled={!canSubmit}
               onClick={() => onSubmit({ openingCash: opening, registerId: form.registerId || null })}
             >
-              {pending ? "جارٍ الفتح…" : "فتح الوردية"}
+              {pending ? "جارٍ البدء…" : "ابدأ اليوم"}
             </Button>
           </div>
         </DialogFooter>

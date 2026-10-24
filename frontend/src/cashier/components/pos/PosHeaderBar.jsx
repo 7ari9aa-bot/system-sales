@@ -42,7 +42,7 @@ export default function PosHeaderBar({
         <span aria-hidden="true">|</span>
         <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          {shiftOpenedAt ? `وردية مفتوحة منذ ${new Date(shiftOpenedAt).toLocaleTimeString("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit" })}` : "وردية مفتوحة"}
+          {shiftOpenedAt ? `اليوم مفتوح منذ ${new Date(shiftOpenedAt).toLocaleTimeString("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit" })}` : "اليوم مفتوح"}
         </span>
       </div>
 

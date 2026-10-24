@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeftRight, Clock, Unlock } from "lucide-react";
+import { Clock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import { Image } from "@/cashier/components/ui/image";
@@ -49,7 +49,7 @@ export default function ShiftsPage() {
   const preview = useClosePreview(closing?.id, Boolean(closing));
   const heldCount = useHeldCount(closing?.id, Boolean(closing));
 
-  const summary = shiftsSummary(rows, user?.id ?? null);
+  const summary = shiftsSummary(rows);
   const filtered = rows.filter((r) => {
     if (employeeFilter && r.employee !== employeeFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
@@ -62,7 +62,7 @@ export default function ShiftsPage() {
       {
         onSuccess: () => {
           setOpenDialog(false);
-          toast.success(`تم فتح الوردية برصيد ${fmtMoney(openingCash)}`);
+          toast.success(`بدأ اليوم برصيد ${fmtMoney(Number(openingCash))}`);
         },
       },
     );
@@ -102,18 +102,14 @@ export default function ShiftsPage() {
   return (
     <LedgerPage
       hero={
-        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="الورديات والخزنة" description="فتح وإغلاق الوردية: رصيد البداية، النقدية المتوقعة والفعلية، وتسجيل الفروق">
-          <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لا توجد وردية مفتوحة"} onClick={() => setDetails(summary.open)}>
+        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: رصيد الدرج الفعلي. نهاية اليوم: الرصيد الفعلي. وبينهما مبيعات اليوم من فواتير النظام.">
+          <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لم يبدأ اليوم بعد"} onClick={() => setDetails(summary.open)}>
             <Clock />
-            الوردية الجارية
-          </Button>
-          <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لا توجد وردية مفتوحة"} onClick={() => setMovementOpen(true)}>
-            <ArrowLeftRight />
-            حركة نقدية
+            اليوم الجاري
           </Button>
           <Button className={BTN_PRIMARY} disabled={Boolean(summary.open)} onClick={() => setOpenDialog(true)}>
             <Unlock />
-            فتح وردية جديدة
+            ابدأ اليوم
           </Button>
         </PageHero>
       }
@@ -159,11 +155,11 @@ export default function ShiftsPage() {
       <LedgerStats
         stats={[
           {
-            label: "الوردية المفتوحة",
+            label: "اليوم الجاري",
             value: summary.open ? summary.open.employee : "لا توجد",
-            hint: summary.open ? `فتحت ${fmtTime(summary.open.date)} برصيد ${fmtMoney(summary.open.openingCash)}` : "افتح وردية لبدء البيع",
+            hint: summary.open ? `بدأ ${fmtTime(summary.open.date)} برصيد ${fmtMoney(summary.open.openingCash)}` : "ابدأ اليوم لبدء البيع",
           },
-          { label: "النقدية المتوقعة", value: fmtMoney(summary.open?.expected ?? 0), hint: "الخزنة الحالية بعد المبيعات والمصروفات", accent: true },
+          { label: "النقدية المتوقعة", value: fmtMoney(summary.open?.expected ?? 0), hint: "رصيد بداية اليوم + مبيعات اليوم", accent: true },
           { label: "خزنة الورديات المغلقة", value: fmtMoney(summary.collected), hint: `${fmtInt(summary.closedCount)} وردية مغلقة` },
           { label: "إجمالي الفروق", value: fmtMoney(summary.differences), hint: "مجموع الفروق في العدّ" },
         ]}

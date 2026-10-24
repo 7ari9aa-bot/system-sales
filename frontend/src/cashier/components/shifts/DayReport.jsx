@@ -35,7 +35,7 @@ export default function DayReport({ open, onOpenChange, shift }) {
           <DialogTitle className="font-heading text-base">تقرير اليوم</DialogTitle>
           <DialogDescription>
             {shift.employee} • فتح {fmtDateTime(shift.date)}
-            {shift.closedAt ? ` • إغلاق ${fmtDateTime(shift.closedAt)}` : " • الوردية ما زالت مفتوحة"}
+            {shift.closedAt ? ` • إغلاق ${fmtDateTime(shift.closedAt)}` : " • اليوم ما زال مفتوحًا"}
           </DialogDescription>
         </DialogHeader>
 

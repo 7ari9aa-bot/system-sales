@@ -82,7 +82,7 @@ export default function ZReportSection({ rows }) {
       <div className="flex items-center justify-between border border-b-0 border-[#DED8CD] bg-white px-3.5 py-2 print:hidden">
         <p className="text-[11px] text-[#7A766C]">
           {open.length > 0
-            ? `يوجد ${fmtInt(open.length)} وردية مفتوحة: أرقامها مبدئية حتى تُغلق.`
+            ? `يوجد ${fmtInt(open.length)} يوم مفتوح: أرقامه مبدئية حتى يُغلق.`
             : "كل الورديات في الفترة مغلقة."}
         </p>
         <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[11px]" onClick={() => window.print()}>

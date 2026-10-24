@@ -97,7 +97,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
 
         {cashWithoutShift && (
           <p role="status" className="rounded-md border border-[#EBD9A8] bg-[#FFF8E5] px-3 py-2 text-xs font-semibold text-[#8A6100]">
-            مفيش وردية مفتوحة: المصروف هيتسجّل، لكن ما هيتخصمش من درج. لو دفعته من درج وردية، افتحها الأول.
+            اليوم لم يبدأ: المصروف هيتسجّل، لكن ما هيتخصمش من الدرج. لو دفعته من الدرج، ابدأ اليوم الأول.
           </p>
         )}
         {shown && (

@@ -68,7 +68,7 @@ export default function SupplierPaymentDialog({ open, onOpenChange, supplier, or
         </div>
         {cashWithoutShift && (
           <p role="status" className="rounded-md border border-[#EBD9A8] bg-[#FFF8E5] px-3 py-2 text-xs font-semibold text-[#8A6100]">
-            مفيش وردية مفتوحة: الدفعة هتتسجّل، لكن ما هتتخصمش من درج. لو دفعتها من درج وردية، افتحها الأول.
+            اليوم لم يبدأ: الدفعة هتتسجّل، لكن ما هتتخصمش من الدرج. لو دفعتها من الدرج، ابدأ اليوم الأول.
           </p>
         )}
         {shown && <p role="alert" className="rounded-md border border-[#F1C7C3] bg-[#FDECEA] px-3 py-2 text-xs font-semibold text-[#B3261E]">{shown}</p>}

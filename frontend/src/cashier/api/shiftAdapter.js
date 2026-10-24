@@ -80,15 +80,16 @@ export function shiftsFromApi(sessions, reports = {}, opts = {}) {
 }
 
 /** Totals for the shifts screen, computed from the real rows. `open` is the drawer that is still running. */
-export function shiftsSummary(rows = [], userId = null) {
-  // `open` is the shift THIS person is working. In a shop with several drawers "the first open shift" belongs to
-  // somebody else: it would lock this cashier's Open button and show another drawer's cash as theirs.
+export function shiftsSummary(rows = []) {
+  // `open` is the day that is running. The day belongs to the register, not to a person: it is opened
+  // with the drawer's balance (`open-day`) and carries no cashier, so it is never looked up by user.
+  // With several registers the first open day is shown; each register has at most one.
   const openRows = rows.filter((r) => r.status === "open");
-  const open = (userId ? openRows.find((r) => r.employeeId === userId) : openRows[0]) ?? null;
+  const open = openRows[0] ?? null;
   const closed = rows.filter((r) => r.status === "closed");
   return {
     open,
-    othersOpen: openRows.filter((r) => r !== open).length,
+    othersOpen: openRows.length > 1 ? openRows.length - 1 : 0,
     count: rows.length,
     closedCount: closed.length,
     cashSales: +rows.reduce((s, r) => s + (r.cashSales ?? 0), 0).toFixed(2),

@@ -183,20 +183,20 @@ describe("shiftsSummary / shiftEmployees", () => {
   });
 });
 
-describe("shiftsSummary: whose shift is `open`", () => {
+describe("shiftsSummary: the running day", () => {
   const row = (id, employeeId, status = "open") => ({ id, employeeId, status, cashSales: 0, difference: 0, actual: 0 });
-  const rows = [row("a", "u-other"), row("b", "u-me"), row("c", "u-me", "closed")];
 
-  it("with a user it is THAT user's open shift, not the first one in the shop", () => {
-    expect(shiftsSummary(rows, "u-me").open.id).toBe("b");
-    expect(shiftsSummary(rows, "u-me").othersOpen).toBe(1);
+  it("the open day is found even though it carries no cashier (open-day sets none)", () => {
+    const s = shiftsSummary([row("day", null)]);
+    expect(s.open.id).toBe("day");
+    expect(s.othersOpen).toBe(0);
   });
-  it("a cashier with no shift of their own has none open, even though someone else's is running", () => {
-    const s = shiftsSummary([row("a", "u-other")], "u-me");
-    expect(s.open).toBeNull();
+  it("closed days never count as the running one", () => {
+    expect(shiftsSummary([row("old", null, "closed")]).open).toBeNull();
+  });
+  it("with several registers each running a day, the first is shown and the rest are counted", () => {
+    const s = shiftsSummary([row("a", null), row("b", null), row("c", null, "closed")]);
+    expect(s.open.id).toBe("a");
     expect(s.othersOpen).toBe(1);
-  });
-  it("without a user it keeps the old behaviour", () => {
-    expect(shiftsSummary(rows).open.id).toBe("a");
   });
 });
