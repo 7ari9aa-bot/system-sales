@@ -8,8 +8,8 @@ per-method reconciliation. The profile routes configure the terminal.
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
 from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query

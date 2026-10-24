@@ -16,7 +16,7 @@ from app.modules.inventory.models import InventoryBalance
 from app.modules.orders.models import Order, OrderPayment, Refund
 from app.modules.pos.models import PosCashMovement, PosSession
 from app.modules.pos.service import PosService
-from tests._pos_helpers import till, start_day
+from tests._pos_helpers import start_day, till
 
 pytestmark = pytest.mark.asyncio
 

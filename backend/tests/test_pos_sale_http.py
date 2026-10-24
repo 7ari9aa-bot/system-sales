@@ -20,7 +20,7 @@ from app.modules.inventory.models import InventoryBalance
 from app.modules.orders.models import OrderPayment
 from app.modules.pos.models import PosCashMovement
 from app.modules.pos.service import PosService
-from tests._pos_helpers import ctx_for, till, start_day
+from tests._pos_helpers import ctx_for, start_day, till
 
 pytestmark = pytest.mark.asyncio
 
@@ -225,7 +225,7 @@ async def test_open_day_needs_a_balance_and_keeps_the_first_one(db, tenant_ctx) 
     row = (
         await db.execute(select(PosSession).where(PosSession.id == first.json()["session"]["id"]))
     ).scalar_one()
-    assert str(row.opening_float) == "250.50", "the first figure stands; a second call never overwrites it"
+    assert str(row.opening_float) == "250.50", "the first figure stands; never overwritten"
 
     seen = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/working-session", {})
     assert seen.json()["started"] is True

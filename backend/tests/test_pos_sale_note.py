@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.modules.orders.models import Order
 from app.modules.pos.service import PosService
-from tests._pos_helpers import ctx_for, till, start_day
+from tests._pos_helpers import ctx_for, start_day, till
 from tests.test_pos_sale_http import _post
 
 pytestmark = pytest.mark.asyncio
