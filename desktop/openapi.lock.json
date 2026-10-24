@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 413,
-    "sha256": "1e6cf3c7656c72b01b54d8320f9673e5f22d21bd7900125c9628df28fb8c259d",
+    "sha256": "1451968c0b257e3e86109b19fd107ab962575a697be8abb9ea5977ddc9e76849",
     "typed_operations": 257
   },
   "spec": {
@@ -51324,7 +51324,7 @@
       },
       "/api/v1/pos/sessions": {
         "get": {
-          "description": "Resume the till: sessions behind this drawer, newest first.",
+          "description": "Resume the till: sessions behind this drawer, newest first (default 50, at most 500).",
           "operationId": "list_sessions_api_v1_pos_sessions_get",
           "parameters": [
             {
@@ -51358,6 +51358,18 @@
                   }
                 ],
                 "title": "Register Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 500,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
               }
             },
             {

@@ -21,7 +21,7 @@ export function rowFromDetail(detail, extra = {}) {
     date: r.date,
     pieces: r.pieces,
     total: r.total,
-    payment: r.payments.length > 1 ? "mixed" : (r.payments[0]?.method ?? "cash"),
+    payment: r.payments.length > 1 ? "mixed" : (r.payments[0]?.method ?? null), // a new sale carries no payment: never invent "cash"
     paymentLabel: r.paymentLabel,
     status: r.status,
     items: r.items,

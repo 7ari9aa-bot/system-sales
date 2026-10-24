@@ -49,7 +49,7 @@ export function fmtTime(iso) {
 
 // Arabic labels for the shared status / type vocabularies.
 export const INVOICE_STATUS = {
-  paid: { label: "مدفوعة", tone: "success" },
+  paid: { label: "مسجّلة", tone: "success" }, // internal key kept; the POS records the sale, it never takes payment
   partial_return: { label: "مرتجع جزئي", tone: "warning" },
   returned: { label: "مرتجعة", tone: "danger" },
   suspended: { label: "معلقة", tone: "neutral" },

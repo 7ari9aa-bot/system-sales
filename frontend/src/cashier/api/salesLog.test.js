@@ -25,6 +25,9 @@ describe("rowFromDetail", () => {
     expect(r).toMatchObject({ number: "POS-20261020-AAA", total: 590, pieces: 3, payment: "mixed", status: "paid" });
     expect(r.paymentLabel).toBe("نقدي + بطاقة");
   });
+  it("a sale recorded with no payment has NO payment method (never an invented cash)", () => {
+    expect(rowFromDetail(detail({ tenders: [] })).payment).toBeNull();
+  });
   it("a single tender keeps its own method", () => {
     expect(rowFromDetail(detail({ tenders: [{ method: "card", amount: "590.00", status: "captured" }] })).payment).toBe("card");
   });

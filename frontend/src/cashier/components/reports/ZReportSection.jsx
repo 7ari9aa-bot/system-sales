@@ -2,22 +2,16 @@ import { Printer } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import ReportTable from "@/cashier/components/reports/ReportTable";
 import { CELL_ACCENT, CELL_MAIN, CELL_NUM } from "@/cashier/components/ui-kit/ledgerStyles";
+import { zReportTotals } from "@/cashier/components/reports/zReportTotals";
 import { SHIFT_STATUS, fmtDate, fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
 // تقرير Z (إغلاق اليوم): ملخص كل يوم في صف واحد، يسجّل ما حدث دون جرد للدرج.
 // رصيد نهاية اليوم = رصيد البداية + الفواتير − المرتجعات (يحسبه الباك إند، والاستبدال داخل الرقمين).
 export default function ZReportSection({ rows }) {
-  const sum = (key) => +rows.reduce((s, r) => s + (r[key] ?? 0), 0).toFixed(2);
   const closed = rows.filter((r) => r.status === "closed");
   const open = rows.filter((r) => r.status === "open");
 
-  const totals = {
-    invoices: sum("invoices"),
-    salesTotal: sum("salesTotal"),
-    returnsTotal: sum("returnsTotal"),
-    exchangeDifference: sum("exchangeDifference"),
-    closingBalance: sum("closingBalance"),
-  };
+  const totals = zReportTotals(rows);
 
   const columns = [
     {
@@ -56,7 +50,7 @@ export default function ZReportSection({ rows }) {
     salesTotal: fmtMoney(totals.salesTotal),
     returnsTotal: fmtMoney(totals.returnsTotal),
     exchangeDifference: fmtMoney(totals.exchangeDifference),
-    closingBalance: fmtMoney(totals.closingBalance),
+    closingBalance: "—",
   };
 
   return (

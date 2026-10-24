@@ -33,6 +33,8 @@ export function invoiceFromApi(saleDetail, { returns = [], cashier = "" } = {}) 
     returns,
     returnedAmount: returned,
     netTotal: money(r.total - returned),
-    remaining: money(r.total - (r.paid - r.change)),
+    // The POS takes no payment, so it has no "remaining to pay". Only an old sale that did record a
+    // payment can still show one.
+    remaining: r.hasPayment ? money(r.total - (r.paid - r.change)) : 0,
   };
 }

@@ -24,6 +24,8 @@ from app.modules.pos.stock_view import StockViewService
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
+PosReadCtx = Annotated[TenantContext, Depends(require_permission("orders:read"))]
+PosStockReadCtx = Annotated[TenantContext, Depends(require_permission("inventory:read"))]
 PosWriteCtx = Annotated[TenantContext, Depends(require_permission("orders:write"))]
 PosManagerCtx = Annotated[TenantContext, Depends(require_permission("pos:override"))]
 PosConfigCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
@@ -299,7 +301,7 @@ def _register_out(register) -> dict:
 
 
 @router.post("/registers", status_code=201)
-async def create_register(body: CreateRegisterRequest, ctx: PosWriteCtx):
+async def create_register(body: CreateRegisterRequest, ctx: PosConfigCtx):
     register = await PosService.create_register(
         ctx.session,
         ctx.tenant_id,
@@ -312,25 +314,26 @@ async def create_register(body: CreateRegisterRequest, ctx: PosWriteCtx):
 
 
 @router.get("/registers")
-async def list_registers(ctx: TenantCtxDep):
+async def list_registers(ctx: PosReadCtx):
     return [_register_out(r) for r in await PosService.list_registers(ctx.session, ctx.tenant_id)]
 
 
 @router.get("/sessions")
 async def list_sessions(
-    ctx: TenantCtxDep,
+    ctx: PosReadCtx,
     status: str | None = None,
     register_id: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ):
-    """Resume the till: sessions behind this drawer, newest first."""
+    """Resume the till: sessions behind this drawer, newest first (default 50, at most 500)."""
     rows = await PosService.list_sessions(
-        ctx.session, ctx.tenant_id, status=status, register_id=register_id
+        ctx.session, ctx.tenant_id, status=status, register_id=register_id, limit=limit
     )
     return [_session_out(s) for s in rows]
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: UUID, ctx: TenantCtxDep):
+async def get_session(session_id: UUID, ctx: PosReadCtx):
     detail = await PosService.get_session(ctx.session, ctx.tenant_id, session_id)
     return _session_out(
         detail["session"],
@@ -366,7 +369,7 @@ async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
 
 
 @router.get("/sessions/{session_id}/close-preview")
-async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
+async def get_close_preview(session_id: UUID, ctx: PosReadCtx):
     """The close screen's target: per-method expected + sales summary."""
     preview = await PosService.close_preview(ctx.session, ctx.tenant_id, session_id)
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in preview.items()}
@@ -441,7 +444,7 @@ async def close_session(session_id: UUID, ctx: PosWriteCtx, override: OverrideDe
 
 @router.get("/receipts/search")
 async def search_receipts(
-    ctx: TenantCtxDep,
+    ctx: PosReadCtx,
     q: Annotated[str, Query(min_length=3, max_length=40)],
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ):
@@ -459,7 +462,7 @@ async def search_receipts(
 
 
 @router.get("/sessions/{session_id}/receipts")
-async def list_receipts(session_id: UUID, ctx: TenantCtxDep):
+async def list_receipts(session_id: UUID, ctx: PosReadCtx):
     """The shift's receipts with their return state — the refund picker."""
     rows = await PosService.list_receipts(ctx.session, ctx.tenant_id, session_id)
     return [
@@ -474,7 +477,7 @@ async def list_receipts(session_id: UUID, ctx: TenantCtxDep):
 
 
 @router.get("/reports/top-products")
-async def top_products_report(ctx: TenantCtxDep, since: str, until: str, limit: int = 20):
+async def top_products_report(ctx: PosReadCtx, since: str, until: str, limit: int = 20):
     """Best sellers over ``[since, until]`` (YYYY-MM-DD, inclusive).
 
     Quantity and net revenue, less what came back in the window. No cost or profit: an order line
@@ -494,7 +497,7 @@ async def top_products_report(ctx: TenantCtxDep, since: str, until: str, limit: 
 
 
 @router.get("/reports/sales")
-async def sales_report(ctx: TenantCtxDep, since: str, until: str):
+async def sales_report(ctx: PosReadCtx, since: str, until: str):
     """Sales per shop day over ``[since, until]`` (YYYY-MM-DD, inclusive), newest day first.
 
     Straight from the receipts and the shop's own calendar day, so a day equals the sum of its
@@ -513,7 +516,7 @@ async def sales_report(ctx: TenantCtxDep, since: str, until: str):
 
 @router.get("/reports/daily")
 async def daily_report(
-    ctx: TenantCtxDep,
+    ctx: PosReadCtx,
     business_date: str,
     register_id: UUID | None = None,
 ):
@@ -543,7 +546,7 @@ async def daily_report(
 @router.get("/sessions/{session_id}/items")
 async def browse_items(
     session_id: UUID,
-    ctx: TenantCtxDep,
+    ctx: PosReadCtx,
     q: str | None = None,
     limit: int = 20,
     offset: int = 0,
@@ -555,13 +558,13 @@ async def browse_items(
 
 
 @router.get("/sessions/{session_id}/report")
-async def get_session_report(session_id: UUID, ctx: TenantCtxDep):
+async def get_session_report(session_id: UUID, ctx: PosReadCtx):
     """The shift's report — per method, cash trail, sales, returns."""
     return await PosService.session_report(ctx.session, ctx.tenant_id, session_id)
 
 
 @router.get("/receipts/{receipt_id}")
-async def get_receipt(receipt_id: UUID, ctx: TenantCtxDep):
+async def get_receipt(receipt_id: UUID, ctx: PosReadCtx):
     """The printed artifact: receipt header + order lines + tenders."""
     payload = await PosService.get_receipt(ctx.session, ctx.tenant_id, receipt_id)
     return {
@@ -629,13 +632,13 @@ async def hold_cart(session_id: UUID, body: HoldCartRequest, ctx: PosWriteCtx):
 
 
 @router.get("/sessions/{session_id}/held-carts")
-async def list_held_carts(session_id: UUID, ctx: TenantCtxDep):
+async def list_held_carts(session_id: UUID, ctx: PosReadCtx):
     rows = await PosService.list_held_carts(ctx.session, ctx.tenant_id, session_id)
     return [_held_cart_out(h) for h in rows]
 
 
 @router.get("/held-carts/{held_cart_id}")
-async def get_held_cart(held_cart_id: UUID, ctx: TenantCtxDep):
+async def get_held_cart(held_cart_id: UUID, ctx: PosReadCtx):
     return _held_cart_out(await PosService.get_held_cart(ctx.session, ctx.tenant_id, held_cart_id))
 
 
@@ -737,7 +740,7 @@ class ReorderLevelRequest(BaseModel):
 
 @router.get("/stock", response_model=list[StockRow])
 async def list_stock(
-    ctx: TenantCtxDep,
+    ctx: PosStockReadCtx,
     term: Annotated[str | None, Query(max_length=100)] = None,
     category_id: UUID | None = None,
     status: Annotated[str | None, Query(pattern="^(in|low|out)$")] = None,
@@ -757,7 +760,7 @@ async def list_stock(
 
 
 @router.get("/stock/summary", response_model=StockSummary)
-async def stock_summary(ctx: TenantCtxDep):
+async def stock_summary(ctx: PosStockReadCtx):
     """Totals over every active variant, not over the page the screen shows."""
     return await StockViewService.summary(ctx.session, ctx.tenant_id)
 

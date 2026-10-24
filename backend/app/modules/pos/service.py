@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select
@@ -244,15 +244,21 @@ class PosService:
         return pos_session
 
     @staticmethod
-    async def _get_session(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> PosSession:
-        pos_session = (
-            await session.execute(
-                select(PosSession).where(
-                    PosSession.tenant_id == tenant_id,
-                    PosSession.id == session_id,
-                )
-            )
-        ).scalar_one_or_none()
+    async def _get_session(
+        session: AsyncSession, tenant_id: UUID, session_id: UUID, *, lock: bool = False
+    ) -> PosSession:
+        """``lock`` takes the day's row ``FOR UPDATE``: sales, returns, exchanges and the close
+        all queue on it, so a close can never compute its balance while an invoice of the same
+        day is still being recorded (and a sale that waits behind a close finds it CLOSED)."""
+        stmt = select(PosSession).where(
+            PosSession.tenant_id == tenant_id,
+            PosSession.id == session_id,
+        )
+        if lock:
+            # ``populate_existing``: the row may already sit in this session's identity map from a
+            # read taken BEFORE the lock was granted; after waiting, the fresh row must win.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        pos_session = (await session.execute(stmt)).scalar_one_or_none()
         if pos_session is None:
             raise NotFoundError(f"pos session {session_id} not found")
         return pos_session
@@ -271,6 +277,30 @@ class PosService:
         if holder is None or override or actor_user_id == holder:
             return
         raise PermissionDeniedError("this drawer is held by another cashier")
+
+    @staticmethod
+    async def _ensure_may_operate(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        actor_user_id: UUID | None,
+        *,
+        override: bool = False,
+    ) -> None:
+        """The ONE profile check every till operation goes through (sell, return, exchange, close).
+
+        A profile that names its operators is restricted to them, not just at the moment the day
+        is started: whoever is not granted cannot use a day somebody else opened. An ungranted
+        profile stays open to every ``orders:write`` holder, and ``pos:override`` (a manager
+        covering the till) passes. An unknown actor is only an internal caller; HTTP always
+        supplies the user.
+        """
+        if override or actor_user_id is None or pos_session.profile_id is None:
+            return
+        if not await PosProfileService.can_operate(
+            session, tenant_id, pos_session.profile_id, actor_user_id
+        ):
+            raise PermissionDeniedError("this user does not operate this POS profile")
 
     @staticmethod
     def _ensure_session_current(
@@ -771,10 +801,16 @@ class PosService:
 
     @staticmethod
     def _positive_qty(value: object) -> int:
+        """A whole, positive number of pieces. ``1.9`` is refused, never silently cut to ``1``."""
+        if isinstance(value, bool) or value is None:
+            raise ValidationError("quantity must be a positive integer")
         try:
-            quantity = int(value)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            number = Decimal(str(value).strip())
+        except (InvalidOperation, ValueError):
             raise ValidationError("quantity must be a positive integer") from None
+        if not number.is_finite() or number != number.to_integral_value():
+            raise ValidationError("quantity must be a whole number")
+        quantity = int(number)
         if quantity <= 0:
             raise ValidationError("quantity must be greater than zero")
         return quantity
@@ -892,13 +928,13 @@ class PosService:
         note: str | None = None,
         actor_user_id: UUID | None = None,
     ) -> dict:
-        """RECORD a counter sale: what was sold, at what price, by whom. No payment, no shift.
+        """RECORD a counter sale: what was sold, at what price, by whom. No payment taken.
 
         How the customer paid is not this system's business, so there is no tender, no method, no
         amount, no change and no drawer. The order is created (stock reserved), confirmed (the
         reservation becomes a real sale) and a receipt is issued with the seller on it, all in the
         caller's one transaction. It never writes an ``OrderPayment``, a ``Refund`` or a
-        ``PosCashMovement``. ``sell`` (the paid, shift-bound flow) is left as it was.
+        ``PosCashMovement``.
         """
         from app.modules.orders.service import OrderService
 
@@ -907,14 +943,30 @@ class PosService:
             raise ConflictError(f"register {register.code} is not active")
         if not items:
             raise ValidationError("a sale must contain at least one item")
+        seen: set[str] = set()
         for item in items:
             PosService._positive_qty(item.get("quantity"))
+            # One line per variant: a later return is valued against that sale line, so the same
+            # variant twice (say with two different discounts) would be priced off the first one.
+            key = str(item.get("variant_id"))
+            if key in seen:
+                raise ValidationError("each variant may appear once in a sale: merge its quantity")
+            seen.add(key)
 
         pos_session = await PosService._today_session(session, tenant_id, register)
         if pos_session is None:
             raise ConflictError(
                 "the day has not been started: enter the drawer's opening balance first"
             )
+        # Queue behind a close (or another sale) of the same day. A close that got here first
+        # leaves the day CLOSED, and this sale is refused instead of landing after the balance
+        # was already computed.
+        pos_session = await PosService._get_session(session, tenant_id, pos_session.id, lock=True)
+        if pos_session.status != "OPEN":
+            raise ConflictError(
+                "the day has been closed: start a new day before recording more sales"
+            )
+        await PosService._ensure_may_operate(session, tenant_id, pos_session, actor_user_id)
         profile = await PosService.resolve_profile(session, tenant_id, pos_session)
         if profile is not None and not profile.is_active:
             raise ConflictError("this POS profile is not active")
@@ -1043,8 +1095,11 @@ class PosService:
         difference is already inside both figures). No payment, drawer
         movement or refund is created here.
         """
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, closed_by, override=shift_override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
         await PosService._record_close(session, tenant_id, pos_session, closed_by=closed_by)
@@ -1313,8 +1368,10 @@ class PosService:
         *,
         status: str | None = None,
         register_id: UUID | None = None,
+        limit: int = 50,
     ) -> list[PosSession]:
-        """Resume the till: the sessions behind this drawer, newest first."""
+        """Resume the till: the sessions behind this drawer, newest first. ``limit`` is the
+        caller's page size (the export asks for 500); it is never silently cut below that."""
         query = select(PosSession).where(PosSession.tenant_id == tenant_id)
         if status is not None:
             if status not in ("OPEN", "CLOSED"):
@@ -1325,7 +1382,7 @@ class PosService:
         rows = (
             (
                 await session.execute(
-                    query.order_by(PosSession.opened_at.desc(), PosSession.id.desc()).limit(50)
+                    query.order_by(PosSession.opened_at.desc(), PosSession.id.desc()).limit(limit)
                 )
             )
             .scalars()
@@ -2303,14 +2360,13 @@ class PosService:
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
-        """Give goods AND money back, line by line (ERPNext's POS return).
+        """Record the goods coming back, line by line. No money moves.
 
         The return is a document against the original sale: each line is
-        capped at sold-minus-already-returned, priced at the ORIGINAL line's
-        unit price minus its discount share, and the money travels through the
-        ORIGINAL captured tenders — the customer is made whole the way they
-        paid. ``restock`` also puts the returned quantities back on the
-        register's shelf. A return receipt (``POS-RET-``) is issued and the
+        capped at sold-minus-already-returned and valued at the ORIGINAL line's
+        unit price minus its discount share. The value is recorded on the
+        return receipt; nothing is refunded or paid out. ``restock`` also puts the returned
+        quantities back on the register's shelf. A return receipt (``POS-RET-``) is issued and the
         returned lines are recorded on it, which is what every later return
         caps against.
         """
@@ -2319,8 +2375,11 @@ class PosService:
         from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
 
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=shift_override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; returns ride the open drawer")
         PosService._ensure_session_current(
@@ -2580,8 +2639,11 @@ class PosService:
         from app.modules.orders.models import Order, OrderItem
         from app.modules.orders.service import OrderService
 
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=shift_override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; exchanges ride the open drawer")
         PosService._ensure_session_current(

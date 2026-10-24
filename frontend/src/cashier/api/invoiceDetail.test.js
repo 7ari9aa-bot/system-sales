@@ -31,6 +31,11 @@ describe("invoiceFromApi", () => {
     expect(inv).toMatchObject({ total: 240, returnedAmount: 120, netTotal: 120, status: "partial_return" });
   });
   it("fully paid invoice has nothing remaining", () => expect(invoiceFromApi(sale).remaining).toBe(0));
+  it("a sale recorded without any payment owes nothing through the POS", () => {
+    const inv = invoiceFromApi({ ...sale, tenders: [] });
+    expect(inv.hasPayment).toBe(false);
+    expect(inv.remaining).toBe(0);
+  });
   it("no returns -> net equals total", () => {
     const inv = invoiceFromApi({ ...sale, lines: [{ ...sale.lines[0], returned_qty: 0 }] });
     expect(inv).toMatchObject({ netTotal: 240, returnedAmount: 0, status: "paid" });

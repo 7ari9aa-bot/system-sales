@@ -180,3 +180,66 @@ async def test_first_sales_on_different_items_still_share_one_session(shop) -> N
         ),
     )
     assert sessions.scalar_one() == 1, "the racers must share the ONE session the day opened"
+
+
+async def test_a_close_racing_six_sales_never_misses_an_invoice(shop) -> None:
+    """The close computes the day's balance, so it must see EVERY invoice that made it in.
+
+    Six sales and one close start together on separate connections. The day row is locked, so
+    they queue: whatever committed before the close is inside its balance, and anything that
+    queued behind the close finds the day CLOSED and is refused instead of landing after it.
+    """
+    from app.modules.orders.models import Order
+
+    factory, t, user = shop
+    register_id, variant_id = await _shelf(factory, t, stock=20)
+
+    async def session_id(s):
+        row = await s.execute(select(PosSession.id).where(PosSession.register_id == register_id))
+        return row.scalar_one()
+
+    day_id = await _read(factory, t, session_id)
+
+    async def close(s):
+        return await PosService.close_session(s, t, day_id, closed_by=user)
+
+    results = await asyncio.gather(
+        *[
+            in_tx(factory, t, lambda s: _sale_once(s, t, register_id, variant_id, user))
+            for _ in range(RACERS)
+        ],
+        in_tx(factory, t, close),
+    )
+    sales, closing = results[:RACERS], results[RACERS]
+    assert not isinstance(closing, Exception), closing
+
+    async def totals(s):
+        day = (await s.execute(select(PosSession).where(PosSession.id == day_id))).scalar_one()
+        invoiced = (
+            await s.execute(
+                select(func.coalesce(func.sum(Order.grand_total), 0)).where(
+                    Order.tenant_id == t, Order.channel == "pos"
+                )
+            )
+        ).scalar_one()
+        return day, invoiced
+
+    day, invoiced = await _read(factory, t, totals)
+    assert day.status == "CLOSED"
+    won = sum(isinstance(r, dict) for r in sales)
+    # 25.00 a piece, opening balance 100.00: the stored balance holds the invoices that exist.
+    assert invoiced == 25 * won
+    assert day.expected_cash == 100 + invoiced, "the close must include every committed invoice"
+    for r in sales:
+        if isinstance(r, Exception):
+            assert "closed" in str(r).lower() or "not been started" in str(r).lower(), r
+
+
+async def _sale_once(s, t, register_id, variant_id, user):
+    return await PosService.record_sale(
+        s,
+        t,
+        register_id,
+        items=[{"variant_id": str(variant_id), "quantity": 1}],
+        actor_user_id=user,
+    )

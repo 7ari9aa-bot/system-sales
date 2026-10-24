@@ -123,7 +123,7 @@ function ReturnScreen({ session }) {
       const req = returnRequest(invoice.detail, lines, { restock });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.returnSale(session.id, req, intentRef.current));
-      toast.success(`تم اعتماد المرتجع ${res.receipt_number}. رد ${fmtMoney(Number(res.refunded_total))} للعميل`);
+      toast.success(`تم تسجيل المرتجع ${res.receipt_number}. قيمة المرتجع ${fmtMoney(Number(res.refunded_total))}`);
       intentRef.current = null;
       await Promise.all([qc.invalidateQueries({ queryKey: ["cashier"] })]);
       resetDraft();

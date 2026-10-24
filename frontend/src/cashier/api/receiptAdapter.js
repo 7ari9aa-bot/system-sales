@@ -9,7 +9,7 @@ import { parseMoney } from "./money";
 const num = (wire) => (wire === null || wire === undefined ? 0 : parseMoney(wire).minor / 100);
 const LABELS = { cash: "نقدي", card: "بطاقة", wallet: "محفظة إلكترونية", bank_transfer: "تحويل بنكي" };
 
-/** paid | partial_return | returned, from what was actually handed back (per line), not one flag. */
+/** paid (= recorded, the key is historical) | partial_return | returned, from what was actually returned (per line), not one flag. */
 export function statusOf(order, items) {
   if (order?.fully_returned) return "returned";
   return items.some((i) => (i.returnedQty ?? 0) > 0) ? "partial_return" : "paid";

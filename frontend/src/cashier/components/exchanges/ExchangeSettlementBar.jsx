@@ -3,7 +3,7 @@ import { fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 
 // ملخص الحساب: قيمة المرتجع (تقدير بنفس معادلة الخادم)، إجمالي البدائل (من الخادم)، ثم الفرق.
-// الفرق الموجب يدفعه العميل، والسالب يُرد له على طريقة الدفع الأصلية تلقائيًا.
+// الفرق قيمة للتسجيل فقط: الموجب لصالح المحل والسالب لصالح العميل، ولا يتم تحصيل أو رد أي مبلغ
 export default function ExchangeSettlementBar({ exchangedValue, newValue, difference, loading = false, error = null, restock, onRestockChange }) {
   const customerPays = difference > 0;
   const even = difference === 0;
@@ -30,14 +30,14 @@ export default function ExchangeSettlementBar({ exchangedValue, newValue, differ
       </label>
 
       <div className="rounded-lg bg-muted/50 px-4 py-1 text-center">
-        <p className="text-[12px] font-semibold text-foreground/70">{even ? "تسوية متساوية" : customerPays ? "المطلوب من العميل" : "المستحق للعميل"}</p>
+        <p className="text-[12px] font-semibold text-foreground/70">{even ? "لا فرق في القيمة" : customerPays ? "فرق القيمة لصالح المحل" : "فرق القيمة لصالح العميل"}</p>
         <p className={cn("num font-heading text-lg font-extrabold", even ? "text-muted-foreground" : customerPays ? "text-amber-600" : "text-emerald-600")}>
           {loading ? "…" : fmtMoney(Math.abs(difference))}
         </p>
       </div>
 
       <p className="w-full text-center text-[11px] text-muted-foreground">
-        {error ? <span role="alert" className="font-semibold text-rose-600">{error}</span> : "البدائل تُسعَّر بالسعر الحالي بدون خصم، والفرق النهائي يحسبه الخادم"}
+        {error ? <span role="alert" className="font-semibold text-rose-600">{error}</span> : "البدائل تُسعَّر بالسعر الحالي بدون خصم، والفرق يُسجَّل فقط ولا يُحصَّل ولا يُرَد"}
       </p>
     </div>
   );
