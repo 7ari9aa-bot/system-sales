@@ -1,4 +1,4 @@
-const PRODUCTION_API_ORIGIN = "https://api-production-8f51.up.railway.app";
+const PRODUCTION_API_ORIGIN = "https://p01--system-sales--smkyc4wjfbtq.code.run";
 
 function normalizeApiOrigin(value) {
   if (!value) return null;
