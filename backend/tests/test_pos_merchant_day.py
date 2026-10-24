@@ -121,9 +121,6 @@ async def test_every_live_operation_refuses_a_shift_from_a_previous_merchant_day
 
     refused = []
     for name, call in {
-        "cash": lambda: PosService.record_cash_movement(
-            db, tenant_ctx.tenant_id, shift.id, direction="in", reason="pay_in", amount="1.00"
-        ),
         "hold": lambda: PosService.hold_cart(
             db, tenant_ctx.tenant_id, shift.id, items=[], held_by=None
         ),
@@ -131,4 +128,4 @@ async def test_every_live_operation_refuses_a_shift_from_a_previous_merchant_day
         with pytest.raises(ConflictError, match="previous day"):
             await call()
         refused.append(name)
-    assert refused == ["cash", "hold"]
+    assert refused == ["hold"]

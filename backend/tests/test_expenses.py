@@ -83,10 +83,11 @@ async def test_default_categories_are_seeded_once(db, tenant_ctx) -> None:
     assert len(a) == 11 and {c.id for c in a} == {c.id for c in b}
 
 
-async def test_cash_expense_leaves_the_drawer_by_exactly_its_amount(db, tenant_ctx) -> None:
+async def test_cash_expense_never_touches_the_drawer(db, tenant_ctx) -> None:
+    """An expense is a record: the drawer's expected cash stays opening + sales."""
     shift = await _open_shift(db, tenant_ctx)
     cat = await _category(db, tenant_ctx)
-    _, out_before = await _drawer(db, tenant_ctx, shift.id)
+    before = await _drawer(db, tenant_ctx, shift.id)
     exp = await ExpenseService.create(
         db,
         tenant_ctx.tenant_id,
@@ -94,29 +95,18 @@ async def test_cash_expense_leaves_the_drawer_by_exactly_its_amount(db, tenant_c
         description="أكياس",
         amount="45.50",
         payment_method="cash",
-        session_id=shift.id,
     )
-    _, out_after = await _drawer(db, tenant_ctx, shift.id)
-    assert out_after - out_before == Decimal("45.50")
+    assert await _drawer(db, tenant_ctx, shift.id) == before
     assert (
         exp.amount == Decimal("45.50") and exp.status == "posted" and exp.number.startswith("EXP-")
     )
-    row = (
+    assert exp.session_id is None
+    rows = (
         await db.execute(
-            text(
-                "select direction, reason, amount, reference_type, reference_id "
-                "from pos_cash_movements "
-                "where session_id=:s and reference_id=:e"
-            ),
-            {"s": shift.id, "e": exp.id},
+            text("select count(*) from pos_cash_movements where reference_id=:e"), {"e": exp.id}
         )
-    ).one()
-    assert (row.direction, row.reason, row.amount, row.reference_type) == (
-        "out",
-        "pay_out",
-        Decimal("45.50"),
-        "expense",
-    )
+    ).scalar_one()
+    assert rows == 0
 
 
 async def test_non_cash_expense_never_touches_the_drawer(db, tenant_ctx) -> None:
@@ -182,11 +172,28 @@ async def test_voiding_a_shiftless_cash_expense_moves_no_cash(db, tenant_ctx) ->
     assert moves == 0
 
 
-async def test_cash_expense_on_a_closed_shift_is_refused(db, tenant_ctx) -> None:
+async def test_an_expense_cannot_be_tied_to_a_shift(db, tenant_ctx) -> None:
+    """Naming a shift is refused, never silently ignored."""
     shift = await _open_shift(db, tenant_ctx)
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="100.00")
     cat = await _category(db, tenant_ctx)
-    with pytest.raises(ConflictError, match="OPEN shift"):
+    for method in ("cash", "card"):
+        with pytest.raises(ValidationError, match="record only"):
+            await ExpenseService.create(
+                db,
+                tenant_ctx.tenant_id,
+                category_id=cat.id,
+                description="x",
+                amount="5",
+                payment_method=method,
+                session_id=shift.id,
+            )
+
+
+async def test_the_drawer_is_unchanged_after_a_refused_expense(db, tenant_ctx) -> None:
+    shift = await _open_shift(db, tenant_ctx)
+    cat = await _category(db, tenant_ctx)
+    before = await _drawer(db, tenant_ctx, shift.id)
+    with pytest.raises(ValidationError):
         await ExpenseService.create(
             db,
             tenant_ctx.tenant_id,
@@ -196,21 +203,7 @@ async def test_cash_expense_on_a_closed_shift_is_refused(db, tenant_ctx) -> None
             payment_method="cash",
             session_id=shift.id,
         )
-
-
-async def test_non_cash_expense_cannot_be_tied_to_a_shift(db, tenant_ctx) -> None:
-    shift = await _open_shift(db, tenant_ctx)
-    cat = await _category(db, tenant_ctx)
-    with pytest.raises(ValidationError, match="only a cash expense"):
-        await ExpenseService.create(
-            db,
-            tenant_ctx.tenant_id,
-            category_id=cat.id,
-            description="x",
-            amount="5",
-            payment_method="card",
-            session_id=shift.id,
-        )
+    assert await _drawer(db, tenant_ctx, shift.id) == before
 
 
 async def test_third_decimal_is_rejected_not_rounded(db, tenant_ctx) -> None:
@@ -250,10 +243,9 @@ async def test_unknown_category_and_inactive_category(db, tenant_ctx) -> None:
         )
 
 
-async def test_void_reverses_the_drawer_once(db, tenant_ctx) -> None:
+async def test_void_marks_the_record_and_moves_no_cash(db, tenant_ctx) -> None:
     shift = await _open_shift(db, tenant_ctx)
     cat = await _category(db, tenant_ctx)
-    inflow0, outflow0 = await _drawer(db, tenant_ctx, shift.id)
     exp = await ExpenseService.create(
         db,
         tenant_ctx.tenant_id,
@@ -261,25 +253,18 @@ async def test_void_reverses_the_drawer_once(db, tenant_ctx) -> None:
         description="غلط",
         amount="80",
         payment_method="cash",
-        session_id=shift.id,
     )
+    before = await _drawer(db, tenant_ctx, shift.id)
     await ExpenseService.void(db, tenant_ctx.tenant_id, exp.id, reason="اتسجل بالغلط")
-    inflow1, outflow1 = await _drawer(db, tenant_ctx, shift.id)
-    # the pay_out stays in the ledger and a pay_in cancels it: net cash effect is zero
-    assert outflow1 - outflow0 == Decimal("80.00") and inflow1 - inflow0 == Decimal("80.00")
     assert (
         exp.status == "voided" and exp.void_reason == "اتسجل بالغلط" and exp.voided_at is not None
     )
     with pytest.raises(ConflictError, match="already voided"):
         await ExpenseService.void(db, tenant_ctx.tenant_id, exp.id, reason="تاني")
-    assert await _drawer(db, tenant_ctx, shift.id) == (
-        inflow1,
-        outflow1,
-    )  # second void changed nothing
+    assert await _drawer(db, tenant_ctx, shift.id) == before  # neither void touched the drawer
 
 
-async def test_void_needs_a_reason_and_an_open_shift_for_cash(db, tenant_ctx) -> None:
-    shift = await _open_shift(db, tenant_ctx)
+async def test_void_needs_a_reason(db, tenant_ctx) -> None:
     cat = await _category(db, tenant_ctx)
     exp = await ExpenseService.create(
         db,
@@ -288,13 +273,9 @@ async def test_void_needs_a_reason_and_an_open_shift_for_cash(db, tenant_ctx) ->
         description="x",
         amount="10",
         payment_method="cash",
-        session_id=shift.id,
     )
     with pytest.raises(ValidationError, match="reason"):
         await ExpenseService.void(db, tenant_ctx.tenant_id, exp.id, reason="   ")
-    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="90.00")
-    with pytest.raises(ConflictError, match="closed"):
-        await ExpenseService.void(db, tenant_ctx.tenant_id, exp.id, reason="متأخر")
     assert exp.status == "posted"  # a refused void leaves it posted
 
 

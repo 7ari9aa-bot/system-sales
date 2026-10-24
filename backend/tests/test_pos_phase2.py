@@ -23,8 +23,6 @@ from app.modules.errors import ValidationError
 HELD_CARTS_PATH = "/api/v1/pos/sessions/{session_id}/held-carts"
 HELD_CART_PATH = "/api/v1/pos/held-carts/{held_cart_id}"
 REFUND_PATH = "/api/v1/pos/sessions/{session_id}/refunds"
-HANDOVER_PATH = "/api/v1/pos/sessions/{session_id}/handover"
-HANDOVERS_PATH = "/api/v1/pos/sessions/{session_id}/handovers"
 
 
 # --------------------------------------------------------- DB-free guards --
@@ -32,18 +30,7 @@ HANDOVERS_PATH = "/api/v1/pos/sessions/{session_id}/handovers"
 
 def test_phase_two_routes_are_mounted() -> None:
     paths = set(create_app().openapi()["paths"])
-    assert {HELD_CARTS_PATH, HELD_CART_PATH, REFUND_PATH, HANDOVER_PATH, HANDOVERS_PATH} <= paths
-
-
-def test_handover_wire_validates() -> None:
-    from app.modules.pos.router import HandoverRequest
-
-    body = HandoverRequest(to_user_id=uuid.uuid4(), counted_cash="100.00")
-    assert body.counted_cash == "100.00"
-    assert body.note is None
-
-    with pytest.raises(PydanticValidationError):
-        HandoverRequest(to_user_id=uuid.uuid4(), counted_cash="abc")
+    assert {HELD_CARTS_PATH, HELD_CART_PATH, REFUND_PATH} <= paths
 
 
 def test_hold_cart_wire_validates() -> None:
@@ -316,86 +303,4 @@ async def test_refund_of_a_foreign_session_is_refused(db, tenant_ctx):
             order_id=sale["order_id"],
             amount="5.00",
             method="cash",
-        )
-
-
-async def _second_user(db, tenant_ctx):
-    import uuid as _uuid
-
-    from app.core.security import hash_password
-    from app.modules.identity.models import User
-
-    user = User(
-        email=f"cashier-{_uuid.uuid4().hex[:10]}@test.local",
-        password_hash=hash_password("secret-password"),
-        full_name="Second Cashier",
-    )
-    db.add(user)
-    await db.flush()
-    return user
-
-
-async def test_handover_moves_the_drawer_and_records_the_seam(db, tenant_ctx):
-    from app.modules.pos.service import PosService
-
-    warehouse, variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=5)
-    pos_session = await _open_session(db, tenant_ctx, warehouse)
-    customer = await _customer(db, tenant_ctx)
-
-    # Ring a sale so the drawer holds money at the hand-off.
-    await PosService.sell(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        customer_id=customer.id,
-        items=[{"variant_id": str(variant.id), "quantity": 1}],
-        method="cash",
-        amount="10.00",
-    )
-
-    other = await _second_user(db, tenant_ctx)
-    row = await PosService.handover_session(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        to_user_id=other.id,
-        counted_cash="10.00",
-        by_user_id=tenant_ctx.user.id,
-        note="shift change",
-    )
-    assert row.expected_cash == Decimal("10.00")
-    assert row.variance == Decimal("0.00")
-
-    # The SAME session keeps running, now under the new holder.
-    refreshed = await PosService._get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert refreshed.status == "OPEN"
-    assert refreshed.cashier_user_id == other.id
-
-    listed = await PosService.list_handovers(db, tenant_ctx.tenant_id, pos_session.id)
-    assert any(h.id == row.id for h in listed)
-
-
-async def test_handover_refuses_the_current_holder(db, tenant_ctx):
-    from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
-
-    warehouse, _variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=5)
-    register = await PosService.create_register(
-        db,
-        tenant_ctx.tenant_id,
-        name="REG",
-        code=f"REG-{uuid.uuid4().hex[:6]}",
-        warehouse_id=warehouse.id,
-    )
-    # Open AS the owner, so the drawer is already theirs.
-    pos_session = await PosService.open_session(
-        db, tenant_ctx.tenant_id, register.id, opened_by=tenant_ctx.user.id
-    )
-    with pytest.raises(ConflictError):
-        await PosService.handover_session(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            to_user_id=tenant_ctx.user.id,
-            counted_cash="0.00",
         )

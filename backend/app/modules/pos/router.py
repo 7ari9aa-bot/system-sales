@@ -180,17 +180,6 @@ class OpenSessionRequest(BaseModel):
     floats_by_method: dict[str, str] | None = None
 
 
-class CashMovementRequest(BaseModel):
-    direction: str = Field(pattern="^(in|out)$")
-    reason: str = Field(
-        pattern="^(pay_in|pay_out|cash_drop|float_adjust)$",
-        # cash_sale/cash_refund are the sell flow's rows — the pattern makes
-        # that a wire contract, not just a service rule (§189).
-    )
-    amount: str = Field(pattern=_MONEY)
-    reference_id: UUID | None = None
-
-
 class ScanRequest(BaseModel):
     identifier_type: str = Field(min_length=1, max_length=31)
     value: str = Field(min_length=1, max_length=255)
@@ -312,12 +301,6 @@ class ExchangeRequest(BaseModel):
     method: str | None = Field(default=None, pattern="^(cash|card|wallet|bank_transfer)$")
     amount: str | None = Field(default=None, pattern=_MONEY)
     tendered_cash: str | None = Field(default=None, pattern=_MONEY)
-
-
-class HandoverRequest(BaseModel):
-    to_user_id: UUID
-    counted_cash: str = Field(pattern=_MONEY)
-    note: str | None = Field(default=None, max_length=255)
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
@@ -443,29 +426,6 @@ async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
         items=body.items,
         discount_total=body.discount_total,
     )
-
-
-@router.post("/sessions/{session_id}/cash-movements", status_code=201)
-async def record_cash_movement(
-    session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx, override: OverrideDep
-):
-    row = await PosService.record_cash_movement(
-        ctx.session,
-        ctx.tenant_id,
-        session_id,
-        direction=body.direction,
-        reason=body.reason,
-        amount=body.amount,
-        created_by=ctx.user.id,
-        reference_id=body.reference_id,
-        shift_override=override.active,
-    )
-    return {
-        "id": str(row.id),
-        "direction": row.direction,
-        "reason": row.reason,
-        "amount": str(row.amount),
-    }
 
 
 @router.get("/sessions/{session_id}/close-preview")
@@ -706,7 +666,7 @@ async def browse_items(
 
 @router.get("/sessions/{session_id}/report")
 async def get_session_report(session_id: UUID, ctx: TenantCtxDep):
-    """The shift's report — per method, cash trail, sales, returns, handovers."""
+    """The shift's report — per method, cash trail, sales, returns."""
     return await PosService.session_report(ctx.session, ctx.tenant_id, session_id)
 
 
@@ -876,44 +836,6 @@ async def exchange(
         "return_receipt_id": str(result["return_receipt_id"]),
         "new_receipt_id": str(result["new_receipt_id"]),
     }
-
-
-# ----------------------------------------------------------- handovers ----
-
-
-def _handover_out(row) -> dict:
-    return {
-        "id": str(row.id),
-        "session_id": str(row.session_id),
-        "from_user_id": str(row.from_user_id) if row.from_user_id else None,
-        "to_user_id": str(row.to_user_id),
-        "expected_cash": str(row.expected_cash),
-        "counted_cash": str(row.counted_cash),
-        "variance": str(row.variance),
-        "note": row.note,
-        "created_at": row.created_at.isoformat(),
-    }
-
-
-@router.post("/sessions/{session_id}/handover", status_code=201)
-async def handover_session(session_id: UUID, body: HandoverRequest, ctx: PosWriteCtx):
-    """Hand the open drawer to another cashier; the same session keeps running."""
-    row = await PosService.handover_session(
-        ctx.session,
-        ctx.tenant_id,
-        session_id,
-        to_user_id=body.to_user_id,
-        counted_cash=body.counted_cash,
-        by_user_id=ctx.user.id,
-        note=body.note,
-    )
-    return _handover_out(row)
-
-
-@router.get("/sessions/{session_id}/handovers")
-async def list_handovers(session_id: UUID, ctx: TenantCtxDep):
-    rows = await PosService.list_handovers(ctx.session, ctx.tenant_id, session_id)
-    return [_handover_out(r) for r in rows]
 
 
 class StockRow(BaseModel):

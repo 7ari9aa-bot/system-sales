@@ -131,14 +131,3 @@ export function useCloseShift() {
     },
   });
 }
-
-/** Record a manual drawer movement. `intent` must stay the same across retries of ONE
- *  attempt (so a dropped response cannot post twice) and be renewed after a success. */
-export function useCashMovement() {
-  const refresh = useRefresh();
-  return useMutation({
-    mutationFn: ({ sessionId, direction, reason, amount, intent }) =>
-      posApi.cashMovement(sessionId, { direction, reason, amount }, intent),
-    onSuccess: refresh,
-  });
-}

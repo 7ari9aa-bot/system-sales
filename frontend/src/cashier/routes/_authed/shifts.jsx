@@ -8,7 +8,6 @@ import LedgerPage from "@/cashier/components/ui-kit/LedgerPage";
 import LedgerStats from "@/cashier/components/ui-kit/LedgerStats";
 import PageHero from "@/cashier/components/ui-kit/PageHero";
 import ShiftOpenDialog from "@/cashier/components/shifts/ShiftOpenDialog";
-import CashMovementDialog from "@/cashier/components/shifts/CashMovementDialog";
 import ShiftCloseDialog from "@/cashier/components/shifts/ShiftCloseDialog";
 import ShiftDetailsDialog from "@/cashier/components/shifts/ShiftDetailsDialog";
 import DayReport from "@/cashier/components/shifts/DayReport";
@@ -16,7 +15,7 @@ import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
-import { useCashMovement, useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
 import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
 
@@ -36,10 +35,6 @@ export default function ShiftsPage() {
   const { data: rows = [], isLoading, error: loadError, refetch } = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
-  const cashMovement = useCashMovement();
-  const [movementOpen, setMovementOpen] = useState(false);
-  // A cash-out above the till's limit waits here for a manager. The request is kept as it was sent
-  // (same intent), so the approved retry is the same tap, not a second movement.
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [openDialog, setOpenDialog] = useState(false);
@@ -63,19 +58,6 @@ export default function ShiftsPage() {
         onSuccess: () => {
           setOpenDialog(false);
           toast.success(`بدأ اليوم برصيد ${fmtMoney(Number(openingCash))}`);
-        },
-      },
-    );
-  }
-
-  function submitMovement(request) {
-    const shift = summary.open;
-    cashMovement.mutate(
-      { sessionId: shift.id, direction: request.direction, reason: request.reason, amount: request.amount, intent: request.intent },
-      {
-        onSuccess: () => {
-          setMovementOpen(false);
-          toast.success(`تم تسجيل الحركة ${fmtMoney(Number(request.amount))} على الوردية ${shift.number}`);
         },
       },
     );
@@ -165,15 +147,6 @@ export default function ShiftsPage() {
         ]}
       />
 
-      <CashMovementDialog
-        open={movementOpen}
-        onOpenChange={(v) => { setMovementOpen(v); if (!v) cashMovement.reset(); }}
-        shift={summary.open}
-        expectedCash={summary.open?.expected}
-        onSubmit={submitMovement}
-        pending={cashMovement.isPending}
-        error={messageOf(cashMovement.error)}
-      />
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
       <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />

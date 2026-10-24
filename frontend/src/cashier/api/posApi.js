@@ -17,8 +17,6 @@ import { toWire } from "./money";
 export const BALANCES_LIMIT = 5000;
 export const MAX_REORDER_LEVEL = 1_000_000;
 const METHODS = ["cash", "card", "wallet", "bank_transfer"];
-const DIRECTIONS = ["in", "out"];
-const REASONS = ["pay_in", "pay_out", "cash_drop", "float_adjust"];
 
 /** One user intention (one Pay tap). Keep it until the call SUCCEEDS, then drop it. */
 export function newIntent() {
@@ -257,21 +255,6 @@ export const posApi = {
         tenders: tenders(t),
         tendered_cash: opt(tenderedCash),
       }),
-      needIntent(intent),
-    ),
-  cashMovement: async (id, { direction, reason, amount, referenceId }, intent) => {
-    if (!DIRECTIONS.includes(direction)) throw new RangeError(`posApi: unknown direction "${direction}"`);
-    if (!REASONS.includes(reason)) throw new RangeError(`posApi: unknown reason "${reason}"`);
-    return post(
-      `/pos/sessions/${seg(id)}/cash-movements`,
-      compact({ direction, reason, amount: toWire(amount), reference_id: referenceId }),
-      needIntent(intent),
-    );
-  },
-  handover: async (id, { toUserId, countedCash, note }, intent) =>
-    post(
-      `/pos/sessions/${seg(id)}/handover`,
-      compact({ to_user_id: toUserId, counted_cash: toWire(countedCash), note }),
       needIntent(intent),
     ),
 };

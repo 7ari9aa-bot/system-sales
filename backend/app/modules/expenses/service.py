@@ -56,16 +56,6 @@ def exact_money(value: object, field: str = "amount") -> Decimal:
         raise ValidationError(str(exc)) from exc
 
 
-def _pos_service():
-    """POS owns the drawer, so a cash expense goes through ITS service (never its tables).
-
-    Imported lazily on purpose: expenses -> pos is a real dependency, but declaring it at
-    module scope would grow the cross-module import ratchet (tests/test_module_boundaries).
-    """
-    from app.modules.pos.service import PosService
-
-    return PosService
-
 
 class NumberingService:
     """Gap-free document numbers per tenant, kind and year."""
@@ -164,7 +154,6 @@ class ExpenseService:
         expense_date: date | None = None,
         session_id: UUID | None = None,
         created_by: UUID | None = None,
-        shift_override: bool = False,
     ) -> Expense:
         description = (description or "").strip()
         if not description:
@@ -189,19 +178,11 @@ class ExpenseService:
         if not category.is_active:
             raise ConflictError("this expense category is inactive")
 
-        # A cash expense is a record first: it needs no shift. Only when the caller names a shift
-        # (an open drawer paid it) does the money also leave that drawer, so the close balances.
-        cash_session = None
-        if payment_method == "cash":
-            if session_id is not None:
-                cash_session = await _pos_service()._get_session(session, tenant_id, session_id)
-                _pos_service()._ensure_holds_shift(
-                    cash_session, created_by, override=shift_override
-                )
-                if cash_session.status != "OPEN":
-                    raise ConflictError("a cash expense needs an OPEN shift; this one is closed")
-        elif session_id is not None:
-            raise ValidationError("only a cash expense is tied to a shift")
+        # An expense is a RECORD. It never touches the cash drawer: expected cash is the opening
+        # balance plus the day's sales, nothing else. A caller naming a shift is refused rather
+        # than silently ignored, so nobody believes the drawer was reduced.
+        if session_id is not None:
+            raise ValidationError("an expense is a record only, not tied to a shift")
 
         when = expense_date or datetime.now(UTC).date()
         expense = Expense(
@@ -212,25 +193,13 @@ class ExpenseService:
             amount=value,
             payment_method=payment_method,
             expense_date=when,
-            session_id=cash_session.id if cash_session else None,
+            session_id=None,
             status="posted",
             created_by_user_id=created_by,
         )
         session.add(expense)
         await session.flush()
 
-        if cash_session is not None:
-            await _pos_service().record_cash_movement(
-                session,
-                tenant_id,
-                cash_session.id,
-                direction="out",
-                reason="pay_out",
-                amount=value,
-                created_by=created_by,
-                reference_type="expense",
-                reference_id=expense.id,
-            )
         return expense
 
     @staticmethod
@@ -252,7 +221,6 @@ class ExpenseService:
         *,
         reason: str,
         voided_by: UUID | None = None,
-        shift_override: bool = False,
     ) -> Expense:
         reason = (reason or "").strip()
         if not reason:
@@ -271,25 +239,6 @@ class ExpenseService:
         if expense.status == "voided":
             raise ConflictError("this expense is already voided")
 
-        if expense.payment_method == "cash" and expense.session_id is not None:
-            drawer = await _pos_service()._get_session(session, tenant_id, expense.session_id)
-            if drawer.status != "OPEN":
-                raise ConflictError(
-                    "the shift that paid this expense is closed: "
-                    "record the correction in the current shift"
-                )
-            await _pos_service().record_cash_movement(
-                session,
-                tenant_id,
-                drawer.id,
-                direction="in",
-                reason="pay_in",
-                amount=expense.amount,
-                created_by=voided_by,
-                shift_override=shift_override,
-                reference_type="expense_void",
-                reference_id=expense.id,
-            )
         expense.status = "voided"
         expense.voided_at = datetime.now(UTC)
         expense.void_reason = reason

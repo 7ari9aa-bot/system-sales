@@ -440,66 +440,38 @@ async def test_payments_cannot_exceed_what_is_owed_or_target_the_wrong_order(
         await SupplierPaymentService.create(db, t, supplier_id=a.id, amount="10", method="crypto")
 
 
-async def test_a_cash_payment_leaves_the_drawer_by_exactly_its_amount(db, tenant_ctx) -> None:
+async def test_a_cash_payment_is_a_record_and_never_touches_the_drawer(db, tenant_ctx) -> None:
     t = tenant_ctx.tenant_id
     sup, var = await _supplier(db, tenant_ctx), await _variant(db, tenant_ctx)
     shift = await _shift(db, tenant_ctx)
     po = await _po(db, tenant_ctx, sup, var, qty=4, cost="25.50")
-    _, out0 = await _cash_totals(db, tenant_ctx, shift)
+    before = await _cash_totals(db, tenant_ctx, shift)
     pay = await SupplierPaymentService.create(
-        db,
-        t,
-        supplier_id=sup.id,
-        purchase_order_id=po.id,
-        amount="60.25",
-        method="cash",
-        session_id=shift.id,
+        db, t, supplier_id=sup.id, purchase_order_id=po.id, amount="60.25", method="cash"
     )
-    _, out1 = await _cash_totals(db, tenant_ctx, shift)
-    assert out1 - out0 == D("60.25") and pay.session_id == shift.id
-    row = (
+    assert await _cash_totals(db, tenant_ctx, shift) == before
+    assert pay.session_id is None and pay.amount == D("60.25")
+    count = (
         await db.execute(
-            text(
-                "select direction, reason, amount, reference_type, reference_id from "
-                "pos_cash_movements "
-                "where session_id=:s and reference_id=:p"
-            ),
-            {"s": shift.id, "p": pay.id},
+            text("select count(*) from pos_cash_movements where reference_id=:p"), {"p": pay.id}
         )
-    ).one()
-    assert (row.direction, row.reason, row.amount, row.reference_type) == (
-        "out",
-        "pay_out",
-        D("60.25"),
-        "supplier_payment",
-    )
+    ).scalar_one()
+    assert count == 0
+    # the supplier statement still counts it: the debt went down by the payment
+    assert (await SupplierService.statement(db, t, sup.id))["balance"] == D("102.00") - D("60.25")
 
 
-async def test_cash_payment_needs_no_shift_and_non_cash_must_not_have_one(db, tenant_ctx) -> None:
+async def test_a_payment_cannot_be_tied_to_a_shift(db, tenant_ctx) -> None:
     t = tenant_ctx.tenant_id
     sup = await _supplier(db, tenant_ctx)
     shift = await _shift(db, tenant_ctx)
-    in0, out0 = await _cash_totals(db, tenant_ctx, shift)
-    # no shift named: the payment is recorded and no drawer moves
-    recorded = await SupplierPaymentService.create(
-        db, t, supplier_id=sup.id, amount="5", method="cash"
-    )
-    assert recorded.method == "cash" and recorded.session_id is None
-    assert await _cash_totals(db, tenant_ctx, shift) == (in0, out0)
-    with pytest.raises(ValidationError, match="only a cash payment"):
-        await SupplierPaymentService.create(
-            db, t, supplier_id=sup.id, amount="5", method="card", session_id=shift.id
-        )
-    from app.modules.pos.service import PosService
-
-    await PosService.close_session(db, t, shift.id, counted_cash="500.00")
-    with pytest.raises(ConflictError, match="OPEN shift"):
-        await SupplierPaymentService.create(
-            db, t, supplier_id=sup.id, amount="5", method="cash", session_id=shift.id
-        )
-
-
-# --------------------------------------------------- supplier returns ----
+    before = await _cash_totals(db, tenant_ctx, shift)
+    for method in ("cash", "card"):
+        with pytest.raises(ValidationError, match="record only"):
+            await SupplierPaymentService.create(
+                db, t, supplier_id=sup.id, amount="5", method=method, session_id=shift.id
+            )
+    assert await _cash_totals(db, tenant_ctx, shift) == before
 
 
 async def test_a_return_takes_goods_off_the_shelf_at_once_and_credits_the_order_price(
@@ -657,7 +629,7 @@ async def test_a_return_is_decided_once(db, tenant_ctx) -> None:
     assert await _on_hand(db, tenant_ctx, var) == 4  # a left for good; b came back
 
 
-async def test_a_cash_refund_enters_the_drawer_only_on_acceptance(db, tenant_ctx) -> None:
+async def test_a_cash_refund_is_a_record_and_never_enters_the_drawer(db, tenant_ctx) -> None:
     t = tenant_ctx.tenant_id
     sup, var = await _supplier(db, tenant_ctx), await _variant(db, tenant_ctx)
     shift = await _shift(db, tenant_ctx)
@@ -670,10 +642,12 @@ async def test_a_cash_refund_enters_the_drawer_only_on_acceptance(db, tenant_ctx
         settlement="cash",
         lines=[{"variant_id": str(var.id), "quantity": 2}],
     )
-    in0, _ = await _cash_totals(db, tenant_ctx, shift)
-    await SupplierReturnService.accept(db, t, ret.id, session_id=shift.id)
-    in1, _ = await _cash_totals(db, tenant_ctx, shift)
-    assert in1 - in0 == D("80.00") and ret.refund_session_id == shift.id
+    before = await _cash_totals(db, tenant_ctx, shift)
+    with pytest.raises(ValidationError, match="record only"):
+        await SupplierReturnService.accept(db, t, ret.id, session_id=shift.id)
+    await SupplierReturnService.accept(db, t, ret.id)
+    assert await _cash_totals(db, tenant_ctx, shift) == before
+    assert ret.refund_session_id is None
     # a cash refund is NOT account credit: the debt is unchanged
     assert (await SupplierService.statement(db, t, sup.id))["credit_returns"] == D("0.00")
 
@@ -695,7 +669,7 @@ async def test_a_replacement_return_moves_no_money(db, tenant_ctx) -> None:
     await SupplierReturnService.accept(db, t, ret.id)
     assert await _cash_totals(db, tenant_ctx, shift) == before
     assert (await SupplierService.statement(db, t, sup.id))["balance"] == D("200.00")
-    with pytest.raises(ValidationError, match="only a cash refund"):
+    with pytest.raises(ValidationError, match="record only"):
         other = await SupplierReturnService.create(
             db,
             t,

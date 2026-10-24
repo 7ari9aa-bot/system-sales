@@ -66,12 +66,6 @@ def _inventory():
     return InventoryService
 
 
-def _pos():
-    from app.modules.pos.service import PosService
-
-    return PosService
-
-
 def _numbering():
     # Document numbers live with the expenses module (it created document_counters). Lazy for the
     # same reason as the others: a declared, visible dependency without growing the module-scope
@@ -671,16 +665,10 @@ class SupplierPaymentService:
                     f"the payment ({value}) is more than what is still owed on the order ({owed})"
                 )
 
-        # A payment is a record first: a cash one needs no shift. Only when a shift is named does
-        # the money also leave that drawer, so the (non-blind) close still balances.
-        drawer = None
-        if method == "cash":
-            if session_id is not None:
-                drawer = await _pos()._get_session(session, tenant_id, session_id)
-                if drawer.status != "OPEN":
-                    raise ConflictError("a cash payment needs an OPEN shift; this one is closed")
-        elif session_id is not None:
-            raise ValidationError("only a cash payment is tied to a shift")
+        # A supplier payment is a RECORD (amount, date, supplier, invoice). It never touches the
+        # cash drawer. A caller naming a shift is refused rather than silently ignored.
+        if session_id is not None:
+            raise ValidationError("a supplier payment is a record only, not tied to a shift")
 
         payment = SupplierPayment(
             tenant_id=tenant_id,
@@ -689,24 +677,12 @@ class SupplierPaymentService:
             amount=value,
             method=method,
             paid_on=paid_on or datetime.now(UTC).date(),
-            session_id=drawer.id if drawer else None,
+            session_id=None,
             note=note,
             created_by_user_id=created_by,
         )
         session.add(payment)
         await session.flush()
-        if drawer is not None:
-            await _pos().record_cash_movement(
-                session,
-                tenant_id,
-                drawer.id,
-                direction="out",
-                reason="pay_out",
-                amount=value,
-                created_by=created_by,
-                reference_type="supplier_payment",
-                reference_id=payment.id,
-            )
         return payment
 
 
@@ -909,28 +885,10 @@ class SupplierReturnService:
         ret = await SupplierReturnService.get(session, tenant_id, return_id, lock=True)
         if ret.status != "review":
             raise ConflictError(f"this return was already {ret.status}")
-        if ret.settlement == "cash":
-            # The refund is a record first; it enters a drawer only when a shift is named.
-            if session_id is not None:
-                drawer = await _pos()._get_session(session, tenant_id, session_id)
-                if drawer.status != "OPEN":
-                    raise ConflictError("a cash refund needs an OPEN shift; this one is closed")
-                await _pos().record_cash_movement(
-                    session,
-                    tenant_id,
-                    drawer.id,
-                    direction="in",
-                    reason="pay_in",
-                    amount=Decimal(ret.total),
-                    created_by=decided_by,
-                    reference_type="supplier_return",
-                    reference_id=ret.id,
-                )
-                ret.refund_session_id = drawer.id
-        elif session_id is not None:
-            raise ValidationError("only a cash refund is tied to a shift")
-        # settlement 'credit': nothing to write, the supplier statement counts accepted credit
-        # returns.
+        if session_id is not None:
+            # The refund is a record; it never enters a drawer, so a named shift is refused.
+            raise ValidationError("a supplier return is a record only, not tied to a shift")
+        # No drawer is touched whatever the settlement: the supplier statement counts the value.
         # settlement 'replace': no money; the replacement arrives as a normal purchase order.
         ret.status = "accepted"
         ret.decided_at = datetime.now(UTC)

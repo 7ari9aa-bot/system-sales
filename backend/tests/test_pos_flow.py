@@ -75,32 +75,6 @@ async def test_one_open_session_per_register(db, tenant_ctx):
         await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
 
 
-async def test_manual_cash_rows_feed_the_live_expected_figure(db, tenant_ctx):
-    register = await _register(db, tenant_ctx)
-    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
-    await PosService.record_cash_movement(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        direction="in",
-        reason="float_adjust",
-        amount="100.00",
-        created_by=tenant_ctx.user.id,
-    )
-    detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
-    assert detail["inflow"] == Decimal("100.00")
-    assert detail["expected_now"] == Decimal("100.00")
-    with pytest.raises(ValidationError):
-        await PosService.record_cash_movement(
-            db,
-            tenant_ctx.tenant_id,
-            pos_session.id,
-            direction="in",
-            reason="cash_sale",
-            amount="5.00",
-        )
-
-
 async def test_sell_runs_the_whole_commerce_chain(db, tenant_ctx):
     from decimal import Decimal
 

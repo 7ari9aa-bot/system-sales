@@ -35,18 +35,15 @@ describe("money never leaves as a float or a negative", () => {
 
   it("refuses a negative amount before any request is made", async () => {
     await expect(
-      posApi.cashMovement("s1", { direction: "out", reason: "pay_out", amount: -5 }, newIntent()),
+      posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "cash", amount: -5 }] }, newIntent()),
     ).rejects.toThrow(/negative/i);
     expect(calls).toHaveLength(0);
   });
 
-  it("refuses a malformed method/direction before any request is made", async () => {
+  it("refuses a malformed method before any request is made", async () => {
     await expect(
       posApi.sell("s1", { items: [{ variant_id: "v", quantity: 1 }], tenders: [{ method: "bitcoin", amount: 1 }] }, newIntent()),
     ).rejects.toThrow(/method/i);
-    await expect(
-      posApi.cashMovement("s1", { direction: "sideways", reason: "pay_out", amount: 1 }, newIntent()),
-    ).rejects.toThrow(/direction/i);
     expect(calls).toHaveLength(0);
   });
 
@@ -66,7 +63,6 @@ describe("retry safety: one intent = one Idempotency-Key", () => {
     await posApi.refund("s1", { orderId: "o1", amount: 5, method: "cash" }, newIntent());
     await posApi.returnSale("s1", { orderId: "o1", lines: [{ variant_id: "v", quantity: 1 }] }, newIntent());
     await posApi.exchange("s1", { orderId: "o1", returnLines: [{ variant_id: "v", quantity: 1 }], newLines: [{ variant_id: "w", quantity: 1 }] }, newIntent());
-    await posApi.cashMovement("s1", { direction: "in", reason: "pay_in", amount: 1 }, newIntent());
     for (const c of calls) expect(c.headers["Idempotency-Key"]).toMatch(/^[\w-]{16,}$/);
     expect(calls[0].headers["Idempotency-Key"]).toBe(intent.key);
   });

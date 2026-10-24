@@ -108,15 +108,6 @@ async def test_a_drawer_with_no_holder_behaves_as_before(db, tenant_ctx):
     assert Decimal(again["grand_total"]) == Decimal("50.00")
 
 
-async def test_a_stranger_cannot_move_cash_in_or_out_of_it(db, tenant_ctx):
-    shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
-    with pytest.raises(PermissionDeniedError, match="drawer"):
-        await PosService.record_cash_movement(
-            db, tenant_ctx.tenant_id, shift.id,
-            direction="out", amount="10.00", reason="pay_out", created_by=stranger.id,
-        )  # fmt: skip
-
-
 async def test_a_stranger_cannot_close_it(db, tenant_ctx):
     shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
     with pytest.raises(PermissionDeniedError, match="drawer"):
@@ -181,30 +172,6 @@ async def _expense(db, tenant_ctx, shift, cat, *, by, **kw):
     )
 
 
-async def test_a_stranger_cannot_book_a_cash_expense_against_it(db, tenant_ctx):
-    shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
-    cat = await _category(db, tenant_ctx)
-    with pytest.raises(PermissionDeniedError, match="drawer"):
-        await _expense(db, tenant_ctx, shift, cat, by=stranger.id)
-
-
-async def test_the_holder_can_book_and_a_manager_can_void_it_on_their_drawer(db, tenant_ctx):
-    from app.modules.expenses.service import ExpenseService
-
-    shift, holder, manager, _v, _c = await _owned_shift(db, tenant_ctx)
-    cat = await _category(db, tenant_ctx)
-    exp = await _expense(db, tenant_ctx, shift, cat, by=holder.id)
-    # a stranger without the override cannot void it (that would put cash back in the drawer)
-    with pytest.raises(PermissionDeniedError, match="drawer"):
-        await ExpenseService.void(
-            db, tenant_ctx.tenant_id, exp.id, reason="خطأ", voided_by=manager.id
-        )
-    voided = await ExpenseService.void(
-        db, tenant_ctx.tenant_id, exp.id, reason="خطأ", voided_by=manager.id, shift_override=True
-    )
-    assert voided.status == "voided"
-
-
 # --------------------------- the routes, a stranger at the till, with REAL role permissions -----
 
 
@@ -225,11 +192,9 @@ async def _grant(ctx, method="POST", path="/pos/test"):
 
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
     from app.modules.pos.router import (
-        CashMovementRequest,
         CloseSessionRequest,
         SellRequest,
         close_session,
-        record_cash_movement,
         sell,
     )
 
@@ -239,19 +204,15 @@ async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenan
     sale = SellRequest(
         items=_items(variant), customer_id=customer.id, method="cash", amount="50.00"
     )
-    move = CashMovementRequest(direction="out", reason="pay_out", amount="5.00")
 
     with pytest.raises(PermissionDeniedError):
         await sell(shift.id, sale, staff, await _grant(staff))
-    with pytest.raises(PermissionDeniedError):
-        await record_cash_movement(shift.id, move, staff, await _grant(staff))
     with pytest.raises(PermissionDeniedError):
         await close_session(
             shift.id, CloseSessionRequest(counted_cash="0.00"), staff, await _grant(staff)
         )
 
     assert (await sell(shift.id, sale, manager, await _grant(manager)))["grand_total"] == "50.00"
-    await record_cash_movement(shift.id, move, manager, await _grant(manager))
     closed = await close_session(
         shift.id, CloseSessionRequest(counted_cash="45.00"), manager, await _grant(manager)
     )

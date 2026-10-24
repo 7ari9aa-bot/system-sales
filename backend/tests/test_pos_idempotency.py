@@ -64,11 +64,6 @@ MONEY_ROUTES = {
         },
         "exchange",
     ),
-    "cash_movement": (
-        f"/api/v1/pos/sessions/{SESSION}/cash-movements",
-        {"direction": "out", "reason": "pay_out", "amount": "20.00"},
-        "record_cash_movement",
-    ),
 }
 
 
@@ -163,9 +158,9 @@ async def test_sell_without_a_key_keeps_the_old_behaviour(monkeypatch) -> None:
     assert len(calls) == 2
 
 
-@pytest.mark.parametrize("name", ["refund", "return", "exchange", "cash_movement"])
+@pytest.mark.parametrize("name", ["refund", "return", "exchange"])
 async def test_every_other_pos_money_route_is_retry_safe(monkeypatch, name) -> None:
-    """refund / return / exchange / cash-movement: a replay must not repeat the effect."""
+    """refund / return / exchange: a replay must not repeat the effect."""
     path, body, service_method = MONEY_ROUTES[name]
     calls: list[int] = []
 
@@ -191,8 +186,6 @@ async def test_every_other_pos_money_route_is_retry_safe(monkeypatch, name) -> N
 
 def _fake_result(name: str) -> Any:
     """The exact shape each route reads from its service call."""
-    from datetime import UTC, datetime
-    from types import SimpleNamespace
 
     if name == "return":
         return {"receipt_id": uuid.uuid4(), "number": "POS-RET-1", "refund_total": "10.00"}
@@ -202,17 +195,6 @@ def _fake_result(name: str) -> Any:
             "new_receipt_id": uuid.uuid4(),
             "net": "0.00",
         }
-    if name == "cash_movement":
-        return SimpleNamespace(
-            id=uuid.uuid4(),
-            session_id=uuid.uuid4(),
-            direction="out",
-            reason="pay_out",
-            amount="20.00",
-            reference_id=None,
-            created_at=datetime.now(UTC),
-            created_by=None,
-        )
     return {"order_id": uuid.uuid4(), "refund_id": uuid.uuid4(), "amount": "10.00"}
 
 

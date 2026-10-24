@@ -119,7 +119,7 @@ async def test_parallel_numbering_has_no_duplicates_and_no_gaps(committed_tenant
     assert seqs == list(range(1, RACERS + 1))  # unique AND gap-free
 
 
-async def test_parallel_void_reverses_the_drawer_exactly_once(committed_tenant) -> None:
+async def test_parallel_void_succeeds_exactly_once_and_never_moves_cash(committed_tenant) -> None:
     factory, tenant_id = committed_tenant
 
     async def setup(s):
@@ -138,7 +138,6 @@ async def test_parallel_void_reverses_the_drawer_exactly_once(committed_tenant) 
             description="x",
             amount="40.00",
             payment_method="cash",
-            session_id=shift.id,
         )
         return shift.id, exp.id
 
@@ -164,5 +163,6 @@ async def test_parallel_void_reverses_the_drawer_exactly_once(committed_tenant) 
     async def drawer(s):
         return await PosService._cash_totals(s, tenant_id, shift_id)
 
+    # An expense is a record: neither the expense nor the one winning void touched the drawer.
     inflow, outflow = await _in_tx(factory, tenant_id, drawer)
-    assert outflow == Decimal("40.00") and inflow == Decimal("40.00")  # one pay_out, ONE pay_in
+    assert outflow == Decimal("0") and inflow == Decimal("0")

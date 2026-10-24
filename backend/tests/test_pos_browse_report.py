@@ -153,32 +153,22 @@ async def test_report_reconciles_the_day(db, tenant_ctx):
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
         restock=True,
     )
-    await PosService.record_cash_movement(
-        db,
-        tenant_ctx.tenant_id,
-        pos_session.id,
-        direction="out",
-        reason="cash_drop",
-        amount="5.00",
-        created_by=tenant_ctx.user.id,
-    )
-
     live = await PosService.session_report(db, tenant_ctx.tenant_id, pos_session.id)
     assert live["sales"]["invoice_count"] == 1
     assert Decimal(live["sales"]["total"]) == Decimal("50.00")
     assert Decimal(live["returns"]["total"]) == Decimal("25.00")
     by_method = {r["method"]: Decimal(r["expected"]) for r in live["by_method"]}
-    # cash: float 20 + sale 30 − refund 25 − drop 5 = 20; card: 20 − 0 = 20.
-    assert by_method["cash"] == Decimal("20.00")
+    # cash: float 20 + sale 30 − refund 25 = 25; card: 20 − 0 = 20.
+    assert by_method["cash"] == Decimal("25.00")
     assert by_method["card"] == Decimal("20.00")
-    assert any(m["reason"] == "cash_drop" for m in live["cash_movements"])
+    assert {m["reason"] for m in live["cash_movements"]} == {"cash_sale", "cash_refund"}
 
     await PosService.close_session(
         db,
         tenant_ctx.tenant_id,
         pos_session.id,
-        counted_cash="20.00",
-        counted_by_method={"cash": "18.00", "card": "20.00"},
+        counted_cash="25.00",
+        counted_by_method={"cash": "23.00", "card": "20.00"},
     )
     closed = await PosService.session_report(db, tenant_ctx.tenant_id, pos_session.id)
     assert closed["session"]["status"] == "CLOSED"

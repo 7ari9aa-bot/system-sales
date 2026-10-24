@@ -39,16 +39,10 @@ from app.modules.pos.models import (
     PosReturnLine,
     PosSession,
     PosSessionFloat,
-    PosSessionHandover,
     PosSessionReconciliation,
 )
 from app.modules.pos.profiles import PosProfileService
 
-_MANUAL_CASH_REASONS = {"pay_in", "pay_out", "cash_drop", "float_adjust"}
-# Written only by the sell flow — a hand-written cash_sale would book money
-# no order claims, the same lie a hand-written inventory `hold` would tell.
-_SALE_ONLY_CASH_REASONS = {"cash_sale", "cash_refund"}
-_CASH_DIRECTIONS = {"in", "out"}
 _SALE_METHODS = {"cash", "card", "wallet", "bank_transfer"}
 _NUMBER_ATTEMPTS = 3
 
@@ -361,53 +355,6 @@ class PosService:
         inflow = next((Decimal(a) for d, a in rows if d == "in"), Decimal("0"))
         outflow = next((Decimal(a) for d, a in rows if d == "out"), Decimal("0"))
         return inflow, outflow
-
-    @staticmethod
-    async def record_cash_movement(
-        session: AsyncSession,
-        tenant_id: UUID,
-        session_id: UUID,
-        *,
-        direction: str,
-        reason: str,
-        amount: object,
-        created_by: UUID | None = None,
-        shift_override: bool = False,
-        reference_type: str | None = None,
-        reference_id: UUID | None = None,
-    ) -> PosCashMovement:
-        """Book a manual cash event on an OPEN session.
-
-        cash_sale/cash_refund are the sell flow's rows: writing one by hand
-        would claim money the order ledger does not show (§189).
-        """
-        if direction not in _CASH_DIRECTIONS:
-            raise ValidationError(f"direction must be one of {sorted(_CASH_DIRECTIONS)}")
-        if reason not in _MANUAL_CASH_REASONS:
-            if reason in _SALE_ONLY_CASH_REASONS:
-                raise ValidationError(f"reason '{reason}' is written by the sell flow only")
-            raise ValidationError(f"reason must be one of {sorted(_MANUAL_CASH_REASONS)}")
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
-        PosService._ensure_holds_shift(pos_session, created_by, override=shift_override)
-        if pos_session.status != "OPEN":
-            raise ConflictError("cash rows are booked on the open session only")
-        PosService._ensure_session_current(
-            pos_session, tz=await PosService._shop_timezone(session, tenant_id)
-        )
-        cleaned_amount = _positive_amount(amount, "amount")
-        row = PosCashMovement(
-            tenant_id=tenant_id,
-            session_id=session_id,
-            direction=direction,
-            reason=reason,
-            amount=cleaned_amount,
-            reference_type=reference_type,
-            reference_id=reference_id,
-            created_by_user_id=created_by,
-        )
-        session.add(row)
-        await session.flush()
-        return row
 
     @staticmethod
     async def _append_sale_cash(
@@ -1943,7 +1890,7 @@ class PosService:
 
     @staticmethod
     async def session_report(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
-        """The shift's report — per method, cash trail, sales, returns, handovers.
+        """The shift's report — per method, cash trail, sales, returns.
 
         An OPEN session reports live figures; a CLOSED one replays the stored
         reconciliation rows. Either way it is arithmetic over rows — expected
@@ -2012,7 +1959,6 @@ class PosService:
             .scalars()
             .all()
         )
-        handovers = await PosService.list_handovers(session, tenant_id, pos_session.id)
         inflow, outflow = await PosService._cash_totals(session, tenant_id, pos_session.id)
         return {
             "session": {
@@ -2067,17 +2013,6 @@ class PosService:
                     "created_at": r.created_at.isoformat(),
                 }
                 for r in cash_rows
-            ],
-            "handovers": [
-                {
-                    "from_user_id": str(h.from_user_id) if h.from_user_id else None,
-                    "to_user_id": str(h.to_user_id),
-                    "expected_cash": str(h.expected_cash),
-                    "counted_cash": str(h.counted_cash),
-                    "variance": str(h.variance),
-                    "created_at": h.created_at.isoformat(),
-                }
-                for h in handovers
             ],
         }
 
@@ -3772,99 +3707,3 @@ class PosService:
             or [{"method": t["method"], "amount": str(t["amount"])} for t in resolved],
             "restocked": restock,
         }
-
-    # --------------------------------------------------------- handovers ----
-
-    @staticmethod
-    async def handover_session(
-        session: AsyncSession,
-        tenant_id: UUID,
-        session_id: UUID,
-        *,
-        to_user_id: UUID,
-        counted_cash: object,
-        by_user_id: UUID | None = None,
-        note: str | None = None,
-    ) -> PosSessionHandover:
-        """Hand the OPEN drawer to another cashier, counting it at the seam.
-
-        The session keeps running — only its ``cashier_user_id`` moves — so the
-        close reconciliation still covers the whole shift while this row records
-        who was answerable between which two points. The drawer is counted here
-        for the same reason it is counted at close: a variance must belong to the
-        cashier who was holding it, not be discovered later and pinned on whoever
-        happens to be standing there when the shift ends.
-
-        The new holder must be allowed to operate the session's profile, exactly
-        like an opening cashier — a hand-off is not a way around the grant.
-        """
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
-        if pos_session.status != "OPEN":
-            raise ConflictError("the drawer must be open to hand it over")
-        if to_user_id == pos_session.cashier_user_id:
-            raise ConflictError("this user already holds the drawer")
-
-        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
-        if profile is not None and not await PosProfileService.can_operate(
-            session, tenant_id, profile.id, to_user_id
-        ):
-            raise ConflictError("this user does not operate this POS profile")
-
-        # The drawer changes hands, so the one-open-drawer-per-cashier rule
-        # applies to the receiver exactly as it did at open time.
-        held_elsewhere = (
-            await session.execute(
-                select(PosSession.id).where(
-                    PosSession.tenant_id == tenant_id,
-                    PosSession.cashier_user_id == to_user_id,
-                    PosSession.status == "OPEN",
-                    PosSession.id != pos_session.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if held_elsewhere is not None:
-            raise ConflictError(
-                "this user already holds another open drawer; close it or hand it over first"
-            )
-
-        counted = to_money(counted_cash, "counted_cash")
-        if counted < 0:
-            raise ValidationError("counted_cash must not be negative")
-        expected = (await PosService._expected_by_method(session, tenant_id, pos_session))["cash"]
-
-        from_user_id = pos_session.cashier_user_id or by_user_id
-        row = PosSessionHandover(
-            tenant_id=tenant_id,
-            session_id=pos_session.id,
-            from_user_id=from_user_id,
-            to_user_id=to_user_id,
-            expected_cash=expected,
-            counted_cash=counted,
-            variance=counted - expected,
-            note=(str(note).strip() or None) if note is not None else None,
-        )
-        session.add(row)
-        # The SAME session keeps running under the new holder.
-        pos_session.cashier_user_id = to_user_id
-        await session.flush()
-        return row
-
-    @staticmethod
-    async def list_handovers(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
-    ) -> list[PosSessionHandover]:
-        rows = (
-            (
-                await session.execute(
-                    select(PosSessionHandover)
-                    .where(
-                        PosSessionHandover.tenant_id == tenant_id,
-                        PosSessionHandover.session_id == session_id,
-                    )
-                    .order_by(PosSessionHandover.created_at.asc(), PosSessionHandover.id.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows)

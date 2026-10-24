@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 
 from app.modules.expenses.service import ExpenseService
 from app.modules.identity.deps import TenantContext, require_permission
-from app.modules.pos.override import OverrideDep
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -113,7 +112,7 @@ async def create_category(body: CategoryRequest, ctx: VoidCtx):
 
 
 @router.post("", status_code=201, response_model=ExpenseOut)
-async def create_expense(body: ExpenseRequest, ctx: PostCtx, override: OverrideDep):
+async def create_expense(body: ExpenseRequest, ctx: PostCtx):
     row = await ExpenseService.create(
         ctx.session,
         ctx.tenant_id,
@@ -124,7 +123,6 @@ async def create_expense(body: ExpenseRequest, ctx: PostCtx, override: OverrideD
         expense_date=body.expense_date,
         session_id=body.session_id,
         created_by=ctx.user.id,
-        shift_override=override.active,
     )
     return _expense(row)
 
@@ -173,15 +171,12 @@ async def get_expense(expense_id: uuid.UUID, ctx: ReadCtx):
 
 
 @router.post("/{expense_id}/void", response_model=ExpenseOut)
-async def void_expense(
-    expense_id: uuid.UUID, body: VoidRequest, ctx: VoidCtx, override: OverrideDep
-):
+async def void_expense(expense_id: uuid.UUID, body: VoidRequest, ctx: VoidCtx):
     row = await ExpenseService.void(
         ctx.session,
         ctx.tenant_id,
         expense_id,
         reason=body.reason,
         voided_by=ctx.user.id,
-        shift_override=override.active,
     )
     return _expense(row)
