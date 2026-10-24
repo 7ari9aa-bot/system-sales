@@ -106,7 +106,10 @@ async def test_a_return_the_next_day_rides_todays_session(db, tenant_ctx) -> Non
     await db.flush()
     register = await PosService._get_register(db, tid, shift.register_id)
 
-    today = await PosService.working_session(db, tid, register.id)
+    assert await PosService.working_session(db, tid, register.id) is None, (
+        "yesterday's session is closed; nothing is open until today's balance is entered"
+    )
+    today = await PosService.open_day(db, tid, register.id, opening_float="50.00")
     assert today.id != shift.id, "the stale session is closed and a fresh one is opened"
 
     out = await PosService.return_sale(

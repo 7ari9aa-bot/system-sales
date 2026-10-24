@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Annotated
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -474,14 +475,44 @@ async def get_close_preview(session_id: UUID, ctx: TenantCtxDep):
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in preview.items()}
 
 
-@router.post("/registers/{register_id}/working-session", response_model=WorkingSessionOut)
-async def working_session(register_id: UUID, ctx: PosWriteCtx):
-    """Today's session for this register: opened on the first call, the same one after that.
+class OpenDayRequest(BaseModel):
+    """Starting the day needs the drawer's real balance. No default, so none can be skipped."""
 
-    The till's quote / items / scan / held-cart calls are keyed by a session id. The cashier opens
-    no shift, so the screen asks for the session here instead. Idempotent, and safe to race.
+    model_config = ConfigDict(extra="forbid")
+
+    opening_float: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+
+
+class DayStateOut(BaseModel):
+    """Whether the register's day has been started. ``session`` is None until it has."""
+
+    started: bool
+    session: WorkingSessionOut | None = None
+
+
+@router.post("/registers/{register_id}/working-session", response_model=DayStateOut)
+async def working_session(register_id: UUID, ctx: PosWriteCtx):
+    """Has today been started on this register? Read-only: it never opens a day.
+
+    Returns the day's session once an opening balance was entered, otherwise
+    ``started: false`` and the screen asks for the balance (``POST .../open-day``).
     """
-    return _session_out(await PosService.working_session(ctx.session, ctx.tenant_id, register_id))
+    found = await PosService.working_session(ctx.session, ctx.tenant_id, register_id)
+    return {"started": found is not None, "session": _session_out(found) if found else None}
+
+
+@router.post("/registers/{register_id}/open-day", response_model=DayStateOut, status_code=201)
+async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
+    """Start the day with the drawer's real opening balance (required). Idempotent: a second
+    call returns the day already open and keeps the first figure."""
+    opened = await PosService.open_day(
+        ctx.session,
+        ctx.tenant_id,
+        register_id,
+        opening_float=body.opening_float,
+        actor_user_id=ctx.user.id,
+    )
+    return {"started": True, "session": _session_out(opened)}
 
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)

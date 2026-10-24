@@ -836,39 +836,75 @@ class PosService:
     # --------------------------------------------------------------- sell ----
 
     @staticmethod
-    async def _working_session(
+    async def _today_session(
         session: AsyncSession, tenant_id: UUID, register: PosRegister
-    ) -> PosSession:
-        """The register's session for today, opened on the first sale and reused after it.
+    ) -> PosSession | None:
+        """The register's OPEN session for today, or None when the day has not been started.
 
-        The cashier layer has no cash drawer, so there is no shift to open or count. A session
-        still exists because receipts, returns and reports hang off it, but here it only means
-        "this register, today": no opening float, no count, and no per-cashier rule (who sold is
-        on the receipt, so two people can sell on one register). A session left over from a
-        previous merchant day is closed with no cash figures and a new one is opened. Concurrent
-        first sales race on the ``uq_pos_sessions_open_per_register`` index; the loser re-reads
-        the winner's row.
+        Read-only apart from one thing: a session left open from a previous merchant day is
+        closed (nobody counted the drawer at the end of that day, so its closing figures stay
+        empty) and None is returned, so the next sale cannot happen until a new day is started.
         """
         tz = await PosService._shop_timezone(session, tenant_id)
-        for _attempt in range(3):
-            current = (
-                await session.execute(
-                    select(PosSession).where(
-                        PosSession.tenant_id == tenant_id,
-                        PosSession.register_id == register.id,
-                        PosSession.status == "OPEN",
-                    )
+        current = (
+            await session.execute(
+                select(PosSession).where(
+                    PosSession.tenant_id == tenant_id,
+                    PosSession.register_id == register.id,
+                    PosSession.status == "OPEN",
                 )
-            ).scalar_one_or_none()
+            )
+        ).scalar_one_or_none()
+        if current is None:
+            return None
+        try:
+            PosService._ensure_session_current(current, tz=tz)
+            return current
+        except ConflictError:
+            current.status = "CLOSED"
+            current.closed_at = datetime.now(UTC)
+            await session.flush()
+            return None
+
+    @staticmethod
+    async def working_session(
+        session: AsyncSession, tenant_id: UUID, register_id: UUID
+    ) -> PosSession | None:
+        """Today's session for a register, or None when the day has not been started."""
+        register = await PosService._get_register(session, tenant_id, register_id)
+        if not register.is_active:
+            raise ConflictError(f"register {register.code} is not active")
+        return await PosService._today_session(session, tenant_id, register)
+
+    @staticmethod
+    async def open_day(
+        session: AsyncSession,
+        tenant_id: UUID,
+        register_id: UUID,
+        *,
+        opening_float: object,
+        actor_user_id: UUID | None = None,
+    ) -> PosSession:
+        """Start the trading day: the drawer's real balance, entered by the employee.
+
+        The opening balance is required. There is no default and no zero-by-omission: a day
+        with no balance is a day whose closing count means nothing. Opening twice returns the
+        day already open, unchanged (the first figure stands), so a double tap or a second
+        cashier on the same till cannot overwrite it. Concurrent first calls race on the
+        ``uq_pos_sessions_open_per_register`` index and the loser reads the winner's row.
+        """
+        if opening_float is None or str(opening_float).strip() == "":
+            raise ValidationError("opening_float is required to start the day")
+        opening = to_money(opening_float, "opening_float")
+        if opening < 0:
+            raise ValidationError("opening_float must not be negative")
+        register = await PosService._get_register(session, tenant_id, register_id)
+        if not register.is_active:
+            raise ConflictError(f"register {register.code} is not active")
+        for _attempt in range(3):
+            current = await PosService._today_session(session, tenant_id, register)
             if current is not None:
-                try:
-                    PosService._ensure_session_current(current, tz=tz)
-                    return current
-                except ConflictError:
-                    # Yesterday's session: close it (no cash was ever counted) and open today's.
-                    current.status = "CLOSED"
-                    current.closed_at = datetime.now(UTC)
-                    await session.flush()
+                return current
             try:
                 async with session.begin_nested():
                     fresh = PosSession(
@@ -876,24 +912,14 @@ class PosService:
                         register_id=register.id,
                         profile_id=register.profile_id,
                         status="OPEN",
-                        opening_float=Decimal("0.00"),
+                        opening_float=opening,
                     )
                     session.add(fresh)
                     await session.flush()
                 return fresh
             except IntegrityError:
-                continue  # another sale opened it first: read theirs
-        raise ConflictError("could not open a working session for this register")
-
-    @staticmethod
-    async def working_session(
-        session: AsyncSession, tenant_id: UUID, register_id: UUID
-    ) -> PosSession:
-        """Today's working session for a register, opened on first ask."""
-        register = await PosService._get_register(session, tenant_id, register_id)
-        if not register.is_active:
-            raise ConflictError(f"register {register.code} is not active")
-        return await PosService._working_session(session, tenant_id, register)
+                continue  # another call opened it first: read theirs
+        raise ConflictError("could not start the day for this register")
 
     @staticmethod
     async def record_sale(
@@ -925,7 +951,11 @@ class PosService:
         for item in items:
             PosService._positive_qty(item.get("quantity"))
 
-        pos_session = await PosService._working_session(session, tenant_id, register)
+        pos_session = await PosService._today_session(session, tenant_id, register)
+        if pos_session is None:
+            raise ConflictError(
+                "the day has not been started: enter the drawer's opening balance first"
+            )
         profile = await PosService.resolve_profile(session, tenant_id, pos_session)
         if profile is not None and not profile.is_active:
             raise ConflictError("this POS profile is not active")

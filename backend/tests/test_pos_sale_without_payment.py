@@ -16,7 +16,7 @@ from app.modules.inventory.models import InventoryBalance
 from app.modules.orders.models import Order, OrderPayment, Refund
 from app.modules.pos.models import PosCashMovement, PosSession
 from app.modules.pos.service import PosService
-from tests._pos_helpers import till
+from tests._pos_helpers import till, start_day
 
 pytestmark = pytest.mark.asyncio
 
@@ -25,6 +25,7 @@ async def _shop(db, tenant_ctx):
     shift, variant, customer = await till(db, tenant_ctx)
     # The till helper opens a shift; close it so the test proves a sale needs none.
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await start_day(db, tenant_ctx, shift.register_id)
     register = await PosService._get_register(db, tenant_ctx.tenant_id, shift.register_id)
     return register, variant, customer
 

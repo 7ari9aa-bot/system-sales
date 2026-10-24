@@ -35,6 +35,17 @@ async def till(db, tenant_ctx):
     return shift, variant, customer
 
 
+async def start_day(db, tenant_ctx, register_id, opening="0.00"):
+    """Start the trading day the way a cashier does: enter the drawer's opening balance.
+
+    A sale is refused until this has happened, so every test that sells on a till without an
+    open shift calls it first.
+    """
+    return await PosService.open_day(
+        db, tenant_ctx.tenant_id, register_id, opening_float=opening
+    )
+
+
 async def ctx_for(db, tenant_ctx, role_code):
     """A TenantContext carrying the permissions the DB really grants that role."""
     import sqlalchemy as sa

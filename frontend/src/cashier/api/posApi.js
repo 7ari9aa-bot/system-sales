@@ -93,8 +93,11 @@ export const posApi = {
   /** Best sellers over [since, until] by net revenue (returns taken off). No cost or profit. */
   topProducts: (since, until, limit = 20) => api(`/pos/reports/top-products?since=${since}&until=${until}&limit=${limit}`),
 
-  /** Today's session for a register, opened on the first call. No shift screen, no float, no count. */
+  /** Has today been started on this register? Read-only: { started, session|null }. It never opens a day. */
   workingSession: async (registerId) => post(`/pos/registers/${seg(registerId)}/working-session`, {}),
+  /** Start the day with the drawer's real opening balance (required). A second call keeps the first figure. */
+  openDay: async (registerId, openingFloat) =>
+    post(`/pos/registers/${seg(registerId)}/open-day`, { opening_float: String(openingFloat) }),
 
   /* ---- shift ---- */
   openSession: async (registerId, { openingFloat = 0, floatsByMethod, profileId } = {}) =>

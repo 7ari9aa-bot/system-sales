@@ -7,13 +7,14 @@ const { pos, api } = vi.hoisted(() => ({
     listSessions: vi.fn(),
     getSession: vi.fn(),
     workingSession: vi.fn(),
+    openDay: vi.fn(),
   },
   api: vi.fn(),
 }));
 vi.mock("./posApi", () => ({ posApi: pos }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState, resolveWorkingSession } from "./shiftState";
+import { bootstrapPos, chooseRegister, parseOpeningBalance, pickMyShift, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
 
 const REG = { id: "r1", code: "MAIN", name: "Main", is_active: true, warehouse_id: "w1", profile_id: "p1" };
 const SESSION = { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00" };
@@ -224,11 +225,18 @@ describe("chooseRegister (which drawer a cashier may open a shift on)", () => {
 describe("resolveWorkingSession: the till without a shift", () => {
   it("one active register => its working session, asked from the server (never a shift screen)", async () => {
     pos.listRegisters.mockResolvedValue([REG]);
-    pos.workingSession.mockResolvedValue(SESSION);
+    pos.workingSession.mockResolvedValue({ started: true, session: SESSION });
     const s = await resolveWorkingSession({ canConfigure: false });
     expect(s).toEqual({ status: "open", register: REG, session: SESSION });
     expect(pos.workingSession).toHaveBeenCalledWith("r1");
     expect(pos.listSessions).not.toHaveBeenCalled();
+  });
+
+  it("the day not started => needs_opening: looking at the till never opens it", async () => {
+    pos.listRegisters.mockResolvedValue([REG]);
+    pos.workingSession.mockResolvedValue({ started: false, session: null });
+    expect(await resolveWorkingSession({})).toEqual({ status: "needs_opening", register: REG });
+    expect(pos.openDay).not.toHaveBeenCalled();
   });
 
   it("no register => needs_setup, and nothing is opened", async () => {
@@ -250,7 +258,7 @@ describe("resolveWorkingSession: the till without a shift", () => {
   it("an explicit pick among several is honoured; an unknown pick is refused, not replaced", async () => {
     const r2 = { ...REG, id: "r2", code: "B" };
     pos.listRegisters.mockResolvedValue([REG, r2]);
-    pos.workingSession.mockResolvedValue({ ...SESSION, id: "s2", register_id: "r2" });
+    pos.workingSession.mockResolvedValue({ started: true, session: { ...SESSION, id: "s2", register_id: "r2" } });
     expect(await resolveWorkingSession({ registerId: "r2" })).toMatchObject({ status: "open", register: { id: "r2" } });
     expect(pos.workingSession).toHaveBeenCalledWith("r2");
     pos.workingSession.mockClear();
@@ -260,7 +268,7 @@ describe("resolveWorkingSession: the till without a shift", () => {
 
   it("inactive registers are ignored", async () => {
     pos.listRegisters.mockResolvedValue([{ ...REG, id: "old", is_active: false }, REG]);
-    pos.workingSession.mockResolvedValue(SESSION);
+    pos.workingSession.mockResolvedValue({ started: true, session: SESSION });
     expect(await resolveWorkingSession({})).toMatchObject({ status: "open", register: { id: "r1" } });
   });
 
@@ -272,5 +280,34 @@ describe("resolveWorkingSession: the till without a shift", () => {
     expect(await resolveWorkingSession({})).toEqual({ status: "unauthorized" });
     pos.workingSession.mockRejectedValueOnce(Object.assign(new Error("down"), { status: 0 }));
     expect(await resolveWorkingSession({})).toMatchObject({ status: "error", retryable: true });
+  });
+});
+
+describe("opening balance: required, and checked before any request", () => {
+  it("accepts a cash amount in Western or Arabic digits and either decimal mark", () => {
+    expect(parseOpeningBalance("250")).toBe("250");
+    expect(parseOpeningBalance(" 250.50 ")).toBe("250.50");
+    expect(parseOpeningBalance("250,5")).toBe("250.5");
+    expect(parseOpeningBalance("٢٥٠٫٥٠")).toBe("250.50");
+    expect(parseOpeningBalance("0")).toBe("0");
+  });
+
+  it("refuses blank, negative, text and too many decimals", () => {
+    for (const bad of ["", "   ", null, undefined, "-5", "abc", "12.345", "1e3", "1,000.50", "--"]) {
+      expect(parseOpeningBalance(bad)).toBeNull();
+    }
+  });
+
+  it("startDay sends the cleaned balance and returns the session", async () => {
+    pos.openDay.mockResolvedValue({ started: true, session: SESSION });
+    expect(await startDay("r1", "٢٥٠٫٥٠")).toEqual(SESSION);
+    expect(pos.openDay).toHaveBeenCalledWith("r1", "250.50");
+  });
+
+  it("startDay with no valid balance throws and makes NO request", async () => {
+    pos.openDay.mockClear();
+    await expect(startDay("r1", "")).rejects.toThrow(/رصيد الدرج/);
+    await expect(startDay("r1", "-1")).rejects.toThrow();
+    expect(pos.openDay).not.toHaveBeenCalled();
   });
 });

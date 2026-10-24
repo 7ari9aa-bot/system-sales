@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 419,
-    "sha256": "ccf8a8c387575bc19f5dc9d722810777862e88c8f51048f0f2661b7e26b5a31d",
-    "typed_operations": 256
+    "operations": 420,
+    "sha256": "296c8ede9b55f94fc80fdd88f8792cd95129baaf193403dbc1d44ae7cb63c8f0",
+    "typed_operations": 257
   },
   "spec": {
     "components": {
@@ -5532,6 +5532,30 @@
             "request_type"
           ],
           "title": "DataRequestCreate",
+          "type": "object"
+        },
+        "DayStateOut": {
+          "description": "Whether the register's day has been started. ``session`` is None until it has.",
+          "properties": {
+            "session": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkingSessionOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "started": {
+              "title": "Started",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "started"
+          ],
+          "title": "DayStateOut",
           "type": "object"
         },
         "DecisionListOut": {
@@ -11932,6 +11956,30 @@
             "by_kind"
           ],
           "title": "NotificationSummary",
+          "type": "object"
+        },
+        "OpenDayRequest": {
+          "additionalProperties": false,
+          "description": "Starting the day needs the drawer's real balance. No default, so none can be skipped.",
+          "properties": {
+            "opening_float": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
+                  "type": "string"
+                }
+              ],
+              "title": "Opening Float"
+            }
+          },
+          "required": [
+            "opening_float"
+          ],
+          "title": "OpenDayRequest",
           "type": "object"
         },
         "OpenSessionRequest": {
@@ -50932,6 +50980,124 @@
           ]
         }
       },
+      "/api/v1/pos/registers/{register_id}/open-day": {
+        "post": {
+          "description": "Start the day with the drawer's real opening balance (required). Idempotent: a second\ncall returns the day already open and keeps the first figure.",
+          "operationId": "open_day_api_v1_pos_registers__register_id__open_day_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "register_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Register Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenDayRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DayStateOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Day",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/registers/{register_id}/sales": {
         "post": {
           "description": "Record a sale: no shift to open, no payment to take. Stock comes off the shelf.",
@@ -51167,7 +51333,7 @@
       },
       "/api/v1/pos/registers/{register_id}/working-session": {
         "post": {
-          "description": "Today's session for this register: opened on the first call, the same one after that.\n\nThe till's quote / items / scan / held-cart calls are keyed by a session id. The cashier opens\nno shift, so the screen asks for the session here instead. Idempotent, and safe to race.",
+          "description": "Has today been started on this register? Read-only: it never opens a day.\n\nReturns the day's session once an opening balance was entered, otherwise\n``started: false`` and the screen asks for the balance (``POST .../open-day``).",
           "operationId": "working_session_api_v1_pos_registers__register_id__working_session_post",
           "parameters": [
             {
@@ -51250,7 +51416,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/WorkingSessionOut"
+                    "$ref": "#/components/schemas/DayStateOut"
                   }
                 }
               },

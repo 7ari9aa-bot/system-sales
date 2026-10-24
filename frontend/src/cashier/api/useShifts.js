@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
-import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState, resolveWorkingSession } from "./shiftState";
+import { bootstrapPos, chooseRegister, pickMyShift, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
 import { shiftsFromApi } from "./shiftAdapter";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
@@ -34,6 +34,15 @@ export function useWorkingSession({ registerId = null } = {}) {
     queryKey: [...WORKING_SESSION_KEY, registerId],
     queryFn: () => resolveWorkingSession({ registerId }),
     staleTime: 60_000,
+  });
+}
+
+/** Enter the opening balance: the day starts, and every till screen re-reads its session. */
+export function useStartDay() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ registerId, balance }) => startDay(registerId, balance),
+    onSuccess: () => qc.invalidateQueries({ queryKey: WORKING_SESSION_KEY }),
   });
 }
 

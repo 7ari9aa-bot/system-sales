@@ -89,11 +89,12 @@ export async function resolveShiftState({ canConfigure = false, userId = null } 
  * The till WITHOUT a shift: which register, and its working session for today.
  *
  *   needs_setup | forbidden | unauthorized | error
- *   choose (several active registers, none picked: `registers`)
- *   open   (register, session)
+ *   choose        (several active registers, none picked: `registers`)
+ *   needs_opening (register): the day has not been started, the drawer's balance must be entered
+ *   open          (register, session)
  *
- * The cashier opens and closes nothing; the server opens today's session on the first ask and
- * returns the same one afterwards. With more than one active register nothing is guessed: the
+ * Nothing is opened by looking. The day starts only when the employee enters the drawer's real
+ * opening balance (`startDay`); until then no sale, return or exchange can be rung. With more than one active register nothing is guessed: the
  * old "first active register" meant every sale landed on whichever till happened to sort first.
  */
 export async function resolveWorkingSession({ canConfigure = false, registerId = null } = {}) {
@@ -107,10 +108,26 @@ export async function resolveWorkingSession({ canConfigure = false, registerId =
   const register = registers.length === 1 ? registers[0] : registers.find((r) => r.id === registerId);
   if (!register) return { status: "choose", registers };
   try {
-    return { status: "open", register, session: await posApi.workingSession(register.id) };
+    const day = await posApi.workingSession(register.id);
+    return day?.started && day.session ? { status: "open", register, session: day.session } : { status: "needs_opening", register };
   } catch (err) {
     return failure(err);
   }
+}
+
+/** The opening balance as a cash amount, or null when it is missing or not a non-negative number. */
+export function parseOpeningBalance(raw) {
+  const text = String(raw ?? "").trim().replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace("٫", ".").replace(",", ".");
+  if (text === "" || !/^\d+(\.\d{1,2})?$/.test(text)) return null;
+  return text;
+}
+
+/** Start the day. Refuses a missing or invalid balance here, before any request is made. */
+export async function startDay(registerId, rawBalance) {
+  const balance = parseOpeningBalance(rawBalance);
+  if (balance === null) throw new Error("أدخل رصيد الدرج في بداية اليوم (رقم صحيح أو عشري).");
+  const day = await posApi.openDay(registerId, balance);
+  return day.session;
 }
 
 /**

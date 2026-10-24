@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
-import { useWorkingSession } from "@/cashier/api/useShifts";
+import { useStartDay, useWorkingSession } from "@/cashier/api/useShifts";
+import { parseOpeningBalance } from "@/cashier/api/shiftState";
 
 const PICK_KEY = "cashier:register";
 
@@ -62,6 +63,47 @@ export function ChooseRegister({ registers, onPick }) {
 }
 
 /**
+ * The day has not been started: the employee enters the drawer's real balance. Nothing can be
+ * sold, returned or exchanged before this, and the figure cannot be skipped or left blank.
+ */
+export function StartDay({ register, onStart, pending, error }) {
+  const [value, setValue] = useState("");
+  const parsed = parseOpeningBalance(value);
+  const showInvalid = value.trim() !== "" && parsed === null;
+  return (
+    <form
+      className={CARD}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (parsed !== null && !pending) onStart(parsed);
+      }}
+    >
+      <p className="text-base font-bold">بداية اليوم</p>
+      <p className="text-sm text-muted-foreground">
+        عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي{register?.name ? ` (${register.name})` : ""}.
+      </p>
+      <label className="w-full text-start text-sm font-semibold" htmlFor="opening-balance">رصيد الدرج في بداية اليوم</label>
+      <input
+        id="opening-balance"
+        className="h-11 w-full rounded-lg border border-border bg-background px-3 text-center text-lg tabular-nums"
+        inputMode="decimal"
+        autoFocus
+        autoComplete="off"
+        placeholder="0.00"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        aria-invalid={showInvalid}
+      />
+      {showInvalid && <p className="text-xs text-destructive" role="alert">أدخل رقماً صحيحاً (مثال: 250 أو 250.50).</p>}
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+      <Button type="submit" className="w-full" disabled={parsed === null || pending}>
+        {pending ? "جارٍ البدء…" : "ابدأ اليوم"}
+      </Button>
+    </form>
+  );
+}
+
+/**
  * Gives `children` today's working session of the till, so a screen needs no shift to be open.
  * `children` is a function: ({ session, register }) => element.
  */
@@ -83,6 +125,21 @@ export default function WorkingSessionGate({ children }) {
       />
     );
   }
+  if (state.status === "needs_opening") {
+    return <StartDayGate register={state.register} />;
+  }
   if (state.status !== "open") return <GateMessage state={state} />;
   return children({ session: state.session, register: state.register });
+}
+
+function StartDayGate({ register }) {
+  const start = useStartDay();
+  return (
+    <StartDay
+      register={register}
+      pending={start.isPending}
+      error={start.error?.message}
+      onStart={(balance) => start.mutate({ registerId: register.id, balance })}
+    />
+  );
 }

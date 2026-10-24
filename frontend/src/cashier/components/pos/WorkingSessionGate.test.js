@@ -14,3 +14,11 @@ describe("gateMessage", () => {
     expect(gateMessage(undefined)).toBe("تعذّر تحميل الكاشير.");
   });
 });
+
+describe("the start-of-day gate", () => {
+  it("exports the opening-balance screen the sales, returns and exchange screens depend on", async () => {
+    const mod = await import("./WorkingSessionGate");
+    expect(typeof mod.StartDay).toBe("function");
+    expect(typeof mod.default).toBe("function");
+  });
+});

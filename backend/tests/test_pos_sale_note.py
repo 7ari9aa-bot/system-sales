@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.modules.orders.models import Order
 from app.modules.pos.service import PosService
-from tests._pos_helpers import ctx_for, till
+from tests._pos_helpers import ctx_for, till, start_day
 from tests.test_pos_sale_http import _post
 
 pytestmark = pytest.mark.asyncio
@@ -20,6 +20,7 @@ pytestmark = pytest.mark.asyncio
 async def _shop(db, tenant_ctx):
     shift, variant, _customer = await till(db, tenant_ctx)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await start_day(db, tenant_ctx, shift.register_id)
     return shift.register_id, variant
 
 

@@ -20,7 +20,7 @@ from app.modules.inventory.models import InventoryBalance
 from app.modules.orders.models import OrderPayment
 from app.modules.pos.models import PosCashMovement
 from app.modules.pos.service import PosService
-from tests._pos_helpers import ctx_for, till
+from tests._pos_helpers import ctx_for, till, start_day
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,6 +49,7 @@ async def _post(ctx, path, body):
 async def _shop(db, tenant_ctx):
     shift, variant, customer = await till(db, tenant_ctx)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    await start_day(db, tenant_ctx, shift.register_id)
     return shift.register_id, variant, customer
 
 
@@ -180,31 +181,70 @@ async def test_overselling_over_http_is_a_clear_conflict_not_a_500(db, tenant_ct
     assert r.status_code != 500
 
 
-async def test_working_session_is_opened_on_demand_and_is_the_same_one_every_time(
-    db, tenant_ctx
-) -> None:
-    """The till needs a session id for quote/items/scan/held; the cashier opens no shift."""
+async def test_asking_for_the_session_never_opens_a_day(db, tenant_ctx) -> None:
+    """Looking at the till must not start the day: the balance has to be entered first."""
     from app.modules.pos.models import PosSession
 
-    register_id, _variant, _customer = await _shop(db, tenant_ctx)
+    shift, _variant, _customer = await till(db, tenant_ctx)
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
     ctx = await ctx_for(db, tenant_ctx, "owner")
 
-    first = await _post(ctx, f"/api/v1/pos/registers/{register_id}/working-session", {})
-    second = await _post(ctx, f"/api/v1/pos/registers/{register_id}/working-session", {})
+    r = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/working-session", {})
 
-    assert first.status_code == 200, first.text
-    assert second.status_code == 200, second.text
-    assert first.json()["id"] == second.json()["id"], "asking twice must not open a second session"
-    assert first.json()["status"] == "OPEN"
-    assert first.json()["register_id"] == str(register_id)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"started": False, "session": None}
     open_now = (
         await db.execute(
             select(func.count())
             .select_from(PosSession)
-            .where(PosSession.register_id == register_id, PosSession.status == "OPEN")
+            .where(PosSession.register_id == shift.register_id, PosSession.status == "OPEN")
         )
     ).scalar_one()
-    assert open_now == 1
+    assert open_now == 0, "a read must never open a day"
+
+
+async def test_open_day_needs_a_balance_and_keeps_the_first_one(db, tenant_ctx) -> None:
+    from app.modules.pos.models import PosSession
+
+    shift, _variant, _customer = await till(db, tenant_ctx)
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    ctx = await ctx_for(db, tenant_ctx, "owner")
+    url = f"/api/v1/pos/registers/{shift.register_id}/open-day"
+
+    for bad in ({}, {"opening_float": None}, {"opening_float": "-5"}, {"opening_float": "abc"}):
+        refused = await _post(ctx, url, bad)
+        assert refused.status_code == 422, (bad, refused.text)
+    extra = await _post(ctx, url, {"opening_float": "10", "method": "card"})
+    assert extra.status_code == 422, extra.text
+
+    first = await _post(ctx, url, {"opening_float": "250.50"})
+    second = await _post(ctx, url, {"opening_float": "999.00"})
+    assert first.status_code == 201, first.text
+    assert first.json()["started"] is True
+    assert second.json()["session"]["id"] == first.json()["session"]["id"]
+    row = (
+        await db.execute(select(PosSession).where(PosSession.id == first.json()["session"]["id"]))
+    ).scalar_one()
+    assert str(row.opening_float) == "250.50", "the first figure stands; a second call never overwrites it"
+
+    seen = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/working-session", {})
+    assert seen.json()["started"] is True
+    assert seen.json()["session"]["id"] == first.json()["session"]["id"]
+
+
+async def test_a_sale_is_refused_until_the_day_is_started(db, tenant_ctx) -> None:
+    shift, variant, customer = await till(db, tenant_ctx)
+    await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="0.00")
+    ctx = await ctx_for(db, tenant_ctx, "owner")
+    body = {"items": [{"variant_id": str(variant.id), "quantity": 1}]}
+
+    refused = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/sales", body)
+    assert refused.status_code == 409, refused.text
+    assert "opening balance" in refused.text
+
+    await start_day(db, tenant_ctx, shift.register_id, "100.00")
+    ok = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/sales", body)
+    assert ok.status_code == 201, ok.text
 
 
 async def test_working_session_needs_orders_write_and_a_real_register(db, tenant_ctx) -> None:

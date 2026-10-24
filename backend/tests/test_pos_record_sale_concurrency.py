@@ -42,7 +42,8 @@ async def shop(db_url, admin_url):
 
 
 async def _shelf(factory, t, stock: int):
-    """A register with NO open session, and one variant with exactly `stock` units."""
+    """A register whose day HAS been started (opening balance entered), and one variant with exactly
+    `stock` units."""
 
     async def setup(s):
         from app.modules.catalog.service import CatalogService
@@ -52,6 +53,7 @@ async def _shelf(factory, t, stock: int):
         reg = await PosService.create_register(
             s, t, name="k", code=f"R-{uuid.uuid4().hex[:6]}", warehouse_id=wh.id
         )
+        await PosService.open_day(s, t, reg.id, opening_float="100.00")
         product = await CatalogService.create_product(
             s, t, title="x", slug=f"p-{uuid.uuid4().hex[:10]}"
         )
@@ -86,7 +88,7 @@ async def _read(factory, t, fn):
     return out
 
 
-async def test_one_unit_six_sales_exactly_one_wins_and_one_session_opens(shop) -> None:
+async def test_one_unit_six_sales_exactly_one_wins_on_the_one_open_day(shop) -> None:
     factory, t, user = shop
     register_id, variant_id = await _shelf(factory, t, stock=1)
 
@@ -115,7 +117,7 @@ async def test_one_unit_six_sales_exactly_one_wins_and_one_session_opens(shop) -
             .where(PosSession.register_id == register_id)
         ),
     )
-    assert sessions.scalar_one() == 1, "the racers must share ONE working session"
+    assert sessions.scalar_one() == 1, "the racers must share the ONE session the day opened"
 
 
 async def test_three_units_six_sales_exactly_three_win_with_no_money_rows(shop) -> None:
@@ -177,4 +179,4 @@ async def test_first_sales_on_different_items_still_share_one_session(shop) -> N
             .where(PosSession.register_id == register_id)
         ),
     )
-    assert sessions.scalar_one() == 1, "the racers must share ONE working session"
+    assert sessions.scalar_one() == 1, "the racers must share the ONE session the day opened"
