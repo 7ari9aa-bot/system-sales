@@ -4,11 +4,11 @@ Money rules (the same as the POS):
   * amounts are Decimal with at most 2 places. Unlike to_money(), which ROUNDS, a value
     with a third decimal is REJECTED: silently turning 10.005 into 10.01 books money the
     user never typed.
-  * a CASH expense is paid out of an OPEN drawer: it books one `pay_out` row on that
-    session (reference_type='expense') in the same transaction, so the drawer's expected
-    cash drops by exactly the expense.
-  * a posted expense is never edited. void() books the reverse drawer row (`pay_in`) and
-    flips the status once; voiding twice is a conflict, not a second reversal.
+  * an expense is a RECORD (category, amount, method, date). It never touches the cash
+    drawer: the POS does not move money, so no `pay_out` row is written and a caller naming
+    a shift is refused.
+  * a posted expense is never edited. void() only flips the status (and keeps the reason and
+    time); nothing is reversed because nothing was booked. Voiding twice is a conflict.
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ def exact_money(value: object, field: str = "amount") -> Decimal:
         return _exact_money(value, field)
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-
 
 
 class NumberingService:

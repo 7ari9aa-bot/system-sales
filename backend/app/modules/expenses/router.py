@@ -1,8 +1,8 @@
 """EXPENSES routes: categories, post/void an expense, list with totals.
 
-Reading needs `orders:read`. Posting a CASH expense is a drawer event, so the cashier
-(`orders:write`) may do it. VOIDING reverses money, so it needs `inventory:write`
-(manager/owner, not the frontline `staff` role).
+Reading needs `orders:read`. Posting an expense is a record, so the cashier (`orders:write`)
+may do it. VOIDING cancels a recorded cost, so it needs `inventory:write` (manager/owner, not
+the frontline `staff` role). No expense moves money in or out of a drawer.
 """
 
 from __future__ import annotations

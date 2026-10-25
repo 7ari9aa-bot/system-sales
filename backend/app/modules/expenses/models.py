@@ -2,12 +2,11 @@
 
 An expense is a posted business cost (rent, electricity, packaging...). It is NOT a
 supplier payment (paying a supplier settles a debt for stock that is later costed
-when sold) and NOT a drawer movement by itself: a CASH expense also books one
-`pay_out` row on the open POS session (reference_type='expense'), so the drawer
-count and the expense list can never disagree.
+when sold) and NOT a drawer movement: the POS records, it never moves money, so an expense
+writes no drawer row whatever its method.
 
-A posted expense is never edited or deleted. A mistake is VOIDED, which books the
-reverse drawer row and keeps the original (same rule as the stock ledger).
+A posted expense is never edited or deleted. A mistake is VOIDED, which keeps the original
+row and marks it voided with a reason (same rule as the stock ledger).
 Enum-like columns are String with allowed values documented inline, never sa.Enum.
 """
 
@@ -65,7 +64,7 @@ class Expense(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     # allowed: cash | card | wallet | bank_transfer
     payment_method: Mapped[str] = mapped_column(String(15))
     expense_date: Mapped[date] = mapped_column(Date)
-    # Cash only: the OPEN session whose drawer paid it (its pay_out row points back here).
+    # Kept for history only. New expenses never name a session (always NULL).
     session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="SET NULL"), nullable=True
     )
@@ -85,7 +84,7 @@ class Expense(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
             "payment_method IN ('cash','card','wallet','bank_transfer')",
             name="ck_expenses_payment_method",
         ),
-        # A cash expense must name the drawer that paid it; any other method must not.
+        # Only a cash expense may carry a session (old rows); a non-cash one never does.
         CheckConstraint(
             "session_id IS NULL OR payment_method = 'cash'",
             name="ck_expenses_shift_only_cash",

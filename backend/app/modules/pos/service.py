@@ -1,9 +1,12 @@
-"""POS domain service — the sell flow and the cash-drawer truth (§189).
+"""POS domain service — the cashier's RECORD of the day (§189).
 
-The POS says "make me a sale"; it never says "decrement stock". Every sell is
-CreateOrder → capture payment → the §140 reservation machinery settles the
-stock, exactly as a WhatsApp order would. This module owns profiles, registers,
-sessions, cash rows, receipts and the per-method close reconciliation.
+The POS records sales, returns and exchanges (items, prices, discounts, invoice value, employee,
+time) and updates stock. It does not take payment or move money: no tender, no change, no drawer
+count, no refund. The POS says "make me a sale"; it never says "decrement stock": a sell is
+CreateOrder → the §140 reservation machinery settles the stock, exactly as a WhatsApp order
+would. This module owns profiles, registers, sessions, receipts and the day's closing balance
+(opening balance + invoices − returns). Older cash rows and per-method counts stay readable as
+history.
 
 The scan path is the §179 entry point — a barcode (or any identifier) resolves
 through ``CatalogService.resolve_identifier`` to exactly one active variant, and
@@ -368,6 +371,12 @@ class PosService:
     async def _cash_totals(
         session: AsyncSession, tenant_id: UUID, session_id: UUID
     ) -> tuple[Decimal, Decimal]:
+        """HISTORY only: the in/out totals of the old cash-drawer rows of a session.
+
+        Nothing writes those rows any more (the POS does not move money), so for a current day
+        both figures are zero. Older sessions keep theirs, and the closing screen still shows
+        them. Never use this to compute a balance: that is ``_day_totals``.
+        """
         rows = (
             await session.execute(
                 select(
@@ -384,31 +393,6 @@ class PosService:
         inflow = next((Decimal(a) for d, a in rows if d == "in"), Decimal("0"))
         outflow = next((Decimal(a) for d, a in rows if d == "out"), Decimal("0"))
         return inflow, outflow
-
-    @staticmethod
-    async def _append_sale_cash(
-        session: AsyncSession,
-        tenant_id: UUID,
-        session_id: UUID,
-        *,
-        reason: str,
-        amount: Decimal,
-        created_by: UUID | None,
-        reference_id: UUID,
-    ) -> PosCashMovement:
-        row = PosCashMovement(
-            tenant_id=tenant_id,
-            session_id=session_id,
-            direction="in" if reason == "cash_sale" else "out",
-            reason=reason,
-            amount=amount,
-            reference_type="order",
-            reference_id=reference_id,
-            created_by_user_id=created_by,
-        )
-        session.add(row)
-        await session.flush()
-        return row
 
     # --------------------------------------------------------------- scan ----
 
@@ -2409,8 +2393,8 @@ class PosService:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
         # The sale may have been rung on an EARLIER shift, even one already counted and closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
-        # (below); the money leaves the drawer that is open NOW. Booking it on the old shift would
-        # change a closed, counted report after the fact.
+        # (below); the return itself is recorded on the day that is open NOW. Booking it on the old
+        # day would change a closed report after the fact.
 
         # Requested quantities, merged per variant (a customer may hand back
         # the same SKU twice in one return).
@@ -2427,8 +2411,7 @@ class PosService:
 
         # Serialise returns of ONE sale. The cap below is "sold minus already returned": read,
         # decide, write. Without a lock two returns of the last unit both read "0 returned" and
-        # both pass; the money is only saved later by the payment-row cap, which fires late
-        # (after the drawer and the shelf were touched). The row lock makes the second one wait,
+        # both pass and the shelf grows twice for one unit. The row lock makes the second one wait,
         # then see the first one's lines and refuse on the quantity.
         order = (
             await session.execute(
@@ -2469,7 +2452,7 @@ class PosService:
                 f"{len(unknown)} returned variant(s) were never sold on this order"
             )
 
-        # The money cap: a variant cannot come back more times than it sold.
+        # The quantity cap: a variant cannot come back more times than it sold.
         already_returned = dict(
             (
                 await session.execute(
@@ -2495,9 +2478,8 @@ class PosService:
                 )
 
         if restock:
-            # The goods cap, separate from the money cap: a money-only return
-            # consumed no shelf space, and goods already back cannot come back
-            # twice.
+            # The shelf cap, separate from the quantity cap: a return that did not restock put
+            # nothing back on the shelf, and goods already back cannot come back twice.
             restocked_already = dict(
                 (
                     await session.execute(
@@ -2674,7 +2656,7 @@ class PosService:
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
         # As in return_sale: the original sale may be on an earlier, closed shift. The goods are
-        # checked against that sale; the money moves on the shift that is open now.
+        # checked against that sale; the exchange is recorded on the day that is open now.
 
         requested: dict[UUID, int] = {}
         for line in return_lines:
@@ -2689,8 +2671,7 @@ class PosService:
 
         # Serialise returns of ONE sale. The cap below is "sold minus already returned": read,
         # decide, write. Without a lock two returns of the last unit both read "0 returned" and
-        # both pass; the money is only saved later by the payment-row cap, which fires late
-        # (after the drawer and the shelf were touched). The row lock makes the second one wait,
+        # both pass and the shelf grows twice for one unit. The row lock makes the second one wait,
         # then see the first one's lines and refuse on the quantity.
         order = (
             await session.execute(
