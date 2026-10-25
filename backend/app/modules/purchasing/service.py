@@ -13,7 +13,7 @@ The rules that matter (each one has a test that breaks if it is removed):
   * A supplier's balance is DERIVED: received orders - net payments - accepted credit returns.
   * A received order cannot be cancelled once any of its stock has been sold or returned
     (the shelf would no longer hold what the cancel claims to take back).
-  * A CASH payment leaves the open drawer through the POS service (one pay_out row).
+  * A payment is a record only: it never touches a drawer or a shift.
 """
 
 from __future__ import annotations
@@ -690,8 +690,9 @@ class SupplierReturnService:
     """Goods going back to a supplier.
 
     Two moments, on purpose: REGISTERING takes the goods off the shelf (they physically left) and
-    parks the return in `review`; the supplier's ACCEPTANCE is what moves money (account credit or a
-    cash refund into the open drawer). A rejection brings the goods back to the shelf.
+    parks the return in `review`; the supplier's ACCEPTANCE records its value on the supplier
+    statement (credit, cash or replacement) without touching a drawer. A rejection brings the
+    goods back to the shelf.
     """
 
     @staticmethod

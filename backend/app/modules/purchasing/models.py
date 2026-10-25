@@ -144,8 +144,8 @@ class PurchaseOrderLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
 class SupplierPayment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Money paid to a supplier. Append-only: a mistake is reversed by a voiding row, not edited.
 
-    Paying a supplier settles a debt for stock; it is NOT an expense. A CASH payment leaves the
-    open drawer (one pay_out row, reference_type='supplier_payment').
+    Paying a supplier settles a debt for stock; it is NOT an expense. It is a RECORD (amount, date,
+    supplier, invoice): the POS never moves money, so no drawer row is written for it.
     """
 
     __tablename__ = "supplier_payments"
@@ -160,7 +160,7 @@ class SupplierPayment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
     # allowed: cash | card | wallet | bank_transfer
     method: Mapped[str] = mapped_column(String(15))
     paid_on: Mapped[date] = mapped_column(Date)
-    # Cash only: the OPEN shift whose drawer paid it.
+    # Kept for history only. New payments are records and never name a shift (always NULL).
     session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="SET NULL"), nullable=True
     )
@@ -214,7 +214,7 @@ class SupplierReturn(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, 
     return_date: Mapped[date] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Cash refund only: the OPEN shift whose drawer received the money on acceptance.
+    # Kept for history only. A refund is a record and never names a shift (always NULL).
     refund_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pos_sessions.id", ondelete="SET NULL"), nullable=True
     )

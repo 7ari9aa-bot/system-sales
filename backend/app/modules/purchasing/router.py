@@ -373,7 +373,7 @@ class ReturnIn(BaseModel):
 
 
 class ReturnAccept(BaseModel):
-    # A cash refund lands in an open shift's drawer.
+    # Kept for compatibility: naming a shift is refused, a refund is a record only.
     session_id: uuid.UUID | None = None
 
 
