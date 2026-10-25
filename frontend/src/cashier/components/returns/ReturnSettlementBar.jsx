@@ -15,10 +15,10 @@ export default function ReturnSettlementBar({ value, restock, onRestockChange })
         إرجاع القطع للرف (المخزون)
       </label>
 
-      <p className="max-w-[230px] text-center text-[11px] text-muted-foreground">يُرد المبلغ بنفس طريقة الدفع الأصلية للفاتورة</p>
+      <p className="max-w-[230px] text-center text-[11px] text-muted-foreground">قيمة المرتجع تُسجَّل على الفاتورة فقط ولا يُرد أي مبلغ من هنا</p>
 
       <div className="rounded-lg bg-muted/50 px-4 py-1 text-center">
-        <p className="text-[12px] font-semibold text-foreground/70">المستحق للعميل</p>
+        <p className="text-[12px] font-semibold text-foreground/70">قيمة المرتجع</p>
         <p className="num font-heading text-lg font-extrabold text-emerald-600">{fmtMoney(value)}</p>
       </div>
     </div>

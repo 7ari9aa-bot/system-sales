@@ -19,22 +19,6 @@ import BackupTab from "@/cashier/components/settings/BackupTab";
  * البروفايل بيسمع: مخزن، عميل walk-in، وسايل دفع مسموحة، سقف خصم (اختياري
  * للمالك — الباب مقفول عنده افتراضياً بـ 100 يعني حرية كاملة للكاشير). */
 
-const METHODS = ["cash", "card", "wallet", "bank_transfer"];
-
-function Toggle({ checked, onChange, label, disabled = false, hint }) {
-  return (
-    <label className="inline-flex items-center gap-2 text-[13px] text-foreground" title={hint}>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
-  );
-}
-
-// The till sells and refunds in cash only for now, so a profile can never switch cash off: that
-// would leave a till that can only send a payment method the profile forbids.
-const CASH_ALWAYS_ON = "cash";
-const CASH_LOCK_HINT = "الكاشير يعمل بالنقدية فقط حاليًا، لذلك لا يمكن إيقافها";
-const withCash = (methods) => (methods.includes(CASH_ALWAYS_ON) ? methods : [CASH_ALWAYS_ON, ...methods]);
 
 function ProfilesAndRegistersTab() {
   const t = useT();
@@ -175,23 +159,6 @@ function ProfilesAndRegistersTab() {
     }
   }
 
-  function toggleMethod(profile, method) {
-    setProfiles((prev) =>
-      prev.map((row) =>
-        row.id === profile.id
-          ? {
-              ...row,
-              allowed_payment_methods: withCash(
-                row.allowed_payment_methods.includes(method)
-                  ? row.allowed_payment_methods.filter((m) => m !== method)
-                  : [...row.allowed_payment_methods, method],
-              ),
-            }
-          : row
-      )
-    );
-  }
-
   // ------------------------------------------------------------ registers --
 
   async function createRegister() {
@@ -312,18 +279,6 @@ function ProfilesAndRegistersTab() {
                               </option>
                             ))}
                           </select>
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          {METHODS.map((m) => (
-                            <Toggle
-                              key={m}
-                              checked={p.allowed_payment_methods.includes(m)}
-                              onChange={() => toggleMethod(p, m)}
-                              disabled={m === CASH_ALWAYS_ON}
-                              hint={m === CASH_ALWAYS_ON ? CASH_LOCK_HINT : undefined}
-                              label={t(`pos.method.${m}`)}
-                            />
-                          ))}
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -472,27 +427,6 @@ function ProfilesAndRegistersTab() {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  {METHODS.map((m) => (
-                    <Toggle
-                      key={m}
-                      checked={profileForm.allowed_payment_methods.includes(m)}
-                      disabled={m === CASH_ALWAYS_ON}
-                      hint={m === CASH_ALWAYS_ON ? CASH_LOCK_HINT : undefined}
-                      onChange={() =>
-                        setProfileForm((prev) => ({
-                          ...prev,
-                          allowed_payment_methods: withCash(
-                            prev.allowed_payment_methods.includes(m)
-                              ? prev.allowed_payment_methods.filter((x) => x !== m)
-                              : [...prev.allowed_payment_methods, m],
-                          ),
-                        }))
-                      }
-                      label={t(`pos.method.${m}`)}
-                    />
-                  ))}
                 </div>
                 <button
                   type="button"

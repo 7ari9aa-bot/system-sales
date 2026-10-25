@@ -111,15 +111,17 @@ export default function InvoiceDetailPage() {
                   <span className="block text-xs text-muted-foreground">الكاشير المسؤول عن البيع</span>
                 </span>
               </li>
-              <li className="flex items-start gap-2">
-                <Wallet className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <span>
-                  <span className="flex items-center gap-2">
-                    <span className="font-semibold">{invoice.paymentLabel}</span>
+              {invoice.hasPayment && (
+                <li className="flex items-start gap-2">
+                  <Wallet className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  <span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-semibold">{invoice.paymentLabel}</span>
+                    </span>
+                    <span className="num block text-xs text-muted-foreground">المدفوع {fmtMoney(invoice.total - remaining)}</span>
                   </span>
-                  <span className="num block text-xs text-muted-foreground">المدفوع {fmtMoney(invoice.total - remaining)}</span>
-                </span>
-              </li>
+                </li>
+              )}
             </ul>
           </SectionCard>
 
@@ -141,10 +143,12 @@ export default function InvoiceDetailPage() {
                 <span className="font-heading font-bold">الإجمالي النهائي</span>
                 <span className="num font-heading text-base font-extrabold text-primary">{fmtMoney(invoice.total)}</span>
               </li>
-              <li className="flex items-center justify-between">
-                <span className="text-muted-foreground">المبلغ المتبقي</span>
-                <span className={`num font-semibold ${remaining > 0 ? "text-amber-600" : "text-emerald-600"}`}>{fmtMoney(remaining)}</span>
-              </li>
+              {invoice.hasPayment && (
+                <li className="flex items-center justify-between">
+                  <span className="text-muted-foreground">المبلغ المتبقي</span>
+                  <span className={`num font-semibold ${remaining > 0 ? "text-amber-600" : "text-emerald-600"}`}>{fmtMoney(remaining)}</span>
+                </li>
+              )}
               {returnedAmount > 0 && (
                 <li className="flex items-center justify-between">
                   <span className="text-muted-foreground">قيمة المرتجعات المرتبطة</span>
