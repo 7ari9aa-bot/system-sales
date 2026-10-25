@@ -1120,6 +1120,7 @@ class PosService:
         ``pos.session.closed`` event under the same rules.
         """
         from app.core.events.writer import add_outbox_event
+        from app.modules.analytics.timekit import merchant_day
 
         closing = (await PosService._day_totals(session, tenant_id, pos_session))["closing_balance"]
 
@@ -1188,8 +1189,14 @@ class PosService:
                 # Projection seed figures — the worker RECOMPUTES these from
                 # the ledgers (idempotent), the payload rides for consumers
                 # that never touch the database.
+                # The merchant's calendar day (tenants.timezone), the SAME definition the sales
+                # reports and the stale-day rule use. A UTC date drifts a day after 22:00 Cairo.
                 "business_date": (
-                    pos_session.closed_at.date().isoformat() if pos_session.closed_at else None
+                    merchant_day(
+                        pos_session.closed_at, await PosService._shop_timezone(session, tenant_id)
+                    ).isoformat()
+                    if pos_session.closed_at
+                    else None
                 ),
                 "invoice_count": int(sales_row[0]),
                 "sales_total": str(to_money(sales_row[1], "sales_total")),
@@ -1709,20 +1716,20 @@ class PosService:
         so a redelivered event rewrites the same truth — idempotent by
         construction (§190: an event-fed projection, never a core column).
         """
+        from app.modules.analytics.timekit import resolve_timezone
         from app.modules.orders.models import Order
 
+        shop_tz = resolve_timezone(await PosService._shop_timezone(session, tenant_id))
         day_sessions = (
             (
                 await session.execute(
                     select(PosSession).where(
                         PosSession.tenant_id == tenant_id,
                         PosSession.status == "CLOSED",
-                        # The business date is the UTC calendar date — spelled
-                        # out explicitly, because a bare func.date() would use
-                        # the SESSION's timezone (a Cairo-zone database then
-                        # disagrees with the UTC date by one day after 22:00
-                        # and the projection silently projects nothing).
-                        func.date(func.timezone("UTC", PosSession.closed_at)) == business_date,
+                        # The business date is the MERCHANT's calendar day, spelled out with the
+                        # shop's zone (never a bare func.date(), which would use the database
+                        # SESSION's zone) so it agrees with the date the close event carries.
+                        func.date(func.timezone(shop_tz, PosSession.closed_at)) == business_date,
                     )
                 )
             )

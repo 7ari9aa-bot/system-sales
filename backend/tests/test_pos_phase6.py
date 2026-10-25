@@ -8,7 +8,7 @@ UNVERIFIED when only local runs were possible (AGENT_BRIEF §3a).
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -287,7 +287,12 @@ async def test_daily_projection_is_idempotent(db, tenant_ctx):
     )
     await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
 
-    business_date = date.fromisoformat(datetime.now(UTC).date().isoformat())
+    # The same definition the close event uses: the merchant's day (no zone set here -> UTC).
+    from app.modules.analytics.timekit import merchant_day
+
+    business_date = merchant_day(
+        datetime.now(UTC), await PosService._shop_timezone(db, tenant_ctx.tenant_id)
+    )
     written = await PosService.upsert_daily_projection(
         db, tenant_ctx.tenant_id, business_date=business_date
     )
