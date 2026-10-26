@@ -131,17 +131,17 @@ export default function PosInvoiceTable({
 
         <table className="w-full table-fixed border-collapse text-[13px]">
           <colgroup>
-            {/* نِسب مئوية لا أرقام ثابتة: الجدول يتقلص ويتوسع مع المساحة المتاحة (فتح/طي القائمة الجانبية) */}
-            <col className="w-[4%]" />
+            {/* الرقم والإجمالي بعرض ثابت حتى لا يُقصّا أبدًا؛ اسم المنتج يأخذ المساحة المتبقية فيتقلص ويتوسع مع فتح/طي القائمة الجانبية */}
+            <col className="w-[40px]" />
             <col className="w-[11%]" />
-            <col className="w-[27%]" />
+            <col />
             <col className="w-[6%]" />
-            <col className="w-[8%]" />
+            <col className="w-[7%]" />
             <col className="w-[11%]" />
             <col className="w-[8%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[5%]" />
+            <col className="w-[8%]" />
+            <col className="w-[112px]" />
+            <col className="w-[44px]" />
           </colgroup>
 
           <thead className="sticky top-0 z-10">

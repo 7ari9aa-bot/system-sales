@@ -25,15 +25,15 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
       <div className="min-h-0 flex-1 overflow-auto scroll-slim">
         <table className="w-full table-fixed border-collapse text-[13px]">
           <colgroup>
-            <col className="w-[3%]" />
-            <col className="w-[12%]" />
-            <col className="w-[22%]" />
-            <col className="w-[5%]" />
-            <col className="w-[7%]" />
-            <col className="w-[16%]" />
+            <col className="w-[40px]" />
+            <col className="w-[11%]" />
+            <col />
+            <col className="w-[6%]" />
+            <col className="w-[6%]" />
+            <col className="w-[14%]" />
             <col className="w-[9%]" />
-            <col className="w-[10%]" />
-            <col className="w-[16%]" />
+            <col className="w-[112px]" />
+            <col className="w-[15%]" />
           </colgroup>
 
           <thead className="sticky top-0 z-10">
