@@ -44,3 +44,35 @@ def test_a_good_line_passes_and_extra_keys_are_dropped(model) -> None:
     line = req.items[0]
     assert str(line.variant_id) == VID and line.quantity == 3
     assert "title" not in line.model_dump()
+
+
+from app.modules.pos.router import ExchangeRequest, ReturnRequest  # noqa: E402
+
+OID = "7c1f0b9e-1c1d-4f5e-9a47-0a8f6d2c1e22"
+
+
+@pytest.mark.parametrize("qty", [True, False, 2.5, "2", 0, -1, None])
+def test_a_return_line_refuses_a_loose_quantity(qty) -> None:
+    with pytest.raises(ValidationError):
+        ReturnRequest(order_id=OID, lines=[{"variant_id": VID, "quantity": qty}])
+
+
+@pytest.mark.parametrize("qty", [True, False, 2.5, "2", 0, -1, None])
+def test_an_exchange_line_refuses_a_loose_quantity(qty) -> None:
+    good = [{"variant_id": VID, "quantity": 1}]
+    with pytest.raises(ValidationError):
+        ExchangeRequest(
+            order_id=OID, return_lines=[{"variant_id": VID, "quantity": qty}], new_lines=good
+        )
+    with pytest.raises(ValidationError):
+        ExchangeRequest(
+            order_id=OID, return_lines=good, new_lines=[{"variant_id": VID, "quantity": qty}]
+        )
+
+
+def test_a_whole_quantity_still_passes_on_returns_and_exchanges() -> None:
+    line = [{"variant_id": VID, "quantity": 2}]
+    assert ReturnRequest(order_id=OID, lines=line).lines[0].quantity == 2
+    assert (
+        ExchangeRequest(order_id=OID, return_lines=line, new_lines=line).new_lines[0].quantity == 2
+    )

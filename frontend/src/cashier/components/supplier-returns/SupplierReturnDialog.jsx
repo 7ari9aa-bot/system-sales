@@ -79,7 +79,7 @@ export default function SupplierReturnDialog({ open, onOpenChange, suppliers, or
       <DialogContent dir="rtl" className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="font-heading text-base">تسجيل مرتجع للمورد</DialogTitle>
-          <DialogDescription>البضاعة بتخرج من المخزن فورًا. الخصم من الحساب أو الاسترداد بيتنفذ بس لما المورد يوافق.</DialogDescription>
+          <DialogDescription>البضاعة بتخرج من المخزن فورًا. التسوية بتتسجّل على حساب المورد لما يوافق، ومفيش حركة على أي درج.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

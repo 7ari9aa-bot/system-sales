@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.orders.models import OrderItem
+from app.modules.orders.models import Order, OrderItem
 from app.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
@@ -78,3 +78,47 @@ async def test_returning_everything_refunds_exactly_the_invoice(db, tenant_ctx) 
         lines=[{"variant_id": str(variant.id), "quantity": 4}],
     )
     assert Decimal(result["refunded_total"]) == Decimal("100.00")
+
+
+async def _half_cent_lines(db, tenant_ctx):
+    """One variant sold as 1 x 10.00 and 1 x 10.01: the invoice is 20.01, the average 10.005."""
+    pos_session, sold, variant = await _two_priced_lines(db, tenant_ctx)
+    rows = (
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == sold["order_id"])))
+        .scalars()
+        .all()
+    )
+    a, b = rows
+    a.quantity, a.unit_price, a.total = 1, Decimal("10.00"), Decimal("10.00")
+    b.quantity, b.unit_price, b.total = 1, Decimal("10.01"), Decimal("10.01")
+    order = await db.get(Order, sold["order_id"])
+    order.subtotal = order.grand_total = Decimal("20.01")
+    await db.flush()
+    return pos_session, sold, variant
+
+
+async def test_a_half_cent_average_never_refunds_more_than_the_invoice(db, tenant_ctx) -> None:
+    pos_session, sold, variant = await _half_cent_lines(db, tenant_ctx)
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 2}],
+    )
+    assert Decimal(result["refunded_total"]) == Decimal("20.01")  # not 20.02
+
+
+async def test_repeated_partial_returns_add_up_to_exactly_the_invoice(db, tenant_ctx) -> None:
+    pos_session, sold, variant = await _half_cent_lines(db, tenant_ctx)
+    total = Decimal("0")
+    for _ in range(2):
+        result = await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+        total += Decimal(result["refunded_total"])
+    assert total == Decimal("20.01")

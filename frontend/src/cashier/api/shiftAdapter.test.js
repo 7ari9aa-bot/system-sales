@@ -53,8 +53,40 @@ describe("shiftFromApi: the day is a record, not a count", () => {
     expect(shiftFromApi(closedSession, null).closingBalance).toBe(19500);
   });
 
-  it("no report and nothing stored -> 0, never a guess", () => {
-    expect(shiftFromApi({ ...closedSession, status: "OPEN", closing_balance: undefined }, null).closingBalance).toBe(0);
+  it("no report and nothing stored -> unknown (null), never a zero that looks real", () => {
+    const row = shiftFromApi({ ...closedSession, status: "OPEN", closing_balance: undefined }, null);
+    expect(row.closingBalance).toBeNull();
+  });
+
+  it("a day whose report failed to load has unknown figures, not zeros", () => {
+    const row = shiftFromApi({ ...closedSession, closing_balance: undefined }, null);
+    expect(row.reportLoaded).toBe(false);
+    expect(row.invoices).toBeNull();
+    expect(row.salesTotal).toBeNull();
+    expect(row.returnsTotal).toBeNull();
+    expect(row.closingBalance).toBeNull();
+  });
+
+  it("a day with a real report of nothing sold is a genuine zero", () => {
+    const row = shiftFromApi(closedSession, { ...report, sales: { invoice_count: 0, total: "0.00" }, returns: { total: "0.00", documents: [] } });
+    expect(row.reportLoaded).toBe(true);
+    expect(row.invoices).toBe(0);
+    expect(row.salesTotal).toBe(0);
+  });
+
+  it("an old closed day without a fetched report still shows its stored closing balance", () => {
+    const row = shiftFromApi(closedSession, null);
+    expect(row.closingBalance).toBe(19500); // stored on the session
+    expect(row.reportLoaded).toBe(false);
+    expect(row.salesTotal).toBeNull(); // unknown, not zero
+  });
+
+  it("the totals skip unknown days instead of counting them as zero", () => {
+    const known = shiftFromApi(closedSession, report);
+    const unknown = shiftFromApi({ ...closedSession, id: "x", closing_balance: undefined }, null);
+    const s = shiftsSummary([known, unknown]);
+    expect(s.salesTotal).toBe(20000);
+    expect(s.unknownDays).toBe(1);
   });
 
   it("keeps cents exact (0.10 + 0.20 style sums do not drift)", () => {

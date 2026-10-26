@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
-import { fmtDateTime, fmtInt, fmtMoney } from "@/cashier/lib/format";
+import { fmtDateTime, fmtInt, fmtMoney, fmtMoneyOrDash } from "@/cashier/lib/format";
 
 function Row({ label, value, tone }) {
   return (
@@ -29,15 +29,15 @@ export default function ShiftDetailsDialog({ open, onOpenChange, shift }) {
         <div className="flex items-center gap-2">
           <StatusBadge kind="shift" value={shift.status} />
           <span className="num text-xs text-muted-foreground">
-            {fmtInt(shift.invoices)} فاتورة • {fmtInt(shift.pieces)} قطعة
+            {shift.invoices == null ? "—" : fmtInt(shift.invoices)} فاتورة • {fmtInt(shift.pieces)} قطعة
           </span>
         </div>
 
         <div className="rounded-xl border border-border p-3">
           <Row label="رصيد بداية اليوم" value={fmtMoney(shift.openingCash)} />
-          <Row label="إجمالي الفواتير" value={fmtMoney(shift.salesTotal)} />
-          <Row label="إجمالي المرتجعات" value={`−${fmtMoney(shift.returnsTotal)}`} tone="text-rose-600" />
-          <Row label="رصيد نهاية اليوم" value={fmtMoney(shift.closingBalance)} tone="font-bold" />
+          <Row label="إجمالي الفواتير" value={fmtMoneyOrDash(shift.salesTotal)} />
+          <Row label="إجمالي المرتجعات" value={shift.returnsTotal == null ? "—" : `−${fmtMoney(shift.returnsTotal)}`} tone="text-rose-600" />
+          <Row label="رصيد نهاية اليوم" value={fmtMoneyOrDash(shift.closingBalance)} tone="font-bold" />
         </div>
 
         {shift.note && <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">{shift.note}</p>}

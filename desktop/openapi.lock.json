@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 413,
-    "sha256": "1451968c0b257e3e86109b19fd107ab962575a697be8abb9ea5977ddc9e76849",
+    "sha256": "3ce47eda3893e29ee161d13059db605f170973fb1df8b1607e9deca65bf26f84",
     "typed_operations": 257
   },
   "spec": {
@@ -3373,6 +3373,45 @@
             "updated_at"
           ],
           "title": "CapabilityGrantOut",
+          "type": "object"
+        },
+        "CartLine": {
+          "description": "One cart line: a real variant, a whole quantity of at least one, an optional line discount.\n\n``StrictInt`` so ``true``, ``2.5`` and ``\"2\"`` are refused instead of quietly becoming 1 or 2.\nKeys the till does not read (a title, a display price) are dropped, never trusted.",
+          "properties": {
+            "discount_pct": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discount Pct"
+            },
+            "quantity": {
+              "maximum": 100000.0,
+              "minimum": 1.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "CartLine",
           "type": "object"
         },
         "CategoryOut": {
@@ -7372,6 +7411,7 @@
         "ExchangeLine": {
           "properties": {
             "quantity": {
+              "maximum": 100000.0,
               "minimum": 1.0,
               "title": "Quantity",
               "type": "integer"
@@ -8883,8 +8923,7 @@
             },
             "items": {
               "items": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/CartLine"
               },
               "minItems": 1,
               "title": "Items",
@@ -12998,8 +13037,7 @@
             },
             "items": {
               "items": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/CartLine"
               },
               "minItems": 1,
               "title": "Items",
@@ -13092,8 +13130,7 @@
             },
             "items": {
               "items": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/CartLine"
               },
               "minItems": 1,
               "title": "Items",
@@ -13684,6 +13721,7 @@
         "ReturnLine": {
           "properties": {
             "quantity": {
+              "maximum": 100000.0,
               "minimum": 1.0,
               "title": "Quantity",
               "type": "integer"
@@ -51324,7 +51362,7 @@
       },
       "/api/v1/pos/sessions": {
         "get": {
-          "description": "Resume the till: sessions behind this drawer, newest first (default 50, at most 500).",
+          "description": "Resume the till: sessions behind this drawer, newest first (default 50, at most 500;\n``offset`` pages further back).",
           "operationId": "list_sessions_api_v1_pos_sessions_get",
           "parameters": [
             {
@@ -51369,6 +51407,17 @@
                 "maximum": 500,
                 "minimum": 1,
                 "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
                 "type": "integer"
               }
             },

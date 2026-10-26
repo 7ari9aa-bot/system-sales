@@ -17,13 +17,14 @@ const num = (wire, fallback = 0) => {
 export function shiftFromApi(session, report = null, { employees = {} } = {}) {
   const closed = session.status === "CLOSED";
   // Closing balance = opening + invoices - returns, computed by the backend. Open day: from the live
-  // report; closed day: stored on the session. No report -> 0, never a guess.
+  // report; closed day: stored on the session. Neither -> null (unknown), never a zero that looks real.
   const closing =
     closed && session.closing_balance != null
       ? num(session.closing_balance)
       : report?.closing_balance != null
         ? num(report.closing_balance)
-        : 0;
+        : null;
+  const known = report != null; // the day's report loaded: its invoices/returns are real figures
   return {
     id: session.id,
     number: `SH-${String(session.id).slice(0, 8).toUpperCase()}`,
@@ -35,11 +36,12 @@ export function shiftFromApi(session, report = null, { employees = {} } = {}) {
     employee: employees[session.cashier_user_id] ?? "كاشير",
     branch: "",
     openingCash: num(session.opening_float),
-    invoices: report?.sales?.invoice_count ?? 0,
+    reportLoaded: known,
+    invoices: known ? (report.sales?.invoice_count ?? 0) : null,
     pieces: 0,
     note: "",
-    salesTotal: num(report?.sales?.total),
-    returnsTotal: num(report?.returns?.total),
+    salesTotal: known ? num(report.sales?.total) : null,
+    returnsTotal: known ? num(report.returns?.total) : null,
     returnDocs: report?.returns?.documents ?? [],
     exchangeDocs: report?.exchanges?.documents ?? [],
     exchangeDifference: num(report?.exchanges?.difference_total),
@@ -66,6 +68,7 @@ export function shiftsSummary(rows = []) {
     othersOpen: openRows.length > 1 ? openRows.length - 1 : 0,
     count: rows.length,
     closedCount: closed.length,
+    unknownDays: rows.filter((r) => r.reportLoaded === false).length,
     salesTotal: +rows.reduce((s, r) => s + (r.salesTotal ?? 0), 0).toFixed(2),
     returnsTotal: +rows.reduce((s, r) => s + (r.returnsTotal ?? 0), 0).toFixed(2),
     // What the closed days ended on: opening + invoices - returns, summed. Not a count of anything.

@@ -7,6 +7,11 @@ export function fmtMoney(value) {
   return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${CURRENCY}`;
 }
 
+/** A figure that may be unknown (null/undefined): "—" instead of a zero that looks like a real amount. */
+export function fmtMoneyOrDash(value) {
+  return value === null || value === undefined ? "—" : fmtMoney(value);
+}
+
 export function fmtMoneyShort(value) {
   const n = Number(value) || 0;
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });

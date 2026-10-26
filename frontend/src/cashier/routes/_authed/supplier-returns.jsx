@@ -107,7 +107,7 @@ export default function SupplierReturnsPage() {
           image={HERO_IMAGE}
           imageAlt={HERO_ALT}
           title="مرتجعات الموردين"
-          description="البضاعة اللي رجعت للمورد: بتخرج من المخزن فورًا، والفلوس بتتحرك بس لما المورد يوافق"
+          description="البضاعة اللي رجعت للمورد: بتخرج من المخزن فورًا، والتسوية بتتسجّل على حساب المورد. مفيش حركة على أي درج."
         >
           <Button
             className={BTN}
@@ -187,7 +187,7 @@ export default function SupplierReturnsPage() {
         stats={[
           { label: "عدد المرتجعات", value: fmtInt(summary.count), hint: `${fmtInt(summary.qty)} قطعة خرجت من المخزن` },
           { label: "خصم من الحساب", value: fmtMoney(summary.credit), hint: "مرتجعات المورد قبلها" },
-          { label: "مسترد نقدًا", value: fmtMoney(summary.cash), hint: "دخل درج الوردية" },
+          { label: "تسوية نقدية مسجّلة", value: fmtMoney(summary.cash), hint: "سجل فقط، لا يدخل أي درج" },
           { label: "بانتظار المورد", value: fmtInt(summary.review), hint: `قيمتها ${fmtMoney(summary.pendingAmount)} (لسه مش فلوس)`, accent: true },
         ]}
       />

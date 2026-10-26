@@ -17,7 +17,7 @@ import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashi
 import { shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
 import { useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
-import { fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
+import { fmtInt, fmtMoney, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/6e1281bb6_generated_image.png";
@@ -83,7 +83,7 @@ export default function ShiftsPage() {
   return (
     <LedgerPage
       hero={
-        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: رصيد الدرج الفعلي. نهاية اليوم: الرصيد الفعلي. وبينهما مبيعات اليوم من فواتير النظام.">
+        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: الرصيد اللي سجّله الكاشير. نهاية اليوم: محسوبة من رصيد البداية والفواتير والمرتجعات، وليست عدًّا فعليًا للنقدية.">
           <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لم يبدأ اليوم بعد"} onClick={() => setDetails(summary.open)}>
             <Clock />
             اليوم الجاري
@@ -140,7 +140,7 @@ export default function ShiftsPage() {
             value: summary.open ? summary.open.employee : "لا توجد",
             hint: summary.open ? `بدأ ${fmtTime(summary.open.date)} برصيد ${fmtMoney(summary.open.openingCash)}` : "ابدأ اليوم لبدء البيع",
           },
-          { label: "رصيد نهاية اليوم", value: fmtMoney(summary.open?.closingBalance ?? 0), hint: "رصيد البداية + الفواتير − المرتجعات", accent: true },
+          { label: "رصيد نهاية اليوم", value: fmtMoneyOrDash(summary.open?.closingBalance), hint: "رصيد البداية + الفواتير − المرتجعات", accent: true },
           { label: "إجمالي المبيعات", value: fmtMoney(summary.salesTotal), hint: `${fmtInt(summary.closedCount)} يوم مغلق` },
           { label: "إجمالي المرتجعات", value: fmtMoney(summary.returnsTotal), hint: "فواتير الإرجاع" },
         ]}

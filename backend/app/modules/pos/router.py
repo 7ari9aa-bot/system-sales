@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.pos.override import OverrideDep
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
@@ -101,14 +101,14 @@ async def create_profile(body: CreateProfileRequest, ctx: PosConfigCtx):
 
 
 @router.get("/profiles")
-async def list_profiles(ctx: TenantCtxDep):
+async def list_profiles(ctx: PosReadCtx):
     return [
         _profile_out(p) for p in await PosProfileService.list_profiles(ctx.session, ctx.tenant_id)
     ]
 
 
 @router.get("/profiles/{profile_id}")
-async def get_profile(profile_id: UUID, ctx: TenantCtxDep):
+async def get_profile(profile_id: UUID, ctx: PosReadCtx):
     return _profile_out(await PosProfileService.get(ctx.session, ctx.tenant_id, profile_id))
 
 
@@ -141,7 +141,7 @@ async def grant_profile_user(profile_id: UUID, body: GrantUserRequest, ctx: PosC
 
 
 @router.get("/profiles/{profile_id}/users")
-async def list_profile_users(profile_id: UUID, ctx: TenantCtxDep):
+async def list_profile_users(profile_id: UUID, ctx: PosReadCtx):
     rows = await PosProfileService.list_users(ctx.session, ctx.tenant_id, profile_id)
     from app.modules.identity.service import UserService
 
@@ -267,7 +267,7 @@ class HoldCartRequest(BaseModel):
 
 class ReturnLine(BaseModel):
     variant_id: UUID
-    quantity: int = Field(ge=1)
+    quantity: StrictInt = Field(ge=1, le=100000)
 
 
 class ReturnRequest(BaseModel):
@@ -280,7 +280,7 @@ class ReturnRequest(BaseModel):
 
 class ExchangeLine(BaseModel):
     variant_id: UUID
-    quantity: int = Field(ge=1)
+    quantity: StrictInt = Field(ge=1, le=100000)
 
 
 class ExchangeRequest(BaseModel):

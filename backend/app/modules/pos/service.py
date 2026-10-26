@@ -1406,7 +1406,7 @@ class PosService:
 
     @staticmethod
     async def get_receipt(session: AsyncSession, tenant_id: UUID, receipt_id: UUID) -> dict:
-        """The printed artifact: receipt header + order lines + tenders.
+        """The printed artifact: receipt header + order lines (+ payments an OLD sale recorded).
 
         Read-only and assembled from the owning modules' tables through this
         one parameter-bound read model (§137) — the till never writes them.
@@ -2399,6 +2399,64 @@ class PosService:
         return refunds
 
     @staticmethod
+    async def _cap_to_unreturned_value(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order: object,
+        sold: dict,
+        requested: dict,
+        priced: list[Decimal],
+        sold_net: Decimal,
+    ) -> list[Decimal]:
+        """Never refund more than the invoice value that has not already come back.
+
+        A weighted-average unit price is rounded to cents, and that rounding can push the sum of
+        a variant's returns above what it was sold for (2 units at 10.00 and 10.01 average
+        10.005, so returning both would book 20.02 against a 20.01 invoice). The variant's whole
+        value is what returning ALL of its sold units is worth (priced once, in one step, with the
+        order discount applied, and never above its lines' exact net); a return never exceeds that
+        minus what earlier returns booked, and the return that takes the LAST units takes exactly
+        what is left, so every return on the invoice adds up to its value to the cent.
+        """
+        variants = list(sold)
+        whole = PosService._return_line_totals(
+            Decimal(str(order.subtotal)),
+            Decimal(str(order.discount_total)),
+            [(sold[v]["unit_price"], sold[v]["quantity"], sold[v]["line_pct"]) for v in variants],
+            sold_net_subtotal=sold_net,
+        )
+        value = {
+            v: min(w, Decimal(str(sold[v]["line_net"]))) if sold[v]["line_net"] else w
+            for v, w in zip(variants, whole, strict=True)
+        }
+        booked: dict = {}
+        returned_qty: dict = {}
+        for variant_id, qty, amount in (
+            await session.execute(
+                select(
+                    PosReturnLine.variant_id,
+                    func.coalesce(func.sum(PosReturnLine.quantity), 0),
+                    func.coalesce(func.sum(PosReturnLine.refund_total), 0),
+                )
+                .where(
+                    PosReturnLine.tenant_id == tenant_id,
+                    PosReturnLine.order_id == order.id,
+                )
+                .group_by(PosReturnLine.variant_id)
+            )
+        ).all():
+            returned_qty[variant_id] = int(qty)
+            booked[variant_id] = Decimal(str(amount))
+        capped: list[Decimal] = []
+        for variant_id, amount in zip(requested, priced, strict=True):
+            left = max(Decimal("0"), value[variant_id] - booked.get(variant_id, Decimal("0")))
+            remaining_qty = sold[variant_id]["quantity"] - returned_qty.get(variant_id, 0)
+            if requested[variant_id] >= remaining_qty:
+                amount = left  # the last units take exactly what is left
+            capped.append(to_money(min(amount, left), "refund_total"))
+        return capped
+
+    @staticmethod
     async def return_sale(
         session: AsyncSession,
         tenant_id: UUID,
@@ -2450,7 +2508,7 @@ class PosService:
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
-        # The sale may have been rung on an EARLIER shift, even one already counted and closed: the
+        # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
         # (below); the return itself is recorded on the day that is open NOW. Booking it on the old
         # day would change a closed report after the fact.
@@ -2503,6 +2561,7 @@ class PosService:
                     "unit_price": None,
                     "line_pct": Decimal("0"),
                     "gross": Decimal("0"),
+                    "line_net": Decimal("0"),
                     "pct_weight": Decimal("0"),
                 },
             )
@@ -2511,6 +2570,7 @@ class PosService:
             # can sit on one invoice at two prices, and the first line alone is not "the price".
             line_gross = to_money(item.unit_price, "unit_price") * item.quantity
             entry["gross"] += line_gross
+            entry["line_net"] += Decimal(str(item.total))
             entry["pct_weight"] += line_gross * Decimal(str(item.discount_pct or 0))
             sold_net += Decimal(str(item.total))
 
@@ -2585,6 +2645,9 @@ class PosService:
             Decimal(str(order.discount_total)),
             [(sold[v]["unit_price"], requested[v], sold[v]["line_pct"]) for v in requested],
             sold_net_subtotal=sold_net,
+        )
+        priced = await PosService._cap_to_unreturned_value(
+            session, tenant_id, order, sold, requested, priced, sold_net
         )
         refund_lines = [
             {
@@ -2778,6 +2841,7 @@ class PosService:
                     "unit_price": None,
                     "line_pct": Decimal("0"),
                     "gross": Decimal("0"),
+                    "line_net": Decimal("0"),
                     "pct_weight": Decimal("0"),
                 },
             )
@@ -2786,6 +2850,7 @@ class PosService:
             # can sit on one invoice at two prices, and the first line alone is not "the price".
             line_gross = to_money(item.unit_price, "unit_price") * item.quantity
             entry["gross"] += line_gross
+            entry["line_net"] += Decimal(str(item.total))
             entry["pct_weight"] += line_gross * Decimal(str(item.discount_pct or 0))
             sold_net += Decimal(str(item.total))
 
@@ -2854,6 +2919,9 @@ class PosService:
             Decimal(str(order.discount_total)),
             [(sold[v]["unit_price"], requested[v], sold[v]["line_pct"]) for v in requested],
             sold_net_subtotal=sold_net,
+        )
+        priced = await PosService._cap_to_unreturned_value(
+            session, tenant_id, order, sold, requested, priced, sold_net
         )
         return_entries = [
             {

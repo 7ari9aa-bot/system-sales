@@ -3,6 +3,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
 import { bootstrapPos, chooseRegister, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
 import { shiftsFromApi } from "./shiftAdapter";
+import { REPORT_DAYS, loadAllSessions } from "./shiftHistory";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
 export const SHIFT_STATE_KEY = ["cashier", "shift-state"];
@@ -12,8 +13,10 @@ export function useShifts({ employees = {} } = {}) {
   return useQuery({
     queryKey: SHIFTS_KEY,
     queryFn: async () => {
-      const sessions = (await posApi.listSessions()) ?? [];
-      const entries = await Promise.all(sessions.map(async (s) => [s.id, await posApi.report(s.id).catch(() => null)]));
+      const sessions = await loadAllSessions((q) => posApi.listSessions(q));
+      // Only the newest days fetch their report; an older day keeps what its session stores.
+      const recent = [...sessions].sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at))).slice(0, REPORT_DAYS);
+      const entries = await Promise.all(recent.map(async (s) => [s.id, await posApi.report(s.id).catch(() => null)]));
       return shiftsFromApi(sessions, Object.fromEntries(entries), { employees });
     },
   });

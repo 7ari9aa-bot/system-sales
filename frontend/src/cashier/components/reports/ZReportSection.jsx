@@ -3,7 +3,7 @@ import { Button } from "@/cashier/components/ui/button";
 import ReportTable from "@/cashier/components/reports/ReportTable";
 import { CELL_ACCENT, CELL_MAIN, CELL_NUM } from "@/cashier/components/ui-kit/ledgerStyles";
 import { zReportTotals } from "@/cashier/components/reports/zReportTotals";
-import { SHIFT_STATUS, fmtDate, fmtInt, fmtMoney, fmtTime } from "@/cashier/lib/format";
+import { SHIFT_STATUS, fmtDate, fmtInt, fmtMoney, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
 
 // تقرير Z (إغلاق اليوم): ملخص كل يوم في صف واحد، يسجّل ما حدث دون جرد للدرج.
 // رصيد نهاية اليوم = رصيد البداية + الفواتير − المرتجعات (يحسبه الباك إند، والاستبدال داخل الرقمين).
@@ -36,12 +36,12 @@ export default function ZReportSection({ rows }) {
         </span>
       ),
     },
-    { key: "invoices", header: "الفواتير", align: "center", render: (r) => <span className={CELL_NUM}>{fmtInt(r.invoices)}</span> },
+    { key: "invoices", header: "الفواتير", align: "center", render: (r) => <span className={CELL_NUM}>{r.invoices == null ? "—" : fmtInt(r.invoices)}</span> },
     { key: "openingCash", header: "رصيد البداية", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.openingCash)}</span> },
-    { key: "salesTotal", header: "إجمالي الفواتير", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.salesTotal)}</span> },
-    { key: "returnsTotal", header: "المرتجعات", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>−{fmtMoney(r.returnsTotal)}</span> },
+    { key: "salesTotal", header: "إجمالي الفواتير", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoneyOrDash(r.salesTotal)}</span> },
+    { key: "returnsTotal", header: "المرتجعات", align: "end", render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{r.returnsTotal == null ? "—" : `−${fmtMoney(r.returnsTotal)}`}</span> },
     { key: "exchangeDifference", header: "فرق الاستبدال", align: "end", render: (r) => <span className={CELL_NUM}>{fmtMoney(r.exchangeDifference)}</span> },
-    { key: "closingBalance", header: "رصيد نهاية اليوم", align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoney(r.closingBalance)}</span> },
+    { key: "closingBalance", header: "رصيد نهاية اليوم", align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoneyOrDash(r.closingBalance)}</span> },
   ];
 
   const footTotals = {
