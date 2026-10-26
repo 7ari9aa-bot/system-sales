@@ -53,6 +53,9 @@
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
 }
+/* Work surfaces fill the fixed-height <main> exactly and never grow past it. */
+.cashier-root.cashier-fixed { height: 100%; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.cashier-root.cashier-fixed > * { min-height: 0; }
 .cashier-root.dark, .dark .cashier-root {
     --background: 24 14% 8%;
     --foreground: 30 20% 96%;

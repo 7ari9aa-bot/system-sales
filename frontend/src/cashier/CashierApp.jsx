@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "@/cashier/components/ui/sonner";
 import "./cashier.css";
 
@@ -26,10 +26,15 @@ const Page19 = lazy(() => import("./routes/_authed/shifts.jsx"));
 const Page20 = lazy(() => import("./routes/_authed/supplier-returns.jsx"));
 const Page21 = lazy(() => import("./routes/_authed/suppliers.jsx"));
 
+// شاشات العمل (بيع / مرتجع / استبدال): ارتفاعها ارتفاع الشاشة والصفحة لا تتمرّر، الجداول فقط تتمرّر داخليًا.
+const WORK_SURFACE = /^\/cashier\/(pos|returns|exchanges)\/?$/;
+
 function CashierLayout() {
+  const { pathname } = useLocation();
+  const fixed = WORK_SURFACE.test(pathname);
   // الهيكل (السايدبار والتنقل) جاي من DashboardLayout في النظام الرئيسي؛ هنا بس الثيم المعزول.
   return (
-    <div className="cashier-root" dir="rtl">
+    <div className={fixed ? "cashier-root cashier-fixed" : "cashier-root"} dir="rtl">
       <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">جارٍ التحميل…</div>}>
         <Outlet />
       </Suspense>

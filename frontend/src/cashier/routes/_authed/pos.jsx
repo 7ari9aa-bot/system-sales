@@ -294,7 +294,7 @@ function PosScreen({ user, session }) {
   }, [quoteReady]);
 
   return (
-    <div className="animate-fade-up flex h-[calc(100dvh-60px)] flex-col gap-2 overflow-hidden lg:h-[calc(100dvh-16px)]">
+    <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <PosHeaderBar
         invoiceNo={lastReceipt ? `بعد ${lastReceipt.number}` : "جديدة"}
         cashier={cashier}

@@ -11,6 +11,10 @@ export default function DashboardLayout() {
   const { lang } = useI18n();
   const isDashboardHome = pathname === "/dashboard";
   const isInbox = pathname === "/inbox";
+  // The till screens (sell / return / exchange) are fixed-height work surfaces: the page itself
+  // never scrolls, only the tables inside it do. They get the same full-viewport shell as the inbox.
+  const isCashierWorkSurface = /^\/cashier\/(pos|returns|exchanges)\/?$/.test(pathname);
+  const isFullHeight = isInbox || isCashierWorkSurface;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -45,7 +49,9 @@ export default function DashboardLayout() {
         )}
         <main className={cn(
           "w-full min-w-0",
-          isInbox ? "h-[calc(100dvh-48px)] overflow-hidden p-0 lg:h-dvh" : "px-4 py-5 sm:px-6 lg:px-8 lg:py-6"
+          isInbox && "h-[calc(100dvh-48px)] overflow-hidden p-0 lg:h-dvh",
+          isCashierWorkSurface && "h-[calc(100dvh-48px)] overflow-hidden px-2 py-2 sm:px-3 lg:h-dvh",
+          !isFullHeight && "px-4 py-5 sm:px-6 lg:px-8 lg:py-6"
         )}>
           <Outlet />
         </main>

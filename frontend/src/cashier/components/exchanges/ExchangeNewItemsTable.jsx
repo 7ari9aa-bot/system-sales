@@ -7,7 +7,7 @@ import { cn } from "@/cashier/lib/utils";
 
 const HCELL = "border border-slate-700 bg-slate-800 px-2 py-1.5 text-[12px] text-slate-50";
 const CELL = "border border-border px-2 py-0.5";
-const MIN_ROWS = 10;
+const MIN_ROWS = 3;
 
 // جدول المنتجات البديلة: خانة المسح/البحث داخل الصف الأخير، مع نتائج مطابقة أسفل الجدول.
 export default function ExchangeNewItemsTable({
@@ -29,7 +29,7 @@ export default function ExchangeNewItemsTable({
   const showMatches = term.trim().length > 0 && matches.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-1.5">
         <p className="font-heading text-[13px] font-bold">القطع البديلة</p>
         <p className="text-[11px] text-muted-foreground">

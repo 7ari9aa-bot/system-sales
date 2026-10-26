@@ -159,7 +159,7 @@ function ReturnScreen({ session }) {
   });
 
   return (
-    <div className="animate-fade-up flex flex-col gap-2 pb-2">
+    <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <ReturnHeaderBar employee={user?.full_name || user?.email || ""} />
       <ExchangeInvoiceSearch
         term={term}
@@ -173,7 +173,7 @@ function ReturnScreen({ session }) {
         onClear={resetDraft}
       />
       {salesQuery.isError ? <p role="alert" className="text-xs font-semibold text-rose-600">تعذّر تحميل فواتير الوردية</p> : null}
-      <div ref={gridRef} className="grid gap-2 2xl:grid-cols-2">
+      <div ref={gridRef} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 2xl:grid-cols-2 2xl:grid-rows-1">
         <div className="flex min-h-0 flex-col gap-1.5">
           <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} totals={totals} minRows={fillRows} />
           <ReturnTotalsBar totals={totals} />

@@ -6,7 +6,7 @@ import { fmtInt, fmtNumber } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 
 // عدد الصفوف الفاضية الجاهزة في بداية الفاتورة.
-const MIN_ROWS = 11;
+const MIN_ROWS = 4;
 // رأس الجدول وصف الإجماليات: نفس الخلفية الداكنة ونفس ارتفاعات التصميم.
 const HCELL = "border border-slate-700 bg-slate-800 px-2 py-1.5 text-[12px] text-slate-50";
 const CELL = "border border-border px-2 py-0.5";
