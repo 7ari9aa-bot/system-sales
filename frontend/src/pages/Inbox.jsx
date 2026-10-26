@@ -8,6 +8,7 @@ import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
 import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
+import { appendLocalMessage, sendReply } from "@/lib/inboxSend";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, loadDemoInstagramPosts, saveDemoFacebookPosts, saveDemoInstagramPosts, saveDemoInbox } from "@/lib/inboxDemoData";
@@ -510,13 +511,18 @@ export default function Inbox() {
       });
       return true;
     }
+    // Captured BEFORE the await: the user may switch channel while the request
+    // is in flight, and the local echo must land in the channel it was sent from.
+    const channelId = activeChannel;
     setSending(true);
     setError(null);
     try {
-      const sent = await api(`/conversations/${conversationId}/messages`, {
-        method: "POST",
-        body: { body: text },
-      });
+      const result = await sendReply(conversationId, text);
+      if (!result.ok) {
+        setError(result.error);
+        return false;
+      }
+      const sent = result.sent;
       const createdAt = sent?.created_at || new Date().toISOString();
       const localMessage = {
         id: sent?.id || `${conversationId}-${Date.now()}`,
@@ -526,16 +532,8 @@ export default function Inbox() {
         createdAt,
         status: sent?.status || "queued",
       };
-      setConvMap((previous) => ({
-        ...previous,
-        [activeChannel]: (previous[activeChannel] || []).map((row) => row.id === conversationId
-          ? { ...row, preview: text, messages: [...(row.messages || []), localMessage] }
-          : row),
-      }));
+      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text));
       return true;
-    } catch (e) {
-      setError(e?.message || "Could not send the message.");
-      return false;
     } finally {
       setSending(false);
     }
