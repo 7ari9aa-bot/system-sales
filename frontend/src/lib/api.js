@@ -330,7 +330,6 @@ export function prefetchDashboard() {
     "/ai/usage/summary",
     "/ai/approvals?status=PENDING",
     "/ai/agents",
-    "/marketing/campaigns",
     "/analytics/summary",
   ];
   for (const p of paths) {
