@@ -91,7 +91,7 @@ jobs:
       # Exercise the built frontend against this job's disposable PostgreSQL +
       # Redis and a real FastAPI process. The browser creates its own test user,
       # reads dashboard/orders, and logs out; no production data or credentials.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -136,7 +136,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -162,7 +162,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           cache: npm
