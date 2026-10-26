@@ -56,18 +56,65 @@ export class ApiError extends Error {
   }
 }
 
+/** Per-request time limits. A hung server or a dead mobile connection must
+ *  surface as a retryable error instead of an endless spinner. Uploads get a
+ *  longer budget because the body itself takes time to send. */
+export const REQUEST_TIMEOUT_MS = 20_000;
+export const UPLOAD_TIMEOUT_MS = 60_000;
+
+/** fetch with a deadline. Aborts when `timeoutMs` elapses or when the caller's
+ *  own `signal` aborts (route change, unmount). A timeout becomes
+ *  ApiError(code "timeout", retryable); a caller abort is re-thrown untouched
+ *  so `AbortError` handling in components keeps working. */
+export async function fetchWithTimeout(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const { signal: callerSignal, ...rest } = init;
+  // Already cancelled by the caller: do not send a request nobody will read.
+  if (callerSignal?.aborted) {
+    throw Object.assign(new Error("The request was aborted"), { name: "AbortError" });
+  }
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  try {
+    return await fetch(url, { ...rest, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError("انتهت مهلة الطلب. حاول مرة أخرى", {
+        status: 0,
+        code: "timeout",
+        retryable: true,
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
+}
+
+/** A caller-initiated abort is not a failure to report or to translate. */
+function isCallerAbort(error) {
+  return error?.name === "AbortError";
+}
+
 /** Public auth requests intentionally omit a saved bearer token and refresh. */
 export async function publicApi(path, { method = "POST", body } = {}) {
   let res;
   try {
-    res = await fetch(apiUrl(path), {
+    res = await fetchWithTimeout(apiUrl(path), {
       method,
       cache: "no-store",
       credentials: "include", // الـSet-Cookie بتاع الدخول مالوش لازمة من غيره
       headers: body !== undefined ? { "Content-Type": "application/json" } : {},
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError("تعذّر الوصول إلى الخادم (شبكة)", {
       status: 0,
       code: "network",
@@ -128,13 +175,14 @@ async function refreshTokens() {
     if (!hasSessionCookie()) return false;
     let res;
     try {
-      res = await fetch(apiUrl("/auth/refresh"), {
+      res = await fetchWithTimeout(apiUrl("/auth/refresh"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}), // الكوكي هو اللي بيمرر التوكن
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw new ApiError("تعذّر تجديد الجلسة بسبب مشكلة في الشبكة", {
         status: 0,
         code: "network",
@@ -179,13 +227,17 @@ export async function api(path, {
   contentType,
   retry = true,
   headers = {},
+  signal,
+  timeoutMs,
 } = {}) {
   const isMutation = method !== "GET";
+  const deadline = timeoutMs ?? (rawBody ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
   const csrf = isMutation ? csrfToken() : null;
   let res;
   try {
-    res = await fetch(apiUrl(path), {
+    res = await fetchWithTimeout(apiUrl(path), {
       method,
+      signal,
       credentials: "include", // كوكي الجلسة (HttpOnly) بتمشي مع كل طلب
       headers: {
         ...(body !== undefined && !rawBody ? { "Content-Type": "application/json" } : {}),
@@ -194,8 +246,14 @@ export async function api(path, {
         ...headers,
       },
       ...(body !== undefined ? { body: rawBody ? body : JSON.stringify(body) } : {}),
-    });
+    }, deadline);
   } catch (networkErr) {
+    // The caller cancelled on purpose (unmount, newer search): not a failure.
+    if (isCallerAbort(networkErr)) throw networkErr;
+    if (networkErr instanceof ApiError) {
+      if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, networkErr);
+      throw networkErr;
+    }
     // فشل الشبكة (الخادم وايقف، انقطاع نت، اعتراض) — أخطر أنواع الفشل
     // الصامت لأن مفيش status أصلاً: لازم يتسجل زي أي قراءة فاشلة.
     const err = new ApiError("تعذّر الوصول إلى الخادم (شبكة)", {
@@ -233,7 +291,7 @@ export async function api(path, {
       if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, refreshError);
       throw refreshError;
     }
-    if (ok) return api(path, { method, body, rawBody, contentType, retry: false, headers });
+    if (ok) return api(path, { method, body, rawBody, contentType, retry: false, headers, signal, timeoutMs });
     setTokens(null);
   }
 

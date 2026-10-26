@@ -48,13 +48,15 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
     setBusy(true);
     setHits(null);
     setError("");
+    // Cancel the superseded request on the wire, not only ignore its answer.
+    const controller = new AbortController();
     const id = window.setTimeout(() => {
-      api(`/search?q=${encodeURIComponent(term)}&limit=8`)
+      api(`/search?q=${encodeURIComponent(term)}&limit=8`, { signal: controller.signal })
         .then((rows) => {
           if (seqRef.current === seq) setHits(Array.isArray(rows) ? rows : []);
         })
         .catch((requestError) => {
-          if (seqRef.current !== seq) return;
+          if (requestError?.name === "AbortError" || seqRef.current !== seq) return;
           setHits([]);
           setError(requestError?.message || t("search.loadError", "Could not search right now."));
         })
@@ -62,7 +64,10 @@ export default function GlobalSearch({ autoFocus, className, onPick }) {
           if (seqRef.current === seq) setBusy(false);
         });
     }, 250);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+      controller.abort();
+    };
   }, [q, attempt, t]);
 
   const flat = useMemo(() => hits ?? [], [hits]);
