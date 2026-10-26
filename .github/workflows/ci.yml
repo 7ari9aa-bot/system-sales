@@ -121,7 +121,7 @@ jobs:
         env:
           E2E_LIVE_API: "1"
         run: npx playwright test e2e/live-api.spec.js
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: live-api-playwright-results
@@ -174,7 +174,7 @@ jobs:
       - run: npm run test:e2e
       # Traces/screenshots are captured on the first retry — keep them when the
       # run fails so a red build is debuggable without a re-run.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: playwright-test-results
