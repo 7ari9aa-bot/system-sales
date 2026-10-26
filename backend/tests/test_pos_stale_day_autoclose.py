@@ -88,3 +88,47 @@ async def test_a_closed_day_without_a_stored_balance_reads_as_null_not_the_word_
     shift.expected_cash = None
 
     assert _session_out(shift)["closing_balance"] is None
+
+
+async def test_closing_a_day_twice_announces_it_once(db, tenant_ctx) -> None:
+    """Two callers that both found the stale day OPEN must not both close it.
+
+    The second one arrives after the first committed: by then the day is CLOSED and its balance
+    and its ``pos.session.closed`` event already exist. A second close would announce the same day
+    twice (the projection and any consumer would count it twice).
+    """
+    shift, _register = await _stale_day_with_one_sale(db, tenant_ctx)
+    await PosService._record_close(db, tenant_ctx.tenant_id, shift, closed_by=None)
+    first_closed_at = shift.closed_at
+    await PosService._record_close(db, tenant_ctx.tenant_id, shift, closed_by=None)
+
+    events = (
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_type == "pos_session",
+                    OutboxEvent.aggregate_id == shift.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    closes = [e for e in events if "pos.session.closed" in e.payload]
+    assert len(closes) == 1
+    assert shift.closed_at == first_closed_at
+
+
+async def test_a_stale_day_is_read_under_the_day_lock(db, tenant_ctx, monkeypatch) -> None:
+    """The auto-close re-reads the day FOR UPDATE, so it queues behind a sale / a held cart."""
+    shift, register = await _stale_day_with_one_sale(db, tenant_ctx)
+    locked_reads: list[bool] = []
+    real = PosService._get_session
+
+    async def spy(session, tenant_id, session_id, *, lock=False):
+        locked_reads.append(lock)
+        return await real(session, tenant_id, session_id, lock=lock)
+
+    monkeypatch.setattr(PosService, "_get_session", staticmethod(spy))
+    assert await PosService.working_session(db, tenant_ctx.tenant_id, register.id) is None
+    assert True in locked_reads

@@ -35,7 +35,7 @@ export default function VoidExpenseDialog({ expense, onOpenChange, onSubmit, pen
           <DialogTitle className="font-heading text-base">إلغاء المصروف {expense?.number}؟</DialogTitle>
           <DialogDescription className="leading-relaxed">
             مبلغ {expense ? fmtMoney(expense.amount) : ""} هيتشال من الإجماليات.
-            {expense?.payment === "cash" ? " وهيرجع للدرج لو الوردية لسه مفتوحة." : ""} المصروف نفسه بيفضل ظاهر في السجل بحالة «ملغي».
+            {" "}المصروف نفسه بيفضل ظاهر في السجل بحالة «ملغي».
           </DialogDescription>
         </DialogHeader>
         <div>

@@ -413,6 +413,8 @@ class PosService:
         *,
         identifier_type: str,
         value: str,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
     ) -> dict:
         """§179 THE scan entry point — an identifier resolves to one variant.
 
@@ -425,6 +427,9 @@ class PosService:
         from app.modules.orders.service import sellable_refusal
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to scan")
         PosService._ensure_session_current(
@@ -657,6 +662,8 @@ class PosService:
         *,
         items: list[dict],
         discount_total: object = None,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
     ) -> dict:
         """Price a cart WITHOUT writing anything — what the till shows the customer.
 
@@ -668,6 +675,9 @@ class PosService:
         """
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError("this session is closed; open a new one to quote")
         PosService._ensure_session_current(
@@ -829,8 +839,12 @@ class PosService:
             return current
         except ConflictError:
             # Nobody closed that day by hand: close it the SAME way, so it keeps its closing
-            # balance and announces ``pos.session.closed`` like any other close.
-            await PosService._record_close(session, tenant_id, current, closed_by=None)
+            # balance and announces ``pos.session.closed`` like any other close. Re-read the day
+            # FOR UPDATE first: a sale or a held cart that is mid-flight finishes before this
+            # close, and a caller that lost the race finds the day already CLOSED and does nothing.
+            locked = await PosService._get_session(session, tenant_id, current.id, lock=True)
+            if locked.status == "OPEN":
+                await PosService._record_close(session, tenant_id, locked, closed_by=None)
             return None
 
     @staticmethod
@@ -1106,6 +1120,11 @@ class PosService:
         from app.core.events.writer import add_outbox_event
         from app.modules.analytics.timekit import merchant_day
 
+        if pos_session.status == "CLOSED":
+            # Already closed (a concurrent caller got there first): its balance and its
+            # ``pos.session.closed`` event exist. Closing again would announce the day twice.
+            return
+
         closing = (await PosService._day_totals(session, tenant_id, pos_session))["closing_balance"]
 
         pos_session.status = "CLOSED"
@@ -1360,9 +1379,11 @@ class PosService:
         status: str | None = None,
         register_id: UUID | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[PosSession]:
         """Resume the till: the sessions behind this drawer, newest first. ``limit`` is the
-        caller's page size (the export asks for 500); it is never silently cut below that."""
+        caller's page size (the export asks for 500); it is never silently cut below that.
+        ``offset`` skips that many newer rows, so a long history can be read page by page."""
         query = select(PosSession).where(PosSession.tenant_id == tenant_id)
         if status is not None:
             if status not in ("OPEN", "CLOSED"):
@@ -1373,7 +1394,9 @@ class PosService:
         rows = (
             (
                 await session.execute(
-                    query.order_by(PosSession.opened_at.desc(), PosSession.id.desc()).limit(limit)
+                    query.order_by(PosSession.opened_at.desc(), PosSession.id.desc())
+                    .limit(limit)
+                    .offset(max(0, offset))
                 )
             )
             .scalars()
@@ -2126,6 +2149,8 @@ class PosService:
         discount_total: object = None,
         label: str | None = None,
         held_by: UUID | None = None,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
     ) -> PosHeldCart:
         """Park a basket on the OPEN session; reserve nothing, book nothing.
 
@@ -2136,7 +2161,13 @@ class PosService:
         sell time from the tenant's ladder; a hold therefore never freezes a
         price the catalog may since have changed.
         """
-        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        # The day's row is taken FOR UPDATE, like a sale: a close queues behind this hold (and
+        # clears the cart with the rest), or this hold queues behind the close and finds the day
+        # CLOSED. Without the lock a cart could be parked on a day that has just been closed.
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=override
+        )
         if pos_session.status != "OPEN":
             raise ConflictError("carts are held on the open session only")
         PosService._ensure_session_current(
@@ -2164,8 +2195,17 @@ class PosService:
 
     @staticmethod
     async def list_held_carts(
-        session: AsyncSession, tenant_id: UUID, session_id: UUID
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
     ) -> list[PosHeldCart]:
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=override
+        )
         rows = (
             (
                 await session.execute(
@@ -2184,7 +2224,12 @@ class PosService:
 
     @staticmethod
     async def get_held_cart(
-        session: AsyncSession, tenant_id: UUID, held_cart_id: UUID
+        session: AsyncSession,
+        tenant_id: UUID,
+        held_cart_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
     ) -> PosHeldCart:
         held = (
             await session.execute(
@@ -2196,12 +2241,26 @@ class PosService:
         ).scalar_one_or_none()
         if held is None:
             raise NotFoundError(f"held cart {held_cart_id} not found")
+        # A cart belongs to a day; whoever may not use that day's till may not read its carts.
+        owning_day = await PosService._get_session(session, tenant_id, held.session_id)
+        await PosService._ensure_may_operate(
+            session, tenant_id, owning_day, actor_user_id, override=override
+        )
         return held
 
     @staticmethod
-    async def release_held_cart(session: AsyncSession, tenant_id: UUID, held_cart_id: UUID) -> None:
+    async def release_held_cart(
+        session: AsyncSession,
+        tenant_id: UUID,
+        held_cart_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        override: bool = False,
+    ) -> None:
         """Drop a parked cart — the customer left, or it became a sale."""
-        held = await PosService.get_held_cart(session, tenant_id, held_cart_id)
+        held = await PosService.get_held_cart(
+            session, tenant_id, held_cart_id, actor_user_id=actor_user_id, override=override
+        )
         await session.delete(held)
 
     @staticmethod
@@ -2438,13 +2497,28 @@ class PosService:
             .all()
         ):
             entry = sold.setdefault(
-                item.variant_id, {"quantity": 0, "unit_price": None, "line_pct": Decimal("0")}
+                item.variant_id,
+                {
+                    "quantity": 0,
+                    "unit_price": None,
+                    "line_pct": Decimal("0"),
+                    "gross": Decimal("0"),
+                    "pct_weight": Decimal("0"),
+                },
             )
             entry["quantity"] += item.quantity
-            if entry["unit_price"] is None:
-                entry["unit_price"] = to_money(item.unit_price, "unit_price")
-                entry["line_pct"] = Decimal(str(item.discount_pct or 0))
+            # Every line the variant sold on counts, weighted by its quantity: the same variant
+            # can sit on one invoice at two prices, and the first line alone is not "the price".
+            line_gross = to_money(item.unit_price, "unit_price") * item.quantity
+            entry["gross"] += line_gross
+            entry["pct_weight"] += line_gross * Decimal(str(item.discount_pct or 0))
             sold_net += Decimal(str(item.total))
+
+        for entry in sold.values():
+            if entry["quantity"]:
+                entry["unit_price"] = to_money(entry["gross"] / entry["quantity"], "unit_price")
+            if entry["gross"]:
+                entry["line_pct"] = entry["pct_weight"] / entry["gross"]
 
         unknown = set(requested) - set(sold)
         if unknown:
@@ -2698,13 +2772,28 @@ class PosService:
             .all()
         ):
             entry = sold.setdefault(
-                item.variant_id, {"quantity": 0, "unit_price": None, "line_pct": Decimal("0")}
+                item.variant_id,
+                {
+                    "quantity": 0,
+                    "unit_price": None,
+                    "line_pct": Decimal("0"),
+                    "gross": Decimal("0"),
+                    "pct_weight": Decimal("0"),
+                },
             )
             entry["quantity"] += item.quantity
-            if entry["unit_price"] is None:
-                entry["unit_price"] = to_money(item.unit_price, "unit_price")
-                entry["line_pct"] = Decimal(str(item.discount_pct or 0))
+            # Every line the variant sold on counts, weighted by its quantity: the same variant
+            # can sit on one invoice at two prices, and the first line alone is not "the price".
+            line_gross = to_money(item.unit_price, "unit_price") * item.quantity
+            entry["gross"] += line_gross
+            entry["pct_weight"] += line_gross * Decimal(str(item.discount_pct or 0))
             sold_net += Decimal(str(item.total))
+
+        for entry in sold.values():
+            if entry["quantity"]:
+                entry["unit_price"] = to_money(entry["gross"] / entry["quantity"], "unit_price")
+            if entry["gross"]:
+                entry["line_pct"] = entry["pct_weight"] / entry["gross"]
 
         unknown = set(requested) - set(sold)
         if unknown:

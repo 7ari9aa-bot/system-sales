@@ -153,7 +153,7 @@ export default function ExpensesPage() {
         stats={[
           { label: "إجمالي المصروفات", value: fmtMoney(summary.total), hint: `${fmtInt(summary.count)} مصروفًا${summary.voidedCount ? ` • ${fmtInt(summary.voidedCount)} ملغي` : ""}`, accent: true },
           { label: "مصروفات اليوم", value: fmtMoney(summary.today), hint: "مسجلة في تاريخ اليوم" },
-          { label: "مدفوع نقدًا", value: fmtMoney(summary.cash), hint: "يُخصم من خزنة الوردية" },
+          { label: "مدفوع نقدًا", value: fmtMoney(summary.cash), hint: "مسجّل فقط، لا يؤثر على درج الكاشير" },
           { label: "أكبر تصنيف", value: summary.top, hint: `${fmtMoney(summary.topAmount)} من إجمالي المصروفات` },
         ]}
       />

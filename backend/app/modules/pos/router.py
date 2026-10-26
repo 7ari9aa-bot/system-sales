@@ -13,7 +13,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
@@ -121,6 +121,10 @@ async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosC
         name=body.name,
         warehouse_id=body.warehouse_id,
         default_customer_id=body.default_customer_id,
+        # ``null`` sent on purpose clears it; a field left out of the body leaves it alone.
+        clear_default_customer=(
+            "default_customer_id" in body.model_fields_set and body.default_customer_id is None
+        ),
         allowed_payment_methods=body.allowed_payment_methods,
         require_customer=body.require_customer,
         is_active=body.is_active,
@@ -178,8 +182,42 @@ class ScanRequest(BaseModel):
     value: str = Field(min_length=1, max_length=255)
 
 
+class CartLine(BaseModel):
+    """One cart line: a real variant, a whole quantity of at least one, an optional line discount.
+
+    ``StrictInt`` so ``true``, ``2.5`` and ``"2"`` are refused instead of quietly becoming 1 or 2.
+    Keys the till does not read (a title, a display price) are dropped, never trusted.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    variant_id: UUID
+    quantity: StrictInt = Field(ge=1, le=100000)
+    discount_pct: str | int | float | None = None
+
+    @field_validator("discount_pct")
+    @classmethod
+    def _pct_in_range(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, bool):
+            raise ValueError("discount_pct must be a number between 0 and 100")
+        try:
+            pct = Decimal(str(v))
+        except Exception as exc:
+            raise ValueError("discount_pct must be a number between 0 and 100") from exc
+        if not pct.is_finite() or pct < 0 or pct > 100:
+            raise ValueError("discount_pct must be between 0 and 100")
+        return v
+
+
+def _lines(items: list[CartLine]) -> list[dict]:
+    """The service reads plain dicts; hand it the validated ones (ids as strings, as before)."""
+    return [i.model_dump(mode="json", exclude_none=True) for i in items]
+
+
 class QuoteRequest(BaseModel):
-    items: list[dict] = Field(min_length=1)
+    items: list[CartLine] = Field(min_length=1)
     discount_total: str | None = Field(default=None, pattern=_MONEY)
 
 
@@ -193,7 +231,7 @@ class RecordSaleRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[dict] = Field(min_length=1)
+    items: list[CartLine] = Field(min_length=1)
     customer_id: UUID | None = None
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
@@ -221,7 +259,7 @@ class RecordSaleOut(BaseModel):
 
 
 class HoldCartRequest(BaseModel):
-    items: list[dict] = Field(min_length=1)
+    items: list[CartLine] = Field(min_length=1)
     customer_id: UUID | None = None
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     label: str | None = Field(default=None, max_length=127)
@@ -260,8 +298,15 @@ def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> d
         "id": str(pos_session.id),
         "register_id": str(pos_session.register_id),
         "profile_id": str(pos_session.profile_id) if pos_session.profile_id else None,
+        # A day started without a shift has no shift holder, so the person shown as the cashier is
+        # whoever started it; a drawer that does have a holder keeps showing that holder.
         "cashier_user_id": (
-            str(pos_session.cashier_user_id) if pos_session.cashier_user_id else None
+            str(pos_session.cashier_user_id or pos_session.opened_by_user_id)
+            if (pos_session.cashier_user_id or pos_session.opened_by_user_id)
+            else None
+        ),
+        "opened_by_user_id": (
+            str(pos_session.opened_by_user_id) if pos_session.opened_by_user_id else None
         ),
         "status": pos_session.status,
         "opening_float": str(pos_session.opening_float),
@@ -324,10 +369,17 @@ async def list_sessions(
     status: str | None = None,
     register_id: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    """Resume the till: sessions behind this drawer, newest first (default 50, at most 500)."""
+    """Resume the till: sessions behind this drawer, newest first (default 50, at most 500;
+    ``offset`` pages further back)."""
     rows = await PosService.list_sessions(
-        ctx.session, ctx.tenant_id, status=status, register_id=register_id, limit=limit
+        ctx.session,
+        ctx.tenant_id,
+        status=status,
+        register_id=register_id,
+        limit=limit,
+        offset=offset,
     )
     return [_session_out(s) for s in rows]
 
@@ -344,7 +396,7 @@ async def get_session(session_id: UUID, ctx: PosReadCtx):
 
 
 @router.post("/sessions/{session_id}/scan")
-async def scan(session_id: UUID, body: ScanRequest, ctx: PosWriteCtx):
+async def scan(session_id: UUID, body: ScanRequest, ctx: PosWriteCtx, override: OverrideDep):
     """§179: a code resolves to one variant, priced — the till's entry point."""
     result = await PosService.scan(
         ctx.session,
@@ -352,19 +404,23 @@ async def scan(session_id: UUID, body: ScanRequest, ctx: PosWriteCtx):
         session_id,
         identifier_type=body.identifier_type,
         value=body.value,
+        actor_user_id=ctx.user.id,
+        override=override.active,
     )
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in result.items()}
 
 
 @router.post("/sessions/{session_id}/quote")
-async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx):
+async def quote(session_id: UUID, body: QuoteRequest, ctx: PosWriteCtx, override: OverrideDep):
     """Price a cart without writing anything — what the customer sees."""
     return await PosService.quote(
         ctx.session,
         ctx.tenant_id,
         session_id,
-        items=body.items,
+        items=_lines(body.items),
         discount_total=body.discount_total,
+        actor_user_id=ctx.user.id,
+        override=override.active,
     )
 
 
@@ -422,7 +478,7 @@ async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteC
         ctx.session,
         ctx.tenant_id,
         register_id,
-        items=body.items,
+        items=_lines(body.items),
         customer_id=body.customer_id,
         discount_total=body.discount_total,
         note=(body.note or "").strip() or None,
@@ -616,35 +672,55 @@ def _held_cart_out(held) -> dict:
 
 
 @router.post("/sessions/{session_id}/held-carts", status_code=201)
-async def hold_cart(session_id: UUID, body: HoldCartRequest, ctx: PosWriteCtx):
+async def hold_cart(
+    session_id: UUID, body: HoldCartRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     """Park a basket on the open session; reserve nothing, book nothing."""
     held = await PosService.hold_cart(
         ctx.session,
         ctx.tenant_id,
         session_id,
-        items=body.items,
+        items=_lines(body.items),
         customer_id=body.customer_id,
         discount_total=body.discount_total,
         label=body.label,
         held_by=ctx.user.id,
+        actor_user_id=ctx.user.id,
+        override=override.active,
     )
     return _held_cart_out(held)
 
 
 @router.get("/sessions/{session_id}/held-carts")
-async def list_held_carts(session_id: UUID, ctx: PosReadCtx):
-    rows = await PosService.list_held_carts(ctx.session, ctx.tenant_id, session_id)
+async def list_held_carts(session_id: UUID, ctx: PosReadCtx, override: OverrideDep):
+    rows = await PosService.list_held_carts(
+        ctx.session, ctx.tenant_id, session_id, actor_user_id=ctx.user.id, override=override.active
+    )
     return [_held_cart_out(h) for h in rows]
 
 
 @router.get("/held-carts/{held_cart_id}")
-async def get_held_cart(held_cart_id: UUID, ctx: PosReadCtx):
-    return _held_cart_out(await PosService.get_held_cart(ctx.session, ctx.tenant_id, held_cart_id))
+async def get_held_cart(held_cart_id: UUID, ctx: PosReadCtx, override: OverrideDep):
+    return _held_cart_out(
+        await PosService.get_held_cart(
+            ctx.session,
+            ctx.tenant_id,
+            held_cart_id,
+            actor_user_id=ctx.user.id,
+            override=override.active,
+        )
+    )
 
 
 @router.delete("/held-carts/{held_cart_id}", status_code=204)
-async def release_held_cart(held_cart_id: UUID, ctx: PosWriteCtx):
-    await PosService.release_held_cart(ctx.session, ctx.tenant_id, held_cart_id)
+async def release_held_cart(held_cart_id: UUID, ctx: PosWriteCtx, override: OverrideDep):
+    await PosService.release_held_cart(
+        ctx.session,
+        ctx.tenant_id,
+        held_cart_id,
+        actor_user_id=ctx.user.id,
+        override=override.active,
+    )
 
 
 # ------------------------------------------------------------- refunds ----

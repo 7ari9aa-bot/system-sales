@@ -167,6 +167,7 @@ class PosProfileService:
         name: str | None = None,
         warehouse_id: UUID | None = None,
         default_customer_id: UUID | None = None,
+        clear_default_customer: bool = False,
         allowed_payment_methods: object = None,
         require_customer: bool | None = None,
         is_active: bool | None = None,
@@ -203,7 +204,10 @@ class PosProfileService:
                     "move or detach them first"
                 )
             profile.warehouse_id = warehouse_id
-        if default_customer_id is not None:
+        if clear_default_customer:
+            # An explicit ``null``: the profile goes back to "no default customer".
+            profile.default_customer_id = None
+        elif default_customer_id is not None:
             await CustomerService.get(session, tenant_id, default_customer_id)
             profile.default_customer_id = default_customer_id
         if allowed_payment_methods is not None:
