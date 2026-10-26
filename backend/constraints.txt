@@ -52,7 +52,7 @@ ruff==0.16.10
 s3transfer==0.19.2
 six==1.17.0
 sortedcontainers==2.4.0
-sqlalchemy==2.0.54
+sqlalchemy==2.1.6
 starlette==1.6.0
 structlog==26.1.0
 typing-extensions==4.16.0
