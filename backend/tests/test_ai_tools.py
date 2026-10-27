@@ -156,7 +156,7 @@ def test_every_customer_tool_rejects_an_undeclared_argument() -> None:
         "get_product_photos": {"product_id": str(uuid.uuid4())},
         "find_product_by_image": {"image_kind": "product"},
         "get_store_info": {},
-        "get_my_orders": {},
+        "get_my_orders": {"number": "ORD-1"},
         "search_knowledge": {"query": "x"},
         "handover_to_human": {"reason": "complaint", "summary": "s"},
     }
@@ -1234,17 +1234,9 @@ async def test_structured_specs_are_matched_by_the_database(db, tenant_ctx):
 def test_get_my_orders_takes_no_customer_argument() -> None:
     """The customer is server-bound: the model has no way to name another one."""
     fields = set(get_tool("get_my_orders").args_schema.model_fields)
-    assert fields == {"number", "limit"}
+    assert fields == {"number"}
     with pytest.raises(PydanticValidationError):
         get_tool("get_my_orders").args_schema(customer_id=str(uuid.uuid4()))
-
-
-async def _checkout_for(db, tenant_id, customer_id, variant, *, qty=1):
-    from app.modules.orders.service import OrderService
-
-    return await OrderService.create_order(
-        db, tenant_id, customer_id, [{"variant_id": variant.id, "quantity": qty}]
-    )
 
 
 async def _stocked_variant(db, tenant_id):
@@ -1258,58 +1250,241 @@ async def _stocked_variant(db, tenant_id):
     return variant
 
 
-async def test_get_my_orders_returns_only_the_bound_customers_invoices(db, tenant_ctx) -> None:
+async def _till_sale(db, tenant_id, *, phone: str | None, name="زبون الكاشير", qty=2):
+    """A real till sale booked on a customer carrying ``phone`` (or a walk-in)."""
+    from app.modules.catalog.service import CatalogService
+    from app.modules.customers.service import CustomerService
+    from app.modules.inventory.service import InventoryService
+    from app.modules.pos.service import PosService
+    from tests._pos_sell import sell as pos_sell
+
+    warehouse = await InventoryService.get_default_warehouse(db, tenant_id)
+    register = await PosService.create_register(
+        db, tenant_id, name="كاشير", code=f"REG-{uuid.uuid4().hex[:6]}", warehouse_id=warehouse.id
+    )
+    till = await PosService.open_session(db, tenant_id, register.id)
+    product = await CatalogService.create_product(
+        db, tenant_id, title="تيشيرت", slug=f"t-{uuid.uuid4().hex[:10]}"
+    )
+    product = await CatalogService.update_product(db, tenant_id, product.id, status="active")
+    variant = await CatalogService.add_variant(
+        db, tenant_id, product.id, title="مقاس ل", price="25.00"
+    )
+    await InventoryService.move(
+        db, tenant_id, variant.id, warehouse.id, direction="in", quantity=10, reason="purchase"
+    )
+    kwargs = {}
+    if phone is not None or name:
+        buyer = await CustomerService.create_from_import(
+            db, tenant_id, name=name, phone=phone, source="pos"
+        )
+        kwargs["customer_id"] = buyer.id
+    sold = await pos_sell(
+        db,
+        tenant_id,
+        till.id,
+        items=[{"variant_id": str(variant.id), "quantity": qty}],
+        **kwargs,
+    )
+    return sold, till, variant
+
+
+async def _chat(db, tenant_id, *, channel: str, external_id: str):
+    """A conversation on ``channel`` whose sender id is ``external_id``."""
+    from app.modules.customers.service import CustomerService
+
+    customer = await CustomerService.get_or_create_by_identity(
+        db, tenant_id, channel, external_id, name="عميل الشات"
+    )
+    conversation = await ConversationService.get_or_create(
+        db, tenant_id, customer_id=customer.id, channel=channel
+    )
+    await db.flush()
+    return customer, conversation
+
+
+async def _open(db, tenant_id, customer, conversation, number):
+    return await get_tool("get_my_orders").handler(
+        db,
+        tenant_id,
+        number=number,
+        context={
+            "customer_id": str(customer.id),
+            "conversation_id": str(conversation.id),
+        },
+    )
+
+
+async def _order_number(db, order_id) -> str:
+    from sqlalchemy import text as sql_text
+
+    return (
+        await db.execute(sql_text("SELECT number FROM orders WHERE id = :i"), {"i": order_id})
+    ).scalar_one()
+
+
+async def test_a_till_invoice_opens_for_the_verified_whatsapp_phone(db, tenant_ctx) -> None:
+    """The ground-shop case: cashier typed the phone, customer writes on WhatsApp."""
+    tenant_id = tenant_ctx.tenant_id
+    sold, till, variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
+    # WhatsApp sender ids are international digits with no plus.
+    customer, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201012345678"
+    )
+
+    result = await _open(db, tenant_id, customer, conversation, number)
+
+    assert [row["number"] for row in result["orders"]] == [number]
+    assert result["orders"][0]["grand_total"] == "50.00"
+
+
+async def test_the_returns_of_a_till_invoice_are_reported(db, tenant_ctx) -> None:
+    from app.modules.pos.service import PosService
+
+    tenant_id = tenant_ctx.tenant_id
+    sold, till, variant = await _till_sale(db, tenant_id, phone="01012345678")
+    await PosService.return_sale(
+        db,
+        tenant_id,
+        till.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    number = await _order_number(db, sold["order_id"])
+    customer, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201012345678"
+    )
+
+    row = (await _open(db, tenant_id, customer, conversation, number))["orders"][0]
+
+    assert row["returned"] == {"quantity": 1, "refund_total": "25.00"}
+
+
+async def test_another_phone_on_whatsapp_cannot_open_the_invoice(db, tenant_ctx) -> None:
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
+    stranger, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201199999999"
+    )
+
+    result = await _open(db, tenant_id, stranger, conversation, number)
+
+    assert result["orders"] == []
+    assert number not in str({k: v for k, v in result.items() if k != "orders"})
+
+
+async def test_an_unverified_channel_cannot_open_a_till_invoice(db, tenant_ctx) -> None:
+    """Telegram's sender id is a chat id, not a phone: it proves nothing, even
+    when it happens to equal the digits on the receipt."""
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
+    for channel, ref in (("telegram", "201012345678"), ("webchat", "01012345678")):
+        impostor, conversation = await _chat(db, tenant_id, channel=channel, external_id=ref)
+        result = await _open(db, tenant_id, impostor, conversation, number)
+        assert result["orders"] == [], channel
+
+
+async def test_a_walk_in_invoice_never_opens_by_number_alone(db, tenant_ctx) -> None:
+    """No phone on the invoice: the sequential number would be the only key."""
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone=None, name="")
+    number = await _order_number(db, sold["order_id"])
+    customer, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201012345678"
+    )
+
+    result = await _open(db, tenant_id, customer, conversation, number)
+
+    assert result["orders"] == []
+
+
+async def test_a_chat_customer_opens_their_own_invoice_on_any_channel(db, tenant_ctx) -> None:
+    from app.modules.orders.service import OrderService
+
     tenant_id = tenant_ctx.tenant_id
     variant = await _stocked_variant(db, tenant_id)
-    mine, _ = await _conversation(db, tenant_id)
-    other, _ = await _conversation(db, tenant_id)
-    my_order = await _checkout_for(db, tenant_id, mine.id, variant, qty=2)
-    their_order = await _checkout_for(db, tenant_id, other.id, variant)
-
-    spec = get_tool("get_my_orders")
-    result = await spec.handler(db, tenant_id, context={"customer_id": str(mine.id)})
-    numbers = [row["number"] for row in result["orders"]]
-    assert numbers == [my_order.number]
-    assert their_order.number not in numbers
-    assert result["orders"][0]["items"][0]["quantity"] == 2
-    assert result["orders"][0]["returned"] is None
-
-    # Guessing the other customer's invoice number finds nothing, not their data.
-    guessed = await spec.handler(
-        db, tenant_id, number=their_order.number, context={"customer_id": str(mine.id)}
+    customer, conversation = await _conversation(db, tenant_id)  # webchat
+    order = await OrderService.create_order(
+        db, tenant_id, customer.id, [{"variant_id": variant.id, "quantity": 1}]
     )
-    assert guessed["orders"] == []
-    assert their_order.number not in str(guessed)
+
+    result = await _open(db, tenant_id, customer, conversation, order.number)
+
+    assert [row["number"] for row in result["orders"]] == [order.number]
+
+
+async def test_a_chat_customer_cannot_open_someone_elses_invoice(db, tenant_ctx) -> None:
+    from app.modules.orders.service import OrderService
+
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _stocked_variant(db, tenant_id)
+    mine, conversation = await _conversation(db, tenant_id)
+    other, _ = await _conversation(db, tenant_id)
+    theirs = await OrderService.create_order(
+        db, tenant_id, other.id, [{"variant_id": variant.id, "quantity": 1}]
+    )
+
+    result = await _open(db, tenant_id, mine, conversation, theirs.number)
+
+    assert result["orders"] == []
 
 
 async def test_get_my_orders_needs_a_bound_customer(db, tenant_ctx) -> None:
     spec = get_tool("get_my_orders")
     with pytest.raises(DomainError):
-        await spec.handler(db, tenant_ctx.tenant_id, context={})
+        await spec.handler(db, tenant_ctx.tenant_id, number="X", context={})
     with pytest.raises(DomainError):
-        await spec.handler(db, tenant_ctx.tenant_id)
+        await spec.handler(db, tenant_ctx.tenant_id, number="X")
 
 
 async def test_get_my_orders_hides_a_deleted_invoice(db, tenant_ctx) -> None:
     from sqlalchemy import text as sql_text
 
     tenant_id = tenant_ctx.tenant_id
-    variant = await _stocked_variant(db, tenant_id)
-    customer, _ = await _conversation(db, tenant_id)
-    order = await _checkout_for(db, tenant_id, customer.id, variant)
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
     await db.execute(
-        sql_text("UPDATE orders SET deleted_at = now() WHERE id = :id"), {"id": order.id}
+        sql_text("UPDATE orders SET deleted_at = now() WHERE id = :id"), {"id": sold["order_id"]}
     )
     await db.flush()
-
-    result = await get_tool("get_my_orders").handler(
-        db, tenant_id, context={"customer_id": str(customer.id)}
+    customer, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201012345678"
     )
-    assert result["orders"] == []
+
+    assert (await _open(db, tenant_id, customer, conversation, number))["orders"] == []
 
 
-async def test_get_my_orders_shows_what_the_cashier_took_back(db, tenant_ctx) -> None:
-    """A real till sale then a real till return: the agent reports both truthfully."""
+async def test_an_unverified_channel_never_matches_an_invoice_with_no_phone(db, tenant_ctx) -> None:
+    """No verified phone must mean NO phone match, not "match an empty phone":
+    a till customer saved without a number must not open for anyone on
+    Telegram, the web chat or an unrelated WhatsApp number."""
+    from sqlalchemy import text as sql_text
+
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
+    await db.execute(
+        sql_text(
+            "UPDATE customers SET phone = NULL WHERE id = "
+            "(SELECT customer_id FROM orders WHERE id = :id)"
+        ),
+        {"id": sold["order_id"]},
+    )
+    await db.flush()
+    for channel in ("telegram", "webchat", "whatsapp"):
+        stranger, conversation = await _chat(
+            db, tenant_id, channel=channel, external_id=f"x-{channel}-1"
+        )
+        assert (await _open(db, tenant_id, stranger, conversation, number))["orders"] == [], channel
+
+
+async def test_exchange_flow_open_the_invoice_then_offer_the_other_sizes(db, tenant_ctx) -> None:
+    """The ground-shop exchange: the customer bought size M, asks for another
+    size. Invoice number -> the invoice names the product -> the product's own
+    variants show which sizes the till can actually hand over."""
     from app.modules.catalog.service import CatalogService
     from app.modules.customers.service import CustomerService
     from app.modules.inventory.service import InventoryService
@@ -1326,36 +1501,51 @@ async def test_get_my_orders_shows_what_the_cashier_took_back(db, tenant_ctx) ->
         db, tenant_id, title="تيشيرت", slug=f"t-{uuid.uuid4().hex[:10]}"
     )
     product = await CatalogService.update_product(db, tenant_id, product.id, status="active")
-    variant = await CatalogService.add_variant(
-        db, tenant_id, product.id, title="مقاس ل", price="25.00"
-    )
-    await InventoryService.move(
-        db, tenant_id, variant.id, warehouse.id, direction="in", quantity=10, reason="purchase"
-    )
-    customer = await CustomerService.create_from_import(
-        db, tenant_id, name="زبون المرتجع", source="pos"
+    sizes = {}
+    for size, price, stock in (("M", "25.00", 5), ("L", "25.00", 3), ("XL", "30.00", 0)):
+        sizes[size] = await CatalogService.add_variant(
+            db, tenant_id, product.id, title=size, option_values={"size": size}, price=price
+        )
+        if stock:
+            await InventoryService.move(
+                db,
+                tenant_id,
+                sizes[size].id,
+                warehouse.id,
+                direction="in",
+                quantity=stock,
+                reason="purchase",
+            )
+    buyer = await CustomerService.create_from_import(
+        db, tenant_id, name="زبون", phone="01012345678", source="pos"
     )
     sold = await pos_sell(
         db,
         tenant_id,
         till.id,
-        customer_id=customer.id,
-        items=[{"variant_id": str(variant.id), "quantity": 2}],
+        customer_id=buyer.id,
+        items=[{"variant_id": str(sizes["M"].id), "quantity": 1}],
     )
-    await PosService.return_sale(
-        db,
-        tenant_id,
-        till.id,
-        order_id=sold["order_id"],
-        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    number = await _order_number(db, sold["order_id"])
+    customer, conversation = await _chat(
+        db, tenant_id, channel="whatsapp", external_id="201012345678"
     )
 
-    result = await get_tool("get_my_orders").handler(
-        db, tenant_id, context={"customer_id": str(customer.id)}
-    )
+    # 1) the customer quotes the invoice number
+    invoice = (await _open(db, tenant_id, customer, conversation, number))["orders"][0]
+    line = invoice["items"][0]
+    assert line["option_values"] == {"size": "M"}
+    assert line["variant_id"] == str(sizes["M"].id)
 
-    assert len(result["orders"]) == 1
-    row = result["orders"][0]
-    assert row["grand_total"] == "50.00"
-    assert row["items"][0]["quantity"] == 2
-    assert row["returned"] == {"quantity": 1, "refund_total": "25.00"}
+    # 2) the agent follows the invoice line to the product's other variants
+    details = await get_tool("get_product_details").handler(
+        db, tenant_id, product_id=uuid.UUID(line["product_id"])
+    )
+    by_size = {v["option_values"]["size"]: v for v in details["variants"]}
+    assert set(by_size) == {"M", "L", "XL"}
+    # L is on the shelf (3 left), XL is not: the agent offers L and says XL is out.
+    assert by_size["L"]["availability"]["status"] in ("متوفر", "قليل")
+    assert by_size["XL"]["availability"]["status"] == "خلص"
+    # the price difference is data the agent reads, not something it computes
+    assert by_size["XL"]["price"] == "30.00"
+    assert by_size["L"]["price"] == invoice["items"][0]["unit_price"]

@@ -643,41 +643,92 @@ async def _search_knowledge(
 
 
 class GetMyOrdersArgs(_StrictArgs):
-    """Which of THIS customer's invoices. The customer is never an argument."""
+    """The invoice number the customer read off their receipt. Nothing else.
 
-    number: str | None = Field(default=None, min_length=1, max_length=31)
-    limit: int = Field(default=3, ge=1, le=5)
+    The number is required, never optional: an invoice number is sequential and
+    guessable, so "list my latest invoices" would let the tool's only safety be
+    the customer binding. Quoting the number is the customer's proof they hold
+    the receipt; the ownership rules below are the second lock.
+    """
+
+    number: str = Field(min_length=1, max_length=31)
+
+
+# Channels whose sender id IS a phone number the provider has verified. Every
+# other channel's id (a Telegram chat id, a web session, an Instagram scoped
+# id) is not a phone, so it can never vouch for a till invoice.
+_PHONE_VERIFIED_CHANNELS = frozenset({"whatsapp"})
+
+_NOT_FOUND_HINT = (
+    "مفيش فاتورة بالرقم ده على حساب العميل ده. متقولش إن الفاتورة مش موجودة "
+    "في المتجر ولا تأكد أو تنفي ملكية حد ليها، حوّل لموظف يتأكد."
+)
+
+
+async def _verified_channel_phone(
+    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID | None
+) -> list[str]:
+    """Phone spellings this conversation has PROVEN, or [] when it proves none.
+
+    Only a channel whose sender id is a provider-verified phone number counts;
+    the id is read from the conversation's own customer identity on the server,
+    never from anything the customer typed.
+    """
+    if conversation_id is None:
+        return []
+    from app.core.contact_norm import phone_candidates
+
+    row = (
+        (
+            await session.execute(
+                text(
+                    "SELECT c.channel, i.external_id "
+                    "FROM conversations c "
+                    "JOIN customer_identities i "
+                    "ON i.tenant_id = c.tenant_id AND i.customer_id = c.customer_id "
+                    "AND i.channel = c.channel "
+                    "WHERE c.tenant_id = :tenant_id AND c.id = :conversation_id "
+                    "LIMIT 1"
+                ),
+                {"tenant_id": tenant_id, "conversation_id": conversation_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None or row["channel"] not in _PHONE_VERIFIED_CHANNELS:
+        return []
+    return phone_candidates(row["external_id"])
 
 
 async def _get_my_orders(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
-    number: str | None = None,
-    limit: int = 3,
+    number: str,
     context: dict | None = None,
 ) -> dict:
-    """Read-only: the invoices of the customer in THIS conversation, with returns.
+    """Read-only: ONE invoice the customer can prove is theirs, with its returns.
 
-    The customer comes from the server-bound context, never from the model, so
-    one customer cannot read another's invoice by guessing a number. Tables are
-    read with bound SQL rather than imported (``ai -> orders`` / ``ai -> pos``
-    would close a module cycle, see tests/test_module_boundaries.py). Nothing
-    here writes; a return or an exchange is staff work via handover.
+    An invoice opens only when the customer quotes its number AND one of:
+
+    1. it is booked on the customer of THIS conversation; or
+    2. it is a till invoice (booked on a walk-in or another profile) that
+       carries a phone number matching the phone this channel has verified.
+
+    A till invoice with no phone never opens by number alone: the number is
+    sequential, so it is a guess, not a proof. Both customer and conversation
+    come from the server-bound context, never from the model. Tables are read
+    with bound SQL rather than imported (``ai -> orders`` / ``ai -> pos`` would
+    close a module cycle, see tests/test_module_boundaries.py). Nothing here
+    writes; a return or an exchange is staff work via handover.
     """
     customer_id = _parse_bound_id((context or {}).get("customer_id"))
     if customer_id is None:
         raise DomainError("no customer bound to this tool call")
+    conversation_id = _parse_bound_id((context or {}).get("conversation_id"))
 
-    params: dict[str, object] = {
-        "tenant_id": tenant_id,
-        "customer_id": customer_id,
-        "limit": limit,
-    }
-    number_filter = ""
-    if number:
-        number_filter = "AND o.number = :number"
-        params["number"] = number.strip()
+    phones = await _verified_channel_phone(session, tenant_id, conversation_id)
 
     orders = (
         (
@@ -686,34 +737,44 @@ async def _get_my_orders(
                     "SELECT o.id, o.number, o.status, o.currency, o.subtotal, "
                     "o.discount_total, o.grand_total, o.placed_at "
                     "FROM orders o "
-                    "WHERE o.tenant_id = :tenant_id AND o.customer_id = :customer_id "
-                    "AND o.deleted_at IS NULL " + number_filter + " "
-                    "ORDER BY o.placed_at DESC NULLS LAST, o.number DESC "
-                    "LIMIT :limit"
+                    "JOIN customers oc ON oc.id = o.customer_id "
+                    "AND oc.tenant_id = o.tenant_id "
+                    "WHERE o.tenant_id = :tenant_id AND o.number = :number "
+                    "AND o.deleted_at IS NULL "
+                    "AND (o.customer_id = :customer_id "
+                    # `x = ANY('{}')` is already false, so with no verified phone
+                    # nothing matches. The explicit cardinality guard is a second
+                    # lock kept on purpose, in case the comparison is ever changed.
+                    "OR (cardinality(CAST(:phones AS text[])) > 0 "
+                    "AND oc.phone = ANY(CAST(:phones AS text[])))) "
+                    "LIMIT 1"
                 ),
-                params,
+                {
+                    "tenant_id": tenant_id,
+                    "customer_id": customer_id,
+                    "number": number.strip(),
+                    "phones": phones,
+                },
             )
         )
         .mappings()
         .all()
     )
     if not orders:
-        return {
-            "orders": [],
-            "hint": "مفيش فاتورة مسجلة للعميل ده"
-            + (" بالرقم ده" if number else "")
-            + " — لو متأكد إنها موجودة حوّل لموظف.",
-        }
+        return {"orders": [], "hint": _NOT_FOUND_HINT}
 
     order_ids = [row["id"] for row in orders]
     items = (
         (
             await session.execute(
                 text(
-                    "SELECT order_id, title, quantity, unit_price, total "
-                    "FROM order_items "
-                    "WHERE tenant_id = :tenant_id AND order_id = ANY(:order_ids) "
-                    "ORDER BY created_at, id"
+                    "SELECT i.order_id, i.title, i.quantity, i.unit_price, i.total, "
+                    "i.variant_id, v.product_id, v.option_values "
+                    "FROM order_items i "
+                    "LEFT JOIN product_variants v ON v.id = i.variant_id "
+                    "AND v.tenant_id = i.tenant_id "
+                    "WHERE i.tenant_id = :tenant_id AND i.order_id = ANY(:order_ids) "
+                    "ORDER BY i.created_at, i.id"
                 ),
                 {"tenant_id": tenant_id, "order_ids": order_ids},
             )
@@ -745,6 +806,12 @@ async def _get_my_orders(
                 "quantity": int(item["quantity"]),
                 "unit_price": _money(item["unit_price"]),
                 "total": _money(item["total"]),
+                # What the customer bought, so the agent can look up the same
+                # product's other sizes/colours with get_product_details. The
+                # ids are read from the invoice, never supplied by the model.
+                "product_id": str(item["product_id"]) if item["product_id"] else None,
+                "variant_id": str(item["variant_id"]) if item["variant_id"] else None,
+                "option_values": item["option_values"] or {},
             }
         )
     returns_by_order = {row["order_id"]: row for row in returned}
@@ -1181,13 +1248,15 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="get_my_orders",
         description=(
-            "Read the invoices of the customer you are talking to: number, "
-            "status, date, items, totals, and whether goods were returned. "
-            "Pass `number` when the customer quotes an invoice number, "
-            "otherwise the latest ones come back. You can only ever see THIS "
-            "customer's invoices. Read-only: you cannot change, return or "
-            "exchange anything. If the customer wants to return, exchange, "
-            "cancel or dispute, explain what you see and hand over to staff."
+            "Read ONE invoice the customer quotes by its number (the number "
+            "printed on their receipt): status, date, items, totals, and "
+            "whether goods were returned. `number` is required: ask the "
+            "customer for it, never guess one and never list invoices. It "
+            "opens only invoices the customer can prove are theirs, so an "
+            "empty result means 'not on this account', not 'does not exist'. "
+            "Read-only: you cannot change, return or exchange anything. If "
+            "the customer wants to return, exchange, cancel or dispute, or "
+            "the invoice does not open, hand over to staff."
         ),
         args_schema=GetMyOrdersArgs,
         handler=_get_my_orders,
