@@ -1549,3 +1549,29 @@ async def test_exchange_flow_open_the_invoice_then_offer_the_other_sizes(db, ten
     # the price difference is data the agent reads, not something it computes
     assert by_size["XL"]["price"] == "30.00"
     assert by_size["L"]["price"] == invoice["items"][0]["unit_price"]
+
+
+# ----------------------------------------------- handover is a last resort ----
+
+
+def test_there_is_no_handover_reason_for_a_plain_purchase_or_question() -> None:
+    """A browsing or buying customer is the agent's job. Handover reasons are
+    only an unsolved problem or an explicit request for a person."""
+    from app.modules.ai.agents.customer.tools import HandoverToHumanArgs
+
+    allowed = set(HandoverToHumanArgs.model_fields["reason"].annotation.__args__)
+    assert allowed == {"complex_problem", "missing_data", "customer_request", "complaint"}
+    with pytest.raises(PydanticValidationError):
+        HandoverToHumanArgs(reason="purchase_intent", summary="wants to buy a shirt")
+
+
+def test_the_handover_tool_and_prompt_say_it_is_a_last_resort() -> None:
+    from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT
+
+    description = get_tool("handover_to_human").description
+    assert "LAST resort" in description
+    assert "never hand over a plain question" in description
+    assert "purchase_intent" not in description
+    # the prompt tells the agent to answer ordinary questions itself
+    assert "التحويل مش حل للأسئلة العادية" in CUSTOMER_SYSTEM_PROMPT
+    assert "فيه مشكلة فعلية" in CUSTOMER_SYSTEM_PROMPT

@@ -122,6 +122,7 @@ _REGISTRY: dict[str, RiskLevel] = {
     "get_store_info": RiskLevel.LOW,
     "find_support_playbook": RiskLevel.LOW,
     "get_product_details": RiskLevel.LOW,
+    "get_my_orders": RiskLevel.LOW,  # read-only, bound to the conversation's customer
     "handover_to_human": RiskLevel.MEDIUM,
     # Platform actions the chain will govern in later waves
     "send_message": RiskLevel.MEDIUM,

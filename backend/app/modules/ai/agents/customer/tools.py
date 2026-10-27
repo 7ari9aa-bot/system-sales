@@ -661,7 +661,8 @@ _PHONE_VERIFIED_CHANNELS = frozenset({"whatsapp"})
 
 _NOT_FOUND_HINT = (
     "مفيش فاتورة بالرقم ده على حساب العميل ده. متقولش إن الفاتورة مش موجودة "
-    "في المتجر ولا تأكد أو تنفي ملكية حد ليها، حوّل لموظف يتأكد."
+    "في المتجر ولا تأكد أو تنفي ملكية حد ليها. اطلب منه يراجع الرقم على "
+    "الإيصال وكمّل معاه."
 )
 
 
@@ -1022,11 +1023,12 @@ class HandoverToHumanArgs(BaseModel):
     # `customer_id` from context; the scope is bound server-side and an extra
     # one is DROPPED before the handler (§132). Rejecting the call over a
     # harmless extra field would fail the escalation itself, and escalation is
-    # the safety net for complaints and purchase intent.
-    reason: Literal[
-        "complex_problem", "missing_data", "customer_request",
-        "complaint", "purchase_intent",
-    ]
+    # the safety net for a problem the agent could not solve.
+    #
+    # There is deliberately no "purchase_intent" reason: a customer who wants
+    # to buy, or who only asks a question, is served by the agent itself. A
+    # handover needs an unsolved problem or an explicit request for a person.
+    reason: Literal["complex_problem", "missing_data", "customer_request", "complaint"]
     summary: str = Field(min_length=1, max_length=1000)
 
 
@@ -1255,8 +1257,8 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
             "opens only invoices the customer can prove are theirs, so an "
             "empty result means 'not on this account', not 'does not exist'. "
             "Read-only: you cannot change, return or exchange anything. If "
-            "the customer wants to return, exchange, cancel or dispute, or "
-            "the invoice does not open, hand over to staff."
+            "the customer wants to return, exchange or cancel, answer from the "
+            "invoice and the store policy yourself."
         ),
         args_schema=GetMyOrdersArgs,
         handler=_get_my_orders,
@@ -1272,8 +1274,10 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
             "`steps` and an `escalate_when` condition. Explain the steps in "
             "your own natural words, one or two at a time, and check how it "
             "went; never paste them as a list. If `escalate_when` is true for "
-            "this customer, or `matched` is 0, do not improvise a solution: "
-            "call handover_to_human."
+            "this customer, do not improvise a solution: call handover_to_human. "
+            "If `matched` is 0, first try the rest of your tools (store info, "
+            "catalog, the customer's invoice); hand over only if that still "
+            "leaves a real problem unsolved."
         ),
         args_schema=FindSupportPlaybookArgs,
         handler=_find_support_playbook,
@@ -1282,17 +1286,20 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="handover_to_human",
         description=(
-            "Escalate this conversation to a human staff member. Use it when: "
-            "you tried to solve the customer's problem and could not "
-            "(complex_problem); the store's data does not have what you need "
-            "(missing_data); the customer explicitly asks for a person "
-            "(customer_request); the customer is complaining about the store, "
-            "an order or the service (complaint); or the customer wants to "
-            "PLACE or CHANGE an order — selling is staff work "
-            "(purchase_intent). Pass `reason` and a `summary` saying what you "
-            "tried and what is missing — the staff reads it before opening "
-            "the chat. After calling it, write one short natural reply "
-            "telling the customer a team member will continue with them."
+            "Escalate this conversation to a human staff member. This is the "
+            "LAST resort, not the default: answer questions about products, "
+            "sizes, colours, prices, stock, store policy and the customer's own "
+            "invoice yourself with your tools, and never hand over a plain "
+            "question or a customer who is just browsing or wants to buy. Use "
+            "it only when (1) there is a real problem (complaint) and you "
+            "tried the store's written solutions and your tools and could not "
+            "solve it (complex_problem), (2) the information needed to solve "
+            "that problem does not exist anywhere in the store's data after "
+            "you searched it (missing_data), or (3) the customer explicitly "
+            "asks for a person (customer_request). Pass `reason` and a "
+            "`summary` saying what you tried and what stopped you. After "
+            "calling it, write one short natural reply telling the customer a "
+            "team member will continue with them."
         ),
         args_schema=HandoverToHumanArgs,
         handler=_handover_to_human,
