@@ -642,6 +642,139 @@ async def _search_knowledge(
 # ------------------------------------------------------------- escalation --
 
 
+class GetMyOrdersArgs(_StrictArgs):
+    """Which of THIS customer's invoices. The customer is never an argument."""
+
+    number: str | None = Field(default=None, min_length=1, max_length=31)
+    limit: int = Field(default=3, ge=1, le=5)
+
+
+async def _get_my_orders(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    number: str | None = None,
+    limit: int = 3,
+    context: dict | None = None,
+) -> dict:
+    """Read-only: the invoices of the customer in THIS conversation, with returns.
+
+    The customer comes from the server-bound context, never from the model, so
+    one customer cannot read another's invoice by guessing a number. Tables are
+    read with bound SQL rather than imported (``ai -> orders`` / ``ai -> pos``
+    would close a module cycle, see tests/test_module_boundaries.py). Nothing
+    here writes; a return or an exchange is staff work via handover.
+    """
+    customer_id = _parse_bound_id((context or {}).get("customer_id"))
+    if customer_id is None:
+        raise DomainError("no customer bound to this tool call")
+
+    params: dict[str, object] = {
+        "tenant_id": tenant_id,
+        "customer_id": customer_id,
+        "limit": limit,
+    }
+    number_filter = ""
+    if number:
+        number_filter = "AND o.number = :number"
+        params["number"] = number.strip()
+
+    orders = (
+        (
+            await session.execute(
+                text(
+                    "SELECT o.id, o.number, o.status, o.currency, o.subtotal, "
+                    "o.discount_total, o.grand_total, o.placed_at "
+                    "FROM orders o "
+                    "WHERE o.tenant_id = :tenant_id AND o.customer_id = :customer_id "
+                    "AND o.deleted_at IS NULL " + number_filter + " "
+                    "ORDER BY o.placed_at DESC NULLS LAST, o.number DESC "
+                    "LIMIT :limit"
+                ),
+                params,
+            )
+        )
+        .mappings()
+        .all()
+    )
+    if not orders:
+        return {
+            "orders": [],
+            "hint": "مفيش فاتورة مسجلة للعميل ده"
+            + (" بالرقم ده" if number else "")
+            + " — لو متأكد إنها موجودة حوّل لموظف.",
+        }
+
+    order_ids = [row["id"] for row in orders]
+    items = (
+        (
+            await session.execute(
+                text(
+                    "SELECT order_id, title, quantity, unit_price, total "
+                    "FROM order_items "
+                    "WHERE tenant_id = :tenant_id AND order_id = ANY(:order_ids) "
+                    "ORDER BY created_at, id"
+                ),
+                {"tenant_id": tenant_id, "order_ids": order_ids},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    returned = (
+        (
+            await session.execute(
+                text(
+                    "SELECT order_id, SUM(quantity) AS quantity, "
+                    "SUM(refund_total) AS refund_total "
+                    "FROM pos_return_lines "
+                    "WHERE tenant_id = :tenant_id AND order_id = ANY(:order_ids) "
+                    "GROUP BY order_id"
+                ),
+                {"tenant_id": tenant_id, "order_ids": order_ids},
+            )
+        )
+        .mappings()
+        .all()
+    )
+    items_by_order: dict[object, list[dict]] = {}
+    for item in items:
+        items_by_order.setdefault(item["order_id"], []).append(
+            {
+                "title": item["title"],
+                "quantity": int(item["quantity"]),
+                "unit_price": _money(item["unit_price"]),
+                "total": _money(item["total"]),
+            }
+        )
+    returns_by_order = {row["order_id"]: row for row in returned}
+
+    result_orders = []
+    for row in orders:
+        back = returns_by_order.get(row["id"])
+        result_orders.append(
+            {
+                "number": row["number"],
+                "status": row["status"],
+                "placed_at": row["placed_at"].date().isoformat() if row["placed_at"] else None,
+                "currency": row["currency"],
+                "subtotal": _money(row["subtotal"]),
+                "discount_total": _money(row["discount_total"]),
+                "grand_total": _money(row["grand_total"]),
+                "items": items_by_order.get(row["id"], []),
+                "returned": (
+                    {
+                        "quantity": int(back["quantity"]),
+                        "refund_total": _money(back["refund_total"]),
+                    }
+                    if back
+                    else None
+                ),
+            }
+        )
+    return {"orders": result_orders}
+
+
 class FindSupportPlaybookArgs(_StrictArgs):
     """The customer's problem in their own words."""
 
@@ -1044,6 +1177,21 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
         args_schema=SearchKnowledgeArgs,
         handler=_search_knowledge,
         tags=["knowledge"],
+    ),
+    ToolSpec(
+        name="get_my_orders",
+        description=(
+            "Read the invoices of the customer you are talking to: number, "
+            "status, date, items, totals, and whether goods were returned. "
+            "Pass `number` when the customer quotes an invoice number, "
+            "otherwise the latest ones come back. You can only ever see THIS "
+            "customer's invoices. Read-only: you cannot change, return or "
+            "exchange anything. If the customer wants to return, exchange, "
+            "cancel or dispute, explain what you see and hand over to staff."
+        ),
+        args_schema=GetMyOrdersArgs,
+        handler=_get_my_orders,
+        tags=["orders"],
     ),
     ToolSpec(
         name="find_support_playbook",

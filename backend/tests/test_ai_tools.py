@@ -16,6 +16,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +35,7 @@ NEW_TOOLS = (
     "get_product_photos",
     "find_product_by_image",
     "get_store_info",
+    "get_my_orders",
     "search_knowledge",
     "handover_to_human",
 )
@@ -79,6 +81,7 @@ def test_order_tools_are_gone() -> None:
         ("get_product_photos", "LOW"),
         ("find_product_by_image", "LOW"),
         ("get_store_info", "LOW"),
+        ("get_my_orders", "LOW"),
         ("search_knowledge", "LOW"),
         ("handover_to_human", "MEDIUM"),
     ],
@@ -153,6 +156,7 @@ def test_every_customer_tool_rejects_an_undeclared_argument() -> None:
         "get_product_photos": {"product_id": str(uuid.uuid4())},
         "find_product_by_image": {"image_kind": "product"},
         "get_store_info": {},
+        "get_my_orders": {},
         "search_knowledge": {"query": "x"},
         "handover_to_human": {"reason": "complaint", "summary": "s"},
     }
@@ -1222,3 +1226,136 @@ async def test_structured_specs_are_matched_by_the_database(db, tenant_ctx):
     result = await spec.handler(db, tenant_id, **kwargs)
 
     assert [row["variant_id"] for row in result["results"]] == [str(red_m.id)]
+
+
+# ------------------------------------------------------ get_my_orders -------
+
+
+def test_get_my_orders_takes_no_customer_argument() -> None:
+    """The customer is server-bound: the model has no way to name another one."""
+    fields = set(get_tool("get_my_orders").args_schema.model_fields)
+    assert fields == {"number", "limit"}
+    with pytest.raises(PydanticValidationError):
+        get_tool("get_my_orders").args_schema(customer_id=str(uuid.uuid4()))
+
+
+async def _checkout_for(db, tenant_id, customer_id, variant, *, qty=1):
+    from app.modules.orders.service import OrderService
+
+    return await OrderService.create_order(
+        db, tenant_id, customer_id, [{"variant_id": variant.id, "quantity": qty}]
+    )
+
+
+async def _stocked_variant(db, tenant_id):
+    from app.modules.inventory.service import InventoryService
+
+    variant = await _variant(db, tenant_id)
+    warehouse = await InventoryService.get_default_warehouse(db, tenant_id)
+    await InventoryService.move(
+        db, tenant_id, variant.id, warehouse.id, direction="in", quantity=20, reason="purchase"
+    )
+    return variant
+
+
+async def test_get_my_orders_returns_only_the_bound_customers_invoices(db, tenant_ctx) -> None:
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _stocked_variant(db, tenant_id)
+    mine, _ = await _conversation(db, tenant_id)
+    other, _ = await _conversation(db, tenant_id)
+    my_order = await _checkout_for(db, tenant_id, mine.id, variant, qty=2)
+    their_order = await _checkout_for(db, tenant_id, other.id, variant)
+
+    spec = get_tool("get_my_orders")
+    result = await spec.handler(db, tenant_id, context={"customer_id": str(mine.id)})
+    numbers = [row["number"] for row in result["orders"]]
+    assert numbers == [my_order.number]
+    assert their_order.number not in numbers
+    assert result["orders"][0]["items"][0]["quantity"] == 2
+    assert result["orders"][0]["returned"] is None
+
+    # Guessing the other customer's invoice number finds nothing, not their data.
+    guessed = await spec.handler(
+        db, tenant_id, number=their_order.number, context={"customer_id": str(mine.id)}
+    )
+    assert guessed["orders"] == []
+    assert their_order.number not in str(guessed)
+
+
+async def test_get_my_orders_needs_a_bound_customer(db, tenant_ctx) -> None:
+    spec = get_tool("get_my_orders")
+    with pytest.raises(DomainError):
+        await spec.handler(db, tenant_ctx.tenant_id, context={})
+    with pytest.raises(DomainError):
+        await spec.handler(db, tenant_ctx.tenant_id)
+
+
+async def test_get_my_orders_hides_a_deleted_invoice(db, tenant_ctx) -> None:
+    from sqlalchemy import text as sql_text
+
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _stocked_variant(db, tenant_id)
+    customer, _ = await _conversation(db, tenant_id)
+    order = await _checkout_for(db, tenant_id, customer.id, variant)
+    await db.execute(
+        sql_text("UPDATE orders SET deleted_at = now() WHERE id = :id"), {"id": order.id}
+    )
+    await db.flush()
+
+    result = await get_tool("get_my_orders").handler(
+        db, tenant_id, context={"customer_id": str(customer.id)}
+    )
+    assert result["orders"] == []
+
+
+async def test_get_my_orders_shows_what_the_cashier_took_back(db, tenant_ctx) -> None:
+    """A real till sale then a real till return: the agent reports both truthfully."""
+    from app.modules.catalog.service import CatalogService
+    from app.modules.customers.service import CustomerService
+    from app.modules.inventory.service import InventoryService
+    from app.modules.pos.service import PosService
+    from tests._pos_sell import sell as pos_sell
+
+    tenant_id = tenant_ctx.tenant_id
+    warehouse = await InventoryService.get_default_warehouse(db, tenant_id)
+    register = await PosService.create_register(
+        db, tenant_id, name="كاشير", code=f"REG-{uuid.uuid4().hex[:6]}", warehouse_id=warehouse.id
+    )
+    till = await PosService.open_session(db, tenant_id, register.id)
+    product = await CatalogService.create_product(
+        db, tenant_id, title="تيشيرت", slug=f"t-{uuid.uuid4().hex[:10]}"
+    )
+    product = await CatalogService.update_product(db, tenant_id, product.id, status="active")
+    variant = await CatalogService.add_variant(
+        db, tenant_id, product.id, title="مقاس ل", price="25.00"
+    )
+    await InventoryService.move(
+        db, tenant_id, variant.id, warehouse.id, direction="in", quantity=10, reason="purchase"
+    )
+    customer = await CustomerService.create_from_import(
+        db, tenant_id, name="زبون المرتجع", source="pos"
+    )
+    sold = await pos_sell(
+        db,
+        tenant_id,
+        till.id,
+        customer_id=customer.id,
+        items=[{"variant_id": str(variant.id), "quantity": 2}],
+    )
+    await PosService.return_sale(
+        db,
+        tenant_id,
+        till.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+
+    result = await get_tool("get_my_orders").handler(
+        db, tenant_id, context={"customer_id": str(customer.id)}
+    )
+
+    assert len(result["orders"]) == 1
+    row = result["orders"][0]
+    assert row["grand_total"] == "50.00"
+    assert row["items"][0]["quantity"] == 2
+    assert row["returned"] == {"quantity": 1, "refund_total": "25.00"}

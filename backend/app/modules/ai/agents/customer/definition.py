@@ -19,6 +19,7 @@ CUSTOMER_TOOLS = [
     "get_product_photos",
     "find_product_by_image",
     "get_store_info",
+    "get_my_orders",
     "find_support_playbook",
     "handover_to_human",
 ]
@@ -64,6 +65,14 @@ _DEFINITION = AgentDefinition(
             description=(
                 "Store facts: hours, branches, shipping, payment, returns; "
                 "ranked by the customer's question when one is given"
+            ),
+            required=False,
+        ),
+        AgentCapability(
+            name="get_my_orders",
+            description=(
+                "The invoices of the customer in this conversation, read-only: "
+                "status, items, totals and returns"
             ),
             required=False,
         ),
