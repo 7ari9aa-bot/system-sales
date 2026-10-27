@@ -48,7 +48,7 @@ export default function ShiftFilters({ employees = [], employee, onEmployee, sta
         </div>
 
         <div className="flex items-end">
-          <p className="text-[11px] leading-relaxed text-[#7A766C]">النقدية المتوقعة = رصيد البداية + المبيعات النقدية − المرتجعات − المصروفات النقدية.</p>
+          <p className="text-[11px] leading-relaxed text-[#7A766C]">رصيد نهاية اليوم = رصيد البداية + الفواتير − المرتجعات (تسجيل فقط، لا عدّ للدرج).</p>
         </div>
       </div>
     </FilterPanel>

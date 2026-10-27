@@ -169,3 +169,32 @@ async def test_returning_one_line_at_a_time_never_exceeds_the_invoice(db, tenant
         )
         total += Decimal(result["refunded_total"])
     assert total == Decimal("29.99")
+
+
+def test_line_title_names_the_product_and_adds_the_variant_only_when_it_says_something() -> None:
+    from app.modules.orders.service import line_title
+
+    assert line_title("قميص قطن", "عادي") == "قميص قطن"  # the default variant adds nothing
+    assert line_title("قميص قطن", "") == "قميص قطن"
+    assert line_title("قميص قطن", None) == "قميص قطن"
+    assert line_title("قميص قطن", "أزرق / L") == "قميص قطن - أزرق / L"
+    assert line_title("قميص قطن", "قميص قطن") == "قميص قطن"  # never repeat the same words
+    assert line_title(None, "أزرق / L") == "أزرق / L"  # no product row: keep what we have
+    assert line_title(None, None) == ""
+
+
+async def test_the_stored_invoice_line_carries_the_product_name(db, tenant_ctx) -> None:
+    from sqlalchemy import select
+
+    from app.modules.orders.models import OrderItem
+
+    pos_session, sold, variants = await _three_items_one_cent_discount(db, tenant_ctx)
+    items = (
+        (await db.execute(select(OrderItem).where(OrderItem.order_id == sold["order_id"])))
+        .scalars()
+        .all()
+    )
+    assert items
+    for item in items:
+        assert item.title not in ("", "سعة كبيرة")  # the variant's own name alone is not enough
+        assert item.title.startswith("تيشيرت")  # the product name leads

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
@@ -27,7 +28,7 @@ function rememberRegister(id) {
 export function gateMessage(state) {
   switch (state?.status) {
     case "needs_setup":
-      return "لم يتم تجهيز الكاشير بعد. اطلب من المدير تجهيزه من الإعدادات.";
+      return "لم يتم تجهيز الكاشير بعد. جهّزه وابدأ اليوم من صفحة الورديات.";
     case "forbidden":
       return "ليست لديك صلاحية استخدام الكاشير.";
     case "unauthorized":
@@ -37,6 +38,11 @@ export function gateMessage(state) {
   }
 }
 
+/** The step that fixes a blocked till, or null when nothing the user can do here will. */
+export function setupAction(state) {
+  return state?.status === "needs_setup" ? { label: "تجهيز الكاشير وبدء اليوم", to: "/cashier/shifts" } : null;
+}
+
 const CARD = "animate-fade-up mx-auto mt-16 flex max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-8 text-center";
 
 export function GateMessage({ state }) {
@@ -44,6 +50,11 @@ export function GateMessage({ state }) {
     <div className={CARD}>
       <TriangleAlert className="h-7 w-7 text-amber-600" aria-hidden="true" />
       <p className="text-sm font-semibold" role="status">{gateMessage(state)}</p>
+      {setupAction(state) ? (
+        <Button asChild>
+          <Link to={setupAction(state).to}>{setupAction(state).label}</Link>
+        </Button>
+      ) : null}
     </div>
   );
 }

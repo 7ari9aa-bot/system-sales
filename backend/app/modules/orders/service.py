@@ -204,6 +204,26 @@ async def _audit_shipping(
     )
 
 
+# The variant title the catalog gives a product that has no real variants.
+_DEFAULT_VARIANT_TITLES = frozenset({"", "عادي", "default", "default title", "default variant"})
+
+
+def line_title(product_title: str | None, variant_title: str | None) -> str:
+    """The name frozen on an invoice line: the PRODUCT, then the variant when it says something.
+
+    The variant's own title is often just a size or colour ("أزرق / L") or a placeholder
+    ("عادي"), which on its own tells nobody what was sold. A receipt, a return screen and a report
+    all read this snapshot, so it must name the product.
+    """
+    product = (product_title or "").strip()
+    variant = (variant_title or "").strip()
+    if not product:
+        return variant
+    if variant.casefold() in _DEFAULT_VARIANT_TITLES or variant.casefold() == product.casefold():
+        return product
+    return f"{product} - {variant}"
+
+
 class OrderService:
     """All order business rules; static methods taking (session, tenant_id)."""
 
@@ -613,7 +633,7 @@ class OrderService:
                     tenant_id=tenant_id,
                     order_id=order.id,
                     variant_id=variant.id,
-                    title=variant.title or (product.title if product else ""),
+                    title=line_title(product.title if product else None, variant.title),
                     sku=variant.sku,
                     quantity=quantity,
                     unit_price=price,

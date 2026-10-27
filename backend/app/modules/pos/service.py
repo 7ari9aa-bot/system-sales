@@ -424,7 +424,7 @@ class PosService:
         without a 404.
         """
         from app.modules.catalog.service import CatalogService
-        from app.modules.orders.service import sellable_refusal
+        from app.modules.orders.service import line_title, sellable_refusal
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         await PosService._ensure_may_operate(
@@ -464,7 +464,7 @@ class PosService:
             "found": True,
             "variant_id": variant.id,
             "product_id": variant.product_id,
-            "title": variant.title or (product.title if product else ""),
+            "title": line_title(product.title if product else None, variant.title),
             "sku": variant.sku,
             "unit_price": str(price),
             "warehouse_id": register.warehouse_id,
@@ -612,6 +612,7 @@ class PosService:
         # disagree with what ``sell`` will charge.
         from app.core.tenancy import resolve_tenant_currency
         from app.modules.catalog.service import CatalogService
+        from app.modules.orders.service import line_title
 
         currency = await resolve_tenant_currency(session, tenant_id)
         ladders = await CatalogService.price_tiers_for_many(
@@ -644,7 +645,7 @@ class PosService:
                 {
                     "variant_id": str(variant.id),
                     "product_id": str(variant.product_id),
-                    "title": variant.title or product_title or "",
+                    "title": line_title(product_title, variant.title),
                     "sku": variant.sku,
                     "unit_price": str(to_money(unit_price, "unit_price")),
                     "available": stocks.get(variant.id, 0),
