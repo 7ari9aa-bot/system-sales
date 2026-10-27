@@ -109,7 +109,8 @@ function PosScreen({ user, session }) {
   function addVariant(variant) {
     const r = sale.add(variant);
     if (!r.ok) {
-      setScanError(`${variant.productName}: ${r.reason}`);
+      const looks = [variant.color, variant.size].filter(Boolean).join(" / ");
+      setScanError(`${variant.productName}${looks ? ` (${looks})` : ""}: ${r.reason}`);
       return false;
     }
     setActiveLineId(String(variant.id));

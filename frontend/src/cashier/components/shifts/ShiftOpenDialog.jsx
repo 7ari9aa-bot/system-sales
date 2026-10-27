@@ -57,6 +57,13 @@ export default function ShiftOpenDialog({ open, onOpenChange, onSubmit, pending 
             </p>
           ) : null}
           {error ? <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p> : null}
+          {opening === null ? (
+            <p role={String(form.openingCash ?? "").trim() === "" ? "status" : "alert"} className="text-xs text-muted-foreground">
+              {String(form.openingCash ?? "").trim() === ""
+                ? "اكتب رصيد الدرج لتفعيل زر البدء (اكتب 0 لو الدرج فاضي)."
+                : "أدخل رقماً صحيحاً (مثال: 250 أو 250.50)."}
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">

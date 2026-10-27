@@ -107,6 +107,9 @@ export function StartDay({ register, onStart, pending, error }) {
       />
       {showInvalid && <p className="text-xs text-destructive" role="alert">أدخل رقماً صحيحاً (مثال: 250 أو 250.50).</p>}
       {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+      {value.trim() === "" && (
+        <p className="text-xs text-muted-foreground">اكتب رصيد الدرج لتفعيل زر البدء (اكتب 0 لو الدرج فاضي).</p>
+      )}
       <Button type="submit" className="w-full" disabled={parsed === null || pending}>
         {pending ? "جارٍ البدء…" : "ابدأ اليوم"}
       </Button>
