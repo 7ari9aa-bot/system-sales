@@ -15,7 +15,10 @@ export function useShifts({ employees = {} } = {}) {
   // Names are applied AFTER the rows load (not inside the query), so a member list that arrives
   // later still names them without a refetch.
   const query = useShiftRows();
-  const data = useMemo(() => (query.data ? nameEmployees(query.data, employees) : query.data), [query.data, employees]);
+  // Keyed by the names themselves: callers build `employees` fresh on every render.
+  const namesKey = JSON.stringify(employees);
+  const names = useMemo(() => JSON.parse(namesKey), [namesKey]);
+  const data = useMemo(() => (query.data ? nameEmployees(query.data, names) : query.data), [query.data, names]);
   return { ...query, data };
 }
 
