@@ -464,7 +464,9 @@ class PosService:
             "found": True,
             "variant_id": variant.id,
             "product_id": variant.product_id,
-            "title": line_title(product.title if product else None, variant.title),
+            "title": line_title(
+                product.title if product else None, variant.title, variant.option_values
+            ),
             "sku": variant.sku,
             "unit_price": str(price),
             "warehouse_id": register.warehouse_id,
@@ -645,7 +647,7 @@ class PosService:
                 {
                     "variant_id": str(variant.id),
                     "product_id": str(variant.product_id),
-                    "title": line_title(product_title, variant.title),
+                    "title": line_title(product_title, variant.title, variant.option_values),
                     "sku": variant.sku,
                     "unit_price": str(to_money(unit_price, "unit_price")),
                     "available": stocks.get(variant.id, 0),

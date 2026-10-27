@@ -208,18 +208,29 @@ async def _audit_shipping(
 _DEFAULT_VARIANT_TITLES = frozenset({"", "عادي", "default", "default title", "default variant"})
 
 
-def line_title(product_title: str | None, variant_title: str | None) -> str:
-    """The name frozen on an invoice line: the PRODUCT, then the variant when it says something.
+def line_title(
+    product_title: str | None,
+    variant_title: str | None,
+    option_values: dict[str, Any] | None = None,
+) -> str:
+    """The name frozen on an invoice line: the PRODUCT, then what tells its variants apart.
 
-    The variant's own title is often just a size or colour ("أزرق / L") or a placeholder
-    ("عادي"), which on its own tells nobody what was sold. A receipt, a return screen and a report
-    all read this snapshot, so it must name the product.
+    A variant often has no title of its own (the add-product screen keeps colour and size in
+    ``option_values``) or only a placeholder ("عادي"). On its own that tells nobody what was sold,
+    and two variants of one product would read identically. A receipt, a return screen and a report
+    all read this snapshot, so it names the product and the choice: "فستان ورد - أسود / M".
     """
     product = (product_title or "").strip()
     variant = (variant_title or "").strip()
+    if variant.casefold() in _DEFAULT_VARIANT_TITLES:
+        variant = ""
+    if not variant:
+        # colour first, then size: how a shop says it ("أسود / M"), whatever order the dict has.
+        picked = [str((option_values or {}).get(key) or "").strip() for key in ("color", "size")]
+        variant = " / ".join(part for part in picked if part)
     if not product:
         return variant
-    if variant.casefold() in _DEFAULT_VARIANT_TITLES or variant.casefold() == product.casefold():
+    if not variant or variant.casefold() == product.casefold():
         return product
     return f"{product} - {variant}"
 
@@ -633,7 +644,11 @@ class OrderService:
                     tenant_id=tenant_id,
                     order_id=order.id,
                     variant_id=variant.id,
-                    title=line_title(product.title if product else None, variant.title),
+                    title=line_title(
+                        product.title if product else None,
+                        variant.title,
+                        variant.option_values,
+                    ),
                     sku=variant.sku,
                     quantity=quantity,
                     unit_price=price,

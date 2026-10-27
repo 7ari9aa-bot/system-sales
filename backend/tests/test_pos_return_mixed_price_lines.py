@@ -183,6 +183,24 @@ def test_line_title_names_the_product_and_adds_the_variant_only_when_it_says_som
     assert line_title(None, None) == ""
 
 
+def test_line_title_uses_size_and_colour_when_the_variant_has_no_title_of_its_own() -> None:
+    from app.modules.orders.service import line_title
+
+    # What the add-product screen stores: no variant title, the choice lives in option_values.
+    options = {"size": "M", "color": "أسود"}
+    assert line_title("فستان ورد", None, options) == "فستان ورد - أسود / M"
+    assert line_title("فستان ورد", "", {"color": "أبيض"}) == "فستان ورد - أبيض"
+    assert line_title("فستان ورد", "", {"size": "L"}) == "فستان ورد - L"
+    # Two different variants of one product must not collapse into the same name.
+    assert line_title("فستان ورد", None, {"size": "M", "color": "أسود"}) != line_title(
+        "فستان ورد", None, {"size": "L", "color": "أبيض"}
+    )
+    # A real variant title wins over the options, and empty values are ignored.
+    assert line_title("قميص", "أزرق / L", {"size": "L"}) == "قميص - أزرق / L"
+    assert line_title("قميص", None, {"size": "", "color": None}) == "قميص"
+    assert line_title("قميص", None, None) == "قميص"
+
+
 async def test_the_stored_invoice_line_carries_the_product_name(db, tenant_ctx) -> None:
     from sqlalchemy import select
 
