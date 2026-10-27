@@ -37,3 +37,28 @@ describe("day report figures: opening + invoices - returns", () => {
     expect(dayReportFigures({ openingCash: 0, status: "open" }, [])).toMatchObject({ invoices: 0, pieces: 0, total: 0, returns: 0 });
   });
 });
+
+describe("dayReportFigures while the invoices are not available", () => {
+  it("reports unknown (null), never a zero total or a closing balance built from it", () => {
+    const f = dayReportFigures({ openingCash: 500, returnsTotal: 100, status: "open" }, null);
+    expect(f.available).toBe(false);
+    expect(f.invoices).toBeNull();
+    expect(f.total).toBeNull();
+    expect(f.pieces).toBeNull();
+    expect(f.closing).toBeNull();
+  });
+
+  it("still uses the closing balance the backend stored, even without the invoice list", () => {
+    const f = dayReportFigures({ openingCash: 500, closingBalance: 19500, status: "closed" }, null);
+    expect(f.available).toBe(false);
+    expect(f.closing).toBe(19500);
+  });
+
+  it("a loaded but empty list is a genuine zero", () => {
+    const f = dayReportFigures({ openingCash: 500, returnsTotal: 0, status: "open" }, []);
+    expect(f.available).toBe(true);
+    expect(f.invoices).toBe(0);
+    expect(f.total).toBe(0);
+    expect(f.closing).toBe(500);
+  });
+});

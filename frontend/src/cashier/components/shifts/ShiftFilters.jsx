@@ -24,9 +24,9 @@ export default function ShiftFilters({ employees = [], employee, onEmployee, sta
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل الموظفين</SelectItem>
-              {employees.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
+              {employees.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.name}
                 </SelectItem>
               ))}
             </SelectContent>

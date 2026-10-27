@@ -122,3 +122,50 @@ async def test_repeated_partial_returns_add_up_to_exactly_the_invoice(db, tenant
         )
         total += Decimal(result["refunded_total"])
     assert total == Decimal("20.01")
+
+
+async def _three_items_one_cent_discount(db, tenant_ctx):
+    """Three variants at 10.00 each with a 0.01 order discount: the invoice is 29.99."""
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    customer = await _customer(db, tenant_ctx)
+    variants = [await _sellable_variant(db, tenant_ctx, price="10.00", stock=20) for _ in range(3)]
+    sold = await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[{"variant_id": str(v.id), "quantity": 1} for v in variants],
+        discount_total="0.01",
+    )
+    assert Decimal(sold["grand_total"]) == Decimal("29.99")
+    return pos_session, sold, variants
+
+
+async def test_returning_every_line_of_a_discounted_invoice_refunds_exactly_its_total(
+    db, tenant_ctx
+) -> None:
+    pos_session, sold, variants = await _three_items_one_cent_discount(db, tenant_ctx)
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(v.id), "quantity": 1} for v in variants],
+    )
+    assert Decimal(result["refunded_total"]) == Decimal("29.99")  # not 30.00
+
+
+async def test_returning_one_line_at_a_time_never_exceeds_the_invoice(db, tenant_ctx) -> None:
+    pos_session, sold, variants = await _three_items_one_cent_discount(db, tenant_ctx)
+    total = Decimal("0")
+    for v in variants:
+        result = await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(v.id), "quantity": 1}],
+        )
+        total += Decimal(result["refunded_total"])
+    assert total == Decimal("29.99")

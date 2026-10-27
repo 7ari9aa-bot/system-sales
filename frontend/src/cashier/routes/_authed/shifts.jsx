@@ -14,9 +14,11 @@ import DayReport from "@/cashier/components/shifts/DayReport";
 import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
-import { shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
-import { useClosePreview, useCloseShift, useHeldCount, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { canStartAnotherDay } from "@/cashier/api/shiftState";
+import { coverageNote, employeeMap, shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
+import { useClosePreview, useCloseShift, useHeldCount, useOpenChoice, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
+import { useTenantUsers } from "@/cashier/api/useTenantUsers";
 import { fmtInt, fmtMoney, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
 
 
@@ -32,7 +34,9 @@ function messageOf(err) {
 
 export default function ShiftsPage() {
   const { user } = useAuth?.() ?? {};
-  const { data: rows = [], isLoading, error: loadError, refetch } = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
+  const startChoice = useOpenChoice(true); // which registers are free right now: gates the Start Day button
+  const members = useTenantUsers(); // names for the days other people started; may be hidden from a cashier
+  const { data: rows = [], isLoading, error: loadError, refetch } = useShifts({ employees: employeeMap(members.data, user?.id ? { id: user.id, name: user.full_name || user.email } : null) });
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
   const [employeeFilter, setEmployeeFilter] = useState("");
@@ -46,7 +50,7 @@ export default function ShiftsPage() {
 
   const summary = shiftsSummary(rows);
   const filtered = rows.filter((r) => {
-    if (employeeFilter && r.employee !== employeeFilter) return false;
+    if (employeeFilter && r.employeeId !== employeeFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
     return true;
   });
@@ -88,7 +92,7 @@ export default function ShiftsPage() {
             <Clock />
             اليوم الجاري
           </Button>
-          <Button className={BTN_PRIMARY} disabled={Boolean(summary.open)} onClick={() => setOpenDialog(true)}>
+          <Button className={BTN_PRIMARY} disabled={!canStartAnotherDay(startChoice.data)} title={canStartAnotherDay(startChoice.data) ? "" : "كل أجهزة الكاشير بدأ عليها يوم مفتوح"} onClick={() => setOpenDialog(true)}>
             <Unlock />
             ابدأ اليوم
           </Button>
@@ -127,7 +131,7 @@ export default function ShiftsPage() {
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
             <Image src={HERO_IMAGE} alt={HERO_ALT} className="h-[34px] w-[34px] overflow-hidden rounded-[4px] border border-[#DED8CD]" />
             <span>
-              {fmtInt(filtered.length)} يوم • المبيعات {fmtMoney(summary.salesTotal)} • المرتجعات {fmtMoney(summary.returnsTotal)}
+              {fmtInt(filtered.length)} يوم • المبيعات {fmtMoney(summary.salesTotal)} • المرتجعات {fmtMoney(summary.returnsTotal)}{coverageNote(summary) ? ` • ${coverageNote(summary)}` : ""}
             </span>
           </div>
         }
@@ -141,8 +145,8 @@ export default function ShiftsPage() {
             hint: summary.open ? `بدأ ${fmtTime(summary.open.date)} برصيد ${fmtMoney(summary.open.openingCash)}` : "ابدأ اليوم لبدء البيع",
           },
           { label: "رصيد نهاية اليوم", value: fmtMoneyOrDash(summary.open?.closingBalance), hint: "رصيد البداية + الفواتير − المرتجعات", accent: true },
-          { label: "إجمالي المبيعات", value: fmtMoney(summary.salesTotal), hint: `${fmtInt(summary.closedCount)} يوم مغلق` },
-          { label: "إجمالي المرتجعات", value: fmtMoney(summary.returnsTotal), hint: "فواتير الإرجاع" },
+          { label: "إجمالي المبيعات", value: fmtMoney(summary.salesTotal), hint: [`${fmtInt(summary.closedCount)} يوم مغلق`, coverageNote(summary)].filter(Boolean).join(" • ") },
+          { label: "إجمالي المرتجعات", value: fmtMoney(summary.returnsTotal), hint: ["فواتير الإرجاع", coverageNote(summary)].filter(Boolean).join(" • ") },
         ]}
       />
 

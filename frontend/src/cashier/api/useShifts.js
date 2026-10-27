@@ -7,6 +7,7 @@ import { REPORT_DAYS, loadAllSessions } from "./shiftHistory";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
 export const SHIFT_STATE_KEY = ["cashier", "shift-state"];
+const OPEN_CHOICE_KEY = ["cashier", "open-choice"];
 
 /** Ledger of shifts (newest first) with per-method figures from each shift's report. */
 export function useShifts({ employees = {} } = {}) {
@@ -73,7 +74,12 @@ export function useHeldCount(sessionId, enabled) {
 
 function useRefresh() {
   const qc = useQueryClient();
-  return () => Promise.all([qc.invalidateQueries({ queryKey: SHIFTS_KEY }), qc.invalidateQueries({ queryKey: SHIFT_STATE_KEY })]);
+  return () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: SHIFTS_KEY }),
+      qc.invalidateQueries({ queryKey: SHIFT_STATE_KEY }),
+      qc.invalidateQueries({ queryKey: OPEN_CHOICE_KEY }), // the Start Day button follows the free registers
+    ]);
 }
 
 const NONE_TEXT = {
@@ -119,7 +125,7 @@ export function useOpenShift() {
 
 /** The drawers a cashier could open a shift on right now. Read only while the open-shift dialog is up. */
 export function useOpenChoice(enabled) {
-  return useQuery({ queryKey: ["cashier", "open-choice"], queryFn: loadOpenChoice, enabled, staleTime: 0, gcTime: 0 });
+  return useQuery({ queryKey: OPEN_CHOICE_KEY, queryFn: loadOpenChoice, enabled, staleTime: 0, gcTime: 0 });
 }
 
 export function useCloseShift() {

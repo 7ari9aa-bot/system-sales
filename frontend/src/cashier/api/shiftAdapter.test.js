@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shiftEmployees, shiftFromApi, shiftsFromApi, shiftsSummary } from "./shiftAdapter";
+import { shiftEmployees, shiftFromApi, shiftsFromApi, shiftsSummary, employeeMap, coverageNote } from "./shiftAdapter";
 
 // The close RECORDS the day: closing balance = opening + invoices - returns, computed by the backend.
 // Nothing is counted, so there is no counted figure, no shortage and no surplus anywhere.
@@ -81,6 +81,12 @@ describe("shiftFromApi: the day is a record, not a count", () => {
     expect(row.salesTotal).toBeNull(); // unknown, not zero
   });
 
+  it("coverageNote tells the owner when the totals leave days out", () => {
+    expect(coverageNote({ unknownDays: 0 })).toBe("");
+    expect(coverageNote({ unknownDays: 3 })).toContain("3");
+    expect(coverageNote({ unknownDays: 3 })).toContain("غير محسوب");
+  });
+
   it("the totals skip unknown days instead of counting them as zero", () => {
     const known = shiftFromApi(closedSession, report);
     const unknown = shiftFromApi({ ...closedSession, id: "x", closing_balance: undefined }, null);
@@ -112,9 +118,9 @@ describe("shiftsFromApi", () => {
 
 describe("shiftsSummary / shiftEmployees", () => {
   const rows = [
-    { status: "open", employee: "منى", salesTotal: 100, returnsTotal: 0, closingBalance: 100 },
-    { status: "closed", employee: "أحمد", salesTotal: 300, returnsTotal: 20, closingBalance: 280 },
-    { status: "closed", employee: "منى", salesTotal: 200, returnsTotal: 0, closingBalance: 200 },
+    { status: "open", employeeId: "u-mona", employee: "منى", salesTotal: 100, returnsTotal: 0, closingBalance: 100 },
+    { status: "closed", employeeId: "u-ahmed", employee: "أحمد", salesTotal: 300, returnsTotal: 20, closingBalance: 280 },
+    { status: "closed", employeeId: "u-mona", employee: "منى", salesTotal: 200, returnsTotal: 0, closingBalance: 200 },
   ];
   it("totals sales and returns, and sums the closed days' ending balances", () => {
     const s = shiftsSummary(rows);
@@ -131,7 +137,7 @@ describe("shiftsSummary / shiftEmployees", () => {
     expect(shiftsSummary([])).toMatchObject({ open: null, count: 0, salesTotal: 0, returnsTotal: 0 });
   });
   it("lists each employee once, sorted", () => {
-    expect(shiftEmployees(rows)).toEqual(["أحمد", "منى"]);
+    expect(shiftEmployees(rows)).toEqual([{ id: "u-ahmed", name: "أحمد" }, { id: "u-mona", name: "منى" }]);
   });
 });
 
@@ -150,5 +156,29 @@ describe("shiftsSummary: the running day", () => {
     const s = shiftsSummary([row("a", null), row("b", null), row("c", null, "closed")]);
     expect(s.open.id).toBe("a");
     expect(s.othersOpen).toBe(1);
+  });
+});
+
+describe("employees by id", () => {
+  const A = { ...closedSession, id: "a", cashier_user_id: "u1", opened_by_user_id: "u1" };
+  const B = { ...closedSession, id: "b", cashier_user_id: null, opened_by_user_id: "u2" };
+  const C = { ...closedSession, id: "c", cashier_user_id: null, opened_by_user_id: "u3" };
+
+  it("names each day's employee from its own id, not a single shared label", () => {
+    const rows = shiftsFromApi([A, B], {}, { employees: { u1: "منى", u2: "علي" } });
+    expect(rows.map((r) => r.employee).sort()).toEqual(["علي", "منى"]);
+    expect(rows.find((r) => r.id === "b").employeeId).toBe("u2"); // opened_by is used when there is no holder
+  });
+
+  it("an employee we cannot name is 'unknown', and two unknowns stay separate by id", () => {
+    const rows = shiftsFromApi([B, C], {}, { employees: {} });
+    expect(rows[0].employee).not.toBe("كاشير");
+    const list = shiftEmployees(rows);
+    expect(list.map((e) => e.id).sort()).toEqual(["u2", "u3"]);
+  });
+
+  it("employeeMap turns the shop's members into an id -> name dictionary", () => {
+    expect(employeeMap([{ id: "u1", name: "منى" }, { id: "u2", name: "علي" }], { id: "u9", name: "أنا" })).toEqual({ u1: "منى", u2: "علي", u9: "أنا" });
+    expect(employeeMap(undefined, null)).toEqual({});
   });
 });

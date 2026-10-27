@@ -2454,6 +2454,27 @@ class PosService:
             if requested[variant_id] >= remaining_qty:
                 amount = left  # the last units take exactly what is left
             capped.append(to_money(min(amount, left), "refund_total"))
+
+        # The invoice as a whole: an order discount shared across lines rounds line by line (three
+        # 10.00 lines under a 0.01 discount each carry a share of 0.0033, i.e. 0.00), so the lines
+        # can add up to more than the invoice was worth. Every return together stays within the
+        # invoice total; the return that takes the last units takes exactly what is left, and any
+        # excess comes off the last line being returned.
+        invoice_total = Decimal(str(order.grand_total))
+        already = sum(booked.values(), Decimal("0"))
+        left_on_invoice = max(Decimal("0"), invoice_total - already)
+        takes_everything = all(
+            sold[v]["quantity"] - returned_qty.get(v, 0) <= requested.get(v, 0) for v in sold
+        )
+        wanted = sum(capped, Decimal("0"))
+        target = left_on_invoice if takes_everything else min(wanted, left_on_invoice)
+        excess = wanted - target
+        for i in range(len(capped) - 1, -1, -1):
+            if excess <= 0:
+                break
+            cut = min(capped[i], excess)
+            capped[i] = to_money(capped[i] - cut, "refund_total")
+            excess -= cut
         return capped
 
     @staticmethod

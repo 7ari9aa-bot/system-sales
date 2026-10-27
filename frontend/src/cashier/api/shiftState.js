@@ -40,6 +40,11 @@ export function pickMyShift(openSessions, userId) {
  * `registers` are the active ones, `openSessions` the OPEN shifts, `pickedId` the cashier's explicit pick.
  * Returns { status: "ok", register } | { status: "choose", free } | { status: "none", reason }.
  */
+/** Whether a day can still be started anywhere. Unknown (not loaded yet) counts as yes: the server decides. */
+export function canStartAnotherDay(choice) {
+  return !(choice?.status === "none" && choice.reason === "all_busy");
+}
+
 export function chooseRegister(registers, openSessions, pickedId = null) {
   const active = (registers ?? []).filter(isActive);
   if (!active.length) return { status: "none", reason: "no_register" };

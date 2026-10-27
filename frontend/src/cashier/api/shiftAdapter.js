@@ -32,8 +32,9 @@ export function shiftFromApi(session, report = null, { employees = {} } = {}) {
     closedAt: closed ? session.closed_at : null,
     status: closed ? "closed" : "open",
     registerId: session.register_id,
-    employeeId: session.cashier_user_id,
-    employee: employees[session.cashier_user_id] ?? "كاشير",
+    // A day started without a shift has no holder: the person who started it is the employee.
+    employeeId: session.cashier_user_id ?? session.opened_by_user_id ?? null,
+    employee: employees[session.cashier_user_id ?? session.opened_by_user_id] ?? "موظف غير معروف",
     branch: "",
     openingCash: num(session.opening_float),
     reportLoaded: known,
@@ -53,6 +54,11 @@ export function shiftsFromApi(sessions, reports = {}, opts = {}) {
   return [...(sessions ?? [])]
     .sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at)))
     .map((s) => shiftFromApi(s, reports[s.id] ?? null, opts));
+}
+
+/** A line for the summary cards when some days' figures are not in the totals; "" when all are. */
+export function coverageNote({ unknownDays = 0 } = {}) {
+  return unknownDays > 0 ? `${unknownDays} يوم أقدم غير محسوب في الإجمالي` : "";
 }
 
 /** Totals for the shifts screen, computed from the real rows. `open` is the drawer that is still running. */
@@ -78,5 +84,16 @@ export function shiftsSummary(rows = []) {
 
 /** The distinct employees who actually worked a shift, for the filter. */
 export function shiftEmployees(rows = []) {
-  return [...new Set(rows.map((r) => r.employee).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar"));
+  // One entry per employee ID: two people we cannot name stay two entries, never one "cashier".
+  const byId = new Map();
+  for (const r of rows) if (r.employeeId && !byId.has(r.employeeId)) byId.set(r.employeeId, r.employee);
+  return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+/** id -> name for every member we can see plus the signed-in user (members may be hidden from a cashier). */
+export function employeeMap(members = [], me = null) {
+  const out = {};
+  for (const m of members ?? []) if (m?.id) out[m.id] = m.name;
+  if (me?.id) out[me.id] = me.name;
+  return out;
 }

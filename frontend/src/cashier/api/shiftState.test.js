@@ -14,7 +14,7 @@ const { pos, api } = vi.hoisted(() => ({
 vi.mock("./posApi", () => ({ posApi: pos }));
 vi.mock("@/lib/api", () => ({ api }));
 
-import { bootstrapPos, chooseRegister, parseOpeningBalance, pickMyShift, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
+import { bootstrapPos, canStartAnotherDay, chooseRegister, parseOpeningBalance, pickMyShift, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
 
 const REG = { id: "r1", code: "MAIN", name: "Main", is_active: true, warehouse_id: "w1", profile_id: "p1" };
 const SESSION = { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00" };
@@ -309,5 +309,24 @@ describe("opening balance: required, and checked before any request", () => {
     await expect(startDay("r1", "")).rejects.toThrow(/رصيد الدرج/);
     await expect(startDay("r1", "-1")).rejects.toThrow();
     expect(pos.openDay).not.toHaveBeenCalled();
+  });
+});
+
+describe("canStartAnotherDay: the Start Day button follows free registers, not 'any day is open'", () => {
+  const reg = (id) => ({ id, is_active: true });
+  const open = (register_id) => ({ status: "OPEN", register_id });
+
+  it("is enabled while a second register is free, even with a day open on the first", () => {
+    expect(canStartAnotherDay(chooseRegister([reg("a"), reg("b")], [open("a")]))).toBe(true);
+  });
+  it("is disabled when every register already has its day", () => {
+    expect(canStartAnotherDay(chooseRegister([reg("a"), reg("b")], [open("a"), open("b")]))).toBe(false);
+  });
+  it("is disabled with a single register that is already open", () => {
+    expect(canStartAnotherDay(chooseRegister([reg("a")], [open("a")]))).toBe(false);
+  });
+  it("is enabled when nothing is open, and while the answer is still loading", () => {
+    expect(canStartAnotherDay(chooseRegister([reg("a")], []))).toBe(true);
+    expect(canStartAnotherDay(undefined)).toBe(true); // unknown: the dialog and the server decide
   });
 });
