@@ -56,9 +56,18 @@ export function shiftsFromApi(sessions, reports = {}, opts = {}) {
     .map((s) => shiftFromApi(s, reports[s.id] ?? null, opts));
 }
 
+/** What closing a day tells the screen. An absent balance stays unknown (null), never an invented zero. */
+export function closeSummary(closed, row = {}) {
+  const wire = closed?.closing_balance;
+  return {
+    closedAt: closed?.closed_at ?? null,
+    closingBalance: wire != null && wire !== "" ? num(wire) : (row?.closingBalance ?? null),
+  };
+}
+
 /** A line for the summary cards when some days' figures are not in the totals; "" when all are. */
 export function coverageNote({ unknownDays = 0 } = {}) {
-  return unknownDays > 0 ? `${unknownDays} يوم أقدم غير محسوب في الإجمالي` : "";
+  return unknownDays > 0 ? `${unknownDays} يوم غير محسوب في الإجمالي (تقريره غير محمّل)` : "";
 }
 
 /** Totals for the shifts screen, computed from the real rows. `open` is the drawer that is still running. */
@@ -88,6 +97,11 @@ export function shiftEmployees(rows = []) {
   const byId = new Map();
   for (const r of rows) if (r.employeeId && !byId.has(r.employeeId)) byId.set(r.employeeId, r.employee);
   return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+}
+
+/** Put names on rows that are already loaded. Done after the query, so a member list that arrives late still names them. */
+export function nameEmployees(rows = [], employees = {}) {
+  return rows.map((r) => (r.employeeId && employees[r.employeeId] ? { ...r, employee: employees[r.employeeId] } : r));
 }
 
 /** id -> name for every member we can see plus the signed-in user (members may be hidden from a cashier). */

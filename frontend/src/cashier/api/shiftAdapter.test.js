@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shiftEmployees, shiftFromApi, shiftsFromApi, shiftsSummary, employeeMap, coverageNote } from "./shiftAdapter";
+import { shiftEmployees, shiftFromApi, shiftsFromApi, shiftsSummary, employeeMap, closeSummary, coverageNote, nameEmployees } from "./shiftAdapter";
 
 // The close RECORDS the day: closing balance = opening + invoices - returns, computed by the backend.
 // Nothing is counted, so there is no counted figure, no shortage and no surplus anywhere.
@@ -180,5 +180,38 @@ describe("employees by id", () => {
   it("employeeMap turns the shop's members into an id -> name dictionary", () => {
     expect(employeeMap([{ id: "u1", name: "منى" }, { id: "u2", name: "علي" }], { id: "u9", name: "أنا" })).toEqual({ u1: "منى", u2: "علي", u9: "أنا" });
     expect(employeeMap(undefined, null)).toEqual({});
+  });
+});
+
+describe("closeSummary: what the close toast and the report take from the server's answer", () => {
+  it("keeps an absent closing balance unknown instead of inventing zero", () => {
+    expect(closeSummary({ closed_at: "2026-10-26T20:00:00Z" }, { closingBalance: null }).closingBalance).toBeNull();
+    expect(closeSummary(undefined, { closingBalance: null }).closingBalance).toBeNull();
+  });
+  it("uses the server's balance, else the one the row already had", () => {
+    expect(closeSummary({ closing_balance: "19500.00" }, { closingBalance: 1 }).closingBalance).toBe(19500);
+    expect(closeSummary({}, { closingBalance: 480 }).closingBalance).toBe(480);
+  });
+});
+
+describe("coverageNote names the cause", () => {
+  it("separates days with no report loaded from simply old days", () => {
+    expect(coverageNote({ unknownDays: 2 })).toContain("2");
+    expect(coverageNote({ unknownDays: 2 })).not.toContain("أقدم");
+  });
+});
+
+describe("nameEmployees: names are applied after the rows load, so a late member list still names them", () => {
+  const rows = shiftsFromApi([{ ...closedSession, id: "b", cashier_user_id: null, opened_by_user_id: "u2" }], {}, { employees: {} });
+
+  it("rows loaded before the names arrive show 'unknown', then the real name once they do", () => {
+    expect(rows[0].employee).toBe("موظف غير معروف");
+    expect(nameEmployees(rows, { u2: "علي" })[0].employee).toBe("علي");
+  });
+  it("leaves a name it cannot resolve as it was, and does not mutate the input", () => {
+    const out = nameEmployees(rows, {});
+    expect(out[0].employee).toBe("موظف غير معروف");
+    expect(nameEmployees(rows, { u2: "علي" })).not.toBe(rows);
+    expect(rows[0].employee).toBe("موظف غير معروف");
   });
 });

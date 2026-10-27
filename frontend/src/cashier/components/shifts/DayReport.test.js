@@ -34,7 +34,7 @@ describe("day report figures: opening + invoices - returns", () => {
   });
 
   it("a day with no sales reports zero, not a crash", () => {
-    expect(dayReportFigures({ openingCash: 0, status: "open" }, [])).toMatchObject({ invoices: 0, pieces: 0, total: 0, returns: 0 });
+    expect(dayReportFigures({ openingCash: 0, returnsTotal: 0, status: "open" }, [])).toMatchObject({ invoices: 0, pieces: 0, total: 0, returns: 0 });
   });
 });
 
@@ -59,6 +59,19 @@ describe("dayReportFigures while the invoices are not available", () => {
     expect(f.available).toBe(true);
     expect(f.invoices).toBe(0);
     expect(f.total).toBe(0);
+    expect(f.closing).toBe(500);
+  });
+});
+
+describe("dayReportFigures when the returns figure is unknown", () => {
+  it("never builds a closing balance from a returns total that was not loaded", () => {
+    const f = dayReportFigures({ openingCash: 500, returnsTotal: null, closingBalance: null, status: "open" }, []);
+    expect(f.returns).toBeNull();
+    expect(f.closing).toBeNull(); // unknown, not opening + sales - 0
+  });
+  it("a known zero is still a real zero", () => {
+    const f = dayReportFigures({ openingCash: 500, returnsTotal: 0, closingBalance: null, status: "open" }, []);
+    expect(f.returns).toBe(0);
     expect(f.closing).toBe(500);
   });
 });

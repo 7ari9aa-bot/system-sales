@@ -1,8 +1,9 @@
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
 import { posApi } from "./posApi";
 import { bootstrapPos, chooseRegister, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
-import { shiftsFromApi } from "./shiftAdapter";
+import { nameEmployees, shiftsFromApi } from "./shiftAdapter";
 import { REPORT_DAYS, loadAllSessions } from "./shiftHistory";
 
 export const SHIFTS_KEY = ["cashier", "shifts"];
@@ -11,6 +12,14 @@ const OPEN_CHOICE_KEY = ["cashier", "open-choice"];
 
 /** Ledger of shifts (newest first) with per-method figures from each shift's report. */
 export function useShifts({ employees = {} } = {}) {
+  // Names are applied AFTER the rows load (not inside the query), so a member list that arrives
+  // later still names them without a refetch.
+  const query = useShiftRows();
+  const data = useMemo(() => (query.data ? nameEmployees(query.data, employees) : query.data), [query.data, employees]);
+  return { ...query, data };
+}
+
+function useShiftRows() {
   return useQuery({
     queryKey: SHIFTS_KEY,
     queryFn: async () => {
@@ -18,7 +27,7 @@ export function useShifts({ employees = {} } = {}) {
       // Only the newest days fetch their report; an older day keeps what its session stores.
       const recent = [...sessions].sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at))).slice(0, REPORT_DAYS);
       const entries = await Promise.all(recent.map(async (s) => [s.id, await posApi.report(s.id).catch(() => null)]));
-      return shiftsFromApi(sessions, Object.fromEntries(entries), { employees });
+      return shiftsFromApi(sessions, Object.fromEntries(entries));
     },
   });
 }

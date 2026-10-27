@@ -15,7 +15,7 @@ import ShiftFilters from "@/cashier/components/shifts/ShiftFilters";
 import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { canStartAnotherDay } from "@/cashier/api/shiftState";
-import { coverageNote, employeeMap, shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
+import { closeSummary, coverageNote, employeeMap, shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
 import { useClosePreview, useCloseShift, useHeldCount, useOpenChoice, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
 import { useTenantUsers } from "@/cashier/api/useTenantUsers";
@@ -74,9 +74,10 @@ export default function ShiftsPage() {
       {
         onSuccess: (closed) => {
           setClosing(null);
-          toast.success(`تم إغلاق اليوم ${shift.number} — رصيد النهاية ${fmtMoney(Number(closed?.closing_balance ?? 0))}`);
+          const sum = closeSummary(closed, shift);
+          toast.success(`تم إغلاق اليوم ${shift.number}${sum.closingBalance == null ? "" : ` — رصيد النهاية ${fmtMoney(sum.closingBalance)}`}`);
           // The day's report opens right after closing: sales, returns, exchanges and the closing balance.
-          setReport({ ...shift, status: "closed", closedAt: closed?.closed_at ?? new Date().toISOString(), closingBalance: Number(closed?.closing_balance ?? shift.closingBalance ?? 0) });
+          setReport({ ...shift, status: "closed", closedAt: sum.closedAt ?? new Date().toISOString(), closingBalance: sum.closingBalance });
         },
       },
     );

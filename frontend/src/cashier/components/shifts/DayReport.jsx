@@ -11,10 +11,10 @@ export function dayReportFigures(shift, sales = []) {
   const available = Array.isArray(sales);
   const { total, pieces } = available ? totalsOf(sales) : { total: null, pieces: null };
   const opening = Number(shift?.openingCash ?? 0);
-  const returns = Number(shift?.returnsTotal ?? 0);
+  const returns = shift?.returnsTotal == null ? null : Number(shift.returnsTotal); // null: not loaded
   // Opening + invoices - returns, from the backend's own report. Nothing is counted at the drawer.
   const stored = shift?.closingBalance;
-  const closing = stored != null ? Number(stored) : available ? opening + total - returns : null;
+  const closing = stored != null ? Number(stored) : available && returns !== null ? opening + total - returns : null;
   return {
     available,
     invoices: available ? sales.length : null,
@@ -80,7 +80,7 @@ export default function DayReport({ open, onOpenChange, shift }) {
           <Row label="عدد الفواتير" value={f.invoices == null ? "—" : fmtInt(f.invoices)} />
           <Row label="عدد القطع المباعة" value={f.pieces == null ? "—" : fmtInt(f.pieces)} />
           <Row label="إجمالي المبيعات" value={fmtMoneyOrDash(f.total)} strong />
-          <Row label={`المرتجعات (${fmtInt(f.returnDocs.length)})`} value={`−${fmtMoney(f.returns)}`} />
+          <Row label={`المرتجعات (${fmtInt(f.returnDocs.length)})`} value={f.returns == null ? "—" : `−${fmtMoney(f.returns)}`} />
           <Row label="رصيد نهاية اليوم" value={fmtMoneyOrDash(f.closing)} strong />
         </div>
 
