@@ -31,9 +31,11 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     return {
       lineId: l.variant_id,
       variantId: l.variant_id,
-      name: names[l.variant_id] ?? l.title,
+      // The server's line title is already "product - colour / size"; show it once. The live-sale `names`
+      // map only carries the bare product name, so it must not override the full title.
+      name: l.title ?? names[l.variant_id] ?? l.sku ?? "—",
       code: l.sku,
-      size: l.title,
+      size: "",
       color: "",
       qty: l.quantity,
       price,

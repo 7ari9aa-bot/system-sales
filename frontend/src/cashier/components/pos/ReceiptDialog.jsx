@@ -59,9 +59,11 @@ export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, 
                   <tr key={`${it.code}-${i}`} className="border-b border-dotted border-black/20">
                     <td className="py-1">
                       <span className="block">{it.name}</span>
-                      <span className="block text-[10px] text-black/60">
-                        {it.color} / {it.size}
-                      </span>
+                      {(it.color || it.size) && (
+                        <span className="block text-[10px] text-black/60">
+                          {[it.color, it.size].filter(Boolean).join(" / ")}
+                        </span>
+                      )}
                     </td>
                     <td className="num py-1 text-center">{it.qty}</td>
                     <td className="num py-1 text-start">{it.total.toFixed(2)}</td>

@@ -6,7 +6,7 @@ import { receiptFromApi } from "./receiptAdapter";
 const api = {
   receipt: { id: "r1", number: "POS-20261020-D89DF0", kind: "sale", issued_at: "2026-10-20T09:49:01+00:00", tendered_amount: "40.00", change_amount: "7.50" },
   order: { id: "o1", number: "ORD-1", grand_total: "42.50", discount_total: "7.50", currency: "EGP", fully_returned: false },
-  lines: [{ variant_id: "v1", title: "M", sku: "SKU-1", quantity: 2, unit_price: "25.00", total: "50.00", returned_qty: 0 }],
+  lines: [{ variant_id: "v1", title: "قميص قطن - أبيض / M", sku: "SKU-1", quantity: 2, unit_price: "25.00", total: "50.00", returned_qty: 0 }],
   tenders: [{ method: "cash", amount: "32.50", status: "captured" }, { method: "card", amount: "10.00", status: "captured" }],
 };
 const ctx = { cashier: "سارة", customerName: "", names: { v1: "قميص قطن" } };
@@ -27,11 +27,12 @@ describe("receiptFromApi", () => {
     expect(r.paymentLabel).toBe("نقدي + بطاقة");
   });
   it("lines carry name, sku, qty and the server's price/total", () => {
-    expect(r.items).toEqual([expect.objectContaining({ name: "قميص قطن", code: "SKU-1", qty: 2, price: 25, total: 50, size: "M" })]);
+    expect(r.items).toEqual([expect.objectContaining({ name: "قميص قطن - أبيض / M", code: "SKU-1", qty: 2, price: 25, total: 50, size: "" })]);
   });
   it("no customer name falls back to the cash customer", () => expect(r.customerName).toBe("عميل نقدي"));
-  it("a line whose product name is unknown still prints (falls back to the variant title)", () => {
-    expect(receiptFromApi(api, { ...ctx, names: {} }).items[0].name).toBe("M");
+  it("a line with no title still prints (falls back to the sku)", () => {
+    const noTitle = { ...api, lines: [{ ...api.lines[0], title: null }] };
+    expect(receiptFromApi(noTitle, { ...ctx, names: {} }).items[0].name).toBe("SKU-1");
   });
   it("exact payment: paid equals total and change is zero", () => {
     const exact = { ...api, receipt: { ...api.receipt, tendered_amount: "42.50", change_amount: "0.00" }, tenders: [{ method: "cash", amount: "42.50" }] };
@@ -107,5 +108,16 @@ describe("receiptFromApi invoice note", () => {
   it("is empty when the order has none", () => {
     expect(receiptFromApi(api, ctx).note).toBe("");
     expect(receiptFromApi({ ...api, order: { ...api.order, note: null } }, ctx).note).toBe("");
+  });
+
+  it("the item name is the server's full title, shown once, never doubled with colour / size", () => {
+    const one = receiptFromApi(api, ctx).items[0];
+    expect(one.name).toBe("قميص قطن - أبيض / M");
+    expect(one.name.match(/قميص قطن/g)).toHaveLength(1);
+    expect(one.size).toBe("");
+    expect(one.color).toBe("");
+  });
+  it("a reprint (no live-sale names map) shows the same single title", () => {
+    expect(receiptFromApi(api, { cashier: "سارة" }).items[0].name).toBe("قميص قطن - أبيض / M");
   });
 });
