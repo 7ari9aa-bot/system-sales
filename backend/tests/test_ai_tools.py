@@ -343,6 +343,92 @@ async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> 
     assert row["availability"]["status"] == "متوفر"
 
 
+async def test_search_catalog_counts_only_the_shelf_the_cashier_sells_from(
+    db, tenant_ctx
+) -> None:
+    """A back-store warehouse must not make the agent say "متوفر" for goods the till lacks."""
+    from app.modules.inventory.models import InventoryBalance
+    from app.modules.pos.profiles import PosProfileService
+
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _variant(db, tenant_id)
+    shop = await _warehouse(db, tenant_id)
+    back_store = await _warehouse(db, tenant_id)
+    db.add_all(
+        [
+            InventoryBalance(
+                tenant_id=tenant_id, warehouse_id=shop, variant_id=variant.id, on_hand=0, reserved=0
+            ),
+            InventoryBalance(
+                tenant_id=tenant_id,
+                warehouse_id=back_store,
+                variant_id=variant.id,
+                on_hand=40,
+                reserved=0,
+            ),
+        ]
+    )
+    await PosProfileService.create(db, tenant_id, name="Main", code="MAIN", warehouse_id=shop)
+    await db.flush()
+
+    spec = get_tool("search_catalog")
+    result = await spec.handler(db, tenant_id, **spec.args_schema(query="Widget").model_dump())
+
+    assert result["results"][0]["availability"]["status"] == "خلص"
+
+
+async def test_search_catalog_sums_every_warehouse_when_no_till_exists(db, tenant_ctx) -> None:
+    """A shop that has not set up a cashier yet keeps the all-warehouses behaviour."""
+    from app.modules.inventory.models import InventoryBalance
+
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _variant(db, tenant_id)
+    for qty in (3, 4):
+        db.add(
+            InventoryBalance(
+                tenant_id=tenant_id,
+                warehouse_id=await _warehouse(db, tenant_id),
+                variant_id=variant.id,
+                on_hand=qty,
+                reserved=0,
+            )
+        )
+    await db.flush()
+
+    spec = get_tool("search_catalog")
+    result = await spec.handler(db, tenant_id, **spec.args_schema(query="Widget").model_dump())
+
+    assert result["results"][0]["availability"]["status"] == "متوفر"  # 3 + 4 = 7 > 5
+
+
+async def test_agent_quotes_the_same_unit_price_as_the_cashier(db, tenant_ctx) -> None:
+    """The price ladder the till uses for qty 1 is the price the agent quotes."""
+    from app.core.tenancy import resolve_tenant_currency
+    from app.modules.catalog.models import ProductPrice
+
+    tenant_id = tenant_ctx.tenant_id
+    variant = await _variant(db, tenant_id)  # base price 25.50
+    currency = await resolve_tenant_currency(db, tenant_id)
+    db.add(
+        ProductPrice(
+            tenant_id=tenant_id,
+            variant_id=variant.id,
+            currency=currency,
+            unit_price=Decimal("19.00"),
+            min_quantity=1,
+        )
+    )
+    await db.flush()
+
+    search = get_tool("search_catalog")
+    found = await search.handler(db, tenant_id, **search.args_schema(query="Widget").model_dump())
+    details = get_tool("get_product_details")
+    detail = await details.handler(db, tenant_id, product_id=variant.product_id)
+
+    assert found["results"][0]["price"] == "19.00"
+    assert detail["variants"][0]["price"] == "19.00"
+
+
 async def test_search_catalog_reports_restock_when_empty(db, tenant_ctx) -> None:
     from datetime import date
 

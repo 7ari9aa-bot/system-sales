@@ -20,6 +20,7 @@ from __future__ import annotations
 import operator
 import uuid
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from functools import reduce
 from typing import Literal
 
@@ -99,6 +100,47 @@ def _restock_label(expected_on: date, confidence: str) -> str:
     return f"متوقع حوالي {label}"
 
 
+async def _selling_warehouse_ids(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> list[uuid.UUID] | None:
+    """The shelves the cashier actually sells from, or None when no till exists.
+
+    The POS reads ONE warehouse per profile (``PosProfile.warehouse_id``). The
+    agent must quote the same shelves, otherwise a second warehouse (back
+    store, returns) makes it say "متوفر" for goods the till cannot sell. A shop
+    with no active POS profile yet keeps the old behaviour (all warehouses).
+    """
+    # A parameter-bound read of the till's table, not an import of pos.models:
+    # `ai -> pos` would close a module cycle (tests/test_module_boundaries.py).
+    result = await session.execute(
+        text(
+            "SELECT DISTINCT warehouse_id FROM pos_profiles "
+            "WHERE tenant_id = :tenant_id AND is_active"
+        ),
+        {"tenant_id": tenant_id},
+    )
+    return list(result.scalars()) or None
+
+
+async def _unit_prices(
+    session: AsyncSession, tenant_id: uuid.UUID, variants: list
+) -> dict[uuid.UUID, Decimal]:
+    """Price for ONE unit, exactly as the cashier prices it (tier ladder, qty 1)."""
+    from app.core.tenancy import resolve_tenant_currency
+    from app.modules.catalog.service import CatalogService
+
+    if not variants:
+        return {}
+    currency = await resolve_tenant_currency(session, tenant_id)
+    ladders = await CatalogService.price_tiers_for_many(
+        session, tenant_id, [v.id for v in variants], currency=currency
+    )
+    return {
+        v.id: CatalogService.tiered_unit_price(v.price, ladders.get(v.id, []), 1)
+        for v in variants
+    }
+
+
 async def _availability_map(
     session: AsyncSession, tenant_id: uuid.UUID, variant_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, dict]:
@@ -114,6 +156,13 @@ async def _availability_map(
 
     from app.modules.inventory.models import InventoryBalance
 
+    selling = await _selling_warehouse_ids(session, tenant_id)
+    balance_conditions = [
+        InventoryBalance.tenant_id == tenant_id,
+        InventoryBalance.variant_id.in_(variant_ids),
+    ]
+    if selling is not None:
+        balance_conditions.append(InventoryBalance.warehouse_id.in_(selling))
     balance_rows = (
         await session.execute(
             select(
@@ -124,10 +173,7 @@ async def _availability_map(
                 ),
                 func.max(InventoryBalance.updated_at),
             )
-            .where(
-                InventoryBalance.tenant_id == tenant_id,
-                InventoryBalance.variant_id.in_(variant_ids),
-            )
+            .where(*balance_conditions)
             .group_by(InventoryBalance.variant_id)
         )
     ).all()
@@ -327,6 +373,7 @@ async def _search_catalog(
     availability = await _availability_map(
         session, tenant_id, [variant.id for variant, _ in rows]
     )
+    prices = await _unit_prices(session, tenant_id, [variant for variant, _ in rows])
     result = {
         "total_matches": int(total_matches),
         "results": [
@@ -335,7 +382,7 @@ async def _search_catalog(
                 "product_id": str(variant.product_id),
                 "title": variant.title or product_title,
                 "sku": variant.sku,
-                "price": _money(variant.price),
+                "price": _money(prices[variant.id]),
                 "availability": availability.get(variant.id),
             }
             for variant, product_title in rows
@@ -384,6 +431,7 @@ async def _get_product_details(
     variant_rows = list(variants.all())
     active = [v for v in variant_rows if v.is_active]
     availability = await _availability_map(session, tenant_id, [v.id for v in active])
+    prices = await _unit_prices(session, tenant_id, variant_rows)
     return {
         "product_id": str(product.id),
         "title": product.title,
@@ -394,7 +442,7 @@ async def _get_product_details(
                 "variant_id": str(variant.id),
                 "title": variant.title or product.title,
                 "sku": variant.sku,
-                "price": _money(variant.price),
+                "price": _money(prices[variant.id]),
                 "is_active": variant.is_active,
                 "option_values": variant.option_values or {},
                 "availability": availability.get(variant.id),
