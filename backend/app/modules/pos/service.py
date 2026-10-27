@@ -925,6 +925,8 @@ class PosService:
         *,
         items: list[dict] | None,
         customer_id: UUID | None = None,
+        customer_phone: str | None = None,
+        customer_name: str | None = None,
         discount_total: object = None,
         note: str | None = None,
         actor_user_id: UUID | None = None,
@@ -972,6 +974,20 @@ class PosService:
         if profile is not None and not profile.is_active:
             raise ConflictError("this POS profile is not active")
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
+        customer_notice: str | None = None
+        if customer_id is None and customer_phone and customer_phone.strip():
+            from app.modules.customers.service import CustomerService
+
+            # An OPTIONAL phone: it books the sale to the customer who owns that number so a chat
+            # can find the invoice. It must never refuse the sale, but it must never be dropped
+            # silently either: when it cannot be used, the cashier is told.
+            phone_customer, problem = await CustomerService.find_or_create_by_phone(
+                session, tenant_id, phone=customer_phone, name=customer_name
+            )
+            if phone_customer is not None:
+                customer_id = phone_customer.id
+            elif problem is not None:
+                customer_notice = "phone_not_recorded"
         resolved_customer_id = await PosService._resolve_customer(
             session, tenant_id, profile, customer_id
         )
@@ -996,6 +1012,7 @@ class PosService:
             "receipt_id": receipt.id,
             "receipt_number": receipt.number,
             "grand_total": str(order.grand_total),
+            "customer_notice": customer_notice,
         }
 
     @staticmethod

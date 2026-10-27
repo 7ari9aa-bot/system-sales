@@ -85,7 +85,7 @@ export default function PosCustomerFields({
       <Input
         value={phone}
         onChange={(e) => onPhoneChange(e.target.value)}
-        placeholder="تليفون الزبون (اختياري)"
+        placeholder="تليفون الزبون (لمتابعة فاتورته من الشات)"
         className="num h-8 text-[13px]"
         autoComplete="off"
         aria-label="تليفون الزبون"

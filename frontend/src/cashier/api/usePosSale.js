@@ -217,19 +217,27 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
 
   /** Record the sale. There is no payment step: no tender, no change, no method. */
   const confirm = useCallback(
-    async ({ customerId, cashier, customerName } = {}) => {
+    async ({ customerId, cashier, customerName, customerPhone } = {}) => {
       if (!sale) throw new Error("لا توجد جلسة بيع");
       setPaying(true);
       setPayError(null);
       try {
-        const { detail } = await sale.confirm({ cart, discountTotal, customerId, note });
+        const { detail, customerNotice } = await sale.confirm({
+          cart,
+          discountTotal,
+          customerId,
+          customerPhone,
+          customerName,
+          note,
+        });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
         setLines([]);
         setInvoiceDiscount("");
         setNote("");
         onSold?.(receipt);
-        return receipt;
+        // The sale is recorded either way; the notice only says the typed phone was not attached.
+        return { ...receipt, customerNotice };
       } catch (e) {
         setPayError(e?.message || "تعذّر إتمام البيع");
         throw e;

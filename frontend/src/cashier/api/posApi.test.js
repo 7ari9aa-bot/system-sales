@@ -15,6 +15,17 @@ beforeEach(() => {
 });
 
 describe("a recorded sale carries no payment and never a bad figure", () => {
+  it("recordSale sends a typed phone and name trimmed, and omits them when blank", async () => {
+    await posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 1 }], customerPhone: " 01012345678 ", customerName: " أحمد " }, newIntent());
+    const withPhone = calls[0].body;
+    expect(withPhone.customer_phone).toBe("01012345678");
+    expect(withPhone.customer_name).toBe("أحمد");
+    await posApi.recordSale("r1", { items: [{ variant_id: "v", quantity: 1 }], customerPhone: "  ", customerName: "" }, newIntent());
+    const blank = calls[1].body;
+    expect(blank).not.toHaveProperty("customer_phone");
+    expect(blank).not.toHaveProperty("customer_name");
+  });
+
   it("recordSale sends the items, the discount as a wire string, and no tender", async () => {
     await posApi.recordSale(
       "r1",

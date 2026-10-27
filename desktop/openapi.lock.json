@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 413,
-    "sha256": "3ce47eda3893e29ee161d13059db605f170973fb1df8b1607e9deca65bf26f84",
+    "sha256": "0225fa19b3f1f722ec7a2fb142fca71296a66310b46453b6e4f80149dfc39575",
     "typed_operations": 257
   },
   "spec": {
@@ -13067,6 +13067,17 @@
         },
         "RecordSaleOut": {
           "properties": {
+            "customer_notice": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Notice"
+            },
             "grand_total": {
               "title": "Grand Total",
               "type": "string"
@@ -13115,6 +13126,30 @@
                 }
               ],
               "title": "Customer Id"
+            },
+            "customer_name": {
+              "anyOf": [
+                {
+                  "maxLength": 127,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Name"
+            },
+            "customer_phone": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Phone"
             },
             "discount_total": {
               "anyOf": [

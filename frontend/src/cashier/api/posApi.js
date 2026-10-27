@@ -173,12 +173,15 @@ export const posApi = {
 
   /* ---- money (intent required) ---- */
   /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
-  recordSale: async (registerId, { items, customerId, discountTotal, note }, intent) =>
+  recordSale: async (registerId, { items, customerId, customerPhone, customerName, discountTotal, note }, intent) =>
     post(
       `/pos/registers/${seg(registerId)}/sales`,
       compact({
         items: lines(items),
         customer_id: customerId,
+        // Optional: books the invoice to the customer who owns this number (created if new).
+        customer_phone: String(customerPhone ?? "").trim() || undefined,
+        customer_name: String(customerName ?? "").trim() || undefined,
         discount_total: opt(discountTotal),
         note: String(note ?? "").trim() || undefined,
       }),

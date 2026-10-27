@@ -271,9 +271,18 @@ function PosScreen({ user, session }) {
 
   async function confirmSale() {
     try {
-      const r = await sale.confirm({ cashier, customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer, customerId: pickedCustomer?.id });
+      const r = await sale.confirm({
+        cashier,
+        customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
+        customerId: pickedCustomer?.id,
+        customerPhone,
+      });
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
+      if (r.customerNotice === "phone_not_recorded") {
+        // Sold, but the number could not be attached: the customer will not find this invoice from a chat.
+        toast.warning("تم البيع، لكن رقم التليفون غير صحيح فلم يُسجَّل على الفاتورة. راجع الرقم مع العميل.", { duration: 9000 });
+      }
       setInvoiceDiscountPct(0);
       setInvoiceDiscountAmt(0);
       setCustomerName("");

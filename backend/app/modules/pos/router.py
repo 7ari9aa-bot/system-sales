@@ -233,6 +233,13 @@ class RecordSaleRequest(BaseModel):
 
     items: list[CartLine] = Field(min_length=1)
     customer_id: UUID | None = None
+    # OPTIONAL phone (and the name typed with it) of a customer who was not picked from the list.
+    # With a phone, the sale is booked to the customer holding that number (created if new), so
+    # the customer can later find their invoice from a chat. Ignored when ``customer_id`` is set:
+    # an explicit pick always wins. An unusable number never refuses the sale (see
+    # ``customer_notice`` on the response).
+    customer_phone: str | None = Field(default=None, max_length=31)
+    customer_name: str | None = Field(default=None, max_length=127)
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
     note: str | None = Field(default=None, max_length=512)
@@ -256,6 +263,10 @@ class RecordSaleOut(BaseModel):
     receipt_id: UUID
     receipt_number: str
     grand_total: str
+    # None when the sale is booked as asked. "phone_not_recorded" when a phone was typed but could
+    # not be attached to the invoice: the sale itself still went through, but the customer will not
+    # be able to follow it from a chat. The till shows a notice and the cashier can fix it.
+    customer_notice: str | None = None
 
 
 class HoldCartRequest(BaseModel):
@@ -480,6 +491,8 @@ async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteC
         register_id,
         items=_lines(body.items),
         customer_id=body.customer_id,
+        customer_phone=body.customer_phone,
+        customer_name=body.customer_name,
         discount_total=body.discount_total,
         note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,

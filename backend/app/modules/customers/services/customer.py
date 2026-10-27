@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.contact_norm import (
+    ContactNormalizationError,
     classify_stored_phone,
     email_candidates,
     normalize_email,
@@ -443,6 +444,60 @@ class CustomerService:
                 if tag:
                     await CustomerService.add_tag(session, tenant_id, customer.id, tag)
         return customer
+
+    @staticmethod
+    async def find_or_create_by_phone(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        phone: str | None,
+        name: str | None = None,
+        source: str = "pos",
+    ) -> tuple[Customer | None, str | None]:
+        """The customer a till should book a sale to from a typed phone number.
+
+        Returns ``(customer, problem)``. ``problem`` is a short code when the
+        phone could not be used, and the caller decides what to do: a sale is
+        never refused over an OPTIONAL phone, but the cashier must be told it
+        was not recorded.
+
+        - no phone typed: ``(None, None)``, an ordinary walk-in.
+        - an unusable number (``ContactNormalizationError``): ``(None, "invalid_phone")``;
+          nothing is stored, so no fabricated ``+..`` reaches the uniqueness key.
+        - a live customer already holding it (canonical OR the raw spelling a
+          legacy row kept): that customer, never a second one.
+        - that customer is blocked: ``(None, "customer_unavailable")``. A blocked
+          customer cannot transact, and the till is not told why.
+        - otherwise a new customer, named as typed (or by the phone itself when
+          the cashier gave no name). A concurrent write that took the number
+          first (``uq_customers_tenant_phone``) is re-read, not an error.
+        """
+        if phone is None or not phone.strip():
+            return None, None
+        try:
+            canonical = normalize_phone(phone)
+        except ContactNormalizationError:
+            return None, "invalid_phone"
+
+        found = await CustomerService._resolve_live_by_contact(
+            session, tenant_id, Customer.phone, phone_candidates(phone)
+        )
+        if found is None:
+            label = (name or "").strip() or canonical
+            try:
+                found = await CustomerService.create_from_import(
+                    session, tenant_id, name=label, phone=phone, source=source
+                )
+            except ConflictError:
+                # Lost a race with a concurrent sale/intake: the row exists now.
+                found = await CustomerService._resolve_live_by_contact(
+                    session, tenant_id, Customer.phone, phone_candidates(phone)
+                )
+                if found is None:
+                    return None, "customer_unavailable"
+        if found.is_blocked:
+            return None, "customer_unavailable"
+        return found, None
 
     @staticmethod
     async def update_customer(

@@ -45,6 +45,46 @@ describe("confirm: a sale is recorded, never paid", () => {
     expect(out.detail).toEqual({ id: "r" });
   });
 
+  it("sends the typed phone and name when no customer was picked", async () => {
+    const sale = createSaleSession("sess-1", "reg-1");
+    await sale.confirm({ cart, customerPhone: "01012345678", customerName: "أحمد" });
+    const [, payload] = pos.recordSale.mock.calls[0];
+    expect(payload.customerPhone).toBe("01012345678");
+    expect(payload.customerName).toBe("أحمد");
+    expect(payload.customerId).toBeUndefined();
+  });
+
+  it("an explicitly picked customer wins: the typed phone is NOT sent", async () => {
+    const sale = createSaleSession("sess-1", "reg-1");
+    await sale.confirm({ cart, customerId: "c1", customerPhone: "01012345678", customerName: "أحمد" });
+    const [, payload] = pos.recordSale.mock.calls[0];
+    expect(payload.customerId).toBe("c1");
+    expect(payload.customerPhone).toBeUndefined();
+    expect(payload.customerName).toBeUndefined();
+  });
+
+  it("a different phone is a different sale: a retry never replays the old phone under the same key", async () => {
+    pos.recordSale.mockRejectedValue(Object.assign(new Error("network"), { status: 0 }));
+    const sale = createSaleSession("sess-1", "reg-1");
+    await expect(sale.confirm({ cart, customerPhone: "01011111111" })).rejects.toThrow();
+    await expect(sale.confirm({ cart, customerPhone: "01022222222" })).rejects.toThrow();
+    await expect(sale.confirm({ cart, customerPhone: "01022222222" })).rejects.toThrow();
+    const keys = pos.recordSale.mock.calls.map((c) => c[2].key);
+    expect(keys[0]).not.toBe(keys[1]); // changed phone -> new intent
+    expect(keys[1]).toBe(keys[2]); // same phone retried -> same intent
+  });
+
+  it("hands the server's phone notice back to the till", async () => {
+    pos.recordSale.mockResolvedValue({ receipt_id: "r1", customer_notice: "phone_not_recorded" });
+    const out = await createSaleSession("sess-1", "reg-1").confirm({ cart, customerPhone: "0101" });
+    expect(out.customerNotice).toBe("phone_not_recorded");
+  });
+
+  it("no notice when the phone was attached", async () => {
+    const out = await createSaleSession("sess-1", "reg-1").confirm({ cart, customerPhone: "01012345678" });
+    expect(out.customerNotice).toBeNull();
+  });
+
   it("a retry of the SAME cart re-sends the SAME key; a changed cart gets a new one", async () => {
     pos.recordSale.mockRejectedValueOnce(Object.assign(new Error("network"), { status: 0 })).mockResolvedValueOnce({ receipt_id: "r1" });
     const sale = createSaleSession("sess-1", "reg-1");
