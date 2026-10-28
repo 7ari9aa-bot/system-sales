@@ -347,9 +347,7 @@ async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> 
     assert row["availability"]["status"] == "متوفر"
 
 
-async def test_search_catalog_counts_only_the_shelf_the_cashier_sells_from(
-    db, tenant_ctx
-) -> None:
+async def test_search_catalog_counts_only_the_shelf_the_cashier_sells_from(db, tenant_ctx) -> None:
     """A back-store warehouse must not make the agent say "متوفر" for goods the till lacks."""
     from app.modules.inventory.models import InventoryBalance
     from app.modules.pos.profiles import PosProfileService
@@ -468,9 +466,7 @@ async def test_search_catalog_reports_restock_when_empty(db, tenant_ctx) -> None
     # facts verbatim, and an Arabic-Indic label would never ground "25".
     assert row["availability"]["restock_label"] == "مؤكد: 25 أكتوبر 2026"
     # The raw day-count is a fact too: "بعد 6 أيام" is quotable, "حسبتها" is not.
-    assert row["availability"]["restock_in_days"] == (
-        date(2026, 10, 25) - date.today()
-    ).days
+    assert row["availability"]["restock_in_days"] == (date(2026, 10, 25) - date.today()).days
 
 
 async def test_search_catalog_hides_restock_from_an_in_stock_variant(db, tenant_ctx) -> None:
@@ -688,9 +684,7 @@ async def test_get_store_info_says_how_old_each_item_is(db, tenant_ctx) -> None:
     assert not any(updated_at[:10] in f for f in facts)
 
 
-async def test_get_store_info_reports_when_the_list_is_not_the_whole_store(
-    db, tenant_ctx
-) -> None:
+async def test_get_store_info_reports_when_the_list_is_not_the_whole_store(db, tenant_ctx) -> None:
     """Silence about a policy must not read as "the store has none": a cut-off
     pull says so, whether the item cap or the token budget did the cutting."""
     from app.modules.ai.models import KnowledgeItem
@@ -868,9 +862,7 @@ async def test_handover_to_human_writes_the_handover(db, tenant_ctx) -> None:
     assert "سياسة الاسترجاع" in (handover.note or "")
 
     refreshed_status = (
-        await db.execute(
-            select(Conversation.status).where(Conversation.id == conversation.id)
-        )
+        await db.execute(select(Conversation.status).where(Conversation.id == conversation.id))
     ).scalar_one()
     assert refreshed_status == "waiting_human"
 
@@ -1361,46 +1353,6 @@ async def test_the_returns_of_a_till_invoice_are_reported(db, tenant_ctx) -> Non
     assert row["returned"] == {"quantity": 1, "refund_total": "25.00"}
 
 
-async def test_another_phone_on_whatsapp_cannot_open_the_invoice(db, tenant_ctx) -> None:
-    tenant_id = tenant_ctx.tenant_id
-    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
-    number = await _order_number(db, sold["order_id"])
-    stranger, conversation = await _chat(
-        db, tenant_id, channel="whatsapp", external_id="201199999999"
-    )
-
-    result = await _open(db, tenant_id, stranger, conversation, number)
-
-    assert result["orders"] == []
-    assert number not in str({k: v for k, v in result.items() if k != "orders"})
-
-
-async def test_an_unverified_channel_cannot_open_a_till_invoice(db, tenant_ctx) -> None:
-    """Telegram's sender id is a chat id, not a phone: it proves nothing, even
-    when it happens to equal the digits on the receipt."""
-    tenant_id = tenant_ctx.tenant_id
-    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
-    number = await _order_number(db, sold["order_id"])
-    for channel, ref in (("telegram", "201012345678"), ("webchat", "01012345678")):
-        impostor, conversation = await _chat(db, tenant_id, channel=channel, external_id=ref)
-        result = await _open(db, tenant_id, impostor, conversation, number)
-        assert result["orders"] == [], channel
-
-
-async def test_a_walk_in_invoice_never_opens_by_number_alone(db, tenant_ctx) -> None:
-    """No phone on the invoice: the sequential number would be the only key."""
-    tenant_id = tenant_ctx.tenant_id
-    sold, _till, _variant = await _till_sale(db, tenant_id, phone=None, name="")
-    number = await _order_number(db, sold["order_id"])
-    customer, conversation = await _chat(
-        db, tenant_id, channel="whatsapp", external_id="201012345678"
-    )
-
-    result = await _open(db, tenant_id, customer, conversation, number)
-
-    assert result["orders"] == []
-
-
 async def test_a_chat_customer_opens_their_own_invoice_on_any_channel(db, tenant_ctx) -> None:
     from app.modules.orders.service import OrderService
 
@@ -1414,22 +1366,6 @@ async def test_a_chat_customer_opens_their_own_invoice_on_any_channel(db, tenant
     result = await _open(db, tenant_id, customer, conversation, order.number)
 
     assert [row["number"] for row in result["orders"]] == [order.number]
-
-
-async def test_a_chat_customer_cannot_open_someone_elses_invoice(db, tenant_ctx) -> None:
-    from app.modules.orders.service import OrderService
-
-    tenant_id = tenant_ctx.tenant_id
-    variant = await _stocked_variant(db, tenant_id)
-    mine, conversation = await _conversation(db, tenant_id)
-    other, _ = await _conversation(db, tenant_id)
-    theirs = await OrderService.create_order(
-        db, tenant_id, other.id, [{"variant_id": variant.id, "quantity": 1}]
-    )
-
-    result = await _open(db, tenant_id, mine, conversation, theirs.number)
-
-    assert result["orders"] == []
 
 
 async def test_get_my_orders_needs_a_bound_customer(db, tenant_ctx) -> None:
@@ -1455,30 +1391,6 @@ async def test_get_my_orders_hides_a_deleted_invoice(db, tenant_ctx) -> None:
     )
 
     assert (await _open(db, tenant_id, customer, conversation, number))["orders"] == []
-
-
-async def test_an_unverified_channel_never_matches_an_invoice_with_no_phone(db, tenant_ctx) -> None:
-    """No verified phone must mean NO phone match, not "match an empty phone":
-    a till customer saved without a number must not open for anyone on
-    Telegram, the web chat or an unrelated WhatsApp number."""
-    from sqlalchemy import text as sql_text
-
-    tenant_id = tenant_ctx.tenant_id
-    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
-    number = await _order_number(db, sold["order_id"])
-    await db.execute(
-        sql_text(
-            "UPDATE customers SET phone = NULL WHERE id = "
-            "(SELECT customer_id FROM orders WHERE id = :id)"
-        ),
-        {"id": sold["order_id"]},
-    )
-    await db.flush()
-    for channel in ("telegram", "webchat", "whatsapp"):
-        stranger, conversation = await _chat(
-            db, tenant_id, channel=channel, external_id=f"x-{channel}-1"
-        )
-        assert (await _open(db, tenant_id, stranger, conversation, number))["orders"] == [], channel
 
 
 async def test_exchange_flow_open_the_invoice_then_offer_the_other_sizes(db, tenant_ctx) -> None:
@@ -1575,3 +1487,89 @@ def test_the_handover_tool_and_prompt_say_it_is_a_last_resort() -> None:
     # the prompt tells the agent to answer ordinary questions itself
     assert "التحويل مش حل للأسئلة العادية" in CUSTOMER_SYSTEM_PROMPT
     assert "فيه مشكلة فعلية" in CUSTOMER_SYSTEM_PROMPT
+
+
+# ------------------------------------------- the number alone opens it ----
+# The store decided a purchase receipt number is not sensitive: quoting it is
+# the whole proof, on every channel, with no phone or identity match.
+
+
+async def test_the_invoice_number_alone_opens_it_on_any_channel(db, tenant_ctx) -> None:
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(
+        db, tenant_id, phone=None, name=""
+    )  # walk-in, no phone
+    number = await _order_number(db, sold["order_id"])
+    for channel, ref in (
+        ("telegram", "5550001"),
+        ("messenger", "psid-9"),
+        ("instagram", "ig-7"),
+        ("webchat", "session-3"),
+        ("whatsapp", "201199999999"),  # a number that is NOT on the invoice
+    ):
+        stranger, conversation = await _chat(db, tenant_id, channel=channel, external_id=ref)
+        result = await _open(db, tenant_id, stranger, conversation, number)
+        assert [row["number"] for row in result["orders"]] == [number], channel
+        assert result["orders"][0]["grand_total"] == "50.00"
+
+
+async def test_a_number_that_does_not_exist_returns_nothing(db, tenant_ctx) -> None:
+    customer, conversation = await _chat(
+        db, tenant_ctx.tenant_id, channel="telegram", external_id="5550002"
+    )
+
+    result = await _open(db, tenant_ctx.tenant_id, customer, conversation, "NOPE-000")
+
+    assert result["orders"] == []
+    assert "hint" in result
+
+
+async def test_the_result_never_carries_the_buyers_name_or_phone(db, tenant_ctx) -> None:
+    """Opening by number is fine; leaking WHO bought is not."""
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(
+        db, tenant_id, phone="01012345678", name="اسم سري للمشتري"
+    )
+    number = await _order_number(db, sold["order_id"])
+    stranger, conversation = await _chat(db, tenant_id, channel="telegram", external_id="5550003")
+
+    result = await _open(db, tenant_id, stranger, conversation, number)
+
+    assert [row["number"] for row in result["orders"]] == [number]
+    dump = str(result)
+    for secret in ("اسم سري للمشتري", "01012345678", "201012345678", "customer_id"):
+        assert secret not in dump, secret
+
+
+async def test_one_stores_invoice_is_invisible_to_another_store(db, tenant_ctx) -> None:
+    """The number is not unique across stores; the lookup is bound to the tenant.
+
+    The second store asks through the REAL row-level security binding, so this
+    holds even if the query's own tenant filter were ever dropped.
+    """
+    from sqlalchemy import text
+
+    from app.core.db import bind_tenant
+
+    tenant_id = tenant_ctx.tenant_id
+    sold, _till, _variant = await _till_sale(db, tenant_id, phone="01012345678")
+    number = await _order_number(db, sold["order_id"])
+    customer, conversation = await _chat(db, tenant_id, channel="telegram", external_id="5550004")
+    context = {"customer_id": str(customer.id), "conversation_id": str(conversation.id)}
+    spec = get_tool("get_my_orders")
+    assert [
+        r["number"]
+        for r in (await spec.handler(db, tenant_id, number=number, context=context))["orders"]
+    ] == [number]
+
+    other = uuid.uuid4()
+    await db.execute(
+        text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Other')"),
+        {"id": str(other), "slug": f"other-{uuid.uuid4().hex[:8]}"},
+    )
+    await bind_tenant(db, other)
+
+    # the other store, asking with its own tenant id: nothing
+    assert (await spec.handler(db, other, number=number, context=context))["orders"] == []
+    # and even asking with the FIRST store's id, the database refuses to show it
+    assert (await spec.handler(db, tenant_id, number=number, context=context))["orders"] == []

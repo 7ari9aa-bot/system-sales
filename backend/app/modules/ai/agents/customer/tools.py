@@ -645,61 +645,18 @@ async def _search_knowledge(
 class GetMyOrdersArgs(_StrictArgs):
     """The invoice number the customer read off their receipt. Nothing else.
 
-    The number is required, never optional: an invoice number is sequential and
-    guessable, so "list my latest invoices" would let the tool's only safety be
-    the customer binding. Quoting the number is the customer's proof they hold
-    the receipt; the ownership rules below are the second lock.
+    The number is required, never optional: the agent opens ONE invoice the
+    customer names, it never lists invoices. The store decided that the number
+    on a purchase receipt is not sensitive, so on every channel the number alone
+    opens the invoice (no phone or identity match).
     """
 
     number: str = Field(min_length=1, max_length=31)
 
 
-# Channels whose sender id IS a phone number the provider has verified. Every
-# other channel's id (a Telegram chat id, a web session, an Instagram scoped
-# id) is not a phone, so it can never vouch for a till invoice.
-_PHONE_VERIFIED_CHANNELS = frozenset({"whatsapp"})
-
 _NOT_FOUND_HINT = (
-    "مفيش فاتورة بالرقم ده على حساب العميل ده. متقولش إن الفاتورة مش موجودة "
-    "في المتجر ولا تأكد أو تنفي ملكية حد ليها. اطلب منه يراجع الرقم على "
-    "الإيصال وكمّل معاه."
+    "مفيش فاتورة بالرقم ده. اطلب منه يراجع الرقم المطبوع على الإيصال وكمّل معاه."
 )
-
-
-async def _verified_channel_phone(
-    session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID | None
-) -> list[str]:
-    """Phone spellings this conversation has PROVEN, or [] when it proves none.
-
-    Only a channel whose sender id is a provider-verified phone number counts;
-    the id is read from the conversation's own customer identity on the server,
-    never from anything the customer typed.
-    """
-    if conversation_id is None:
-        return []
-    from app.core.contact_norm import phone_candidates
-
-    row = (
-        (
-            await session.execute(
-                text(
-                    "SELECT c.channel, i.external_id "
-                    "FROM conversations c "
-                    "JOIN customer_identities i "
-                    "ON i.tenant_id = c.tenant_id AND i.customer_id = c.customer_id "
-                    "AND i.channel = c.channel "
-                    "WHERE c.tenant_id = :tenant_id AND c.id = :conversation_id "
-                    "LIMIT 1"
-                ),
-                {"tenant_id": tenant_id, "conversation_id": conversation_id},
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if row is None or row["channel"] not in _PHONE_VERIFIED_CHANNELS:
-        return []
-    return phone_candidates(row["external_id"])
 
 
 async def _get_my_orders(
@@ -709,27 +666,24 @@ async def _get_my_orders(
     number: str,
     context: dict | None = None,
 ) -> dict:
-    """Read-only: ONE invoice the customer can prove is theirs, with its returns.
+    """Read-only: ONE invoice by the number the customer quotes, with its returns.
 
-    An invoice opens only when the customer quotes its number AND one of:
+    The invoice number is the whole proof, on every channel: a customer who
+    bought at the till reads it off the receipt and can ask about it from
+    Telegram, Messenger or anywhere else. There is deliberately no phone or
+    identity match (the store judged a purchase receipt number not sensitive).
 
-    1. it is booked on the customer of THIS conversation; or
-    2. it is a till invoice (booked on a walk-in or another profile) that
-       carries a phone number matching the phone this channel has verified.
-
-    A till invoice with no phone never opens by number alone: the number is
-    sequential, so it is a guess, not a proof. Both customer and conversation
-    come from the server-bound context, never from the model. Tables are read
-    with bound SQL rather than imported (``ai -> orders`` / ``ai -> pos`` would
-    close a module cycle, see tests/test_module_boundaries.py). Nothing here
-    writes; a return or an exchange is staff work via handover.
+    What stays bound by the server: the tenant (one store never sees another's
+    invoices) and the conversation (the tool refuses to run without a customer
+    bound to it). The invoice is looked up by exact number, soft-deleted
+    invoices are hidden, and the result never carries the buyer's name or
+    phone. Tables are read with bound SQL rather than imported
+    (``ai -> orders`` / ``ai -> pos`` would close a module cycle, see
+    tests/test_module_boundaries.py). Nothing here writes; a return or an
+    exchange is staff work.
     """
-    customer_id = _parse_bound_id((context or {}).get("customer_id"))
-    if customer_id is None:
+    if _parse_bound_id((context or {}).get("customer_id")) is None:
         raise DomainError("no customer bound to this tool call")
-    conversation_id = _parse_bound_id((context or {}).get("conversation_id"))
-
-    phones = await _verified_channel_phone(session, tenant_id, conversation_id)
 
     orders = (
         (
@@ -738,24 +692,11 @@ async def _get_my_orders(
                     "SELECT o.id, o.number, o.status, o.currency, o.subtotal, "
                     "o.discount_total, o.grand_total, o.placed_at "
                     "FROM orders o "
-                    "JOIN customers oc ON oc.id = o.customer_id "
-                    "AND oc.tenant_id = o.tenant_id "
                     "WHERE o.tenant_id = :tenant_id AND o.number = :number "
                     "AND o.deleted_at IS NULL "
-                    "AND (o.customer_id = :customer_id "
-                    # `x = ANY('{}')` is already false, so with no verified phone
-                    # nothing matches. The explicit cardinality guard is a second
-                    # lock kept on purpose, in case the comparison is ever changed.
-                    "OR (cardinality(CAST(:phones AS text[])) > 0 "
-                    "AND oc.phone = ANY(CAST(:phones AS text[])))) "
                     "LIMIT 1"
                 ),
-                {
-                    "tenant_id": tenant_id,
-                    "customer_id": customer_id,
-                    "number": number.strip(),
-                    "phones": phones,
-                },
+                {"tenant_id": tenant_id, "number": number.strip()},
             )
         )
         .mappings()
@@ -1252,13 +1193,13 @@ CUSTOMER_TOOL_SPECS: list[ToolSpec] = [
         description=(
             "Read ONE invoice the customer quotes by its number (the number "
             "printed on their receipt): status, date, items, totals, and "
-            "whether goods were returned. `number` is required: ask the "
-            "customer for it, never guess one and never list invoices. It "
-            "opens only invoices the customer can prove are theirs, so an "
-            "empty result means 'not on this account', not 'does not exist'. "
-            "Read-only: you cannot change, return or exchange anything. If "
-            "the customer wants to return, exchange or cancel, answer from the "
-            "invoice and the store policy yourself."
+            "whether goods were returned. Works on any channel with the number "
+            "alone. `number` is required: ask the customer for it, never guess "
+            "one and never list invoices. An empty result means that number "
+            "does not exist, so ask them to re-check the receipt. Read-only: "
+            "you cannot change, return or exchange anything. If the customer "
+            "wants to return, exchange or cancel, answer from the invoice and "
+            "the store policy yourself."
         ),
         args_schema=GetMyOrdersArgs,
         handler=_get_my_orders,
