@@ -78,8 +78,11 @@ extend-immutable-calls = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The live model evaluation costs money; it only runs when asked for with `-m live_eval`.
+addopts = "-m 'not live_eval'"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [
     "gate: pre-production architecture gate scenarios",
+    "live_eval: runs the customer-agent golden set against a REAL model (needs AI_API_KEY_PRIMARY, costs money)",
 ]

@@ -6,8 +6,6 @@ It says nothing about how a real model behaves; that is what the live evaluation
 
 from __future__ import annotations
 
-import pytest
-
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.agent_eval.cases_core import CASES
@@ -98,13 +96,29 @@ async def test_an_explicit_human_request_is_a_handover(db, tenant_ctx, monkeypat
     assert result.passed, [f"{f.check}: {f.detail}" for f in result.findings]
 
 
-@pytest.mark.parametrize(
-    "case_id", ["plain-question-no-handover", "out-of-scope-politely-returned"]
-)
-async def test_a_plain_reply_without_handover_passes(db, tenant_ctx, monkeypatch, case_id) -> None:
-    _script(monkeypatch, _says("اتفضل، قولي تحب تعرف إيه عن المنتجات."))
+async def test_an_out_of_scope_chat_needs_no_tool(db, tenant_ctx, monkeypatch) -> None:
+    """A chat that is not about the shop is answered in words: no tool, no handover."""
+    _script(
+        monkeypatch,
+        _says("ده خارج اختصاصي، أنا هنا أساعدك في منتجات المحل. تحب تعرف عن حاجة؟"),
+    )
 
-    result, records = await run_case(db, tenant_ctx.tenant_id, _case(case_id))
+    result, records = await run_case(
+        db, tenant_ctx.tenant_id, _case("out-of-scope-politely-returned")
+    )
 
     assert not records[0].observed.handed_over
     assert result.passed, [f"{f.check}: {f.detail}" for f in result.findings]
+
+
+async def test_a_stock_question_answered_without_looking_it_up_fails(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """Regression for the lazy-agent flaw: a generic reply to a stock question used to pass.
+    Now the case demands the catalogue was actually consulted."""
+    _script(monkeypatch, _says("اتفضل، قولي تحب تعرف إيه عن المنتجات."))
+
+    result, _ = await run_case(db, tenant_ctx.tenant_id, _case("plain-question-no-handover"))
+
+    assert not result.passed
+    assert "tools_called" in {f.check for f in result.findings}
