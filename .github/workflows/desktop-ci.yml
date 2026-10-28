@@ -119,7 +119,7 @@ jobs:
         working-directory: desktop
         run: npx tauri build ${{ matrix.tauri-args }}
 
-      - uses: actions/upload-artifact@v4.4.3
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: fihrist-desktop-${{ matrix.label }}
           path: |
