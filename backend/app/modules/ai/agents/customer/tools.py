@@ -1,12 +1,15 @@
 """Customer Agent tool implementations and specs.
 
-The scope cut (2026-10-18): the customer agent is LANGUAGE-ONLY — it answers
-from store data and hands over; it never sells, never mutates records. Seven
-tools, every one read-only except the escalation:
+The customer agent is LANGUAGE-ONLY: it answers from store data and hands over to a person
+when it cannot solve a real problem. It never sells and never mutates records. Nine tools,
+every one read-only except the escalation (the names below are the registered tool names, and
+``CUSTOMER_TOOL_SPECS`` at the bottom of this file is the authoritative list):
 
 - Catalog: search_catalog, get_product_details, get_product_photos
 - Vision: find_product_by_image
-- Store: get_store_info (search_knowledge is retired, merged into it)
+- Store: get_store_info, search_knowledge
+- Customer's own purchases: get_my_orders (looked up by invoice number)
+- Support: find_support_playbook (the store's written solutions)
 - Escalation: handover_to_human
 
 Descriptions follow the platform guidance (Anthropic's tool-design notes,
