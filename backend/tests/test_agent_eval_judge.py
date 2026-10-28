@@ -95,7 +95,7 @@ async def test_the_judge_is_shown_the_shop_data_it_must_ground_against() -> None
         return YES
 
     await _run(spy)
-    assert all("تيشيرت قطن" in u for u in seen)
+    assert all("[search_catalog]" in u and "250.00" in u for u in seen)
 
 
 # ---- calibration: a lazy or contrary judge must be exposed ----------------------------------
@@ -182,11 +182,18 @@ async def test_an_untrustworthy_judge_is_refused_before_any_verdict_is_used() ->
 async def test_a_whole_case_is_judged_turn_by_turn_with_the_rubric_on_the_last() -> None:
     from types import SimpleNamespace
 
+    from tests.agent_eval.graders import Observed
     from tests.agent_eval.judge import judge_case
+    from tests.agent_eval.runner import TurnRecord
 
-    def rec(reply: str, grounding: str):
-        return SimpleNamespace(
-            customer="q", grounding=grounding, observed=SimpleNamespace(reply=reply)
+    def rec(reply: str, tool_text: str):
+        # the REAL record type, so a renamed or missing field fails here, not in a paid run
+        return TurnRecord(
+            customer="q",
+            observed=Observed(reply=reply, tools=(), handed_over=False),
+            blocked_reason=None,
+            grounding="ok",
+            tool_text=tool_text,
         )
 
     case = SimpleNamespace(rubric=("no refund promised?",))

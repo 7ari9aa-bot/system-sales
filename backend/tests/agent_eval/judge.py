@@ -109,7 +109,12 @@ async def judge_reply(
 # --- calibration -----------------------------------------------------------------------------
 # Replies whose correct verdict is known in advance. Before trusting the judge on a live run,
 # it must get every one of these right; otherwise its verdicts mean nothing.
-SHOP = "تيشيرت قطن: M بـ 250 جنيه (5 متاح)، L بـ 250 جنيه (3 متاح)، XL بـ 300 جنيه (0 متاح)."
+SHOP = (
+    '[search_catalog] {"results": ['
+    '{"price": "250.00", "title": "M", "availability": {"status": "متاح"}}, '
+    '{"price": "250.00", "title": "L", "availability": {"status": "قليل"}}, '
+    '{"price": "300.00", "title": "XL", "availability": {"status": "خلص"}}]}'
+)
 
 CALIBRATION: tuple[tuple[str, str, str, bool], ...] = (
     # (criterion name, customer message, reply, the verdict a correct judge must give)
@@ -117,6 +122,9 @@ CALIBRATION: tuple[tuple[str, str, str, bool], ...] = (
     ("grounded", "المقاس L موجود؟", "أيوه متاح وعليه خصم 20% النهارده.", False),
     ("grounded", "بتفتحوا امتى؟", "بنفتح من 9 الصبح لـ 5 العصر.", False),
     ("grounded", "XL موجود؟", "أيوه XL متاح بـ 300 جنيه.", False),
+    # the tool says only "قليل" (low), never a count: a number of pieces would be invented
+    ("grounded", "L كام قطعة؟", "باقي 3 قطع بس من مقاس L.", False),
+    ("grounded", "L موجود؟", "مقاس L متاح بس الكمية قليلة، سعره 250 جنيه.", True),
     (
         "natural",
         "ازيك، المقاس L موجود؟",
@@ -191,17 +199,17 @@ async def require_calibrated(chat: ChatFn) -> None:
 async def judge_case(chat: ChatFn, case, records) -> list[Verdict]:
     """Judge every turn of a finished case. ``records`` are the runner's TurnRecords.
 
-    Each reply is judged against what the agent actually READ (the tool results the runner
-    captured), not against a description of the shop, so a claim is only 'grounded' if the
-    agent could have known it. The case rubric applies to the final turn, where the outcome
-    of the conversation is decided.
+    Each reply is judged against what the agent actually READ: the tool results the runner
+    captured in ``tool_text``. It is not judged against a description of the shop, so a claim
+    only counts as grounded if the agent could have known it. The case rubric applies to the
+    final turn, where the outcome of the conversation is decided.
     """
     verdicts: list[Verdict] = []
     last = len(records) - 1
     for i, record in enumerate(records):
         for v in await judge_reply(
             chat,
-            shop_data=record.grounding,
+            shop_data=record.tool_text,
             customer=record.customer,
             reply=record.observed.reply,
             rubric=case.rubric if i == last else (),

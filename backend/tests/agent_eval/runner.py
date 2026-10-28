@@ -32,13 +32,15 @@ class TurnRecord:
     customer: str
     observed: Observed
     blocked_reason: str | None
-    grounding: str
+    grounding: str  # production's own status: ok | failed | skipped_no_facts
+    tool_text: str = ""  # the successful tool results the agent actually read this turn
 
 
-async def _tool_trace(db, run_id: uuid.UUID | None) -> tuple[tuple[str, ...], frozenset[str]]:
-    """Names of tools that ran (in order) and every numeral their SUCCESSFUL results carried."""
+async def _tool_trace(db, run_id: uuid.UUID | None) -> tuple[tuple[str, ...], frozenset[str], str]:
+    """Names of tools that ran (in order), every numeral their SUCCESSFUL results carried, and
+    the text of those results: what the agent actually had in front of it when it answered."""
     if run_id is None:
-        return (), frozenset()
+        return (), frozenset(), ""
     rows = (
         await db.execute(
             text(
@@ -49,10 +51,13 @@ async def _tool_trace(db, run_id: uuid.UUID | None) -> tuple[tuple[str, ...], fr
     ).all()
     names = tuple(r[0] for r in rows)
     facts: set[str] = set()
-    for _name, status, result in rows:
+    seen: list[str] = []
+    for name, status, result in rows:
         if status == "ok" and result is not None:
-            facts |= numerals(json.dumps(result, ensure_ascii=False, default=str))
-    return names, frozenset(facts)
+            rendered = json.dumps(result, ensure_ascii=False, default=str)
+            facts |= numerals(rendered)
+            seen.append(f"[{name}] {rendered}")
+    return names, frozenset(facts), "\n".join(seen)
 
 
 async def _apply_production_exit(db, tenant_id, conversation_id, outcome) -> None:
@@ -137,7 +142,7 @@ async def run_case(
             runner=AgentRunner(gateway=gateway or AIGateway()),
         )
         await _apply_production_exit(db, tenant_id, conversation.id, outcome)
-        tools, facts = await _tool_trace(db, outcome.run_id)
+        tools, facts, tool_text = await _tool_trace(db, outcome.run_id)
         observed = Observed(
             reply=outcome.reply or "",
             tools=tools,
@@ -146,7 +151,9 @@ async def run_case(
             customer_numerals=frozenset(canonical_number(n) for n in _numbers_in(body)),
         )
         records.append(
-            TurnRecord(turn.customer, observed, outcome.blocked_reason, outcome.grounding)
+            TurnRecord(
+                turn.customer, observed, outcome.blocked_reason, outcome.grounding, tool_text
+            )
         )
         result.findings.extend(grade(turn.expect, observed))
     return result, records

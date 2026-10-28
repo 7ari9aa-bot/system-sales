@@ -157,3 +157,32 @@ async def _report_quality(db, tenant_id, alias: str, records_by_case) -> None:
     print(f"\nQUALITY (judge alias={alias}, {used()} calls): {total - len(failed)}/{total} ok")
     for line in failed:
         print(line)
+
+
+async def test_the_judge_is_fed_what_the_agent_actually_read(db, tenant_ctx, monkeypatch) -> None:
+    """Regression: the judge was once handed ``outcome.grounding``, which is a STATUS WORD
+    ("ok" / "failed" / "skipped_no_facts"), not data. It would have judged every reply against
+    the word "ok". This goes through the real runner and checks the text is the tool results."""
+    case = next(c for c in ALL if c.id == "self-details-of-a-named-product")
+    _competent_model(monkeypatch, case)
+    _, records = await run_case(db, tenant_ctx.tenant_id, case)
+
+    text = records[0].tool_text
+    assert text not in ("", "ok", "failed", "skipped_no_facts"), text
+    assert "[search_catalog]" in text
+    # What the tool really returns: a price and a per-variant title (here the size, because the
+    # fixture names variants by size) with availability as a WORD, not a stock count. The
+    # product's own name is NOT guaranteed to be in it, so this must not demand one.
+    assert '"price": "250.00"' in text
+    assert '"title": "L"' in text
+    # and the production status word is still available, unchanged, as its own field
+    assert records[0].grounding in {"ok", "failed", "skipped_no_facts"}
+
+
+async def test_a_turn_with_no_tool_calls_gives_the_judge_nothing_to_ground_against(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    case = next(c for c in ALL if c.id == "self-asks-for-the-invoice-instead-of-handing-over")
+    _competent_model(monkeypatch, case)
+    _, records = await run_case(db, tenant_ctx.tenant_id, case)
+    assert records[0].tool_text == ""
