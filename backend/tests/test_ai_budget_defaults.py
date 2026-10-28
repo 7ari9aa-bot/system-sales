@@ -25,6 +25,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.core.model_registry  # noqa: F401  (loads every model so foreign keys resolve alone)
 from app.core.errors import RateLimitExceededError
 from app.modules.ai.gateway import (
     BUDGET_ALERT_THRESHOLDS,
@@ -175,7 +176,9 @@ async def test_an_unusable_cap_raises_no_alert(db: AsyncSession, tenant_ctx):
 
 async def test_a_tenant_with_no_policy_is_still_capped(db: AsyncSession, tenant_ctx, monkeypatch):
     """The default must actually block, not just be reported."""
-    import app.modules.ai.gateway as gateway
+    # The budget logic lives in `budget`; `gateway` only re-exports its names. Patching the
+    # re-export changes nothing `reserve_budget` reads, so the patch must target `budget`.
+    import app.modules.ai.budget as gateway
 
     monkeypatch.setattr(gateway, "_month_spend", _spend(Decimal("1000")))
     monkeypatch.setattr(gateway, "_reserved_spend", _spend(Decimal("0")))
@@ -194,7 +197,9 @@ def _spend(value: Decimal):
 async def test_a_tenant_below_the_default_cap_can_reserve(
     db: AsyncSession, tenant_ctx, monkeypatch
 ):
-    import app.modules.ai.gateway as gateway
+    # The budget logic lives in `budget`; `gateway` only re-exports its names. Patching the
+    # re-export changes nothing `reserve_budget` reads, so the patch must target `budget`.
+    import app.modules.ai.budget as gateway
 
     monkeypatch.setattr(gateway, "_month_spend", _spend(Decimal("0")))
     monkeypatch.setattr(gateway, "_reserved_spend", _spend(Decimal("0")))
