@@ -11,7 +11,7 @@ https://api-production-8f51.up.railway.app/api/v1/webhooks/instagram
 ## رمز التحقق (متظبط على Railway ✓)
 
 ```
-INSTAGRAM_VERIFY_TOKEN = 53g5p6IqXWwUE2YjdZTa5VqKUG9VS1lK
+INSTAGRAM_VERIFY_TOKEN = <VERIFY_TOKEN>  (القيمة على Railway فقط)
 ```
 
 ## سر التوقيع (ناقص — من Meta)

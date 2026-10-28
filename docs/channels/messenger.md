@@ -11,7 +11,7 @@ https://api-production-8f51.up.railway.app/api/v1/webhooks/messenger
 ## رمز التحقق (متظبط على Railway ✓)
 
 ```
-MESSENGER_VERIFY_TOKEN = y49NirBEhqcZw73wCUxmcU9GPBXu6ttK
+MESSENGER_VERIFY_TOKEN = <VERIFY_TOKEN>  (القيمة على Railway فقط)
 ```
 الصق **نفس القيمة** في خانة "تحقق من الرمز" — الـ GET handshake بيرجع `hub.challenge` عند التطابق.
 

@@ -1,6 +1,6 @@
 # دليل توكن Railway الجديد — إمكانياته وطريقة استخدامه
 
-التوكن: `1bfbf228-…` (صلاحية على مستوى المشروع — وليس مستوى الحساب)
+التوكن: `<RAILWAY_PROJECT_TOKEN>` (يُحفظ في secret manager، لا يُكتب هنا أبدًا) (صلاحية على مستوى المشروع — وليس مستوى الحساب)
 المشروع: `sales-os` → `6e5ebff6-05d8-4794-a270-1e0e215eac09` · بيئة الإنتاج: `12129ac8-2fcd-4495-a7f7-d18a3b8c919f`
 الخدمات: `api` = `5bfe87f8…` · `workers` = `698f7486…` · `redis` = `2c2a7223…` · `clamav` = `506a363b…`
 
@@ -10,7 +10,7 @@
 
 ### 1. قراءة كل شيء
 ```bash
-export RAILWAY_TOKEN='1bfbf228-dbc5-4f3c-8820-e02738beedf6'
+export RAILWAY_TOKEN='<RAILWAY_PROJECT_TOKEN>'
 
 # متغيرات أي خدمة (بالقيم كاملة — هذا التوكن يقرأ القيم، القديم كان يحجبها)
 curl -s -X POST https://backboard.railway.app/graphql/v2 \
