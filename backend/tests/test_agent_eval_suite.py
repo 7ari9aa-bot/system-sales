@@ -18,6 +18,7 @@ import pytest
 
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from tests.agent_eval import judge
 from tests.agent_eval.cases_core import CASES as CORE
 from tests.agent_eval.cases_failure_modes import CASES as MODES
 from tests.agent_eval.cases_flows import CASES as FLOWS
@@ -105,10 +106,53 @@ async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
         pytest.fail(f"live_eval requested but {', '.join(missing)} not set; refusing to fake it")
 
     results = []
+    records_by_case = {}
     for case in ALL:
-        result, _ = await run_case(db, tenant_ctx.tenant_id, case)
+        result, records = await run_case(db, tenant_ctx.tenant_id, case)
         results.append(result)
+        records_by_case[case.id] = records
 
     verdict = summarise(ALL, results)
     print("\n" + render(verdict))
+
+    # Quality (natural, grounded, per-case rubric) is judged by a model, and only when asked:
+    # it costs more calls and the judge alias is the user's choice (a stronger model than the
+    # one answering customers is usually right). It is reported, and gates nothing by itself,
+    # until a live run has shown the judge agrees with a human on real replies.
+    judge_alias = os.environ.get("AGENT_EVAL_JUDGE_ALIAS")
+    if judge_alias:
+        await _report_quality(db, tenant_ctx.tenant_id, judge_alias, records_by_case)
+    else:
+        print("\n(quality judge skipped: set AGENT_EVAL_JUDGE_ALIAS to e.g. 'strong' to run it)")
+
     assert verdict.ship, "\n" + render(verdict)
+
+
+async def _report_quality(db, tenant_id, alias: str, records_by_case) -> None:
+    max_calls = int(os.environ.get("AGENT_EVAL_JUDGE_MAX_CALLS", "400"))
+    gateway = AIGateway()
+
+    async def chat(system: str, user: str) -> str:
+        result = await gateway.chat(
+            db,
+            tenant_id,
+            alias=alias,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.0,
+            max_tokens=200,
+        )
+        return result.content or ""
+
+    limited, used = judge.capped(chat, max_calls)
+    await judge.require_calibrated(limited)  # raises before a single real verdict is used
+
+    failed: list[str] = []
+    total = 0
+    for case in ALL:
+        for v in await judge.judge_case(limited, case, records_by_case[case.id]):
+            total += 1
+            if not v.passed:
+                failed.append(f"  {case.id} {v.criterion}: {v.reason}")
+    print(f"\nQUALITY (judge alias={alias}, {used()} calls): {total - len(failed)}/{total} ok")
+    for line in failed:
+        print(line)
