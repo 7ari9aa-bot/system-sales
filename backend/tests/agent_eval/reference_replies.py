@@ -248,3 +248,111 @@ GOOD.update(
         ],
     }
 )
+
+
+_RET = frozenset({"7"})
+_EXC = frozenset({"14"})
+
+GOOD.update(
+    {
+        "self-details-of-a-named-product": [
+            _o(
+                "التيشيرت القطن متاح M و L بـ 250 جنيه، وXL بـ 300 بس خلص حاليًا.",
+                tools=["search_catalog"],
+            )
+        ],
+        "self-out-of-stock-offers-what-exists": [
+            _o(
+                "للأسف مقاس XL خلص حاليًا. المتاح M و L بنفس السعر 250 جنيه، تحب واحد منهم؟",
+                tools=["search_catalog"],
+            )
+        ],
+        "self-product-that-does-not-exist": [
+            _o(
+                "للأسف مفيش جاكيت جلد في المنتجات عندنا حاليًا. المتاح تيشيرت قطن، تحب تشوفه؟",
+                tools=["search_catalog"],
+            )
+        ],
+        "self-compares-two-of-our-products": [
+            _o(
+                "التيشيرت القطن أرخص بـ 250 جنيه، والجينز السليم بـ 600 جنيه.",
+                tools=["search_catalog"],
+                nums=_TJ,
+            )
+        ],
+        "self-return-policy-quoted": [
+            _o(
+                "أيوه، الاسترجاع خلال 7 أيام بشرط المنتج بحالته ومعاك الفاتورة.",
+                tools=["get_store_info"],
+                nums=_RET,
+            )
+        ],
+        "self-exchange-inside-the-window": [
+            _o(
+                "أيوه ينفع، الاستبدال خلال 14 يوم من الشراء بشرط تكون معاك الفاتورة. "
+                "ابعتلي رقمها وأشوفلك المقاس المتاح.",
+                tools=["get_store_info"],
+                nums=_EXC,
+                customer=frozenset({"5"}),
+            )
+        ],
+        "self-exchange-uses-the-invoice-then-offers-a-size": [
+            _o(
+                "لقيت فاتورتك: تيشيرت قطن مقاس M. مقاس L متاح بنفس السعر 250 جنيه، "
+                "والاستبدال خلال 14 يوم بالفاتورة.",
+                tools=["get_my_orders", "search_catalog", "get_store_info"],
+                nums=_T | _EXC | frozenset({"1001"}),
+                customer=frozenset({"1001"}),
+            )
+        ],
+        "self-asks-for-the-invoice-instead-of-handing-over": [
+            _o("ابعتلي رقم الفاتورة المطبوع على الإيصال وأقولك اشتريت إيه.")
+        ],
+        "self-wrong-size-delivered-follows-the-playbook": [
+            _o(
+                "آسف إن المقاس جه غلط. ابعتلي رقم الفاتورة وأشوفلك مقاس بديل متاح.",
+                tools=["find_support_playbook"],
+            )
+        ],
+        "self-late-order-gives-the-playbook-timeline": [
+            _o(
+                "التوصيل بياخد من يومين لخمسة أيام عمل. ابعتلي رقم الفاتورة وأتابع طلبك.",
+                tools=["find_support_playbook"],
+                nums=frozenset({"2", "5"}),
+            )
+        ],
+        "no-playbook-no-fabricated-fix": [
+            _o(
+                "آسف جدًا إن المنتج وصلك كده. مفيش عندي إجراء مكتوب للحالة دي، "
+                "فهحولك لحد من الفريق يتابع معاك.",
+                tools=["find_support_playbook", "handover_to_human"],
+                handed=True,
+            )
+        ],
+        "flow-asks-then-narrows-then-resolves": [
+            _o("أهلًا بيك! تدور على إيه بالظبط؟ عندنا تيشيرت قطن وجينز."),
+            _o("التيشيرت القطن مقاس L متاح بـ 250 جنيه.", tools=["search_catalog"]),
+        ],
+        "flow-policy-then-product-then-still-no-handover": [
+            _o(
+                "الاسترجاع خلال 7 أيام بشرط المنتج بحالته والفاتورة.",
+                tools=["get_store_info"],
+                nums=_RET,
+            ),
+            _o("التيشيرت القطن بـ 250 جنيه.", tools=["search_catalog"]),
+            _o("العفو، أي خدمة تانية؟"),
+        ],
+        "flow-problem-solved-then-wants-a-person-anyway": [
+            _o(
+                "التوصيل بياخد من يومين لخمسة أيام عمل. ابعتلي رقم الفاتورة وأتابع.",
+                tools=["find_support_playbook"],
+                nums=frozenset({"2", "5"}),
+            ),
+            _o(
+                "حاضر، هحولك لحد من الفريق دلوقتي.",
+                tools=["handover_to_human"],
+                handed=True,
+            ),
+        ],
+    }
+)

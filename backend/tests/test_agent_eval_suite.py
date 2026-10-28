@@ -21,11 +21,12 @@ from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.agent_eval.cases_core import CASES as CORE
 from tests.agent_eval.cases_failure_modes import CASES as MODES
 from tests.agent_eval.cases_flows import CASES as FLOWS
+from tests.agent_eval.cases_self_resolve import CASES as SELF
 from tests.agent_eval.reference_replies import GOOD
 from tests.agent_eval.report import render, summarise
 from tests.agent_eval.runner import run_case
 
-ALL = CORE + FLOWS + MODES
+ALL = CORE + FLOWS + MODES + SELF
 
 # What the competent stand-in does for a tool it is "calling": the minimal valid arguments.
 _TOOL_ARGS = {
