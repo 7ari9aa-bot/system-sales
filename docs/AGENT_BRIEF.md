@@ -1,5 +1,11 @@
 # AGENT BRIEF — read this before touching anything
 
+> **Status of this file.** Sections 1 (golden rules), 3 (Definition of Done) and 3a (the
+> skipped-database-test trap) are current and binding. Sections 2, 4 and 5 describe an earlier way
+> of working, with several agents sharing one working tree and no local database. They are kept
+> because they explain the history. For today's layout and commands read the root
+> [AGENTS.md](../AGENTS.md) and [backend/AGENTS.md](../backend/AGENTS.md).
+
 You are one of a team of agents working in this repo in parallel, in the SAME working tree.
 Read this file completely first. It is the distilled experience of every previous agent that
 worked here, including the mistakes.
@@ -8,10 +14,11 @@ worked here, including the mistakes.
 
 ## 1. What this repo is
 
-`D:\sales system` = **Sales OS / FIHRIST** — a multi-tenant conversational-commerce SaaS.
+This repository = **Sales OS / FIHRIST** — a multi-tenant conversational-commerce SaaS.
 
 - `backend/` FastAPI modular monolith. `app/modules/<domain>/{models,service,router}.py`.
-- `frontend/` Next.js 15 / React 19 / TanStack Query v5 / Radix. Arabic-first RTL.
+- `frontend/` React 18 / Vite / React Router 7 / TanStack Query v5. Arabic-first RTL.
+- `desktop/` Tauri 2 desktop app (React 19).
 - `docs/` the architecture plan. The numbered spec (§n) is the source of truth for what a
   feature must do. **Grep the spec before you design.**
 
@@ -28,7 +35,7 @@ worked here, including the mistakes.
 
 ---
 
-## 2. Environment
+## 2. Environment (historical: Windows, no local database)
 
 - Python: `backend/.venv/Scripts/python.exe` — use this EXACT path.
   Do NOT use a managed/system Python: it has none of the project's dependencies.
@@ -93,7 +100,7 @@ So, for any DB-backed test you write:
 
 ---
 
-## 4. Hard constraints — a violation here damages everyone's work
+## 4. Hard constraints (historical: parallel-agents mode) — a violation here damages everyone's work
 
 - **Do NOT run any git write command** (`add`, `commit`, `stash`, `checkout`, `reset`).
   Leave your work in the working tree. The orchestrator commits.
@@ -105,7 +112,7 @@ So, for any DB-backed test you write:
 
 ---
 
-## 5. Report format — exactly this, max 15 lines
+## 5. Report format (still a good habit) — exactly this, max 15 lines
 
 ```
 FILES: <paths you changed>

@@ -12,6 +12,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 
 | File | What it is | Status |
 |---|---|---|
+| [../AGENTS.md](../AGENTS.md) | Start here: map of the repository, the rules, how to run it. Also read [../backend/AGENTS.md](../backend/AGENTS.md) for backend work. | live |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The canonical architecture. | live |
 | [ARCHITECTURE_MAP.md](ARCHITECTURE_MAP.md) | Module-by-module map (Arabic/English). | live |
 | [AGENT_BRIEF.md](AGENT_BRIEF.md) | Rules for anyone (human or AI) changing the code. | live |

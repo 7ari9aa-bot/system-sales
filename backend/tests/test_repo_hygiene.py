@@ -89,3 +89,29 @@ def test_root_readme_names_every_backend_module() -> None:
         if p.is_dir() and p.name != "__pycache__" and f"`{p.name}`" not in text
     ]
     assert not missing, f"name these modules in README.md: {missing}"
+
+
+def _modules() -> list[Path]:
+    root = REPO / "backend" / "app" / "modules"
+    return [p for p in sorted(root.iterdir()) if p.is_dir() and p.name != "__pycache__"]
+
+
+def test_every_backend_module_has_a_readme() -> None:
+    """A module nobody can orient themselves in is how a 3,000-line file goes unnoticed."""
+    missing = [p.name for p in _modules() if not (p / "README.md").exists()]
+    assert not missing, f"add a README.md to: {missing}"
+
+
+def test_module_readmes_only_list_tables_that_exist() -> None:
+    """A README that names a table the code no longer has is worse than no README."""
+    wrong: list[str] = []
+    for mod in _modules():
+        readme = mod / "README.md"
+        if not readme.exists():
+            continue
+        code = "\n".join(f.read_text(encoding="utf-8", errors="ignore") for f in mod.rglob("*.py"))
+        section = readme.read_text(encoding="utf-8").split("## Tables", 1)[-1].split("##", 1)[0]
+        for table in re.findall(r"^- `([a-z_0-9]+)`", section, re.M):
+            if f'"{table}"' not in code and f"'{table}'" not in code:
+                wrong.append(f"{mod.name}.{table}")
+    assert not wrong, f"README lists tables missing from the code: {wrong}"

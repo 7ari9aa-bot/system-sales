@@ -5,6 +5,9 @@ AI agents, commerce (products / inventory / orders / payments), marketing attrib
 analytics, and automation — on the production-first architecture defined in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+> **New to the codebase (or an AI assistant)?** Read [AGENTS.md](AGENTS.md) first. Every backend
+> module also has its own `README.md`.
+
 ## Repository layout
 
 ```
