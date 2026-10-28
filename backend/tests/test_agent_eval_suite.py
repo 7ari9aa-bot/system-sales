@@ -5,9 +5,9 @@ Two modes, SAME code path:
 * default (CI): a scripted stand-in model that behaves like a competent agent, built from the
   reference replies. It proves the pipe (cases -> real shop -> real runtime -> graders ->
   verdict) and that a competent agent SHIPS. It says nothing about any real model.
-* ``-m live_eval`` with AI_API_KEY_PRIMARY set: the real gateway, a real model. THIS is the
-  measurement. It is skipped by default because it costs money and needs a key; if you ask
-  for it and the key is missing, it FAILS loudly rather than silently using a stand-in.
+* ``-m live_eval`` with the three AI_*_PRIMARY variables set: the real gateway and a real
+  model. THIS is the measurement. It is skipped by default because it costs money; if you
+  ask for it and any variable is missing, it FAILS loudly rather than use a stand-in.
 """
 
 from __future__ import annotations
@@ -92,8 +92,16 @@ async def test_the_pipe_runs_every_case_and_produces_a_verdict(db, tenant_ctx, m
 @pytest.mark.live_eval
 async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
     """THE measurement. Run with: pytest -m live_eval tests/test_agent_eval_suite.py -s"""
-    if not os.environ.get("AI_API_KEY_PRIMARY"):
-        pytest.fail("live_eval requested but AI_API_KEY_PRIMARY is not set; refusing to fake it")
+    # All three are needed. A key alone sends the request to model="openai" and fails at the
+    # provider with a 400 nobody can attribute (see the note in app/core/config.py), after
+    # money may already have been spent on retries. Refuse before the first call instead.
+    missing = [
+        name
+        for name in ("AI_API_KEY_PRIMARY", "AI_MODEL_PRIMARY", "AI_BASE_URL_PRIMARY")
+        if not os.environ.get(name)
+    ]
+    if missing:
+        pytest.fail(f"live_eval requested but {', '.join(missing)} not set; refusing to fake it")
 
     results = []
     for case in ALL:

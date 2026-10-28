@@ -84,5 +84,5 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [
     "gate: pre-production architecture gate scenarios",
-    "live_eval: runs the customer-agent golden set against a REAL model (needs AI_API_KEY_PRIMARY, costs money)",
+    "live_eval: runs the customer-agent golden set against a REAL model (needs AI_API_KEY_PRIMARY, AI_MODEL_PRIMARY, AI_BASE_URL_PRIMARY; costs money)",
 ]
