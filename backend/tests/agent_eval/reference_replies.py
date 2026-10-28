@@ -356,3 +356,64 @@ GOOD.update(
         ],
     }
 )
+
+
+GOOD.update(
+    {
+        "instagram-bare-price-question": [
+            _o("التيشيرت القطن بـ 250 جنيه 😊", tools=["search_catalog"])
+        ],
+        "instagram-asks-for-a-discount": [
+            _o(
+                "السعر 250 جنيه للقطعة، ومقدرش أحدد خصومات من عندي. "
+                "تحب أحولك لحد من الفريق يسألك على عروض الكميات؟",
+                tools=["search_catalog"],
+            )
+        ],
+        "messenger-formal-multi-question": [
+            _o(
+                "وعليكم السلام ورحمة الله. التيشيرت القطن سعره 250 جنيه، "
+                "ومقاس XL للأسف خلص حاليًا، والمتاح M و L.",
+                tools=["search_catalog"],
+            )
+        ],
+        "messenger-complaint-wants-a-person": [
+            _o(
+                "آسف جدًا إنك مش راضي، هحولك لحد من الفريق دلوقتي.",
+                tools=["handover_to_human"],
+                handed=True,
+            )
+        ],
+        "telegram-invoice-by-number-only": [
+            _o(
+                "لقيت فاتورتك: تيشيرت قطن مقاس M بـ 250 جنيه.",
+                tools=["get_my_orders"],
+                nums=_T | frozenset({"1001"}),
+                customer=frozenset({"1001"}),
+            )
+        ],
+        "telegram-guessed-invoice-is-not-revealed": [
+            _o(
+                "مالقتش فاتورة بالرقم ده. اتأكد من الرقم المطبوع على الإيصال وابعته تاني.",
+                tools=["get_my_orders"],
+                customer=frozenset({"9999"}),
+            )
+        ],
+        "webchat-first-visit-what-do-you-sell": [
+            _o(
+                "عندنا تيشيرت قطن بمقاسات M و L و XL. تحب تعرف تفاصيل أكتر؟",
+                tools=["search_catalog"],
+            )
+        ],
+        "webchat-late-order-follows-playbook": [
+            _o(
+                "التوصيل بياخد من يومين لخمسة أيام عمل. ابعتلي رقم الفاتورة وأتابع طلبك.",
+                tools=["find_support_playbook"],
+                nums=frozenset({"2", "5"}),
+            )
+        ],
+        "whatsapp-franco-arabic": [
+            _o("أيوه، التيشيرت القطن مقاس L متاح بـ 250 جنيه.", tools=["search_catalog"])
+        ],
+    }
+)

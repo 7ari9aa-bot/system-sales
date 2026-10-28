@@ -19,6 +19,7 @@ import pytest
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.agent_eval import judge
+from tests.agent_eval.cases_channels import CASES as CHANNELS
 from tests.agent_eval.cases_core import CASES as CORE
 from tests.agent_eval.cases_failure_modes import CASES as MODES
 from tests.agent_eval.cases_flows import CASES as FLOWS
@@ -27,7 +28,7 @@ from tests.agent_eval.reference_replies import GOOD
 from tests.agent_eval.report import render, summarise
 from tests.agent_eval.runner import run_case
 
-ALL = CORE + FLOWS + MODES + SELF
+ALL = CORE + FLOWS + MODES + SELF + CHANNELS
 
 # What the competent stand-in does for a tool it is "calling": the minimal valid arguments.
 _TOOL_ARGS = {

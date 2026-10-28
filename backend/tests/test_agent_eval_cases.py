@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.agent_eval.cases_channels import CASES as CHANNELS
 from tests.agent_eval.cases_core import CASES as CORE
 from tests.agent_eval.cases_failure_modes import CASES as MODES
 from tests.agent_eval.cases_flows import CASES as FLOWS
@@ -17,7 +18,7 @@ from tests.agent_eval.cases_self_resolve import CASES as SELF
 from tests.agent_eval.graders import Observed, grade
 from tests.agent_eval.reference_replies import GOOD
 
-ALL = CORE + FLOWS + MODES + SELF
+ALL = CORE + FLOWS + MODES + SELF + CHANNELS
 
 
 def _blocking(case, observed_per_turn):
