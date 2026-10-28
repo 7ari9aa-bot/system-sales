@@ -78,6 +78,8 @@ jobs:
       # Update policy: bump deliberately, verify locally, re-pin (see file).
       - run: pip install -e ".[dev]" -c constraints.txt
       - run: ruff check app tests scripts
+      # The tree is formatted; keep it that way so a later diff shows only real changes.
+      - run: ruff format --check app tests scripts
       - run: alembic upgrade head
       # Seeds roles/permissions/plans + applies RLS — tests rely on the seeded
       # roles and are skipped silently without a configured database otherwise.
