@@ -584,9 +584,7 @@ async def test_customer_activity_lists_contacted_customers(db, tenant_ctx) -> No
     )
     # A contact with no messages yet still counts as a conversation.
     db.add(
-        Conversation(
-            tenant_id=tenant_id, customer_id=quiet.id, channel="instagram", status="open"
-        )
+        Conversation(tenant_id=tenant_id, customer_id=quiet.id, channel="instagram", status="open")
     )
     await db.flush()
 
@@ -677,9 +675,7 @@ async def test_channel_activity_breaks_down_by_platform(db, tenant_ctx) -> None:
     assert by_channel["instagram"]["conversations"] == 1
     assert by_channel["facebook"]["inbound"] == 1  # the message's own source
     assert by_channel["webchat"]["inbound"] == 1  # the service stamped it
-    facts = {
-        (f["metric"], f["filters"].get("channel")): f["value"] for f in result["facts"]
-    }
+    facts = {(f["metric"], f["filters"].get("channel")): f["value"] for f in result["facts"]}
     assert facts[("conversations", "whatsapp")] == "2"
     assert facts[("inbound_messages", "instagram")] == "1"
     assert facts[("inbound_messages", "facebook")] == "1"
@@ -738,10 +734,7 @@ async def test_si_social_comments_reads_ingested_comments(db, tenant_ctx) -> Non
     assert per_platform["facebook"]["comments"] == 3
     assert per_platform["facebook"]["posts_with_comments"] == 1
     assert per_platform["instagram"]["comments"] == 1
-    posts = {
-        (p["platform"], p["post_id"]): p["comments"]
-        for p in result["summary"]["top_posts"]
-    }
+    posts = {(p["platform"], p["post_id"]): p["comments"] for p in result["summary"]["top_posts"]}
     assert posts[("facebook", "post-A")] == 3
     recent_bodies = [e["body"] for e in result["summary"]["recent"]]
     assert "مخفي" not in recent_bodies

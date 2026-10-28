@@ -66,3 +66,26 @@ def test_no_script_hardcodes_a_personal_machine_path() -> None:
             f"{rel}:{i + 1}" for i, ln in enumerate(text.splitlines()) if pattern.search(ln)
         ]
     assert not offenders, f"machine-specific paths: {offenders}"
+
+
+def test_root_readme_links_resolve() -> None:
+    """The first file anyone opens must not point at moved or deleted documents."""
+    text = (REPO / "README.md").read_text(encoding="utf-8")
+    broken = [
+        t
+        for t in re.findall(r"\]\(([^)#]+)\)", text)
+        if not t.startswith("http") and not (REPO / t).exists()
+    ]
+    assert not broken, f"README.md links to missing paths: {broken}"
+
+
+def test_root_readme_names_every_backend_module() -> None:
+    """A module added without a line in the README is how the layout went stale before."""
+    text = (REPO / "README.md").read_text(encoding="utf-8")
+    modules = REPO / "backend" / "app" / "modules"
+    missing = [
+        p.name
+        for p in sorted(modules.iterdir())
+        if p.is_dir() and p.name != "__pycache__" and f"`{p.name}`" not in text
+    ]
+    assert not missing, f"name these modules in README.md: {missing}"

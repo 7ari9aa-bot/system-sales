@@ -390,9 +390,13 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
         elif "access_denied" in s:
             subtitle_text = "أُلغيت الموافقة أو أن حسابك ليس مطوراً/مسؤولاً في تطبيق فيسبوك."
         elif "No messaging-capable page" in s or "لم يتم العثور على أي صفحة" in s:
-            subtitle_text = "لم يتم العثور على أي صفحة فيسبوك في حسابك، أو لم يتم تحديد صفحة عند منح الصلاحيات."  # noqa: E501
+            subtitle_text = (
+                "لم يتم العثور على أي صفحة فيسبوك في حسابك، أو لم يتم تحديد صفحة عند منح الصلاحيات."  # noqa: E501
+            )
         elif "غير مرتبطة بحساب إنستجرام" in s or "No Instagram professional account" in s:
-            subtitle_text = "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."  # noqa: E501
+            subtitle_text = (
+                "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."  # noqa: E501
+            )
         elif "missing_code_or_state" in s:
             subtitle_text = "أُلغيت العملية أو لم يُرجع فيسبوك رمز التفويض."
         elif "invalid_state" in s:

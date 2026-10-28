@@ -303,6 +303,7 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
     finally:
         AgentRegistry._definitions.pop("inventory_ops", None)
         from app.modules.ai.tools import TOOLS
+
         TOOLS.pop("inv_check_reorder_level", None)
 
 

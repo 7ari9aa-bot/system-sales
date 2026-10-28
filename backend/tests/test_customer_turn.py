@@ -98,6 +98,7 @@ async def test_empty_turn_short_circuits_without_calling_the_runner(db, tenant_c
 
 async def _photo_classifier(session, tid, url):
     from app.modules.ai.agents.customer.vision.schemas import ImageKind
+
     return ImageKind.PRODUCT
 
 
@@ -283,7 +284,7 @@ async def test_a_schedule_figure_with_no_tool_behind_it_is_withheld(db, tenant_c
 
 
 async def test_the_customers_own_number_may_be_echoed_without_a_tool(db, tenant_ctx):
-    """"عايز 2 تيشرت" -> "تمام، 2 تيشرت" is a confirmation, not a claim."""
+    """ "عايز 2 تيشرت" -> "تمام، 2 تيشرت" is a confirmation, not a claim."""
     runner = FakeRunner(_result(content="تمام، 2 تيشرت. هحولك لحد من الفريق يكمل معاك."))
     outcome = await run_customer_turn(
         db, _params(db, tenant_ctx, body="عايز 2 تيشرت"), runner=runner

@@ -54,6 +54,7 @@ def _get_state_policies():
     global _STATE_POLICIES
     if _STATE_POLICIES is None:
         from app.modules.identity.services.lifecycle import STATE_POLICIES
+
         _STATE_POLICIES = STATE_POLICIES
     return _STATE_POLICIES
 

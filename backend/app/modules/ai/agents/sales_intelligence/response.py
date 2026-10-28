@@ -133,9 +133,7 @@ def _numeric_forms(allowed: set[str]) -> list[Decimal]:
     return out
 
 
-def _numeral_allowed(
-    numeral: str, allowed: set[str], numeric_allowed: list[Decimal]
-) -> bool:
+def _numeral_allowed(numeral: str, allowed: set[str], numeric_allowed: list[Decimal]) -> bool:
     stripped = numeral.strip(".,%").replace(",", "")
     if numeral in allowed or stripped in allowed:
         return True

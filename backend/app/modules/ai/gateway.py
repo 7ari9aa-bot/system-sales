@@ -78,7 +78,6 @@ logger = logging.getLogger(__name__)
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback", "omni"})
 
 
-
 # §43: PII redaction patterns. Applied to message content before sending to
 # an external AI provider when the tenant's AIProviderPolicy has
 # pii_redaction_required=True. The redactor is deliberately conservative — it
@@ -215,8 +214,6 @@ async def resolve_model_config(
 
 # Budget management functions & guardrails (§42) are implemented in
 # app.modules.ai.budget and re-exported above for backward compatibility.
-
-
 
 
 class AIGateway:

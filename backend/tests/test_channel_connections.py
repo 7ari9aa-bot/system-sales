@@ -79,9 +79,7 @@ async def test_facebook_verification_rejects_a_mismatched_page_id() -> None:
 
     async with _meta_client(handler) as client:
         with pytest.raises(ValidationError, match="does not match"):
-            await spec.verify(
-                {"page_access_token": "EAAG"}, {"page_id": "999"}, client=client
-            )
+            await spec.verify({"page_access_token": "EAAG"}, {"page_id": "999"}, client=client)
 
 
 async def test_facebook_verification_returns_safe_identity() -> None:
@@ -106,9 +104,7 @@ async def test_graph_outage_is_retryable_not_a_credential_refusal() -> None:
     spec = get_connection_spec("whatsapp")
     assert spec is not None
 
-    async with _meta_client(
-        lambda request: httpx.Response(500, json={"error": "boom"})
-    ) as client:
+    async with _meta_client(lambda request: httpx.Response(500, json={"error": "boom"})) as client:
         with pytest.raises(ExternalProviderError) as exc_info:
             await spec.verify({"access_token": "t"}, {"phone_number_id": "1"}, client=client)
     assert exc_info.value.retryable is True

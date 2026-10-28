@@ -48,9 +48,7 @@ def main() -> None:
     items = profiles if isinstance(profiles, list) else profiles.get("items", [])
     _profile = items[0]  # the walk's acting profile; unused inline
 
-    _, sessions = call(
-        "GET", "/pos/registers", token=token
-    )
+    _, sessions = call("GET", "/pos/registers", token=token)
     regs = sessions if isinstance(sessions, list) else sessions.get("items", [])
     register = regs[0]
 

@@ -142,7 +142,6 @@ def _config_patch(monkeypatch, **kwargs):
     return fake
 
 
-
 def _popup_result(response) -> dict:
     """The outcome the callback posts back to the opener window.
 
@@ -157,6 +156,7 @@ def _popup_result(response) -> dict:
     msg = json.loads(found.group(1))
     assert msg["type"] == "META_OAUTH_RESULT"
     return msg
+
 
 async def test_start_requires_settings_write(db, tenant_ctx):
     app = _app(db, tenant_ctx, permission=False)

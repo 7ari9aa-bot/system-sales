@@ -126,6 +126,7 @@ async def test_batching_one_provider_call_per_chunk(db, tenant_ctx):
     assert stats == {"indexed": 3, "batches": 2}
     assert provider.calls == [2, 1]
 
+
 async def test_one_dead_image_url_no_longer_blinds_the_whole_batch(db, tenant_ctx):
     """Production (2026-10-16): demo images pointing at a deleted unsplash
     photo failed the provider's BATCH download — the entire chunk failed on
@@ -145,13 +146,11 @@ async def test_one_dead_image_url_no_longer_blinds_the_whole_batch(db, tenant_ct
             self.calls.append(len(contents))
             if len(contents) > 1:
                 raise ExternalProviderError(
-                    "vision embedding failed with HTTP 400: "
-                    "Failed to download images: 404"
+                    "vision embedding failed with HTTP 400: Failed to download images: 404"
                 )
             if "dead" in str(contents[0].image):
                 raise ExternalProviderError(
-                    "vision embedding failed with HTTP 400: "
-                    "Failed to download images: 404"
+                    "vision embedding failed with HTTP 400: Failed to download images: 404"
                 )
             return [[0.0] * 768]
 

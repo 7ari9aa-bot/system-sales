@@ -196,12 +196,8 @@ async def test_ingest_is_idempotent_and_edits_update(db, tenant_ctx) -> None:
 
     tenant_id = tenant_ctx.tenant_id
     first = parse_meta_comment_changes(FB_ADD)[0]
-    row_id = await SocialCommentService.ingest(
-        db, tenant_id, platform="facebook", comment=first
-    )
-    again = await SocialCommentService.ingest(
-        db, tenant_id, platform="facebook", comment=first
-    )
+    row_id = await SocialCommentService.ingest(db, tenant_id, platform="facebook", comment=first)
+    again = await SocialCommentService.ingest(db, tenant_id, platform="facebook", comment=first)
     assert row_id == again
     rows = (
         (
@@ -317,9 +313,7 @@ async def test_remove_marks_removed_and_a_late_add_cannot_resurrect(db, tenant_c
     assert row.status == "removed"
 
 
-async def test_process_webhook_event_persists_comments_without_fanout(
-    db, tenant_ctx
-) -> None:
+async def test_process_webhook_event_persists_comments_without_fanout(db, tenant_ctx) -> None:
     """The webhook sync block stores the comment and marks the ingress row
     processed — comments never become messages, so no AI run can trigger."""
     from app.modules.conversations.gateway.ingest import IngestService
@@ -374,13 +368,7 @@ async def test_process_webhook_event_persists_comments_without_fanout(
     assert row.body == "المنتج ده جميل"
     assert row.commented_at.date() == datetime(2023, 11, 14, tzinfo=UTC).date()
     (event_row,) = (
-        (
-            await db.execute(
-                select(WebhookEvent).where(WebhookEvent.id == event.id)
-            )
-        )
-        .scalars()
-        .all()
+        (await db.execute(select(WebhookEvent).where(WebhookEvent.id == event.id))).scalars().all()
     )
     assert event_row.processing_status == "processed"
 

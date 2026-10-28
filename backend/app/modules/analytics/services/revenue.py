@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def _resolve_tenant_currency(session, tenant_id):
     from app.modules.analytics import service as analytics_service
+
     return await analytics_service.resolve_tenant_currency(session, tenant_id)
+
+
 from ._common import (  # noqa: E402
     _GROSS_PAYMENT_STATUSES,
     _REFUND_STATUSES,
@@ -59,6 +62,7 @@ async def net_revenue(
 ) -> Decimal:
     """§55: revenue minus refunded_amount in the same window, floored at zero."""
     from app.modules.analytics import service as analytics_service
+
     gross = await analytics_service.revenue(session, tenant_id, since=since, until=until)
     refunded = await analytics_service.refunded_amount(session, tenant_id, since=since, until=until)
     net, _excess = net_of(gross, refunded)
@@ -124,6 +128,7 @@ async def aov(
 ) -> Decimal:
     """§55: AVERAGE ORDER VALUE = GROSS revenue / orders_count."""
     from app.modules.analytics import service as analytics_service
+
     count = await analytics_service.orders_count(session, tenant_id, since=since, until=until)
     gross = await analytics_service.revenue(session, tenant_id, since=since, until=until)
     return _aov(gross, count)
@@ -139,6 +144,7 @@ async def revenue_summary(
 ) -> dict:
     """Every money figure for one window, each labelled with its own family."""
     from app.modules.analytics import service as analytics_service
+
     since, until = bind_window(since, until)
     gross = await analytics_service.revenue(session, tenant_id, since=since, until=until)
     refunded = await analytics_service.refunded_amount(session, tenant_id, since=since, until=until)
@@ -171,6 +177,7 @@ async def daily_revenue_series(
 ) -> list[dict]:
     """Gross/net revenue, refunds and order counts per MERCHANT day (gap M10)."""
     from app.modules.analytics import service as analytics_service
+
     since, until = bind_window(since, until)
     zone = str(await analytics_service.resolve_report_timezone(session, tenant_id, timezone))
     common = {"tenant_id": str(tenant_id), "since": since, "until": until, "tz": zone}

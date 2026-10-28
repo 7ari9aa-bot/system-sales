@@ -63,9 +63,7 @@ async def test_gate_handover_with_no_bound_conversation_is_refused(db, tenant_ct
         )
 
 
-async def test_gate_handover_with_a_malformed_binding_is_a_controlled_error(
-    db, tenant_ctx
-) -> None:
+async def test_gate_handover_with_a_malformed_binding_is_a_controlled_error(db, tenant_ctx) -> None:
     """A corrupt context id is a DomainError, never a raw ValueError."""
     spec = get_tool("handover_to_human")
     with pytest.raises(DomainError):

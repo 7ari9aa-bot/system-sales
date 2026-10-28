@@ -83,6 +83,7 @@ def __getattr__(name: str):
         return EntitlementService
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 # Preserve module qualification for introspection and test sweeps
 for _endpoint in (
     list_campaigns,

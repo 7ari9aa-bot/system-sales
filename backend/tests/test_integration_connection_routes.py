@@ -26,7 +26,9 @@ async def test_connect_persists_only_after_provider_verification(monkeypatch) ->
         "app.modules.customers.routers.integrations.EntitlementService.ensure_channel_allowed",
         staticmethod(allow_channel),
     )
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", verify)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
 
     response, _session = await _call(
         "POST",
@@ -68,8 +70,12 @@ async def test_telegram_connect_registers_webhook_with_server_routing_key(monkey
         "app.modules.customers.routers.integrations.EntitlementService.ensure_channel_allowed",
         staticmethod(allow_channel),
     )
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", verify)  # noqa: E501
-    monkeypatch.setattr("app.modules.customers.routers.integrations.configure_telegram_webhook", configure)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.configure_telegram_webhook", configure
+    )  # noqa: E501
     monkeypatch.setattr(
         "app.modules.customers.routers.integrations._telegram_webhook_url",
         lambda key: f"https://api.example.test/api/v1/webhooks/telegram?tenant_key={key}",
@@ -111,8 +117,12 @@ async def test_telegram_reconnect_keeps_routing_key_and_updates_bot_identity(mon
     async def configure(_credentials, webhook_url) -> None:  # noqa: ANN001
         registered_urls.append(webhook_url)
 
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", verify)  # noqa: E501
-    monkeypatch.setattr("app.modules.customers.routers.integrations.configure_telegram_webhook", configure)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.configure_telegram_webhook", configure
+    )  # noqa: E501
     monkeypatch.setattr(
         "app.modules.customers.routers.integrations._telegram_webhook_url",
         lambda key: f"https://api.example.test/api/v1/webhooks/telegram?tenant_key={key}",
@@ -205,7 +215,9 @@ async def test_failed_provider_verification_does_not_create_an_active_channel(
         "app.modules.customers.routers.integrations.EntitlementService.ensure_channel_allowed",
         staticmethod(allow_channel),
     )
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", reject)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", reject
+    )  # noqa: E501
 
     response, _session = await _call(
         "POST",
@@ -265,7 +277,9 @@ async def test_verify_marks_revoked_saved_credentials_for_reauthentication(
         raise ValidationError("The provider rejected these credentials.")
 
     monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", reject)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", reject
+    )  # noqa: E501
 
     response, _session = await _call(
         "POST",
@@ -305,7 +319,9 @@ async def test_verify_success_returns_identity_without_credentials(monkeypatch) 
         return VerifiedChannel({"account_id": "345678901"}, "Page")
 
     monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", verify)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
 
     response, _session = await _call(
         "POST",
@@ -478,7 +494,9 @@ async def test_connect_writes_an_audit_entry_without_secrets(db, tenant_ctx, mon
         "app.modules.customers.routers.integrations.EntitlementService.ensure_channel_allowed",
         staticmethod(allow_channel),
     )
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", verify)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
     ctx = _settings_ctx(db, tenant_ctx)
 
     result = await connect_integration(
@@ -527,7 +545,9 @@ async def test_verification_failure_demotes_the_channel_and_audits(
         raise ValidationError("The provider rejected these credentials.")
 
     monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
-    monkeypatch.setattr("app.modules.customers.routers.integrations.verify_channel_credentials", reject)  # noqa: E501
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", reject
+    )  # noqa: E501
     ctx = _settings_ctx(db, tenant_ctx)
 
     result = await verify_integration(row.id, ctx)

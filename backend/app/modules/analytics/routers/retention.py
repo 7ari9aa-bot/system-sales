@@ -14,6 +14,7 @@ from ._deps import AnalyticsReadCtx, AnalyticsWriteCtx, router
 
 async def _write_audit_row(*args, **kwargs):
     from app.modules.analytics import router as analytics_router
+
     return await analytics_router.write_audit_row(*args, **kwargs)
 
 
@@ -23,14 +24,11 @@ class RetentionPolicyChoice(BaseModel):
     retention_days: int = Field(
         ge=retention.MIN_RETENTION_DAYS,
         le=retention.MAX_RETENTION_DAYS,
-        description=(
-            "How long this tenant's rows in the store may live, in days."
-        ),
+        description=("How long this tenant's rows in the store may live, in days."),
     )
     status: Literal["active", "paused"] = Field(
         description=(
-            "'active' is the consent that lets a month go; 'paused' is an explicit "
-            "withdrawal."
+            "'active' is the consent that lets a month go; 'paused' is an explicit withdrawal."
         )
     )
 

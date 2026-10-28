@@ -295,8 +295,10 @@ def main() -> None:
             print(f"new prompt digest      : {payload.get('new_prompt_digest')}")
 
     if args.apply:
-        print(f"\nTOTAL rows updated: {totals['rows']} | versions: {totals['versions']} "
-              f"| deployments: {totals['deployments']}")
+        print(
+            f"\nTOTAL rows updated: {totals['rows']} | versions: {totals['versions']} "
+            f"| deployments: {totals['deployments']}"
+        )
     else:
         print("\ndry run — re-run with --apply to write")
 

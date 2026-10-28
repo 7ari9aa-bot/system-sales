@@ -406,9 +406,7 @@ async def _do_auto_reply(
 
         tenants = Base.metadata.tables["tenants"]
         tz_row = (
-            await session.execute(
-                select(tenants.c.timezone).where(tenants.c.id == tenant_id)
-            )
+            await session.execute(select(tenants.c.timezone).where(tenants.c.id == tenant_id))
         ).first()
         tenant_timezone = tz_row[0] if tz_row else None
     except Exception:  # noqa: BLE001 — context is optional, the reply is not
@@ -422,8 +420,7 @@ async def _do_auto_reply(
             customer_locale = customer.locale
         except Exception:  # noqa: BLE001 — identity context is optional, the reply is not
             logger.warning(
-                "auto-reply continuing WITHOUT customer identity context "
-                "customer=%s",
+                "auto-reply continuing WITHOUT customer identity context customer=%s",
                 customer_id,
                 exc_info=True,
             )

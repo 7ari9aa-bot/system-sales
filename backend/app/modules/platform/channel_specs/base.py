@@ -131,9 +131,7 @@ async def graph_get(
             f"{provider_label} returned an invalid verification response."
         ) from None
     if not isinstance(payload, dict):
-        raise ExternalProviderError(
-            f"{provider_label} returned an invalid verification response."
-        )
+        raise ExternalProviderError(f"{provider_label} returned an invalid verification response.")
     if payload.get("error"):
         raise ValidationError(
             "The provider rejected these credentials or required permissions are missing."

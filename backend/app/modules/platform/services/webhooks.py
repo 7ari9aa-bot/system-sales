@@ -29,6 +29,7 @@ def _ssrf_guard(url: str) -> None:
 
     _platform_service.assert_public_url(url)
 
+
 WEBHOOK_STREAM = "platform.events"
 
 

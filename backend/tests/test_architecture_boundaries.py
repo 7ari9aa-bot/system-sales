@@ -21,7 +21,7 @@ SERVICE_FILES = sorted(MODULES_DIR.glob("*/service.py"))
 _ALLOWED_CROSS_MODULE = {
     "platform",  # AuditLog, SecurityEvent — shared infrastructure
     "identity",  # Tenant, User — shared identity model
-    "pos",       # §189 adapter: read-models over orders/catalog/inventory
+    "pos",  # §189 adapter: read-models over orders/catalog/inventory
 }
 
 

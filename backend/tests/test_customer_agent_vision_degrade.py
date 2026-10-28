@@ -43,6 +43,7 @@ class _ReplyRunner:
 
 async def _product_classifier(session, tid, url):
     from app.modules.ai.agents.customer.vision.schemas import ImageKind
+
     return ImageKind.PRODUCT
 
 

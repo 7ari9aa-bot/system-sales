@@ -136,8 +136,7 @@ async def _unit_prices(
         session, tenant_id, [v.id for v in variants], currency=currency
     )
     return {
-        v.id: CatalogService.tiered_unit_price(v.price, ladders.get(v.id, []), 1)
-        for v in variants
+        v.id: CatalogService.tiered_unit_price(v.price, ladders.get(v.id, []), 1) for v in variants
     }
 
 
@@ -292,9 +291,7 @@ async def _search_catalog(
 
     def _word_expr(word: str):
         arms = [
-            Product.search_ts.op("@@")(
-                func.plainto_tsquery(literal_column("'simple'"), word)
-            ),
+            Product.search_ts.op("@@")(func.plainto_tsquery(literal_column("'simple'"), word)),
             Product.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
             ProductVariant.title.ilike(like_pattern(word), escape=LIKE_ESCAPE),
             ProductVariant.sku.ilike(like_pattern(word), escape=LIKE_ESCAPE),
@@ -358,9 +355,7 @@ async def _search_catalog(
     ).scalar_one()
 
     # Rank: most of the customer's words matched first, then alphabetical.
-    match_score = reduce(
-        operator.add, (case((expr, 1), else_=0) for expr in word_exprs)
-    )
+    match_score = reduce(operator.add, (case((expr, 1), else_=0) for expr in word_exprs))
     rows = (
         await session.execute(
             select(ProductVariant, Product.title)
@@ -370,9 +365,7 @@ async def _search_catalog(
             .limit(limit)
         )
     ).all()
-    availability = await _availability_map(
-        session, tenant_id, [variant.id for variant, _ in rows]
-    )
+    availability = await _availability_map(session, tenant_id, [variant.id for variant, _ in rows])
     prices = await _unit_prices(session, tenant_id, [variant for variant, _ in rows])
     result = {
         "total_matches": int(total_matches),
@@ -386,13 +379,10 @@ async def _search_catalog(
                 "availability": availability.get(variant.id),
             }
             for variant, product_title in rows
-        ]
+        ],
     }
     if not rows:
-        result["hint"] = (
-            "مفيش مطابق — جرب كلمة واحدة بس، أو تهجئة مختلفة للكلمة، أو شيل "
-            "الفلاتر."
-        )
+        result["hint"] = "مفيش مطابق — جرب كلمة واحدة بس، أو تهجئة مختلفة للكلمة، أو شيل الفلاتر."
     return result
 
 
@@ -664,9 +654,7 @@ class GetMyOrdersArgs(_StrictArgs):
     number: str = Field(min_length=1, max_length=31)
 
 
-_NOT_FOUND_HINT = (
-    "مفيش فاتورة بالرقم ده. اطلب منه يراجع الرقم المطبوع على الإيصال وكمّل معاه."
-)
+_NOT_FOUND_HINT = "مفيش فاتورة بالرقم ده. اطلب منه يراجع الرقم المطبوع على الإيصال وكمّل معاه."
 
 
 async def _get_my_orders(
@@ -810,9 +798,7 @@ def _fold_arabic(text_: str) -> str:
     two sides always agree.
     """
     table = str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه"})
-    return "".join(
-        ch for ch in text_.translate(table) if not ("\u064b" <= ch <= "\u0652")
-    )
+    return "".join(ch for ch in text_.translate(table) if not ("\u064b" <= ch <= "\u0652"))
 
 
 def _fold_sql(column):
@@ -846,8 +832,25 @@ _PLAYBOOK_STOPWORDS = frozenset(
 _PLAYBOOK_GENERIC = frozenset(
     _fold_arabic(w)
     for w in {
-        "غلط", "غلطه", "غلطات", "مشكله", "مشاكل", "عطل", "خربان", "بايظ", "مش", "شغال",
-        "حاجه", "حاجات", "موضوع", "وحش", "سيء", "كويس", "تاني", "تانيه", "جديد",
+        "غلط",
+        "غلطه",
+        "غلطات",
+        "مشكله",
+        "مشاكل",
+        "عطل",
+        "خربان",
+        "بايظ",
+        "مش",
+        "شغال",
+        "حاجه",
+        "حاجات",
+        "موضوع",
+        "وحش",
+        "سيء",
+        "كويس",
+        "تاني",
+        "تانيه",
+        "جديد",
     }
 )
 
@@ -1048,12 +1051,9 @@ async def _find_product_by_image(
     server_kind = (context or {}).get("image_kind_classified")
     if server_kind is not None and server_kind != ImageKind.PRODUCT.value:
         if server_kind in ("payment_proof", "complaint"):
-            raise DomainError(
-                f"image requires handover: {server_kind}_requires_human"
-            )
+            raise DomainError(f"image requires handover: {server_kind}_requires_human")
         raise DomainError(
-            f"the photo was classified server-side as {server_kind} — "
-            "it is not a product photo"
+            f"the photo was classified server-side as {server_kind} — it is not a product photo"
         )
 
     allowed, handoff_reason = classify(image_kind)

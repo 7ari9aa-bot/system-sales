@@ -36,18 +36,15 @@ async def list_tenant_members(ctx: TenantCtxDep):
     tenant, with the role each membership carries.
     """
     rows = (
-        (
-            await ctx.session.execute(
-                select(User.id, User.email, User.full_name, Role.code)
-                .select_from(TenantUser)
-                .join(User, User.id == TenantUser.user_id)
-                .join(Role, Role.id == TenantUser.role_id)
-                .where(TenantUser.tenant_id == ctx.tenant_id)
-                .order_by(User.full_name.asc())
-            )
+        await ctx.session.execute(
+            select(User.id, User.email, User.full_name, Role.code)
+            .select_from(TenantUser)
+            .join(User, User.id == TenantUser.user_id)
+            .join(Role, Role.id == TenantUser.role_id)
+            .where(TenantUser.tenant_id == ctx.tenant_id)
+            .order_by(User.full_name.asc())
         )
-        .all()
-    )
+    ).all()
     return [
         {
             "id": str(row.id),

@@ -137,9 +137,7 @@ def parse_meta_comment_changes(payload: dict) -> list[InboundComment]:
             if change.get("field") == "feed" and value.get("item") != "comment":
                 continue
             verb = str(value.get("verb") or "add").lower()
-            comment_id = str(
-                value.get("comment_id") or value.get("id") or ""
-            ).strip()
+            comment_id = str(value.get("comment_id") or value.get("id") or "").strip()
             if not comment_id:
                 continue
             body = value.get("message") if value.get("message") is not None else value.get("text")
@@ -150,11 +148,7 @@ def parse_meta_comment_changes(payload: dict) -> list[InboundComment]:
             out.append(
                 InboundComment(
                     platform_comment_id=comment_id,
-                    post_id=str(
-                        value.get("post_id")
-                        or (value.get("media") or {}).get("id")
-                        or ""
-                    )
+                    post_id=str(value.get("post_id") or (value.get("media") or {}).get("id") or "")
                     or None,
                     parent_comment_id=str(value.get("parent_id") or "") or None,
                     author_ref=str(author.get("id") or "") or None,

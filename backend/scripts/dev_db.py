@@ -38,8 +38,7 @@ def _local_env() -> dict[str, str]:
     """The explicit local environment every child process inherits."""
     admin = f"postgresql+asyncpg://postgres:postgres@{LOCAL_DB_HOST_PORT}/{LOCAL_DB_NAME}"
     app = (
-        f"postgresql+asyncpg://sales_app:{LOCAL_APP_PASSWORD}"
-        f"@{LOCAL_DB_HOST_PORT}/{LOCAL_DB_NAME}"
+        f"postgresql+asyncpg://sales_app:{LOCAL_APP_PASSWORD}@{LOCAL_DB_HOST_PORT}/{LOCAL_DB_NAME}"
     )
     return {
         **os.environ,

@@ -80,9 +80,7 @@ class PosWorker(StreamWorker):
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
-                payload = await PosService.get_receipt(
-                    session, tenant_id, UUID(str(receipt_id))
-                )
+                payload = await PosService.get_receipt(session, tenant_id, UUID(str(receipt_id)))
         # The mail goes out OUTSIDE the read transaction: a Resend timeout
         # must never roll a projection/session read back with it. The event's
         # own outbox id is the provider idempotency key — a redelivered event
@@ -95,9 +93,7 @@ class PosWorker(StreamWorker):
             html=_receipt_html(payload),
             text=_receipt_text(payload),
         )
-        logger.info(
-            "pos.receipt_emailed tenant=%s receipt=%s", tenant_id, receipt_id
-        )
+        logger.info("pos.receipt_emailed tenant=%s receipt=%s", tenant_id, receipt_id)
 
 
 def _receipt_html(payload: dict) -> str:
@@ -117,13 +113,11 @@ def _receipt_html(payload: dict) -> str:
         for t in payload["tenders"]
     )
     return (
-        "<!doctype html><html><body style=\"font-family:monospace\">"
+        '<!doctype html><html><body style="font-family:monospace">'
         f"<h2>{escape(receipt['number'])}</h2>"
         f"<p>{escape(str(order.get('number') or ''))}</p>"
         "<table>" + rows + "</table>"
-        f"<p><b>{escape(str(order.get('grand_total') or ''))}</b></p>"
-        + tenders
-        + "</body></html>"
+        f"<p><b>{escape(str(order.get('grand_total') or ''))}</b></p>" + tenders + "</body></html>"
     )
 
 

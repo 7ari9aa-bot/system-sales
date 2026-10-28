@@ -133,9 +133,7 @@ async def test_message_worker_dead_letter_lands_a_durable_handover(
     # The worker binds ``SessionLocal`` at import time, so patching the factory alone only works
     # when this module is imported after the fixture ran. Point the worker's own name at the test
     # connection too, whatever order the suite imported things in.
-    monkeypatch.setattr(
-        "app.workers.message_worker.SessionLocal", app_sessions_on_test_connection
-    )
+    monkeypatch.setattr("app.workers.message_worker.SessionLocal", app_sessions_on_test_connection)
     from app.modules.ai.models import AIHandover
     from app.modules.conversations.service import ConversationService
     from app.modules.customers.models import Customer

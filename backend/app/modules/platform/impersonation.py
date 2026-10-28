@@ -57,9 +57,7 @@ def _require_platform_token(request: Request) -> None:
     provided = request.headers.get("x-platform-token", "")
     # encode() both sides: hmac.compare_digest raises TypeError on non-ASCII
     # str (security review F7) — a hostile header must be a 403, not a 500.
-    if not hmac.compare_digest(
-        provided.encode(), settings.impersonation_platform_token.encode()
-    ):
+    if not hmac.compare_digest(provided.encode(), settings.impersonation_platform_token.encode()):
         raise PermissionDeniedError("invalid platform token")
 
 
@@ -99,9 +97,7 @@ async def _load_target(session, user_id, tenant_id):
     tenant (security review F9: a platform-admin session has break-glass
     reach across ALL tenants — impersonating one would defeat the same
     reasoning that refuses MFA-protected targets)."""
-    user = (
-        await session.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     membership = (
         await session.execute(
             select(TenantUser).where(
@@ -161,7 +157,8 @@ async def mint_impersonation_ticket(
     )
     await session.commit()
     return ImpersonationTicketOut(
-        ticket=ticket, expires_in=_TICKET_TTL_SECONDS,
+        ticket=ticket,
+        expires_in=_TICKET_TTL_SECONDS,
         redeem_path="/api/v1/platform/impersonation/redeem",
     )
 
@@ -266,12 +263,16 @@ async def confirm_impersonation_ticket(
     ).scalar_one_or_none()
     tenant_id = claims.get("tenant_id")
     membership = (
-        await session.execute(
-            select(TenantUser).where(
-                TenantUser.user_id == user.id, TenantUser.tenant_id == tenant_id
-            )
-        ).scalar_one_or_none()
-    ) if user is not None and user.is_active and tenant_id else None
+        (
+            await session.execute(
+                select(TenantUser).where(
+                    TenantUser.user_id == user.id, TenantUser.tenant_id == tenant_id
+                )
+            ).scalar_one_or_none()
+        )
+        if user is not None and user.is_active and tenant_id
+        else None
+    )
     if user is None or membership is None:
         raise NotFoundError("impersonation target no longer valid")
 
@@ -307,4 +308,3 @@ async def confirm_impersonation_ticket(
     set_auth_cookies(result, pair.access_token, pair.refresh_token)
     result.headers["Cache-Control"] = "no-store"
     return result
-

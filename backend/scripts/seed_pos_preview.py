@@ -49,7 +49,9 @@ async def main() -> None:
     async with get_sessionmaker()() as session:
         # ---- owner + tenant -------------------------------------------------
         user = (await session.execute(select(User).where(User.email == EMAIL))).scalar_one_or_none()
-        tenant = (await session.execute(select(Tenant).where(Tenant.slug == SLUG))).scalar_one_or_none()  # noqa: E501
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.slug == SLUG))
+        ).scalar_one_or_none()  # noqa: E501
 
         if user is None or tenant is None:
             user, tenant = await auth_service.AuthService.register(
@@ -136,10 +138,10 @@ async def main() -> None:
         # ---- POS profile ----------------------------------------------------
         await bind_tenant(session, tenant_id)
         profile = (
-            await session.execute(
-                select(PosProfile).where(PosProfile.tenant_id == tenant_id)
-            )
-        ).scalars().first()
+            (await session.execute(select(PosProfile).where(PosProfile.tenant_id == tenant_id)))
+            .scalars()
+            .first()
+        )
 
         if profile is None:
             profile = await PosProfileService.create(
@@ -159,12 +161,16 @@ async def main() -> None:
 
         # ---- register -------------------------------------------------------
         register = (
-            await session.execute(
-                select(PosRegister).where(
-                    PosRegister.tenant_id == tenant_id, PosRegister.profile_id == profile.id
+            (
+                await session.execute(
+                    select(PosRegister).where(
+                        PosRegister.tenant_id == tenant_id, PosRegister.profile_id == profile.id
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if register is None:
             register = await PosService.create_register(
                 session,
@@ -181,14 +187,18 @@ async def main() -> None:
 
         # ---- open session ---------------------------------------------------
         open_session = (
-            await session.execute(
-                select(PosSession).where(
-                    PosSession.tenant_id == tenant_id,
-                    PosSession.register_id == register.id,
-                    PosSession.status == "OPEN",
+            (
+                await session.execute(
+                    select(PosSession).where(
+                        PosSession.tenant_id == tenant_id,
+                        PosSession.register_id == register.id,
+                        PosSession.status == "OPEN",
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if open_session is None:
             open_session = await PosService.open_session(
                 session,

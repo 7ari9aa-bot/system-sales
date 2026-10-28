@@ -67,21 +67,15 @@ async def test_one_problem_phrased_many_colloquial_ways_finds_the_same_playbook(
 async def test_a_different_problem_ranks_its_own_playbook_first(db, tenant_ctx):
     await _seed(db, tenant_ctx.tenant_id, LATE_ORDER, WRONG_SIZE)
 
-    out = await _find_support_playbook(
-        db, tenant_ctx.tenant_id, problem="المقاس غلط عايز اغيره"
-    )
+    out = await _find_support_playbook(db, tenant_ctx.tenant_id, problem="المقاس غلط عايز اغيره")
 
     assert out["playbooks"][0]["title"] == "مقاس غلط"
 
 
-async def test_no_match_says_zero_so_the_agent_hands_over_instead_of_guessing(
-    db, tenant_ctx
-):
+async def test_no_match_says_zero_so_the_agent_hands_over_instead_of_guessing(db, tenant_ctx):
     await _seed(db, tenant_ctx.tenant_id, LATE_ORDER, WRONG_SIZE)
 
-    out = await _find_support_playbook(
-        db, tenant_ctx.tenant_id, problem="عايز اعرف الطقس بكرة"
-    )
+    out = await _find_support_playbook(db, tenant_ctx.tenant_id, problem="عايز اعرف الطقس بكرة")
 
     assert out == {"matched": 0, "playbooks": []}
 
@@ -94,9 +88,7 @@ async def test_an_inactive_playbook_is_never_returned(db, tenant_ctx):
     assert out["matched"] == 0
 
 
-async def test_the_database_refuses_a_playbook_written_for_another_tenant(
-    db, tenant_ctx
-):
+async def test_the_database_refuses_a_playbook_written_for_another_tenant(db, tenant_ctx):
     """Isolation is enforced by RLS, not just by the query's WHERE clause: a
     session scoped to one tenant cannot even INSERT a row for another."""
     import uuid
@@ -110,9 +102,9 @@ async def test_the_database_refuses_a_playbook_written_for_another_tenant(
 async def test_steps_and_escalation_condition_come_back_intact(db, tenant_ctx):
     await _seed(db, tenant_ctx.tenant_id, LATE_ORDER)
 
-    hit = (
-        await _find_support_playbook(db, tenant_ctx.tenant_id, problem="الطلب اتأخر")
-    )["playbooks"][0]
+    hit = (await _find_support_playbook(db, tenant_ctx.tenant_id, problem="الطلب اتأخر"))[
+        "playbooks"
+    ][0]
 
     assert hit["steps"] == LATE_ORDER["steps"]
     assert hit["escalate_when"] == LATE_ORDER["escalate_when"]
@@ -143,15 +135,13 @@ async def test_unrelated_questions_do_not_match_a_playbook(db, tenant_ctx, unrel
 @pytest.mark.parametrize(
     "phrasing",
     [
-        "عايز اغير المقاس",          # عايز is a stopword; المقاس must carry the match
-        "ازاي ارجع المقاس الغلط",    # ازاي is a stopword
-        "فين الاوردر بتاعي",         # فين is a stopword; الاوردر must carry it
+        "عايز اغير المقاس",  # عايز is a stopword; المقاس must carry the match
+        "ازاي ارجع المقاس الغلط",  # ازاي is a stopword
+        "فين الاوردر بتاعي",  # فين is a stopword; الاوردر must carry it
         "ممكن تقولي الطلب اتاخر ليه",  # ممكن/ليه around the real topic
     ],
 )
-async def test_stopwords_around_the_real_topic_still_find_the_playbook(
-    db, tenant_ctx, phrasing
-):
+async def test_stopwords_around_the_real_topic_still_find_the_playbook(db, tenant_ctx, phrasing):
     """Dropping function words must not drop the question: the topic word is
     still there to match."""
     await _seed(db, tenant_ctx.tenant_id, LATE_ORDER, WRONG_SIZE)
@@ -192,9 +182,7 @@ async def test_a_playbook_figure_the_tool_returned_is_a_legitimate_source(
     assert "5 أيام" in outcome.reply
 
 
-async def test_a_figure_not_in_the_playbook_is_still_withheld(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_figure_not_in_the_playbook_is_still_withheld(db, tenant_ctx, monkeypatch):
     """The playbook backs ITS numbers only. An invented "3 أيام" is not covered."""
     tenant_id = tenant_ctx.tenant_id
     agent = await _customer_agent(db, tenant_id)
@@ -211,9 +199,7 @@ async def test_a_figure_not_in_the_playbook_is_still_withheld(
     assert outcome.blocked_reason is not None
 
 
-async def test_the_model_can_hand_over_when_no_playbook_matches(
-    db, tenant_ctx, monkeypatch
-):
+async def test_the_model_can_hand_over_when_no_playbook_matches(db, tenant_ctx, monkeypatch):
     """matched=0 reaches the model as a stated fact; it escalates, then says
     goodbye in its own words (no template)."""
     tenant_id = tenant_ctx.tenant_id
@@ -254,18 +240,42 @@ async def test_the_agent_is_offered_the_playbook_tool(db, tenant_ctx, monkeypatc
 # ------------------------------------------------ a realistic multi-playbook store
 
 _STORE = [
-    dict(title="تأخر الطلب", problem="الطلب اتأخر ولسه موصلنيش، فين الأوردر بتاعي",
-         steps=["اطلب رقم الطلب"], escalate_when="متأخر أكتر من 5 أيام"),
-    dict(title="مقاس غلط", problem="المقاس اللي وصلني غلط، المقاس مش مظبوط عليا",
-         steps=["اطلب صورة التيكيت"], escalate_when="العميل مصمم على استرجاع الفلوس"),
-    dict(title="الدفع مارضيش", problem="الدفع بالكارت مارضيش يتم والعملية فشلت",
-         steps=["اتأكد من رصيد الكارت"], escalate_when="اتخصم من الكارت ومفيش طلب"),
-    dict(title="تتبع الشحنة", problem="عايز اتتبع الشحنة واعرف رقم التتبع",
-         steps=["ابعت رقم التتبع"], escalate_when="مفيش رقم تتبع"),
-    dict(title="منتج وصل بايظ", problem="المنتج وصلني مكسور او فيه عيب تالف",
-         steps=["اطلب صور العيب"], escalate_when="العميل بيطلب استرداد"),
-    dict(title="تغيير العنوان", problem="عايز اغير عنوان التوصيل قبل ما الطلب يخرج",
-         steps=["اطلب العنوان الجديد"], escalate_when="الطلب خرج للشحن"),
+    dict(
+        title="تأخر الطلب",
+        problem="الطلب اتأخر ولسه موصلنيش، فين الأوردر بتاعي",
+        steps=["اطلب رقم الطلب"],
+        escalate_when="متأخر أكتر من 5 أيام",
+    ),
+    dict(
+        title="مقاس غلط",
+        problem="المقاس اللي وصلني غلط، المقاس مش مظبوط عليا",
+        steps=["اطلب صورة التيكيت"],
+        escalate_when="العميل مصمم على استرجاع الفلوس",
+    ),
+    dict(
+        title="الدفع مارضيش",
+        problem="الدفع بالكارت مارضيش يتم والعملية فشلت",
+        steps=["اتأكد من رصيد الكارت"],
+        escalate_when="اتخصم من الكارت ومفيش طلب",
+    ),
+    dict(
+        title="تتبع الشحنة",
+        problem="عايز اتتبع الشحنة واعرف رقم التتبع",
+        steps=["ابعت رقم التتبع"],
+        escalate_when="مفيش رقم تتبع",
+    ),
+    dict(
+        title="منتج وصل بايظ",
+        problem="المنتج وصلني مكسور او فيه عيب تالف",
+        steps=["اطلب صور العيب"],
+        escalate_when="العميل بيطلب استرداد",
+    ),
+    dict(
+        title="تغيير العنوان",
+        problem="عايز اغير عنوان التوصيل قبل ما الطلب يخرج",
+        steps=["اطلب العنوان الجديد"],
+        escalate_when="الطلب خرج للشحن",
+    ),
 ]
 
 # (what the customer says, the title that SHOULD come back first, or None = no playbook)
@@ -285,9 +295,7 @@ _REAL_WORLD = [
 
 
 @pytest.mark.parametrize("said,expected", _REAL_WORLD)
-async def test_realistic_phrasings_find_the_right_playbook_or_none(
-    db, tenant_ctx, said, expected
-):
+async def test_realistic_phrasings_find_the_right_playbook_or_none(db, tenant_ctx, said, expected):
     await _seed(db, tenant_ctx.tenant_id, *_STORE)
 
     out = await _find_support_playbook(db, tenant_ctx.tenant_id, problem=said)
@@ -299,9 +307,7 @@ async def test_realistic_phrasings_find_the_right_playbook_or_none(
         assert titles and titles[0] == expected, (said, titles)
 
 
-async def test_keyword_search_cannot_bridge_synonyms_the_merchant_did_not_write(
-    db, tenant_ctx
-):
+async def test_keyword_search_cannot_bridge_synonyms_the_merchant_did_not_write(db, tenant_ctx):
     """A KNOWN limit, pinned so nobody mistakes it for a bug. "فيزا" is not
     "كارت" and "صغير" is not "مقاس غلط" to a keyword search; bridging that is
     what an embedding does. Loosening the threshold to catch these would bring
@@ -314,9 +320,7 @@ async def test_keyword_search_cannot_bridge_synonyms_the_merchant_did_not_write(
         assert out["matched"] == 0, said
 
 
-async def test_listing_the_customers_own_wordings_in_problem_closes_the_gap(
-    db, tenant_ctx
-):
+async def test_listing_the_customers_own_wordings_in_problem_closes_the_gap(db, tenant_ctx):
     rows = [dict(r) for r in _STORE]
     rows[1]["problem"] += "، المقاس صغير عليا، لبسته وضيق، المقاس كبير"
     rows[2]["problem"] += "، الفيزا مارضيتش، ادفع بالفيزا وفشلت، الماستر كارد"
@@ -325,9 +329,7 @@ async def test_listing_the_customers_own_wordings_in_problem_closes_the_gap(
     size = await _find_support_playbook(
         db, tenant_ctx.tenant_id, problem="لبست المنتج والمقاس صغير عليا"
     )
-    pay = await _find_support_playbook(
-        db, tenant_ctx.tenant_id, problem="حاولت ادفع بالفيزا وفشلت"
-    )
+    pay = await _find_support_playbook(db, tenant_ctx.tenant_id, problem="حاولت ادفع بالفيزا وفشلت")
 
     assert size["playbooks"][0]["title"] == "مقاس غلط"
     assert pay["playbooks"][0]["title"] == "الدفع مارضيش"

@@ -429,9 +429,7 @@ async def setup_app_role(conn: asyncpg.Connection, password: str) -> None:
     # Supabase, pgvector lives there, and the memory/knowledge cosine queries
     # fail to resolve `extensions.vector <=> unknown` without it — aborting
     # the whole worker transaction (the Oct-19 telegram silence).
-    await conn.execute(
-        'ALTER ROLE sales_app SET search_path = "$user", public, extensions'
-    )
+    await conn.execute('ALTER ROLE sales_app SET search_path = "$user", public, extensions')
     grants = [
         "GRANT USAGE ON SCHEMA public TO sales_app",
         (

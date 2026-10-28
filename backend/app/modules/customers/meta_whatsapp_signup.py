@@ -112,9 +112,7 @@ async def whatsapp_signup_start(
     on the server and is used only at completion time.
     """
     app_id, _secret, config_id = _whatsapp_config()
-    return WhatsAppSignupStartOut(
-        app_id=app_id, config_id=config_id, graph_version=_GRAPH_VERSION
-    )
+    return WhatsAppSignupStartOut(app_id=app_id, config_id=config_id, graph_version=_GRAPH_VERSION)
 
 
 async def _exchange_code_for_token(
@@ -135,17 +133,13 @@ async def _exchange_code_for_token(
             "Could not reach Meta to complete the WhatsApp connection. Try again."
         ) from None
     if response.status_code >= 500 or response.status_code == 429:
-        raise ExternalProviderError(
-            "Meta is temporarily unavailable. Try again.", retryable=True
-        )
+        raise ExternalProviderError("Meta is temporarily unavailable. Try again.", retryable=True)
     try:
         payload = response.json()
     except ValueError:
         raise ExternalProviderError("Meta returned an invalid token response.") from None
     if not isinstance(payload, dict) or payload.get("error"):
-        raise ValidationError(
-            "Meta rejected the WhatsApp authorization code. Press connect again."
-        )
+        raise ValidationError("Meta rejected the WhatsApp authorization code. Press connect again.")
     token = payload.get("access_token")
     if not isinstance(token, str) or not token:
         raise ValidationError(
@@ -171,10 +165,7 @@ async def _phone_display_name(
         return None
     if not isinstance(payload, dict):
         return None
-    return (
-        str(payload.get("verified_name") or payload.get("display_phone_number") or "")
-        or None
-    )
+    return str(payload.get("verified_name") or payload.get("display_phone_number") or "") or None
 
 
 async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token: str) -> None:
@@ -243,9 +234,7 @@ async def whatsapp_signup_complete(
         )
 
     existing = (
-        await session.execute(
-            _select_integration(tenant_id, "whatsapp")
-        )
+        await session.execute(_select_integration(tenant_id, "whatsapp"))
     ).scalar_one_or_none()
     if existing is not None and existing.status == "disabled":
         raise ValidationError("This channel was permanently disabled and cannot be reconnected.")

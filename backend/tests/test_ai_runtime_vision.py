@@ -453,7 +453,9 @@ async def test_media_collected_server_side_with_cap_and_shown_ids(db, tenant_ctx
 
 
 async def test_media_binds_to_the_answered_message_not_the_newest(
-    db, tenant_ctx, monkeypatch,
+    db,
+    tenant_ctx,
+    monkeypatch,
 ):
     """Delayed-event scenario: photo A lands, photo B is answered, then A's
     event is processed late. The reply to A must ride A's photo — the old

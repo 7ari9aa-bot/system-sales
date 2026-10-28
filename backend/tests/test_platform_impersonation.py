@@ -72,7 +72,8 @@ async def test_disabled_feature_answers_404_without_probing_the_secret():
 async def test_wrong_token_is_403_not_404(monkeypatch):
     get_settings.cache_clear()
     monkeypatch.setattr(
-        type(get_settings()), "impersonation_platform_token",
+        type(get_settings()),
+        "impersonation_platform_token",
         property(lambda self: "real-secret-value-123456"),
         raising=False,
     )

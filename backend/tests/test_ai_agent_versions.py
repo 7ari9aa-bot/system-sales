@@ -284,9 +284,7 @@ class TestRuntimeResolution:
         assert source == "fallback:version_not_published"
         assert policy is None
 
-    async def test_version_override_never_persists_to_the_mutable_row(
-        self, db, tenant_ctx
-    ) -> None:
+    async def test_version_override_never_persists_to_the_mutable_row(self, db, tenant_ctx) -> None:
         # The plain-assignment override dirtied the session-attached Agent and
         # the next flush (the AgentRun insert) wrote the snapshot's values back
         # onto the mutable agents table — silently reverting every merchant

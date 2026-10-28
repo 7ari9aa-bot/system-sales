@@ -12,15 +12,24 @@ system-sales/
 ├── backend/          FastAPI modular monolith (Core API + Domain + Workers)
 │   ├── app/
 │   │   ├── core/     config, db, redis, tenancy, security, events (bus + outbox)
-│   │   ├── modules/  business modules (identity, customers, conversations, catalog,
-│   │   │             inventory, orders, marketing, ai, platform, billing)
+│   │   ├── modules/  one folder per business module (see below)
 │   │   └── workers/  stream worker runtime + worker pools
+│   ├── migrations/   Alembic migrations
+│   ├── scripts/      operational scripts; scripts/dev/ holds local-only helpers
 │   └── tests/
-├── frontend/         React + Vite SPA (dashboard / inbox / channel settings)
+├── frontend/         React + Vite SPA (dashboard / inbox / cashier / settings)
+├── desktop/          Tauri desktop app
 ├── infra/            docker-compose (local), deployment templates
-├── docs/             ARCHITECTURE.md (canonical rules), BUILD_PLAN.md (full build map)
+├── docs/             start at docs/README.md (index of every document)
 └── .github/          CI
 ```
+
+Backend modules (`backend/app/modules/`): `identity`, `authority`, `privacy`,
+`customers`, `conversations`, `realtime`, `notifications`, `catalog`, `inventory`,
+`purchasing`, `orders`, `pos` (cashier), `expenses`, `financial`, `billing`, `marketing`,
+`segments`, `analytics`, `automation`, `decisions`, `effects`, `evidence`, `activity`,
+`operations`, `website`, `platform`, and `ai` (agents, tools, model configs).
+Imports between modules are ratcheted by `tests/test_module_boundaries.py`.
 
 ## Golden rules (short version)
 
@@ -51,15 +60,15 @@ curl http://localhost:8000/readyz
 
 ## Status
 
-See [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) — the full-system build map
-(no feature cuts; stages are dependency order, not scope reduction).
+The documentation index is [docs/README.md](docs/README.md). The original build map is
+kept for history in [docs/archive/BUILD_PLAN.md](docs/archive/BUILD_PLAN.md).
 
 ## WhatsApp Cloud API
 
 The WhatsApp webhook and outbound delivery run in FastAPI and its worker
 runtime. Provider setup, callback address, required environment variables, and
 the per-tenant integration contract are documented in
-[docs/WHATSAPP_FASTAPI.md](docs/WHATSAPP_FASTAPI.md).
+[docs/archive/WHATSAPP_FASTAPI.md](docs/archive/WHATSAPP_FASTAPI.md) (and [docs/channels/whatsapp.md](docs/channels/whatsapp.md)).
 
 Telegram channel connection is verified and its webhook is registered by the
 backend. Production must set `API_PUBLIC_BASE_URL` to the canonical HTTPS API

@@ -282,9 +282,7 @@ class MessageWorker(StreamWorker):
                         run_id=None,
                     )
         except Exception:  # noqa: BLE001 — the last will must never break the DLQ flow
-            logger.exception(
-                "message.dead_letter_trace_failed conversation=%s", conversation_id
-            )
+            logger.exception("message.dead_letter_trace_failed conversation=%s", conversation_id)
 
     def _dedupe_id(self, envelope: EventEnvelope) -> str:
         """Stable consumer-inbox key: the outbox row id survives crash-reclaim

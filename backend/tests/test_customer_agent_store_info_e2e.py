@@ -97,9 +97,7 @@ async def test_the_model_only_sees_the_merged_store_tool(db, tenant_ctx, monkeyp
     assert "search_knowledge" not in offered, "two tools over one table are back"
 
 
-async def test_a_policy_answered_from_store_info_reaches_the_customer(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_policy_answered_from_store_info_reaches_the_customer(db, tenant_ctx, monkeypatch):
     tenant_id = tenant_ctx.tenant_id
     agent = await _customer_agent(db, tenant_id)
     db.add(
@@ -208,9 +206,7 @@ async def test_an_empty_store_info_call_is_not_a_source_for_a_policy_number(
     assert outcome.blocked_reason == "grounding:unsourced numeral: 14"
 
 
-async def test_an_empty_store_info_call_still_allows_an_echo_and_zero(
-    db, tenant_ctx, monkeypatch
-):
+async def test_an_empty_store_info_call_still_allows_an_echo_and_zero(db, tenant_ctx, monkeypatch):
     """The fix must not silence an innocent confirmation: the customer's own
     number is an echo, and 0 is a legitimate "none"."""
     tenant_id = tenant_ctx.tenant_id

@@ -271,6 +271,7 @@ async def compute_metric(
 ) -> Decimal | float | int | None:
     """Dispatch to the right query by metric name (§167: single computation path)."""
     from app.modules.analytics import service as analytics_service
+
     handler = analytics_service.METRIC_HANDLERS.get(metric_name)
     if handler is None:
         raise NotFoundError(

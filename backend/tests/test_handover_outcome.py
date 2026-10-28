@@ -272,9 +272,7 @@ async def _set_status(db, tenant_id, conversation_id, status):
     await db.flush()
 
 
-async def test_a_dead_handover_does_not_jail_the_conversation_forever(
-    db, tenant_ctx, monkeypatch
-):
+async def test_a_dead_handover_does_not_jail_the_conversation_forever(db, tenant_ctx, monkeypatch):
     """THE Oct-19 incident: the Oct-17 failure handover left the telegram
     conversation in waiting_human for days while the customer kept typing
     into silence. The re-arm rule: with NO staff reply after the handover,

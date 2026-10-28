@@ -1181,10 +1181,7 @@ class AgentRunner:
             # Bind to the message the event carried. Without a carried id
             # (approval resume / legacy event) the newest inbound row is the
             # best available answer target — the historical behaviour.
-            if (
-                inbound_message_id is not None
-                and message.id != uuid.UUID(str(inbound_message_id))
-            ):
+            if inbound_message_id is not None and message.id != uuid.UUID(str(inbound_message_id)):
                 continue
             row = (
                 await session.execute(

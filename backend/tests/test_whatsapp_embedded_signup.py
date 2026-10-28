@@ -66,9 +66,7 @@ async def test_code_exchange_reports_a_rejected_code_as_a_refusal() -> None:
         )
     ) as client:
         with pytest.raises(ValidationError):
-            await signup._exchange_code_for_token(
-                client, app_id="a", app_secret="s", code="x" * 20
-            )
+            await signup._exchange_code_for_token(client, app_id="a", app_secret="s", code="x" * 20)
 
 
 async def test_code_exchange_keeps_outages_retryable() -> None:
@@ -76,9 +74,7 @@ async def test_code_exchange_keeps_outages_retryable() -> None:
         transport=httpx.MockTransport(lambda request: httpx.Response(503, json={}))
     ) as client:
         with pytest.raises(ExternalProviderError) as exc_info:
-            await signup._exchange_code_for_token(
-                client, app_id="a", app_secret="s", code="x" * 20
-            )
+            await signup._exchange_code_for_token(client, app_id="a", app_secret="s", code="x" * 20)
     assert exc_info.value.retryable is True
 
 
@@ -95,9 +91,7 @@ async def test_a_refused_waba_subscription_fails_the_connect() -> None:
 
 async def test_a_successful_subscription_passes() -> None:
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"success": True})
-        )
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
     ) as client:
         await signup._subscribe_app_to_waba(client, waba_id="1", token="t")
 

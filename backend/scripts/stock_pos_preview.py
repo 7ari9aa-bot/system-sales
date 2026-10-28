@@ -26,10 +26,14 @@ async def main() -> None:
         await bind_tenant(session, TENANT)
 
         variants = (
-            await session.execute(
-                select(ProductVariant).where(ProductVariant.tenant_id == TENANT)
+            (
+                await session.execute(
+                    select(ProductVariant).where(ProductVariant.tenant_id == TENANT)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for variant in variants:
             balance = await InventoryService.get_balance(session, TENANT, variant.id, WAREHOUSE)
@@ -49,8 +53,10 @@ async def main() -> None:
         await session.commit()
 
         profile = (
-            await session.execute(select(PosProfile).where(PosProfile.tenant_id == TENANT))
-        ).scalars().first()
+            (await session.execute(select(PosProfile).where(PosProfile.tenant_id == TENANT)))
+            .scalars()
+            .first()
+        )
         print(f"profile {profile.code} default_customer={profile.default_customer_id}")
 
 

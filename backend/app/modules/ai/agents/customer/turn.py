@@ -75,9 +75,7 @@ _IMAGE_CLASSIFY_PROMPT = (
 #: voice/images keep their own session; this gate stays as-is.)
 _SENSITIVE_IMAGE_KINDS = frozenset({ImageKind.PAYMENT_PROOF, ImageKind.COMPLAINT})
 
-_SENSITIVE_IMAGE_ACK = (
-    "وصلتني الصورة، وحوّلتها لفريق العمل يتابعوا معاك فيها في أقرب وقت."
-)
+_SENSITIVE_IMAGE_ACK = "وصلتني الصورة، وحوّلتها لفريق العمل يتابعوا معاك فيها في أقرب وقت."
 
 
 async def _default_classify_image_kind(
@@ -133,6 +131,7 @@ TURN_DEADLINE_SECONDS = 45.0
 
 #: Photos processed per turn — the rest are acknowledged, not interpreted.
 MAX_PHOTOS_PER_TURN = 1
+
 
 #: datetime.weekday() → Arabic day name. No digits, by design — see the
 #: context line above.
@@ -416,11 +415,7 @@ async def run_customer_turn(
                 agent_row = await resolve_agent_by_kind_optional(
                     session, params.tenant_id, "customer"
                 )
-                alias = (
-                    AgentRunner._alias_for(agent_row)
-                    if agent_row is not None
-                    else "fast"
-                )
+                alias = AgentRunner._alias_for(agent_row) if agent_row is not None else "fast"
                 gateway = getattr(_runner, "gateway", None)
                 if gateway is None:
                     from app.modules.ai.gateway import AIGateway
@@ -536,9 +531,7 @@ async def run_customer_turn(
         knowledge_context=params.knowledge_context,
         context_lines=context,
         vision_state={
-            "classified_kind": (
-                classified_kind.value if classified_kind is not None else None
-            ),
+            "classified_kind": (classified_kind.value if classified_kind is not None else None),
             "match": precomputed_match,
         },
     )

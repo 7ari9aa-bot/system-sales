@@ -217,8 +217,7 @@ async def run_restore_drill(db_url: str, app_url: str | None) -> dict[str, objec
             try:
                 result = await conn.execute(
                     text(
-                        "SELECT COUNT(*) FROM event_log "
-                        "WHERE event_type IS NULL OR payload IS NULL"
+                        "SELECT COUNT(*) FROM event_log WHERE event_type IS NULL OR payload IS NULL"
                     )
                 )
                 malformed = int(result.scalar() or 0)
