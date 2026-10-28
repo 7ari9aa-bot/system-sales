@@ -91,3 +91,10 @@ def test_normalise_folds_the_usual_arabic_variations() -> None:
     assert normalise("أَسبوع") == normalise("اسبوع")
     assert normalise("مدرسة") == normalise("مدرسه")
     assert normalise("٣ ايام") == "3 ايام"
+
+
+def test_a_thin_reply_fails_a_substantive_requirement() -> None:
+    """The lazy-agent guard: a bare 'ok' must not satisfy a case that wants an answer."""
+    expect = Expect(min_reply_chars=25, numbers_allowed_from_store=False)
+    assert "too_thin" in _checks(expect, Observed(reply="تمام"))
+    assert _checks(expect, Observed(reply="للاسف مفيش عندي تفاصيل مكتوبة عن الموضوع ده")) == set()

@@ -64,6 +64,11 @@ class Expect:
     numbers_allowed_from_store: bool = True  # every numeral must trace to a tool result
     max_reply_chars: int | None = None
     must_ask_clarifying_question: bool | None = None
+    # A negative check ("must not promise a discount") passes on ANY empty reply, so a lazy
+    # agent would pass it. ``min_reply_chars`` demands a substantive answer, and
+    # ``reply_contains_any`` demands the right kind of answer; every case that guards against a
+    # bad behaviour should also say what the GOOD behaviour looks like.
+    min_reply_chars: int | None = None
 
 
 @dataclass(frozen=True)

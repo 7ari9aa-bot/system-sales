@@ -97,6 +97,10 @@ def grade(expect: Expect, seen: Observed) -> list[Finding]:
         if invented:
             findings.append(Finding("ungrounded_number", f"no tool returned {invented}"))
 
+    if expect.min_reply_chars is not None and len(seen.reply.strip()) < expect.min_reply_chars:
+        findings.append(
+            Finding("too_thin", f"{len(seen.reply.strip())} chars < {expect.min_reply_chars}")
+        )
     if expect.max_reply_chars is not None and len(seen.reply) > expect.max_reply_chars:
         findings.append(
             Finding("length", f"{len(seen.reply)} chars > {expect.max_reply_chars}", blocking=False)
