@@ -602,6 +602,16 @@ async def _get_store_info(
     # `truncated` tells the model the list is NOT the whole store: silence
     # about a missing policy must not read as "the store has none".
     result: dict = {"items": items, "truncated": truncated}
+    if not items:
+        # An empty list reads as "nothing to say", and a model fills that gap with
+        # a policy of its own or with a handover. Say plainly what is true: the
+        # store has not published this information. It is not a customer
+        # problem, so it is answered, not handed over.
+        result["note"] = (
+            "المتجر لسه منشرش أي معلومات هنا (سياسات أو مواعيد أو شحن). متخترعش "
+            "سياسة ومتوعدش بحاجة. قول للعميل بصراحة إن المعلومة دي مش متاحة "
+            "عندك دلوقتي، وكمّل معاه فيما تقدر عليه، ومتحوّلوش لمجرد ده."
+        )
     if ranking is not None:
         result["ranking"] = ranking
     return result

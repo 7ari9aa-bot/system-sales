@@ -32,6 +32,11 @@ _IGNORE_KEYS = frozenset(
         "image",
         "media_url",
         "image_url",
+        # Instructions TO the model, not facts ABOUT the business. A guidance
+        # sentence is not quotable data: counted as a fact it would also turn an
+        # empty result ("nothing to ground on") into one that grounds strictly.
+        "note",
+        "hint",
     }
 )
 _UUID_RE = re.compile(

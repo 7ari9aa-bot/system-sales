@@ -13,6 +13,7 @@ reply built on those facts survives the grounding check without a handover.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -315,3 +316,72 @@ async def test_a_real_unsolved_problem_hands_over_once_with_what_was_tried(
         )
     ).one()
     assert note[0] == "complex_problem" and "جربت" in (note[1] or "")
+
+
+async def test_an_unpublished_return_policy_is_said_plainly_and_does_not_hand_over(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """The store never wrote its exchange policy. The tool says so in words the model can
+    act on, and a customer asking about it is answered, not handed to staff."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _agent(db, tenant_id)
+    customer_id, conversation_id = await _conversation(db, tenant_id, "telegram")
+    seen = _script(
+        monkeypatch,
+        _calls("c1", "get_store_info", question="سياسة الاستبدال"),
+        _says("تفاصيل سياسة الاستبدال مش متاحة عندي دلوقتي. تحب أساعدك في حاجة تانية؟"),
+    )
+
+    outcome = await _turn(
+        db, tenant_id, agent, customer_id, conversation_id, "ينفع أبدّل خلال كام يوم؟"
+    )
+
+    # the tool result is JSON inside the message, so compare the decoded text, not its \u escapes
+    shown = "".join(m["content"] for m in seen["calls"][1]["messages"] if m["role"] == "tool")
+    assert "متخترعش" in json.loads(shown)["note"]
+    assert outcome.reply and outcome.handover_reason is None
+    assert await _open_handovers(db, conversation_id) == 0
+
+
+async def test_a_published_policy_carries_no_empty_note(db, tenant_ctx) -> None:
+    from app.modules.ai.models import KnowledgeItem
+    from app.modules.ai.tools import get_tool
+
+    tenant_id = tenant_ctx.tenant_id
+    spec = get_tool("get_store_info")
+    empty = await spec.handler(db, tenant_id)
+    assert empty["items"] == [] and "note" in empty
+
+    db.add(
+        KnowledgeItem(
+            tenant_id=tenant_id,
+            title="سياسة الاستبدال",
+            content="الاستبدال خلال 14 يوم بشرط الفاتورة.",
+            source_type="text",
+            visibility="customer_facing",
+        )
+    )
+    await db.flush()
+
+    full = await spec.handler(db, tenant_id)
+    assert [i["title"] for i in full["items"]] == ["سياسة الاستبدال"]
+    assert "note" not in full
+
+
+def test_guidance_text_is_not_a_quotable_fact() -> None:
+    """`note` and `hint` talk TO the model. Counted as facts they would turn an empty tool
+    result into one that grounds strictly, and let the model quote the guidance itself."""
+    from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
+
+    facts = facts_from_tool_calls(
+        [
+            {
+                "status": "ok",
+                "result": {"items": [], "note": "ارجع خلال 14 يوم", "hint": "راجع الرقم 5"},
+            },
+            {"status": "ok", "result": {"items": [{"title": "تيشيرت", "price": "25.00"}]}},
+        ]
+    )
+
+    assert "25.00" in facts and "تيشيرت" in facts
+    assert not any("14" in f or "5" == f or "ارجع" in f or "راجع" in f for f in facts)
