@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 test.skip(process.env.E2E_LIVE_API !== "1", "requires the ephemeral API/Postgres/Redis CI stack");
 
-test("real registration, dashboard reads, orders, and logout work end to end", async ({ page }) => {
+test("real registration, dashboard reads, customers, and logout work end to end", async ({ page }) => {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -11,7 +11,7 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   const email = `live-e2e-${suffix}@example.com`;
   const password = `Live-e2e-${suffix}!`;
 
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(password);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
@@ -56,17 +56,19 @@ test("real registration, dashboard reads, orders, and logout work end to end", a
   await expect(page.getByRole("menuitem", { name: /تسجيل الخروج|sign out/i })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  const ordersResponsePromise = page.waitForResponse((response) => {
+  // Orders left the sidebar when the till became record-only (/orders now redirects to the
+  // cashier), so the protected-read step goes through Customers, a real screen with a real list.
+  const customersResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return url.pathname === "/api/v1/orders"
+    return url.pathname === "/api/v1/customers"
       && url.searchParams.get("limit") === "100"
       && response.request().method() === "GET";
   });
-  await page.getByRole("navigation").locator('a[href="/orders"]').click();
-  await expect(page).toHaveURL(/\/orders$/);
-  const ordersResponse = await ordersResponsePromise;
-  expect(ordersResponse.status()).toBe(200);
-  expect(await ordersResponse.json()).toEqual(expect.objectContaining({ items: expect.any(Array) }));
+  await page.getByRole("navigation").locator('a[href="/customers"]').click();
+  await expect(page).toHaveURL(/\/customers$/);
+  const customersResponse = await customersResponsePromise;
+  expect(customersResponse.status()).toBe(200);
+  expect(await customersResponse.json()).toEqual(expect.objectContaining({ items: expect.any(Array) }));
 
   const logoutResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -97,7 +99,7 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
   const password = `Live-sale-${suffix}!`;
 
   // Register + sign in through the UI so the session is exactly what a person gets.
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(password);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
@@ -124,7 +126,8 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
     await call("PATCH", `/products/${product.id}`, { status: "active" });
     const profile = await call("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash", "card", "wallet", "bank_transfer"], default_payment_method: "cash" });
     const register = await call("POST", "/pos/registers", { name: "Main till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-    // No shift is opened here on purpose: the sales screen must work without one.
+    // The day must be started with an opening balance before the till takes a sale.
+    await call("POST", `/pos/registers/${register.id}/open-day`, { opening_float: "0.00" });
     return { variantId: variant.id, warehouseId: wh.id, registerId: register.id };
   }, { sfx: suffix.replace(/[^a-z0-9]/gi, "").toLowerCase(), barcode });
 
@@ -189,7 +192,7 @@ test("a real back-office day: supplier stock in -> cash expense -> stocktake app
   const email = `live-ops-${suffix}@example.com`;
   const password = `Live-ops-${suffix}!`;
 
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(password);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
@@ -216,7 +219,7 @@ test("a real back-office day: supplier stock in -> cash expense -> stocktake app
   await api("PATCH", `/products/${product.id}`, { status: "active" });
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const register = await api("POST", "/pos/registers", { name: "Main till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${register.id}/sessions`, { opening_float: "500.00" });
+  const shift = (await api("POST", `/pos/registers/${register.id}/open-day`, { opening_float: "500.00" })).session;
 
   const onHand = async () => {
     const body = await api("GET", "/pos/stock?limit=100");
@@ -231,13 +234,15 @@ test("a real back-office day: supplier stock in -> cash expense -> stocktake app
   expect(po.id, "the purchase order must be created").toBeTruthy();
   expect(await onHand(), "receiving the order puts the goods on the shelf").toBe(6);
 
-  // 2) A cash expense rung against the open shift leaves the drawer by exactly its amount.
+  // 2) An expense is only RECORDED. The till moves no money, so the drawer figure stays where
+  //    the opening float put it (500 + 0 sales) and the preview carries no cash-out at all.
   const categories = await api("GET", "/expenses/categories");
   const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
   expect(category, "the shop must come with at least one expense category").toBeTruthy();
-  await api("POST", "/expenses", { category_id: category.id, description: `Cleaning ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
+  await api("POST", "/expenses", { category_id: category.id, description: `Cleaning ${sfx}`, amount: "25.00", payment_method: "cash" });
   const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
-  expect(Number(preview.cash_out), "the expense is the only cash that left the drawer").toBe(25);
+  expect(preview, "the close preview has no cash-out: expenses never leave the drawer").not.toHaveProperty("cash_out");
+  expect(Number(preview.closing_balance), "recording an expense leaves the drawer figure untouched").toBe(500);
 
   // 3) Stocktake: the shelf really holds 4, not 6. Approving moves the book by -2, exactly once.
   const take = await api("POST", "/pos/stocktakes", { note: `count ${sfx}` });
@@ -263,7 +268,7 @@ test("a real back-office day: supplier stock in -> cash expense -> stocktake app
 test("a per-line discount is stored on its line, so returning that one item refunds what it paid (50, not an even 75)", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -288,8 +293,8 @@ test("a per-line discount is stored on its line, so returning that one item refu
   await mk("A", bcA); await mk("B", bcB);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  // No shift is opened: the sale rides today's working session, and so does the return below.
-  const shift = await api("POST", `/pos/registers/${reg.id}/working-session`);
+  // The day is started with its opening balance, and the sale and the return below ride on it.
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   await page.goto("/cashier/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -317,7 +322,7 @@ test("a per-line discount is stored on its line, so returning that one item refu
   const lineA = detail.lines.find((l) => l.title.includes("ItemA"));
   const ret = await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? detail.order.id, lines: [{ variant_id: lineA.variant_id, quantity: 1 }], restock: true });
   expect(Number(ret.refunded_total), "returning the discounted item refunds what it paid").toBe(50);
-  expect(ret.by_method, "nothing was paid, so no tender is named").toEqual([]);
+  expect(ret, "a return only records the goods and their value: no tender is named").not.toHaveProperty("by_method");
   // The whole day (sale + return) never opened a shift and never moved money.
   const day = await api("GET", `/pos/sessions/${shift.id}`);
   expect(Number(day.inflow ?? 0), "no money came in").toBe(0);
@@ -328,7 +333,7 @@ test("a per-line discount is stored on its line, so returning that one item refu
 test("a fixed invoice discount can only take what the line discounts left, and the sale still goes through", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -353,7 +358,7 @@ test("a fixed invoice discount can only take what the line discounts left, and t
   await mk("A", bcA); await mk("B", bcB);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   await page.goto("/cashier/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -372,7 +377,7 @@ test("a fixed invoice discount can only take what the line discounts left, and t
 test("a return retried with a different quantity gets a new Idempotency-Key (never the failed attempt's)", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -397,9 +402,9 @@ test("a return retried with a different quantity gets a new Idempotency-Key (nev
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
-  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 3 }], tenders: [{ method: "cash", amount: "300.00" }], tenderedCash: "300.00" });
+  const sale = await api("POST", `/pos/registers/${reg.id}/sales`, { items: [{ variant_id: vA.id, quantity: 3 }] });
   await page.goto("/cashier/returns", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
   const seen = [];
@@ -427,69 +432,10 @@ test("a return retried with a different quantity gets a new Idempotency-Key (nev
   expect(seen[0].key, "a different return must not reuse the failed attempt's key").not.toBe(seen[1].key);
 });
 
-test("closing a shift on the screen: the expected cash is the ledger's (float + cash sales - cash expenses), a short count is recorded as a shortage, and the shift closes once", async ({ page }) => {
-  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
-  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
-  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
-  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
-  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
-  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
-    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
-    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
-    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
-    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
-    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
-  }, { method, path, body });
-  const wh = await api("POST", "/warehouses/ensure-default");
-  const mk = async (tag, bc) => {
-    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
-    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
-    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
-    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
-    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
-  };
-  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
-  const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
-  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
-
-  // cash in: one sale of 100; cash out: one expense of 25. Expected in the drawer = 500 + 100 - 25 = 575.
-  await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], tenders: [{ method: "cash", amount: "100.00" }], tenderedCash: "100.00" });
-  const categories = await api("GET", "/expenses/categories");
-  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
-  await api("POST", "/expenses", { category_id: category.id, description: `Close ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
-  const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
-  const cashRow = preview.by_method.find((m) => m.method === "cash");
-  expect(Number(cashRow.expected), "the ledger's expected cash: 500 float + 100 sale - 25 expense").toBe(575);
-
-  await page.goto("/cashier/shifts", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
-  await main.getByRole("button", { name: "إغلاق الوردية" }).first().click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog, "the dialog shows the ledger's expected cash, not a client guess").toContainText("575.00", { timeout: 10000 });
-  await dialog.locator('input[type="number"]').fill("570"); // 5 short
-  const shortage = dialog.locator("div", { hasText: /^فرق عجز/ }).last();
-  await expect(shortage, "the screen names the gap a shortage of exactly 5.00").toContainText("-5.00");
-  await expect(dialog).not.toContainText("فرق زيادة");
-  await dialog.getByRole("button", { name: /تأكيد إغلاق الوردية/ }).click();
-  await expect(page.getByText(/تم إغلاق الوردية/)).toBeVisible({ timeout: 10000 });
-
-  const closed = await api("GET", `/pos/sessions/${shift.id}`);
-  expect(String(closed.status).toLowerCase(), "the shift is closed on the server").toBe("closed");
-  expect(Number(closed.counted_cash ?? closed.closing_cash), "the count we typed was stored").toBe(570);
-  expect(Number(closed.variance ?? closed.cash_variance), "the shortage was stored as -5").toBe(-5);
-  // a closed shift takes no more sales
-  await expect(api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], tenders: [{ method: "cash", amount: "100.00" }], tenderedCash: "100.00" })).rejects.toThrow();
-});
-
 test("an exchange on the screen: one A comes back, one B (price 150) goes out, the customer pays the 50 difference and the shelves follow", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -515,7 +461,7 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   const vA = await mk("A", bcA); const vB = await mk("B", bcB);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   const onHand = async (variantId) => {
     const body = await api("GET", "/pos/stock?limit=100");
@@ -525,7 +471,7 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   };
   // B costs 150 (A is 100). Sell two A (200) so there is something to exchange.
   await api("PATCH", `/variants/${vB.id}`, { price: "150.00" });
-  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 2 }], tenders: [{ method: "cash", amount: "200.00" }], tenderedCash: "200.00" });
+  const sale = await api("POST", `/pos/registers/${reg.id}/sales`, { items: [{ variant_id: vA.id, quantity: 2 }] });
   expect(await onHand(vA.id), "after selling 2 of 10 A").toBe(8);
   expect(await onHand(vB.id)).toBe(10);
 
@@ -540,12 +486,11 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   await repl.press("Enter");
   await expect(main).toContainText(`ItemB ${sfx}`, { timeout: 10000 });
   await expect(main, "the server quote: B 150 - A 100 = 50 for the customer to pay").toContainText("50.00", { timeout: 10000 });
+  // The till records goods and invoice value only: completing the exchange shows the 50 difference
+  // in the confirmation and settles nothing, so there is no payment dialog to fill.
   await main.getByRole("button", { name: /إتمام الاستبدال/ }).click();
-  const pay = page.getByRole("dialog");
-  await expect(pay, "the difference is asked from the customer").toContainText("50.00", { timeout: 10000 });
-  await pay.getByLabel("المبلغ المدفوع").fill("50");
-  await pay.getByRole("button", { name: /تأكيد/ }).click();
-  await expect(page.getByText(/تم اعتماد|تم الاستبدال|تم إتمام/).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("dialog"), "no payment dialog: the difference is shown, never collected").toHaveCount(0);
+  await expect(page.getByText(/تم الاستبدال/).first(), "the exchange is recorded and the 50 difference is shown").toContainText("50.00", { timeout: 10000 });
 
   await expect.poll(() => onHand(vA.id), { message: "the returned A goes back on the shelf: 8 -> 9" }).toBe(9);
   await expect.poll(() => onHand(vB.id), { message: "the new B leaves the shelf: 10 -> 9" }).toBe(9);
@@ -555,7 +500,7 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
 test("a cash expense is recorded on the screen with no shift and moves no drawer; with a shift open the same expense leaves that drawer", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -589,7 +534,7 @@ test("a cash expense is recorded on the screen with no shift and moves no drawer
   await page.goto("/cashier/expenses", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
   await main.getByRole("button", { name: /^تسجيل مصروف$/ }).first().click();
-  await expect(page.getByRole("dialog"), "the cashier is told no drawer will be charged").toContainText("ما هيتخصمش من درج");
+  await expect(page.getByRole("dialog"), "the cashier is told a cash expense is recorded even with no shift").toContainText("بيتسجّل حتى من غير وردية");
   await expect(page.getByRole("dialog").getByRole("button", { name: /تسجيل المصروف/ }), "cash with no shift is allowed").toBeEnabled();
   await page.keyboard.press("Escape");
   await record(main, `Electric ${sfx}`, "200");
@@ -600,23 +545,25 @@ test("a cash expense is recorded on the screen with no shift and moves no drawer
   expect(mine.payment_method).toBe("cash");
   expect(mine.session_id, "no shift: it is a record only").toBeNull();
 
-  // 2. A shift opened later is untouched by the earlier expense, and an expense made with it open leaves its drawer.
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  // 2. Starting the day later changes nothing about expenses: with the day open, a new expense is
+  //    STILL only a record. The drawer figure is the opening balance plus the day's sales, so it
+  //    stays 500 before and after (the earlier 200 and the new 25 never reach it).
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "500.00" })).session;
   let preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
-  let cash = preview.by_method.find((m) => m.method === "cash");
-  expect(Number(cash.expected), "the shiftless 200 never touched this drawer").toBe(500);
+  expect(Number(preview.closing_balance), "the shiftless 200 never touched this drawer").toBe(500);
   await page.reload({ waitUntil: "networkidle" });
   await record(main, `Bags ${sfx}`, "25");
+  const after = (await api("GET", "/expenses")).items ?? [];
+  expect(after.find((r) => r.description === `Bags ${sfx}`), "the 25 expense is recorded").toBeTruthy();
   preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
-  cash = preview.by_method.find((m) => m.method === "cash");
-  expect(Number(cash.expected), "with a shift open the 25 leaves the drawer: 500 - 25").toBe(475);
+  expect(Number(preview.closing_balance), "with the day open the 25 still does not leave the drawer").toBe(500);
   expect(errs).toEqual([]);
 });
 
 test("sell, return and exchange from the screens with no shift and no payment: the shelves follow and no money moves", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -640,8 +587,9 @@ test("sell, return and exchange from the screens with no shift and no payment: t
   const bcA = `640${sfx}1`, bcB = `640${sfx}2`;
   const vA = await mk("A", bcA, "100.00"); const vB = await mk("B", bcB, "150.00");
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
-  await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  // NO shift is opened anywhere in this test.
+  const till = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
+  // The day is started with its opening balance; no shift is opened and no payment is taken.
+  await api("POST", `/pos/registers/${till.id}/open-day`, { opening_float: "0.00" });
   const onHand = async (variantId) => {
     const body = await api("GET", "/pos/stock?limit=100");
     const rows = Array.isArray(body) ? body : body.items ?? [];
@@ -705,7 +653,7 @@ test("sell, return and exchange from the screens with no shift and no payment: t
 test("a supplier return on the screen: the goods leave the shelf at once, and a refusal by the supplier puts them back", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -730,7 +678,7 @@ test("a supplier return on the screen: the goods leave the shelf at once, and a 
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   const onHand = async () => {
     const stock = await api("GET", "/pos/stock?limit=100");
@@ -779,7 +727,7 @@ test("a supplier return on the screen: the goods leave the shelf at once, and a 
 test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grows by 5 and the invoice total is 150", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -804,7 +752,7 @@ test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grow
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   const onHand = async () => {
     const stock = await api("GET", "/pos/stock?limit=100");
@@ -832,62 +780,10 @@ test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grow
   expect(errs).toEqual([]);
 });
 
-test("paying a supplier on the screen: 180 owed, 100 paid in cash leaves the drawer and 80 stays owed", async ({ page }) => {
-  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
-  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
-  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
-  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
-  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
-  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
-    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
-    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
-    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
-    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
-    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
-  }, { method, path, body });
-  const wh = await api("POST", "/warehouses/ensure-default");
-  const mk = async (tag, bc) => {
-    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
-    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
-    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
-    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
-    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
-  };
-  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
-  const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
-  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
-
-  const supplier = await api("POST", "/suppliers", { name: `Supplier ${sfx}` });
-  const po = await api("POST", "/purchase-orders", { supplier_id: supplier.id, warehouse_id: wh.id, lines: [{ variant_id: vA.id, quantity: "6", unit_cost: "30.00" }], receive_now: true });
-  expect(po.id, "the 180 invoice exists and is received").toBeTruthy();
-  const cashOut = async () => Number((await api("GET", `/pos/sessions/${shift.id}/close-preview`)).cash_out);
-  expect(await cashOut(), "nothing has left the drawer yet").toBe(0);
-
-  await page.goto("/cashier/suppliers", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
-  await expect(main, "the supplier shows the 180 it is owed").toContainText("180.00", { timeout: 10000 });
-  await main.getByRole("button", { name: /السجل/ }).first().click();
-  const history = page.getByRole("dialog");
-  await history.getByRole("button", { name: "دفع", exact: true }).first().click();
-  const pay = page.getByRole("dialog").last();
-  await pay.getByPlaceholder("0.00").fill("100");
-  await pay.getByRole("button", { name: "تسجيل الدفعة" }).click();
-  await expect.poll(cashOut, { message: "100 cash paid to the supplier leaves the drawer" }).toBe(100);
-
-  await page.reload({ waitUntil: "networkidle" });
-  await expect(page.locator("main:has(.cashier-root)"), "180 - 100 = 80 still owed").toContainText("80.00", { timeout: 10000 });
-  expect(errs).toEqual([]);
-});
-
 test("a cash payment to a supplier is recorded on the screen with no shift, owed drops 180 to 80, and no drawer moves", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -915,7 +811,7 @@ test("a cash payment to a supplier is recorded on the screen with no shift, owed
   await main.getByRole("button", { name: /السجل/ }).first().click();
   await page.getByRole("dialog").getByRole("button", { name: "دفع", exact: true }).first().click();
   const pay = page.getByRole("dialog").last();
-  await expect(pay, "the cashier is told no drawer will be charged").toContainText("ما هتتخصمش من درج");
+  await expect(pay, "the dialog names the invoice and what is still owed on it").toContainText("المتبقي 180.00");
   await expect(pay.getByRole("button", { name: "تسجيل الدفعة" }), "cash with no shift is allowed").toBeEnabled();
   await pay.getByPlaceholder("0.00").fill("100");
   await pay.getByRole("button", { name: "تسجيل الدفعة" }).click();
@@ -924,16 +820,16 @@ test("a cash payment to a supplier is recorded on the screen with no shift, owed
   await page.reload({ waitUntil: "networkidle" });
   await expect(page.locator("main:has(.cashier-root)"), "180 - 100 = 80 still owed").toContainText("80.00", { timeout: 10000 });
   // a shift opened afterwards starts clean: the shiftless payment never touched any drawer
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
   const preview = await api("GET", `/pos/sessions/${shift.id}/close-preview`);
-  expect(Number(preview.cash_out), "no drawer paid the supplier").toBe(0);
+  expect(Number(preview.closing_balance), "no drawer paid the supplier: the drawer is still the opening 0").toBe(0);
   expect(errs).toEqual([]);
 });
 
 test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missing, and the sale made while counting is kept (10 - 1 sold - 3 missing = 6)", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -958,7 +854,7 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "0.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "0.00" })).session;
 
   const onHand = async () => {
     const stock = await api("GET", "/pos/stock?limit=100");
@@ -973,7 +869,7 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   await expect(main.getByText(`ItemA ${sfx}`).first(), "the count sheet lists the item").toBeVisible({ timeout: 10000 });
 
   // a customer buys one while the shop is counting
-  await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 1 }], method: "cash", amount: "100.00" });
+  await api("POST", `/pos/registers/${reg.id}/sales`, { items: [{ variant_id: vA.id, quantity: 1 }] });
   expect(await onHand(), "the sale took one off the shelf").toBe(9);
 
   const row = main.locator("tr", { hasText: `ItemA ${sfx}` }).first();
@@ -985,57 +881,10 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   expect(errs).toEqual([]);
 });
 
-test("the reports on the screen: 3 sold, 1 returned, 25 spent in cash gives net sales 200 and 675 expected in the drawer", async ({ page }) => {
-  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
-  const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
-  await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
-  await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
-  await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
-  await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
-    const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
-    const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
-    const h = { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(raw?.access_token ? { Authorization: `Bearer ${raw.access_token}` } : {}) };
-    const r = await fetch(`/api/v1${path}`, { method, headers: h, credentials: "include", body: body ? JSON.stringify(body) : undefined });
-    const t = await r.text(); if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${t.slice(0, 200)}`); return t ? JSON.parse(t) : null;
-  }, { method, path, body });
-  const wh = await api("POST", "/warehouses/ensure-default");
-  const mk = async (tag, bc) => {
-    const p = await api("POST", "/products", { title: `Item${tag} ${sfx}`, slug: `item-${tag}-${sfx}`, description: null });
-    const v = await api("POST", `/products/${p.id}/variants`, { sku: `LD${tag}-${sfx}`, price: "100.00", option_values: {} });
-    await api("POST", `/variants/${v.id}/identifiers`, { identifier_type: "barcode", value: bc });
-    await api("POST", "/inventory/movements", { variant_id: v.id, warehouse_id: wh.id, direction: "in", quantity: 10, reason: "adjustment" });
-    await api("PATCH", `/products/${p.id}`, { status: "active" }); return v;
-  };
-  const bcA = `630${sfx}1`, bcB = `630${sfx}2`;
-  const vA = await mk("A", bcA);
-  const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
-  const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
-
-  // cash in: 3 x 100 sold; cash out: 1 x 100 returned, 25 spent. Net sales 200; drawer = 500 + 300 - 100 - 25 = 675.
-  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 3 }], tenders: [{ method: "cash", amount: "300.00" }], tenderedCash: "300.00" });
-  const detail = sale.order_id ? null : sale;
-  await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? detail.order.id, lines: [{ variant_id: vA.id, quantity: 1 }], restock: true });
-  const categories = await api("GET", "/expenses/categories");
-  const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
-  await api("POST", "/expenses", { category_id: category.id, description: `Rep ${sfx}`, amount: "25.00", payment_method: "cash", session_id: shift.id });
-
-  await page.goto("/cashier/reports", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
-  await expect(main, "net sales = 300 sold - 100 returned").toContainText("200.00", { timeout: 10000 });
-  await expect(main, "3 pieces were sold").toContainText("3 قطعة");
-  await main.getByRole("tab", { name: /إغلاق اليوم/ }).click();
-  await expect(main, "the Z report expects 500 + 300 - 100 - 25 in the drawer").toContainText("675.00", { timeout: 10000 });
-  expect(errs).toEqual([]);
-});
-
 test("the activity log on the screen: a sale, a return and an expense all appear, search isolates the expense, and the return filter hides the sale", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -1060,14 +909,14 @@ test("the activity log on the screen: a sale, a return and an expense all appear
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "500.00" })).session;
 
-  const sale = await api("POST", `/pos/sessions/${shift.id}/sell`, { items: [{ variant_id: vA.id, quantity: 2 }], tenders: [{ method: "cash", amount: "200.00" }], tenderedCash: "200.00" });
+  const sale = await api("POST", `/pos/registers/${reg.id}/sales`, { items: [{ variant_id: vA.id, quantity: 2 }] });
   await api("POST", `/pos/sessions/${shift.id}/returns`, { order_id: sale.order_id ?? sale.order.id, lines: [{ variant_id: vA.id, quantity: 1 }], restock: true });
   const categories = await api("GET", "/expenses/categories");
   const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
   const note = `Zq${sfx}`;
-  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash", session_id: shift.id });
+  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash" });
 
   await page.goto("/cashier/activity-log", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -1093,7 +942,7 @@ test("the activity log on the screen: a sale, a return and an expense all appear
 test("labels on the screen: 3 labels for an item show its real barcode and price, and the preview counts exactly 3", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -1118,7 +967,7 @@ test("labels on the screen: 3 labels for an item show its real barcode and price
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "500.00" })).session;
 
   await page.goto("/cashier/labels", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -1136,7 +985,7 @@ test("labels on the screen: 3 labels for an item show its real barcode and price
 test("backup export on the screen: the downloaded file holds the real expense and product, and says nothing is truncated", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -1161,12 +1010,12 @@ test("backup export on the screen: the downloaded file holds the real expense an
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "500.00" })).session;
 
   const categories = await api("GET", "/expenses/categories");
   const category = (Array.isArray(categories) ? categories : categories.items ?? [])[0];
   const note = `Bk${sfx}`;
-  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash", session_id: shift.id });
+  await api("POST", "/expenses", { category_id: category.id, description: note, amount: "25.00", payment_method: "cash" });
 
   await page.goto("/settings/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");
@@ -1184,7 +1033,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
 test("print settings on the screen do not pretend to save: no save button, no editable fields, and a clear notice", async ({ page }) => {
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   const sfx = `${Date.now()}`.slice(-8); const email = `ld-${sfx}@example.com`; const pw = `Ld-${sfx}-pass!`;
-  await page.goto("/register");
+  await page.goto("/register", { waitUntil: "networkidle" });
   await page.getByLabel(/البريد الإلكتروني|email/i).fill(email);
   await page.getByLabel(/^كلمة المرور$|^password$/i).fill(pw);
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
@@ -1209,7 +1058,7 @@ test("print settings on the screen do not pretend to save: no save button, no ed
   const vA = await mk("A", bcA);
   const profile = await api("POST", "/pos/profiles", { name: "Main", code: "MAIN", warehouse_id: wh.id, allowed_payment_methods: ["cash"], default_payment_method: "cash" });
   const reg = await api("POST", "/pos/registers", { name: "Till", code: "MAIN", warehouse_id: wh.id, profile_id: profile.id });
-  const shift = await api("POST", `/pos/registers/${reg.id}/sessions`, { opening_float: "500.00" });
+  const shift = (await api("POST", `/pos/registers/${reg.id}/open-day`, { opening_float: "500.00" })).session;
 
   await page.goto("/settings/pos", { waitUntil: "networkidle" });
   const main = page.locator("main:has(.cashier-root)");

@@ -105,6 +105,15 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Start API for the real-data browser flow
+        # The live suite signs up ~17 fresh accounts from one IP inside a few minutes. The
+        # strict /auth/* brute-force bucket (10 per window per IP) is meant to refuse exactly
+        # that, so this one throwaway API runs with the limiter off (ENVIRONMENT=test is the
+        # documented switch in core/middleware.py). The cookie stays non-Secure because the
+        # browser talks plain http to 127.0.0.1. Production keeps the limiter; every other CI
+        # step (pytest) is unchanged.
+        env:
+          ENVIRONMENT: test
+          AUTH_COOKIE_SECURE: "false"
         run: |
           nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/fihrist-api.log 2>&1 &
           for attempt in {1..60}; do
@@ -118,7 +127,7 @@ jobs:
       - name: Build frontend bundle
         working-directory: frontend
         run: npm run build
-      - name: Verify real registration, dashboard, orders, and logout in Chromium
+      - name: Verify real registration, dashboard, customers, and logout in Chromium
         working-directory: frontend
         env:
           E2E_LIVE_API: "1"
