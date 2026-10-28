@@ -106,6 +106,8 @@ async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
     if missing:
         pytest.fail(f"live_eval requested but {', '.join(missing)} not set; refusing to fake it")
 
+    await _seed_live_embedding(db, tenant_ctx.tenant_id)
+
     results = []
     records_by_case = {}
     for case in ALL:
@@ -127,6 +129,39 @@ async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
         print("\n(quality judge skipped: set AGENT_EVAL_JUDGE_ALIAS to e.g. 'strong' to run it)")
 
     assert verdict.ship, "\n" + render(verdict)
+
+
+async def _seed_live_embedding(db, tenant_id) -> None:
+    """Give the live run a real TEXT embedding model, in this test's rolled-back transaction.
+
+    Without a ``model_configs`` row for the ``embedding`` alias the gateway falls back to the
+    chat model, and a chat model has no /embeddings endpoint: every policy / memory lookup then
+    fails with HTTP 400 and the run measures a broken setup, not the agent. The model is the
+    one production uses (Jina v4 at 1536 dims, the width of the stored text vectors); with no
+    ``AGENT_EVAL_EMBEDDING_API_KEY`` the row is not written and the old fallback applies.
+    """
+    key = os.environ.get("AGENT_EVAL_EMBEDDING_API_KEY")
+    if not key:
+        return
+    from app.modules.ai.models import ModelConfig
+
+    db.add(
+        ModelConfig(
+            tenant_id=tenant_id,
+            alias="embedding",
+            provider="jina",
+            model=os.environ.get("AGENT_EVAL_EMBEDDING_MODEL", "jina-embeddings-v4"),
+            config={
+                "base_url": os.environ.get(
+                    "AGENT_EVAL_EMBEDDING_BASE_URL", "https://api.jina.ai/v1"
+                ),
+                "api_key": key,
+                "dimensions": 1536,
+            },
+            is_active=True,
+        )
+    )
+    await db.flush()
 
 
 async def _report_quality(db, tenant_id, alias: str, records_by_case) -> None:

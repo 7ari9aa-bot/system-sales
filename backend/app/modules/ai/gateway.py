@@ -38,6 +38,7 @@ from app.modules.ai.providers import (
     AIProvider,
     ChatCompletionResult,
     EmbeddingProvider,
+    JinaMultimodalEmbeddingProvider,
     MultimodalContent,
     MultimodalEmbeddingProvider,
     RerankerProvider,
@@ -223,6 +224,7 @@ class AIGateway:
         self._provider = provider or AIProvider()
         self._embeddings = EmbeddingProvider()
         self._vision_embeddings = MultimodalEmbeddingProvider()
+        self._vision_embeddings_jina = JinaMultimodalEmbeddingProvider()
         self._reranker = RerankerProvider()
 
     def _provider_breaker(self, config: dict[str, Any]):
@@ -601,8 +603,11 @@ class AIGateway:
                     f"AI vision provider blocked by data-egress policy: {decision.reason}"
                 )
 
+            embedder = (
+                self._vision_embeddings_jina if provider == "jina" else self._vision_embeddings
+            )
             vectors = await self._provider_breaker({"base_url": base_url}).call(
-                self._vision_embeddings.embed,
+                embedder.embed,
                 base_url=base_url,
                 api_key=api_key,
                 model=model,

@@ -334,6 +334,79 @@ class MultimodalEmbeddingProvider:
             raise ExternalProviderError(f"malformed vision embedding response: {exc}") from exc
 
 
+class JinaMultimodalEmbeddingProvider:
+    """POST {base_url}/embeddings with ``input: [{"text"|"image": ...}]`` (Jina schema).
+
+    Same ``embed`` signature as :class:`MultimodalEmbeddingProvider`, so the gateway swaps
+    providers by setting alone. ``jina-clip-v2`` takes text and image items and returns
+    matryoshka vectors: the width is requested explicitly (``dimensions``), which keeps the
+    stored ``Vector(768)`` column unchanged. One item is ONE input here: Jina embeds a
+    ``{"text", "image"}`` pair as two separate entries, so an image+caption item is sent as its
+    image alone and the caption is dropped (the caption only helps DashScope's fused vector).
+    Vectors are L2-normalised server-side (``normalized``) so cosine and dot product agree.
+    """
+
+    async def embed(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        contents: list[MultimodalContent],
+        expected_dimensions: int | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> list[list[float]]:
+        if not contents:
+            raise ValueError("contents must not be empty")
+        url = f"{assert_provider_base_url(base_url).rstrip('/')}/embeddings"
+        items: list[dict[str, str]] = []
+        for content in contents:
+            payload = content.payload()
+            # Prefer the picture when both are present: one item must yield exactly one vector.
+            items.append({"image": payload["image"]} if "image" in payload else payload)
+        body: dict = {"model": model, "input": items, "normalized": True}
+        if expected_dimensions is not None:
+            body["dimensions"] = expected_dimensions
+
+        client, owned = _acquire_client(_client, _VISION_TIMEOUT_SECONDS)
+        try:
+            try:
+                response = await client.post(url, json=body, headers=_auth_headers(api_key))
+            except httpx.HTTPError as exc:
+                raise ExternalProviderError(f"vision embedding request failed: {exc}") from exc
+        finally:
+            if owned:
+                await client.aclose()
+
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail") or response.text[:200]
+            except ValueError:
+                detail = response.text[:200]
+            raise ExternalProviderError(
+                f"vision embedding failed with HTTP {response.status_code}: {detail}",
+                details={"status_code": response.status_code},
+            )
+
+        try:
+            entries = response.json()["data"]
+            ordered = sorted(entries, key=lambda entry: int(entry.get("index") or 0))
+            vectors = [[float(x) for x in entry["embedding"]] for entry in ordered]
+            if len(vectors) != len(contents):
+                raise ValueError(f"expected {len(contents)} vectors, got {len(vectors)}")
+            if expected_dimensions is not None:
+                dims = {len(v) for v in vectors}
+                if dims != {expected_dimensions}:
+                    raise ValueError(
+                        f"expected {expected_dimensions}-dim vectors, got {sorted(dims)}"
+                    )
+            return vectors
+        except ExternalProviderError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ExternalProviderError(f"malformed vision embedding response: {exc}") from exc
+
+
 @dataclass(slots=True)
 class RerankResult:
     """One scored document — ``index`` points into the CALLER's input order."""
