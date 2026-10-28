@@ -55,7 +55,7 @@ cd ../frontend && npm run lint && npm test
 | You want to change... | Look in |
 |---|---|
 | What the customer AI agent says or does | `backend/app/modules/ai/agents/customer/` |
-| A tool the agent can call | `.../agents/customer/tools.py` (read-only tools only) |
+| A tool the agent can call | `.../agents/customer/tools/` (read-only tools only; one file per group) |
 | Cashier / POS behaviour | `backend/app/modules/pos/` and `frontend/src/cashier/` (mounted by `frontend/src/App.jsx`) |
 | An HTTP endpoint | the module's `router.py` (or `routers/`), registered in `backend/app/main.py` |
 | A database table | the module's `models.py`, plus a new file in `backend/migrations/versions/` |

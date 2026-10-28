@@ -74,25 +74,27 @@ new cross-module imports without a reason, and never raise that baseline yoursel
 
 Measured, not guessed. Check these again before cutting, because code moves.
 
-**`agents/customer/tools.py` (about 1,270 lines).** Three parts: tool implementations, the
-`CUSTOMER_TOOL_SPECS` text shown to the model, and `register_customer_tools()`. The
-implementations form four groups that never call each other:
+**`agents/customer/tools/` (done 2026-10-28; it was one 1,270-line `tools.py`).** A package now:
 
-| Group | Tools | Shared helpers they use |
-|---|---|---|
-| catalog | `_search_catalog`, `_get_product_details`, `_get_product_photos`, `_find_product_by_image`, `media_payload_for_ids` | `_availability_map`, `_unit_prices`, `_money`, `sellable_product_statuses` |
-| orders | `_get_my_orders` | `_money`, `_parse_bound_id` |
-| store | `_get_store_info`, `_search_knowledge` | none beyond `_StrictArgs` |
-| support | `_find_support_playbook`, `_handover_to_human` and the Arabic folding helpers | `_parse_bound_id` |
+| File | What it holds |
+|---|---|
+| `catalog.py` | `search_catalog`, `get_product_details`, `get_product_photos`, `find_product_by_image`, stock and price lookups |
+| `orders.py` | `get_my_orders` (by invoice number) |
+| `store.py` | `get_store_info`, `search_knowledge` |
+| `support.py` | `find_support_playbook`, `handover_to_human`, the Arabic folding helpers |
+| `_shared.py` | `_StrictArgs`, `_money`, `_parse_bound_id`, `sellable_product_statuses` |
+| `specs.py` | `CUSTOMER_TOOL_SPECS` (the text the model sees) and `register_customer_tools()` |
+| `__init__.py` | Re-exports every name the old file had, so `from ...customer.tools import X` still works |
 
-Every group needs `_StrictArgs`, so that goes in a shared file. No test patches any tool by
-name (tests call `_get_store_info` and `_search_catalog` directly), so moving them does not
-silently disable a patch. Keep `tools.py` as the facade that re-exports every name: `ai/tools.py`
-and eight other files import from it, and `register_customer_tools()` must still register all
-nine tools (`search_catalog`, `get_product_details`, `get_product_photos`, `find_product_by_image`,
-`get_store_info`, `search_knowledge`, `get_my_orders`, `find_support_playbook`,
-`handover_to_human`). After any move, assert that exactly those nine specs register. The module
-docstring still says "seven tools"; it is out of date.
+To add a tool: write its handler and args in the matching group file, add its `ToolSpec` to
+`specs.py`, and re-export any name other code imports from `__init__.py`. The groups never call
+each other; they only share `_shared.py`. Order inside a file matters: `support.py` builds
+module-level constants from `_fold_arabic`, so that function must stay above them.
+
+How the split was proved: every one of the 38 definitions was compared as a syntax tree against
+the old file (none missing, none changed), the nine tools still register, and deleting one spec
+makes `test_language_only_tools_are_registered` fail. The module docstring in `__init__.py`
+now lists all nine tools.
 
 **`runtime.py` (about 1,600 lines).** One class, `AgentRunner`, of about 1,400 lines. It cannot
 be split by moving functions; it needs the same dependency measurement as `pos/service.py`.
