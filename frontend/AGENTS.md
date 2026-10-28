@@ -26,9 +26,12 @@ Locale and page-direction choices are intentional. Preserve them unless the user
 
 The cashier has no mock data any more; it reads the real backend through `cashier/api/`.
 
-Marketing is not in the first release. `pages/Marketing*.jsx`, `pages/Website.jsx` and
-`pages/marketing/` are kept but unrouted: old links land on the dashboard and `/website` shows
-"coming soon". Do not delete them without asking, and do not mistake them for live code.
+Marketing is not in the first release. Its screens (campaigns, audience, automation) and the
+dashboard marketing card were deleted on 2026-10-28 after a build showed they were not in the
+bundle; the backend `marketing` module is untouched. Old `/marketing/*` links redirect to the
+dashboard. "My Website" is different: `pages/Website.jsx` is kept on purpose, unrouted, and talks
+to the real `backend/app/modules/website` (provision, publish, Studio sign-in). `/website` shows
+`WebsiteComingSoon` until it is switched on with one line in `App.jsx`. Do not delete `Website.jsx`.
 
 Tests: `*.test.js` sit next to the code (Vitest, `npm test`). Browser tests are in `e2e/`
 (Playwright, `npm run test:e2e`).
