@@ -6,14 +6,17 @@ from fastapi import APIRouter, Query
 from sqlalchemy import select
 
 from app.core.pagination import paginate
-from app.modules.ai import knowledge
+from app.modules.ai import knowledge, policies
 from app.modules.ai.models import KnowledgeItem
-from app.modules.ai.routers._deps import SettingsCtx, TenantCtxDep
+from app.modules.ai.routers._deps import SettingsCtx, SettingsReadCtx, TenantCtxDep
 from app.modules.ai.schemas import (
     KnowledgeIngested,
     KnowledgeIngestRequest,
     KnowledgeList,
     KnowledgeSearchHit,
+    StorePolicyList,
+    StorePolicyOut,
+    StorePolicySaveRequest,
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -81,3 +84,18 @@ async def list_knowledge(
         ],
         "next_cursor": next_cursor,
     }
+
+
+@router.get("/store-policies", response_model=StorePolicyList)
+async def list_policies(ctx: SettingsReadCtx):
+    """The store's basic policies. All of them are always listed, written or not."""
+    return {
+        "items": await policies.list_policies(ctx.session, ctx.tenant_id),
+        "max_chars": policies.MAX_POLICY_CHARS,
+    }
+
+
+@router.put("/store-policies/{key}", response_model=StorePolicyOut)
+async def save_policy(key: str, body: StorePolicySaveRequest, ctx: SettingsCtx):
+    """Write, replace or (blank text) remove one policy the customer agent answers from."""
+    return await policies.save_policy(ctx.session, ctx.tenant_id, key, body.content)

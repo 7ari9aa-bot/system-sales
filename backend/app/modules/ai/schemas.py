@@ -72,6 +72,29 @@ class KnowledgeIngestRequest(BaseModel):
     source_ref: str | None = None
 
 
+class StorePolicyOut(BaseModel):
+    """One of the store's basic policies, written or not."""
+
+    key: str
+    title: str
+    content: str
+    published: bool
+    updated_at: str | None = None
+
+
+class StorePolicyList(BaseModel):
+    items: list[StorePolicyOut]
+    max_chars: int
+
+
+class StorePolicySaveRequest(BaseModel):
+    # Blank is allowed on purpose: it removes the policy. The length limit is enforced by the
+    # service (one number, one place) so the message names the real limit.
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(default="", max_length=20000)
+
+
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=5, ge=1, le=50)

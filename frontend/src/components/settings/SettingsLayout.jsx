@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
   { to: "/settings/billing", icon: Wallet, labelKey: "settings.nav.billing" },
   { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
+  { to: "/settings/policies", icon: ScrollText, labelKey: "settings.nav.policies" },
   { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
   { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
   { to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" },

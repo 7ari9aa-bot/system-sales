@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 413,
-    "sha256": "0225fa19b3f1f722ec7a2fb142fca71296a66310b46453b6e4f80149dfc39575",
-    "typed_operations": 257
+    "operations": 415,
+    "sha256": "044b68a8120f6e38f2ca138eb40accbf87249e1efbf864ed57fd1808a88c4478",
+    "typed_operations": 259
   },
   "spec": {
     "components": {
@@ -15838,6 +15838,80 @@
           "title": "StocktakeCountsRequest",
           "type": "object"
         },
+        "StorePolicyList": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/StorePolicyOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "max_chars": {
+              "title": "Max Chars",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "max_chars"
+          ],
+          "title": "StorePolicyList",
+          "type": "object"
+        },
+        "StorePolicyOut": {
+          "description": "One of the store's basic policies, written or not.",
+          "properties": {
+            "content": {
+              "title": "Content",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "published": {
+              "title": "Published",
+              "type": "boolean"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At"
+            }
+          },
+          "required": [
+            "key",
+            "title",
+            "content",
+            "published"
+          ],
+          "title": "StorePolicyOut",
+          "type": "object"
+        },
+        "StorePolicySaveRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "content": {
+              "default": "",
+              "maxLength": 20000,
+              "title": "Content",
+              "type": "string"
+            }
+          },
+          "title": "StorePolicySaveRequest",
+          "type": "object"
+        },
         "StreamTokenOut": {
           "properties": {
             "expires_in": {
@@ -24378,6 +24452,221 @@
             }
           },
           "summary": "Create Deep Analysis",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/store-policies": {
+        "get": {
+          "description": "The store's basic policies. All of them are always listed, written or not.",
+          "operationId": "list_policies_api_v1_ai_store_policies_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StorePolicyList"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Policies",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/store-policies/{key}": {
+        "put": {
+          "description": "Write, replace or (blank text) remove one policy the customer agent answers from.",
+          "operationId": "save_policy_api_v1_ai_store_policies__key__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "key",
+              "required": true,
+              "schema": {
+                "title": "Key",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorePolicySaveRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StorePolicyOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Save Policy",
           "tags": [
             "ai"
           ]
