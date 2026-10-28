@@ -3,7 +3,8 @@
 # backend (8001, docker DB) -> playwright (auto-starts vite preview with the
 # proxy env) -> crawl every route -> report written by the spec itself.
 set -u
-cd "D:/sales system/backend" || exit 1
+cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1  # backend/, wherever the repo lives
+PY=./.venv/Scripts/python.exe; [ -x "$PY" ] || PY=./.venv/bin/python
 export ENVIRONMENT=local
 export DATABASE_URL_ADMIN="postgresql+asyncpg://postgres:postgres@localhost:5433/sales"
 export SALES_APP_DB_PASSWORD=ci-app-password
@@ -12,9 +13,9 @@ export DATABASE_URL_APP_ADMIN="postgresql+asyncpg://sales_app:ci-app-password@lo
 export DATABASE_URL="postgresql+asyncpg://sales_app:ci-app-password@localhost:5433/sales"
 export EMAIL_DELIVERY_ENABLED=false
 export REDIS_URL="redis://localhost:6379/0"
-export SECRETS_MASTER_KEY=$("D:/sales system/backend/.venv/Scripts/python.exe" -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
+export SECRETS_MASTER_KEY=$("$PY" -c "import base64,os; print(base64.b64encode(os.urandom(32)).decode())")
 
-./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001 &
+"$PY" -m uvicorn app.main:app --host 127.0.0.1 --port 8001 &
 API_PID=$!
 
 for i in $(seq 1 30); do
@@ -24,7 +25,7 @@ for i in $(seq 1 30); do
 done
 echo "api ready: $code"
 
-cd "D:/sales system/frontend" || exit 1
+cd "$(dirname "${BASH_SOURCE[0]}")/../../../frontend" || exit 1  # frontend/, wherever the repo lives
 export VITE_API_PROXY_TARGET="http://127.0.0.1:8001"
 export BASE_URL="http://127.0.0.1:4173"
 # vite preview started EXPLICITLY (playwright's webServer handshake proved
