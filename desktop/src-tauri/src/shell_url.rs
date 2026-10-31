@@ -211,6 +211,7 @@ mod tests {
         // shell falls back to the scaffold — that case is exercised by
         // resolve's caller, since DEFAULT is reviewed this is the reachable
         // path.)
+        let ok = |s: &str| Some(s.to_string());
         assert_eq!(
             resolve_from_parts(ok("not a url"), None).as_deref(),
             Ok(DEFAULT_WEB_APP_URL)
