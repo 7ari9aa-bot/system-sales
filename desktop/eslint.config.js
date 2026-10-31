@@ -77,6 +77,14 @@ export default tseslint.config(
     },
   },
   {
+    // The scan bridge is deliberately plain JavaScript (the Tauri shell embeds
+    // the raw file into the webview — see src-tauri/src/scan_bridge.rs), so it
+    // lives outside the TS blocks above and needs both worlds of globals: the
+    // browser it runs in and the Node `module` shim its tests capture through.
+    files: ['src/platform/scanner/*.js'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
+  {
     // Tests and node-side gate scripts keep Node globals and may use fetch-free
     // helpers freely; the bans above are for application code. Tests also read
     // untyped JSON out of src-tauri/*.json, which needs a foothold in `any` the

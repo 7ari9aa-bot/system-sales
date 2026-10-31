@@ -1,11 +1,27 @@
 # Fihrist Desktop
 
 A Tauri 2 desktop shell with a React 19 + TypeScript interface, for the same Sales OS backend
-the web app uses. **It is at Phase 0: a pinned, gated scaffold with no screens or features yet.**
-The working product today is the web app in `../frontend/`. See `docs/phase0-report.md` for what
-Phase 0 delivered and `docs/phase0-gates.md` for the gates it must keep passing.
+the web app uses. **It is at Phase 0.5: wrap mode.** The shell loads the deployed web
+application (the real product — cashier, inbox, dashboard) into its `main` window and
+injects a barcode-scan bridge, so a shop PC gets the whole system as a native app with
+USB-scanner support. When no web-app URL resolves it falls back to the Phase 0 scaffold
+SPA. See `docs/platform-boundary.md` (wrap-mode section), `docs/phase0-report.md` for what
+Phase 0 delivered, and `docs/phase0-gates.md` for the gates that must keep passing.
 
 Read the root [AGENTS.md](../AGENTS.md) first for the project map.
+
+## Wrap mode in one paragraph
+
+Window creation moved to Rust (`src-tauri/src/lib.rs`): `shell_url.rs` resolves the web-app
+URL — settings file (`<app-config-dir>/fihrist-desktop.json`, key `web_app_url`) →
+`FH_WEB_APP_URL` env → the reviewed default — and the window is built with the scan bridge
+as an `initialization_script`. The bridge (`src/platform/scanner/scan_bridge.js`, one file
+shared verbatim with the shell and its tests) listens globally for keyboard-wedge scanner
+bursts (layout-immune `event.code` decoding — Arabic keyboards safe) and dispatches a DOM
+`fihrist:scan` event; the web app's POS screen (`frontend/src/lib/scannerBridge.js`) feeds
+that into its existing scan pipeline when the cashier's focus is outside a text field.
+Auth is the web app's own (HttpOnly cookies, persisted by the WebView profile); there is
+no native auth, no token store, and no Tauri IPC exposed to the remote page.
 
 ## The one rule that shapes the code
 
@@ -19,7 +35,7 @@ Full explanation and how it is enforced: [docs/platform-boundary.md](docs/platfo
 | Path | What it holds |
 |---|---|
 | `src/main.tsx`, `src/app/` | Bootstrap, boot screen, error boundary, query client |
-| `src/platform/` | The platform interfaces (`port.ts`), the browser/test platform (`noop.ts`), boot-config validation, and `tauri/` (the only place that touches Tauri) |
+| `src/platform/` | The platform interfaces (`port.ts`), the browser/test platform (`noop.ts`), boot-config validation, `scanner/` (the scan bridge — plain JS shared with the Rust shell), and `tauri/` (the only place that touches Tauri) |
 | `src/shared/` | Small utilities: i18n, logging, money |
 | `src/features/`, `src/components/`, `src/state/` | Empty placeholders, each with a README, waiting for Phase 1 |
 | `src-tauri/` | The Rust side: `tauri.conf.json`, capabilities, icons |

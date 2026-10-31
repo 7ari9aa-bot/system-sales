@@ -17,7 +17,11 @@ describe('tauri.conf.json', () => {
   it('carries the Fihrist identity, not the imported architecture doc’s', () => {
     expect(conf['productName']).toBe('Fihrist')
     expect(conf['identifier']).toBe('com.fihrist.desktop')
-    expect(conf['app']['windows'][0]['title']).toBe('Fihrist')
+    // The window is created in Rust (wrap mode needs a dynamic URL and an
+    // injected initialization script), so the identity now lives in lib.rs.
+    const lib = readFileSync(join(root, 'src-tauri', 'src', 'lib.rs'), 'utf8')
+    expect(lib).toContain('.title("Fihrist")')
+    expect(lib).toContain('"main"')
   })
 
   it('has no trace of the old product name', () => {
@@ -45,9 +49,13 @@ describe('tauri.conf.json', () => {
     expect(conf['build']['devUrl']).toBe('http://127.0.0.1:5183')
   })
 
-  it('declares only the main window in Phase 0', () => {
-    expect(conf['app']['windows']).toHaveLength(1)
-    expect(conf['app']['windows'][0]['label']).toBe('main')
+  it('declares NO static window — wrap mode builds `main` in setup with a runtime URL', () => {
+    // A static window entry cannot carry the resolved web-app URL or the scan
+    // bridge injection; the only correct count here is zero.
+    expect(conf['app']['windows']).toHaveLength(0)
+    const lib = readFileSync(join(root, 'src-tauri', 'src', 'lib.rs'), 'utf8')
+    expect(lib).toContain('WebviewWindowBuilder::new')
+    expect(lib).toContain('initialization_script')
   })
 
   it('names icons that exist on disk', () => {

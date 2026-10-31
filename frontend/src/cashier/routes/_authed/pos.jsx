@@ -22,6 +22,7 @@ import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
+import { registerScanHandler, unregisterScanHandler } from "@/lib/scannerBridge";
 import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -303,6 +304,19 @@ function PosScreen({ user, session }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [quoteReady]);
+
+  // جسر الماسح من صدفة سطح المكتب: عندما لا يكون التركيز داخل حقل إدخال يصل الكود عبر حدث
+  // "fihrist:scan" فيُدفَع لنفس طابور المعالجة. handleBarcode يتجدد كل رسمة، لذا يُمسك عبر
+  // ref (على نمط clearIfStill) ليقرأ الجسر أحدث نسخة منها دائمًا.
+  const handleBarcodeRef = useRef(() => {});
+  useEffect(() => {
+    handleBarcodeRef.current = handleBarcode;
+  });
+  useEffect(() => {
+    const onShellScan = (code) => scanQueue.current.push(() => handleBarcodeRef.current(code));
+    registerScanHandler(onShellScan);
+    return () => unregisterScanHandler(onShellScan);
+  }, []);
 
   return (
     <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">

@@ -35,6 +35,30 @@ src/platform/
 A `// eslint-disable` line silences the editor rule. It does not silence the
 script, which is why both exist.
 
+## Wrap mode: what the gates cover and why remote content is outside them
+
+Since Phase 0.5 the shell has a runtime mode that loads the real web application
+(the deployed `frontend/` app) into the `main` window and injects one plain-DOM
+script, the barcode-scan bridge (`src-tauri/src/scan_bridge.rs` embedding
+`src/platform/scanner/scan_bridge.js`). This is a mode of the SHELL, not a
+bypass of these rules:
+
+- The gates scan `desktop/src/**` — the desktop's own React tree. When the
+  window shows a remote URL, that tree is not running; the remote page lives in
+  `../frontend/` under its own repo, its own lint, and its own CI.
+- The injected bridge exposes **no Tauri IPC**: with `withGlobalTauri: false`
+  and capabilities granting `core:` only, a remote page gets zero `invoke()`
+  surface. The bridge decodes keystrokes and dispatches a DOM CustomEvent
+  (`fihrist:scan`) — indistinguishable, security-wise, from a page the user
+  opened in a browser.
+- The no-hardcoded-host principle is amended narrowly and deliberately: the JS
+  bundle stays host-free (the gate keeps failing on one), while the shell binary
+  carries a single reviewed default (`shell_url::DEFAULT_WEB_APP_URL`) that the
+  settings file (`web_app_url` key) and `FH_WEB_APP_URL` both override.
+- The Phase 1–3 native client plan (transport, SSE, localdb) is unchanged and
+  remains the long-term path; wrap mode is how the desktop ships while that is
+  built.
+
 ## Phase ownership of the surface
 
 | port | phase | notes |
