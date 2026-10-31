@@ -97,7 +97,10 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .invoke_handler(tauri::generate_handler![commands::app_info, commands::log_write])
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::log_write
+        ])
         .setup(|app| {
             let settings_path = app
                 .path()

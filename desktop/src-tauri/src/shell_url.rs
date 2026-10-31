@@ -118,7 +118,10 @@ mod tests {
 
     #[test]
     fn the_default_resolves() {
-        assert_eq!(validate_web_app_url(DEFAULT_WEB_APP_URL), Ok("https://fihrist.world".into()));
+        assert_eq!(
+            validate_web_app_url(DEFAULT_WEB_APP_URL),
+            Ok("https://fihrist.world".into())
+        );
     }
 
     #[test]
@@ -149,9 +152,18 @@ mod tests {
             validate_web_app_url("http://localhost:5173/"),
             Ok("http://localhost:5173".into())
         );
-        assert_eq!(validate_web_app_url("http://127.0.0.1/pos"), Ok("http://127.0.0.1/pos".into()));
-        assert_eq!(validate_web_app_url("http://[::1]/"), Ok("http://[::1]".into()));
-        assert_eq!(validate_web_app_url("http://fihrist.world"), Err(UrlError::Insecure));
+        assert_eq!(
+            validate_web_app_url("http://127.0.0.1/pos"),
+            Ok("http://127.0.0.1/pos".into())
+        );
+        assert_eq!(
+            validate_web_app_url("http://[::1]/"),
+            Ok("http://[::1]".into())
+        );
+        assert_eq!(
+            validate_web_app_url("http://fihrist.world"),
+            Err(UrlError::Insecure)
+        );
     }
 
     #[test]
@@ -186,7 +198,10 @@ mod tests {
             Ok(DEFAULT_WEB_APP_URL)
         );
         // Empty strings count as "not set", not as a rejection.
-        assert_eq!(resolve_from_parts(ok(""), ok("")).as_deref(), Ok(DEFAULT_WEB_APP_URL));
+        assert_eq!(
+            resolve_from_parts(ok(""), ok("")).as_deref(),
+            Ok(DEFAULT_WEB_APP_URL)
+        );
     }
 
     #[test]

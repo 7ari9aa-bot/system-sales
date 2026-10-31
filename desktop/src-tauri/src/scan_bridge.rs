@@ -22,6 +22,9 @@ mod tests {
         assert!(SCAN_BRIDGE_JS.contains("__FIHRIST_SCAN_BRIDGE_INSTALLED"));
         // The source must stay plain JavaScript — a TS-only syntax marker here
         // would mean a type annotation leaked into a classic script.
-        assert!(!SCAN_BRIDGE_JS.contains(": string"), "TS leaked into the injected script");
+        assert!(
+            !SCAN_BRIDGE_JS.contains(": string"),
+            "TS leaked into the injected script"
+        );
     }
 }
