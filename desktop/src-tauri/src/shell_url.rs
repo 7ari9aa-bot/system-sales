@@ -59,20 +59,23 @@ pub fn validate_web_app_url(raw: &str) -> Result<String, UrlError> {
         return Err(UrlError::Invalid);
     }
 
-    let host = match url.host() {
-        Some(url::Host::Domain(domain)) => domain.to_string(),
-        Some(url::Host::Ipv4(ip)) => ip.to_string(),
-        Some(url::Host::Ipv6(ip)) => format!("[{ip}]"),
+    // One host, two shapes: `loopback_key` is the bare address the loopback
+    // list compares against ("::1"), `host_display` is the normalized form the
+    // URL is rebuilt with (brackets restored for IPv6, per RFC 3986).
+    let (host_display, loopback_key) = match url.host() {
+        Some(url::Host::Domain(domain)) => (domain.to_string(), domain.to_string()),
+        Some(url::Host::Ipv4(ip)) => (ip.to_string(), ip.to_string()),
+        Some(url::Host::Ipv6(ip)) => (format!("[{ip}]"), ip.to_string()),
         None => return Err(UrlError::Invalid),
     };
 
-    if !secure && !LOOPBACK_HOSTS.contains(&host.as_str()) {
+    if !secure && !LOOPBACK_HOSTS.contains(&loopback_key.as_str()) {
         return Err(UrlError::Insecure);
     }
 
     let mut normalized = match url.port() {
-        Some(port) => format!("{scheme}://{host}:{port}", scheme = url.scheme()),
-        None => format!("{scheme}://{host}", scheme = url.scheme()),
+        Some(port) => format!("{scheme}://{host_display}:{port}", scheme = url.scheme()),
+        None => format!("{scheme}://{host_display}", scheme = url.scheme()),
     };
     normalized.push_str(url.path().trim_end_matches('/'));
     Ok(normalized)
