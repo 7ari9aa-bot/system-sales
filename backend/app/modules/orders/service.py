@@ -1625,6 +1625,7 @@ class OrderService:
             params,
         )
 
+    @staticmethod
     async def _settled_and_refunded(
         session: AsyncSession, tenant_id: UUID, order: Order
     ) -> tuple[Decimal, Decimal]:

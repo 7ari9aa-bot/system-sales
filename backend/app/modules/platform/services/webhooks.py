@@ -20,6 +20,18 @@ from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
 from .audit import AuditService
 
 
+class PreparedDelivery:
+    """The signed request built by `prepare`, held outside any transaction."""
+
+    __slots__ = ("delivery_id", "url", "body", "headers")
+
+    def __init__(self, *, delivery_id: uuid.UUID, url: str, body: bytes, headers: dict) -> None:
+        self.delivery_id = delivery_id
+        self.url = url
+        self.body = body
+        self.headers = headers
+
+
 def _ssrf_guard(url: str) -> None:
     """Late-bound SSRF guard: resolves THROUGH the aggregator
     (platform.service) because the delivery tests patch it there. This module
@@ -265,24 +277,33 @@ class WebhookDispatcher:
         return "sha256=" + hmac.new(secret.encode(), covered, hashlib.sha256).hexdigest()
 
     @classmethod
-    async def deliver(
+    async def prepare(
         cls,
         session: Any,
         tenant_id: uuid.UUID,
         delivery_id: uuid.UUID,
-        *,
-        _client: httpx.AsyncClient | None = None,
-    ) -> WebhookDelivery | None:
+    ) -> PreparedDelivery | None:
+        """Phase 1 (DB-only, short transaction): validate and build the request.
+
+        Reads the delivery and endpoint, runs the local refusal checks and
+        builds the signed request — NO network I/O. The caller commits this
+        transaction BEFORE the HTTP call, so a slow receiver cannot pin a
+        pooled connection, the delivery-row lock, or the RLS-bound
+        transaction for `TIMEOUT` seconds (the pool-exhaustion failure mode
+        the deep review flagged).
+        """
         delivery = (
             await session.execute(
-                select(WebhookDelivery).where(
+                select(WebhookDelivery)
+                .where(
                     WebhookDelivery.tenant_id == tenant_id,
                     WebhookDelivery.id == delivery_id,
                 )
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if delivery is None or delivery.status in ("delivered", "dead"):
-            return delivery
+            return None
 
         endpoint = (
             await session.execute(
@@ -292,7 +313,7 @@ class WebhookDispatcher:
         if endpoint is None or not endpoint.is_active:
             delivery.status = "failed"
             delivery.last_error = "endpoint missing or inactive"
-            return delivery
+            return None
 
         # S6: re-validate at SEND time. A hostname that resolved to a public
         # address at registration can be re-pointed at an internal one later
@@ -303,7 +324,7 @@ class WebhookDispatcher:
         except ValidationError as exc:
             delivery.status = "dead"
             delivery.last_error = f"endpoint url rejected: {exc.message}"
-            return delivery
+            return None
 
         body = json.dumps(delivery.payload, default=str).encode()
         # §148: the timestamp rides INSIDE the signature (replay protection)
@@ -316,28 +337,99 @@ class WebhookDispatcher:
             "X-SalesOS-Timestamp": timestamp,
             "X-SalesOS-Delivery-Id": str(delivery.id),
         }
-        client = _client or httpx.AsyncClient(timeout=cls.TIMEOUT)
-        try:
-            response = await client.post(endpoint.url, content=body, headers=headers)
-            delivery.attempts += 1
-            delivery.response_code = response.status_code
-            if 200 <= response.status_code < 300:
-                delivery.status = "delivered"
-                delivery.delivered_at = datetime.now(UTC)
-                delivery.next_retry_at = None
-            else:
-                delivery.status = "failed"
-                delivery.last_error = f"HTTP {response.status_code}"
-                cls._schedule_retry(delivery)
-        except Exception as exc:  # noqa: BLE001 — network errors are expected
-            delivery.attempts += 1
+        return PreparedDelivery(
+            delivery_id=delivery.id, url=endpoint.url, body=body, headers=headers
+        )
+
+    @classmethod
+    async def record_outcome(
+        cls,
+        session: Any,
+        tenant_id: uuid.UUID,
+        delivery_id: uuid.UUID,
+        *,
+        response_code: int | None = None,
+        error: str | None = None,
+    ) -> WebhookDelivery | None:
+        """Phase 2 (own short transaction, after the HTTP call): write the result.
+
+        Re-checks the terminal statuses under a row lock, so a concurrent
+        redelivery that finished first is not double-counted (attempts) or
+        overwritten.
+        """
+        delivery = (
+            await session.execute(
+                select(WebhookDelivery)
+                .where(
+                    WebhookDelivery.tenant_id == tenant_id,
+                    WebhookDelivery.id == delivery_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if delivery is None or delivery.status in ("delivered", "dead"):
+            return delivery
+
+        delivery.attempts += 1
+        if error is None and response_code is not None and 200 <= response_code < 300:
+            delivery.response_code = response_code
+            delivery.status = "delivered"
+            delivery.delivered_at = datetime.now(UTC)
+            delivery.next_retry_at = None
+        elif response_code is not None:
+            delivery.response_code = response_code
             delivery.status = "failed"
-            delivery.last_error = str(exc)[:300]
+            delivery.last_error = f"HTTP {response_code}"
             cls._schedule_retry(delivery)
+        else:
+            delivery.status = "failed"
+            delivery.last_error = (error or "unknown delivery failure")[:300]
+            cls._schedule_retry(delivery)
+        return delivery
+
+    @classmethod
+    async def deliver(
+        cls,
+        session: Any,
+        tenant_id: uuid.UUID,
+        delivery_id: uuid.UUID,
+        *,
+        _client: httpx.AsyncClient | None = None,
+    ) -> WebhookDelivery | None:
+        """Single-session convenience: prepare → POST → record_outcome.
+
+        The PRODUCTION worker must NOT use this path — it holds the session's
+        transaction open across the network call (see prepare/record_outcome).
+        Kept for inline callers and tests that drive the whole flow on one
+        session with an injected client.
+        """
+        prepared = await cls.prepare(session, tenant_id, delivery_id)
+        if prepared is None:
+            return (
+                await session.execute(
+                    select(WebhookDelivery).where(
+                        WebhookDelivery.tenant_id == tenant_id,
+                        WebhookDelivery.id == delivery_id,
+                    )
+                )
+            ).scalar_one_or_none()
+
+        client = _client or httpx.AsyncClient(timeout=cls.TIMEOUT)
+        response_code: int | None = None
+        error: str | None = None
+        try:
+            response = await client.post(
+                prepared.url, content=prepared.body, headers=prepared.headers
+            )
+            response_code = response.status_code
+        except Exception as exc:  # noqa: BLE001 — network errors are expected
+            error = str(exc)
         finally:
             if _client is None:
                 await client.aclose()
-        return delivery
+        return await cls.record_outcome(
+            session, tenant_id, delivery_id, response_code=response_code, error=error
+        )
 
     @staticmethod
     def _schedule_retry(delivery: WebhookDelivery) -> None:

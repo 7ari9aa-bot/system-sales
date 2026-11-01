@@ -101,9 +101,13 @@ def _canary_chosen(
     Conversations bucket by their own id (the same conversation must not flip
     between stable and candidate across retries). Conversation-less agents —
     the analyst today, future job/API agents — bucket by the inbound event id
-    when the caller carries one, and otherwise by the agent id, so a retry of
-    the SAME work sees the SAME version instead of always falling back to
-    stable.
+    when the caller carries one. With NEITHER id there is nothing stable to
+    bucket by: seeding on the agent id put every run of that agent in the
+    SAME bucket, so its canary was all-or-nothing and §169's metric
+    comparison never had a split. A run-scoped bucket (fresh uuid per run)
+    splits statistically and is the correct unit for one-shot reports — a
+    retried report is a new run, and its idempotency is the caller's concern,
+    not the version router's.
     """
     if canary_percent <= 0:
         return False
@@ -112,7 +116,7 @@ def _canary_chosen(
     elif inbound_message_id is not None:
         seed = str(inbound_message_id).encode()
     else:
-        seed = agent_id.bytes
+        seed = uuid.uuid4().bytes
     return int(hashlib.md5(seed).hexdigest(), 16) % 100 < canary_percent
 
 
@@ -448,6 +452,20 @@ class AgentRunner:
                 run.error = f"{type(exc).__name__}: model provider call failed"
             else:
                 run.error = str(exc)
+            # §42 integrity: the cap measures ai_usage, which used to be written
+            # only when a run SUCCEEDED — a tenant hammering a failing/fallback
+            # provider burned real billed tokens (the calls that landed inside
+            # the doomed run) that never counted against the cap. The loop
+            # keeps run.tokens_* current per call, so record what was billed.
+            if run.tokens_in or run.tokens_out:
+                await record_usage(
+                    session,
+                    tenant_id,
+                    agent_id=agent.id,
+                    tokens_in=run.tokens_in,
+                    tokens_out=run.tokens_out,
+                    cost=estimate_cost(run.tokens_in, run.tokens_out),
+                )
             run.finished_at = _now()
             await session.flush()
             if isinstance(exc, DomainError):
@@ -1127,6 +1145,13 @@ class AgentRunner:
             raw_model_name = chat_result.raw_model or raw_model_name
             tokens_in += chat_result.tokens_in
             tokens_out += chat_result.tokens_out
+            # Book the billed tokens onto the run row AS THEY ACCRUE: if the
+            # loop dies mid-run (provider error, guardrail raise, budget
+            # fallback), the failure handler below can still record usage the
+            # provider actually billed — spend used to escape the monthly cap
+            # because ai_usage was written only on the success path.
+            run.tokens_in = tokens_in
+            run.tokens_out = tokens_out
 
             if not chat_result.tool_calls:
                 content = chat_result.content
@@ -1310,6 +1335,8 @@ class AgentRunner:
                 if regen is not None:
                     tokens_in += regen.tokens_in
                     tokens_out += regen.tokens_out
+                    run.tokens_in = tokens_in
+                    run.tokens_out = tokens_out
                     raw_model_name = regen.raw_model or raw_model_name
                 corrected = regen.content if regen is not None else None
                 if regen_timed_out:

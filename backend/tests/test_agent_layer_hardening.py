@@ -77,8 +77,20 @@ def test_canary_rollout_covers_conversationless_agents() -> None:
     assert _canary_chosen(0, None, None, agent_id) is False
 
 
+def test_canary_rollout_splits_runs_of_an_agent_with_no_ids() -> None:
+    """With neither a conversation nor an inbound id, runs bucket FRESH per
+    run — seeding on the agent id put every run of that agent in one bucket,
+    so its canary was all-or-nothing and §169's comparison had no split."""
+    agent_id = uuid.uuid4()
+    picks = {_canary_chosen(50, None, None, agent_id) for _ in range(40)}
+    assert picks == {True, False}, (
+        "a conversation-less agent's canary must split across runs, not pin one bucket"
+    )
+
+
 def test_canary_rollout_is_deterministic_for_the_same_work() -> None:
-    """A retried conversation-less run must see the same version bucket."""
+    """A retried conversation-less run carrying the same inbound event id
+    must see the same version bucket."""
     agent_id = uuid.uuid4()
     first = _canary_chosen(37, None, "inbound-event-1", agent_id)
     second = _canary_chosen(37, None, "inbound-event-1", agent_id)

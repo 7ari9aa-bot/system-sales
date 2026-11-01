@@ -348,7 +348,22 @@ async def reserve_budget(
     )
     cap, on_exceed, agent_scoped = _resolve_cap(list(policies), agent_id)
 
-    if cap <= 0:
+    if cap < 0:
+        # A negative cap is a data error, not a statement — refuse to guess
+        # and enforce nothing rather than inventing a number.
+        return None
+    if cap == 0:
+        # Zero is a statement, not a vacancy: the tenant said NO spend. It
+        # used to read as "unlimited" (no reservation, no cap) — a fail-open
+        # on an explicit merchant instruction. Dispatch the policy's own
+        # on-exceed action (block / fallback / warn) for any spend attempt.
+        _on_budget_exceeded(
+            on_exceed,
+            "AI budget cap is zero",
+            details={"cap": "0", "estimate": str(Decimal(str(estimated_cost or 0)))},
+        )
+        # on_exceed == "warn" lands here: allowed, but there is no cap to
+        # reserve against, so no reservation row.
         return None
 
     scope_agent_id = agent_id if agent_scoped else None

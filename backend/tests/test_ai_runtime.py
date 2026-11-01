@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.core.errors import NotFoundError
+from app.core.errors import DomainError, ExternalProviderError, NotFoundError
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import Agent, AgentRun, AgentTool, AIUsage, ToolCall
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
@@ -289,6 +289,49 @@ async def test_agent_run_failed_on_gateway_error(db, tenant_ctx, monkeypatch):
     assert run.finished_at is not None
 
 
+async def test_a_run_that_fails_after_billed_calls_still_counts_against_the_cap(
+    db, tenant_ctx, monkeypatch
+):
+    """§42 integrity: the first gateway call lands (tokens billed), the second
+    explodes mid-loop. The provider bills the first call whether or not the run
+    finishes — usage must be recorded, or repeated failing runs spend real
+    money that never touches the monthly cap."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _agent_with_tool(db, tenant_id)
+    await _seed_variant(db, tenant_id)
+    calls = {"n": 0}
+
+    async def fake_chat(self, session, tid, *, alias, messages, tools=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _result(
+                tool_calls=[
+                    ToolCallRequest(
+                        id="call1", name="search_catalog", arguments={"query": "widget"}
+                    )
+                ],
+                tokens_in=40,
+                tokens_out=8,
+            )
+        raise ExternalProviderError("provider 500 mid-loop")
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    with pytest.raises(DomainError):
+        await AgentRunner(gateway=AIGateway()).run(
+            db, tenant_id, agent_id=agent.id, user_message="hi"
+        )
+
+    run = (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))).scalar_one()
+    assert run.status == "failed"
+    assert (run.tokens_in, run.tokens_out) == (40, 8)
+    usage = (
+        (await db.execute(select(AIUsage).where(AIUsage.tenant_id == tenant_id))).scalars().all()
+    )
+    assert len(usage) == 1
+    assert (usage[0].tokens_in, usage[0].tokens_out) == (40, 8)
+    assert usage[0].cost > 0
+
+
 async def test_unknown_agent_kind_blocks_before_any_model_call(db, tenant_ctx, monkeypatch):
     """A definition typo must not spend money before failing closed."""
     agent = Agent(
@@ -513,8 +556,15 @@ async def test_search_catalog_browse_filter_agrees_with_the_sell_gate():
     # the vocabulary.
     session = _StubSession()
     await _search_catalog(session, uuid.uuid4(), query="widget")
-    # statements[0] is the SET LOCAL; the main select is the last one.
-    sql = str(session.statements[-1].compile(compile_kwargs={"literal_binds": True}))
+    # statements[0] is the SET LOCAL, the last one is the threshold RESET —
+    # the browse select is the statement that carries the status filter.
+    sql = str(
+        [
+            str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            for stmt in session.statements
+            if "products.status IN" in str(stmt)
+        ][0]
+    )
     match = re.search(r"products\.status IN \(([^)]*)\)", sql)
     assert match is not None, (
         "the browse query never filters Product.status — a draft/archived "

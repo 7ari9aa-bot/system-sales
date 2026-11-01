@@ -21,6 +21,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import httpx
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
@@ -99,6 +100,11 @@ class WebhookWorker(StreamWorker):
         if not delivery_id:
             return
         tenant_id = envelope.tenant_id
+        # Phase 1 (short transaction): validate, build the signed request,
+        # and pass the local refusal checks. Committed BEFORE the network
+        # call so a slow receiver cannot pin the pooled connection, the
+        # delivery-row lock, or the RLS-bound transaction for Webhook
+        # TIMEOUT seconds (the deep review's pool-exhaustion finding).
         async with SessionLocal() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
@@ -112,12 +118,36 @@ class WebhookWorker(StreamWorker):
                 # allowlist in identity.deps keeps /notifications reachable for
                 # exactly that reason.
                 await defer_unless_tenant_allows(session, tenant_id, "allows_automation")
-                delivery = await WebhookDispatcher.deliver(
+                prepared = await WebhookDispatcher.prepare(
                     session, tenant_id, uuid.UUID(delivery_id)
                 )
+        if prepared is None:
+            return
+        # Phase 2 (NO transaction): the HTTP call owns nothing but itself.
+        response_code: int | None = None
+        error: str | None = None
+        try:
+            async with httpx.AsyncClient(timeout=WebhookDispatcher.TIMEOUT) as client:
+                response = await client.post(
+                    prepared.url, content=prepared.body, headers=prepared.headers
+                )
+                response_code = response.status_code
+        except Exception as exc:  # noqa: BLE001 — network errors are expected
+            error = str(exc)
+        # Phase 3 (own short transaction): the outcome. Re-enqueue on failure
+        # through the outbox so the relay re-fires it; the retry schedule
+        # lives on the delivery row.
+        async with SessionLocal() as session:
+            async with session.begin():
+                await bind_tenant(session, tenant_id)
+                delivery = await WebhookDispatcher.record_outcome(
+                    session,
+                    tenant_id,
+                    uuid.UUID(delivery_id),
+                    response_code=response_code,
+                    error=error,
+                )
                 if delivery is not None and delivery.status == "failed":
-                    # Re-enqueue through the outbox so the relay re-fires it;
-                    # the retry schedule lives on the delivery row.
                     from app.core.events.writer import add_outbox_event
 
                     if delivery.next_retry_at and delivery.next_retry_at <= datetime.now(

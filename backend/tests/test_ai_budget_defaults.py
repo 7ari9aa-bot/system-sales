@@ -294,6 +294,47 @@ async def test_an_agent_cap_still_blocks_when_that_agent_exceeds_it(db: AsyncSes
         await reserve_budget(db, tenant_id, agent_id=agent_a.id, estimated_cost=Decimal("1"))
 
 
+async def test_a_zero_hard_cap_means_zero_not_unlimited(db: AsyncSession, tenant_ctx):
+    """Zero is a merchant STATEMENT ("no AI spend"), not a vacancy. It used to
+    read as unlimited — no reservation, no cap — a fail-open on an explicit
+    instruction. With on_exceed="block" the reserve must refuse; with
+    "warn" it must allow (the merchant asked to be told, not stopped)."""
+    from app.modules.ai.gateway import AIBudgetExhaustedError
+    from app.modules.ai.models import BudgetPolicy
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(
+        BudgetPolicy(
+            tenant_id=tenant_id,
+            period="monthly",
+            hard_cap=Decimal("0"),
+            on_exceed="block",
+        )
+    )
+    await db.flush()
+
+    with pytest.raises(AIBudgetExhaustedError):
+        await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
+
+
+async def test_a_zero_hard_cap_with_warn_policy_still_allows(db: AsyncSession, tenant_ctx):
+    from app.modules.ai.models import BudgetPolicy
+
+    tenant_id = tenant_ctx.tenant_id
+    db.add(
+        BudgetPolicy(
+            tenant_id=tenant_id,
+            period="monthly",
+            hard_cap=Decimal("0"),
+            on_exceed="warn",
+        )
+    )
+    await db.flush()
+
+    reservation_id = await reserve_budget(db, tenant_id, estimated_cost=Decimal("0.01"))
+    assert reservation_id is None, "a zero warn cap should reserve nothing"
+
+
 # --------------------------------- the scheduler sweep reclaims parked budget --
 
 

@@ -7,6 +7,7 @@ Split out of the former single-file ``customer/tools.py``; the code is unchanged
 
 from __future__ import annotations
 
+import itertools
 import operator
 import uuid
 from datetime import UTC, date, datetime
@@ -239,6 +240,7 @@ async def _search_catalog(
         return list(dict.fromkeys(arms))
 
     words = [w for w in query.split() if w][:6] or [query]
+    _param_counter = itertools.count()
 
     def _word_expr(word: str):
         arms = [
@@ -269,7 +271,10 @@ async def _search_catalog(
                 # word rides as a bound parameter. The bindparam name is
                 # UNIQUE per (word, column): shared names across arms let a
                 # later arm's value leak into an earlier one's text().
-                param = f"trgm_{abs(hash(word)) % 99999}_{col.split('.')[0]}"
+                # Deterministic enumeration, NOT hash(): str hash is
+                # randomized per process and two words can collide on the
+                # same %99999 bucket, silently reusing one word's value.
+                param = f"trgm_{next(_param_counter)}_{col.split('.')[0]}"
                 arms.append(
                     text(
                         f"EXISTS (SELECT 1 FROM unnest(regexp_split_to_array("
@@ -334,6 +339,11 @@ async def _search_catalog(
     }
     if not rows:
         result["hint"] = "مفيش مطابق — جرب كلمة واحدة بس، أو تهجئة مختلفة للكلمة، أو شيل الفلاتر."
+    # Restore the trgm threshold INSIDE the same transaction: SET LOCAL is
+    # tx-scoped, not statement-scoped, so the loosened 0.2 would otherwise
+    # stay in force for every later `%` query in this run (vision retrieval,
+    # other tools) — a cross-tool behavior leak the deep review flagged.
+    await session.execute(text("SET LOCAL pg_trgm.similarity_threshold = DEFAULT"))
     return result
 
 
