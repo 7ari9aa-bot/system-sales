@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import hashlib
-import re
-from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import insert
 
 from app.modules.identity.deps import DbSession
-from app.modules.platform.models import VisitorEvent
+from app.modules.platform.services.telemetry import is_valid_event, record_visitor_event
 
 router = APIRouter(prefix="/public", tags=["public"])
-
-_EVENT_TYPES = frozenset({"page_view", "click", "error", "performance"})
-_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
 class TelemetryEventIn(BaseModel):
@@ -40,31 +33,8 @@ async def ingest_telemetry(
     body: TelemetryEventIn,
 ) -> dict[str, bool]:
     """Best-effort, anonymous, no auth — a telemetry write must never break a page."""
-    if body.event_type not in _EVENT_TYPES:
-        return {"ok": False}
-    if not _ID_RE.match(body.visitor_id) or not _ID_RE.match(body.session_id):
+    if not is_valid_event(body):
         return {"ok": False}
     ip = request.client.host if request.client else None
-    ip_hash = hashlib.sha256(ip.encode()).hexdigest() if ip else None
-    # Trim metadata so a client cannot use telemetry as a storage bucket.
-    metadata = {
-        str(key)[:64]: str(value)[:500] for key, value in list((body.metadata or {}).items())[:20]
-    }
-    await session.execute(
-        insert(VisitorEvent).values(
-            visitor_id=body.visitor_id,
-            session_id=body.session_id,
-            event_type=body.event_type,
-            path=body.path[:512],
-            url=(body.url or "")[:2048] or None,
-            referrer=(body.referrer or "")[:2048] or None,
-            element=(body.element or "")[:500] or None,
-            status_code=body.status_code,
-            duration_ms=body.duration_ms,
-            metadata_json=metadata,
-            user_agent=(request.headers.get("user-agent") or "")[:1000] or None,
-            ip_hash=ip_hash,
-            created_at=datetime.now(UTC),
-        )
-    )
+    await record_visitor_event(session, body, ip=ip, user_agent=request.headers.get("user-agent"))
     return {"ok": True}

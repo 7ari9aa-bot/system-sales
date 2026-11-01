@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 415,
-    "sha256": "044b68a8120f6e38f2ca138eb40accbf87249e1efbf864ed57fd1808a88c4478",
-    "typed_operations": 259
+    "operations": 422,
+    "sha256": "b53dfdc14625ff3bd6d7483e399fcf591906f7c320af740e6e39abdb4f1c2726",
+    "typed_operations": 266
   },
   "spec": {
     "components": {
@@ -3450,6 +3450,22 @@
             "name"
           ],
           "title": "CategoryRequest",
+          "type": "object"
+        },
+        "ChannelAccessUpdate": {
+          "properties": {
+            "can_send": {
+              "default": true,
+              "title": "Can Send",
+              "type": "boolean"
+            },
+            "enabled": {
+              "default": true,
+              "title": "Enabled",
+              "type": "boolean"
+            }
+          },
+          "title": "ChannelAccessUpdate",
           "type": "object"
         },
         "ChosenRetentionPolicyOut": {
@@ -12197,6 +12213,207 @@
           "title": "OutboxEventOut",
           "type": "object"
         },
+        "OwnerChannelMatrixOut": {
+          "properties": {
+            "access": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Access",
+              "type": "array"
+            },
+            "members": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Members",
+              "type": "array"
+            },
+            "providers": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Providers",
+              "type": "array"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "tenant_name": {
+              "title": "Tenant Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "tenant_name",
+            "providers",
+            "members",
+            "access"
+          ],
+          "title": "OwnerChannelMatrixOut",
+          "type": "object"
+        },
+        "OwnerOverviewOut": {
+          "properties": {
+            "channels": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Channels",
+              "type": "array"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Counts",
+              "type": "object"
+            },
+            "generated_at": {
+              "format": "date-time",
+              "title": "Generated At",
+              "type": "string"
+            },
+            "recent_visitors": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Recent Visitors",
+              "type": "array"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "subsystems": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Subsystems",
+              "type": "array"
+            }
+          },
+          "required": [
+            "status",
+            "generated_at",
+            "counts",
+            "subsystems",
+            "channels",
+            "recent_visitors"
+          ],
+          "title": "OwnerOverviewOut",
+          "type": "object"
+        },
+        "OwnerTenantListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/OwnerTenantRowOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total"
+          ],
+          "title": "OwnerTenantListOut",
+          "type": "object"
+        },
+        "OwnerTenantRowOut": {
+          "properties": {
+            "channels_connected": {
+              "title": "Channels Connected",
+              "type": "integer"
+            },
+            "channels_total": {
+              "title": "Channels Total",
+              "type": "integer"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "lifecycle_state": {
+              "title": "Lifecycle State",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "users": {
+              "title": "Users",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "lifecycle_state",
+            "is_active",
+            "users",
+            "channels_connected",
+            "channels_total"
+          ],
+          "title": "OwnerTenantRowOut",
+          "type": "object"
+        },
+        "OwnerVisitorListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "top_paths": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Top Paths",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "unique_visitors": {
+              "title": "Unique Visitors",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total",
+            "unique_visitors",
+            "top_paths"
+          ],
+          "title": "OwnerVisitorListOut",
+          "type": "object"
+        },
         "PasswordResetConfirmRequest": {
           "properties": {
             "password": {
@@ -16492,6 +16709,113 @@
             }
           },
           "title": "TaskUpdate",
+          "type": "object"
+        },
+        "TelemetryEventIn": {
+          "properties": {
+            "duration_ms": {
+              "anyOf": [
+                {
+                  "maximum": 600000.0,
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duration Ms"
+            },
+            "element": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Element"
+            },
+            "event_type": {
+              "enum": [
+                "page_view",
+                "click",
+                "error",
+                "performance"
+              ],
+              "title": "Event Type",
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": true,
+              "title": "Metadata",
+              "type": "object"
+            },
+            "path": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            },
+            "referrer": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Referrer"
+            },
+            "session_id": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Session Id",
+              "type": "string"
+            },
+            "status_code": {
+              "anyOf": [
+                {
+                  "maximum": 599.0,
+                  "minimum": 100.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Code"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "visitor_id": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Visitor Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "visitor_id",
+            "session_id",
+            "event_type",
+            "path"
+          ],
+          "title": "TelemetryEventIn",
           "type": "object"
         },
         "TemplateApproveRequest": {
@@ -29795,6 +30119,109 @@
           "summary": "Create Category",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/channels/status": {
+        "get": {
+          "description": "Connection truth + THIS user's access, with no credential material.\n\nMembership-gated on purpose: staff need to know which channels are locked\nin the inbox, but ``GET /integrations`` is settings-scoped and exposes\nwebhook URLs/keys they must not see.",
+          "operationId": "list_channel_status_api_v1_channels_status_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Response List Channel Status Api V1 Channels Status Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Channel Status",
+          "tags": [
+            "channels"
           ]
         }
       },
@@ -45418,6 +45845,589 @@
           ]
         }
       },
+      "/api/v1/owner/overview": {
+        "get": {
+          "operationId": "owner_overview_api_v1_owner_overview_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerOverviewOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Overview",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
+      "/api/v1/owner/tenants": {
+        "get": {
+          "operationId": "owner_tenants_api_v1_owner_tenants_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 100,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerTenantListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Tenants",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
+      "/api/v1/owner/tenants/{tenant_id}/channels": {
+        "get": {
+          "operationId": "owner_channel_matrix_api_v1_owner_tenants__tenant_id__channels_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerChannelMatrixOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Channel Matrix",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
+      "/api/v1/owner/tenants/{tenant_id}/channels/{provider}/users/{user_id}": {
+        "put": {
+          "operationId": "owner_set_channel_access_api_v1_owner_tenants__tenant_id__channels__provider__users__user_id__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "provider",
+              "required": true,
+              "schema": {
+                "title": "Provider",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelAccessUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Owner Set Channel Access Api V1 Owner Tenants  Tenant Id  Channels  Provider  Users  User Id  Put",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Set Channel Access",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
+      "/api/v1/owner/visitors": {
+        "get": {
+          "operationId": "owner_visitors_api_v1_owner_visitors_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 100,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "hours",
+              "required": false,
+              "schema": {
+                "default": 24,
+                "maximum": 720,
+                "minimum": 1,
+                "title": "Hours",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerVisitorListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Visitors",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
       "/api/v1/platform/admin/break-glass": {
         "post": {
           "description": "§147: emergency access — records a security event + issues a capability token.\n\nThe token is one-shot and expires in 15 minutes. The event is NEVER silent:\neven the platform admin's own break-glass is recorded.",
@@ -56323,6 +57333,52 @@
           "summary": "Add Product Variant",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/public/telemetry": {
+        "post": {
+          "description": "Best-effort, anonymous, no auth — a telemetry write must never break a page.",
+          "operationId": "ingest_telemetry_api_v1_public_telemetry_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryEventIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "type": "boolean"
+                    },
+                    "title": "Response Ingest Telemetry Api V1 Public Telemetry Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Ingest Telemetry",
+          "tags": [
+            "public"
           ]
         }
       },

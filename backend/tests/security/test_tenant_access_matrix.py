@@ -89,6 +89,12 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # website-bridge suite. Declared here so the matrix sees the
         # alternative resolver instead of flagging it as unguarded.
         "GET /api/v1/website-platform/catalog/products",
+        # Anonymous WEBSITE telemetry (modules/platform/routers/telemetry.py):
+        # the caller is an unauthenticated VISITOR's browser before any
+        # tenant/account exists. The write is platform-level (visitor_events
+        # has no tenant column), field-capped, IP stored only as a salted
+        # hash, and the event-type/id allowlist refuses everything else.
+        "POST /api/v1/public/telemetry",
         # SEC-1: mints a 5-minute stream-scoped credential from the caller's
         # OWN authed identity — reads no tenant-scoped row, binds no GUC.
         "POST /api/v1/realtime/stream-token",
