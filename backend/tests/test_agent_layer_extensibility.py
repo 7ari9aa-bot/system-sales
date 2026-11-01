@@ -198,12 +198,8 @@ async def test_a_third_kind_declares_hooks_with_zero_core_edits(third_kind) -> N
             # helper (it is skipped here because the fixture's third kind
             # carries a test-only tool the global TOOLS registry lacks); the
             # startup-failure contract is pinned in tests/test_agent_hooks.py.
-            assert inspect.iscoroutinefunction(
-                resolve_definition_hook(hooked, "pre_run_hook")
-            )
-            assert inspect.iscoroutinefunction(
-                resolve_definition_hook(hooked, "post_run_hook")
-            )
+            assert inspect.iscoroutinefunction(resolve_definition_hook(hooked, "pre_run_hook"))
+            assert inspect.iscoroutinefunction(resolve_definition_hook(hooked, "post_run_hook"))
             # And the runtime invokes them through the shared stage helpers —
             # the same code path every kind uses, no kind if-statements.
             from app.modules.ai.models import AgentRun

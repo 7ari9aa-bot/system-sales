@@ -126,9 +126,7 @@ def registered_kind():
 async def test_valid_post_run_hook_path_resolves_and_validates(registered_kind) -> None:
     """(a) A definition with a valid dotted-path post_run_hook passes
     validate_registry; the hook resolves to an async callable, cached."""
-    defn = registered_kind(
-        _definition("hooks_probe_valid", post_run_hook=_path("_noop_post_hook"))
-    )
+    defn = registered_kind(_definition("hooks_probe_valid", post_run_hook=_path("_noop_post_hook")))
     validate_registry()
     resolved = resolve_definition_hook(defn, "post_run_hook")
     assert inspect.iscoroutinefunction(resolved)
@@ -192,9 +190,7 @@ async def _run(db, tenant_id, agent: Agent) -> AgentRunResult:
 
 async def _single_run_row(db, tenant_id) -> AgentRun:
     return (
-        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id)))
-        .scalars()
-        .one()
+        (await db.execute(select(AgentRun).where(AgentRun.tenant_id == tenant_id))).scalars().one()
     )
 
 
@@ -216,9 +212,7 @@ async def test_post_run_hook_replacements_pass_the_guardrail(
 ) -> None:
     """(d) Unguarded hook text is WITHHARDED; guarded hook text is delivered."""
     HOOK_CALLS.clear()
-    registered_kind(
-        _definition("hooks_e2e_unguarded", post_run_hook=_path("_appending_post_hook"))
-    )
+    registered_kind(_definition("hooks_e2e_unguarded", post_run_hook=_path("_appending_post_hook")))
     agent = await _agent_of_kind(db, tenant_ctx.tenant_id, "hooks_e2e_unguarded")
 
     result = await _run(db, tenant_ctx.tenant_id, agent)
@@ -252,9 +246,7 @@ async def test_post_run_hook_full_result_keeps_main_loop_spend(
 ) -> None:
     """(g) A hook returning a bare AgentRunResult (zero tokens by default)
     must NOT erase the main loop's token/cost accounting on the run row."""
-    registered_kind(
-        _definition("hooks_e2e_bare", post_run_hook=_path("_bare_result_post_hook"))
-    )
+    registered_kind(_definition("hooks_e2e_bare", post_run_hook=_path("_bare_result_post_hook")))
     agent = await _agent_of_kind(db, tenant_ctx.tenant_id, "hooks_e2e_bare")
 
     async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
@@ -344,9 +336,7 @@ async def test_unresolvable_hook_fails_the_run_closed(
 ) -> None:
     """A declared hook the registry cannot resolve (registry never validated)
     fails the run with hook_not_resolved — never a silent skip."""
-    registered_kind(
-        _definition("hooks_unresolved", post_run_hook="tests.no_such_hook_module:hook")
-    )
+    registered_kind(_definition("hooks_unresolved", post_run_hook="tests.no_such_hook_module:hook"))
     agent = await _agent_of_kind(db, tenant_ctx.tenant_id, "hooks_unresolved")
 
     result = await _run(db, tenant_ctx.tenant_id, agent)

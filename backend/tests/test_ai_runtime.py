@@ -316,9 +316,7 @@ async def test_unknown_agent_kind_blocks_before_any_model_call(db, tenant_ctx, m
     assert result.guardrail_reason == "unknown_agent_kind"
     # The block is free but not invisible: a minimal failed run row must be
     # persisted so a deployment typo shows up in the runs audit trail.
-    row = (
-        await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))
-    ).scalar_one()
+    row = (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))).scalar_one()
     assert row.status == "failed"
     assert row.error == "unknown_agent_kind"
     assert row.tokens_in == 0 and row.tokens_out == 0

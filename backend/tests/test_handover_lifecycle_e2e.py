@@ -484,9 +484,7 @@ async def test_a_grounding_blocked_run_with_tool_evidence_is_low_confidence(
         return TurnOutcome(
             reply=None,
             blocked_reason="grounding:unsourced numeral: 14",
-            tool_calls_made=[
-                {"name": "search_catalog", "status": "ok", "result": {"results": []}}
-            ],
+            tool_calls_made=[{"name": "search_catalog", "status": "ok", "result": {"results": []}}],
         )
 
     conversation = await _stubbed_turn(db, tenant_ctx.tenant_id, monkeypatch, fake_turn)
