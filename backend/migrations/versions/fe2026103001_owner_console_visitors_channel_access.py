@@ -27,7 +27,7 @@ _TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 _GRANT_SALES_APP = """DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
-        {grant}
+        {grant};
     END IF;
 END
 $$;"""
