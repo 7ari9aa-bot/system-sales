@@ -46,7 +46,21 @@ class ToolSpec:
 TOOLS: dict[str, ToolSpec] = {}
 
 
-def register_tool(spec: ToolSpec) -> ToolSpec:
+def register_tool(spec: ToolSpec, *, allow_override: bool = False) -> ToolSpec:
+    """Register one tool. Fail-closed on a conflicting duplicate name.
+
+    A global tool name is a platform contract: two agents accidentally
+    registering different handlers under one name would silently give the
+    second agent the first agent's authority. Re-registering the SAME spec
+    (the import/test idempotency path) is allowed; anything else must opt in
+    with ``allow_override=True``.
+    """
+    existing = TOOLS.get(spec.name)
+    if existing is not None and existing != spec and not allow_override:
+        raise ValueError(
+            f"Duplicate tool registration forbidden: tool '{spec.name}' is already "
+            "registered with a different specification"
+        )
     TOOLS[spec.name] = spec
     return spec
 

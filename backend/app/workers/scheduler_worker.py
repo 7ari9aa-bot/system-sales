@@ -49,6 +49,10 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # §135: a PENDING approval past its TTL must not stay decidable forever —
     # the parked run would hang indefinitely otherwise.
     "expire_approvals": (timedelta(minutes=10), {}),
+    # §42: a reservation whose run crashed before settling parks budget until
+    # its TTL — but only that tenant's NEXT reserve reclaims it, so a quiet
+    # tenant's parked spend is invisible. This sweep is the leak metric.
+    "expire_budget_reservations": (timedelta(minutes=15), {}),
     # §46: without a sweep a deadline is decorative — nothing ever notices it
     # passing, so "SLA risk" would never turn into "breached".
     "sla.sweep": (timedelta(minutes=5), {}),
@@ -187,6 +191,23 @@ async def _handle_expire_approvals(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("expire_approvals", _handle_expire_approvals)
+
+
+async def _handle_expire_budget_reservations(session, tenant_id, payload: dict) -> dict:
+    """§42: expire budget reservations whose run never settled.
+
+    reserve_budget expires stale rows lazily, per tenant, on the next reserve —
+    a tenant that makes no further AI call keeps its crashed-run budget parked
+    forever. The rowcount is the parked-budget leak metric.
+    """
+    from app.modules.ai.budget import expire_stale_reservations
+
+    expired = await expire_stale_reservations(session, tenant_id)
+    logger.info("scheduler.budget_reservations_expired tenant=%s count=%d", tenant_id, expired)
+    return {"count": expired}
+
+
+register_job_handler("expire_budget_reservations", _handle_expire_budget_reservations)
 
 
 async def _handle_sla_sweep(session, tenant_id, payload: dict) -> dict:

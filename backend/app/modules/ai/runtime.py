@@ -15,9 +15,9 @@ import hashlib
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
@@ -27,7 +27,13 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import get_settings
 from app.core.errors import DomainError, ExternalProviderError, NotFoundError
+from app.modules.ai.constants import (
+    VOICE_ECHO_SENTINEL,
+    VOICE_NO_TRANSCRIPT_MARKER_PREFIX,
+    VOICE_TURN_MARKER_PREFIX,
+)
 from app.modules.ai.gateway import (
+    ALIASES,
     AIBudgetFallbackRequested,
     AIGateway,
     estimate_cost,
@@ -39,7 +45,7 @@ from app.modules.ai.multimodal import (
     _customer_user_content,
     _omni_audio_content_part,
 )
-from app.modules.ai.prompts import DEFAULT_SYSTEM_PROMPT
+from app.modules.ai.prompts import AWAITING_APPROVAL_MESSAGE, DEFAULT_SYSTEM_PROMPT
 from app.modules.ai.providers import ToolCallRequest
 from app.modules.ai.tools import tool_to_openai_schema  # noqa: E402
 from app.modules.ai.usage import record_usage  # noqa: E402
@@ -59,20 +65,15 @@ HISTORY_MESSAGES = 10
 # a result that went missing mid-flight (conversations/models.py:172). Neither
 # is a turn the customer read.
 _UNDELIVERED_OUTBOUND_STATUSES = frozenset({"failed", "unknown"})
-ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback"})
 DEFAULT_RUN_LIMITS = {
     "max_steps": MAX_ITERATIONS,
     "max_tool_calls": 10,
     "max_wall_time_seconds": 120,
-    "max_retries": 2,  # §134: max tool-call retries before giving up
-    "max_handoffs": 1,  # §134: max agent handoffs before stopping
 }
 RUN_LIMITS_CEILINGS = {
     "max_steps": 25,
     "max_tool_calls": 100,
     "max_wall_time_seconds": 900,
-    "max_retries": 10,
-    "max_handoffs": 5,
 }
 
 
@@ -87,6 +88,32 @@ def _run_limits(agent: Agent) -> dict[str, int]:
             value = default
         limits[name] = max(1, min(value, RUN_LIMITS_CEILINGS[name]))
     return limits
+
+
+def _canary_chosen(
+    canary_percent: int,
+    conversation_id: uuid.UUID | None,
+    inbound_message_id: uuid.UUID | str | None,
+    agent_id: uuid.UUID,
+) -> bool:
+    """Deterministic canary bucket for one run.
+
+    Conversations bucket by their own id (the same conversation must not flip
+    between stable and candidate across retries). Conversation-less agents —
+    the analyst today, future job/API agents — bucket by the inbound event id
+    when the caller carries one, and otherwise by the agent id, so a retry of
+    the SAME work sees the SAME version instead of always falling back to
+    stable.
+    """
+    if canary_percent <= 0:
+        return False
+    if conversation_id is not None:
+        seed: bytes = conversation_id.bytes
+    elif inbound_message_id is not None:
+        seed = str(inbound_message_id).encode()
+    else:
+        seed = agent_id.bytes
+    return int(hashlib.md5(seed).hexdigest(), 16) % 100 < canary_percent
 
 
 def _tool_for(agent_tool: AgentTool):
@@ -125,6 +152,19 @@ class AgentRunResult:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+class _PreStageOutcome(NamedTuple):
+    """What the pre-loop per-kind hook stage produced.
+
+    ``failure_reason`` is a short stable token (``hook_not_resolved``,
+    ``context_builder_failed``, ``pre_run_hook_failed``) for the guardrail
+    verdict and run.error; None means the stage passed.
+    """
+
+    context_lines: str | None
+    failure_reason: str | None = None
+    failure_detail: str | None = None
 
 
 def _memory_line(memory) -> str:
@@ -224,6 +264,46 @@ class AgentRunner:
         vision_state: dict | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
+        # Fail BEFORE the first paid model call when the kind has no definition:
+        # an unregistered kind used to be discovered only after the loop, so a
+        # deployment typo spent money and then blocked the answer.
+        from app.modules.ai.core.registry import AgentRegistry
+
+        definition = AgentRegistry.get_or_none(agent.kind)
+        if definition is None:
+            # The block itself is free (nothing was paid), but the attempt must
+            # stay AUDIT-VISIBLE: a run row with no trace is how a deployment
+            # typo hides as "the agent is quiet". The full run-row metadata
+            # (canary, version) needs the definition, so this row is minimal —
+            # status vocabulary is the run table's own ("running | succeeded |
+            # failed | ...").
+            logger.error("ai.unknown_agent_kind agent=%s kind=%s", agent.id, agent.kind)
+            blocked_run = AgentRun(
+                tenant_id=tenant_id,
+                agent_id=agent.id,
+                conversation_id=conversation_id,
+                status="failed",
+                input={
+                    "message": user_message,
+                    "customer_id": str(customer_id) if customer_id else None,
+                    "agent_version": getattr(agent, "version", 1),
+                    "model": self._alias_for(agent),
+                    "model_name": agent.model,
+                },
+                error="unknown_agent_kind",
+                tokens_in=0,
+                tokens_out=0,
+                started_at=_now(),
+                finished_at=_now(),
+            )
+            session.add(blocked_run)
+            await session.flush()
+            return AgentRunResult(
+                content=None,
+                run_id=blocked_run.id,
+                guardrail_decision="block",
+                guardrail_reason="unknown_agent_kind",
+            )
         agent_tools = await self._load_agent_tools(
             session, tenant_id, agent_id, agent_kind=agent.kind
         )
@@ -233,7 +313,6 @@ class AgentRunner:
         # across retries. Without AgentVersion rows the version itself cannot
         # switch yet, but the decision is recorded and the gate is live.
         canary_percent = 0
-        canary_chosen = False
         try:
             from app.modules.ai.evaluation import AIEvaluationService
 
@@ -242,9 +321,9 @@ class AgentRunner:
             )
         except Exception:
             logger.warning("ai.canary_check_failed agent=%s", agent_id, exc_info=True)
-        if canary_percent > 0 and conversation_id is not None:
-            bucket = int(hashlib.md5(conversation_id.bytes).hexdigest(), 16) % 100
-            canary_chosen = bucket < canary_percent
+        canary_chosen = _canary_chosen(
+            canary_percent, conversation_id, inbound_message_id, agent.id
+        )
 
         agent_version_id, version_source, version_tool_policy = await self._resolve_agent_version(
             session, tenant_id, agent, canary_chosen=canary_chosen
@@ -274,6 +353,8 @@ class AgentRunner:
                 "message": user_message,
                 "customer_id": str(customer_id) if customer_id else None,
                 "agent_version": getattr(agent, "version", 1),
+                "definition_version": definition.definition_version,
+                "agent_version_id": str(agent_version_id) if agent_version_id else None,
                 "model": self._alias_for(agent),
                 "model_name": agent.model,
                 "system_prompt_version": getattr(agent, "version", 1),
@@ -300,6 +381,49 @@ class AgentRunner:
             await lease_cm.__aenter__()
 
         try:
+            # Per-kind extensibility hooks (Part B): context_builder and
+            # pre_run_hook run BEFORE the model loop; resolution of ALL
+            # declared hooks (post_run_hook included) is fail-closed here, so
+            # an unresolvable hook fails the run before any paid model call
+            # instead of being silently skipped.
+            run_ctx: dict[str, Any] = {
+                "run_id": run.id,
+                "conversation_id": conversation_id,
+                "inbound_message_id": inbound_message_id,
+                "customer_id": customer_id,
+                "knowledge_context": knowledge_context,
+                "context_lines": context_lines,
+            }
+            pre = await self._run_pre_stage(
+                session,
+                tenant_id,
+                agent=agent,
+                definition=definition,
+                run=run,
+                run_ctx=run_ctx,
+                context_lines=context_lines,
+            )
+            if pre.failure_reason is not None:
+                run.status = "failed"
+                run.error = f"{pre.failure_reason}: {(pre.failure_detail or '')[:500]}"
+                run.finished_at = _now()
+                await session.flush()
+                logger.warning(
+                    "ai.%s run=%s kind=%s detail=%s",
+                    pre.failure_reason,
+                    run.id,
+                    agent.kind,
+                    (pre.failure_detail or "")[:500],
+                )
+                # Contained, like unknown_agent_kind: a broken kind hook must
+                # never crash the worker loop.
+                return AgentRunResult(
+                    content=None,
+                    run_id=run.id,
+                    guardrail_decision="block",
+                    guardrail_reason=pre.failure_reason,
+                )
+            context_lines = pre.context_lines
             result = await self._loop(
                 session,
                 tenant_id,
@@ -333,6 +457,14 @@ class AgentRunner:
             if lease_cm is not None:
                 await lease_cm.__aexit__(None, None, None)
 
+        # Per-kind post_run_hook: runs after the loop, BEFORE the run row is
+        # finalized. Its produced content is re-screened by the SAME output
+        # guardrail normal content passes (inside _run_post_stage); a hook
+        # failure keeps the ORIGINAL result and is recorded in run.output.
+        result, post_hook_note = await self._run_post_stage(
+            session, tenant_id, agent=agent, definition=definition, run=run, result=result
+        )
+
         if run.status == "running":
             run.status = "succeeded"
         run.output = {
@@ -340,9 +472,14 @@ class AgentRunner:
             "media": result.media,
             "shown_product_ids": result.shown_product_ids,
             "agent_version": getattr(agent, "version", 1),
+            "definition_version": definition.definition_version,
+            "agent_version_id": str(agent_version_id) if agent_version_id else None,
             "model": self._alias_for(agent),
+            "model_name": result.model_name,
             "provider": getattr(agent, "provider", None) or "platform",
         }
+        if post_hook_note is not None:
+            run.output["post_hook_error"] = post_hook_note
         run.tokens_in = result.tokens_in
         run.tokens_out = result.tokens_out
         run.cost = estimate_cost(result.tokens_in, result.tokens_out)
@@ -365,6 +502,188 @@ class AgentRunner:
         return result
 
     # ----------------------------------------------------------- private ---
+
+    @staticmethod
+    def _merge_context_lines(context_lines: str | None, lines: Any) -> str:
+        """Append per-kind hook lines to the system-owned context.
+
+        Each line is trimmed and length-capped so a hook cannot flood the
+        prompt; the merged string rides the existing
+        ``[Conversation context — system-owned facts]`` channel.
+        """
+        merged = list(context_lines.splitlines()) if context_lines else []
+        for line in lines:
+            text = str(line).strip()
+            if text:
+                merged.append(text[:500])
+        return "\n".join(merged)
+
+    async def _run_pre_stage(
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        agent: Agent,
+        definition: Any,
+        run: AgentRun,
+        run_ctx: dict[str, Any],
+        context_lines: str | None,
+    ) -> _PreStageOutcome:
+        """Resolve ALL declared per-kind hooks (fail-closed), then run the
+        pre-loop stages: context_builder first, then pre_run_hook.
+
+        Resolution of every declared hook — post_run_hook included — happens
+        here, before any paid model call: an unresolvable hook fails the run
+        with ``hook_not_resolved`` rather than being silently skipped at its
+        own stage. Stage exceptions are contained: the run is marked failed
+        with a stable reason token and the caller returns a blocked result
+        (a broken kind hook must never crash the worker loop). The
+        pre_run_hook's returned dict merges into the run context — its
+        entries ride the system-owned context lines channel.
+        """
+        from app.modules.ai.core.registry import HOOK_FIELDS, resolve_definition_hook
+
+        for hook_field in HOOK_FIELDS:
+            if not getattr(definition, hook_field, None):
+                continue
+            try:
+                resolve_definition_hook(definition, hook_field)
+            except ValueError as exc:
+                logger.warning(
+                    "ai.hook_not_resolved kind=%s run=%s field=%s detail=%s",
+                    definition.kind,
+                    run.id,
+                    hook_field,
+                    exc,
+                )
+                return _PreStageOutcome(context_lines, "hook_not_resolved", str(exc))
+
+        builder = resolve_definition_hook(definition, "context_builder")
+        if builder is not None:
+            try:
+                lines = await builder(session, tenant_id, agent, run_ctx)
+            except Exception:
+                logger.warning(
+                    "ai.context_builder_failed kind=%s run=%s",
+                    definition.kind,
+                    run.id,
+                    exc_info=True,
+                )
+                return _PreStageOutcome(context_lines, "context_builder_failed", None)
+            if lines:
+                context_lines = self._merge_context_lines(context_lines, lines)
+
+        run_ctx["context_lines"] = context_lines
+        pre_hook = resolve_definition_hook(definition, "pre_run_hook")
+        if pre_hook is not None:
+            try:
+                extra = await pre_hook(session, tenant_id, agent, run_ctx)
+            except Exception:
+                logger.warning(
+                    "ai.pre_run_hook_failed kind=%s run=%s",
+                    definition.kind,
+                    run.id,
+                    exc_info=True,
+                )
+                return _PreStageOutcome(context_lines, "pre_run_hook_failed", None)
+            if extra:
+                context_lines = self._merge_context_lines(
+                    context_lines, [f"{k}: {v}" for k, v in extra.items()]
+                )
+        return _PreStageOutcome(context_lines, None, None)
+
+    async def _run_post_stage(
+        self,
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        agent: Agent,
+        definition: Any,
+        run: AgentRun,
+        result: AgentRunResult,
+    ) -> tuple[AgentRunResult, str | None]:
+        """Run the declared post_run_hook; return (final result, output note).
+
+        Contract: the hook may return None (keep the original result), a bare
+        string (replaces result.content) or a full AgentRunResult. Hook-produced
+        content is RE-SCREENED by the same output guardrail normal content
+        passes — unguarded hook text is withheld, never delivered. A hook
+        exception keeps the ORIGINAL result (a broken hook must not destroy a
+        good answer); the caller records the returned note in run.output.
+        (Resolution was already fail-closed in the pre-stage, so the lookup
+        here is a cache hit.)
+        """
+        from app.modules.ai.core.registry import resolve_definition_hook
+
+        if not getattr(definition, "post_run_hook", None):
+            return result, None
+        hook = resolve_definition_hook(definition, "post_run_hook")
+        if hook is None:
+            return result, None
+        try:
+            produced = await hook(session, tenant_id, agent, run, result)
+        except Exception as exc:
+            logger.warning(
+                "ai.post_run_hook_failed kind=%s run=%s",
+                definition.kind,
+                run.id,
+                exc_info=True,
+            )
+            return result, f"{type(exc).__name__}: {str(exc)[:500]}"
+        if produced is None:
+            return result, None
+        if isinstance(produced, str):
+            modified = replace(result, content=produced)
+        elif isinstance(produced, AgentRunResult):
+            # Spend accounting stays tied to the MAIN loop: a hook that made
+            # its own model call settles it through the gateway's per-call
+            # usage record, and a hook returning a bare AgentRunResult carries
+            # default ZERO tokens — copying them onto the run row would
+            # silently erase the run's real cost. Model provenance likewise
+            # stays the loop's unless the hook explicitly named one.
+            modified = replace(
+                produced,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                model_name=produced.model_name or result.model_name,
+            )
+        else:
+            logger.warning(
+                "ai.post_run_hook_bad_return kind=%s run=%s type=%s",
+                definition.kind,
+                run.id,
+                type(produced).__name__,
+            )
+            return result, f"post_run_hook returned unsupported type {type(produced).__name__}"
+        if modified.content and modified.content != result.content:
+            decision, reason = self._screen_output(
+                definition, modified.content, modified.tool_calls_made
+            )
+            if decision != "allow":
+                logger.warning(
+                    "ai.post_hook_guardrail_%s run=%s reason=%s", decision, run.id, reason
+                )
+                modified = replace(
+                    modified, content=None, guardrail_decision=decision, guardrail_reason=reason
+                )
+            else:
+                modified = replace(modified, guardrail_decision="allow", guardrail_reason=None)
+        return modified, None
+
+    @staticmethod
+    def _screen_output(
+        defn: Any, content: str, tool_calls_made: list[dict]
+    ) -> tuple[str, str | None]:
+        """The §41 output guardrail in ONE place: normal loop content and
+        post-hook content are screened by literally the same logic."""
+        profile = getattr(defn, "guardrail_profile", "customer")
+        if profile == "analytics":
+            verdict = analytics_guardrail().evaluate(content, {"tool_results": tool_calls_made})
+        else:
+            verdict = default_guardrail(require_tool_evidence=True).evaluate(
+                content, {"tool_results": tool_calls_made}
+            )
+        return verdict.decision, verdict.reason
 
     @staticmethod
     async def _load_agent(
@@ -726,6 +1045,9 @@ class AgentRunner:
         tokens_in = 0
         tokens_out = 0
         content: str | None = None
+        # The concrete model the provider says answered — provenance, not the
+        # alias the run asked for. The alias stays in `model`.
+        raw_model_name: str | None = None
 
         # §134 run limits: configured per agent, bounded by server policy.
         limits = _run_limits(agent)
@@ -802,6 +1124,7 @@ class AgentRunner:
                 else:
                     hit_limit = "budget_fallback_exhausted"
                     break
+            raw_model_name = chat_result.raw_model or raw_model_name
             tokens_in += chat_result.tokens_in
             tokens_out += chat_result.tokens_out
 
@@ -873,7 +1196,7 @@ class AgentRunner:
         if awaiting_approval:
             # run.status was set to WAITING_APPROVAL by _execute_tool;
             # §135/P1-9: provide a polite waiting message so customer does not get complete silence
-            content = "تم تحويل طلبك لفريق العمل للمراجعة والموافقة وسنوافيك بالرد فور اعتماده."
+            content = AWAITING_APPROVAL_MESSAGE
             await session.flush()
             logger.warning("ai.run_awaiting_approval run=%s", run.id)
         elif hit_limit:
@@ -987,6 +1310,7 @@ class AgentRunner:
                 if regen is not None:
                     tokens_in += regen.tokens_in
                     tokens_out += regen.tokens_out
+                    raw_model_name = regen.raw_model or raw_model_name
                 corrected = regen.content if regen is not None else None
                 if regen_timed_out:
                     # Named for what actually happened. "grounding_failed" would
@@ -1008,16 +1332,7 @@ class AgentRunner:
                 content = None
                 decision, reason = "block", "unknown_agent_kind"
             else:
-                guardrail_profile = getattr(defn, "guardrail_profile", "customer")
-                if guardrail_profile == "analytics":
-                    verdict = analytics_guardrail().evaluate(
-                        content, {"tool_results": tool_calls_made}
-                    )
-                else:
-                    verdict = default_guardrail(require_tool_evidence=True).evaluate(
-                        content, {"tool_results": tool_calls_made}
-                    )
-                decision, reason = verdict.decision, verdict.reason
+                decision, reason = self._screen_output(defn, content, tool_calls_made)
                 if decision != "allow":
                     logger.warning("ai.guardrail_%s run=%s reason=%s", decision, run.id, reason)
                     content = None
@@ -1039,7 +1354,7 @@ class AgentRunner:
             shown_product_ids=shown_product_ids,
             agent_version=getattr(agent, "version", 1),
             model=self._alias_for(agent),
-            model_name=agent.model,
+            model_name=raw_model_name or agent.model,
             provider=getattr(agent, "provider", None) or "platform",
         )
 
@@ -1132,11 +1447,11 @@ class AgentRunner:
             and (
                 turns[-1]["content"].strip() == current_message.strip()
                 or (
-                    current_message.strip() == "بعت لي رسالة صوتية."
-                    and turns[-1]["content"].startswith("[customer sent a voice message;")
+                    current_message.strip() == VOICE_ECHO_SENTINEL
+                    and turns[-1]["content"].startswith(VOICE_NO_TRANSCRIPT_MARKER_PREFIX)
                 )
                 or (
-                    turns[-1]["content"].startswith("[customer voice message,")
+                    turns[-1]["content"].startswith(VOICE_TURN_MARKER_PREFIX)
                     and current_message.strip() in turns[-1]["content"]
                 )
             )

@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.core.errors import PermissionDeniedError
+from app.core.errors import PermissionDeniedError, RateLimitExceededError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
@@ -45,3 +45,34 @@ class require_ai_approve:
 
 
 ApproveCtx = Annotated[TenantContext, Depends(require_ai_approve())]
+
+
+class require_ai_entitlement:
+    """Gate every token-spending AI surface on the tenant's plan.
+
+    The customer auto-reply hook checked ``CanUseAI``; the sales-analysis and
+    SI-chat routes did not, so a tenant without the entitlement could still
+    spend model budget through them. Keeping this as a class with ``code``
+    mirrors the approval gate and stays introspectable from route tests.
+    """
+
+    code = "CanUseAI"
+
+    async def __call__(self, ctx: TenantCtxDep) -> TenantContext:
+        from app.modules.billing.services.entitlements import EntitlementService
+
+        if not await EntitlementService.can(ctx.session, ctx.tenant_id, self.code):
+            raise RateLimitExceededError(
+                "plan does not allow AI agents",
+                details={"capability": self.code},
+            )
+        return ctx
+
+
+AIEntitledCtx = Annotated[TenantContext, Depends(require_ai_entitlement())]
+# Analytics permission AND the AI plan entitlement in one dependency.
+AnalyticsAICtx = Annotated[
+    TenantContext,
+    Depends(require_permission("analytics:read")),
+    Depends(require_ai_entitlement()),
+]

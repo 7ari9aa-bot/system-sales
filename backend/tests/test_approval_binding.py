@@ -71,6 +71,8 @@ def _patch_gateway(monkeypatch, results: list[ChatCompletionResult]) -> None:
 
 
 def _register() -> None:
+    # Test-only tool under a fixed name; later tests in this module replace
+    # the handler intentionally, so the override is explicit.
     register_tool(
         ToolSpec(
             name=DANGEROUS_TOOL,
@@ -78,7 +80,8 @@ def _register() -> None:
             args_schema=_Args,
             handler=_dangerous_handler,
             risk_level="HIGH",
-        )
+        ),
+        allow_override=True,
     )
 
 

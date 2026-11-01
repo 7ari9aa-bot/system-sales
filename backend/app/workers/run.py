@@ -105,9 +105,10 @@ def install_signal_handlers(stop: asyncio.Event) -> None:
 
 async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
     stop = stop or asyncio.Event()
-    from app.modules.ai.core.registry import discover_agents
+    from app.modules.ai.core.registry import discover_agents, validate_registry
 
     discover_agents()
+    validate_registry()
     # Multimodal readiness for the WORKER process: the voice transcription and
     # the customer-image gate run HERE, not in the API — a scanner/credential
     # that is off in this process fails closed invisibly unless the startup

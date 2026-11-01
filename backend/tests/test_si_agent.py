@@ -13,8 +13,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.modules.ai.agents.sales_intelligence.coverage import (
+    build_corrective_instruction,
+    coverage_gaps,
+    regenerate_on_coverage_gap,
+)
 from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool
+from app.modules.ai.models import Agent, AgentRun, AgentTool
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.customers.models import Customer
 from app.modules.orders.models import Order
@@ -30,6 +35,26 @@ def _patch_gateway(monkeypatch, results) -> dict:
 
     monkeypatch.setattr(AIGateway, "chat", fake_chat)
     return calls
+
+
+def _recording_gateway(monkeypatch, results, fail_on: set[int] | None = None):
+    """Stub the gateway, recording every call (alias, messages, tools)."""
+    calls: list[dict] = []
+    state = {"count": 0}
+
+    async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
+        state["count"] += 1
+        if fail_on and state["count"] in fail_on:
+            raise RuntimeError("regen boom")
+        calls.append({"alias": alias, "messages": messages, "tools": tools})
+        return results[min(state["count"], len(results)) - 1]
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    return calls, state
+
+
+async def _run_row(db, run_id) -> AgentRun:
+    return await db.get(AgentRun, run_id)
 
 
 async def _seed(db, tenant_id, agent_with_tools: bool = True):
@@ -271,3 +296,320 @@ async def test_failed_run_emits_the_failed_analysis_event(db, tenant_ctx):
         .all()
     )
     assert len(rows) == 1
+
+
+# ───────────────────────────── between-rounds coverage + regenerate-once ──
+
+_TWO_DIM_QUESTION = "كام مبيعات وكام طلبات الشهر ده؟"
+_TOOL_ROUND = ChatCompletionResult(
+    content=None,
+    tool_calls=[
+        ToolCallRequest(
+            id="c1",
+            name="si_get_metric",
+            arguments={"metric_name": "orders_placed", "days": 30},
+        )
+    ],
+    tokens_in=1,
+    tokens_out=1,
+    raw_model="m",
+)
+
+
+async def test_coverage_gap_triggers_exactly_one_corrective_regen(db, tenant_ctx, monkeypatch):
+    """(a) The first answer skips a dimension the question asked for and the
+    evidence supports → ONE regeneration, instructed in Arabic naming the
+    gap, tools disabled → the regenerated answer ships and the run row
+    records the payoff."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    calls, state = _recording_gateway(
+        monkeypatch,
+        [
+            _TOOL_ROUND,
+            # Addresses orders only — "sales" is uncovered though supported.
+            ChatCompletionResult(
+                content="عدد الطلبات الموضوعة الشهر ده: 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+            # The regenerated answer covers the named gap, tool-backed numbers.
+            ChatCompletionResult(
+                content="المبيعات الشهر ده قيمة الطلبات الموضوعة: 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+        ],
+    )
+
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question=_TWO_DIM_QUESTION)
+
+    # The loop made 2 calls; exactly ONE extra corrective call happened.
+    assert state["count"] == 3
+    regen = calls[2]
+    assert regen["tools"] is None, "the correction must reuse gathered evidence only"
+    roles = [m["role"] for m in regen["messages"]]
+    assert roles == ["system", "assistant", "user"]
+    instruction = regen["messages"][-1]["content"]
+    assert "المبيعات" in instruction, "the instruction names the uncovered dimension"
+    assert "ممنوع" in instruction, "the instruction forbids inventing numbers"
+    assert "99" not in instruction
+
+    assert result.answer == "المبيعات الشهر ده قيمة الطلبات الموضوعة: 1"
+    assert result.outcome.value == "ANSWERED"
+
+    run = await _run_row(db, result.run_id)
+    note = run.output["coverage_regen"]
+    assert note["attempted"] is True
+    assert note["succeeded"] is True
+    assert note["gaps"] == ["sales"]
+
+
+async def test_failed_regen_keeps_the_original_and_never_a_wrong_number(
+    db, tenant_ctx, monkeypatch
+):
+    """(b) The regen answer invents a number (500) → discarded, the ORIGINAL
+    draft continues down the normal validation path, and the run row records
+    the failed attempt. No number outside the evidence appears anywhere."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    _recording_gateway(
+        monkeypatch,
+        [
+            _TOOL_ROUND,
+            ChatCompletionResult(
+                content="عدد الطلبات الموضوعة الشهر ده: 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+            ChatCompletionResult(
+                content="المبيعات وصلت 500 والطلبات 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+        ],
+    )
+
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question=_TWO_DIM_QUESTION)
+
+    assert result.answer == "عدد الطلبات الموضوعة الشهر ده: 1"
+    assert result.outcome.value == "ANSWERED"
+    assert "500" not in result.answer
+
+    run = await _run_row(db, result.run_id)
+    note = run.output["coverage_regen"]
+    assert note["attempted"] is True
+    assert note["succeeded"] is False
+    assert note["gaps"] == ["sales"]
+
+
+async def test_regen_gateway_failure_keeps_the_original(db, tenant_ctx, monkeypatch):
+    """(d) The regen model call raises → the original draft is kept, the
+    attempt is recorded, and the orchestrator path is unaffected."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    _recording_gateway(
+        monkeypatch,
+        [
+            _TOOL_ROUND,
+            ChatCompletionResult(
+                content="عدد الطلبات الموضوعة الشهر ده: 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+        ],
+        fail_on={3},
+    )
+
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question=_TWO_DIM_QUESTION)
+
+    assert result.answer == "عدد الطلبات الموضوعة الشهر ده: 1"
+    run = await _run_row(db, result.run_id)
+    note = run.output["coverage_regen"]
+    assert note["attempted"] is True
+    assert note["succeeded"] is False
+
+
+async def test_covered_answer_makes_zero_extra_model_calls(db, tenant_ctx, monkeypatch):
+    """(c) The first answer addresses everything the question asked and the
+    evidence supports → no regen, no coverage_regen note, nothing spent."""
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    _, state = _recording_gateway(
+        monkeypatch,
+        [
+            _TOOL_ROUND,
+            ChatCompletionResult(
+                content="عدد الطلبات الموضوعة الشهر ده: 1",
+                tool_calls=[],
+                tokens_in=1,
+                tokens_out=1,
+                raw_model="m",
+            ),
+        ],
+    )
+
+    result = await run_sales_analysis(db, tenant_id, agent_id=agent.id, question="كام طلب؟")
+
+    assert state["count"] == 2, "tool round + answer, nothing else"
+    run = await _run_row(db, result.run_id)
+    assert "coverage_regen" not in run.output
+
+
+# ────────────────────────────────────── coverage unit tests ──
+
+_ORDERS_EVIDENCE = {"facts": [{"metric": "orders_placed", "value": 5}]}
+
+
+def test_coverage_gaps_empty_on_a_complete_answer():
+    gaps = coverage_gaps("كام مبيعات الشهر ده؟", "المبيعات الشهر ده: 5", _ORDERS_EVIDENCE)
+    assert gaps == []
+
+
+def test_coverage_gaps_detects_the_skipped_dimension():
+    # The question asks sales AND orders; the answer covers orders only.
+    gaps = coverage_gaps("كام مبيعات وكام طلبات؟", "عدد الطلبات: 5", _ORDERS_EVIDENCE)
+    assert gaps == ["sales"]
+
+
+def test_coverage_gaps_skips_unsupported_dimensions():
+    # Fulfillment is asked about but the evidence carries no carrier data —
+    # demanding it would push the model into inventing.
+    gaps = coverage_gaps("إيه حالة الشحن والتسليم؟", "الطلبات كتير الشهر ده", _ORDERS_EVIDENCE)
+    assert gaps == []
+
+
+def test_coverage_gaps_empty_answer_reports_every_supported_dimension():
+    assert coverage_gaps("كام مبيعات الشهر ده؟", None, _ORDERS_EVIDENCE) == ["sales"]
+    # And an empty evidence pack supports nothing.
+    assert coverage_gaps("كام مبيعات الشهر ده؟", None, {}) == []
+
+
+def test_coverage_gaps_ignores_unrelated_questions():
+    assert coverage_gaps("مرحبا", "أهلاً بييك", _ORDERS_EVIDENCE) == []
+
+
+def test_corrective_instruction_names_the_gaps_and_forbids_new_numbers():
+    instruction = build_corrective_instruction(["sales", "fulfillment"])
+    assert "المبيعات" in instruction
+    assert "الشحن" in instruction
+    assert "ممنوع" in instruction
+
+
+async def test_si_definition_still_resolves_with_the_coverage_module_wired():
+    """Pin: the SI kind registers, and the coverage module the orchestrator
+    depends on exposes the exact callables the wiring uses."""
+    from app.modules.ai.agents.sales_intelligence import coverage as coverage_module
+    from app.modules.ai.core.registry import AgentRegistry
+
+    defn = AgentRegistry.get("sales_intelligence")
+    assert defn.kind == "sales_intelligence"
+    assert coverage_module.coverage_gaps is coverage_gaps
+    assert callable(coverage_module.regenerate_on_coverage_gap)
+
+
+# ───────────────────────────── regenerate_on_coverage_gap, DB-free ──
+
+
+class _FakeSession:
+    def __init__(self, agent):
+        self._agent = agent
+
+    async def get(self, model, obj_id):
+        return self._agent
+
+
+def _stub_agent():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        kind="sales_intelligence",
+        model="fast",
+        system_prompt="analyze",
+        temperature=0.2,
+        max_output_tokens=200,
+    )
+
+
+async def test_regen_unit_success_replaces_the_draft(monkeypatch):
+    """The happy regen: one gateway call (tools=None) instructed in Arabic
+    naming the gap; the candidate passes the gates and replaces the draft."""
+    agent = _stub_agent()
+    captured: list[dict] = []
+
+    async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
+        captured.append({"alias": alias, "messages": messages, "tools": tools})
+        return ChatCompletionResult(
+            content="المبيعات قيمة الطلبات الموضوعة: 5",
+            tool_calls=[],
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
+        )
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+
+    replacement, note = await regenerate_on_coverage_gap(
+        _FakeSession(agent),
+        uuid.uuid4(),
+        agent_id=agent.id,
+        run_id=None,
+        question="كام مبيعات وكام طلبات؟",
+        history=None,
+        draft="عدد الطلبات: 5",
+        evidence={"facts": [{"metric": "orders_placed", "value": 5}]},
+        allowed_numbers={"5"},
+        findings=[],
+        tool_calls_made=[],
+    )
+
+    assert note == {"attempted": True, "succeeded": True, "gaps": ["sales"]}
+    assert replacement == "المبيعات قيمة الطلبات الموضوعة: 5"
+    assert len(captured) == 1
+    assert captured[0]["tools"] is None
+    assert "المبيعات" in captured[0]["messages"][-1]["content"]
+
+
+async def test_regen_unit_rejects_an_invented_number(monkeypatch):
+    """The regen draft carries a number no tool produced → discarded, the
+    original draft is kept, and the note records the failed attempt."""
+    agent = _stub_agent()
+
+    async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
+        return ChatCompletionResult(
+            content="المبيعات وصلت 500 والطلبات 5",
+            tool_calls=[],
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
+        )
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+
+    replacement, note = await regenerate_on_coverage_gap(
+        _FakeSession(agent),
+        uuid.uuid4(),
+        agent_id=agent.id,
+        run_id=None,
+        question="كام مبيعات وكام طلبات؟",
+        history=None,
+        draft="عدد الطلبات: 5",
+        evidence={"facts": [{"metric": "orders_placed", "value": 5}]},
+        allowed_numbers={"5"},
+        findings=[],
+        tool_calls_made=[],
+    )
+
+    assert replacement is None
+    assert note == {"attempted": True, "succeeded": False, "gaps": ["sales"]}

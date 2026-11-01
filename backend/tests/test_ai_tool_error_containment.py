@@ -50,6 +50,7 @@ def _register_boom_tool(name: str, exc: Exception, *, handler=None) -> None:
     def _boom(session, tenant_id, **kwargs):
         raise exc
 
+    # The matrix deliberately swaps the handler under one test-only name.
     register_tool(
         ToolSpec(
             name=name,
@@ -57,7 +58,8 @@ def _register_boom_tool(name: str, exc: Exception, *, handler=None) -> None:
             args_schema=_EmptyArgs,
             handler=handler or _boom,
             risk_level="LOW",
-        )
+        ),
+        allow_override=True,
     )
 
 

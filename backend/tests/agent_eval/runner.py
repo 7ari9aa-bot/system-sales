@@ -73,7 +73,11 @@ async def _apply_production_exit(db, tenant_id, conversation_id, outcome) -> Non
     if outcome.blocked_reason == "empty_turn":
         return
     if outcome.blocked_reason is not None:
+        # The mirror of the hook's blocked-run mapping (hooks.py): a withheld
+        # run WITH tool evidence is §37's low_confidence, not a plain failure.
         reason = "guardrail" if outcome.blocked_reason.startswith("guardrail:") else "failure"
+        if bool(getattr(outcome, "tool_calls_made", None)):
+            reason = "low_confidence"
         note = outcome.blocked_reason
     elif not outcome.reply and not getattr(outcome, "handover_reason", None):
         reason, note = "failure", "turn produced no reply"

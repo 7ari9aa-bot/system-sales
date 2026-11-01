@@ -40,6 +40,11 @@ class _FakeResult:
         return self._rows
 
 
+def _is_tenant_bind(statement) -> bool:
+    """The RLS re-bind statement `run_chat_turn` now issues after commits."""
+    return "set_config" in str(statement)
+
+
 class _FakeSession:
     """Pops one scripted result per execute(); records statements + adds."""
 
@@ -48,8 +53,12 @@ class _FakeSession:
         self.statements: list[object] = []
         self.added: list[object] = []
 
-    async def execute(self, statement):
+    async def execute(self, statement, params=None):
         self.statements.append(statement)
+        if _is_tenant_bind(statement):
+            # A tenant bind is infrastructure, not a scripted query: it must
+            # not consume one of the queued result doubles.
+            return _FakeResult(None)
         return self.results.pop(0) if self.results else _FakeResult(None)
 
     def add(self, obj):
@@ -272,13 +281,15 @@ class _CommittingSession(_FakeSession):
         self.commits = 0
         self.loaded: list[object] = []
 
-    async def execute(self, statement):
+    async def execute(self, statement, params=None):
+        if _is_tenant_bind(statement):
+            return await super().execute(statement, params)
         statement_result = self.results[0] if self.results else None
         if isinstance(statement_result, _FakeResult):
             if statement_result._value is not None:
                 self.loaded.append(statement_result._value)
             self.loaded.extend(statement_result._rows)
-        return await super().execute(statement)
+        return await super().execute(statement, params)
 
     async def get(self, model, obj_id):
         """The fresh-transaction re-fetch `_mark_turn_failed` relies on."""
@@ -373,6 +384,36 @@ async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
         error_code=None,
         created_at=datetime.now(UTC),
     )
+
+
+async def test_run_chat_turn_rebinds_tenant_after_each_commit(monkeypatch):
+    """COMMIT drops the transaction-local RLS binding; the turn must re-bind.
+
+    The send route commits the user message before calling this executor, and
+    the executor commits its own `generating` row before the model call. Both
+    commits leave the session tenant-less under FORCE RLS, so the next query
+    would silently see no rows. The fake session records the bind statements;
+    before the fix there were none.
+    """
+    user_row = SimpleNamespace(sequence_no=1, content="سؤال")
+    session = _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[]),
+        ]
+    )
+
+    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+        return _analysis_result()
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+    )
+    await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
+
+    binds = [stmt for stmt in session.statements if _is_tenant_bind(stmt)]
+    assert len(binds) >= 2, "tenant was not re-bound after every mid-turn commit"
 
 
 async def test_run_chat_turn_failure_lands_failed_row(monkeypatch):
@@ -638,7 +679,7 @@ async def test_run_chat_turn_history_excludes_the_current_question(monkeypatch):
     )
     await run_chat_turn(session, _Ctx(), thread)
 
-    history_stmt = session.statements[2]
+    history_stmt = session.statements[4]
     compiled = str(history_stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "sequence_no <= 4" in compiled, (
         "history must stop BEFORE the current user row (seq 5), not include it"

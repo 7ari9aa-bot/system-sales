@@ -519,10 +519,25 @@ async def _do_auto_reply(
     if outcome.blocked_reason == "empty_turn":
         return
     if outcome.blocked_reason is not None:
+        # §37: a reply withheld by the grounding re-check or the output
+        # guardrail is a plain failure only when the run never looked at the
+        # shop. A run that DID gather tool evidence (at least one tool call)
+        # had real data in front of it and still could not answer confidently
+        # — that is exactly `low_confidence`, the last §37 reason without a
+        # producer until now. The writer, dedup and events are unchanged.
+        made_tool_calls = bool(outcome.tool_calls_made)
         if outcome.blocked_reason.startswith("guardrail:"):
-            await handover("guardrail", outcome.blocked_reason, outcome.run_id)
+            await handover(
+                "low_confidence" if made_tool_calls else "guardrail",
+                outcome.blocked_reason,
+                outcome.run_id,
+            )
         else:
-            await handover("failure", outcome.blocked_reason, outcome.run_id)
+            await handover(
+                "low_confidence" if made_tool_calls else "failure",
+                outcome.blocked_reason,
+                outcome.run_id,
+            )
         logger.warning(
             "ai.turn_blocked conversation=%s reason=%s",
             conversation_id,

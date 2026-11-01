@@ -20,11 +20,13 @@ Architecture invariants
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,19 @@ class AgentDefinition(BaseModel):
 
     The runtime reads these to enforce tool authorization, determine guardrail profiles,
     inject system prompts, and resolve model aliases.
+
+    Per-kind extensibility hooks are declared as DOTTED-PATH STRINGS (never
+    callable objects, so a definition stays serializable). The canonical
+    convention is ``"package.module:attr"`` (e.g.
+    ``"app.modules.ai.agents.mycustom.hooks:my_hook"``); a bare
+    ``"package.module.attr"`` is also accepted. Every path is resolved and
+    checked (importable, callable, async) once by ``validate_registry()`` —
+    a bad path fails startup, not the first customer turn.
     """
+
+    # Unknown fields are a typo, not a note: reject them so a future
+    # declaration that the platform does not implement cannot ship inert.
+    model_config = ConfigDict(extra="forbid")
 
     kind: str
     name: str
@@ -66,8 +80,6 @@ class AgentDefinition(BaseModel):
     # Architectural extensions
     task_types: list[str] = Field(default_factory=list)
     guardrail_profile: str = "default"  # "customer" | "analytics" | "internal" | "default"
-    context_builder: str | None = None  # Dotted-path or callable identifier
-    output_policy: dict[str, Any] = Field(default_factory=dict)
     provisioning_policy: dict[str, Any] = Field(
         default_factory=lambda: {
             "is_canonical": False,
@@ -75,27 +87,41 @@ class AgentDefinition(BaseModel):
             "singleton_per_tenant": True,
         }
     )
-    configuration_schema: dict[str, Any] = Field(default_factory=dict)
-    lifecycle: dict[str, Any] = Field(default_factory=dict)
 
-    # Dotted-path strings to async callables:
-    #   (session, tenant_id, agent, **kw) → None
+    # Per-kind extensibility hooks — dotted-path strings to async callables:
+    #   context_builder: (session, tenant_id, agent, run_ctx) -> list[str] | None
+    #       Lines appended to the run's system-owned context.
+    #   pre_run_hook: (session, tenant_id, agent, run_ctx) -> dict | None
+    #       The dict merges into the run context (None = no-op); an exception
+    #       fails the run (contained, never crashes the worker loop).
+    #   post_run_hook: (session, tenant_id, agent, run, result) -> result | str | None
+    #       May replace result.content (a bare str replaces the content) or
+    #       return a full AgentRunResult; None keeps the original. Hook-produced
+    #       content is RE-SCREENED by the output guardrail; an exception keeps
+    #       the original result.
     pre_run_hook: str | None = None
     post_run_hook: str | None = None
+    context_builder: str | None = None
 
     # Extra metadata the domain package wants to attach
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def model_post_init(self, __context: Any) -> None:
-        """Ensure allowed_tools includes at least default_tools and declared capabilities."""
+        """Normalize the allowlist.
+
+        Capabilities are DOCUMENTATION, not authorization: a capability name
+        must never silently authorize a same-named global tool. Only
+        ``allowed_tools`` and ``default_tools`` grant execution.
+        """
         effective_allowed = set(self.allowed_tools)
         effective_allowed.update(self.default_tools)
-        for cap in self.capabilities:
-            effective_allowed.add(cap.name)
         self.allowed_tools = sorted(effective_allowed)
 
 
 # ──────────────────────────────────────────────────────── registry ──
+
+
+VALID_GUARDRAIL_PROFILES = frozenset({"customer", "analytics", "internal", "default"})
 
 
 class AgentRegistry:
@@ -110,6 +136,11 @@ class AgentRegistry:
             raise ValueError(
                 f"Duplicate registration forbidden: agent kind '{definition.kind}' "
                 f"is already registered ({cls._definitions[definition.kind].name})."
+            )
+        if definition.provisioning_policy.get("singleton_per_tenant", True) is False:
+            raise ValueError(
+                f"Agent kind '{definition.kind}' requests multiple instances per tenant, "
+                "but the platform still enforces one agent per (tenant, kind)"
             )
         cls._definitions[definition.kind] = definition
         logger.info(
@@ -166,6 +197,7 @@ class AgentRegistry:
     def clear(cls) -> None:
         """Test-only: reset the registry between tests."""
         cls._definitions.clear()
+        _RESOLVED_HOOKS.clear()
 
 
 # ──────────────────────────────────────────────────── auto-discovery ──
@@ -201,11 +233,114 @@ def discover_agents() -> None:
             ) from exc
 
 
-# Static imports guarantee composition-root AST reachability
-# (tests/test_no_dead_modules.py) while discover_agents() handles
-# runtime discovery in all entry points.
+#: Resolved hook callables, keyed by (field name, dotted path). Resolution is
+#: deterministic from the dotted path, so keying on the path (not definition
+#: identity) avoids stale entries when a test replaces a kind's definition
+#: object. Entries are written by validate_registry() at startup and by lazy
+#: resolution at runtime. Plain dict — writes are GIL-atomic, matching the
+#: thread-safety level of the registry itself.
+_RESOLVED_HOOKS: dict[tuple[str, str], Callable[..., Any]] = {}
+
+#: The declared extensibility-hook fields, in resolution order.
+HOOK_FIELDS: tuple[str, ...] = ("context_builder", "pre_run_hook", "post_run_hook")
+
+
+def _split_dotted_path(path: str) -> tuple[str, str]:
+    """Split a hook dotted path into (module, attribute).
+
+    Canonical convention is ``"package.module:attr"``; a bare
+    ``"package.module.attr"`` splits on the LAST dot.
+    """
+    if ":" in path:
+        module, _, attr = path.partition(":")
+        if not module or not attr or ":" in attr:
+            raise ValueError(f"malformed hook path {path!r}")
+        return module, attr
+    module, _, attr = path.rpartition(".")
+    if not module or not attr:
+        raise ValueError(f"malformed hook path {path!r}")
+    return module, attr
+
+
+def resolve_definition_hook(definition: AgentDefinition, field: str) -> Callable[..., Any] | None:
+    """Resolve one declared hook field to its async callable (cached).
+
+    Returns None when the field is not declared. Resolution is lazy-with-
+    cache: validate_registry() warms it at startup, and the runtime calls
+    this same function per run (a cache hit after validation; an identical
+    validation if the registry was never validated). Any failure — bad path,
+    missing attribute, not callable, not async — raises ValueError naming
+    the kind and the bad path, so the caller can fail the run closed
+    instead of silently skipping a declared hook.
+    """
+    dotted = getattr(definition, field, None)
+    if not dotted:
+        return None
+    key = (field, dotted)
+    cached = _RESOLVED_HOOKS.get(key)
+    if cached is not None:
+        return cached
+    module_name, attr = _split_dotted_path(dotted)
+    try:
+        module = importlib.import_module(module_name)
+        target = getattr(module, attr)
+    except (ImportError, AttributeError) as exc:
+        raise ValueError(
+            f"agent kind {definition.kind!r}: {field} {dotted!r} cannot be resolved ({exc})"
+        ) from exc
+    if not callable(target) or not inspect.iscoroutinefunction(target):
+        raise ValueError(
+            f"agent kind {definition.kind!r}: {field} {dotted!r} must be an async callable"
+        )
+    _RESOLVED_HOOKS[key] = target
+    return target
+
+
+def validate_registry() -> None:
+    """Fail startup when a definition references something the platform lacks.
+
+    This is deliberately called AFTER discovery in both entry points. A typo in
+    a tool name, an unknown model alias, a guardrail profile with no
+    implementation, or an unresolvable extensibility hook must not become a
+    silently degraded agent at runtime.
+    """
+    from app.modules.ai.gateway import ALIASES
+    from app.modules.ai.tools import TOOLS
+
+    errors: list[str] = []
+    for definition in AgentRegistry.get_all():
+        if definition.guardrail_profile not in VALID_GUARDRAIL_PROFILES:
+            errors.append(
+                f"{definition.kind}: unknown guardrail_profile {definition.guardrail_profile!r}"
+            )
+        if definition.default_model not in ALIASES:
+            errors.append(
+                f"{definition.kind}: default_model {definition.default_model!r} "
+                "is not a gateway alias"
+            )
+        unknown_tools = sorted(set(definition.allowed_tools) - set(TOOLS))
+        if unknown_tools:
+            errors.append(f"{definition.kind}: unknown tools {unknown_tools}")
+        for field in HOOK_FIELDS:
+            try:
+                resolve_definition_hook(definition, field)
+            except ValueError as exc:
+                errors.append(str(exc))
+    if errors:
+        raise RuntimeError("Invalid agent registry: " + "; ".join(errors))
+
+
+# INVARIANT: these static imports exist ONLY for AST reachability
+# (tests/test_no_dead_modules.py) — ``discover_agents()`` is the enforcement
+# point, re-importing every definition package at startup and failing closed
+# on errors. A failing definition import here does NOT fail registry import;
+# it is logged at ERROR level and ``discover_agents()`` re-raises it (with the
+# full traceback) at first use.
 try:
     import app.modules.ai.agents.customer.definition  # noqa: F401
     import app.modules.ai.agents.sales_intelligence.definition  # noqa: F401
-except ImportError:
-    pass
+except ImportError as exc:
+    logger.error(
+        "registry_static_import_failed: %s — agent discovery will re-raise this error at first use",
+        exc,
+    )

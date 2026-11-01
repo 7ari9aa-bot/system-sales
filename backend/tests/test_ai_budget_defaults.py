@@ -19,6 +19,7 @@ These tests pin both.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -291,6 +292,91 @@ async def test_an_agent_cap_still_blocks_when_that_agent_exceeds_it(db: AsyncSes
 
     with pytest.raises(AIBudgetExhaustedError):
         await reserve_budget(db, tenant_id, agent_id=agent_a.id, estimated_cost=Decimal("1"))
+
+
+# --------------------------------- the scheduler sweep reclaims parked budget --
+
+
+def test_the_budget_expiry_sweep_is_a_recurring_job_with_a_handler() -> None:
+    """A handler only runs if a row is seeded for it AND a handler is registered:
+    the exact §82 dead-path (handler existed, nothing ever produced a row)."""
+    from app.workers.scheduler_worker import _HANDLERS, RECURRING_JOBS
+
+    assert "expire_budget_reservations" in RECURRING_JOBS, (
+        "the budget expiry sweep is not in RECURRING_JOBS — no row is ever "
+        "seeded and the sweep never runs"
+    )
+    assert "expire_budget_reservations" in _HANDLERS, (
+        "expire_budget_reservations is recurring but has no handler — the row "
+        "would be claimed and failed as 'no handler'"
+    )
+
+
+def test_the_budget_expiry_handler_imports_the_owning_module() -> None:
+    """The README warns re-exports break patching: the handler must call
+    `app.modules.ai.budget.expire_stale_reservations`, not the gateway alias."""
+    import ast
+    import pathlib
+
+    import app.workers.scheduler_worker as sw
+
+    tree = ast.parse(pathlib.Path(sw.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "_handle_expire_budget_reservations"
+        ):
+            sources = {
+                alias.name
+                for stmt in ast.walk(node)
+                if isinstance(stmt, ast.ImportFrom)
+                for alias in stmt.names
+            }
+            assert "app.modules.ai.budget" in {
+                stmt.module for stmt in ast.walk(node) if isinstance(stmt, ast.ImportFrom)
+            }, "the handler no longer imports from the owning budget module"
+            assert "expire_stale_reservations" in sources
+            return
+    raise AssertionError("_handle_expire_budget_reservations was renamed or deleted")
+
+
+async def test_the_scheduler_sweep_expires_a_stale_reservation(db: AsyncSession, tenant_ctx):
+    """A reservation orphaned by a crash (expires_at in the past) must flip to
+    expired when the scheduler handler runs — and a live one must survive."""
+    from app.modules.ai.models import AIBudgetReservation
+    from app.workers.scheduler_worker import _HANDLERS
+
+    tenant_id = tenant_ctx.tenant_id
+    stale = AIBudgetReservation(
+        tenant_id=tenant_id,
+        amount=Decimal("0.50"),
+        status="active",
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    live = AIBudgetReservation(
+        tenant_id=tenant_id,
+        amount=Decimal("0.25"),
+        status="active",
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+    )
+    db.add_all([stale, live])
+    await db.flush()
+
+    result = await _HANDLERS["expire_budget_reservations"](db, tenant_id, {})
+
+    assert result == {"count": 1}, "the sweep expired a row that was not stale"
+    statuses = {
+        row.id: row.status
+        for row in (
+            await db.execute(
+                select(AIBudgetReservation).where(AIBudgetReservation.tenant_id == tenant_id)
+            )
+        )
+        .scalars()
+        .all()
+    }
+    assert statuses[stale.id] == "expired", "the stale reservation was not expired"
+    assert statuses[live.id] == "active", "the sweep expired a live reservation"
 
 
 async def test_a_tenant_cap_still_sees_every_agents_spend(db: AsyncSession, tenant_ctx):

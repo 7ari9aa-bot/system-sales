@@ -54,8 +54,11 @@ class _FakeSession:
         self.added: list[object] = []
         self.commits = 0
 
-    async def execute(self, statement):
+    async def execute(self, statement, params=None):
         self.statements.append(statement)
+        if "set_config" in str(statement):
+            # RLS re-bind after COMMIT — infrastructure, not a scripted query.
+            return _FakeResult(None)
         return self.results.pop(0) if self.results else _FakeResult(None)
 
     def add(self, obj):
@@ -119,6 +122,25 @@ def TenantContextLike(session, role_code):  # noqa: N802 — mirrors the analyti
         tenant_id=TENANT,
         role_code=role_code,
         permission_codes={"analytics:read"},
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_ai_entitlement(monkeypatch):
+    """The send/retry chat routes now gate on the ``CanUseAI`` plan entitlement
+    (``AnalyticsAICtx``). That runs a real ``EntitlementService.can`` DB query
+    *before* the scripted chat sequence, which would shift the fake session's
+    result order and 404 the thread lookup. The entitlement is a plan gate
+    asserted by billing's own tests; this route-contract suite only cares about
+    the wire shape, so we stub the check rather than thread a result through the
+    scripted session."""
+
+    async def _can(session, tenant_id, capability):
+        return True
+
+    monkeypatch.setattr(
+        "app.modules.billing.services.entitlements.EntitlementService.can",
+        _can,
     )
 
 

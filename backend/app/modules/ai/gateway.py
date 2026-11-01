@@ -76,6 +76,9 @@ settle_reservation = _budget.settle_reservation
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for gateway model aliases. Registry validation
+# (core/registry.py) and the runtime's _alias_for both import THIS set —
+# a new alias is added here and nowhere else.
 ALIASES = frozenset({"fast", "strong", "cheap", "embedding", "fallback", "omni"})
 
 

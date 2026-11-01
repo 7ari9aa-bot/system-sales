@@ -440,3 +440,25 @@ def test_unsourced_numerals_allows_zero_and_the_customers_own_numbers() -> None:
     # 0 is allowed, but only 0: it must not open the door to 10 or 0.5.
     assert check_unsourced_numerals("بنقفل 10", "امتى؟") == "unsourced numeral: 10"
     assert check_unsourced_numerals("خصم 0.5", "امتى؟") == "unsourced numeral: 0.5"
+
+
+def test_voice_echo_constants_are_shared_between_turn_and_runtime() -> None:
+    """turn.py PRODUCES the voice-echo sentinel; the runtime MATCHES it.
+
+    Both sides must reference the same constant objects — a duplicated
+    literal edited on one side would silently break the echo-dedup.
+    """
+    from app.modules.ai import runtime as runtime_module
+    from app.modules.ai.constants import (
+        VOICE_ECHO_SENTINEL,
+        VOICE_NO_TRANSCRIPT_MARKER_PREFIX,
+        VOICE_TURN_MARKER_PREFIX,
+    )
+
+    assert runtime_module.VOICE_ECHO_SENTINEL is turn_module.VOICE_ECHO_SENTINEL
+    assert turn_module.VOICE_ECHO_SENTINEL is VOICE_ECHO_SENTINEL
+    assert VOICE_ECHO_SENTINEL == "بعت لي رسالة صوتية."
+    assert runtime_module.VOICE_NO_TRANSCRIPT_MARKER_PREFIX is VOICE_NO_TRANSCRIPT_MARKER_PREFIX
+    assert VOICE_NO_TRANSCRIPT_MARKER_PREFIX == "[customer sent a voice message;"
+    assert runtime_module.VOICE_TURN_MARKER_PREFIX is VOICE_TURN_MARKER_PREFIX
+    assert VOICE_TURN_MARKER_PREFIX == "[customer voice message,"

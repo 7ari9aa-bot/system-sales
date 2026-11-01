@@ -148,6 +148,86 @@ def test_an_unregistered_kind_fails_closed_at_the_guardrail() -> None:
     assert '"block"' in source
 
 
+# ------------------------------- 4. hooks are part of the one-file contract ---
+
+
+async def test_a_third_kind_declares_hooks_with_zero_core_edits(third_kind) -> None:
+    """The product goal, end to end: a future kind's ``definition.py`` declares
+    per-kind hooks (dotted-path strings) and they RESOLVE and RUN through the
+    shared registry/runtime — registration is still the whole story, no core
+    file knows this kind.
+
+    The hook target lives in THIS test module (a real, importable async
+    callable); a real kind would point into its own package.
+    """
+    from app.modules.ai.core.registry import resolve_definition_hook
+
+    calls: list[str] = []
+
+    async def recording_pre_hook(session, tenant_id, agent, run_ctx):
+        calls.append("pre")
+        return None
+
+    async def recording_post_hook(session, tenant_id, agent, run, result):
+        calls.append("post")
+        return None
+
+    # Monkeypatch the module attrs the dotted paths point at — the definition
+    # itself is unchanged shared-model usage: only declaration data.
+    import sys
+
+    this_module = sys.modules[__name__]
+    this_module._ext_pre_hook = recording_pre_hook  # type: ignore[attr-defined]
+    this_module._ext_post_hook = recording_post_hook  # type: ignore[attr-defined]
+    try:
+        hooked = AgentDefinition(
+            kind=THIRD_KIND,
+            name="Inventory Ops Agent",
+            description="Internal stock and operations assistant (a future agent).",
+            default_tools=["ops_recount_stock"],
+            allowed_tools=["ops_recount_stock"],
+            task_types=["ops_task"],
+            guardrail_profile="default",
+            pre_run_hook=f"{__name__}:_ext_pre_hook",
+            post_run_hook=f"{__name__}:_ext_post_hook",
+            provisioning_policy={"is_canonical": True, "auto_provision": True},
+        )
+        AgentRegistry.register(hooked, allow_override=True)
+        try:
+            # validate_registry() resolves declared paths through exactly this
+            # helper (it is skipped here because the fixture's third kind
+            # carries a test-only tool the global TOOLS registry lacks); the
+            # startup-failure contract is pinned in tests/test_agent_hooks.py.
+            assert inspect.iscoroutinefunction(
+                resolve_definition_hook(hooked, "pre_run_hook")
+            )
+            assert inspect.iscoroutinefunction(
+                resolve_definition_hook(hooked, "post_run_hook")
+            )
+            # And the runtime invokes them through the shared stage helpers —
+            # the same code path every kind uses, no kind if-statements.
+            from app.modules.ai.models import AgentRun
+            from app.modules.ai.runtime import AgentRunner
+
+            run_ctx = {"run_id": None, "conversation_id": None, "context_lines": None}
+            outcome = await AgentRunner()._run_pre_stage(
+                None,
+                None,
+                agent=None,
+                definition=hooked,
+                run=AgentRun(),
+                run_ctx=run_ctx,
+                context_lines=None,
+            )
+            assert outcome.failure_reason is None
+            assert calls == ["pre"]
+        finally:
+            AgentRegistry._definitions.pop(THIRD_KIND, None)
+    finally:
+        del this_module._ext_pre_hook  # type: ignore[attr-defined]
+        del this_module._ext_post_hook  # type: ignore[attr-defined]
+
+
 # ------------------------------------------ 3. the DB-backed proof (CI only) ---
 
 

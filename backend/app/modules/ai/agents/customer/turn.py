@@ -55,6 +55,7 @@ from app.modules.ai.agents.customer.state import (
 )
 from app.modules.ai.agents.customer.vision.pipeline import run_vision_match
 from app.modules.ai.agents.customer.vision.schemas import ImageKind, MatchResult
+from app.modules.ai.constants import VOICE_ECHO_SENTINEL
 from app.modules.ai.runtime import AgentRunner, AgentRunResult
 
 #: The server-side classifier: (session, tenant_id, image_url) → kind. The
@@ -208,6 +209,10 @@ class TurnOutcome:
     vision: list[dict] = field(default_factory=list)
     grounding: str = "skipped_no_facts"
     blocked_reason: str | None = None
+    # Whether the runner actually gathered tool evidence this turn. The hook
+    # needs it to tell a withheld-with-evidence run (§37 low_confidence) from
+    # a run that never looked at the shop at all.
+    tool_calls_made: list[dict] = field(default_factory=list)
     deadline_exceeded: bool = False
     tokens_in: int = 0
     tokens_out: int = 0
@@ -360,7 +365,7 @@ def _message_text(turn: InboundTurn, vision_used: bool) -> str:
     if turn.has_voice:
         if turn.voice_transcript:
             return turn.voice_transcript
-        return "بعت لي رسالة صوتية."
+        return VOICE_ECHO_SENTINEL
     if turn.other_media:
         return "بعت لي مرفق."
     return ""
@@ -628,6 +633,7 @@ async def run_customer_turn(
         ],
         grounding=grounding,
         blocked_reason=blocked_reason,
+        tool_calls_made=result.tool_calls_made,
         deadline_exceeded=deadline_exceeded,
         tokens_in=result.tokens_in,
         tokens_out=result.tokens_out,

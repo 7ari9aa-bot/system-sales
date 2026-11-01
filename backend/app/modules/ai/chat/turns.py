@@ -14,6 +14,7 @@ import uuid
 
 from sqlalchemy import select
 
+from app.core.db import bind_tenant
 from app.core.errors import ConflictError
 from app.modules.ai.models import AIChatMessage
 
@@ -22,7 +23,7 @@ HISTORY_MESSAGE_LIMIT = 12  # 6 turns max reach the prompt
 logger = logging.getLogger(__name__)
 
 
-async def _mark_turn_failed(session, thread, assistant_id: uuid.UUID) -> None:
+async def _mark_turn_failed(session, tenant_id: uuid.UUID, thread, assistant_id: uuid.UUID) -> None:
     """Land the assistant row `failed` in a FRESH transaction.
 
     The model call can poison the caller's transaction — a statement timeout or
@@ -37,6 +38,10 @@ async def _mark_turn_failed(session, thread, assistant_id: uuid.UUID) -> None:
     """
     try:
         await session.rollback()
+        # The rollback also dropped the transaction-local RLS binding; without
+        # re-binding, the fresh `session.get` below runs tenant-less and FORCE
+        # RLS hides the very row this function exists to update.
+        await bind_tenant(session, tenant_id)
         row = await session.get(AIChatMessage, assistant_id)
         if row is not None and row.status == "generating":
             row.status = "failed"
@@ -219,6 +224,12 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     any failure lands the row in `failed` with an error code — a retry
     overwrites THAT row, so a sequence number is never burned twice.
     """
+    # A caller may have committed just before this point (the send route
+    # commits the user turn, a retry follows an earlier commit). COMMIT ends
+    # the transaction, and with it the transaction-local RLS binding — every
+    # query below would run tenant-less. Re-bind first, then again after the
+    # mid-turn commit below.
+    await bind_tenant(session, ctx.tenant_id)
     user_rows = (
         (
             await session.execute(
@@ -271,6 +282,7 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
         assistant.content = ""
         assistant.structured_content = None
     await session.commit()  # durable BEFORE the model call (§lease lesson)
+    await bind_tenant(session, ctx.tenant_id)
     assistant_id = assistant.id
 
     # Prior turns ONLY: the question itself rides the runner's user_message,
@@ -288,7 +300,7 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
             history=history,
         )
     except Exception as exc:  # noqa: BLE001 — the row must land `failed`
-        await _mark_turn_failed(session, thread, assistant_id)
+        await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc
 
     try:
@@ -302,7 +314,7 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
         await _maybe_compact(session, ctx, thread, through_seq=user_row.sequence_no)
         await session.commit()
     except Exception as exc:  # noqa: BLE001 — same poison rule as the call itself
-        await _mark_turn_failed(session, thread, assistant_id)
+        await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc
     return assistant
 

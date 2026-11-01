@@ -426,3 +426,128 @@ def test_the_classifier_verdict_maps_deterministically() -> None:
     assert _image_handoff_reason([other]) is None
     assert _image_handoff_reason([]) is None
     assert _image_handoff_reason(None) is None
+
+
+# ------------- 5. the withheld run's reason: evidence vs no evidence ---------
+
+
+async def _stubbed_turn(db, tenant_id, monkeypatch, fake_turn) -> Conversation:
+    """The preconditions the hook needs to run a (stubbed) turn."""
+    db.add(
+        Agent(
+            tenant_id=tenant_id,
+            kind="customer",
+            name="Customer Agent",
+            model="fast",
+            system_prompt="s",
+            is_active=True,
+        )
+    )
+    await db.flush()
+
+    async def entitled(session, tenant_id_, capability):
+        return True
+
+    monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", entitled)
+    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+
+    conversation = await _conversation(db, tenant_id)
+    await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="عايز أعرف السعر",
+    )
+    await db.flush()
+    return conversation
+
+
+async def _the_handover(db, tenant_id) -> AIHandover:
+    return (
+        (await db.execute(select(AIHandover).where(AIHandover.tenant_id == tenant_id)))
+        .scalars()
+        .one()
+    )
+
+
+async def test_a_grounding_blocked_run_with_tool_evidence_is_low_confidence(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """§37's `low_confidence` finally has its producer: the run gathered tool
+    evidence and STILL had its reply withheld — the model had real data in
+    front of it and could not answer confidently."""
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(
+            reply=None,
+            blocked_reason="grounding:unsourced numeral: 14",
+            tool_calls_made=[
+                {"name": "search_catalog", "status": "ok", "result": {"results": []}}
+            ],
+        )
+
+    conversation = await _stubbed_turn(db, tenant_ctx.tenant_id, monkeypatch, fake_turn)
+    await maybe_auto_reply(db, tenant_ctx.tenant_id, conversation.id)
+
+    handover = await _the_handover(db, tenant_ctx.tenant_id)
+    assert handover.reason == "low_confidence"
+    assert handover.note == "grounding:unsourced numeral: 14"
+    assert await _status(db, conversation.id) == "waiting_human"
+
+
+async def test_a_grounding_blocked_run_without_tools_stays_failure(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """No tool call means the run never looked at the shop: the generic
+    failure reason keeps its original meaning."""
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(reply=None, blocked_reason="grounding:unsourced numeral: 14")
+
+    conversation = await _stubbed_turn(db, tenant_ctx.tenant_id, monkeypatch, fake_turn)
+    await maybe_auto_reply(db, tenant_ctx.tenant_id, conversation.id)
+
+    handover = await _the_handover(db, tenant_ctx.tenant_id)
+    assert handover.reason == "failure"
+    assert await _status(db, conversation.id) == "waiting_human"
+
+
+async def test_a_guardrail_withheld_run_with_tool_evidence_is_low_confidence(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """The guardrail path flows through the same mapping: evidence gathered,
+    output withheld — the run was not confident enough to send."""
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(
+            reply=None,
+            blocked_reason="guardrail:unsourced_claim",
+            tool_calls_made=[{"name": "get_product_details", "status": "ok", "result": {}}],
+        )
+
+    conversation = await _stubbed_turn(db, tenant_ctx.tenant_id, monkeypatch, fake_turn)
+    await maybe_auto_reply(db, tenant_ctx.tenant_id, conversation.id)
+
+    handover = await _the_handover(db, tenant_ctx.tenant_id)
+    assert handover.reason == "low_confidence"
+    assert handover.note == "guardrail:unsourced_claim"
+
+
+async def test_a_guardrail_withheld_run_without_tools_stays_guardrail(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    from app.modules.ai.agents.customer.turn import TurnOutcome
+
+    async def fake_turn(*args, **kwargs):
+        return TurnOutcome(reply=None, blocked_reason="guardrail:policy")
+
+    conversation = await _stubbed_turn(db, tenant_ctx.tenant_id, monkeypatch, fake_turn)
+    await maybe_auto_reply(db, tenant_ctx.tenant_id, conversation.id)
+
+    handover = await _the_handover(db, tenant_ctx.tenant_id)
+    assert handover.reason == "guardrail"

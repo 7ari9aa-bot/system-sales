@@ -132,6 +132,9 @@ IDEMPOTENT_PATHS: tuple[str, ...] = (
     "/api/v1/marketing/campaigns",  # campaign send / broadcast
     "/api/v1/marketing/touchpoints",  # outbound touchpoint
     "/api/v1/conversations",  # send message, assign, close
+    # A lost response on an analysis request used to re-run the whole paid
+    # analysis. Opt-in via the header, so existing clients are unchanged.
+    "/api/v1/ai/sales",
     "/api/v1/privacy/data-requests",  # data-subject request execution
     "/api/v1/workflows/executions",  # run an automation
     # Package 2.2, closing the gap 2.1 documented: register/rotate is a

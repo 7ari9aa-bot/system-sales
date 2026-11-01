@@ -157,6 +157,27 @@ async def test_agent_run_calls_tool_then_answers(db, tenant_ctx, monkeypatch):
     assert usage.model_calls == 1
 
 
+async def test_agent_run_records_the_concrete_model_not_the_alias(db, tenant_ctx, monkeypatch):
+    """Provenance: `model` is the alias, `model_name` is what answered.
+
+    The provider returns the concrete model in `raw_model`; dropping it made
+    every stored analysis claim the alias ("fast") answered it, which tells a
+    reader nothing three months later.
+    """
+    agent = await _agent_with_tool(db, tenant_ctx.tenant_id)
+    _patch_gateway_chat(monkeypatch, [_result(content="تم", tokens_in=3, tokens_out=1)])
+
+    result = await AgentRunner(gateway=AIGateway()).run(
+        db, tenant_ctx.tenant_id, agent_id=agent.id, user_message="hi"
+    )
+
+    assert result.model == "fast"
+    assert result.model_name == "fake-model"
+    run = (await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))).scalars().one()
+    assert run.output["model"] == "fast"
+    assert run.output["model_name"] == "fake-model"
+
+
 async def test_agent_run_uses_configured_step_limit(db, tenant_ctx, monkeypatch):
     agent = await _agent_with_tool(db, tenant_ctx.tenant_id)
     agent.run_limits = {"max_steps": 1}
@@ -268,9 +289,91 @@ async def test_agent_run_failed_on_gateway_error(db, tenant_ctx, monkeypatch):
     assert run.finished_at is not None
 
 
+async def test_unknown_agent_kind_blocks_before_any_model_call(db, tenant_ctx, monkeypatch):
+    """A definition typo must not spend money before failing closed."""
+    agent = Agent(
+        tenant_id=tenant_ctx.tenant_id,
+        kind="ghost_kind",
+        name="Ghost",
+        model="fast",
+    )
+    db.add(agent)
+    await db.flush()
+
+    calls = {"n": 0}
+
+    async def fake_chat(self, session, tenant_id, **kwargs):
+        calls["n"] += 1
+        return _result(content="should not run")
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    result = await AgentRunner(gateway=AIGateway()).run(
+        db, tenant_ctx.tenant_id, agent_id=agent.id, user_message="hi"
+    )
+
+    assert calls["n"] == 0
+    assert result.content is None
+    assert result.guardrail_reason == "unknown_agent_kind"
+    # The block is free but not invisible: a minimal failed run row must be
+    # persisted so a deployment typo shows up in the runs audit trail.
+    row = (
+        await db.execute(select(AgentRun).where(AgentRun.agent_id == agent.id))
+    ).scalar_one()
+    assert row.status == "failed"
+    assert row.error == "unknown_agent_kind"
+    assert row.tokens_in == 0 and row.tokens_out == 0
+    assert row.finished_at is not None
+
+
 async def test_run_unknown_agent_raises_not_found(db, tenant_ctx):
     with pytest.raises(NotFoundError):
         await AgentRunner().run(db, tenant_ctx.tenant_id, agent_id=uuid.uuid4(), user_message="hi")
+
+
+# ------------------------------------------------------- gateway alias set ---
+
+
+def test_runtime_resolves_aliases_against_the_gateway_set():
+    """`gateway.ALIASES` is the single source of truth: the runtime must bind
+    the SAME object (not a drifted copy), so adding an alias to the gateway
+    needs no second edit anywhere."""
+    from app.modules.ai import gateway as ai_gateway
+    from app.modules.ai import runtime as runtime_module
+
+    assert runtime_module.ALIASES is ai_gateway.ALIASES
+    assert "omni" in runtime_module.ALIASES
+
+
+async def test_agent_configured_with_omni_alias_reaches_the_gateway_as_omni(
+    db, tenant_ctx, monkeypatch
+):
+    """An agent row with model="omni" passes registry validation (which checks
+    the gateway set), so the runtime must not silently demote it to "fast" —
+    that is exactly the drift the duplicated alias sets used to cause."""
+    agent = Agent(tenant_id=tenant_ctx.tenant_id, kind="customer", name="Voice", model="omni")
+    db.add(agent)
+    await db.flush()
+
+    aliases: list[str] = []
+
+    async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
+        aliases.append(alias)
+        return _result(content="hello", tokens_in=1, tokens_out=1)
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    result = await AgentRunner(gateway=AIGateway()).run(
+        db, tenant_ctx.tenant_id, agent_id=agent.id, user_message="hi"
+    )
+
+    assert result.content == "hello"
+    assert aliases == ["omni"]
+
+
+def test_unknown_alias_still_falls_back_to_fast():
+    """The fallback contract is unchanged: an alias the gateway does not know
+    (and no registry default) resolves to "fast"."""
+    agent = Agent(tenant_id=uuid.uuid4(), kind="ghost_kind", name="Ghost", model="bogus_alias")
+    assert AgentRunner._alias_for(agent) == "fast"
 
 
 # ------------------------------------------------------------------ tools ---

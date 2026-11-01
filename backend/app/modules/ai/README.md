@@ -8,6 +8,7 @@ AI domain — agents, tools, prompts, model_configs, memories, knowledge, agent_
 - `approvals.py`
 - `budget.py`
 - `chat/`
+- `constants.py`
 - `core/`
 - `evaluation.py`
 - `gateway.py`
@@ -105,6 +106,53 @@ be split by moving functions; it needs the same dependency measurement as `pos/s
    reason. Patch the module that holds the logic.
 2. Measure dependencies by every spelling: `self.x`, `ClassName.x`, and bare names. Counting
    only `self.` once made a tightly coupled class look independent.
+
+## Platform invariants
+
+- `register_tool()` is fail-closed: a DIFFERENT `ToolSpec` under an existing
+  tool name must pass `allow_override=True`; re-registering the same spec is
+  idempotent. A tool name is a platform contract, not a slot two agents may
+  silently fight over.
+- Canary rollout buckets conversation-less runs (job/API agents) by the
+  inbound event id when the caller carries one, otherwise by the agent id, so
+  a retry of the same work sees the same version.
+- `AgentRunResult.model` is the gateway alias; `AgentRunResult.model_name`
+  (and `agent_runs.output.model_name`) is the concrete model the provider
+  says answered. Do not collapse the two.
+- `ALIASES` lives in `gateway.py` ONLY. `runtime.py` imports it; there is no
+  second copy (an identity test pins this). Adding a model alias means editing
+  `gateway.py` and nothing else — a definition validated against the gateway
+  set must resolve identically at run time, never silently fall back to
+  `"fast"`.
+- Per-kind hooks (`pre_run_hook` / `post_run_hook` / `context_builder`) are
+  declared on `AgentDefinition` as dotted-path strings (`"module:attr"`),
+  resolved and checked (importable, callable, async) by `validate_registry()` —
+  a bad path fails startup, not the first turn. Hook-produced content is
+  re-screened by the SAME output guardrail the loop uses. A raising pre-hook
+  fails the run (contained); a raising post-hook keeps the original answer and
+  records `run.output["post_hook_error"]`. Adding an agent kind must not
+  require editing the runtime — that is what the hooks are for.
+- Shared Arabic literals (the voice-echo sentinel, the voice marker prefixes)
+  live in `constants.py`; producer and matcher import the SAME object. Never
+  re-type the string at a second site — the identity test in
+  `test_customer_turn.py` exists because a duplicated literal once meant an
+  edit on one side silently broke echo-dedup on the other.
+- `ai_handovers.reason = "low_confidence"` means: the run HAD evidence (at
+  least one tool call) and its reply was still withheld by the grounding
+  re-check or the output guardrail. Without tool calls the generic
+  `"failure"`/`"guardrail"` reasons apply. §37 promised this reason; the
+  producer is the blocked-run mapping in `hooks.py` (mirrored by the eval
+  harness in `tests/agent_eval/runner.py` — keep the two in step).
+- The SI agent gets ONE regenerate-once when its draft misses a question
+  dimension the evidence supports (`agents/sales_intelligence/coverage.py`):
+  a gap requires question-asks AND evidence-supports AND answer-silent —
+  never demand coverage the evidence cannot back. The regenerated text must
+  pass the guardrail, `validate_answer` and a coverage re-check, or the
+  original draft and the existing safe-response path apply unchanged.
+  Attempted regens are recorded in `run.output["coverage_regen"]`.
+- The SI chat turn executor re-binds the tenant after every mid-turn commit;
+  COMMIT drops the transaction-local RLS binding and the next query would
+  otherwise run tenant-less.
 
 ## Rules for working here
 

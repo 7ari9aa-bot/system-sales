@@ -209,6 +209,20 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
         raise ValueError(f"deep analysis shell missing: {job.correlation_id}")
     question = shell["question"]
 
+    from app.modules.billing.services.entitlements import EntitlementService
+
+    if not await EntitlementService.can(session, job.tenant_id, "CanUseAI"):
+        from sqlalchemy import update as _update
+
+        from app.modules.analytics.models import AnalysisEvidence
+
+        await session.execute(
+            _update(AnalysisEvidence)
+            .where(AnalysisEvidence.id == uuid.UUID(job.correlation_id))
+            .values(outcome="FAILED")
+        )
+        return {"outcome": "FAILED", "error": "plan does not allow AI agents"}
+
     from app.modules.ai.core.resolver import resolve_agent_by_kind
 
     try:

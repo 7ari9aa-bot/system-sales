@@ -130,7 +130,8 @@ async def test_high_risk_tool_does_not_execute_before_approval(db, tenant_ctx, m
             args_schema=_Args,
             handler=_dangerous_handler,
             risk_level="HIGH",
-        )
+        ),
+        allow_override=True,
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
     _patch_gateway(monkeypatch, [_request_call(), _result(content="waiting")])
@@ -171,7 +172,8 @@ async def test_an_approved_action_executes_once_and_is_consumed(db, tenant_ctx, 
             args_schema=_Args,
             handler=_dangerous_handler,
             risk_level="HIGH",
-        )
+        ),
+        allow_override=True,
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
     conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id
@@ -246,7 +248,8 @@ async def test_a_resumed_action_audits_the_execution_not_the_park(db, tenant_ctx
             args_schema=_Args,
             handler=_dangerous_handler,
             risk_level="HIGH",
-        )
+        ),
+        allow_override=True,
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
     conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id
@@ -319,7 +322,8 @@ async def test_a_consumed_approval_does_not_authorize_a_second_run(db, tenant_ct
             args_schema=_Args,
             handler=_dangerous_handler,
             risk_level="HIGH",
-        )
+        ),
+        allow_override=True,
     )
     agent = await _agent(db, tenant_ctx.tenant_id)
     conversation_id = (await _conversation(db, tenant_ctx.tenant_id)).id

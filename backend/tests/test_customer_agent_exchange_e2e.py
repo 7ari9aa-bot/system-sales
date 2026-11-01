@@ -180,9 +180,13 @@ async def test_the_invoice_number_leads_to_the_other_sizes_without_a_handover(
     # the invoice tool is on offer to the model, on every channel
     offered = {t["function"]["name"] for t in seen["calls"][0]["tools"]}
     assert "get_my_orders" in offered
-    # both tools ran for real, in order, and succeeded
+    # both tools ran for real and succeeded. `created_at` is the Postgres
+    # transaction time, so two calls in one test transaction can tie and the
+    # row order is not a promise — the model-level assertions below prove the
+    # invoice result reached the product-details step.
     rows = await _tool_rows(db, conversation_id)
-    assert [name for name, _ in rows][:2] == ["get_my_orders", "get_product_details"]
+    assert len(rows) == 2
+    assert {name for name, _ in rows} == {"get_my_orders", "get_product_details"}
     detail = (
         await db.execute(
             text(

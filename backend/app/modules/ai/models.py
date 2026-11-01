@@ -549,7 +549,10 @@ class AIHandover(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     # failure (a blocked/failed run, and a tenant entitled to AI whose canonical
     # customer agent is not provisioned) | approval | customer_request (the
     # customer asked for a person) | policy (the tenant's plan does not include
-    # AI). §37's `low_confidence` is the one reason still without a producer.
+    # AI). low_confidence (§37) is produced by ai.hooks' blocked-run mapping: a
+    # run that made at least one tool call yet had its reply withheld by the
+    # grounding re-check or the output guardrail — it had evidence and still
+    # could not answer confidently.
     # One conversation holds at most ONE open row: enforced in the service AND
     # by the partial unique index `uq_handovers_open_conversation`.
     reason: Mapped[str] = mapped_column(String(31))

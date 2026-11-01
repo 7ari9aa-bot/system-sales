@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
+from app.core.db import bind_tenant
 from app.modules.ai.agents.sales_intelligence.agent import (
     AnalysisOut as SalesAnalysisOut,
 )
@@ -39,13 +40,15 @@ from app.modules.ai.chat.schemas import (
     ThreadUpdateRequest as SalesChatThreadUpdateRequest,
 )
 from app.modules.ai.chat.turns import retry_chat_turn, run_chat_turn
-from app.modules.ai.routers._deps import AnalyticsCtx
+from app.modules.ai.routers._deps import AnalyticsAICtx, AnalyticsCtx
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 @router.post("/sales/analyses")
-async def create_sales_analysis(ctx: AnalyticsCtx, body: SalesAnalysisRequest) -> SalesAnalysisOut:
+async def create_sales_analysis(
+    ctx: AnalyticsAICtx, body: SalesAnalysisRequest
+) -> SalesAnalysisOut:
     """§12.1 — one sales question → one evidence-backed analysis.
 
     The store's first active agent runs the investigation with the SI tools
@@ -89,7 +92,7 @@ async def create_sales_analysis(ctx: AnalyticsCtx, body: SalesAnalysisRequest) -
     response_model=SalesDeepAnalysisQueuedOut,
 )
 async def create_deep_analysis(
-    ctx: AnalyticsCtx, body: SalesAnalysisRequest
+    ctx: AnalyticsAICtx, body: SalesAnalysisRequest
 ) -> SalesDeepAnalysisQueuedOut:
     """§13 — queue a DEEP analysis: durable background job, streamed progress.
 
@@ -228,13 +231,17 @@ async def list_sales_chat_messages(
     response_model=SalesChatMessageOut,
 )
 async def send_sales_chat_message(
-    thread_id: uuid.UUID, body: SalesChatMessageSendRequest, ctx: AnalyticsCtx
+    thread_id: uuid.UUID, body: SalesChatMessageSendRequest, ctx: AnalyticsAICtx
 ) -> SalesChatMessageOut:
     thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
     user_row, created = await chat_service.append_user_message(
         ctx.session, ctx, thread, content=body.content, idempotency_key=body.idempotency_key
     )
     await ctx.session.commit()
+    # COMMIT ends the transaction-local RLS binding. The replay lookup and the
+    # turn executor below both query FORCE-RLS tables, so the tenant must be
+    # re-bound before either of them runs.
+    await bind_tenant(ctx.session, ctx.tenant_id)
     if not created:
         # Replayed key: the answer already exists — return it verbatim. A
         # second run here would double-bill the gateway for the same question.
@@ -251,7 +258,7 @@ async def send_sales_chat_message(
     response_model=SalesChatMessageOut,
 )
 async def retry_sales_chat_message(
-    thread_id: uuid.UUID, message_id: uuid.UUID, ctx: AnalyticsCtx
+    thread_id: uuid.UUID, message_id: uuid.UUID, ctx: AnalyticsAICtx
 ) -> SalesChatMessageOut:
     thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
     return await retry_chat_turn(ctx.session, ctx, thread, message_id=message_id)

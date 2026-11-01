@@ -6,11 +6,16 @@ facts rebuild from tool results, the answer's numbers are checked against
 them, findings are graded by the engine — and when the answer cannot be
 proven, the SAFE RESPONSE answers instead (§10.4).
 
-v1 honesty: coverage runs as a deterministic post-CHECK with an explicit
-limitation (not a between-rounds injection — that runner hook is the
-recorded Gap Proposal); the regenerate-once policy likewise lands with the
-loop-deepening wave. Neither shortcut can produce a wrong number — they
-only narrow what is said.
+Between-rounds coverage has landed (the recorded Gap Proposal): when the
+first draft skips dimensions the question asked for AND the evidence
+supports, ONE corrective regeneration runs through the gateway
+(coverage.py — budget reserve/settle like any model call, tools disabled,
+reusing the gathered evidence). The regenerated text must pass the same
+output guardrail, the free-number validation and a coverage re-check;
+failing any keeps the original draft for the safe-response path below.
+Still deterministic-only: coverage is a keyword gate over the question and
+the evidence, not a model-graded rubric. Neither step can produce a wrong
+number — they only narrow what is said.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.agents.sales_intelligence import (
@@ -32,6 +38,9 @@ from app.modules.ai.agents.sales_intelligence import (
 # Re-export: the provisioning single-source test imports the canonical prompt
 # FROM this module (the agent module is the prompt's public face) — the alias
 # form keeps it alive under any lint sweep.
+from app.modules.ai.agents.sales_intelligence.coverage import (
+    regenerate_on_coverage_gap,
+)
 from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E402
     SI_SYSTEM_PROMPT as SI_SYSTEM_PROMPT,
 )
@@ -172,11 +181,23 @@ async def ensure_si_tools(session: AsyncSession, tenant_id: uuid.UUID, agent_id:
             )
         ).scalars()
     }
-    for name in SI_TOOLS:
-        if name in existing:
-            continue
-        session.add(AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={}))
-    await session.flush()
+    missing = [name for name in SI_TOOLS if name not in existing]
+    if not missing:
+        return
+    try:
+        # Two analyses can provision concurrently. The loser of the unique
+        # (tenant, agent, tool) race must roll back only its insert, not poison
+        # the caller's transaction.
+        async with session.begin_nested():
+            for name in missing:
+                session.add(AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={}))
+            await session.flush()
+    except IntegrityError:
+        logger.info(
+            "si.tools_already_provisioned tenant=%s agent=%s",
+            tenant_id,
+            agent_id,
+        )
 
 
 def _rebuild_evidence(tool_calls_made: list[dict]) -> dict[str, list[dict]]:
@@ -401,6 +422,30 @@ async def run_sales_analysis(
         )
         evidence_hash = pack.content_hash
 
+    # Between-rounds coverage (the recorded Gap Proposal, now landed): when
+    # the first draft skips dimensions the question asked for and the
+    # evidence supports, ONE corrective regeneration runs through the
+    # gateway. Its output must pass the same guardrail + free-number gates
+    # and a coverage re-check; failing any keeps the original draft — the
+    # validation/safe-response block below then applies unchanged.
+    replacement, coverage_note = await regenerate_on_coverage_gap(
+        session,
+        tenant_id,
+        agent_id=agent_id,
+        run_id=result.run_id,
+        question=question,
+        history=history,
+        draft=result.content,
+        evidence=evidence,
+        allowed_numbers=allowed,
+        findings=findings,
+        tool_calls_made=result.tool_calls_made,
+    )
+    if replacement is not None:
+        result.content = replacement
+    if coverage_note is not None:
+        await _record_run_output(session, result.run_id, "coverage_regen", coverage_note)
+
     # P1-22: Determine outcome and answer before durable save_analysis
     guardrail_reason: str | None = None
     safe_resp: bool = False
@@ -473,6 +518,28 @@ async def run_sales_analysis(
         agent_version=agent_ver,
         prompt_version=str(agent_ver),
     )
+
+
+async def _record_run_output(
+    session: AsyncSession, run_id: uuid.UUID | None, key: str, value: dict
+) -> None:
+    """Merge one observability key into the run row's output.
+
+    The runner finalized (but did not commit) the AgentRun row in this same
+    transaction, so the merge is a plain dict update + flush — no second
+    session, no race with the run's own write.
+    """
+    if run_id is None:
+        return
+    from app.modules.ai.models import AgentRun
+
+    row = await session.get(AgentRun, run_id)
+    if row is None:
+        return
+    output = dict(row.output or {})
+    output[key] = value
+    row.output = output
+    await session.flush()
 
 
 def _store_from(
