@@ -66,13 +66,19 @@ def test_registry_fail_closed_duplicate_rejection() -> None:
         allowed_tools=["test_tool"],
     )
     AgentRegistry.register(test_defn)
+    try:
+        # Re-registering the same kind MUST fail-closed
+        with pytest.raises(ValueError, match="Duplicate registration forbidden"):
+            AgentRegistry.register(test_defn)
 
-    # Re-registering the same kind MUST fail-closed
-    with pytest.raises(ValueError, match="Duplicate registration forbidden"):
-        AgentRegistry.register(test_defn)
-
-    # But allow_override=True succeeds (useful for testing/hot-reload)
-    AgentRegistry.register(test_defn, allow_override=True)
+        # But allow_override=True succeeds (useful for testing/hot-reload)
+        AgentRegistry.register(test_defn, allow_override=True)
+    finally:
+        # The registry is process-global and validate_registry() (now wired
+        # into worker startup) refuses a definition whose tools do not exist
+        # — this leftover used to break every later worker-startup test in
+        # the same process with 'test_duplicate_kind: unknown tools'.
+        AgentRegistry._definitions.pop("test_duplicate_kind", None)
 
 
 def test_registry_unknown_kind() -> None:
