@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text as _sql
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.guardrails import screen_inbound
 from app.modules.ai.tools import ToolSpec, register_tool
 from app.modules.analytics.contracts import AnalysisPeriod
 
@@ -711,17 +712,32 @@ async def _si_social_comments(
         }
         for r in top_posts
     ]
-    latest = [
-        {
-            "platform": r.platform,
-            "post_id": r.post_id,
-            "author_name": r.author_name,
-            "body": r.body,
-            "commented_at": r.commented_at.isoformat() if r.commented_at else None,
-            "permalink": r.permalink,
-        }
-        for r in recent
-    ]
+    latest = []
+    withheld = 0
+    for r in recent:
+        # A social comment is written by ANYONE on the internet and rides the
+        # model context verbatim — the one untrusted-channel → SI-context path.
+        # The same inbound chain that screens customer prose screens it here:
+        # a non-allow verdict (instruction override, cross-tenant probing)
+        # withholds the body instead of handing an owner-facing report to a
+        # stranger's script. The numbers above stay untouched (they are
+        # counts, not attacker-controlled text).
+        verdict = screen_inbound(r.body or "")
+        if verdict.decision == "allow":
+            body: str | None = r.body
+        else:
+            body = None
+            withheld += 1
+        latest.append(
+            {
+                "platform": r.platform,
+                "post_id": r.post_id,
+                "author_name": r.author_name,
+                "body": body,
+                "commented_at": r.commented_at.isoformat() if r.commented_at else None,
+                "permalink": r.permalink,
+            }
+        )
     store = EvidenceStore()
     numbers: list = []
     for entry in platforms:
@@ -749,7 +765,8 @@ async def _si_social_comments(
         "limitations": [
             f"showing at most {limit} posts and {limit} recent comments; "
             "hidden and removed comments are excluded"
-        ],
+        ]
+        + ([f"{withheld} comment body(ies) withheld by inbound screening"] if withheld else []),
         "facts": facts,
     }
 

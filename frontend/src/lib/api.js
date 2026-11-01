@@ -43,6 +43,15 @@ export function setTokens(tokens) {
   if (!tokens) clearSessionCookie();
   // Never let a response cached under one session survive a session change.
   invalidateCache();
+  if (!tokens) {
+    // TanStack Query's cache is tenant data (catalog, customers, sales,
+    // held carts). invalidateCache() only clears the custom memory cache
+    // above — a live query cache means the NEXT login on a shared machine
+    // renders the PREVIOUS tenant's data without any request. Every teardown
+    // path (logout, 401, refresh-unavailable) funnels through setTokens(null).
+    // Imported lazily to keep module-load order independent.
+    import("./query-client").then(({ queryClientInstance }) => queryClientInstance.clear());
+  }
 }
 
 export class ApiError extends Error {

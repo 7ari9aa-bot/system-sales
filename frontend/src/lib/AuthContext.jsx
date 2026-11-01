@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, getTokens, setTokens, prefetchDashboard, ApiError } from "@/lib/api";
+import { queryClientInstance } from "@/lib/query-client";
 
 /** مصادقة حقيقية على /auth/* — login و register و logout و me.
  *  بيتحمل مرة واحدة: لو فيه توكنات بيجيب /auth/me، ولو فشلت بيمسح
@@ -114,6 +115,9 @@ export function AuthProvider({ children }) {
     }
     setTokens(null);
     setUser(null);
+    // Tenant-data cache teardown happens inside setTokens(null) (api.js) —
+    // kept explicit here so the logout path reads self-contained.
+    queryClientInstance.clear();
   }, []);
 
   const navigateToLogin = useCallback(() => navigate("/login"), [navigate]);

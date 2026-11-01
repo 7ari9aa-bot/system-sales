@@ -30,15 +30,27 @@ class InventoryReservationService:
         order_id: UUID,
         actor_user_id: UUID | None = None,
     ) -> int:
-        """Mark the order's ACTIVE reservations CONVERTED (payment captured)."""
-        reservations = (
+        """Mark the order's reservations CONVERTED (payment captured).
+
+        Capture is the ONE place a reservation turns into an ``out``/sale
+        movement — whatever the reservation's status was. An ACTIVE hold is
+        released and sold as before. But a hold the expiry sweep already
+        freed (a COD order paid later than the TTL) is a sale the ledger
+        still owes: without this, the goods left while ``on_hand`` never
+        moved — phantom stock and oversell, invisible to reconciliation
+        because ledger and balance agree on the wrong number.
+
+        Rows already CONVERTED are skipped, so a retry never sells twice.
+        An order with NO reservation rows at all keeps the historical
+        no-op (legacy orders predate the machinery).
+        """
+        rows = (
             (
                 await session.execute(
                     select(InventoryReservation)
                     .where(
                         InventoryReservation.tenant_id == tenant_id,
                         InventoryReservation.order_id == order_id,
-                        InventoryReservation.status == "ACTIVE",
                     )
                     .with_for_update()
                 )
@@ -46,36 +58,49 @@ class InventoryReservationService:
             .scalars()
             .all()
         )
+        pending = [r for r in rows if r.status != "CONVERTED"]
+        if not pending:
+            return 0
 
-        for reservation in reservations:
+        # Aggregate demand per (variant, warehouse): a group can mix an
+        # ACTIVE hold with an already-expired one, and the sale covers both.
+        demand: dict[tuple[UUID, UUID], int] = {}
+        active_ref: dict[tuple[UUID, UUID], InventoryReservation] = {}
+        for reservation in pending:
+            key = (reservation.variant_id, reservation.warehouse_id)
+            demand[key] = demand.get(key, 0) + reservation.quantity
+            if reservation.status == "ACTIVE" and key not in active_ref:
+                active_ref[key] = reservation
+
+        for (variant_id, warehouse_id), quantity in demand.items():
             balance = await BalanceServiceMixin._locked_balance(
-                session, tenant_id, reservation.variant_id, reservation.warehouse_id
+                session, tenant_id, variant_id, warehouse_id
             )
             sold = check_physical_settlement(
                 on_hand=balance.on_hand,
-                quantity=reservation.quantity,
-                variant_id=reservation.variant_id,
-                warehouse_id=reservation.warehouse_id,
-                context=f"converting reservation {reservation.id} for order {order_id}",
+                quantity=quantity,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                context=f"converting reservations for order {order_id}",
             )
-            freed = min(balance.reserved, reservation.quantity)
+            freed = min(balance.reserved, quantity)
             balance.reserved -= freed
             balance.on_hand -= sold
             if freed:
                 await MovementServiceMixin._append_release(
                     session,
                     tenant_id,
-                    reservation.variant_id,
-                    reservation.warehouse_id,
+                    variant_id,
+                    warehouse_id,
                     quantity=freed,
                     balance_after=balance.on_hand,
-                    reservation=reservation,
+                    reservation=active_ref.get((variant_id, warehouse_id), pending[0]),
                 )
             await MovementServiceMixin._append(
                 session,
                 tenant_id,
-                reservation.variant_id,
-                reservation.warehouse_id,
+                variant_id,
+                warehouse_id,
                 direction="out",
                 quantity=sold,
                 reason="sale",
@@ -84,9 +109,10 @@ class InventoryReservationService:
                 reference_id=order_id,
                 actor_user_id=actor_user_id,
             )
+        for reservation in pending:
             reservation.status = "CONVERTED"
             reservation.converted_at = _now()
-        return len(reservations)
+        return len(pending)
 
     @staticmethod
     async def cancel_for_order(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> int:

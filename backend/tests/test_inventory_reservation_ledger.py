@@ -354,6 +354,39 @@ async def test_the_expiry_sweep_states_what_it_released(db: AsyncSession, tenant
 # --------------------------------------------------------- untouched paths --
 
 
+async def test_capture_after_expiry_still_sells_once(db: AsyncSession, tenant_ctx) -> None:
+    """A COD order paid later than the reservation TTL: the sweep freed the
+    hold, but the goods physically left — capture must book the `out`/sale
+    anyway. This used to book NO movement (on_hand never dropped) while
+    ledger and balance still agreed, so reconciliation could not catch it."""
+    tenant_id = tenant_ctx.tenant_id
+    order, variant, wh = await _order_holding_stock(db, tenant_id, qty=3)
+    reservation = await _reservation(db, order.id)
+    reservation.expires_at = reservation.expires_at - timedelta(hours=1)
+    await db.flush()
+    assert await InventoryReservationService.expire_stale(db, tenant_id) == 1
+    assert (await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)).reserved == 0
+
+    assert await InventoryReservationService.convert(db, tenant_id, order.id) == 1
+
+    balance = await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
+    # 10 stocked, 3 sold on capture after the hold died.
+    assert (balance.on_hand, balance.reserved) == (7, 0)
+    rows = await _rows(db, variant.id)
+    assert _shape(rows, "direction", "reason", "quantity") == [
+        ("hold", "reservation", 3),
+        ("in", "purchase", 10),
+        ("out", "sale", 3),  # from capture — the row that used to go missing
+        ("release", "reservation_release", 3),  # from the sweep
+    ]
+    assert reservation.status == "CONVERTED"
+    # Idempotent: a retry converts nothing new and sells nothing twice.
+    assert await InventoryReservationService.convert(db, tenant_id, order.id) == 0
+    balance_again = await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
+    assert (balance_again.on_hand, balance_again.reserved) == (7, 0)
+    assert len([m for m in rows if m.direction == "out"]) == 1
+
+
 async def test_a_return_restocks_once_after_capture(db: AsyncSession, tenant_ctx) -> None:
     """The restock-on-return saga (ADR-052) must not now double-count: the
     capture's `out`/sale and the return's `in`/return are the only physical

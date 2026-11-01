@@ -19,6 +19,23 @@ depends_on: str | Sequence[str] | None = None
 
 _TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
+# CI runs `alembic upgrade head` BEFORE scripts/provision.py creates the
+# `sales_app` role, so a bare GRANT fails with UndefinedObjectError on a
+# fresh database (the same reason f7a2c9d4e8b1 wraps its grants in a DO
+# block). asyncpg allows exactly one statement per op.execute(), so each
+# guarded grant is a single DO block.
+_GRANT_SALES_APP = """DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+        {grant}
+    END IF;
+END
+$$;"""
+
+
+def _grant_sales_app(grant: str) -> str:
+    return _GRANT_SALES_APP.format(grant=grant)
+
 
 def upgrade() -> None:
     op.create_table(
@@ -54,7 +71,7 @@ def upgrade() -> None:
             USING (tenant_id = {_TENANT_GUARD})
             WITH CHECK (tenant_id = {_TENANT_GUARD})"""
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON channel_user_access TO sales_app")
+    op.execute(_grant_sales_app("GRANT SELECT, INSERT, UPDATE, DELETE ON channel_user_access TO sales_app"))
 
     op.create_table(
         "visitor_events",
@@ -81,7 +98,7 @@ def upgrade() -> None:
     op.create_index("ix_visitor_events_visitor", "visitor_events", ["visitor_id", "created_at"])
     op.create_index("ix_visitor_events_type", "visitor_events", ["event_type", "created_at"])
     op.create_index("ix_visitor_events_path", "visitor_events", ["path", "created_at"])
-    op.execute("GRANT SELECT, INSERT ON visitor_events TO sales_app")
+    op.execute(_grant_sales_app("GRANT SELECT, INSERT ON visitor_events TO sales_app"))
 
 
 def downgrade() -> None:
