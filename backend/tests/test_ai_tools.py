@@ -19,6 +19,7 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import TextClause
 
 from app.core.errors import DomainError, ValidationError
 from app.modules.ai.models import AIHandover
@@ -911,6 +912,12 @@ class _CapturingSession:
         self.statement = None
 
     async def execute(self, statement, params=None):  # noqa: ANN001, ARG002
+        # Skip bare-text() plumbing — the trgm threshold SET LOCAL/RESET the
+        # handler wraps its SELECT with. text() yields a TextClause, not a
+        # str; without this the threshold RESET overwrote the captured
+        # statement and every shape assertion saw the plumbing instead.
+        if isinstance(statement, TextClause):
+            return _NoRows()
         self.statement = statement
         return _NoRows()
 
