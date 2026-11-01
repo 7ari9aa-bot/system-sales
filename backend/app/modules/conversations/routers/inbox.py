@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.routers._deps import (
@@ -25,6 +25,18 @@ from app.modules.conversations.service import ConversationService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["inbox"])
+
+
+async def _allowed_channels(ctx: TenantContext) -> set[str] | None:
+    from app.modules.platform.services.channel_access import allowed_providers
+
+    return await allowed_providers(ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code)
+
+
+async def _ensure_channel_access(ctx: TenantContext, conversation) -> None:
+    allowed = await _allowed_channels(ctx)
+    if allowed is not None and conversation.channel not in allowed:
+        raise PermissionDeniedError("channel is not enabled for this user")
 
 
 @router.get("/conversations")
@@ -46,6 +58,7 @@ async def list_conversations(
         ctx.tenant_id,
         status=status,
         customer_id=customer_id,
+        channels=await _allowed_channels(ctx),
         limit=limit + 1,
         before_at=before_at,
         before_id=before_id,
@@ -100,6 +113,7 @@ async def inbox_query(
         assignee_user_id=assignee_user_id,
         unassigned=unassigned,
         channel=channel,
+        channels=await _allowed_channels(ctx),
         customer_id=customer_id,
         limit=limit + 1,
         before_at=before_at,
@@ -120,6 +134,8 @@ async def list_messages(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ):
     before_created_at, before_id = decode_cursor(cursor) if cursor else (None, None)
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
     # The service fetches newest-first (keyset) and returns oldest-first for
     # display; the extra (oldest) row only signals that more history exists.
     rows = await ConversationService.list_messages(
@@ -182,6 +198,7 @@ async def send_message(
     from app.core.events.writer import add_outbox_event
 
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
     if not body.body and not body.template_name:
@@ -222,6 +239,8 @@ async def assign(
     # user exists (a cross-tenant existence oracle). Resolve the assignee
     # through tenant_users instead, which is exactly "is this person on my
     # team"; tenant_users RLS makes other tenants' rows invisible here.
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
     if body.user_id is not None and body.user_id != ctx.user.id:
         from sqlalchemy import select as sa_select
 
@@ -253,6 +272,8 @@ async def close(
     conversation_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
     await ConversationService.close(ctx.session, ctx.tenant_id, conversation_id)
     await ConversationService.audit(
         ctx.session, ctx.tenant_id, ctx.user.id, "conversation.closed", str(conversation_id)
@@ -262,6 +283,8 @@ async def close(
 
 @router.post("/conversations/{conversation_id}/read")
 async def mark_read(ctx: TenantCtxDep, conversation_id: uuid.UUID):
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
     await ConversationService.mark_read(ctx.session, ctx.tenant_id, conversation_id)
     return {"ok": True}
 

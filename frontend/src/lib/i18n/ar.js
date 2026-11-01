@@ -196,6 +196,7 @@ export default {
   "addProduct.notWired": "الصفحة لسه مش مربوطة بحفظ السيرفر.",
   "nav.marketing": "التسويق",
   "nav.ai": "الذكاء",
+  "nav.ownerConsole": "كونسول المالك",
   "nav.salesAssistant": "مساعد المبيعات",
   "nav.analytics": "التحليلات",
   "nav.usage": "الباقة والاستخدام",

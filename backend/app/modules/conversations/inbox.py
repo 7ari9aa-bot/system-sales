@@ -95,6 +95,7 @@ class InboxQuery:
         assignee_user_id: UUID | None = None,
         unassigned: bool = False,
         channel: str | None = None,
+        channels: list[str] | None = None,
         customer_id: UUID | None = None,
         limit: int = 50,
         before_at: datetime | None = None,
@@ -124,6 +125,14 @@ class InboxQuery:
         if channel:
             where.append("c.channel = :channel")
             params["channel"] = channel
+        if channels is not None:
+            # Per-user channel access is an allowlist. An empty list means the
+            # caller may see nothing, not "no filter".
+            if not channels:
+                where.append("FALSE")
+            else:
+                where.append("c.channel = ANY(CAST(:channels AS text[]))")
+                params["channels"] = list(channels)
         if customer_id is not None:
             where.append("c.customer_id = :customer_id")
             params["customer_id"] = str(customer_id)

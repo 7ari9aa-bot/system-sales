@@ -134,8 +134,7 @@ export default function Inbox() {
   const [telegramListScrolling, setTelegramListScrolling] = useState(false);
   const telegramListScrollTimerRef = useRef(null);
   const [convMap, setConvMap] = useState(() => Object.fromEntries(CHANNELS.map((ch) => [ch.id, []])));
-  const [integrations, setIntegrations] = useState(null);
-  const [integrationAccess, setIntegrationAccess] = useState(null);
+  const [channelStatus, setChannelStatus] = useState(null);
   const [approvals, setApprovals] = useState([]);
   const [approvalLoadError, setApprovalLoadError] = useState("");
   const [loadingInbox, setLoadingInbox] = useState(true);
@@ -269,18 +268,16 @@ export default function Inbox() {
     setLoadingInbox(true);
     setInboxLoadError("");
     setError(null);
-    api("/integrations")
+    api("/channels/status")
       .then((rows) => {
         if (!alive) return;
-        setIntegrations(Array.isArray(rows) ? rows : []);
-        setIntegrationAccess(true);
+        setChannelStatus(Array.isArray(rows) ? rows : []);
       })
       .catch(() => {
-        // Integration status is settings-scoped. Inbox-only roles can still
-        // work with channels represented by conversations they can access.
+        // A member who cannot read status still gets an honest empty state:
+        // every tile stays locked until the server can answer.
         if (!alive) return;
-        setIntegrations([]);
-        setIntegrationAccess(false);
+        setChannelStatus([]);
       });
     api("/ai/approvals?status=PENDING")
       .then((response) => {
@@ -299,17 +296,23 @@ export default function Inbox() {
   }, [inboxRetryAttempt, loadInboxPage]);
 
   const channels = useMemo(() => {
-    if (demoAccount) return CHANNELS.map((channel) => ({ ...channel, connected: true }));
-    const connected = integrationAccess
-      ? new Set((integrations || [])
-        .filter((row) => ["connected", "active"].includes(String(row.status || "").toLowerCase()))
-        .map((row) => row.provider))
-      : new Set(Object.entries(convMap).filter(([, rows]) => rows.length > 0).map(([channelId]) => channelId));
-    return CHANNELS.map((channel) => ({ ...channel, connected: connected.has(channel.id) }));
-  }, [convMap, demoAccount, integrationAccess, integrations]);
+    if (demoAccount) return CHANNELS.map((channel) => ({ ...channel, connected: true, locked: false }));
+    const byProvider = new Map((channelStatus || []).map((row) => [row.provider, row]));
+    return CHANNELS.map((channel) => {
+      const status = byProvider.get(channel.id);
+      const connected = Boolean(status?.connected && status?.enabled_for_me);
+      return {
+        ...channel,
+        connected,
+        locked: status ? Boolean(status.locked) : true,
+        lifecycle: status?.lifecycle || "not_connected",
+        webhookStatus: status?.webhook_status || "not_connected",
+      };
+    });
+  }, [channelStatus, demoAccount]);
 
   useEffect(() => {
-    if (integrationAccess === null) return;
+    if (channelStatus === null) return;
     const selected = channels.find((channel) => channel.id === activeChannel);
     if (selected?.connected) return;
     const firstConnected = channels.find((channel) => channel.connected);
@@ -317,7 +320,7 @@ export default function Inbox() {
       setActiveChannel(firstConnected.id);
       setActiveId(null);
     }
-  }, [activeChannel, channels, integrationAccess]);
+  }, [activeChannel, channels, channelStatus]);
 
   const channel = getChannel(activeChannel);
   const isWhatsApp = activeChannel === "whatsapp";
@@ -371,7 +374,7 @@ export default function Inbox() {
   const unreadByChannel = Object.fromEntries(
     Object.entries(convMap).map(([id, rows]) => [id, rows.reduce((count, row) => count + row.unread, 0)])
   );
-  const instagramAccountIdentity = integrations?.find((integration) => integration.provider === "instagram" && ["active", "connected"].includes(String(integration.status || "").toLowerCase()))?.display_name?.trim() || "";
+  const instagramAccountIdentity = channelStatus?.find((row) => row.provider === "instagram" && row.connected)?.account_name?.trim() || "";
 
   useEffect(() => {
     if (activeChannel === "facebook") {
@@ -817,7 +820,7 @@ export default function Inbox() {
               </div>
             )}
           </div>
-          {integrations && connectedCount === 0 && (
+          {channelStatus && connectedCount === 0 && (
             <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               {t("inbox.noConnectedChannels", "Connect a channel in Settings → Channels to start receiving messages.")}
             </p>

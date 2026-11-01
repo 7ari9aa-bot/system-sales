@@ -12,6 +12,7 @@ import { ThemeProvider } from '@/lib/themeContext';
 import { I18nProvider } from '@/lib/i18n';
 import { RegionalProvider } from '@/lib/regional';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import VisitorTracker from '@/components/VisitorTracker';
 import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs';
 const Fihrist = lazy(() => import('@/pages/Fihrist'));
 const Login = lazy(() => import('@/pages/Login'));
@@ -31,6 +32,7 @@ const CASHIER_PREVIEW = import.meta.env.VITE_CASHIER_PREVIEW === '1';
 const AI = lazy(() => import('@/pages/AI'));
 const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
+const OwnerConsole = lazy(() => import('@/pages/OwnerConsole'));
 const Usage = lazy(() => import('@/pages/Usage'));
 const WebsiteComingSoon = lazy(() => import('@/pages/WebsiteComingSoon'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
@@ -47,6 +49,7 @@ const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSetting
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
 const MarketingRoutes = () => (
   <LanguageProvider>
+    <VisitorTracker />
     <Routes>
       {PUBLIC_SEO_ROUTES.map(({ path }) => (
         <Route key={path} path={path} element={<Fihrist />} />
@@ -58,6 +61,7 @@ const MarketingRoutes = () => (
 
 const AuthRoutes = () => (
   <LanguageProvider>
+    <VisitorTracker />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -99,6 +103,7 @@ const DashboardRoutes = () => (
         <Route path="/ai" element={<AI />} />
         <Route path="/sales-assistant" element={<SalesAssistant />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/owner" element={<OwnerConsole />} />
         <Route path="/usage" element={<Usage />} />
         <Route path="/website" element={<WebsiteComingSoon />} />
       </Route>
@@ -151,7 +156,7 @@ function PathRouter() {
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
   if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/pos', '/cashier', '/sales',
-    '/sales-assistant', '/marketing', '/ai', '/analytics', '/usage', '/website', '/settings'].some(under)) {
+    '/sales-assistant', '/marketing', '/ai', '/analytics', '/owner', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }
   // retired paths fall through to DashboardRoutes on purpose, so the

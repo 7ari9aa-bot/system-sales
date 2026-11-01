@@ -100,6 +100,9 @@ from app.modules.operations.router import (
 from app.modules.orders.router import router as orders_router
 from app.modules.platform.impersonation import router as platform_impersonation_router
 from app.modules.platform.router import router as platform_module_router
+from app.modules.platform.routers.channels import router as channel_status_router
+from app.modules.platform.routers.owner import router as owner_console_router
+from app.modules.platform.routers.telemetry import router as public_telemetry_router
 from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
@@ -137,9 +140,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await assert_schema_current(engine)
 
     # Agent Registry: discover and register all agent kinds at startup
-    from app.modules.ai.core.registry import discover_agents
+    from app.modules.ai.core.registry import discover_agents, validate_registry
 
     discover_agents()
+    validate_registry()
 
     # Multimodal readiness (voice-in, customer photos): every one of these
     # features fails CLOSED on a missing credential, and a closed gate with no
@@ -476,6 +480,9 @@ def create_app() -> FastAPI:
         privacy_router,
         platform_module_router,
         platform_impersonation_router,
+        owner_console_router,
+        channel_status_router,
+        public_telemetry_router,
         segments_router,
         automation_router,
         analytics_module_router,

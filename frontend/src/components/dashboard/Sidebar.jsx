@@ -14,6 +14,7 @@ import {
   PanelLeft,
   Settings2,
   MessageSquareText,
+  ShieldCheck,
 } from "lucide-react";
 import { cashierNavItems } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
@@ -92,6 +93,9 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: MessageSquareText },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
         { to: "/usage", label: t("nav.usage"), icon: Gauge },
+        ...(user?.is_platform_admin
+          ? [{ to: "/owner", label: t("nav.ownerConsole"), icon: ShieldCheck }]
+          : []),
         // Last in the list on purpose, and locked: the website system is not finished for the first release.
         { to: "/website", label: t("nav.website"), icon: Globe, locked: true },
       ],

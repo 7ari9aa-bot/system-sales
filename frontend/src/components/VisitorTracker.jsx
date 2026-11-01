@@ -1,0 +1,118 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { apiUrl } from "@/lib/api";
+
+const VISITOR_KEY = "fihrist:visitorId";
+const SESSION_KEY = "fihrist:visitorSession";
+
+function randomId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getOrCreate(storage, key) {
+  try {
+    const existing = storage.getItem(key);
+    if (existing) return existing;
+    const next = randomId();
+    storage.setItem(key, next);
+    return next;
+  } catch {
+    return randomId();
+  }
+}
+
+function send(event) {
+  const payload = JSON.stringify(event);
+  try {
+    fetch(apiUrl("/public/telemetry"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+      credentials: "omit",
+    }).catch(() => {});
+  } catch {
+    // Telemetry must never break the page.
+  }
+}
+
+export default function VisitorTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const visitorId = getOrCreate(localStorage, VISITOR_KEY);
+    const sessionId = getOrCreate(sessionStorage, SESSION_KEY);
+    const path = `${location.pathname}${location.search || ""}`;
+    const base = {
+      visitor_id: visitorId,
+      session_id: sessionId,
+      path,
+      url: window.location.href,
+      referrer: document.referrer || null,
+    };
+
+    send({ ...base, event_type: "page_view" });
+
+    const onLoad = () => {
+      const nav = performance.getEntriesByType?.("navigation")?.[0];
+      if (nav) {
+        send({
+          ...base,
+          event_type: "performance",
+          duration_ms: Math.max(0, Math.round(nav.duration || 0)),
+          metadata: {
+            dom_content_loaded_ms: Math.round(nav.domContentLoadedEventEnd || 0),
+            load_event_ms: Math.round(nav.loadEventEnd || 0),
+          },
+        });
+      }
+    };
+    if (document.readyState === "complete") onLoad();
+    else window.addEventListener("load", onLoad, { once: true });
+
+    const onClick = (event) => {
+      const element = event.target?.closest?.("a,button,[data-track]");
+      if (!element) return;
+      const label = (
+        element.getAttribute("data-track") ||
+        element.getAttribute("aria-label") ||
+        element.innerText ||
+        element.textContent ||
+        ""
+      ).trim().slice(0, 160);
+      send({
+        ...base,
+        event_type: "click",
+        element: label || element.tagName.toLowerCase(),
+        metadata: {
+          tag: element.tagName.toLowerCase(),
+          href: element.getAttribute("href") || undefined,
+        },
+      });
+    };
+
+    const onError = (event) => {
+      send({
+        ...base,
+        event_type: "error",
+        element: event.message?.slice(0, 500) || "window.error",
+        metadata: {
+          source: event.filename || undefined,
+          line: event.lineno || undefined,
+          column: event.colno || undefined,
+        },
+      });
+    };
+
+    document.addEventListener("click", onClick, { capture: true });
+    window.addEventListener("error", onError);
+    return () => {
+      document.removeEventListener("click", onClick, { capture: true });
+      window.removeEventListener("error", onError);
+      window.removeEventListener("load", onLoad);
+    };
+  }, [location.pathname, location.search]);
+
+  return null;
+}

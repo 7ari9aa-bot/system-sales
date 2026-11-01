@@ -190,6 +190,68 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     )
 
 
+class ChannelUserAccess(TenantMixin, TimestampMixin, Base):
+    """Per-user visibility/use grant for one channel provider.
+
+    Connection status is tenant-wide; ACCESS is per user. A missing row means
+    "inherit the tenant default" (enabled), so existing members keep working
+    on the day the table ships. Revoking is an explicit row with
+    ``is_enabled=False`` rather than deleting history.
+    """
+
+    __tablename__ = "channel_user_access"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(63), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    can_send: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "provider", name="uq_channel_user_access"),
+        Index("ix_channel_user_access_tenant_provider", "tenant_id", "provider"),
+    )
+
+
+class VisitorEvent(Base):
+    """Anonymous website interaction event for the owner console.
+
+    Platform-level telemetry: no tenant row is read or written. The visitor id
+    is a client-generated random key; the IP is stored only as a salted hash.
+    """
+
+    __tablename__ = "visitor_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visitor_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(31), nullable=False)
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    referrer: Mapped[str | None] = mapped_column(Text)
+    element: Mapped[str | None] = mapped_column(Text)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, server_default="{}")
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    ip_hash: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_visitor_events_created", "created_at"),
+        Index("ix_visitor_events_visitor", "visitor_id", "created_at"),
+        Index("ix_visitor_events_type", "event_type", "created_at"),
+        Index("ix_visitor_events_path", "path", "created_at"),
+    )
+
+
 class WebhookEndpoint(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """Tenant-configured outbound webhooks (we call them, with signatures)."""
 

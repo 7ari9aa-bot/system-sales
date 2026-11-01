@@ -196,6 +196,7 @@ export default {
   "addProduct.notWired": "This screen is not wired to server saving yet.",
   "nav.marketing": "Marketing",
   "nav.ai": "AI",
+  "nav.ownerConsole": "Owner console",
   "nav.salesAssistant": "Sales Assistant",
   "nav.analytics": "Analytics",
   "nav.usage": "Plan & usage",
