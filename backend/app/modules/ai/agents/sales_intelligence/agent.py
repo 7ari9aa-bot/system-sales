@@ -428,7 +428,7 @@ async def run_sales_analysis(
     # gateway. Its output must pass the same guardrail + free-number gates
     # and a coverage re-check; failing any keeps the original draft — the
     # validation/safe-response block below then applies unchanged.
-    replacement, coverage_note = await regenerate_on_coverage_gap(
+    replacement, coverage_note, regen_tokens = await regenerate_on_coverage_gap(
         session,
         tenant_id,
         agent_id=agent_id,
@@ -443,6 +443,13 @@ async def run_sales_analysis(
     )
     if replacement is not None:
         result.content = replacement
+    if regen_tokens is not None:
+        # The provider billed the corrective call whether or not it survived
+        # the gates — fold it into the result so the run-end usage record
+        # (and the monthly cap) sees it. Without this, one billed call per
+        # gapped analysis escaped §42 metering (deep self-review HIGH).
+        result.tokens_in += regen_tokens[0]
+        result.tokens_out += regen_tokens[1]
     if coverage_note is not None:
         await _record_run_output(session, result.run_id, "coverage_regen", coverage_note)
 

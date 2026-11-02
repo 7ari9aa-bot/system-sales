@@ -560,7 +560,7 @@ async def test_regen_unit_success_replaces_the_draft(monkeypatch):
 
     monkeypatch.setattr(AIGateway, "chat", fake_chat)
 
-    replacement, note = await regenerate_on_coverage_gap(
+    replacement, note, regen_tokens = await regenerate_on_coverage_gap(
         _FakeSession(agent),
         uuid.uuid4(),
         agent_id=agent.id,
@@ -597,7 +597,7 @@ async def test_regen_unit_rejects_an_invented_number(monkeypatch):
 
     monkeypatch.setattr(AIGateway, "chat", fake_chat)
 
-    replacement, note = await regenerate_on_coverage_gap(
+    replacement, note, regen_tokens = await regenerate_on_coverage_gap(
         _FakeSession(agent),
         uuid.uuid4(),
         agent_id=agent.id,

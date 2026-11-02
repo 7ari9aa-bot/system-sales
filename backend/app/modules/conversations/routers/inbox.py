@@ -33,10 +33,29 @@ async def _allowed_channels(ctx: TenantContext) -> set[str] | None:
     return await allowed_providers(ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code)
 
 
+async def _sendable_channels(ctx: TenantContext) -> set[str] | None:
+    """Providers this user may SEND on — the stricter can_send grant."""
+    from app.modules.platform.services.channel_access import sendable_providers
+
+    return await sendable_providers(ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code)
+
+
 async def _ensure_channel_access(ctx: TenantContext, conversation) -> None:
     allowed = await _allowed_channels(ctx)
     if allowed is not None and conversation.channel not in allowed:
         raise PermissionDeniedError("channel is not enabled for this user")
+
+
+async def _ensure_channel_send(ctx: TenantContext, conversation) -> None:
+    """The SEND enforcement point: visibility is not permission to reply.
+
+    The owner console can set can_send=False on a member (view-only); the
+    send route used to check is_enabled alone, so the advertised control was
+    inert (deep self-review HIGH).
+    """
+    sendable = await _sendable_channels(ctx)
+    if sendable is not None and conversation.channel not in sendable:
+        raise PermissionDeniedError("sending is not enabled for this user on this channel")
 
 
 @router.get("/conversations")
@@ -199,6 +218,7 @@ async def send_message(
 
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     await _ensure_channel_access(ctx, conversation)
+    await _ensure_channel_send(ctx, conversation)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
     if not body.body and not body.template_name:

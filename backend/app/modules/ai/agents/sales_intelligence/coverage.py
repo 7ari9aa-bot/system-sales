@@ -182,18 +182,21 @@ async def regenerate_on_coverage_gap(
     allowed_numbers: set[str],
     findings: list[Finding],
     tool_calls_made: list[dict],
-) -> tuple[str | None, dict | None]:
+) -> tuple[str | None, dict | None, tuple[int, int] | None]:
     """At most ONE corrective regeneration when the first draft misses coverage.
 
-    Returns ``(replacement_content, note)``:
+    Returns ``(replacement_content, note, regen_tokens)``:
 
-    * ``(None, None)`` — no gaps (or the runner already withheld the draft,
-      which its own guardrail handles): the orchestrator proceeds unchanged;
-    * ``(None, note)`` — gaps were found, the regeneration ran (or tried)
-      and did not produce a provably better answer; the ORIGINAL draft is
-      kept and ``note`` records what happened;
-    * ``(text, note)`` — the regenerated answer passed the analytics output
-      guardrail, the free-number validation and a coverage re-check.
+    * ``(None, None, None)`` — no gaps (or the runner already withheld the
+      draft, which its own guardrail handles): the orchestrator proceeds
+      unchanged;
+    * ``(None, note, tokens)`` — gaps were found, the regeneration ran (or
+      tried) and did not produce a provably better answer; the ORIGINAL
+      draft is kept, ``note`` records what happened, and ``tokens`` is the
+      ``(tokens_in, tokens_out)`` the provider billed for the attempt
+      (None when it never reached the provider);
+    * ``(text, note, tokens)`` — the regenerated answer passed the analytics
+      output guardrail, the free-number validation and a coverage re-check.
 
     The call goes through the gateway like any model call (budget reserve/
     settle included) and reuses the gathered evidence only — ``tools=None``.
@@ -202,10 +205,10 @@ async def regenerate_on_coverage_gap(
         # The runner already withheld the draft (guardrail/empty): the
         # orchestrator's existing safe path applies, and regeneration cannot
         # correct what the model never said.
-        return None, None
+        return None, None, None
     gaps = coverage_gaps(question, draft, evidence)
     if not gaps:
-        return None, None
+        return None, None, None
     note: dict = {"attempted": True, "succeeded": False, "gaps": list(gaps)}
 
     from app.modules.ai.gateway import AIGateway
@@ -216,7 +219,7 @@ async def regenerate_on_coverage_gap(
     agent = await session.get(Agent, agent_id)
     if agent is None:
         logger.warning("si.coverage_regen_no_agent run=%s agent=%s", run_id, agent_id)
-        return None, note
+        return None, note, None
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": AgentRunner._resolve_system_prompt(agent)}
@@ -238,19 +241,24 @@ async def regenerate_on_coverage_gap(
         )
     except Exception:  # containment — a failed regen keeps the original draft
         logger.warning("si.coverage_regen_failed run=%s", run_id, exc_info=True)
-        return None, note
+        return None, note, None
 
+    # The provider billed this call whether or not the regen survives the
+    # gates — the caller must fold these tokens into the run's usage record
+    # or the monthly cap never sees them (the exact leak class the metering
+    # fix closed for the main loop).
+    regen_tokens = (chat.tokens_in, chat.tokens_out)
     candidate = chat.content
     if not candidate or not candidate.strip():
-        return None, note
+        return None, note, regen_tokens
     # The regen output re-enters through the SAME gates as a first draft.
     verdict = analytics_guardrail().evaluate(candidate, {"tool_results": tool_calls_made})
     if verdict.decision != "allow":
         logger.warning("si.coverage_regen_blocked run=%s reason=%s", run_id, verdict.reason)
-        return None, note
+        return None, note, regen_tokens
     if validate_answer(candidate, allowed_numbers, findings):
-        return None, note
+        return None, note, regen_tokens
     if coverage_gaps(question, candidate, evidence):
-        return None, note
+        return None, note, regen_tokens
     note["succeeded"] = True
-    return candidate, note
+    return candidate, note, regen_tokens

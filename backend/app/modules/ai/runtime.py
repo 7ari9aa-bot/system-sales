@@ -457,15 +457,21 @@ class AgentRunner:
             # provider burned real billed tokens (the calls that landed inside
             # the doomed run) that never counted against the cap. The loop
             # keeps run.tokens_* current per call, so record what was billed.
+            # Contained: if the loop died on a DB-level error the session is
+            # unusable and this write would raise on its own — masking the
+            # original failure. The usage record is lost there, the error is not.
             if run.tokens_in or run.tokens_out:
-                await record_usage(
-                    session,
-                    tenant_id,
-                    agent_id=agent.id,
-                    tokens_in=run.tokens_in,
-                    tokens_out=run.tokens_out,
-                    cost=estimate_cost(run.tokens_in, run.tokens_out),
-                )
+                try:
+                    await record_usage(
+                        session,
+                        tenant_id,
+                        agent_id=agent.id,
+                        tokens_in=run.tokens_in,
+                        tokens_out=run.tokens_out,
+                        cost=estimate_cost(run.tokens_in, run.tokens_out),
+                    )
+                except Exception:  # noqa: BLE001 — bookkeeping must not mask the failure
+                    logger.warning("ai.failed_run_usage_unrecorded run=%s", run.id, exc_info=True)
             run.finished_at = _now()
             await session.flush()
             if isinstance(exc, DomainError):
@@ -654,11 +660,13 @@ class AgentRunner:
             modified = replace(result, content=produced)
         elif isinstance(produced, AgentRunResult):
             # Spend accounting stays tied to the MAIN loop: a hook that made
-            # its own model call settles it through the gateway's per-call
-            # usage record, and a hook returning a bare AgentRunResult carries
-            # default ZERO tokens — copying them onto the run row would
-            # silently erase the run's real cost. Model provenance likewise
-            # stays the loop's unless the hook explicitly named one.
+            # its own model call must fold those tokens into the result ITSELF
+            # (the SI coverage regen does exactly that) — the gateway writes
+            # only an audit ModelCall row, not ai_usage. A hook returning a
+            # bare AgentRunResult carries default ZERO tokens — copying them
+            # onto the run row would silently erase the run's real cost.
+            # Model provenance likewise stays the loop's unless the hook
+            # explicitly named one.
             modified = replace(
                 produced,
                 tokens_in=result.tokens_in,

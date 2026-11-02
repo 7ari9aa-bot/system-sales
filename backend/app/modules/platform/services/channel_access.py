@@ -80,13 +80,36 @@ async def allowed_providers(
     user_id: uuid.UUID,
     role_code: str | None,
 ) -> set[str] | None:
-    """Providers this user may see. None means every provider (owner/manager)."""
+    """Providers this user may SEE. None means every provider (owner/manager)."""
     if (role_code or "").lower() in _ALL_ACCESS_ROLES:
         return None
     rows = await access_rows(session, tenant_id, user_id)
     return {provider for provider, row in rows.items() if row.is_enabled} | {
         spec.name for spec in list_connection_specs() if spec.name not in rows
     }
+
+
+async def sendable_providers(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role_code: str | None,
+) -> set[str] | None:
+    """Providers this user may SEND on: enabled AND can_send.
+
+    Seeing a conversation and replying on it are different grants — the
+    owner console sets can_send=False for view-only members, and the send
+    route is the enforcement point. The view check (allowed_providers)
+    deliberately ignores can_send.
+    """
+    if (role_code or "").lower() in _ALL_ACCESS_ROLES:
+        return None
+    rows = await access_rows(session, tenant_id, user_id)
+    known = {spec.name for spec in list_connection_specs()}
+    sendable = {provider for provider, row in rows.items() if row.is_enabled and row.can_send} | (
+        known - set(rows)
+    )
+    return sendable
 
 
 async def channel_status(

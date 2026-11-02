@@ -87,6 +87,12 @@ class InventoryReservationService:
             balance.reserved -= freed
             balance.on_hand -= sold
             if freed:
+                # Attribute the release to THIS group's ACTIVE hold; when the
+                # group has none (the sweep freed it already — freed>0 can
+                # only come from another group's hold, so this is defensive),
+                # pass None and let _pair_release_with_reservation resolve the
+                # right row instead of referencing a foreign group's
+                # reservation (deep self-review).
                 await MovementServiceMixin._append_release(
                     session,
                     tenant_id,
@@ -94,7 +100,7 @@ class InventoryReservationService:
                     warehouse_id,
                     quantity=freed,
                     balance_after=balance.on_hand,
-                    reservation=active_ref.get((variant_id, warehouse_id), pending[0]),
+                    reservation=active_ref.get((variant_id, warehouse_id)),
                 )
             await MovementServiceMixin._append(
                 session,

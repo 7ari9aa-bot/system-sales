@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.modules.platform.models import VisitorEvent
 
 _EVENT_TYPES = frozenset({"page_view", "click", "error", "performance"})
@@ -27,6 +28,18 @@ def is_valid_event(body: Any) -> bool:
     if body.event_type not in _EVENT_TYPES:
         return False
     return bool(_ID_RE.match(body.visitor_id)) and bool(_ID_RE.match(body.session_id))
+
+
+def _ip_hash(ip: str) -> str:
+    """SALTED SHA-256 of the visitor IP.
+
+    A bare SHA-256 of an IPv4 address is trivially reversible by enumeration
+    (the whole space is ~4 billion); the deployment's JWT secret salts the
+    input so the stored hash cannot be brute-forced offline. The column
+    docstring and the access-matrix entry both promise "salted".
+    """
+    salt = get_settings().jwt_secret.encode()
+    return hashlib.sha256(salt + ip.encode()).hexdigest()
 
 
 async def record_visitor_event(
@@ -54,7 +67,7 @@ async def record_visitor_event(
             duration_ms=body.duration_ms,
             metadata_json=metadata,
             user_agent=(user_agent or "")[:1000] or None,
-            ip_hash=hashlib.sha256(ip.encode()).hexdigest() if ip else None,
+            ip_hash=_ip_hash(ip) if ip else None,
             created_at=datetime.now(UTC),
         )
     )

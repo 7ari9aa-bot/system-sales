@@ -241,6 +241,7 @@ def _stub_message_services(monkeypatch) -> None:
         return None
 
     monkeypatch.setattr("app.modules.conversations.routers.inbox._allowed_channels", _all_channels)
+    monkeypatch.setattr("app.modules.conversations.routers.inbox._sendable_channels", _all_channels)
 
 
 def test_send_message_declares_the_write_permission_gate() -> None:
