@@ -234,6 +234,14 @@ def _stub_message_services(monkeypatch) -> None:
     monkeypatch.setattr(ConversationService, "add_message", _add)
     monkeypatch.setattr("app.core.events.writer.add_outbox_event", _outbox)
 
+    # The send route also resolves the per-user channel allowlist — the fake
+    # TenantContext carries session=None and a staff role, so the real
+    # allowed_providers would dereference None. None = "every provider".
+    async def _all_channels(_ctx):
+        return None
+
+    monkeypatch.setattr("app.modules.conversations.routers.inbox._allowed_channels", _all_channels)
+
 
 def test_send_message_declares_the_write_permission_gate() -> None:
     """The gap WAS the missing dependency; assert it is attached by name."""
