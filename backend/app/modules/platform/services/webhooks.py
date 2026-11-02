@@ -20,6 +20,33 @@ from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
 from .audit import AuditService
 
 
+def _mint_secret() -> str:
+    """Mint a 64-hex-char endpoint signing secret (plaintext, shown once)."""
+    return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+def _secret_at_rest(plaintext: str) -> str:
+    """Encrypt a signing secret for the ``webhooks.secret`` column (§68).
+
+    The signing secret is a replayable credential: a DB dump must not yield
+    it (the deep review flagged the plaintext column). Stored values carry
+    the ``v1:`` envelope prefix; legacy plaintext rows still verify — decrypt
+    is backwards-compatible, so the population migrates as endpoints rotate.
+    """
+    from app.core.secrets import get_envelope_store
+
+    return get_envelope_store().encrypt(plaintext)
+
+
+def _endpoint_signing_secret(stored: str) -> str:
+    """Read the signing secret back out, transparently for legacy rows."""
+    from app.core.secrets import EnvelopeSecretStore, get_envelope_store
+
+    if stored.startswith(EnvelopeSecretStore.PREFIX):
+        return get_envelope_store().decrypt(stored).value
+    return stored
+
+
 class PreparedDelivery:
     """The signed request built by `prepare`, held outside any transaction."""
 
@@ -77,12 +104,16 @@ class WebhookService:
         # cannot turn our delivery worker into an SSRF proxy. Re-validated at
         # send time in WebhookDispatcher.deliver (DNS rebinding).
         _ssrf_guard(url)
+        plaintext = _mint_secret()
         endpoint = WebhookEndpoint(
             tenant_id=tenant_id,
             url=url,
-            secret=uuid.uuid4().hex + uuid.uuid4().hex,
+            secret=_secret_at_rest(plaintext),
             events=events,
         )
+        # Transient, NEVER persisted: the one-time plaintext delivery the
+        # register/rotate responses promise. The column keeps ciphertext.
+        endpoint.plaintext_secret = plaintext
         session.add(endpoint)
         await session.flush()
         # §66: registration is a credential-bearing configuration act — the
@@ -152,7 +183,9 @@ class WebhookService:
         the single-column model).
         """
         endpoint = await WebhookService._load_endpoint(session, tenant_id, endpoint_id)
-        endpoint.secret = uuid.uuid4().hex + uuid.uuid4().hex
+        plaintext = _mint_secret()
+        endpoint.secret = _secret_at_rest(plaintext)
+        endpoint.plaintext_secret = plaintext
         await session.flush()
         await AuditService.write(
             session,
@@ -330,10 +363,11 @@ class WebhookDispatcher:
         # §148: the timestamp rides INSIDE the signature (replay protection)
         # and the delivery row id lets receivers dedupe redeliveries.
         timestamp = str(int(datetime.now(UTC).timestamp()))
+        signing_secret = _endpoint_signing_secret(endpoint.secret)
         headers = {
             "Content-Type": "application/json",
             "X-SalesOS-Event": delivery.event_name,
-            "X-SalesOS-Signature": cls.sign(endpoint.secret, body, timestamp),
+            "X-SalesOS-Signature": cls.sign(signing_secret, body, timestamp),
             "X-SalesOS-Timestamp": timestamp,
             "X-SalesOS-Delivery-Id": str(delivery.id),
         }

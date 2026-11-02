@@ -78,6 +78,7 @@ AUTH_LIMIT = 10  # per window, per IP — credential-granting /auth/* actions
 AUTH_SESSION_LIMIT = 60
 DEFAULT_LIMIT = 300  # per window, per IP — everything else
 PUBLIC_LIMIT = 120  # per window, per IP — webchat/webhook ingress
+PUBLIC_TELEMETRY_LIMIT = 30  # per window, per IP — anonymous telemetry writes
 API_PREFIX = "/api/v1"
 
 # /auth/* subpaths that hand out or rotate credentials. EVERYTHING under
@@ -152,6 +153,12 @@ def _bucket_for(path: str) -> tuple[str, int]:
         return "auth", AUTH_LIMIT
     if path.startswith("/webchat/") or path.startswith("/webhooks/"):
         return "public", PUBLIC_LIMIT
+    if path == "/public/telemetry":
+        # Anonymous WRITE ingress: the tightest anonymous bucket. 300/window
+        # of unauthenticated DB inserts was a disk-fill vector (deep review
+        # round 3); a real site's page views per IP per 5 minutes stay far
+        # below this.
+        return "public_telemetry", PUBLIC_TELEMETRY_LIMIT
     return "api", DEFAULT_LIMIT
 
 

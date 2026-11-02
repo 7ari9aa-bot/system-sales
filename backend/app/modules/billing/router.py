@@ -81,7 +81,7 @@ async def register_webhook(
     return {
         "id": str(endpoint.id),
         "url": endpoint.url,
-        "secret": endpoint.secret,  # shown once at creation
+        "secret": endpoint.plaintext_secret,  # shown once at creation
         "events": endpoint.events,
         "active": bool(endpoint.is_active),
     }
@@ -129,7 +129,7 @@ async def rotate_webhook_secret(
     )
     return {
         "id": str(endpoint.id),
-        "secret": endpoint.secret,
+        "secret": endpoint.plaintext_secret,
         "rotated": True,
         "active": bool(endpoint.is_active),
     }

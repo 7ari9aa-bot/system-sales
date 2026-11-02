@@ -24,10 +24,9 @@ from __future__ import annotations
 
 import hmac
 import uuid
-from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -46,7 +45,6 @@ router = APIRouter(prefix="/platform", tags=["platform"])
 
 _TICKET_TTL_SECONDS = 120
 _JTI_KEY = "platform:impersonation:jti:{jti}"
-_HANDOFF_KEY = "platform:impersonation:handoff:{nonce}"
 
 
 def _require_platform_token(request: Request) -> None:
@@ -65,6 +63,12 @@ class ImpersonationTicketOut(BaseModel):
     ticket: str
     expires_in: int
     redeem_path: str
+    # F4 (round-3 review): the ticket rides the URL FRAGMENT — the browser
+    # never sends it to the server, so no access log, proxy log or referrer
+    # ever sees it. The confirm POST carries it in the body. ``ticket`` +
+    # ``redeem_path`` stay for callers that assemble their own URL; prefer
+    # ``redeem_url``.
+    redeem_url: str
 
 
 class ImpersonationRedeemOut(BaseModel):
@@ -160,6 +164,7 @@ async def mint_impersonation_ticket(
         ticket=ticket,
         expires_in=_TICKET_TTL_SECONDS,
         redeem_path="/api/v1/platform/impersonation/redeem",
+        redeem_url="/api/v1/platform/impersonation/redeem#" + ticket,
     )
 
 
@@ -169,42 +174,32 @@ async def mint_impersonation_ticket(
     response_class=HTMLResponse,
 )
 async def redeem_impersonation_ticket(
-    ticket: Annotated[str, Query(min_length=1)],
     session: DbSession,
 ):
-    """The handoff page — GET returns an auto-submitting POST form (F4).
+    """The handoff page — GET serves a script that reads the FRAGMENT (F4).
 
-    The ticket travels in the form BODY, never in a URL that server access
-    logs, browser history or referrers keep. Nothing is consumed here; the
-    confirm endpoint below does all the state-changing work.
+    The ticket arrives in the URL FRAGMENT (``/redeem#<ticket>``): browsers
+    never transmit the fragment to the server, so THIS request — and every
+    access log, proxy log and referrer header on the way — carries no
+    credential at all. The page's JS reads the fragment client-side and POSTs
+    it to the confirm endpoint in the body; nothing is consumed here.
     """
     settings = get_settings()
     if not settings.impersonation_platform_token:
         raise HTTPException(status_code=404, detail="not found")
-    try:
-        claims = decode_token(ticket)
-    except Exception as exc:  # noqa: BLE001 — any JWT failure is the same refusal
-        raise PermissionDeniedError("invalid ticket") from exc
-    if claims.get("type") != "impersonation_ticket":
-        raise PermissionDeniedError("invalid ticket")
-
-    redis = get_redis_or_none()
-    if redis is None:
-        # Fail CLOSED (security review F1): the one-time guarantee is a
-        # security control, not a cache — no Redis, no redemption.
-        raise HTTPException(status_code=503, detail="redemption temporarily unavailable")
-    nonce = uuid.uuid4().hex
-    await redis.set(_HANDOFF_KEY.format(nonce=nonce), ticket, ex=180)
 
     script = (
-        "fetch('confirm',{method:'POST',"
+        "var t=location.hash.slice(1);"
+        "if(!t){document.body.textContent='missing ticket';}"
+        "else{fetch('confirm',{method:'POST',"
         "headers:{'Content-Type':'application/json'},"
-        "body:JSON.stringify({nonce:'__NONCE__'})})"
+        "body:JSON.stringify({ticket:t})})"
         ".then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};})})"
         ".then(function(x){if(!x.ok){document.body.textContent=x.j.detail||'failed';"
+        "if(x.j.error&&x.j.error.code){document.body.textContent=x.j.error.code;}"
         "return;}window.location=x.j.location;})"
-        ".catch(function(){document.body.textContent='failed';})"
-    ).replace("__NONCE__", nonce)
+        ".catch(function(){document.body.textContent='failed';});}"
+    )
     page = HTMLResponse(
         "<!doctype html><html><body>"
         "<noscript>This handoff requires JavaScript.</noscript>"
@@ -216,7 +211,7 @@ async def redeem_impersonation_ticket(
 
 
 class ImpersonationConfirmBody(BaseModel):
-    nonce: str = Field(min_length=8, max_length=128)
+    ticket: str = Field(min_length=1)
 
 
 @router.post("/impersonation/redeem/confirm", response_model=ImpersonationRedeemOut)
@@ -239,21 +234,21 @@ async def confirm_impersonation_ticket(
 
     redis = get_redis_or_none()
     if redis is None:
+        # Fail CLOSED (security review F1): the one-time guarantee is a
+        # security control, not a cache — no Redis, no redemption.
         raise HTTPException(status_code=503, detail="redemption temporarily unavailable")
-    ticket = await redis.get(_HANDOFF_KEY.format(nonce=body.nonce))
-    if not ticket:
-        raise PermissionDeniedError("handoff expired — start again from the console")
-    # one-time for the PAGE too: a replayed nonce cannot re-sign-in
-    await redis.delete(_HANDOFF_KEY.format(nonce=body.nonce))
 
     try:
-        claims = decode_token(ticket)
+        claims = decode_token(body.ticket)
     except Exception as exc:  # noqa: BLE001 — any JWT failure is the same refusal
         raise PermissionDeniedError("invalid ticket") from exc
     if claims.get("type") != "impersonation_ticket":
         raise PermissionDeniedError("invalid ticket")
     jti = claims.get("jti", "")
 
+    # Single-use: the ticket's own jti, consumed atomically (F1). The old
+    # nonce handoff hop is gone — the ticket now travels the fragment →
+    # POST-body path directly, so there is no parked copy to expire or race.
     consumed = await redis.set(_JTI_KEY.format(jti=jti), "1", nx=True, ex=600)
     if not consumed:
         raise ConflictError("ticket already used")

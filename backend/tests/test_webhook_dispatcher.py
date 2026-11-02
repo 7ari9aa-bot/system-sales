@@ -251,7 +251,10 @@ async def test_registration_issues_a_secret_once_and_audits(db, tenant_ctx, _byp
         actor_user_id=tenant_ctx.user.id,
     )
 
-    assert len(endpoint.secret) == 64  # two uuid4 hexes, server-minted
+    assert len(endpoint.plaintext_secret) == 64  # two uuid4 hexes, server-minted
+    assert endpoint.secret.startswith("v1:"), (
+        "the column carries ENVELOPE ciphertext, not the plaintext"
+    )
     audits = (
         (
             await db.execute(
@@ -286,7 +289,7 @@ async def test_rotation_replaces_the_secret_exactly_once_and_audits(
         url="https://receiver.example.test/hooks",
         events=["order.created"],
     )
-    old_secret = endpoint.secret
+    old_secret = endpoint.plaintext_secret
 
     rotated = await WebhookService.rotate_endpoint_secret(
         db, tenant_ctx.tenant_id, endpoint.id, actor_user_id=tenant_ctx.user.id
@@ -294,7 +297,8 @@ async def test_rotation_replaces_the_secret_exactly_once_and_audits(
 
     assert rotated.id == endpoint.id
     assert rotated.secret != old_secret
-    assert len(rotated.secret) == 64
+    assert len(rotated.plaintext_secret) == 64
+    assert rotated.secret.startswith("v1:")
     audits = (
         (
             await db.execute(

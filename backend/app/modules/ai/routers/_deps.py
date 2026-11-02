@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.core.errors import PermissionDeniedError, RateLimitExceededError
+from app.core.errors import PermissionDeniedError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
@@ -62,7 +62,10 @@ class require_ai_entitlement:
         from app.modules.billing.services.entitlements import EntitlementService
 
         if not await EntitlementService.can(ctx.session, ctx.tenant_id, self.code):
-            raise RateLimitExceededError(
+            # 403, not 429: a plan-capability gap is PERMANENT until the
+            # merchant upgrades — 429's retry semantics made clients back off
+            # and retry a surface that can never succeed (deep review).
+            raise PermissionDeniedError(
                 "plan does not allow AI agents",
                 details={"capability": self.code},
             )

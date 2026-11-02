@@ -64,7 +64,7 @@ async def test_disabled_feature_answers_404_without_probing_the_secret():
             json={"tenant_id": str(TENANT), "user_id": str(USER), "reason": "probe"},
         )
         # the GET handoff cannot even leak the page when disabled
-        page = await client.get("/api/v1/platform/impersonation/redeem", params={"ticket": "x"})
+        page = await client.get("/api/v1/platform/impersonation/redeem")
     assert mint.status_code == 404
     assert page.status_code == 404
 
