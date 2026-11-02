@@ -53,6 +53,12 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # its TTL — but only that tenant's NEXT reserve reclaims it, so a quiet
     # tenant's parked spend is invisible. This sweep is the leak metric.
     "expire_budget_reservations": (timedelta(minutes=15), {}),
+    # Outbound webhook deliveries whose retry schedule lapsed: the delivery
+    # worker is crash-safe through the stream's PEL reclaim, but a row whose
+    # stream event is gone (Redis flush, maxlen trim, DLQ'd entry) would sit
+    # queued/failed forever — the retry schedule lives on the ROW, so
+    # something durable must read it back.
+    "webhook_delivery_sweep": (timedelta(minutes=10), {}),
     # §46: without a sweep a deadline is decorative — nothing ever notices it
     # passing, so "SLA risk" would never turn into "breached".
     "sla.sweep": (timedelta(minutes=5), {}),
@@ -208,6 +214,74 @@ async def _handle_expire_budget_reservations(session, tenant_id, payload: dict) 
 
 
 register_job_handler("expire_budget_reservations", _handle_expire_budget_reservations)
+
+
+async def _handle_webhook_delivery_sweep(session, tenant_id, payload: dict) -> dict:
+    """Re-enqueue outbound deliveries whose retry schedule lapsed.
+
+    Non-terminal rows (queued/failed) past their next_retry_at — or never
+    scheduled (a worker crash between the prepare commit and the outcome
+    write) — re-enter the pipeline through the outbox, the same route the
+    worker's own failure path uses. Budgeted like the live path: a row past
+    the attempts ceiling dies instead of looping. A 5-minute staleness grace
+    keeps the sweep from racing a live worker's three phases.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.core.config import get_settings
+    from app.core.events.writer import add_outbox_event
+    from app.modules.platform.models import WebhookDelivery
+
+    now = datetime.now(UTC)
+    grace = now - timedelta(minutes=5)
+    max_attempts = get_settings().worker_max_attempts
+    rows = (
+        (
+            await session.execute(
+                select(WebhookDelivery)
+                .where(
+                    WebhookDelivery.tenant_id == tenant_id,
+                    WebhookDelivery.status.in_(("queued", "failed")),
+                    (WebhookDelivery.next_retry_at.is_(None))
+                    | (WebhookDelivery.next_retry_at <= now),
+                    WebhookDelivery.updated_at < grace,
+                )
+                .order_by(WebhookDelivery.updated_at)
+                .limit(50)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    requeued = 0
+    for row in rows:
+        if row.attempts >= max_attempts:
+            row.status = "dead"
+            row.last_error = "sweep: attempts budget exhausted"
+            continue
+        row.status = "queued"
+        await add_outbox_event(
+            session,
+            aggregate_type="webhook",
+            aggregate_id=row.id,
+            event_type="webhook.deliver",
+            tenant_id=tenant_id,
+            payload={"delivery_id": str(row.id)},
+        )
+        requeued += 1
+    if requeued or rows:
+        logger.info(
+            "scheduler.webhook_delivery_sweep tenant=%s rows=%d requeued=%d",
+            tenant_id,
+            len(rows),
+            requeued,
+        )
+    return {"scanned": len(rows), "requeued": requeued}
+
+
+register_job_handler("webhook_delivery_sweep", _handle_webhook_delivery_sweep)
 
 
 async def _handle_sla_sweep(session, tenant_id, payload: dict) -> dict:

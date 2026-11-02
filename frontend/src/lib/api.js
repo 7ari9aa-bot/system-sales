@@ -49,8 +49,14 @@ export function setTokens(tokens) {
     // above — a live query cache means the NEXT login on a shared machine
     // renders the PREVIOUS tenant's data without any request. Every teardown
     // path (logout, 401, refresh-unavailable) funnels through setTokens(null).
-    // Imported lazily to keep module-load order independent.
-    import("./query-client").then(({ queryClientInstance }) => queryClientInstance.clear());
+    // Imported lazily to keep module-load order independent. The clear is
+    // async by nature: a re-login that repopulates the cache before the
+    // clear lands simply triggers a refetch (never a leak — the wiped cache
+    // is repopulated from the NEW session's own requests). Failures here are
+    // bookkeeping only; the AuthContext logout path clears synchronously too.
+    import("./query-client")
+      .then(({ queryClientInstance }) => queryClientInstance.clear())
+      .catch(() => {});
   }
 }
 

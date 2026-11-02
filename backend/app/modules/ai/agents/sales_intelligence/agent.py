@@ -445,11 +445,34 @@ async def run_sales_analysis(
         result.content = replacement
     if regen_tokens is not None:
         # The provider billed the corrective call whether or not it survived
-        # the gates — fold it into the result so the run-end usage record
-        # (and the monthly cap) sees it. Without this, one billed call per
-        # gapped analysis escaped §42 metering (deep self-review HIGH).
+        # the gates. The runner already finalized the run row AND wrote its
+        # ai_usage record before returning (this stage runs AFTER run()),
+        # so folding into the in-memory result alone would mutate an object
+        # nobody re-persists — the §42 cap reads SUM(ai_usage.cost), and the
+        # gateway writes only an audit ModelCall row. Compensate durably:
+        # bump the run row in THIS transaction and book the delta against
+        # the cap (deep self-review round 3, CRITICAL).
+        from app.modules.ai.budget import estimate_cost
+        from app.modules.ai.usage import record_usage
+
         result.tokens_in += regen_tokens[0]
         result.tokens_out += regen_tokens[1]
+        if result.run_id is not None:
+            from app.modules.ai.models import AgentRun as _AgentRun
+
+            run_row = await session.get(_AgentRun, result.run_id)
+            if run_row is not None:
+                run_row.tokens_in += regen_tokens[0]
+                run_row.tokens_out += regen_tokens[1]
+                run_row.cost = (run_row.cost or 0) + estimate_cost(*regen_tokens)
+        await record_usage(
+            session,
+            tenant_id,
+            agent_id=agent_id,
+            tokens_in=regen_tokens[0],
+            tokens_out=regen_tokens[1],
+            cost=estimate_cost(*regen_tokens),
+        )
     if coverage_note is not None:
         await _record_run_output(session, result.run_id, "coverage_regen", coverage_note)
 

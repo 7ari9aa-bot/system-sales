@@ -43,13 +43,17 @@ export default function VisitorTracker() {
   useEffect(() => {
     const visitorId = getOrCreate(localStorage, VISITOR_KEY);
     const sessionId = getOrCreate(sessionStorage, SESSION_KEY);
-    const path = `${location.pathname}${location.search || ""}`;
+    // PATHNAME ONLY — no query string. Auth routes receive links like
+    // /register?email=... and /reset?token=...; persisting location.search
+    // would store personal data and secret tokens in plaintext telemetry
+    // (deep review round 3, M1). href is derived from the same clean path.
+    const path = location.pathname;
     const base = {
       visitor_id: visitorId,
       session_id: sessionId,
       path,
-      url: window.location.href,
-      referrer: document.referrer || null,
+      url: `${window.location.origin}${path}`,
+      referrer: document.referrer ? new URL(document.referrer, window.location.origin).pathname : null,
     };
 
     send({ ...base, event_type: "page_view" });
