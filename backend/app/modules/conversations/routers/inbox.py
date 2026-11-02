@@ -21,6 +21,7 @@ from app.modules.conversations.routers._deps import (
     require_permission,
 )
 from app.modules.conversations.service import ConversationService
+from app.modules.platform.services import channel_access as _channel_access
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +29,16 @@ router = APIRouter(tags=["inbox"])
 
 
 async def _allowed_channels(ctx: TenantContext) -> set[str] | None:
-    from app.modules.platform.services.channel_access import allowed_providers
-
-    return await allowed_providers(ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code)
+    return await _channel_access.allowed_providers(
+        ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
+    )
 
 
 async def _sendable_channels(ctx: TenantContext) -> set[str] | None:
     """Providers this user may SEND on — the stricter can_send grant."""
-    from app.modules.platform.services.channel_access import sendable_providers
-
-    return await sendable_providers(ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code)
+    return await _channel_access.sendable_providers(
+        ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
+    )
 
 
 async def _ensure_channel_access(ctx: TenantContext, conversation) -> None:
