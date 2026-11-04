@@ -86,6 +86,9 @@ class OwnerSystemOut(BaseModel):
     webhook_deliveries: dict[str, Any]
     webhook_ingress: dict[str, Any]
     visitors: dict[str, Any]
+    # "See it before the customer does" — live RUM monitors + last probe run.
+    alerts: list[dict[str, Any]]
+    probe: dict[str, Any] | None
 
 
 class OwnerVisitorSummaryOut(BaseModel):
@@ -613,6 +616,14 @@ async def owner_system(ctx: TenantCtxDep) -> OwnerSystemOut:
         and deliveries["dead"] == 0
         and visitors["error_rate"] < 0.10
     )
+    # The "before the customer" layer: live RUM monitors + last synthetic
+    # probe run. A tripped monitor or a failing probe degrades the status.
+    from app.modules.platform.services import monitors as _monitors
+
+    alerts = await _monitors.evaluate_monitors(session)
+    probe = await _monitors.last_probe_results()
+    probe_ok = bool(probe) and all(r.get("ok") for r in probe.get("results", [])) if probe else None
+    healthy = healthy and not alerts and probe_ok is not False
     return OwnerSystemOut(
         status="healthy" if healthy else "degraded",
         generated_at=now,
@@ -620,6 +631,8 @@ async def owner_system(ctx: TenantCtxDep) -> OwnerSystemOut:
         webhook_deliveries=deliveries,
         webhook_ingress={"failed_24h": int(ingress_failed or 0)},
         visitors=visitors,
+        alerts=[alert.as_dict() for alert in alerts],
+        probe=probe,
     )
 
 

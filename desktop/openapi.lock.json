@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 424,
-    "sha256": "5ed59ea5b834585cd5ca4cb007914cd8d003740e401bacc738ba45d5fd088db0",
+    "sha256": "233692535d1f7a2a6f4a7a61b59513c32f3bf036b3e49aa1901be8737a3f4bea",
     "typed_operations": 268
   },
   "spec": {
@@ -12319,6 +12319,14 @@
         },
         "OwnerSystemOut": {
           "properties": {
+            "alerts": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Alerts",
+              "type": "array"
+            },
             "generated_at": {
               "format": "date-time",
               "title": "Generated At",
@@ -12328,6 +12336,18 @@
               "additionalProperties": true,
               "title": "Outbox",
               "type": "object"
+            },
+            "probe": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Probe"
             },
             "status": {
               "title": "Status",
@@ -12355,7 +12375,9 @@
             "outbox",
             "webhook_deliveries",
             "webhook_ingress",
-            "visitors"
+            "visitors",
+            "alerts",
+            "probe"
           ],
           "title": "OwnerSystemOut",
           "type": "object"
@@ -16890,7 +16912,8 @@
                 "page_view",
                 "click",
                 "error",
-                "performance"
+                "performance",
+                "rage_click"
               ],
               "title": "Event Type",
               "type": "string"

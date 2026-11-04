@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # it from an untrusted inbound Host header.
     api_public_base_url: str = ""
 
+    # Synthetic probes (owner console "see it before the customer does"): the
+    # URLs the platform monitor fetches every cycle. Empty list disables
+    # probing. Put the MARKETING origin and the API health endpoint here —
+    # a probe that stops returning 2xx means the storefront broke before any
+    # visitor had to tell us.
+    owner_probe_urls: str = ""
+
     # Account recovery email. Delivery stays disabled until the operator has
     # verified a sending domain and configured these server-only values.
     resend_api_key: str = ""

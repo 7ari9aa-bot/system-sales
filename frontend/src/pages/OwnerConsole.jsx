@@ -510,6 +510,9 @@ function SystemTab({ L, data }) {
   const deliveries = data?.webhook_deliveries || {};
   const ingress = data?.webhook_ingress || {};
   const visitors = data?.visitors || {};
+  const alerts = data?.alerts || [];
+  const probe = data?.probe;
+  const probeResults = probe?.results || [];
   const age = (seconds) => {
     if (seconds == null) return L("لا يوجد", "none");
     if (seconds < 90) return `${seconds}s`;
@@ -522,6 +525,45 @@ function SystemTab({ L, data }) {
         <Badge tone={tone}>{data?.status || "—"}</Badge>
         <span className="text-[11.5px] text-muted-foreground">{time(data?.generated_at)}</span>
       </div>
+
+      {alerts.length > 0 && (
+        <SectionCard title={L("تنبيهات نشطة — شوفها قبل العميل", "Active alerts — see them before customers do")}>
+          <ul className="space-y-2.5">
+            {alerts.map((alert) => (
+              <li key={alert.fingerprint} className="flex items-start gap-2.5 text-[12.5px]">
+                <Badge tone={alert.severity === "critical" ? "destructive" : "warning"}>{alert.severity}</Badge>
+                <div>
+                  <div className="font-medium">{alert.code}</div>
+                  <div className="text-muted-foreground">{alert.detail}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      {probeResults.length > 0 && (
+        <SectionCard title={L("فحص المكوّنات (Synthetic probes)", "Synthetic probes")}>
+          <div className="space-y-2 text-[12.5px]">
+            {probeResults.map((result) => (
+              <div key={result.url} className="flex items-center justify-between gap-3">
+                <span className="max-w-[60%] truncate font-mono text-[11px] text-muted-foreground">{result.url}</span>
+                <span className="flex items-center gap-2">
+                  <span className="tabular-nums text-muted-foreground">{result.ms} ms</span>
+                  <Badge tone={result.ok ? "success" : "destructive"}>
+                    {result.ok ? L("يعمل", "up") : result.detail || L("فشل", "down")}
+                  </Badge>
+                </span>
+              </div>
+            ))}
+          </div>
+          {probe?.at && (
+            <div className="mt-2 text-[10.5px] text-muted-foreground">
+              {L("آخر فحص", "Last run")}: {time(probe.at)}
+            </div>
+          )}
+        </SectionCard>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <SectionCard title={L("طابور الأحداث (Outbox)", "Event backlog (Outbox)")}>
           <dl className="space-y-2 text-[12.5px]">

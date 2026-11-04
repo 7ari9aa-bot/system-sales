@@ -75,9 +75,20 @@ export default function VisitorTracker() {
     if (document.readyState === "complete") onLoad();
     else window.addEventListener("load", onLoad, { once: true });
 
+    // Frustration signal (Clarity/FullStory pattern): 3+ clicks on the SAME
+    // element within 1.5s is a RAGE CLICK — the strongest early UX-breakage
+    // signal users never report. One event per incident, not per click.
+    let rage = { key: null, count: 0, first: 0, sent: false };
     const onClick = (event) => {
       const element = event.target?.closest?.("a,button,[data-track]");
       if (!element) return;
+      const now = Date.now();
+      const key = `${element.tagName}:${element.getAttribute("data-track") || element.getAttribute("aria-label") || ""}`;
+      if (key === rage.key && now - rage.first < 1500) {
+        rage.count += 1;
+      } else {
+        rage = { key, count: 1, first: now, sent: false };
+      }
       const label = (
         element.getAttribute("data-track") ||
         element.getAttribute("aria-label") ||
@@ -85,6 +96,19 @@ export default function VisitorTracker() {
         element.textContent ||
         ""
       ).trim().slice(0, 160);
+      if (rage.count >= 3 && !rage.sent) {
+        rage.sent = true;
+        send({
+          ...base,
+          event_type: "rage_click",
+          element: label || element.tagName.toLowerCase(),
+          metadata: {
+            clicks: rage.count,
+            window_ms: now - rage.first,
+          },
+        });
+        return;
+      }
       send({
         ...base,
         event_type: "click",

@@ -59,6 +59,10 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # queued/failed forever — the retry schedule lives on the ROW, so
     # something durable must read it back.
     "webhook_delivery_sweep": (timedelta(minutes=10), {}),
+    # "See it before the customer does": synthetic probes of the storefront +
+    # RUM monitors over the visitor_events stream (error spikes, telemetry
+    # silence). Tripped alerts surface on the owner console System tab.
+    "platform_monitors": (timedelta(minutes=5), {}),
     # §46: without a sweep a deadline is decorative — nothing ever notices it
     # passing, so "SLA risk" would never turn into "breached".
     "sla.sweep": (timedelta(minutes=5), {}),
@@ -282,6 +286,51 @@ async def _handle_webhook_delivery_sweep(session, tenant_id, payload: dict) -> d
 
 
 register_job_handler("webhook_delivery_sweep", _handle_webhook_delivery_sweep)
+
+
+async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
+    """Synthetic probes + RUM monitors, deduplicated over a cooldown.
+
+    Runs once per tenant row (the scheduler iterates tenants) — but probes
+    are PLATFORM-level: only the run holding a short Redis lock actually
+    fetches, so five tenant rows do not become five probe storms.
+    """
+    import json as _json
+
+    from app.core.redis import get_redis
+    from app.modules.platform.services import monitors
+
+    redis = get_redis()
+    lock_key = "platform:monitors:run-lock"
+    if redis is not None:
+        got_lock = await redis.set(lock_key, "1", nx=True, ex=240)
+        if not got_lock:
+            return {"skipped": "another worker holds the monitor lock"}
+
+    try:
+        probe_results = await monitors.run_probes()
+        alerts = await monitors.evaluate_monitors(session)
+        fresh = alerts if redis is None else await monitors.trip_if_new(redis, alerts)
+        for alert in fresh:
+            logger.warning(
+                "platform.monitor_tripped code=%s severity=%s detail=%s",
+                alert.code,
+                alert.severity,
+                alert.detail,
+            )
+        if redis is not None and probe_results:
+            await redis.set(
+                "platform:monitors:last-trip",
+                _json.dumps([a.as_dict() for a in alerts]),
+                ex=24 * 3600,
+            )
+        return {"probes": len(probe_results), "alerts": len(alerts), "fresh": len(fresh)}
+    finally:
+        if redis is not None:
+            await redis.delete(lock_key)
+
+
+register_job_handler("platform_monitors", _handle_platform_monitors)
 
 
 async def _handle_sla_sweep(session, tenant_id, payload: dict) -> dict:

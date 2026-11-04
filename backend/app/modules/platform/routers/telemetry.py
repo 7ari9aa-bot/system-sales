@@ -16,7 +16,7 @@ router = APIRouter(prefix="/public", tags=["public"])
 class TelemetryEventIn(BaseModel):
     visitor_id: str = Field(min_length=8, max_length=64)
     session_id: str = Field(min_length=8, max_length=64)
-    event_type: Literal["page_view", "click", "error", "performance"]
+    event_type: Literal["page_view", "click", "error", "performance", "rage_click"]
     path: str = Field(min_length=1, max_length=512)
     url: str | None = Field(default=None, max_length=2048)
     referrer: str | None = Field(default=None, max_length=2048)

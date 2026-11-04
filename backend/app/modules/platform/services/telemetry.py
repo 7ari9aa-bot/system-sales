@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.modules.platform.models import VisitorEvent
 
-_EVENT_TYPES = frozenset({"page_view", "click", "error", "performance"})
+_EVENT_TYPES = frozenset({"page_view", "click", "error", "performance", "rage_click"})
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
