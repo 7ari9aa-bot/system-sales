@@ -138,8 +138,8 @@ export default function PurchasesPage() {
               toast.success(`تم تصدير ${visible.length} فاتورة توريد`);
             }}
           >
-            <Download />
-            تصدير Excel
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير Excel</span>
           </Button>
           <Button
             className={BTN_PRIMARY}
@@ -148,8 +148,8 @@ export default function PurchasesPage() {
               setFormOpen(true);
             }}
           >
-            <Plus />
-            تسجيل توريد جديد
+            <Plus className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">تسجيل توريد جديد</span>
           </Button>
         </PageHero>
       }

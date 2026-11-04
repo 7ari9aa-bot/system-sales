@@ -115,8 +115,8 @@ export default function SuppliersPage() {
           description="التوريدات، آخر تعامل، والرصيد المستحق لكل مورد بعد خصم مرتجعاته المقبولة — محسوب من المستندات نفسها"
         >
           <Button className={BTN_PRIMARY} onClick={openAdd}>
-            <Plus />
-            إضافة مورد
+            <Plus className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">إضافة مورد</span>
           </Button>
           <Button
             className={BTN}
@@ -125,8 +125,8 @@ export default function SuppliersPage() {
               toast.success(`تم تصدير ${visible.length} موردًا`);
             }}
           >
-            <Download />
-            تصدير القائمة
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير القائمة</span>
           </Button>
         </PageHero>
       }

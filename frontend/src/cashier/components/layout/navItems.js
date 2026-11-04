@@ -21,38 +21,37 @@ import {
 export const navGroups = [
   {
     title: "البيع",
+    titleKey: "nav.salesAndPos",
     items: [
       { to: "/pos", label: "الكاشير", icon: ScanBarcode },
-      { to: "/sales", label: "سجل المبيعات", icon: Receipt },
-      { to: "/returns", label: "مرتجعات العملاء", icon: RotateCcw },
+      { to: "/returns", label: "المرتجع", icon: RotateCcw },
       { to: "/exchanges", label: "الاستبدال", icon: RefreshCw },
+      { to: "/sales", label: "سجل المبيعات", icon: Receipt },
+      { to: "/shifts", label: "الورديات والخزنة", icon: Wallet },
     ],
   },
   {
     title: "المنتجات والمخزون",
+    titleKey: "nav.productsAndStock",
     items: [
       { to: "/products/new", label: "إضافة منتج", icon: Shirt },
-      { to: "/labels", label: "طباعة الباركود", icon: Printer },
-      { to: "/inventory", label: "المخزون والجرد", icon: Boxes },
+      { to: "/labels", label: "طباعة باركود", icon: Printer },
+      { to: "/inventory", label: "المخزون", icon: Boxes },
     ],
   },
   {
-    title: "المشتريات والموردون",
+    title: "الموردون والمشتريات والمصروفات",
+    titleKey: "nav.suppliersAndPurchases",
     items: [
       { to: "/suppliers", label: "الموردون", icon: Truck },
       { to: "/purchases", label: "المشتريات", icon: ShoppingBag },
       { to: "/supplier-returns", label: "مرتجعات الموردين", icon: Undo2 },
-    ],
-  },
-  {
-    title: "تشغيل المحل",
-    items: [
-      { to: "/shifts", label: "الورديات والخزنة", icon: Wallet },
       { to: "/expenses", label: "المصروفات", icon: ReceiptText },
     ],
   },
   {
-    title: "المتابعة والإدارة",
+    title: "التقارير وسجل العمليات",
+    titleKey: "nav.reportsAndLogs",
     items: [
       { to: "/reports", label: "التقارير", icon: BarChart3 },
       { to: "/activity-log", label: "سجل العمليات", icon: ClipboardList },

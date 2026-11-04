@@ -125,8 +125,8 @@ export default function SalesLogPage() {
       <div className="mb-[18px] flex flex-wrap gap-2.5">
         <Button asChild className={BTN_PRIMARY}>
           <Link to="/cashier/pos">
-            <FilePlus2 className="h-4 w-4" />
-            فاتورة بيع جديدة
+            <FilePlus2 className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">فاتورة بيع جديدة</span>
           </Link>
         </Button>
         <Button
@@ -146,8 +146,8 @@ export default function SalesLogPage() {
             toast.success(`تم تصدير ${rows.length} فاتورة`);
           }}
         >
-          <Download className="h-4 w-4" />
-          تصدير Excel
+          <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+          <span className="!text-[#33322E] font-medium">تصدير Excel</span>
         </Button>
       </div>
 

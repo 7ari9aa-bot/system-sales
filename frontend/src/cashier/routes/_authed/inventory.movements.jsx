@@ -69,13 +69,13 @@ export default function MovementsPage() {
               toast.success(`تم تصدير ${rows.length} حركة`);
             }}
           >
-            <Download />
-            تصدير Excel
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير Excel</span>
           </Button>
           <Button asChild className={BTN}>
             <Link to="/cashier/inventory">
-              <ArrowLeftRight />
-              أرصدة المخزون
+              <ArrowLeftRight className="h-4 w-4 shrink-0 !text-[#33322E]" />
+              <span className="!text-[#33322E] font-medium">أرصدة المخزون</span>
             </Link>
           </Button>
         </PageHero>

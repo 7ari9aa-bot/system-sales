@@ -14,8 +14,10 @@ export default function LabelsHero({ totalLabels, onPreview }) {
       description="اسحب كميات فاتورة التوريد اللي دخلت المحل أو أدخل الأعداد يدويًا، ثم اطبع الملصقات بأسعارها"
     >
       <Button className={BTN_PRIMARY} disabled={!totalLabels} onClick={onPreview}>
-        <Printer />
-        {`معاينة وطباعة${totalLabels ? ` ${fmtInt(totalLabels)} ملصق` : ""}`}
+        <Printer className="h-4 w-4 shrink-0 !text-white" />
+        <span className="!text-white font-semibold">
+          {`معاينة وطباعة${totalLabels ? ` ${fmtInt(totalLabels)} ملصق` : ""}`}
+        </span>
       </Button>
     </PageHero>
   );

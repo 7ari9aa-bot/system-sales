@@ -1,12 +1,32 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpRight, Search, Sparkles, X, Check, CheckCheck, Paperclip, Smile, Mic, MoreVertical, Send, Palette } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Search,
+  Sparkles,
+  X,
+  Check,
+  CheckCheck,
+  Paperclip,
+  Smile,
+  Mic,
+  MoreVertical,
+  Send,
+  Palette,
+  Play,
+  Pause,
+  FileText,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
+import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
+import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
+import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
+import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
+import CustomerDrawer from "@/components/customers/CustomerDrawer";
 
-// A themed chat pane that renders in the selected channel's real look.
-// Brand channels (WhatsApp/Instagram/Messenger/Telegram/Facebook) keep their
-// authentic light theme; the "app" theme channel follows the dashboard.
 export default function ChannelChat({
   channel,
   className = "",
@@ -34,10 +54,19 @@ export default function ChannelChat({
   const [searchQuery, setSearchQuery] = useState("");
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [telegramMessagesScrolling, setTelegramMessagesScrolling] = useState(false);
+
+  // Authentic Channel states
+  const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [customer360Record, setCustomer360Record] = useState(null);
+
   const scrollRef = useRef(null);
   const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
+
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
   const isInstagram = channel.id === "instagram";
@@ -46,6 +75,7 @@ export default function ChannelChat({
   const messengerTheme = MESSENGER_CHAT_THEMES.find((theme) => theme.id === messengerThemeId) || MESSENGER_CHAT_THEMES[0];
   const th = isApp ? null : isMessenger ? { ...channel.theme, out: messengerTheme.accent } : channel.theme;
   const allMessages = conversation?.messages || [];
+
   const messageBackgroundStyle = isWhatsApp ? {
     backgroundColor: "#efeae2",
     backgroundImage: "linear-gradient(rgba(245,240,232,0.88), rgba(245,240,232,0.88)), url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
@@ -58,6 +88,7 @@ export default function ChannelChat({
     backgroundRepeat: "no-repeat",
     backgroundSize: "cover",
   } : undefined;
+
   const visibleMessages = (isWhatsApp || isInstagram || isMessenger || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
     : allMessages;
@@ -84,6 +115,10 @@ export default function ChannelChat({
     setSearchQuery("");
     setSearchOpen(false);
     setThemePickerOpen(false);
+    setContactDrawerOpen(false);
+    setEmojiPickerOpen(false);
+    setAttachmentMenuOpen(false);
+    setIsRecordingVoice(false);
   }, [conversation?.id]);
 
   useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
@@ -92,7 +127,11 @@ export default function ChannelChat({
     const body = text.trim();
     if (!body || sending || !conversation) return;
     const sent = await onSend?.(conversation.id, body);
-    if (sent !== false) setText("");
+    if (sent !== false) {
+      setText("");
+      setEmojiPickerOpen(false);
+      setAttachmentMenuOpen(false);
+    }
   }
 
   const loadOlderAtTop = useCallback(async (element) => {
@@ -115,14 +154,6 @@ export default function ChannelChat({
     void loadOlderAtTop(event.currentTarget);
   }, [isTelegram, loadOlderAtTop]);
 
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element || !conversation || loadingMessages || loadingOlderMessages || !hasOlderMessages) return undefined;
-    if (element.scrollHeight > element.clientHeight + 1) return undefined;
-    const frame = requestAnimationFrame(() => void loadOlderAtTop(element));
-    return () => cancelAnimationFrame(frame);
-  }, [conversation?.id, conversation?.messages?.length, hasOlderMessages, loadingMessages, loadingOlderMessages, loadOlderAtTop]);
-
   if (!conversation) {
     return (
       <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 bg-white" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
@@ -132,21 +163,21 @@ export default function ChannelChat({
           </div>
           <p className="text-[13.5px] text-muted-foreground">{t("inbox.selectConversation")}</p>
         </div>
-      </div>);
-
+      </div>
+    );
   }
 
   return (
     <div
       className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
-      style={isApp ? undefined : { background: th.chatBg }}>
-      
-      {/* Header */}
+      style={isApp ? undefined : { background: th.chatBg }}
+    >
+      {/* Header — Click opens authentic channel profile drawer */}
       <div
         dir={isWhatsApp || isTelegram ? "ltr" : isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
         className={cn("relative flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
-        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram || isMessenger) ? "1px solid " + th.divider : undefined }}>
-
+        style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram || isMessenger) ? "1px solid " + th.divider : undefined }}
+      >
         {(isWhatsApp || isMessenger) && onBack && (
           <button
             type="button"
@@ -158,20 +189,38 @@ export default function ChannelChat({
             {lang === "ar" ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
           </button>
         )}
-        
-        {isTelegram || isInstagram || isMessenger ? (
-          <ConversationAvatar conversation={conversation} className={cn("h-10 w-10 text-[14px]", isInstagram && "h-11 w-11")} />
-        ) : (
-          <div
-            className={cn("rounded-full grid place-items-center font-semibold shrink-0", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
-            style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}>
-            {conversation.initials}
+
+        {/* Customer Header clickable section */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setContactDrawerOpen(true)}
+          className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none hover:opacity-90 transition-opacity"
+          title={lang === "ar" ? "عرض تفاصيل جهة الاتصال" : "View contact details"}
+        >
+          {isTelegram || isInstagram || isMessenger ? (
+            <ConversationAvatar conversation={conversation} className={cn("h-10 w-10 text-[14px]", isInstagram && "h-11 w-11")} />
+          ) : (
+            <div
+              className={cn("rounded-full grid place-items-center font-semibold shrink-0 shadow-xs", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
+              style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}
+            >
+              {conversation.initials}
+            </div>
+          )}
+          <div className="flex-1 min-w-0 text-start">
+            <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-semibold text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>
+              {conversation.customer}
+            </div>
+            {!isMessenger && (
+              <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[#667781]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
+                {isTelegram ? "bot" : channel.name}
+              </div>
+            )}
           </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-medium text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>{conversation.customer}</div>
-          {!isMessenger && <div className={cn("truncate", isWhatsApp ? "text-left text-[12px] text-[#667781]" : isTelegram ? "text-[12px] text-[#7f9db8]" : isInstagram ? "text-[11.5px] text-[#8e8e8e]" : "text-[11.5px]", isApp && "text-muted-foreground", !isApp && !isWhatsApp && !isTelegram && !isInstagram && "opacity-80")}>{isTelegram ? "bot" : channel.name}</div>}
         </div>
+
+        {/* Action icons in header */}
         {isMessenger && (
           <button
             type="button"
@@ -185,6 +234,7 @@ export default function ChannelChat({
             <Palette className="h-[18px] w-[18px]" />
           </button>
         )}
+
         {(isWhatsApp || isInstagram || isMessenger || isTelegram) && (
           <button
             type="button"
@@ -197,16 +247,18 @@ export default function ChannelChat({
             <Search className="h-[18px] w-[18px]" />
           </button>
         )}
-        {isTelegram && (
-          <>
-            <button type="button" disabled aria-label={lang === "ar" ? "المزيد غير متاح" : "More options unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#707e8b] disabled:cursor-default">
-              <MoreVertical className="h-[18px] w-[18px]" />
-            </button>
-          </>
-        )}
-        {isInstagram && <button type="button" disabled aria-label={lang === "ar" ? "المزيد من خيارات إنستغرام غير متاحة في العرض التجريبي" : "Instagram more options unavailable in this demo"} title={lang === "ar" ? "الخيارات الإضافية غير متاحة" : "More options unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed disabled:opacity-60"><MoreVertical className="h-[18px] w-[18px]" /></button>}
+
+        <button
+          type="button"
+          onClick={() => setContactDrawerOpen(true)}
+          title={lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/5 text-muted-foreground transition-colors"
+        >
+          <MoreVertical className="h-[18px] w-[18px]" />
+        </button>
       </div>
 
+      {/* Messenger Theme Dialog */}
       {isMessenger && themePickerOpen && (
         <div role="dialog" aria-label={lang === "ar" ? "ثيم المحادثة" : "Chat theme"} className="absolute left-3 top-[60px] z-30 w-[280px] rounded-xl border border-[#e4e6eb] bg-white p-3 shadow-[0_8px_28px_rgba(0,0,0,0.16)]">
           <div className="mb-1 text-[13px] font-semibold text-[#050505]">{lang === "ar" ? "لون المحادثة" : "Chat color"}</div>
@@ -233,6 +285,7 @@ export default function ChannelChat({
         </div>
       )}
 
+      {/* Search Messages in Chat */}
       {(isWhatsApp || isInstagram || isMessenger || isTelegram) && searchOpen && (
         <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-white px-3", isWhatsApp ? "border-[#d1d7db]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
           <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[#667781]" : isInstagram ? "text-[#8e8e8e]" : isMessenger ? "text-[#65676b]" : "text-[#82919e]")} />
@@ -254,7 +307,7 @@ export default function ChannelChat({
         </div>
       )}
 
-      {/* Messages */}
+      {/* Messages Scroll Area */}
       <div
         ref={scrollRef}
         onScroll={handleMessagesScroll}
@@ -286,6 +339,7 @@ export default function ChannelChat({
         {searchQuery.trim() && visibleMessages.length === 0 && (
           <div className="py-8 text-center text-[12.5px] text-[#667781]">{t("inbox.noMessageMatches", "No matching messages")}</div>
         )}
+
         {visibleMessages.map((m, index) => {
           const dayKey = isWhatsApp || isInstagram || isMessenger || isTelegram ? getMessageDayKey(m.createdAt) : "";
           const previousDayKey = (isWhatsApp || isInstagram || isMessenger || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
@@ -298,17 +352,29 @@ export default function ChannelChat({
                   </span>
                 </div>
               )}
-              <Bubble m={m} isApp={isApp} isWhatsApp={isWhatsApp} isInstagram={isInstagram} isMessenger={isMessenger} isTelegram={isTelegram} lang={lang} th={th} conversation={conversation} showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")} />
+              <Bubble
+                m={m}
+                isApp={isApp}
+                isWhatsApp={isWhatsApp}
+                isInstagram={isInstagram}
+                isMessenger={isMessenger}
+                isTelegram={isTelegram}
+                lang={lang}
+                th={th}
+                conversation={conversation}
+                showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
+              />
             </React.Fragment>
           );
         })}
-        {approval &&
-        <div
-          className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
-          style={isApp ?
-          { background: "hsl(var(--warning-soft))", border: "1px solid hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" } :
-          { background: "#FFF8E1", border: "1px solid #FFE082", color: "#8a6d00" }}>
-          
+
+        {approval && (
+          <div
+            className="mt-2 rounded-xl px-3.5 py-3 text-[12.5px]"
+            style={isApp ?
+              { background: "hsl(var(--warning-soft))", border: "1px solid hsl(var(--warning) / 0.3)", color: "hsl(var(--warning))" } :
+              { background: "#FFF8E1", border: "1px solid #FFE082", color: "#8a6d00" }}
+          >
             <div className="font-medium mb-1">{t("inbox.approval.title")}</div>
             <p className="opacity-90">{approval.action}</p>
             {approval.payload?.arguments && (
@@ -322,7 +388,8 @@ export default function ChannelChat({
                 disabled={pendingDecision}
                 onClick={() => onApprove?.(conversation.id)}
                 className="h-8 px-3 rounded-lg text-[12px] font-medium text-white"
-                style={{ background: "#16a34a" }}>
+                style={{ background: "#16a34a" }}
+              >
                 {t("inbox.approve")}
               </button>
               <button
@@ -330,34 +397,74 @@ export default function ChannelChat({
                 disabled={pendingDecision}
                 onClick={() => onDecline?.(conversation.id)}
                 className="h-8 px-3 rounded-lg text-[12px] font-medium"
-                style={{ background: isApp ? "hsl(var(--surface))" : "#fff", border: "1px solid #e5e7eb" }}>
+                style={{ background: isApp ? "hsl(var(--surface))" : "#fff", border: "1px solid #e5e7eb" }}
+              >
                 {t("inbox.decline")}
               </button>
             </div>
           </div>
-        }
+        )}
       </div>
 
-      {/* Input */}
-      <div className={cn("shrink-0 p-2", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")} style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}>
-        {isWhatsApp ? (
+      {/* Attachment & Emoji Popovers above input */}
+      <ChannelEmojiStickerPicker
+        isOpen={emojiPickerOpen}
+        onClose={() => setEmojiPickerOpen(false)}
+        onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
+        onSelectSticker={(sticker) => {
+          void onSend?.(conversation.id, `🖼️ ${sticker.label}`, { mediaType: "image", mediaUrl: sticker.url });
+        }}
+        lang={lang}
+        isWhatsApp={isWhatsApp}
+      />
+
+      <ChannelAttachmentMenu
+        isOpen={attachmentMenuOpen}
+        onClose={() => setAttachmentMenuOpen(false)}
+        channelId={channel.id}
+        lang={lang}
+        onFileSelected={(file, type) => {
+          const previewUrl = URL.createObjectURL(file);
+          void onSend?.(conversation.id, file.name, { mediaType: type, mediaUrl: previewUrl });
+        }}
+        onSendAction={(content) => {
+          void onSend?.(conversation.id, content);
+        }}
+      />
+
+      {/* Input Bar */}
+      <div
+        className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
+        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
+      >
+        {isRecordingVoice ? (
+          <ChannelVoiceRecorder
+            isRecording={isRecordingVoice}
+            onCancel={() => setIsRecordingVoice(false)}
+            onSendVoice={(durationStr) => {
+              void onSend?.(conversation.id, `🎤 رسالة صوتية (${durationStr})`, { mediaType: "audio", duration: durationStr });
+            }}
+            channelId={channel.id}
+            lang={lang}
+          />
+        ) : isWhatsApp ? (
           <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
             <button
               type="button"
-              disabled
-              aria-label={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"}
-              title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+              onClick={() => { setAttachmentMenuOpen((v) => !v); setEmojiPickerOpen(false); }}
+              aria-label={lang === "ar" ? "المرفقات" : "Attachments"}
+              title={lang === "ar" ? "المرفقات" : "Attachments"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
               style={{ color: "#54656f" }}
             >
               <Paperclip className="h-5 w-5" />
             </button>
             <button
               type="button"
-              disabled
-              aria-label={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"}
-              title={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+              onClick={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
+              aria-label={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
+              title={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
               style={{ color: "#54656f" }}
             >
               <Smile className="h-[21px] w-[21px]" />
@@ -378,7 +485,7 @@ export default function ChannelChat({
                 onClick={() => { void submitMessage(); }}
                 disabled={sending}
                 aria-label={t("inbox.send")}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2 transition-transform hover:scale-105"
                 title={t("inbox.send")}
                 style={{ backgroundColor: "#00a884", color: "#fff" }}
               >
@@ -387,12 +494,11 @@ export default function ChannelChat({
             ) : (
               <button
                 type="button"
-                aria-disabled="true"
-                aria-label={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"}
-                title={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+                onClick={() => setIsRecordingVoice(true)}
+                aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
+                title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] hover:text-[#00a884] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
                 style={{ color: "#54656f" }}
-              disabled
               >
                 <Mic className="h-[21px] w-[21px]" />
               </button>
@@ -400,7 +506,13 @@ export default function ChannelChat({
           </div>
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
-            <button type="button" disabled aria-label={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] disabled:cursor-default">
+            <button
+              type="button"
+              onClick={() => setAttachmentMenuOpen((v) => !v)}
+              aria-label={lang === "ar" ? "المرفقات" : "Attachments"}
+              title={lang === "ar" ? "المرفقات" : "Attachments"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] hover:bg-[#eff8fd] hover:text-[#2aabee] transition-colors"
+            >
               <Paperclip className="h-[21px] w-[21px]" />
             </button>
             <input
@@ -413,27 +525,111 @@ export default function ChannelChat({
               disabled={sending}
               className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#222] focus:outline-none placeholder:text-[#8b98a3]", lang === "ar" ? "text-right" : "text-left")}
             />
-            <button type="button" disabled aria-label={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"} title={lang === "ar" ? "اختيار الرموز غير متاح" : "Emoji picker unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] disabled:cursor-default">
+            <button
+              type="button"
+              onClick={() => setEmojiPickerOpen((v) => !v)}
+              aria-label={lang === "ar" ? "الرموز والاستيكرز" : "Emoji picker"}
+              title={lang === "ar" ? "الرموز والاستيكرز" : "Emoji picker"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] hover:bg-[#eff8fd] hover:text-[#2aabee] transition-colors"
+            >
               <Smile className="h-[21px] w-[21px]" />
             </button>
             {text.trim() ? (
-              <button type="button" onClick={() => { void submitMessage(); }} disabled={sending} aria-label={t("inbox.send")} title={t("inbox.send")} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#2aabee] hover:bg-[#eff8fd] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2aabee]">
+              <button
+                type="button"
+                onClick={() => { void submitMessage(); }}
+                disabled={sending}
+                aria-label={t("inbox.send")}
+                title={t("inbox.send")}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#2aabee] hover:bg-[#eff8fd] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2aabee]"
+              >
                 <ArrowUpRight className="h-[19px] w-[19px]" />
               </button>
             ) : (
-              <button type="button" disabled aria-label={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"} title={lang === "ar" ? "الرسائل الصوتية غير متاحة" : "Voice messages unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] disabled:cursor-default">
+              <button
+                type="button"
+                onClick={() => setIsRecordingVoice(true)}
+                aria-label={lang === "ar" ? "رسالة صوتية" : "Voice message"}
+                title={lang === "ar" ? "رسالة صوتية" : "Voice message"}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] hover:bg-[#eff8fd] hover:text-[#2aabee] transition-colors"
+              >
                 <Mic className="h-[21px] w-[21px]" />
               </button>
             )}
           </div>
         ) : isInstagram ? (
           <div dir="ltr" className="flex h-11 items-center gap-1 rounded-full border border-[#dbdbdb] bg-white px-2 sm:h-12 sm:px-3">
-            <button type="button" disabled aria-label={lang === "ar" ? "الرموز التعبيرية غير متاحة في العرض التجريبي" : "Emoji picker unavailable in this demo"} title={lang === "ar" ? "الرموز التعبيرية غير متاحة" : "Emoji picker unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed"><Smile className="h-[21px] w-[21px]" /></button>
-            <input value={text} onChange={(event) => setText(event.target.value)} dir={lang === "ar" ? "rtl" : "ltr"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} placeholder={t("inbox.typeMessage")} aria-label={t("inbox.typeMessage")} disabled={sending} className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] text-[#262626] outline-none placeholder:text-[#8e8e8e]", lang === "ar" ? "text-right" : "text-left")} />
-            {!text.trim() ? <button type="button" disabled aria-label={lang === "ar" ? "إرسال الصور غير متاح في العرض التجريبي" : "Media attachment unavailable in this demo"} title={lang === "ar" ? "المرفقات غير متاحة" : "Attachments unavailable"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] disabled:cursor-not-allowed"><Paperclip className="h-[19px] w-[19px]" /></button> : <button type="button" onClick={() => { void submitMessage(); }} disabled={sending} aria-label={t("inbox.send")} title={t("inbox.send")} className="shrink-0 px-2 text-[13px] font-semibold text-[#0095f6] disabled:opacity-50">{lang === "ar" ? "إرسال" : "Send"}</button>}
+            <button
+              type="button"
+              onClick={() => setEmojiPickerOpen((v) => !v)}
+              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+              title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
+            >
+              <Smile className="h-[21px] w-[21px]" />
+            </button>
+            <input
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              dir={lang === "ar" ? "rtl" : "ltr"}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
+              placeholder={t("inbox.typeMessage")}
+              aria-label={t("inbox.typeMessage")}
+              disabled={sending}
+              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] text-[#262626] outline-none placeholder:text-[#8e8e8e]", lang === "ar" ? "text-right" : "text-left")}
+            />
+            {!text.trim() ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentMenuOpen((v) => !v)}
+                  aria-label={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
+                  title={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
+                >
+                  <Paperclip className="h-[19px] w-[19px]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRecordingVoice(true)}
+                  aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Voice note"}
+                  title={lang === "ar" ? "تسجيل رسالة صوتية" : "Voice note"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
+                >
+                  <Mic className="h-[19px] w-[19px]" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { void submitMessage(); }}
+                disabled={sending}
+                aria-label={t("inbox.send")}
+                title={t("inbox.send")}
+                className="shrink-0 px-2 text-[13px] font-semibold text-[#0095f6] hover:opacity-80 disabled:opacity-50"
+              >
+                {lang === "ar" ? "إرسال" : "Send"}
+              </button>
+            )}
           </div>
         ) : isMessenger ? (
           <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
+            <button
+              type="button"
+              onClick={() => setAttachmentMenuOpen((v) => !v)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
+              title={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmojiPickerOpen((v) => !v)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
+              title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+            >
+              <Smile className="h-4 w-4" />
+            </button>
             <input
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -444,17 +640,28 @@ export default function ChannelChat({
               disabled={sending}
               className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
             />
-            <button
-              type="button"
-              onClick={() => { void submitMessage(); }}
-              disabled={!text.trim() || sending}
-              aria-label={t("inbox.send")}
-              title={t("inbox.send")}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ background: th.out }}
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            {text.trim() ? (
+              <button
+                type="button"
+                onClick={() => { void submitMessage(); }}
+                disabled={!text.trim() || sending}
+                aria-label={t("inbox.send")}
+                title={t("inbox.send")}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ background: th.out }}
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsRecordingVoice(true)}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
+                title={lang === "ar" ? "رسالة صوتية" : "Voice note"}
+              >
+                <Mic className="h-4 w-4" />
+              </button>
+            )}
           </div>
         ) : (
           <div
@@ -485,14 +692,43 @@ export default function ChannelChat({
           </div>
         )}
       </div>
-    </div>);
 
+      {/* Authentic Contact Details Drawer */}
+      <ChannelContactDrawer
+        isOpen={contactDrawerOpen}
+        onClose={() => setContactDrawerOpen(false)}
+        channel={channel}
+        conversation={conversation}
+        lang={lang}
+        onOpenCustomerProfile={() => {
+          setCustomer360Record({
+            id: conversation.customer_id || conversation.id,
+            name: conversation.customer,
+            phone: conversation.customer_phone,
+            lifetime_value: conversation.lifetime_value,
+          });
+        }}
+      />
+
+      {/* Customer 360 Drawer when requested from Contact Info */}
+      {customer360Record && (
+        <CustomerDrawer
+          customer={customer360Record}
+          onClose={() => setCustomer360Record(null)}
+        />
+      )}
+    </div>
+  );
 }
 
-function Bubble({ m, isApp, isWhatsApp, isInstagram, isMessenger, isTelegram, lang, th, conversation, showIncomingAvatar }) {
+// Subcomponent: Message Bubble
+function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
   const out = m.side === "out";
   const showTail = !isApp && th?.tail;
-  const [mediaFailed, setMediaFailed] = useState(false);
+  const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
+  const mediaUrl = m.mediaUrl;
+  const isImage = m.mediaType === "image" || (mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(mediaUrl));
+  const isDocument = m.mediaType === "document" || (mediaUrl && /\.(pdf|doc|docx|xlsx|txt)$/i.test(mediaUrl));
 
   if (isWhatsApp) {
     if (m.senderType === "system") {
@@ -525,161 +761,173 @@ function Bubble({ m, isApp, isWhatsApp, isInstagram, isMessenger, isTelegram, la
               }}
             />
           )}
-          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-            {m.text}{" "}
-            <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[11px] leading-none text-[#667781]" dir="ltr">
-              <span>{m.time}</span>
-            {out && th.checkmarks && (m.status === "read"
-              ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-              : m.status === "delivered"
-                ? <CheckCheck className="h-3.5 w-3.5" />
-                : <Check className="h-3.5 w-3.5" />)}
-            {m.ai && <Sparkles className="h-3 w-3" />}
-            </span>
-          </div>
+
+          {/* Voice Note Bubble */}
+          {isAudio ? (
+            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />
+          ) : isImage && mediaUrl ? (
+            <div className="space-y-1.5">
+              <div className="rounded-lg overflow-hidden max-w-[280px]">
+                <img src={mediaUrl} alt="attachment" className="w-full max-h-64 object-cover rounded-lg" />
+              </div>
+              {m.text && !m.text.startsWith("blob:") && (
+                <div className="text-[13px]">{m.text}</div>
+              )}
+              <div className="flex justify-end items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
+                <span>{m.time}</span>
+                {out && th.checkmarks && (
+                  m.status === "read" ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" /> : <Check className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </div>
+          ) : isDocument && mediaUrl ? (
+            <div className="flex items-center gap-3 p-1">
+              <div className="h-10 w-10 rounded-lg bg-[#7f66ff]/20 text-[#7f66ff] grid place-items-center">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium truncate">{m.text || "Document"}</div>
+                <div className="text-[11px] text-[#667781]">{m.time}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+              {m.text}{" "}
+              <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[11px] leading-none text-[#667781]" dir="ltr">
+                <span>{m.time}</span>
+                {out && th.checkmarks && (
+                  m.status === "read"
+                    ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
+                    : m.status === "delivered"
+                      ? <CheckCheck className="h-3.5 w-3.5" />
+                      : <Check className="h-3.5 w-3.5" />
+                )}
+                {m.ai && <Sparkles className="h-3 w-3 text-amber-500" />}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
   if (isTelegram) {
-    if (m.senderType === "system") {
-      return (
-        <div className="flex justify-center py-1.5">
-          <div className="max-w-[88%] rounded-full bg-white/80 px-3 py-1.5 text-center text-[12px] leading-snug text-[#527da3] shadow-[0_1px_2px_rgba(0,0,0,.08)]">
-            <span>{m.text}</span>
-            {m.time && <span className="ms-1.5 whitespace-nowrap text-[10px] text-[#91a1ae]" dir="ltr">{m.time}</span>}
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div className={cn("relative max-w-[82%] rounded-xl px-3 py-2 text-[14px] leading-[1.38] shadow-[0_1px_2px_rgba(45,70,48,.14)] sm:max-w-[72%]", out ? "rounded-br-[4px]" : "rounded-bl-[4px]")} style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}>
-          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-            {m.text}{" "}
-            <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[10px] leading-none text-[#90a0ab]" dir="ltr">
-              <span>{m.time}</span>
-              {out && th.checkmarks && (m.status === "read"
-                ? <CheckCheck className="h-3 w-3" style={{ color: th.checkColor || "#3390ec" }} />
-                : m.status === "delivered"
-                  ? <CheckCheck className="h-3 w-3" style={{ color: th.checkColor || "#3390ec" }} />
-                  : <Check className="h-3 w-3" style={{ color: th.checkColor || "#3390ec" }} />)}
-              {m.ai && <Sparkles className="h-3 w-3" />}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isInstagram) {
-    const mediaUrl = String(m.mediaUrl || "");
-    const mediaType = String(m.mediaType || "").toLowerCase();
-    const mediaPath = mediaUrl.split("?")[0].toLowerCase();
-    const isImage = mediaType === "image" || mediaType.startsWith("image/") || (!mediaType && /\.(avif|gif|jpe?g|png|webp)$/.test(mediaPath));
-    const isVideo = mediaType === "video" || mediaType.startsWith("video/") || (!mediaType && /\.(m4v|mov|mp4|webm)$/.test(mediaPath));
-    const safeMediaLink = /^https?:\/\//i.test(mediaUrl);
-    const caption = m.text && String(m.text).toLowerCase() !== mediaType ? m.text : "";
-    return (
-      <div className={cn("flex", out ? "justify-end" : "justify-start")}>
-        <div className={cn("max-w-[82%] overflow-hidden rounded-[20px] text-[13px] leading-[1.45] sm:max-w-[72%]", mediaUrl ? "p-1.5" : "px-3.5 py-2")} style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}>
-          {mediaUrl && isImage && !mediaFailed && <img src={mediaUrl} alt={caption || (lang === "ar" ? "صورة مرفقة" : "Attached image")} loading="lazy" onError={() => setMediaFailed(true)} className="max-h-[360px] max-w-full rounded-[16px] object-cover" />}
-          {mediaUrl && isVideo && <video src={mediaUrl} controls playsInline preload="metadata" className="max-h-[360px] max-w-full rounded-[16px]" aria-label={caption || (lang === "ar" ? "مقطع فيديو مرفق" : "Attached video")} />}
-          {mediaUrl && !isImage && !isVideo && (
-            <div className="flex items-center gap-2 px-2 py-2 text-[12px]">
-              <Paperclip className="h-4 w-4 shrink-0" />
-              {safeMediaLink ? <a href={mediaUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{caption || (lang === "ar" ? "فتح المرفق" : "Open attachment")}</a> : <span>{caption || (lang === "ar" ? "مرفق غير مدعوم للمعاينة" : "Attachment preview unavailable")}</span>}
+          {isAudio ? (
+            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} checkColor={th.checkColor} />
+          ) : (
+            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+              {m.text}{" "}
+              <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[10px] leading-none text-[#90a0ab]" dir="ltr">
+                <span>{m.time}</span>
+                {out && th.checkmarks && (
+                  m.status === "read"
+                    ? <CheckCheck className="h-3 w-3" style={{ color: th.checkColor || "#3390ec" }} />
+                    : <Check className="h-3 w-3" style={{ color: th.checkColor || "#3390ec" }} />
+                )}
+                {m.ai && <Sparkles className="h-3 w-3" />}
+              </span>
             </div>
           )}
-          {caption && (isImage || isVideo) && <p dir="auto" className="whitespace-pre-wrap break-words px-2 pt-2 [overflow-wrap:anywhere]">{caption}</p>}
-          {!mediaUrl && <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</span>}
-          {mediaFailed && mediaUrl && <div className="flex items-center gap-2 px-2 py-2 text-[12px]"><Paperclip className="h-4 w-4 shrink-0" /><span>{caption || (lang === "ar" ? "تعذر تحميل المرفق" : "Attachment could not be loaded")}</span></div>}
-          <div className="mt-1 flex justify-end"><Foot m={m} isApp={isApp} th={th} /></div>
         </div>
       </div>
     );
   }
 
-  if (isMessenger) {
-    return (
-      <div className={cn("flex items-end gap-2", out ? "justify-end" : "justify-start")}>
-        {!out && (showIncomingAvatar
-          ? <ConversationAvatar conversation={conversation} className="h-7 w-7 text-[10px]" />
-          : <span aria-hidden="true" className="h-7 w-7 shrink-0" />)}
-        <div
-          className="max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%] lg:max-w-[680px]"
-          style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
-        >
-          <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.text}</span>{" "}
-          <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[10px]", out ? "text-white/75" : "text-[#65676b]")}>
-            {m.time}
-            {out && th.checkmarks && (m.status === "read" ? <CheckCheck className="h-3 w-3" /> : m.status === "delivered" ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
-            {m.ai && <Sparkles className="h-3 w-3" />}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (isApp) {
-    return (
-      <div className={cn("flex", out ? "justify-end" : "justify-start")}>
-        <div
-          className={cn(
-            "max-w-[75%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed",
-            out ? "bg-primary text-primary-foreground rounded-br-md" : "bg-surface text-foreground rounded-bl-md"
-          )}>
-          
-          {m.text}
-          <Foot m={m} isApp={isApp} />
-        </div>
-      </div>);
-
-  }
-
+  // Messenger & Instagram
   return (
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div
-        className={cn("max-w-[72%] rounded-lg px-3 py-2 text-[13px] leading-relaxed shadow-sm relative", showTail && (out ? "rounded-br-none" : "rounded-bl-none"))}
-        style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}>
-        
-        {m.text}
-        <Foot m={m} isApp={isApp} th={th} />
+        className={cn("max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%]", out ? "rounded-br-sm" : "rounded-bl-sm")}
+        style={{ background: out ? th?.out || "#0084ff" : th?.in || "#f0f0f0", color: out ? th?.outText || "#fff" : th?.inText || "#111" }}
+      >
+        {isAudio ? (
+          <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th?.checkmarks} />
+        ) : (
+          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+            {m.text}{" "}
+            <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[10px]", out ? "opacity-80" : "text-muted-foreground")}>
+              {m.time}
+              {out && th?.checkmarks && <CheckCheck className="h-3 w-3" />}
+              {m.ai && <Sparkles className="h-3 w-3 text-amber-400" />}
+            </span>
+          </div>
+        )}
       </div>
-    </div>);
-
+    </div>
+  );
 }
 
-function getMessageDayKey(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
+// Voice Note Player inside message bubble
+function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, checkColor: _checkColor }) {
+  const [playing, setPlaying] = useState(false);
 
-function formatWhatsAppDay(value, lang, t) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (getMessageDayKey(date) === getMessageDayKey(today)) return t("inbox.date.today", "Today");
-  if (getMessageDayKey(date) === getMessageDayKey(yesterday)) return t("inbox.date.yesterday", "Yesterday");
-  return new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-GB", {
-    day: "numeric",
-    month: "long",
-    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
-  }).format(date);
-}
-
-function Foot({ m, isApp, th }) {
   return (
-    <span className="inline-flex items-center gap-1 ml-2 align-bottom text-[10px] opacity-60">
-      {m.time}
-      {m.side === "out" && !isApp && th?.checkmarks && (m.status === "read" ? <CheckCheck className="h-3 w-3" style={{ color: "#34B7F1" }} /> : m.status === "delivered" ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
-      {m.ai && <Sparkles className="h-2.5 w-2.5" />}
-    </span>);
+    <div className="flex items-center gap-3 py-1 min-w-[210px] sm:min-w-[250px]">
+      <button
+        type="button"
+        onClick={() => setPlaying(!playing)}
+        className={cn(
+          "h-9 w-9 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform hover:scale-105",
+          isWhatsApp
+            ? "bg-[#00a884] text-white"
+            : out
+            ? "bg-white text-primary"
+            : "bg-primary text-white"
+        )}
+      >
+        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
+      </button>
 
+      <div className="flex-1 space-y-1">
+        {/* Animated / styled sound wave */}
+        <div className="flex items-center gap-0.5 h-5">
+          {[8, 14, 18, 12, 22, 16, 20, 10, 14, 18, 12, 16, 20, 14, 10, 18, 14, 12, 8].map((h, i) => (
+            <span
+              key={i}
+              className={cn(
+                "w-1 rounded-full transition-colors",
+                playing && i < 11
+                  ? isWhatsApp ? "bg-[#00a884]" : "bg-primary"
+                  : isWhatsApp ? "bg-[#8696a0]" : out ? "bg-white/60" : "bg-black/30"
+              )}
+              style={{ height: `${h}px` }}
+            />
+          ))}
+        </div>
+        <div className="flex items-center justify-between text-[10.5px] opacity-80 tabular-nums">
+          <span>{m.duration || "0:14"}</span>
+          <span dir="ltr" className="flex items-center gap-1">
+            <span>{time}</span>
+            {out && checkmarks && (
+              status === "read"
+                ? <CheckCheck className="h-3 w-3 text-[#53bdeb]" />
+                : <Check className="h-3 w-3" />
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getMessageDayKey(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function formatWhatsAppDay(iso, lang, _t) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diff = (today.getTime() - target.getTime()) / 86400000;
+  if (diff === 0) return lang === "ar" ? "اليوم" : "Today";
+  if (diff === 1) return lang === "ar" ? "أمس" : "Yesterday";
+  return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "short", month: "short", day: "numeric" });
 }

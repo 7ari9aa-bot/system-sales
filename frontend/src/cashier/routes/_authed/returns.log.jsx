@@ -48,13 +48,13 @@ export default function ReturnsLogPage() {
               toast.success(`تم تصدير ${rows.length} عملية مرتجع`);
             }}
           >
-            <Download />
-            تصدير السجل
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير السجل</span>
           </Button>
           <Button asChild className={BTN_PRIMARY}>
             <Link to="/cashier/returns">
-              <Plus />
-              تسجيل مرتجع
+              <Plus className="h-4 w-4 shrink-0 !text-white" />
+              <span className="!text-white font-semibold">تسجيل مرتجع</span>
             </Link>
           </Button>
         </PageHero>

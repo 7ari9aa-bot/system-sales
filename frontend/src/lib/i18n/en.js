@@ -198,9 +198,16 @@ export default {
   "nav.ai": "AI",
   "nav.ownerConsole": "Owner console",
   "nav.salesAssistant": "Sales Assistant",
+  "nav.aiAnalysis": "AI analysis",
+  "nav.salesAndPos": "Sales",
+  "nav.productsAndStock": "Products & Stock",
+  "nav.suppliersAndPurchases": "Suppliers & Purchasing",
+  "nav.reportsAndLogs": "Reports & Operations",
   "nav.analytics": "Analytics",
   "nav.usage": "Plan & usage",
   "nav.settings": "Settings",
+  "settings.nav.ai": "AI Agents",
+  "settings.nav.usage": "Plan & Usage",
 
   // Sales assistant chat
   "salesAssistant.subtitle": "Ask about your sales in plain language — every answer is grounded in your store's real numbers.",

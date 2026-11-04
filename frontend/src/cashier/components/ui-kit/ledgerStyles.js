@@ -2,10 +2,10 @@
 // تُستخدم في شاشات الملصقات والموردين والمشتريات ومرتجعات الموردين لتظهر بنفس الشكل.
 
 export const BTN =
-  "h-auto cursor-pointer rounded-md border border-[#DED8CD] bg-white px-3 py-2 text-[12px] font-normal text-[#33322E] shadow-none transition-[background-color,box-shadow,color] duration-150 hover:bg-[#FDEBD8] hover:text-[#33322E] active:bg-[#F8D9B8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
+  "h-9 cursor-pointer inline-flex items-center gap-2 rounded-lg border border-[#DED8CD] !bg-white px-3.5 py-2 text-[12.5px] font-medium !text-[#33322E] shadow-xs transition-all duration-150 hover:!bg-[#FDEBD8] hover:!text-[#33322E] hover:border-[#E8761A] active:!bg-[#F8D9B8] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 
 export const BTN_PRIMARY =
-  "h-auto cursor-pointer gap-2 rounded-md border border-[#E8761A] bg-[#E8761A] px-4 py-2.5 text-[13px] font-semibold text-white shadow-none transition-[background-color,border-color] duration-150 hover:border-[#D1650F] hover:bg-[#D1650F] hover:text-white active:border-[#B9560B] active:bg-[#B9560B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
+  "h-9 cursor-pointer inline-flex items-center gap-2 rounded-lg border border-[#E8761A] !bg-[#E8761A] px-4 py-2 text-[12.5px] font-bold !text-white shadow-sm transition-all duration-150 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white active:border-[#B9560B] active:!bg-[#B9560B] disabled:!bg-[#E8761A]/60 disabled:!text-white/90 disabled:opacity-75 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 
 // الحقول الخطية: بلا إطار صندوقي، خط شعري سفلي يتحول برتقاليًا عند المرور أو التحرير.
 export const FIELD =

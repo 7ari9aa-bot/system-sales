@@ -73,8 +73,8 @@ export default function ActivityLogPage() {
               toast.success(`تم تصدير ${rows.length} عملية${feed.hasNextPage ? " (المحمّلة فقط)" : ""}`);
             }}
           >
-            <Download />
-            تصدير السجل
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير السجل</span>
           </Button>
         </PageHero>
       }

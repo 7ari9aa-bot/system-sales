@@ -198,9 +198,16 @@ export default {
   "nav.ai": "الذكاء",
   "nav.ownerConsole": "كونسول المالك",
   "nav.salesAssistant": "مساعد المبيعات",
+  "nav.aiAnalysis": "AI analysis",
+  "nav.salesAndPos": "البيع",
+  "nav.productsAndStock": "المنتجات والمخزون",
+  "nav.suppliersAndPurchases": "الموردون والمشتريات",
+  "nav.reportsAndLogs": "التقارير وسجل العمليات",
   "nav.analytics": "التحليلات",
   "nav.usage": "الباقة والاستخدام",
   "nav.settings": "الإعدادات",
+  "settings.nav.ai": "الذكاء الاصطناعي",
+  "settings.nav.usage": "الباقة والاستخدام",
 
   // Sales assistant chat
   "salesAssistant.subtitle": "اسأل عن مبيعاتك بالعربي — كل إجابة مبنيّة على أرقام حقيقية من متجرك.",

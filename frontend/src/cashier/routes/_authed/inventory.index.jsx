@@ -30,9 +30,9 @@ const EXPORT_COLUMNS = [
 ];
 
 const BTN =
-  "h-auto gap-2 rounded-[10px] border-[#C7C2B8] bg-white px-4 py-2.5 text-[13px] font-medium text-[#3B3A36] shadow-none transition-[box-shadow,border-color,background] duration-200 hover:border-[#E8761A] hover:bg-white hover:text-[#3B3A36] hover:shadow-[0_4px_12px_rgba(59,58,54,.1)] active:bg-[#F4F1EC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
+  "h-auto gap-2 rounded-[10px] border-[#C7C2B8] !bg-white px-4 py-2.5 text-[13px] font-medium !text-[#3B3A36] !shadow-none transition-[box-shadow,border-color,background] duration-200 hover:border-[#E8761A] hover:!bg-white hover:!text-[#3B3A36] hover:shadow-[0_4px_12px_rgba(59,58,54,.1)] active:!bg-[#F4F1EC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 const BTN_PRIMARY =
-  "h-auto gap-2 rounded-[10px] border border-[#3B3A36] bg-[#3B3A36] px-4 py-2.5 text-[13px] font-medium text-white shadow-none transition-[background,border-color] duration-200 hover:border-[#4D4B46] hover:bg-[#4D4B46] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
+  "h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2.5 text-[13px] font-semibold !text-white shadow-sm transition-all duration-200 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 const FIELD =
   "h-10 rounded-[10px] border-[#C7C2B8] bg-[#FBFAF7] px-3 text-[13px] text-[#3B3A36] transition-[border-color,box-shadow] duration-200 hover:border-[#E8761A] focus-visible:border-[#E8761A] focus-visible:ring-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E8761A]";
 const FIELD_LABEL = "mb-1.5 block text-[11px] font-medium text-[#7A766C]";
@@ -87,10 +87,10 @@ export default function InventoryPage() {
               طباعة الباركود
             </Link>
           </Button>
-          <Button asChild className={BTN_PRIMARY}>
+          <Button asChild variant="ghost" className={BTN_PRIMARY}>
             <Link to="/cashier/inventory/stocktake">
-              <ClipboardList />
-              بدء جرد
+              <ClipboardList className="h-4 w-4 shrink-0 !text-white" />
+              <span className="!text-white font-semibold">بدء جرد</span>
             </Link>
           </Button>
         </div>

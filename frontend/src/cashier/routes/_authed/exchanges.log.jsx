@@ -54,13 +54,13 @@ export default function ExchangesLogPage() {
               toast.success(`تم تصدير ${rows.length} عملية استبدال`);
             }}
           >
-            <Download />
-            تصدير السجل
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير السجل</span>
           </Button>
           <Button asChild className={BTN_PRIMARY}>
             <Link to="/cashier/exchanges">
-              <Plus />
-              تسجيل استبدال
+              <Plus className="h-4 w-4 shrink-0 !text-white" />
+              <span className="!text-white font-semibold">تسجيل استبدال</span>
             </Link>
           </Button>
         </PageHero>

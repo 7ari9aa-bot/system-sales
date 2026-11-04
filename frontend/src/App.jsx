@@ -99,17 +99,19 @@ const DashboardRoutes = () => (
         <Route path="/orders/:rest" element={<Navigate to="/cashier/pos" replace />} />
         {/* Marketing is not part of the first release: the old links land on the dashboard, not on a 404. */}
         <Route path="/marketing/*" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/ai" element={<AI />} />
+        <Route path="/ai" element={<Navigate to="/settings/ai" replace />} />
         <Route path="/sales-assistant" element={<SalesAssistant />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/owner" element={<OwnerConsole />} />
-        <Route path="/usage" element={<Usage />} />
+        <Route path="/usage" element={<Navigate to="/settings/usage" replace />} />
         <Route path="/website" element={<WebsiteComingSoon />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>
           <Route path="/settings" element={<ProfileSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
+          <Route path="/settings/ai" element={<AI />} />
+          <Route path="/settings/usage" element={<Usage />} />
           <Route path="/settings/pos" element={<PosSettings />} />
           <Route path="/settings/policies" element={<PoliciesSettings />} />
           <Route path="/settings/billing" element={<BillingSettings />} />

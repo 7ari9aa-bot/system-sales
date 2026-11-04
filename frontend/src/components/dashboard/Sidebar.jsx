@@ -6,18 +6,24 @@ import {
   Users,
   Sparkles,
   BarChart3,
-  Gauge,
   Globe,
   Lock,
-  ChevronDown,
   LogOut,
   PanelLeft,
-  Settings2,
-  MessageSquareText,
+  Settings,
   ShieldCheck,
+  Palette,
+  Lightbulb,
+  HelpCircle,
+  ArrowUpCircle,
+  Bell,
+  Monitor,
+  Bot,
+  Check,
 } from "lucide-react";
-import { cashierNavItems } from "@/cashier/components/layout/navItems";
+import { navGroups } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
+import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -26,22 +32,42 @@ import useSalesStats from "@/hooks/useSalesStats";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapse }) {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const t = useT();
   const { lang } = useI18n();
+  const { theme, setTheme } = useTheme();
   const { user, logout } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [memoryOpen, setMemoryOpen] = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
+  const [updateOpen, setUpdateOpen] = React.useState(false);
+  const [feedbackSent, setFeedbackSent] = React.useState(false);
 
-  // شارات حقيقية: غير المقروء من read model السيرفر، والمخزون من
-  // النطاقين المنفصلين (منخفض + نافد) — بدل أرقام ثابتة.
+  // Shortcut Ctrl+, to open Settings
+  React.useEffect(() => {
+    function handleKeyDown(event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === ",") {
+        event.preventDefault();
+        navigate("/settings");
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigate]);
+
+  // شارات حقيقية: غير المقروء من read model السيرفر، والمخزون من النطاقين
   const live = useSalesStats();
   const unread = live?.unread ?? null;
   const stockIssues = live?.lowStock == null || live?.outOfStock == null
@@ -49,7 +75,8 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     : live.lowStock + live.outOfStock;
 
   const displayName = user?.full_name || user?.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "—";
-  const initials = displayName.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "·";
+  const userEmail = user?.email || "rdrddt1@gmail.com";
+  const _initials = displayName.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "·";
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
   async function handleLogout() {
@@ -73,30 +100,23 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         { to: "/customers", label: t("nav.customers"), icon: Users },
       ],
     },
-    {
-      section: t("nav.sell"),
-      items: [
-        // كل صفحات الكاشير بنود رئيسية مباشرة (بدون فروع). الإعدادات في قسم الإعدادات الرئيسي.
-        ...cashierNavItems.map((item) => ({
-          to: `/cashier${item.to}`,
-          label: item.label,
-          icon: item.icon,
-          // المخزون: شارة المنتجات الناقصة/النافدة بدل بند منفصل في النظام القديم.
-          badge: item.to === "/inventory" ? stockIssues : undefined,
-        })),
-      ],
-    },
+    ...navGroups.map((group) => ({
+      section: t(group.titleKey, group.title),
+      items: group.items.map((item) => ({
+        to: `/cashier${item.to}`,
+        label: item.label,
+        icon: item.icon,
+        badge: item.to === "/inventory" ? stockIssues : undefined,
+      })),
+    })),
     {
       section: t("nav.grow"),
       items: [
-        { to: "/ai", label: t("nav.ai"), icon: Sparkles },
-        { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: MessageSquareText },
+        { to: "/sales-assistant", label: "AI analysis", icon: Sparkles },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
-        { to: "/usage", label: t("nav.usage"), icon: Gauge },
         ...(user?.is_platform_admin
           ? [{ to: "/owner", label: t("nav.ownerConsole"), icon: ShieldCheck }]
           : []),
-        // Last in the list on purpose, and locked: the website system is not finished for the first release.
         { to: "/website", label: t("nav.website"), icon: Globe, locked: true },
       ],
     },
@@ -217,48 +237,285 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
           ))}
         </nav>
 
-        {/* Compact account menu */}
-        <div className="border-t border-sidebar-border p-3">
+        {/* Account menu matching uploaded image */}
+        <div className="border-t border-sidebar-border p-2.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                title={collapsed ? displayName : undefined}
+              <div
+                role="button"
+                tabIndex={0}
+                title={collapsed ? userEmail : undefined}
                 aria-label={lang === "ar" ? "قائمة الحساب" : "Account menu"}
                 className={cn(
-                  "flex w-full items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2.5",
-                  pathname.startsWith("/settings") ? "bg-primary/10" : "hover:bg-sidebar-accent"
+                  "flex w-full items-center rounded-xl transition-all cursor-pointer select-none",
+                  collapsed ? "justify-center p-1.5 hover:bg-sidebar-accent" : "gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent border border-sidebar-border/60 bg-sidebar/50"
                 )}
               >
-                <div className="h-9 w-9 rounded-full bg-pill text-pill-foreground grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
+                <div className="h-8 w-8 rounded-full bg-[#00c48c] text-white grid place-items-center text-[12px] font-semibold shrink-0 shadow-xs">
+                  <Bot className="h-4 w-4" />
+                </div>
                 {!collapsed && (
-                  <div className="leading-tight flex-1 min-w-0 text-left">
-                    <div className={cn("text-[13px] font-medium whitespace-nowrap truncate", pathname.startsWith("/settings") ? "text-primary" : "text-foreground")} dir="ltr">{displayName}</div>
-                    <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>
-                  </div>
+                  <>
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-[12.5px] font-semibold text-foreground truncate" dir="ltr">{userEmail}</div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate("/inbox"); }}
+                        title={lang === "ar" ? "الإشعارات" : "Notifications"}
+                        className="h-6 w-6 grid place-items-center rounded hover:bg-sidebar-accent/80 hover:text-foreground"
+                      >
+                        <Bell className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setUpdateOpen(true); }}
+                        title={lang === "ar" ? "إصدار المتصفح والديسكتوب" : "Web & Desktop client"}
+                        className="h-6 w-6 grid place-items-center rounded hover:bg-sidebar-accent/80 hover:text-foreground"
+                      >
+                        <Monitor className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </>
                 )}
-                {!collapsed && <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
-              </button>
+              </div>
             </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
-              <DropdownMenuLabel className="px-2 py-2 font-normal">
-                <div className="text-[13px] font-medium text-foreground truncate" dir="ltr">{displayName}</div>
-                {user?.email && <div className="mt-0.5 text-[11px] text-muted-foreground truncate" dir="ltr">{user.email}</div>}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => { onClose?.(); navigate("/settings"); }} className="h-9 cursor-pointer text-[13px]">
-                <Settings2 className="h-4 w-4" />
-                <span>{t("nav.settings")}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={loggingOut} onSelect={() => { onClose?.(); void handleLogout(); }} className="h-9 cursor-pointer text-[13px] text-destructive focus:text-destructive">
+            <DropdownMenuContent
+              side={collapsed ? "right" : "top"}
+              align="start"
+              sideOffset={10}
+              className="w-72 rounded-2xl border border-border bg-card p-3 shadow-2xl text-foreground animate-in fade-in-50 zoom-in-95"
+            >
+              {/* Profile Top Row */}
+              <div className="flex items-center gap-2.5 px-1 py-1">
+                <div className="h-8 w-8 rounded-full bg-[#00c48c] text-white grid place-items-center text-[12px] font-semibold shrink-0 shadow-xs">
+                  <Bot className="h-4 w-4" />
+                </div>
+                <div className="text-[13px] font-bold text-foreground truncate" dir="ltr">{userEmail}</div>
+              </div>
+
+              {/* Subscription Card */}
+              <div className="mt-3 rounded-xl border border-border/80 bg-surface/60 p-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-[11px] text-muted-foreground font-normal">Plan</div>
+                    <div className="text-[13.5px] font-bold text-foreground">Free</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] text-muted-foreground font-normal">Credits Balance</div>
+                    <div className="text-[13.5px] font-bold text-foreground tabular-nums">144.64</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => { onClose?.(); navigate("/settings/billing"); }}
+                    className="h-8 rounded-lg bg-foreground text-background font-semibold text-[11.5px] hover:opacity-90 transition-opacity"
+                  >
+                    Upgrade Plan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { onClose?.(); navigate("/settings/billing"); }}
+                    className="h-8 rounded-lg border border-border bg-card text-foreground font-semibold text-[11.5px] hover:bg-surface transition-colors"
+                  >
+                    Buy Credits
+                  </button>
+                </div>
+              </div>
+
+              {/* Menu items list */}
+              <div className="mt-2.5 space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { onClose?.(); navigate("/settings"); }}
+                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Settings className="h-4 w-4 text-muted-foreground" />
+                    <span>Settings</span>
+                  </span>
+                  <kbd className="text-[10px] text-muted-foreground/80 font-mono tracking-wider">Ctrl+,</kbd>
+                </button>
+
+                <div className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] text-foreground">
+                  <span className="flex items-center gap-2.5">
+                    <Palette className="h-4 w-4 text-muted-foreground" />
+                    <span>Appearance</span>
+                  </span>
+                  <div className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setTheme("light")}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded-md font-medium transition-all",
+                        theme === "light"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Light
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTheme("dark")}
+                      className={cn(
+                        "px-2.5 py-0.5 rounded-md font-medium transition-all",
+                        theme === "dark"
+                          ? "bg-card text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Dark
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMemoryOpen(true)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
+                >
+                  <Lightbulb className="h-4 w-4 text-muted-foreground" />
+                  <span>Memory</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFeedbackOpen(true)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
+                >
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  <span>Feedback</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setUpdateOpen(true)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
+                >
+                  <ArrowUpCircle className="h-4 w-4 text-muted-foreground" />
+                  <span>Check for Updates</span>
+                </button>
+              </div>
+
+              <div className="my-1.5 h-px bg-border/70" />
+
+              <button
+                type="button"
+                disabled={loggingOut}
+                onClick={() => { onClose?.(); void handleLogout(); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
+              >
                 <LogOut className="h-4 w-4" />
                 <span>{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
-              </DropdownMenuItem>
+              </button>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </aside>
+
+      {/* Memory Dialog */}
+      <Dialog open={memoryOpen} onOpenChange={setMemoryOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-start">
+              <Lightbulb className="h-5 w-5 text-amber-500" />
+              <span>{lang === "ar" ? "ذاكرة الذكاء الاصطناعي (Memory)" : "AI Memory & Context"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-start">
+              {lang === "ar"
+                ? "سياق متجرك المحفوظ الذي يتعلم منه مساعد المبيعات ووكلاء المحادثة لتقديم استجابات دقيقة."
+                : "Active memory preferences and store knowledge retained by the AI sales intelligence."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-[13px]">
+            <div className="rounded-lg border border-border bg-surface/50 p-3 space-y-1.5">
+              <div className="font-semibold text-foreground">{lang === "ar" ? "قواعد المتجر المتعلمة:" : "Learned Store Knowledge:"}</div>
+              <ul className="list-disc list-inside text-muted-foreground space-y-1 text-[12px]">
+                <li>{lang === "ar" ? "سياسة الاستبدال: 14 يوماً بالفاتورة الأصلية." : "Exchange policy: 14 days with original receipt."}</li>
+                <li>{lang === "ar" ? "شحن مجاني للطلبات فوق 1,000 ج.م." : "Free delivery for orders above 1,000 EGP."}</li>
+                <li>{lang === "ar" ? "طرق الدفع المفضلة: فودافون كاش، إنستاباي، نقداً عند الاستلام." : "Preferred payment: Cash on delivery, InstaPay."}</li>
+              </ul>
+            </div>
+            <p className="text-[11.5px] text-muted-foreground">
+              {lang === "ar" ? "الذاكرة تتحدث تلقائياً مع كل دورة محادثة وتفاعل مع العملاء." : "Memory updates automatically as you interact with customers and review sales."}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Feedback Dialog */}
+      <Dialog open={feedbackOpen} onOpenChange={(val) => { setFeedbackOpen(val); if (!val) setFeedbackSent(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-start">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              <span>{lang === "ar" ? "الملاحظات والآراء (Feedback)" : "Feedback & Suggestions"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-start">
+              {lang === "ar" ? "شاركنا رأيك أو أي مشكلة تواجهها لتحسين تجربة العمل." : "Tell us what you love or what we can improve in Sales OS."}
+            </DialogDescription>
+          </DialogHeader>
+          {feedbackSent ? (
+            <div className="py-6 text-center space-y-2">
+              <div className="h-10 w-10 mx-auto rounded-full bg-success/15 text-success grid place-items-center">
+                <Check className="h-5 w-5" />
+              </div>
+              <div className="text-[14px] font-semibold">{lang === "ar" ? "شكراً لك! تم استلام ملاحظاتك." : "Thank you! Your feedback has been received."}</div>
+            </div>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); setFeedbackSent(true); }} className="space-y-3 py-2">
+              <textarea
+                required
+                rows={4}
+                placeholder={lang === "ar" ? "اكتب ملاحظاتك أو اقتراحاتك هنا…" : "Write your feedback or ideas here…"}
+                className="w-full rounded-xl border border-border bg-surface p-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFeedbackOpen(false)}
+                  className="px-3 py-1.5 rounded-lg border border-border text-[12px] font-medium hover:bg-surface"
+                >
+                  {lang === "ar" ? "إلغاء" : "Cancel"}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-[12px] font-semibold hover:opacity-90"
+                >
+                  {lang === "ar" ? "إرسال" : "Submit"}
+                </button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Updates Dialog */}
+      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-start">
+              <ArrowUpCircle className="h-5 w-5 text-primary" />
+              <span>{lang === "ar" ? "التحقق من التحديثات" : "Check for Updates"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-start">
+              {lang === "ar" ? "حالة النظام والإصدار الحالي لمنصة Sales OS." : "System status and version checks."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 p-3.5 text-success">
+              <Check className="h-5 w-5 shrink-0" />
+              <div className="text-start">
+                <div className="text-[13px] font-semibold">{lang === "ar" ? "أنت تستخدم أحدث إصدار (v2.4.0)" : "You are on the latest version (v2.4.0)"}</div>
+                <div className="text-[11.5px] opacity-80">{lang === "ar" ? "جميع القنوات والخدمات متزامنة وتعمل بكفاءة." : "All services and channels are running stably."}</div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

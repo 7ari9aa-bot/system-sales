@@ -90,8 +90,8 @@ export default function ExpensesPage() {
               toast.success(`تم تصدير ${filtered.length} مصروفًا`);
             }}
           >
-            <Download />
-            تصدير القائمة
+            <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">تصدير القائمة</span>
           </Button>
           <Button
             className={BTN_PRIMARY}
@@ -101,8 +101,8 @@ export default function ExpensesPage() {
               setDialogOpen(true);
             }}
           >
-            <Plus />
-            تسجيل مصروف
+            <Plus className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">تسجيل مصروف</span>
           </Button>
         </PageHero>
       }

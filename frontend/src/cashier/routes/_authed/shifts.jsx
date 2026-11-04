@@ -90,12 +90,12 @@ export default function ShiftsPage() {
       hero={
         <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: الرصيد اللي سجّله الكاشير. نهاية اليوم: محسوبة من رصيد البداية والفواتير والمرتجعات، وليست عدًّا فعليًا للنقدية.">
           <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لم يبدأ اليوم بعد"} onClick={() => setDetails(summary.open)}>
-            <Clock />
-            اليوم الجاري
+            <Clock className="h-4 w-4 shrink-0 !text-[#33322E]" />
+            <span className="!text-[#33322E] font-medium">اليوم الجاري</span>
           </Button>
           <Button className={BTN_PRIMARY} disabled={!canStartAnotherDay(startChoice.data)} title={canStartAnotherDay(startChoice.data) ? "" : "كل أجهزة الكاشير بدأ عليها يوم مفتوح"} onClick={() => setOpenDialog(true)}>
-            <Unlock />
-            ابدأ اليوم
+            <Unlock className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">ابدأ اليوم</span>
           </Button>
         </PageHero>
       }
