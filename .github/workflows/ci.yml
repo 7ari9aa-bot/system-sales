@@ -132,6 +132,9 @@ jobs:
         env:
           E2E_LIVE_API: "1"
         run: npx playwright test e2e/live-api.spec.js
+      - name: Dump API log (live-api failures are 404-after-create; the server log is the evidence)
+        if: failure()
+        run: tail -n 400 /tmp/fihrist-api.log
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
