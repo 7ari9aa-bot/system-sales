@@ -311,6 +311,10 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         probe_results = await monitors.run_probes()
         alerts = await monitors.evaluate_monitors(session)
         fresh = alerts if redis is None else await monitors.trip_if_new(redis, alerts)
+        # Push: operators get an email the moment a monitor trips (contained —
+        # an undeliverable alert never kills the job; the System tab still
+        # shows it).
+        await monitors.notify_operators(session, fresh)
         for alert in fresh:
             logger.warning(
                 "platform.monitor_tripped code=%s severity=%s detail=%s",

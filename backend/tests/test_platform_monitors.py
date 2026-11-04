@@ -137,3 +137,59 @@ async def test_probes_report_failures_without_raising(monkeypatch) -> None:
     assert by_url["https://ok.test/"]["ok"] is True
     assert by_url["https://down.test/"]["ok"] is False
     assert by_url["https://down.test/"]["detail"] == "ConnectError"
+
+
+async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monkeypatch):
+    """The routing layer: a fresh trip emails each active platform admin once
+    (idempotency keyed on fingerprint + hour + recipient), and a delivery
+    failure for one operator never blocks the next."""
+    import uuid
+
+    from app.core.config import get_settings
+    from app.modules.identity.models import User
+    from app.modules.platform.services.monitors import Alert, notify_operators
+
+    # Force the delivery gate open: notify_operators returns silently when
+    # email delivery is unconfigured (the production default in some envs).
+    monkeypatch.setattr(
+        type(get_settings()),
+        "auth_email_delivery_configured",
+        property(lambda self: True),
+        raising=False,
+    )
+
+    admin = User(
+        email=f"ops-{uuid.uuid4().hex[:8]}@test.local",
+        password_hash="x",
+        full_name="Ops",
+        is_platform_admin=True,
+        is_active=True,
+    )
+    admin2 = User(
+        email=f"ops2-{uuid.uuid4().hex[:8]}@test.local",
+        password_hash="x",
+        full_name="Ops2",
+        is_platform_admin=True,
+        is_active=True,
+    )
+    db.add_all([admin, admin2])
+    await db.flush()
+
+    sent: list[tuple[str, str]] = []
+
+    class _Sender:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def send_receipt(self, *, delivery_id, recipient, subject, html, text):
+            sent.append((recipient, subject))
+            if recipient == admin2.email:
+                raise RuntimeError("resend down for this one")
+
+    monkeypatch.setattr("app.modules.identity.email_delivery.ResendEmailSender", _Sender)
+    alerts = [Alert("critical", "visitor_error_spike", "boom", "fp:/checkout")]
+
+    await notify_operators(db, alerts)
+
+    assert len(sent) == 2, "each operator gets their own send"
+    assert sent[0][0] == admin.email and "visitor_error_spike" in sent[0][1]

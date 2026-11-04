@@ -18,6 +18,8 @@ transport, not truth; every durable fact (visitor_events) stays in Postgres.
 
 from __future__ import annotations
 
+import logging
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -27,7 +29,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.modules.platform.models import VisitorEvent
+
+logger = logging.getLogger(__name__)
+
+from app.modules.platform.models import VisitorEvent  # noqa: E402
 
 # Monitors evaluate a short rolling window — long enough to ride out a blip,
 # short enough to beat the customer's next page load.
@@ -248,3 +253,91 @@ async def trip_if_new(
         if was_set:
             fresh.append(alert)
     return fresh
+
+
+async def _operator_emails(session: AsyncSession) -> list[str]:
+    """Active platform admins — the operators the alerts page."""
+    from app.modules.identity.models import User
+
+    rows = (
+        (
+            await session.execute(
+                select(User.email).where(
+                    User.is_platform_admin.is_(True),
+                    User.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+async def notify_operators(session: AsyncSession, alerts: list[Alert]) -> int:
+    """Push tripped alerts to the operators' email — best-effort, contained.
+
+    Uses the existing generic transactional send (the receipt adapter): one
+    message per alert per operator, delivery-idempotent via a uuid5 of the
+    alert fingerprint + the trip hour so a scheduler retry inside the same
+    hour cannot double-send even if Resend's own idempotency lapses. ANY
+    failure (delivery disabled, Resend down, no operators) is logged and
+    swallowed — the monitors job must never die because its own alert could
+    not be delivered; the System tab still shows the alert.
+    """
+    if not alerts:
+        return 0
+    from datetime import datetime as _dt
+
+    from app.modules.identity.email_delivery import (
+        EmailDeliveryError,
+        ResendEmailSender,
+    )
+
+    settings = get_settings()
+    if not settings.auth_email_delivery_configured:
+        return 0
+    recipients = await _operator_emails(session)
+    if not recipients:
+        return 0
+
+    sender = ResendEmailSender()
+    sent = 0
+    hour_bucket = _dt.now(UTC).strftime("%Y%m%d%H")
+    for alert in alerts:
+        subject = f"[SalesOS monitor] {alert.severity}: {alert.code}"
+        text = f"{alert.detail}\n\nFingerprint: {alert.fingerprint}"
+        html = (
+            "<!doctype html><html><body>"
+            f"<h2>Platform monitor: {alert.code}</h2>"
+            f"<p><b>{alert.severity}</b> — {alert.detail}</p>"
+            f"<p style='color:#666'>fingerprint: {alert.fingerprint}</p>"
+            "</body></html>"
+        )
+        for recipient in recipients:
+            idempotency = f"monitor:{alert.fingerprint}:{hour_bucket}:{recipient}"
+            delivery_id = uuid.uuid5(uuid.NAMESPACE_URL, idempotency)
+            try:
+                await sender.send_receipt(
+                    delivery_id=delivery_id,
+                    recipient=recipient,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                )
+                sent += 1
+            except EmailDeliveryError as exc:
+                logger.warning(
+                    "platform.monitor_alert_undelivered code=%s to=%s retryable=%s",
+                    alert.code,
+                    recipient,
+                    exc,
+                )
+            except Exception:  # noqa: BLE001 — alerting must never kill the job
+                logger.warning(
+                    "platform.monitor_alert_failed code=%s to=%s",
+                    alert.code,
+                    recipient,
+                    exc_info=True,
+                )
+    return sent
