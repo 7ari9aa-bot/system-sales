@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 422,
-    "sha256": "b53dfdc14625ff3bd6d7483e399fcf591906f7c320af740e6e39abdb4f1c2726",
+    "sha256": "6dbf022c9b5875754c0f82c8c4980c21abc5b1a7002f83720b672d6e67cc26dc",
     "typed_operations": 266
   },
   "spec": {
@@ -8990,15 +8990,14 @@
         },
         "ImpersonationConfirmBody": {
           "properties": {
-            "nonce": {
-              "maxLength": 128,
-              "minLength": 8,
-              "title": "Nonce",
+            "ticket": {
+              "minLength": 1,
+              "title": "Ticket",
               "type": "string"
             }
           },
           "required": [
-            "nonce"
+            "ticket"
           ],
           "title": "ImpersonationConfirmBody",
           "type": "object"
@@ -9026,6 +9025,10 @@
               "title": "Redeem Path",
               "type": "string"
             },
+            "redeem_url": {
+              "title": "Redeem Url",
+              "type": "string"
+            },
             "ticket": {
               "title": "Ticket",
               "type": "string"
@@ -9034,7 +9037,8 @@
           "required": [
             "ticket",
             "expires_in",
-            "redeem_path"
+            "redeem_path",
+            "redeem_url"
           ],
           "title": "ImpersonationTicketOut",
           "type": "object"
@@ -47845,20 +47849,8 @@
       },
       "/api/v1/platform/impersonation/redeem": {
         "get": {
-          "description": "The handoff page — GET returns an auto-submitting POST form (F4).\n\nThe ticket travels in the form BODY, never in a URL that server access\nlogs, browser history or referrers keep. Nothing is consumed here; the\nconfirm endpoint below does all the state-changing work.",
+          "description": "The handoff page — GET serves a script that reads the FRAGMENT (F4).\n\nThe ticket arrives in the URL FRAGMENT (``/redeem#<ticket>``): browsers\nnever transmit the fragment to the server, so THIS request — and every\naccess log, proxy log and referrer header on the way — carries no\ncredential at all. The page's JS reads the fragment client-side and POSTs\nit to the confirm endpoint in the body; nothing is consumed here.",
           "operationId": "redeem_impersonation_ticket_api_v1_platform_impersonation_redeem_get",
-          "parameters": [
-            {
-              "in": "query",
-              "name": "ticket",
-              "required": true,
-              "schema": {
-                "minLength": 1,
-                "title": "Ticket",
-                "type": "string"
-              }
-            }
-          ],
           "responses": {
             "200": {
               "content": {
@@ -47869,16 +47861,6 @@
                 }
               },
               "description": "Successful Response"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              },
-              "description": "Validation Error"
             }
           },
           "summary": "Redeem Impersonation Ticket",
