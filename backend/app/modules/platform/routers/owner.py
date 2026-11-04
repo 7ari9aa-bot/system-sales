@@ -24,6 +24,7 @@ from app.modules.platform.models import (
     Integration,
     OutboxEvent,
     VisitorEvent,
+    WebhookDelivery,
     WebhookEvent,
 )
 from app.modules.platform.routers._deps import TenantCtxDep, _require_platform_admin
@@ -69,6 +70,27 @@ class OwnerVisitorListOut(BaseModel):
     total: int
     unique_visitors: int
     top_paths: list[dict[str, Any]]
+
+
+class OwnerSystemOut(BaseModel):
+    status: str
+    generated_at: datetime
+    outbox: dict[str, Any]
+    webhook_deliveries: dict[str, Any]
+    webhook_ingress: dict[str, Any]
+    visitors: dict[str, Any]
+
+
+class OwnerVisitorSummaryOut(BaseModel):
+    hours: int
+    total: int
+    unique_visitors: int
+    errors_24h: int
+    error_rate: float
+    perf_p50_ms: int | None
+    perf_p95_ms: int | None
+    series: list[dict[str, Any]]
+    error_paths: list[dict[str, Any]]
 
 
 class ChannelAccessUpdate(BaseModel):
@@ -476,4 +498,228 @@ async def owner_visitors(
         total=int(total or 0),
         unique_visitors=int(unique or 0),
         top_paths=[{"path": path, "count": int(count)} for path, count in top],
+    )
+
+
+@router.get("/system", response_model=OwnerSystemOut)
+async def owner_system(ctx: TenantCtxDep) -> OwnerSystemOut:
+    """Platform health detail behind the counts on the overview tab.
+
+    Read-only, cross-tenant, platform-admin gated. Everything here answers a
+    question an operator can ACT on: how old is the oldest parked outbox row
+    (relay stuck?), are outbound deliveries dying (receiver broken? sweep
+    exhausted?), is ingress dead-lettering, and how noisy has the site been
+    (visitor error share).
+    """
+    _require_platform_admin(ctx)
+    session = ctx.session
+    now = datetime.now(UTC)
+
+    outbox_pending = (
+        await session.execute(
+            select(func.count(OutboxEvent.id)).where(OutboxEvent.status == "pending")
+        )
+    ).scalar_one()
+    outbox_failed = (
+        await session.execute(
+            select(func.count(OutboxEvent.id)).where(OutboxEvent.status == "failed")
+        )
+    ).scalar_one()
+    oldest_pending = (
+        await session.execute(
+            select(func.min(OutboxEvent.created_at)).where(OutboxEvent.status == "pending")
+        )
+    ).scalar_one()
+
+    delivery_counts: dict[str, int] = {}
+    for status in ("queued", "failed", "dead", "delivered"):
+        n = (
+            await session.execute(
+                select(func.count(WebhookDelivery.id)).where(WebhookDelivery.status == status)
+            )
+        ).scalar_one()
+        delivery_counts[status] = int(n or 0)
+    oldest_queued = (
+        await session.execute(
+            select(func.min(WebhookDelivery.updated_at)).where(WebhookDelivery.status == "queued")
+        )
+    ).scalar_one()
+
+    since24 = now - timedelta(hours=24)
+    ingress_failed = (
+        await session.execute(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.processing_status.in_(("failed", "dead")),
+                WebhookEvent.received_at >= since24,
+            )
+        )
+    ).scalar_one()
+
+    visitor_errors = (
+        await session.execute(
+            select(func.count(VisitorEvent.id)).where(
+                VisitorEvent.event_type == "error",
+                VisitorEvent.created_at >= since24,
+            )
+        )
+    ).scalar_one()
+    visitor_events = (
+        await session.execute(
+            select(func.count(VisitorEvent.id)).where(VisitorEvent.created_at >= since24)
+        )
+    ).scalar_one()
+
+    def _age_seconds(value: datetime | None) -> int | None:
+        return int((now - value).total_seconds()) if value is not None else None
+
+    outbox = {
+        "pending": int(outbox_pending or 0),
+        "failed": int(outbox_failed or 0),
+        "oldest_pending_age_seconds": _age_seconds(oldest_pending),
+    }
+    deliveries = {
+        **delivery_counts,
+        "oldest_queued_age_seconds": _age_seconds(oldest_queued),
+    }
+    visitors = {
+        "events_24h": int(visitor_events or 0),
+        "errors_24h": int(visitor_errors or 0),
+        "error_rate": round(
+            (float(visitor_errors) / float(visitor_events)) if visitor_events else 0.0, 4
+        ),
+    }
+    # One alarm light: an operator should not have to know which number matters.
+    healthy = (
+        (outbox["oldest_pending_age_seconds"] is None or outbox["oldest_pending_age_seconds"] < 900)
+        and deliveries["dead"] == 0
+        and visitors["error_rate"] < 0.10
+    )
+    return OwnerSystemOut(
+        status="healthy" if healthy else "degraded",
+        generated_at=now,
+        outbox=outbox,
+        webhook_deliveries=deliveries,
+        webhook_ingress={"failed_24h": int(ingress_failed or 0)},
+        visitors=visitors,
+    )
+
+
+@router.get("/visitors/summary", response_model=OwnerVisitorSummaryOut)
+async def owner_visitors_summary(
+    ctx: TenantCtxDep,
+    hours: Annotated[int, Query(ge=1, le=720)] = 24,
+) -> OwnerVisitorSummaryOut:
+    """Aggregated telemetry behind the raw events list: an hourly series, the
+    visitor error share, and site latency percentiles.
+
+    Same privacy contract as /visitors — counts and paths only, no payloads.
+    """
+    _require_platform_admin(ctx)
+    session = ctx.session
+    now = datetime.now(UTC)
+    since = now - timedelta(hours=hours)
+
+    total = (
+        await session.execute(
+            select(func.count(VisitorEvent.id)).where(VisitorEvent.created_at >= since)
+        )
+    ).scalar_one()
+    unique = (
+        await session.execute(
+            select(func.count(func.distinct(VisitorEvent.visitor_id))).where(
+                VisitorEvent.created_at >= since
+            )
+        )
+    ).scalar_one()
+    errors = (
+        await session.execute(
+            select(func.count(VisitorEvent.id)).where(
+                VisitorEvent.event_type == "error",
+                VisitorEvent.created_at >= since,
+            )
+        )
+    ).scalar_one()
+
+    series = (
+        (
+            await session.execute(
+                text(
+                    """
+                SELECT date_trunc('hour', created_at) AS bucket,
+                       count(*) AS events,
+                       count(DISTINCT visitor_id) AS visitors,
+                       count(*) FILTER (WHERE event_type = 'error') AS errors
+                FROM visitor_events
+                WHERE created_at >= :since
+                GROUP BY 1
+                ORDER BY 1
+                """
+                ),
+                {"since": since},
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    perf_p50 = (
+        await session.execute(
+            text(
+                """
+                SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)
+                FROM visitor_events
+                WHERE event_type = 'performance'
+                  AND duration_ms IS NOT NULL
+                  AND created_at >= :since
+                """
+            ),
+            {"since": since},
+        )
+    ).scalar_one()
+    perf_p95 = (
+        await session.execute(
+            text(
+                """
+                SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)
+                FROM visitor_events
+                WHERE event_type = 'performance'
+                  AND duration_ms IS NOT NULL
+                  AND created_at >= :since
+                """
+            ),
+            {"since": since},
+        )
+    ).scalar_one()
+
+    error_paths = (
+        await session.execute(
+            select(VisitorEvent.path, func.count(VisitorEvent.id).label("n"))
+            .where(
+                VisitorEvent.event_type == "error",
+                VisitorEvent.created_at >= since,
+            )
+            .group_by(VisitorEvent.path)
+            .order_by(func.count(VisitorEvent.id).desc())
+            .limit(5)
+        )
+    ).all()
+
+    return OwnerVisitorSummaryOut(
+        hours=hours,
+        total=int(total or 0),
+        unique_visitors=int(unique or 0),
+        errors_24h=int(errors or 0),
+        error_rate=round((float(errors) / float(total)) if total else 0.0, 4),
+        perf_p50_ms=int(perf_p50) if perf_p50 is not None else None,
+        perf_p95_ms=int(perf_p95) if perf_p95 is not None else None,
+        series=[
+            {
+                "bucket": row["bucket"].isoformat(),
+                "events": int(row["events"]),
+                "visitors": int(row["visitors"]),
+                "errors": int(row["errors"]),
+            }
+            for row in series
+        ],
+        error_paths=[{"path": path, "count": int(count)} for path, count in error_paths],
     )

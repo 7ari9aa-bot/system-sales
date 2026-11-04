@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 422,
-    "sha256": "6dbf022c9b5875754c0f82c8c4980c21abc5b1a7002f83720b672d6e67cc26dc",
-    "typed_operations": 266
+    "operations": 424,
+    "sha256": "e2808add95063befadcebf27ed588b7a1a5b1b75cf9a1eb8bd545ac823777b6c",
+    "typed_operations": 268
   },
   "spec": {
     "components": {
@@ -12317,6 +12317,49 @@
           "title": "OwnerOverviewOut",
           "type": "object"
         },
+        "OwnerSystemOut": {
+          "properties": {
+            "generated_at": {
+              "format": "date-time",
+              "title": "Generated At",
+              "type": "string"
+            },
+            "outbox": {
+              "additionalProperties": true,
+              "title": "Outbox",
+              "type": "object"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "visitors": {
+              "additionalProperties": true,
+              "title": "Visitors",
+              "type": "object"
+            },
+            "webhook_deliveries": {
+              "additionalProperties": true,
+              "title": "Webhook Deliveries",
+              "type": "object"
+            },
+            "webhook_ingress": {
+              "additionalProperties": true,
+              "title": "Webhook Ingress",
+              "type": "object"
+            }
+          },
+          "required": [
+            "status",
+            "generated_at",
+            "outbox",
+            "webhook_deliveries",
+            "webhook_ingress",
+            "visitors"
+          ],
+          "title": "OwnerSystemOut",
+          "type": "object"
+        },
         "OwnerTenantListOut": {
           "properties": {
             "items": {
@@ -12416,6 +12459,81 @@
             "top_paths"
           ],
           "title": "OwnerVisitorListOut",
+          "type": "object"
+        },
+        "OwnerVisitorSummaryOut": {
+          "properties": {
+            "error_paths": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Error Paths",
+              "type": "array"
+            },
+            "error_rate": {
+              "title": "Error Rate",
+              "type": "number"
+            },
+            "errors_24h": {
+              "title": "Errors 24H",
+              "type": "integer"
+            },
+            "hours": {
+              "title": "Hours",
+              "type": "integer"
+            },
+            "perf_p50_ms": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Perf P50 Ms"
+            },
+            "perf_p95_ms": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Perf P95 Ms"
+            },
+            "series": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Series",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "unique_visitors": {
+              "title": "Unique Visitors",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "hours",
+            "total",
+            "unique_visitors",
+            "errors_24h",
+            "error_rate",
+            "perf_p50_ms",
+            "perf_p95_ms",
+            "series",
+            "error_paths"
+          ],
+          "title": "OwnerVisitorSummaryOut",
           "type": "object"
         },
         "PasswordResetConfirmRequest": {
@@ -45946,6 +46064,104 @@
           ]
         }
       },
+      "/api/v1/owner/system": {
+        "get": {
+          "description": "Platform health detail behind the counts on the overview tab.\n\nRead-only, cross-tenant, platform-admin gated. Everything here answers a\nquestion an operator can ACT on: how old is the oldest parked outbox row\n(relay stuck?), are outbound deliveries dying (receiver broken? sweep\nexhausted?), is ingress dead-lettering, and how noisy has the site been\n(visitor error share).",
+          "operationId": "owner_system_api_v1_owner_system_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerSystemOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner System",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
       "/api/v1/owner/tenants": {
         "get": {
           "operationId": "owner_tenants_api_v1_owner_tenants_get",
@@ -46427,6 +46643,116 @@
             }
           },
           "summary": "Owner Visitors",
+          "tags": [
+            "owner"
+          ]
+        }
+      },
+      "/api/v1/owner/visitors/summary": {
+        "get": {
+          "description": "Aggregated telemetry behind the raw events list: an hourly series, the\nvisitor error share, and site latency percentiles.\n\nSame privacy contract as /visitors — counts and paths only, no payloads.",
+          "operationId": "owner_visitors_summary_api_v1_owner_visitors_summary_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "hours",
+              "required": false,
+              "schema": {
+                "default": 24,
+                "maximum": 720,
+                "minimum": 1,
+                "title": "Hours",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerVisitorSummaryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Visitors Summary",
           "tags": [
             "owner"
           ]

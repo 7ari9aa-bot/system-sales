@@ -20,6 +20,7 @@ const TABS = [
   { id: "overview", ar: "نظرة عامة", en: "Overview" },
   { id: "tenants", ar: "المستأجرون", en: "Tenants" },
   { id: "visitors", ar: "الزوار", en: "Visitors" },
+  { id: "system", ar: "الصحة", en: "System" },
 ];
 
 const TONE = { healthy: "success", degraded: "warning", down: "destructive" };
@@ -48,6 +49,8 @@ export default function OwnerConsole() {
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [visitors, setVisitors] = useState(null);
+  const [system, setSystem] = useState(null);
+  const [visitorSummary, setVisitorSummary] = useState(null);
   const [matrix, setMatrix] = useState(null);
   const [matrixLoading, setMatrixLoading] = useState(false);
   const [savingCell, setSavingCell] = useState("");
@@ -61,12 +64,16 @@ export default function OwnerConsole() {
       api("/owner/overview"),
       api("/owner/tenants?limit=50"),
       api("/owner/visitors?hours=24&limit=80"),
+      api("/owner/system"),
+      api("/owner/visitors/summary?hours=24"),
     ])
-      .then(([ov, ten, vis]) => {
+      .then(([ov, ten, vis, sys, summary]) => {
         if (!alive) return;
         setOverview(ov);
         setTenants(Array.isArray(ten?.items) ? ten.items : []);
         setVisitors(vis);
+        setSystem(sys);
+        setVisitorSummary(summary);
       })
       .catch((err) => {
         if (alive) setError(err?.message || L("تعذر تحميل كونسول المالك.", "Could not load the owner console."));
@@ -190,8 +197,10 @@ export default function OwnerConsole() {
           onOpenMatrix={openMatrix}
           onToggle={toggleAccess}
         />
+      ) : tab === "system" ? (
+        <SystemTab L={L} data={system} summary={visitorSummary} />
       ) : (
-        <VisitorsTab L={L} data={visitors} />
+        <VisitorsTab L={L} data={visitors} summary={visitorSummary} />
       )}
     </div>
   );
@@ -411,8 +420,10 @@ function TenantsTab({ L, tenants, matrix, matrixLoading, accessMap, savingCell, 
   );
 }
 
-function VisitorsTab({ L, data }) {
+function VisitorsTab({ L, data, summary }) {
   const items = data?.items || [];
+  const series = summary?.series || [];
+  const peak = Math.max(1, ...series.map((row) => row.events));
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -420,6 +431,34 @@ function VisitorsTab({ L, data }) {
         <KpiCard label={L("زوار فريدون", "Unique visitors")} value={fmt(data?.unique_visitors)} sub={L("آخر 24 ساعة", "last 24h")} to="/owner" />
         <KpiCard label={L("أكثر صفحة", "Top page")} value={data?.top_paths?.[0]?.path || "—"} sub={fmt(data?.top_paths?.[0]?.count)} to="/owner" />
       </div>
+      {series.length > 0 && (
+        <SectionCard title={L("الحدث بالساعة (24 ساعة)", "Events by hour (24h)")}>
+          <div className="flex items-end gap-1.5" dir="ltr">
+            {series.map((row) => (
+              <div
+                key={row.bucket}
+                title={`${row.bucket.slice(11, 16)} — ${row.events} events / ${row.errors} errors`}
+                className="flex-1 rounded-t bg-primary/25"
+                style={{ height: `${Math.max(6, Math.round((row.events / peak) * 72))}px` }}
+              />
+            ))}
+          </div>
+          <div className="mt-2 grid gap-3 text-[12px] text-muted-foreground sm:grid-cols-3">
+            <span>
+              {L("معدل الأخطاء", "Error rate")}:{" "}
+              <span className="font-medium text-foreground">{((summary?.error_rate || 0) * 100).toFixed(1)}%</span>
+            </span>
+            <span>
+              {L("زمن التحميل p50", "Load p50")}:{" "}
+              <span className="font-medium text-foreground">{summary?.perf_p50_ms != null ? `${summary.perf_p50_ms} ms` : "—"}</span>
+            </span>
+            <span>
+              {L("زمن التحميل p95", "Load p95")}:{" "}
+              <span className="font-medium text-foreground">{summary?.perf_p95_ms != null ? `${summary.perf_p95_ms} ms` : "—"}</span>
+            </span>
+          </div>
+        </SectionCard>
+      )}
       <SectionCard title={L("أحداث الزوار", "Visitor events")}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
@@ -457,6 +496,72 @@ function VisitorsTab({ L, data }) {
           )}
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+function SystemTab({ L, data }) {
+  const tone = TONE[data?.status] || "muted";
+  const outbox = data?.outbox || {};
+  const deliveries = data?.webhook_deliveries || {};
+  const ingress = data?.webhook_ingress || {};
+  const visitors = data?.visitors || {};
+  const age = (seconds) => {
+    if (seconds == null) return L("لا يوجد", "none");
+    if (seconds < 90) return `${seconds}s`;
+    if (seconds < 5400) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Badge tone={tone}>{data?.status || "—"}</Badge>
+        <span className="text-[11.5px] text-muted-foreground">{time(data?.generated_at)}</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SectionCard title={L("طابور الأحداث (Outbox)", "Event backlog (Outbox)")}>
+          <dl className="space-y-2 text-[12.5px]">
+            <Row label={L("في الانتظار", "Pending")} value={fmt(outbox.pending)} />
+            <Row label={L("فاشلة", "Failed")} value={fmt(outbox.failed)} />
+            <Row
+              label={L("أقدم صف معلّق", "Oldest pending")}
+              value={age(outbox.oldest_pending_age_seconds)}
+            />
+          </dl>
+        </SectionCard>
+        <SectionCard title={L("تسليمات الويب هوك", "Webhook deliveries")}>
+          <dl className="space-y-2 text-[12.5px]">
+            <Row label={L("في الطابور", "Queued")} value={fmt(deliveries.queued)} />
+            <Row label={L("فاشلة", "Failed")} value={fmt(deliveries.failed)} />
+            <Row label={L("ماتة", "Dead")} value={fmt(deliveries.dead)} />
+            <Row
+              label={L("أقدم صف في الطابور", "Oldest queued")}
+              value={age(deliveries.oldest_queued_age_seconds)}
+            />
+          </dl>
+        </SectionCard>
+        <SectionCard title={L("استقبال الويب هوك (24 ساعة)", "Webhook ingress (24h)")}>
+          <dl className="space-y-2 text-[12.5px]">
+            <Row label={L("فاشلة/ماتة", "Failed / dead")} value={fmt(ingress.failed_24h)} />
+          </dl>
+        </SectionCard>
+        <SectionCard title={L("سلوك الزوار (24 ساعة)", "Visitor behavior (24h)")}>
+          <dl className="space-y-2 text-[12.5px]">
+            <Row label={L("أحداث", "Events")} value={fmt(visitors.events_24h)} />
+            <Row label={L("أخطاء", "Errors")} value={fmt(visitors.errors_24h)} />
+            <Row label={L("معدل الأخطاء", "Error rate")} value={`${((visitors.error_rate || 0) * 100).toFixed(1)}%`} />
+          </dl>
+        </SectionCard>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium text-foreground">{value}</dd>
     </div>
   );
 }
