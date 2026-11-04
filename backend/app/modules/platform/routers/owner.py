@@ -50,6 +50,13 @@ class OwnerTenantRowOut(BaseModel):
     users: int
     channels_connected: int
     channels_total: int
+    # §42 spend view — money crosses the wire as the exact Decimal STRING,
+    # never a float; the ratio is derived client-side from the pair.
+    ai_spend: str
+    ai_cap: str
+    ai_cap_source: str
+    ai_on_exceed: str
+    ai_failed_runs_24h: int
 
 
 class OwnerTenantListOut(BaseModel):
@@ -318,6 +325,12 @@ async def owner_tenants(
         .all()
     )
     since = datetime.now(UTC) - timedelta(hours=24)
+    # §66 precedent: the cross-module surface lives in CORE with the ai
+    # module registering its implementation at import time — platform -> ai
+    # at module scope would close the ai -> ... -> platform cycle.
+    from app.core.console_spending import console_spend_rows
+
+    spends = console_spend_rows(ctx.session, [tenant.id for tenant in tenants])
     items: list[OwnerTenantRowOut] = []
     for tenant in tenants:
         users = (
@@ -326,6 +339,7 @@ async def owner_tenants(
             )
         ).scalar_one()
         integrations = await _tenant_integrations(ctx.session, tenant.id)
+        spend = spends[tenant.id]
         visitors = (
             await ctx.session.execute(
                 select(func.count(func.distinct(VisitorEvent.visitor_id))).where(
@@ -345,6 +359,11 @@ async def owner_tenants(
                 ),
                 channels_total=len(integrations),
                 visitors_24h=int(visitors or 0),
+                ai_spend=str(spend["month_spend"]),
+                ai_cap=str(spend["cap"]),
+                ai_cap_source=spend["cap_source"],
+                ai_on_exceed=spend["on_exceed"],
+                ai_failed_runs_24h=int(spend["failed_runs_24h"]),
             )
         )
     return OwnerTenantListOut(items=items, total=int(total or 0))

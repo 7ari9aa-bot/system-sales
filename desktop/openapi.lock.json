@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 424,
-    "sha256": "e2808add95063befadcebf27ed588b7a1a5b1b75cf9a1eb8bd545ac823777b6c",
+    "sha256": "5ed59ea5b834585cd5ca4cb007914cd8d003740e401bacc738ba45d5fd088db0",
     "typed_operations": 268
   },
   "spec": {
@@ -12383,6 +12383,26 @@
         },
         "OwnerTenantRowOut": {
           "properties": {
+            "ai_cap": {
+              "title": "Ai Cap",
+              "type": "string"
+            },
+            "ai_cap_source": {
+              "title": "Ai Cap Source",
+              "type": "string"
+            },
+            "ai_failed_runs_24h": {
+              "title": "Ai Failed Runs 24H",
+              "type": "integer"
+            },
+            "ai_on_exceed": {
+              "title": "Ai On Exceed",
+              "type": "string"
+            },
+            "ai_spend": {
+              "title": "Ai Spend",
+              "type": "string"
+            },
             "channels_connected": {
               "title": "Channels Connected",
               "type": "integer"
@@ -12420,7 +12440,12 @@
             "is_active",
             "users",
             "channels_connected",
-            "channels_total"
+            "channels_total",
+            "ai_spend",
+            "ai_cap",
+            "ai_cap_source",
+            "ai_on_exceed",
+            "ai_failed_runs_24h"
           ],
           "title": "OwnerTenantRowOut",
           "type": "object"

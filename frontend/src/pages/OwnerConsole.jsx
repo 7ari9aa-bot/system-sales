@@ -314,6 +314,7 @@ function TenantsTab({ L, tenants, matrix, matrixLoading, accessMap, savingCell, 
                 <th className="py-2.5 text-start font-medium">{L("الحالة", "Status")}</th>
                 <th className="py-2.5 text-start font-medium">{L("المستخدمون", "Users")}</th>
                 <th className="py-2.5 text-start font-medium">{L("القنوات", "Channels")}</th>
+                <th className="py-2.5 text-start font-medium">{L("صرف الذكاء (الشهر)", "AI spend (month)")}</th>
                 <th className="py-2.5 text-end font-medium">{L("تحكم", "Control")}</th>
               </tr>
             </thead>
@@ -326,6 +327,9 @@ function TenantsTab({ L, tenants, matrix, matrixLoading, accessMap, savingCell, 
                   </td>
                   <td className="py-3 tabular-nums">{fmt(tenant.users)}</td>
                   <td className="py-3 tabular-nums">{tenant.channels_connected}/{tenant.channels_total}</td>
+                  <td className="py-3">
+                    <SpendCell L={L} tenant={tenant} />
+                  </td>
                   <td className="py-3 text-end">
                     <button
                       type="button"
@@ -562,6 +566,42 @@ function Row({ label, value }) {
     <div className="flex items-center justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function SpendCell({ L, tenant }) {
+  // Money crosses the wire as Decimal STRINGS on purpose (ADR-053) — derive
+  // the ratio from the strings' numeric values at render, never store floats.
+  const spend = Number(tenant.ai_spend || "0");
+  const cap = Number(tenant.ai_cap || "0");
+  const ratio = cap > 0 ? (spend / cap) * 100 : 0;
+  // Same thresholds the runtime's own alerts fire at: 50 / 80 / 90 / 100.
+  const tone = ratio >= 90 ? "destructive" : ratio >= 80 ? "warning" : ratio >= 50 ? "primary" : "muted";
+  const barTone =
+    ratio >= 90 ? "bg-destructive" : ratio >= 80 ? "bg-warning" : ratio >= 50 ? "bg-primary" : "bg-emerald-500/60";
+  return (
+    <div className="min-w-36" title={`${tenant.ai_on_exceed} · ${tenant.ai_cap_source}`}>
+      <div className="flex items-center justify-between gap-2 text-[11.5px] tabular-nums">
+        <span className="font-medium">{spend.toFixed(2)}</span>
+        <span className="text-muted-foreground">/ {cap.toFixed(0)}</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface">
+        <div
+          className={`h-full rounded-full ${barTone}`}
+          style={{ width: `${Math.min(100, Math.max(ratio > 0 ? 4 : 0, ratio))}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
+        <span>{ratio.toFixed(0)}%</span>
+        {tenant.ai_failed_runs_24h > 0 && (
+          <Badge tone="warning">
+            {L("فشل 24س", "failed 24h")}: {tenant.ai_failed_runs_24h}
+          </Badge>
+        )}
+        {tenant.ai_on_exceed === "warn" && <Badge tone="muted">{L("تحذير فقط", "warn only")}</Badge>}
+      </div>
+      <span className="sr-only">{L("نسبة الصرف", "spend ratio")}: <Badge tone={tone}>{ratio.toFixed(0)}%</Badge></span>
     </div>
   );
 }
