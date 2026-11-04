@@ -49,7 +49,6 @@ const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSetting
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
 const MarketingRoutes = () => (
   <LanguageProvider>
-    <VisitorTracker />
     <Routes>
       {PUBLIC_SEO_ROUTES.map(({ path }) => (
         <Route key={path} path={path} element={<Fihrist />} />

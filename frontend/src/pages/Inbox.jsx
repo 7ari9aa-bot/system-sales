@@ -135,6 +135,7 @@ export default function Inbox() {
   const telegramListScrollTimerRef = useRef(null);
   const [convMap, setConvMap] = useState(() => Object.fromEntries(CHANNELS.map((ch) => [ch.id, []])));
   const [channelStatus, setChannelStatus] = useState(null);
+  const [channelStatusFailed, setChannelStatusFailed] = useState(false);
   const [approvals, setApprovals] = useState([]);
   const [approvalLoadError, setApprovalLoadError] = useState("");
   const [loadingInbox, setLoadingInbox] = useState(true);
@@ -271,12 +272,17 @@ export default function Inbox() {
     api("/channels/status")
       .then((rows) => {
         if (!alive) return;
+        setChannelStatusFailed(false);
         setChannelStatus(Array.isArray(rows) ? rows : []);
       })
       .catch(() => {
-        // A member who cannot read status still gets an honest empty state:
-        // every tile stays locked until the server can answer.
+        // Degraded, NOT locked: when the status service is unreachable
+        // (session still settling on a first visit, timeout, transient 5xx)
+        // the inbox must fall back to what the conversations themselves
+        // prove — the pre-owner-console behavior. Locking every tile hid
+        // real messages (regression reported 2026-11-04).
         if (!alive) return;
+        setChannelStatusFailed(true);
         setChannelStatus([]);
       });
     api("/ai/approvals?status=PENDING")
@@ -298,8 +304,21 @@ export default function Inbox() {
   const channels = useMemo(() => {
     if (demoAccount) return CHANNELS.map((channel) => ({ ...channel, connected: true, locked: false }));
     const byProvider = new Map((channelStatus || []).map((row) => [row.provider, row]));
+    const haveConversations = new Set(
+      Object.entries(convMap).filter(([, rows]) => rows.length > 0).map(([channelId]) => channelId)
+    );
     return CHANNELS.map((channel) => {
       const status = byProvider.get(channel.id);
+      if (channelStatusFailed && !status) {
+        // Status service unreachable — degrade to conversation-derived truth.
+        return {
+          ...channel,
+          connected: haveConversations.has(channel.id),
+          locked: false,
+          lifecycle: "unknown",
+          webhookStatus: "unknown",
+        };
+      }
       const connected = Boolean(status?.connected && status?.enabled_for_me);
       return {
         ...channel,
@@ -309,7 +328,7 @@ export default function Inbox() {
         webhookStatus: status?.webhook_status || "not_connected",
       };
     });
-  }, [channelStatus, demoAccount]);
+  }, [channelStatus, channelStatusFailed, convMap, demoAccount]);
 
   useEffect(() => {
     if (channelStatus === null) return;
