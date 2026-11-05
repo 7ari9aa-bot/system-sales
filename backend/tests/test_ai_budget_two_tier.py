@@ -216,3 +216,36 @@ async def test_reactivation_dispatch_lifts_the_stop(db: AsyncSession, tenant_ctx
     await db.refresh(policy)
     assert policy.hard_stopped_at is None, "reactivation did not lift the AI hard stop"
     assert policy.hard_stop_lifted_period == datetime.now(UTC).strftime("%Y-%m")
+
+
+def test_the_fallback_retry_catches_a_second_budget_refusal() -> None:
+    """The fallback retry re-enters reserve_budget, which re-raises
+    AIBudgetFallbackRequested for the same exhausted cap. Without a catch
+    INSIDE the handler, the second raise escapes as a generic run error and
+    the message dead-letters instead of handing over (review finding)."""
+    import ast
+    import pathlib
+
+    import app.modules.ai.runtime as runtime_module
+
+    tree = ast.parse(pathlib.Path(runtime_module.__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ExceptHandler) and "AIBudgetFallbackRequested" in ast.dump(
+            node.type
+        ):
+            # Walk the WHOLE handler body: the retry try may sit anywhere in
+            # it, and the guard is that a nested try catches the same
+            # exception the second time the budget refuses.
+            inner_handlers = [
+                h
+                for stmt in ast.walk(ast.Module(body=node.body, type_ignores=[]))
+                if isinstance(stmt, ast.Try)
+                for h in stmt.handlers
+                if "AIBudgetFallbackRequested" in ast.dump(h.type)
+            ]
+            if inner_handlers:
+                return  # the retry path handles the second refusal
+    raise AssertionError(
+        "the fallback retry no longer catches a second AIBudgetFallbackRequested — "
+        "an exhausted fallback tier dead-letters instead of handing over"
+    )

@@ -156,6 +156,17 @@ async def test_dismissal_hides_for_that_user_only_and_is_idempotent(db, tenant_c
     assert theirs is not None, "a colleague who never dismissed must still see it"
 
 
+async def test_a_non_dismissible_announcement_refuses_the_tombstone(db, tenant_ctx) -> None:
+    row = await _make_announcement(db)
+    row.dismissible = False
+    await db.flush()
+
+    dismissed = await dismiss(db, row.id, tenant_ctx.user.id)
+
+    assert dismissed is False, "a notice marked non-dismissable must not vanish"
+    assert await active_for_user(db, tenant_ctx.tenant_id, tenant_ctx.user.id) is not None
+
+
 async def test_dismissal_of_a_nonexistent_announcement_is_harmless(db, tenant_ctx) -> None:
     dismissed = await dismiss(db, uuid.uuid4(), tenant_ctx.user.id)
     assert dismissed is False, "an unknown announcement id must be a no-op, not an FK error"

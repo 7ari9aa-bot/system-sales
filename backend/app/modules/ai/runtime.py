@@ -1147,6 +1147,14 @@ class AgentRunner:
                     except TimeoutError:
                         hit_limit = "max_wall_time"
                         break
+                    except AIBudgetFallbackRequested:
+                        # The retry re-enters reserve_budget, which re-derives
+                        # the same exhausted cap and raises AGAIN — from inside
+                        # this handler it would escape as a generic run error,
+                        # dead-letter the message, and never hand over. The
+                        # fallback tier is spent: hand over like block does.
+                        hit_limit = "budget_fallback_exhausted"
+                        break
                 else:
                     hit_limit = "budget_fallback_exhausted"
                     break

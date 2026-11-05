@@ -91,14 +91,19 @@ async def dismiss(session: AsyncSession, announcement_id: uuid.UUID, user_id: uu
     """Record a dismissal; idempotent via the composite PK. True on first write.
 
     An unknown announcement id is a no-op (False), never an orphan tombstone
-    row that would violate the FK.
+    row that would violate the FK. A notice the platform marked
+    non-dismissable refuses the tombstone instead of vanishing.
     """
-    exists = (
+    row = (
         await session.execute(
-            select(PlatformAnnouncement.id).where(PlatformAnnouncement.id == announcement_id)
+            select(PlatformAnnouncement.id, PlatformAnnouncement.dismissible).where(
+                PlatformAnnouncement.id == announcement_id
+            )
         )
-    ).scalar_one_or_none()
-    if exists is None:
+    ).one_or_none()
+    if row is None:
+        return False
+    if not row.dismissible:
         return False
     result = await session.execute(
         pg_insert(PlatformAnnouncementDismissal)

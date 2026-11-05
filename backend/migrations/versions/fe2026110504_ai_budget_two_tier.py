@@ -56,7 +56,11 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_ai_budget_soft_below_hard",
         "ai_budget_policies",
-        "soft_cap IS NULL OR hard_cap <= 0 OR soft_cap <= hard_cap",
+        # A soft tier requires a LIVE hard cap behind it: with hard_cap = 0 the
+        # zero-cap branch of reserve_budget returns before the soft check, so
+        # a soft_cap beside a zero hard cap would be a promise the runtime
+        # never keeps (warn-mode + zero cap = unlimited spend, no warning).
+        "soft_cap IS NULL OR (hard_cap > 0 AND soft_cap <= hard_cap)",
     )
 
 

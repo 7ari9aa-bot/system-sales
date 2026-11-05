@@ -133,14 +133,18 @@ def upgrade() -> None:
         ["user_id"],
     )
 
+    # Least privilege on a global table with no RLS backstop: the app role
+    # only ever READS announcements (the owner console writes them via the
+    # management API) and only ever INSERTS dismissals — it cannot edit or
+    # retract a notice even if a code path went wrong.
     op.execute(
         _grant_sales_app(
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON platform_announcements TO sales_app"
+            "GRANT SELECT ON platform_announcements TO sales_app"
         )
     )
     op.execute(
         _grant_sales_app(
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON platform_announcement_dismissals TO sales_app"
+            "GRANT SELECT, INSERT ON platform_announcement_dismissals TO sales_app"
         )
     )
 
