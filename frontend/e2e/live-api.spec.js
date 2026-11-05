@@ -60,8 +60,12 @@ test("real registration, dashboard reads, customers, and logout work end to end"
   // cashier), so the protected-read step goes through Customers, a real screen with a real list.
   const customersResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
+    // The page size is the screen's own choice, not the contract this step
+    // proves: what must hold is that the protected list read happens, answers,
+    // and returns a page. Pinning a number here only made the test rot when the
+    // first page grew.
     return url.pathname === "/api/v1/customers"
-      && url.searchParams.get("limit") === "100"
+      && url.searchParams.has("limit")
       && response.request().method() === "GET";
   });
   await page.getByRole("navigation").locator('a[href="/customers"]').click();
