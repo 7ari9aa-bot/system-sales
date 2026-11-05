@@ -90,6 +90,8 @@ class CurrentUser(BaseModel):
     email: str
     full_name: str
     is_platform_admin: bool
+    # A short-lived read URL for the account's own picture, or None.
+    avatar_url: str | None = None
     tenants: list[CurrentTenant] = []
 
 

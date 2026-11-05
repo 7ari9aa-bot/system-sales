@@ -484,7 +484,7 @@ export default {
   "billing.reserveWarn": "تجاوزت سقف التوكنز. جدّد الآن أو ستتوقف الخدمة عند انتهاء الاحتياطي.",
 
   // Appearance
-  "appearance.theme": "الثيم",
+  "appearance.theme": "المظهر",
   "appearance.theme.system": "النظام",
   "appearance.theme.light": "فاتح",
   "appearance.theme.dark": "داكن",
@@ -495,6 +495,34 @@ export default {
   "appearance.density.comfortable": "مريحة",
   "appearance.density.compact": "مدمجة",
   "appearance.note": "العربية تترجم المحتوى فقط. اتجاه التخطيط يبقى من اليسار لليمين.",
+  // قائمة الحساب (الشريط الجانبي) وصورة البروفايل اللي بتتحكم فيها.
+  "account.menu": "قائمة الحساب",
+  "account.signOut": "تسجيل الخروج",
+  "account.signingOut": "جارٍ تسجيل الخروج…",
+  "account.avatar.add": "إضافة صورة شخصية",
+  "account.avatar.change": "تغيير الصورة",
+  "account.avatar.remove": "إزالة",
+  "account.avatar.pick": "اختيار ملف الصورة",
+  "avatar.saved": "اتحدّثت الصورة الشخصية.",
+  "avatar.removed": "اتشالت الصورة الشخصية.",
+  "avatar.tooLarge": "الصورة كبيرة — 5 ميجابايت على الأكثر.",
+  "avatar.notImage": "اختار صورة PNG أو JPEG أو WebP.",
+  "avatar.forbidden": "مش عندك صلاحية تغيير الصورة دي.",
+  "avatar.retry": "مقدرناش نوصل للخادم. حاول تاني.",
+  "avatar.failed": "الصورة ما اتحفظتش.",
+  // اللي بيظهر تحت الاسم لما آخر رسالة مفيهاش نص.
+  "inbox.preview.empty": "رسالة",
+  "inbox.preview.deleted": "رسالة محذوفة",
+  "inbox.preview.image": "صورة",
+  "inbox.preview.voice": "رسالة صوتية",
+  "inbox.preview.video": "فيديو",
+  "inbox.preview.file": "ملف",
+  "inbox.preview.location": "موقع",
+  "inbox.preview.contact": "جهة اتصال",
+  "inbox.preview.buttons": "قائمة خيارات",
+  "inbox.preview.list": "قائمة خيارات",
+  "inbox.preview.reaction": "تفاعل",
+  "inbox.preview.unsupported": "رسالة غير مدعومة",
 
   // Regional
   "regional.title": "الإعدادات الإقليمية",

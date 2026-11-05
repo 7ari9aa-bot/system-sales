@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { api, getTokens } from "@/lib/api";
 import { useRegional, formatCurrency, formatDate } from "@/lib/regional";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
+import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
@@ -63,20 +64,12 @@ export default function ProfileSettings() {
       setSavingRegion(false);
     }
   }
-  const initials = (user?.full_name || user?.email || "?")
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-
   return (
     <SettingsShell title={t("settings.nav.profile")} subtitle={t("settings.profile.desc")}>
       <div className="space-y-5">
         <SettingCard title={t("profile.personal")} desc={t("profile.personal.desc")}>
           <div className="flex items-center gap-4 pt-2 pb-4">
-            <div className="h-14 w-14 rounded-full bg-accent/15 text-accent grid place-items-center font-display font-semibold text-[18px]">{initials || "—"}</div>
+            <AccountAvatar user={user} size="lg" />
             <div className="min-w-0">
               <div className="text-[14px] font-medium truncate">{user?.full_name || "—"}</div>
               <div className="text-[12px] text-muted-foreground truncate">{user?.email || "—"}</div>

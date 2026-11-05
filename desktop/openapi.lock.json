@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 427,
-    "sha256": "31104687da9b18fc036663cfb6fc375bed75a6151ef0e16244dcf1144ce6bd96",
+    "operations": 429,
+    "sha256": "b616cd089a8791c7550bee27529948f2b38e81ba0ef8389dd48f355e98929cd7",
     "typed_operations": 268
   },
   "spec": {
@@ -4394,6 +4394,17 @@
         },
         "CurrentUser": {
           "properties": {
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url"
+            },
             "email": {
               "title": "Email",
               "type": "string"
@@ -63777,6 +63788,196 @@
             }
           },
           "summary": "My Profile",
+          "tags": [
+            "users"
+          ]
+        }
+      },
+      "/api/v1/users/me/avatar": {
+        "delete": {
+          "description": "Forget the picture. The object itself goes with the media retention sweep.",
+          "operationId": "clear_my_avatar_api_v1_users_me_avatar_delete",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Clear My Avatar",
+          "tags": [
+            "users"
+          ]
+        },
+        "put": {
+          "description": "Store the signed-in user's own picture: raw bytes, screened, then bucketed.\n\nThe bytes decide what the file is, so a renamed upload cannot smuggle\nanother format, and the size cap is applied while streaming — a client that\nlies about `Content-Length` still cannot fill the bucket.",
+          "operationId": "set_my_avatar_api_v1_users_me_avatar_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set My Avatar",
           "tags": [
             "users"
           ]

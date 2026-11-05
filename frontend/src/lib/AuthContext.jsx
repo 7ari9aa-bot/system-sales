@@ -105,6 +105,14 @@ export function AuthProvider({ children }) {
     return null;
   }, []);
 
+  /** Re-read the signed-in account after a write to it (a profile picture, for
+   * instance) so the UI shows the server's value rather than a local guess. */
+  const refreshUser = useCallback(async () => {
+    const me = await api("/auth/me");
+    setUser(me);
+    return me;
+  }, []);
+
   const logout = useCallback(async () => {
     // كوكي الـrefresh هي اللي بتعرف السيرفر بالجلسة — الجسم فاضي، والسيرفر
     // بيلغي عائلة التوكن ويمسح الكوكي بنفسه. الشبكة الواقعة ما تمنعش الخروج.
@@ -133,6 +141,7 @@ export function AuthProvider({ children }) {
     login,
     verifyMfa,
     register,
+    refreshUser,
     logout,
     navigateToLogin,
   };

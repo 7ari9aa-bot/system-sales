@@ -9,6 +9,7 @@ import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace"
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { appendLocalMessage, sendReply } from "@/lib/inboxSend";
+import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, loadDemoInstagramPosts, saveDemoFacebookPosts, saveDemoInstagramPosts, saveDemoInbox } from "@/lib/inboxDemoData";
@@ -62,7 +63,7 @@ function toMessage(message) {
   };
 }
 
-function toConversation(row, channel) {
+function toConversation(row, channel, t) {
   const status = String(row.status || "open").toLowerCase();
   const approvalStatus = status === "waiting_approval" || status === "approval";
   const viewStatus = approvalStatus
@@ -81,7 +82,7 @@ function toConversation(row, channel) {
       ? whatsappAvatarColor(row.customer_id || customer)
       : channel?.accent || "hsl(var(--primary))",
     channel: row.channel,
-    preview: row.last_message_preview || "",
+    preview: previewLine(row, t),
     status: viewStatus,
     backendStatus: status,
     assigneeUserId: row.assignee_user_id || null,
@@ -213,7 +214,7 @@ export default function Inbox() {
     for (const row of response?.items ?? []) {
       const channel = row.channel || "webchat";
       if (!page[channel]) continue;
-      page[channel].push(toConversation(row, getChannel(channel)));
+      page[channel].push(toConversation(row, getChannel(channel), t));
     }
     setConvMap((previous) => Object.fromEntries(CHANNELS.map((channel) => {
       const existing = replace
@@ -225,7 +226,7 @@ export default function Inbox() {
     const nextCursor = response?.next_cursor ?? null;
     setInboxCursor(nextCursor);
     return nextCursor;
-  }, [demoAccount]);
+  }, [demoAccount, t]);
 
   const reloadInbox = useCallback(async () => loadInboxPage({ replace: true }), [loadInboxPage]);
 

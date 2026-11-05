@@ -7,6 +7,7 @@ import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import Logo from "@/components/dashboard/Logo";
+import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,13 +41,6 @@ export default function SettingsLayout() {
   const [open, setOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = user?.full_name || user?.email?.split("@")[0] || "—";
-  const initials = displayName
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase() || "·";
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
   async function handleLogout() {
@@ -121,7 +115,7 @@ export default function SettingsLayout() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" aria-label={lang === "ar" ? "قائمة الحساب" : "Account menu"} className="mt-2 flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <div className="h-8 w-8 rounded-full bg-accent/15 text-accent grid place-items-center text-[12px] font-semibold shrink-0">{initials}</div>
+                <AccountAvatar user={user} />
                 <div className="leading-tight flex-1 min-w-0">
                   <div className="text-[12.5px] font-medium text-foreground whitespace-nowrap truncate" dir="ltr">{displayName}</div>
                   <div className="text-[11px] text-muted-foreground whitespace-nowrap truncate">{t("sidebar.role")}</div>

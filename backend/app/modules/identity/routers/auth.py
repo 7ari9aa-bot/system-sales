@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
 from app.core.errors import PermissionDeniedError
-from app.modules.identity import cookies, schemas, service
+from app.modules.identity import avatar, cookies, schemas, service
 from app.modules.identity.deps import CurrentUserDep, DbSession
 from app.modules.identity.routers._deps import _client_meta, bind_tenant_user
 
@@ -202,6 +202,7 @@ async def me(user: CurrentUserDep, session: DbSession):
         email=full.email,
         full_name=full.full_name,
         is_platform_admin=full.is_platform_admin,
+        avatar_url=avatar.read_url(full.avatar_url),
         tenants=[
             schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
             for t, role in tenants

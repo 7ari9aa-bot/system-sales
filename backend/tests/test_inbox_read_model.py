@@ -227,6 +227,8 @@ async def test_page_answers_every_element_137_names() -> None:
     assert item["last_message_preview"] == "هل السعر نهائي؟"
     assert item["last_message_direction"] == "inbound"
     assert item["last_message_content_type"] == "text"
+    # A row that never says "deleted" is not deleted: the client gets a bool.
+    assert item["last_message_deleted"] is False
     # Assignment
     assert item["assignee_user_id"] == str(ASSIGNEE)
     # SLA — previously only reachable via a second request to /sla/risk
@@ -666,6 +668,62 @@ async def test_page_reports_the_inbox_elements_from_live_rows(db, inbox_seed) ->
     assert item["last_message_preview"] == "رسالة 2", "the newest message, not the oldest"
     assert item["last_message_direction"] == "outbound"
     assert item["sla_status"] == "running"
+
+
+async def test_a_deleted_last_message_is_reported_as_deleted(db, inbox_seed) -> None:
+    """§155's tombstone has to reach the list.
+
+    A deleted newest message makes the preview NULL, and NULL alone cannot tell
+    "this message was deleted" from "this message has no text" — the row read as
+    simply empty. The flag is the fact; choosing the words stays the client's.
+    """
+    from sqlalchemy import select
+
+    from app.modules.conversations.models import Message
+
+    newest = (
+        await db.execute(
+            select(Message)
+            .where(Message.conversation_id == inbox_seed.conversation.id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    newest.deleted = True
+    await db.flush()
+
+    item = (await InboxQuery.page(db, TENANT, limit=50))[0]
+    assert item["last_message_preview"] is None
+    assert item["last_message_deleted"] is True
+
+
+async def test_a_media_last_message_reports_its_kind_without_a_body(db, inbox_seed) -> None:
+    """A photo is the newest message: no text exists to preview.
+
+    The row must carry the kind so the list can say "Photo" instead of showing
+    nothing under the customer's name.
+    """
+    from app.modules.conversations.models import Message
+
+    db.add(
+        Message(
+            tenant_id=TENANT,
+            conversation_id=inbox_seed.conversation.id,
+            direction="inbound",
+            sender_type="customer",
+            body=None,
+            media_type="image",
+            content_type="image",
+            created_at=NOW + timedelta(minutes=30),
+            status="received",
+        )
+    )
+    await db.flush()
+
+    item = (await InboxQuery.page(db, TENANT, limit=50))[0]
+    assert item["last_message_preview"] is None
+    assert item["last_message_content_type"] == "image"
+    assert item["last_message_deleted"] is False
 
 
 async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) -> None:

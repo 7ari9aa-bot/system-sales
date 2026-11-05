@@ -107,6 +107,9 @@ class User(TimestampMixin, Base):
     # Access JWTs carry this value, so a password reset immediately invalidates
     # already-issued access tokens as well as the refresh-token family.
     auth_version: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    # The account's own picture as an object key ("s3://avatars/<id>/<file>"),
+    # never a signed URL: those expire. Read paths sign it per response.
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PasswordResetToken(TimestampMixin, Base):

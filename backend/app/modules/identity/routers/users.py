@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import hashlib
+
+from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from app.modules.identity import schemas, service
+from app.core.errors import PayloadTooLargeError, StorageUnavailableError
+from app.core.storage import FetchedMedia, get_storage
+from app.modules.identity import avatar, schemas, service
 from app.modules.identity.deps import TenantCtxDep
 from app.modules.identity.models import Role, TenantUser, User
 
@@ -21,11 +25,54 @@ async def my_profile(ctx: TenantCtxDep):
         email=full.email,
         full_name=full.full_name,
         is_platform_admin=full.is_platform_admin,
+        avatar_url=avatar.read_url(full.avatar_url),
         tenants=[
             schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
             for t, role in tenants
         ],
     )
+
+
+@users_router.put("/me/avatar")
+async def set_my_avatar(request: Request, ctx: TenantCtxDep):
+    """Store the signed-in user's own picture: raw bytes, screened, then bucketed.
+
+    The bytes decide what the file is, so a renamed upload cannot smuggle
+    another format, and the size cap is applied while streaming — a client that
+    lies about `Content-Length` still cannot fill the bucket.
+    """
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    chunks = bytearray()
+    async for chunk in request.stream():
+        chunks.extend(chunk)
+        if len(chunks) > avatar.MAX_AVATAR_BYTES:
+            raise PayloadTooLargeError(f"an avatar must be at most {avatar.MAX_AVATAR_BYTES} bytes")
+    data = bytes(chunks)
+    avatar.screen(content_type, data)
+
+    storage = get_storage()
+    if not storage.configured:
+        raise StorageUnavailableError()
+    stored = await storage.store(
+        FetchedMedia(
+            data=data,
+            content_type=content_type,
+            checksum=hashlib.sha256(data).hexdigest(),
+        ),
+        prefix=f"avatars/{ctx.user.id}",
+        original_url="",
+    )
+    if not stored.durable or not stored.storage_key:
+        raise StorageUnavailableError()
+    await service.UserService.set_avatar_url(ctx.session, ctx.user.id, f"s3://{stored.storage_key}")
+    return {"avatar_url": avatar.read_url(f"s3://{stored.storage_key}", storage=storage)}
+
+
+@users_router.delete("/me/avatar")
+async def clear_my_avatar(ctx: TenantCtxDep):
+    """Forget the picture. The object itself goes with the media retention sweep."""
+    await service.UserService.clear_avatar_url(ctx.session, ctx.user.id)
+    return {"avatar_url": None}
 
 
 @users_router.get("")

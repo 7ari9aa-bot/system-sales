@@ -189,6 +189,7 @@ class InboxQuery:
                 cust.phone AS customer_phone,
                 CASE WHEN lm.deleted THEN NULL
                      ELSE left(lm.body, {INBOX_PREVIEW_CHARS}) END AS last_message_preview,
+                lm.deleted    AS last_message_deleted,
                 lm.content_type AS last_message_content_type,
                 lm.direction    AS last_message_direction,
                 lm.sender_type  AS last_message_sender_type,
@@ -262,6 +263,9 @@ class InboxQuery:
             "messaging_policy_state": row.messaging_policy_state,
             "unread_count": int(row.unread_count or 0),
             "last_message_preview": row.last_message_preview,
+            # A tombstone is a fact the list needs: NULL preview alone cannot
+            # tell "deleted" from "a photo", and the row then reads as broken.
+            "last_message_deleted": bool(row.last_message_deleted),
             "last_message_content_type": row.last_message_content_type,
             "last_message_direction": row.last_message_direction,
             "last_message_sender_type": row.last_message_sender_type,

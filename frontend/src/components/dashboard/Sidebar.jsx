@@ -13,47 +13,39 @@ import {
   Settings,
   ShieldCheck,
   Palette,
-  Lightbulb,
-  HelpCircle,
-  ArrowUpCircle,
-  Bell,
-  Monitor,
-  Bot,
-  Check,
+  Camera,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
 import { navGroups } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { avatarErrorKey, isAcceptedImage } from "@/lib/avatarUpload";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import Logo from "@/components/dashboard/Logo";
+import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import useSalesStats from "@/hooks/useSalesStats";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapse }) {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const t = useT();
-  const { lang } = useI18n();
+  const { lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
-  const [memoryOpen, setMemoryOpen] = React.useState(false);
-  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
-  const [updateOpen, setUpdateOpen] = React.useState(false);
-  const [feedbackSent, setFeedbackSent] = React.useState(false);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [avatarError, setAvatarError] = React.useState("");
+  const [avatarNotice, setAvatarNotice] = React.useState("");
+  const avatarInput = React.useRef(null);
 
   // Shortcut Ctrl+, to open Settings
   React.useEffect(() => {
@@ -74,10 +66,8 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     ? null
     : live.lowStock + live.outOfStock;
 
-  const displayName = user?.full_name || user?.email?.split("@")[0]?.replace(/[._-]+/g, " ").trim() || "—";
-  const userEmail = user?.email || "rdrddt1@gmail.com";
-  const _initials = displayName.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "·";
-  const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
+  const displayName = user?.full_name?.trim() || user?.email || "—";
+  const userEmail = user?.email || "—";
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -88,6 +78,44 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
       navigate("/login", { replace: true });
     } finally {
       setLoggingOut(false);
+    }
+  }
+
+  async function uploadAvatar(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || avatarBusy) return;
+    if (!isAcceptedImage(file)) {
+      setAvatarError(t("avatar.notImage"));
+      return;
+    }
+    setAvatarBusy(true);
+    setAvatarError("");
+    setAvatarNotice("");
+    try {
+      await api("/users/me/avatar", { method: "PUT", rawBody: file, contentType: file.type });
+      await refreshUser();
+      setAvatarNotice(t("avatar.saved"));
+    } catch (error) {
+      setAvatarError(t(avatarErrorKey(error)));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    if (avatarBusy) return;
+    setAvatarBusy(true);
+    setAvatarError("");
+    setAvatarNotice("");
+    try {
+      await api("/users/me/avatar", { method: "DELETE" });
+      await refreshUser();
+      setAvatarNotice(t("avatar.removed"));
+    } catch (error) {
+      setAvatarError(t(avatarErrorKey(error)));
+    } finally {
+      setAvatarBusy(false);
     }
   }
 
@@ -237,49 +265,29 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
           ))}
         </nav>
 
-        {/* Account menu matching uploaded image */}
+        {/* Account menu — the controls this product really has. */}
         <div className="border-t border-sidebar-border p-2.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 title={collapsed ? userEmail : undefined}
-                aria-label={lang === "ar" ? "قائمة الحساب" : "Account menu"}
+                aria-label={t("account.menu")}
                 className={cn(
                   "flex w-full items-center rounded-xl transition-all cursor-pointer select-none",
                   collapsed ? "justify-center p-1.5 hover:bg-sidebar-accent" : "gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent border border-sidebar-border/60 bg-sidebar/50"
                 )}
               >
-                <div className="h-8 w-8 rounded-full bg-[#00c48c] text-white grid place-items-center text-[12px] font-semibold shrink-0 shadow-xs">
-                  <Bot className="h-4 w-4" />
-                </div>
+                <AccountAvatar user={user} />
                 {!collapsed && (
                   <>
                     <div className="flex-1 min-w-0 text-left">
                       <div className="text-[12.5px] font-semibold text-foreground truncate" dir="ltr">{userEmail}</div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0 text-muted-foreground">
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); navigate("/inbox"); }}
-                        title={lang === "ar" ? "الإشعارات" : "Notifications"}
-                        className="h-6 w-6 grid place-items-center rounded hover:bg-sidebar-accent/80 hover:text-foreground"
-                      >
-                        <Bell className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setUpdateOpen(true); }}
-                        title={lang === "ar" ? "إصدار المتصفح والديسكتوب" : "Web & Desktop client"}
-                        className="h-6 w-6 grid place-items-center rounded hover:bg-sidebar-accent/80 hover:text-foreground"
-                      >
-                        <Monitor className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   </>
                 )}
-              </div>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               side={collapsed ? "right" : "top"}
@@ -287,117 +295,109 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               sideOffset={10}
               className="w-72 rounded-2xl border border-border bg-card p-3 shadow-2xl text-foreground animate-in fade-in-50 zoom-in-95"
             >
-              {/* Profile Top Row */}
+              {/* Identity — the account's own values, never a placeholder */}
               <div className="flex items-center gap-2.5 px-1 py-1">
-                <div className="h-8 w-8 rounded-full bg-[#00c48c] text-white grid place-items-center text-[12px] font-semibold shrink-0 shadow-xs">
-                  <Bot className="h-4 w-4" />
+                <AccountAvatar user={user} size="md" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-foreground truncate" dir="auto">{displayName}</div>
+                  <div className="text-[11.5px] text-muted-foreground truncate" dir="ltr">{userEmail}</div>
                 </div>
-                <div className="text-[13px] font-bold text-foreground truncate" dir="ltr">{userEmail}</div>
               </div>
 
-              {/* Subscription Card */}
-              <div className="mt-3 rounded-xl border border-border/80 bg-surface/60 p-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-[11px] text-muted-foreground font-normal">Plan</div>
-                    <div className="text-[13.5px] font-bold text-foreground">Free</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[11px] text-muted-foreground font-normal">Credits Balance</div>
-                    <div className="text-[13.5px] font-bold text-foreground tabular-nums">144.64</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-3">
+              {/* Profile picture */}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={avatarBusy}
+                  onClick={() => avatarInput.current?.click()}
+                  className="flex h-8 flex-1 items-center justify-center rounded-lg border border-border bg-card text-[11.5px] font-semibold text-foreground hover:bg-surface transition-colors disabled:opacity-60"
+                >
+                  {avatarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Camera className="h-3.5 w-3.5" aria-hidden="true" />}
+                  <span className="ms-1.5">{t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}</span>
+                </button>
+                {user?.avatar_url && (
                   <button
                     type="button"
-                    onClick={() => { onClose?.(); navigate("/settings/billing"); }}
-                    className="h-8 rounded-lg bg-foreground text-background font-semibold text-[11.5px] hover:opacity-90 transition-opacity"
+                    disabled={avatarBusy}
+                    onClick={() => void removeAvatar()}
+                    className="h-8 rounded-lg px-2.5 text-[11.5px] font-medium text-muted-foreground hover:bg-surface hover:text-foreground transition-colors disabled:opacity-60"
                   >
-                    Upgrade Plan
+                    {t("account.avatar.remove")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { onClose?.(); navigate("/settings/billing"); }}
-                    className="h-8 rounded-lg border border-border bg-card text-foreground font-semibold text-[11.5px] hover:bg-surface transition-colors"
-                  >
-                    Buy Credits
-                  </button>
-                </div>
+                )}
+                <input
+                  ref={avatarInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  aria-label={t("account.avatar.pick")}
+                  className="sr-only"
+                  onChange={uploadAvatar}
+                />
               </div>
+              {avatarError && <p role="alert" className="mt-1.5 text-[11.5px] text-destructive">{avatarError}</p>}
+              {avatarNotice && <p role="status" className="mt-1.5 text-[11.5px] text-muted-foreground">{avatarNotice}</p>}
+
+              <div className="my-2.5 h-px bg-border/70" />
 
               {/* Menu items list */}
-              <div className="mt-2.5 space-y-0.5">
+              <div className="space-y-0.5">
                 <button
                   type="button"
                   onClick={() => { onClose?.(); navigate("/settings"); }}
                   className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
                 >
                   <span className="flex items-center gap-2.5">
-                    <Settings className="h-4 w-4 text-muted-foreground" />
-                    <span>Settings</span>
+                    <Settings className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <span>{t("nav.settings")}</span>
                   </span>
                   <kbd className="text-[10px] text-muted-foreground/80 font-mono tracking-wider">Ctrl+,</kbd>
                 </button>
 
                 <div className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] text-foreground">
                   <span className="flex items-center gap-2.5">
-                    <Palette className="h-4 w-4 text-muted-foreground" />
-                    <span>Appearance</span>
+                    <Palette className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <span>{t("appearance.theme")}</span>
                   </span>
-                  <div className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setTheme("light")}
-                      className={cn(
-                        "px-2.5 py-0.5 rounded-md font-medium transition-all",
-                        theme === "light"
-                          ? "bg-card text-foreground shadow-xs font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      Light
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTheme("dark")}
-                      className={cn(
-                        "px-2.5 py-0.5 rounded-md font-medium transition-all",
-                        theme === "dark"
-                          ? "bg-card text-foreground shadow-xs font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      Dark
-                    </button>
+                  <div role="group" aria-label={t("appearance.theme")} className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
+                    {["system", "light", "dark"].map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={theme === option}
+                        onClick={() => setTheme(option)}
+                        className={cn(
+                          "rounded-md px-2 py-0.5 font-medium transition-all",
+                          theme === option ? "bg-card text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {t(`appearance.theme.${option}`)}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setMemoryOpen(true)}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
-                >
-                  <Lightbulb className="h-4 w-4 text-muted-foreground" />
-                  <span>Memory</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFeedbackOpen(true)}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
-                >
-                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                  <span>Feedback</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setUpdateOpen(true)}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
-                >
-                  <ArrowUpCircle className="h-4 w-4 text-muted-foreground" />
-                  <span>Check for Updates</span>
-                </button>
+                <div className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] text-foreground">
+                  <span className="flex items-center gap-2.5">
+                    <Globe className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <span>{t("appearance.language")}</span>
+                  </span>
+                  <div role="group" aria-label={t("appearance.language")} className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
+                    {["ar", "en"].map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={lang === option}
+                        onClick={() => setLang(option)}
+                        className={cn(
+                          "rounded-md px-2 py-0.5 font-medium transition-all",
+                          lang === option ? "bg-card text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {t(`appearance.language.${option}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="my-1.5 h-px bg-border/70" />
@@ -408,114 +408,13 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                 onClick={() => { onClose?.(); void handleLogout(); }}
                 className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
               >
-                <LogOut className="h-4 w-4" />
-                <span>{loggingOut ? (lang === "ar" ? "جارٍ تسجيل الخروج…" : "Signing out…") : logoutLabel}</span>
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                <span>{t(loggingOut ? "account.signingOut" : "account.signOut")}</span>
               </button>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </aside>
-
-      {/* Memory Dialog */}
-      <Dialog open={memoryOpen} onOpenChange={setMemoryOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-start">
-              <Lightbulb className="h-5 w-5 text-amber-500" />
-              <span>{lang === "ar" ? "ذاكرة الذكاء الاصطناعي (Memory)" : "AI Memory & Context"}</span>
-            </DialogTitle>
-            <DialogDescription className="text-start">
-              {lang === "ar"
-                ? "سياق متجرك المحفوظ الذي يتعلم منه مساعد المبيعات ووكلاء المحادثة لتقديم استجابات دقيقة."
-                : "Active memory preferences and store knowledge retained by the AI sales intelligence."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2 text-[13px]">
-            <div className="rounded-lg border border-border bg-surface/50 p-3 space-y-1.5">
-              <div className="font-semibold text-foreground">{lang === "ar" ? "قواعد المتجر المتعلمة:" : "Learned Store Knowledge:"}</div>
-              <ul className="list-disc list-inside text-muted-foreground space-y-1 text-[12px]">
-                <li>{lang === "ar" ? "سياسة الاستبدال: 14 يوماً بالفاتورة الأصلية." : "Exchange policy: 14 days with original receipt."}</li>
-                <li>{lang === "ar" ? "شحن مجاني للطلبات فوق 1,000 ج.م." : "Free delivery for orders above 1,000 EGP."}</li>
-                <li>{lang === "ar" ? "طرق الدفع المفضلة: فودافون كاش، إنستاباي، نقداً عند الاستلام." : "Preferred payment: Cash on delivery, InstaPay."}</li>
-              </ul>
-            </div>
-            <p className="text-[11.5px] text-muted-foreground">
-              {lang === "ar" ? "الذاكرة تتحدث تلقائياً مع كل دورة محادثة وتفاعل مع العملاء." : "Memory updates automatically as you interact with customers and review sales."}
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Feedback Dialog */}
-      <Dialog open={feedbackOpen} onOpenChange={(val) => { setFeedbackOpen(val); if (!val) setFeedbackSent(false); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-start">
-              <HelpCircle className="h-5 w-5 text-primary" />
-              <span>{lang === "ar" ? "الملاحظات والآراء (Feedback)" : "Feedback & Suggestions"}</span>
-            </DialogTitle>
-            <DialogDescription className="text-start">
-              {lang === "ar" ? "شاركنا رأيك أو أي مشكلة تواجهها لتحسين تجربة العمل." : "Tell us what you love or what we can improve in Sales OS."}
-            </DialogDescription>
-          </DialogHeader>
-          {feedbackSent ? (
-            <div className="py-6 text-center space-y-2">
-              <div className="h-10 w-10 mx-auto rounded-full bg-success/15 text-success grid place-items-center">
-                <Check className="h-5 w-5" />
-              </div>
-              <div className="text-[14px] font-semibold">{lang === "ar" ? "شكراً لك! تم استلام ملاحظاتك." : "Thank you! Your feedback has been received."}</div>
-            </div>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); setFeedbackSent(true); }} className="space-y-3 py-2">
-              <textarea
-                required
-                rows={4}
-                placeholder={lang === "ar" ? "اكتب ملاحظاتك أو اقتراحاتك هنا…" : "Write your feedback or ideas here…"}
-                className="w-full rounded-xl border border-border bg-surface p-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFeedbackOpen(false)}
-                  className="px-3 py-1.5 rounded-lg border border-border text-[12px] font-medium hover:bg-surface"
-                >
-                  {lang === "ar" ? "إلغاء" : "Cancel"}
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-[12px] font-semibold hover:opacity-90"
-                >
-                  {lang === "ar" ? "إرسال" : "Submit"}
-                </button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Updates Dialog */}
-      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-start">
-              <ArrowUpCircle className="h-5 w-5 text-primary" />
-              <span>{lang === "ar" ? "التحقق من التحديثات" : "Check for Updates"}</span>
-            </DialogTitle>
-            <DialogDescription className="text-start">
-              {lang === "ar" ? "حالة النظام والإصدار الحالي لمنصة Sales OS." : "System status and version checks."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-3">
-            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 p-3.5 text-success">
-              <Check className="h-5 w-5 shrink-0" />
-              <div className="text-start">
-                <div className="text-[13px] font-semibold">{lang === "ar" ? "أنت تستخدم أحدث إصدار (v2.4.0)" : "You are on the latest version (v2.4.0)"}</div>
-                <div className="text-[11.5px] opacity-80">{lang === "ar" ? "جميع القنوات والخدمات متزامنة وتعمل بكفاءة." : "All services and channels are running stably."}</div>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

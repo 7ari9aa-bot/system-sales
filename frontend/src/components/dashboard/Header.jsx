@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, CircleHelp, Menu, Sun, Moon, Languages, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
+import { Search, Bell, CircleHelp, Menu, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
 import { api, apiCached } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
-import { useT, useI18n } from "@/lib/i18n";
-import { useTheme } from "@/lib/themeContext";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import TokenIndicator from "@/components/dashboard/TokenIndicator";
 import GlobalSearch from "@/components/dashboard/GlobalSearch";
@@ -59,8 +58,6 @@ export default function Header({ onMenu }) {
   const navigate = useNavigate();
   const t = useT();
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
-  const { lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
 
   // إشعارات حقيقية من /notifications — بدل القائمة الثابتة
@@ -142,24 +139,6 @@ export default function Header({ onMenu }) {
 
         <div className="flex items-center gap-2 ml-auto">
           <TokenIndicator />
-
-          {/* Theme — click to toggle light/dark */}
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title={t(theme === "dark" ? "appearance.theme.light" : "appearance.theme.dark")}
-            className="h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-surface cursor-pointer"
-          >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-
-          {/* Language — click to toggle */}
-          <button
-            onClick={() => setLang(lang === "en" ? "ar" : "en")}
-            title={t(`appearance.language.${lang === "en" ? "ar" : "en"}`)}
-            className="h-9 w-9 grid place-items-center rounded-lg border border-border text-[13px] font-medium hover:bg-surface cursor-pointer"
-          >
-            <Languages className="h-4 w-4" />
-          </button>
 
           {/* Mobile search toggle */}
           <button

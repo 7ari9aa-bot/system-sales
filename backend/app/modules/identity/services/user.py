@@ -39,6 +39,18 @@ class UserService:
         return user
 
     @staticmethod
+    async def set_avatar_url(session, user_id: uuid.UUID, value: str | None) -> User:
+        """Point the account at its picture, or clear it. No commit here."""
+        user = await UserService.get(session, user_id)
+        user.avatar_url = value
+        await session.flush()
+        return user
+
+    @staticmethod
+    async def clear_avatar_url(session, user_id: uuid.UUID) -> User:
+        return await UserService.set_avatar_url(session, user_id, None)
+
+    @staticmethod
     async def set_active(session, user_id: uuid.UUID, *, is_active: bool) -> User:
         user = await UserService.get(session, user_id)
         user.is_active = is_active
