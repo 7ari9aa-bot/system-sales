@@ -5,9 +5,11 @@ and one person can sit in several workspaces. Two rules follow from that: the
 bytes decide what the file is (never the header alone), and the URL handed to a
 browser is a short-lived read URL, not a permanent public one.
 
-The previous object is deliberately left for the media retention sweep. Deleting
-it here would happen inside the caller's transaction, and a rollback would leave
-the row pointing at an object that no longer exists.
+Replacing or clearing a picture leaves the old object in the bucket: nothing
+today reclaims `avatars/` keys, and a delete issued inside the request would run
+ahead of a transaction that can still roll back. One small object per upload is
+the known cost of that choice, and it is the thing to revisit if uploads ever
+become frequent enough for it to matter.
 """
 
 from __future__ import annotations

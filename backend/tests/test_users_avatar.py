@@ -170,3 +170,185 @@ async def test_one_account_cannot_write_another_accounts_picture(db, tenant_ctx)
 
     kept = (await db.execute(select(User.avatar_url).where(User.id == other_id))).scalar_one()
     assert kept is None
+
+
+# ------------------------------------------------------------------ HTTP ----
+
+import hashlib  # noqa: E402
+
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+
+from app.core.storage import StoredMedia  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.modules.identity.deps import (  # noqa: E402
+    AuthedUser,
+    TenantContext,
+    get_db,
+    get_tenant_ctx,
+)
+from app.modules.identity.routers import users as users_router_module  # noqa: E402
+
+PNG_KEY_SUFFIX = hashlib.sha256(PNG).hexdigest()[:8]
+
+
+class _FakeStorage:
+    def __init__(self, *, configured=True):
+        self.configured = configured
+        self.stored: list[tuple[str, bytes]] = []
+
+    async def store(self, media, *, prefix, original_url=None):
+        self.stored.append((prefix, media.data))
+        if not self.configured:
+            return StoredMedia(url="", content_type=None, bytes_written=0, durable=False)
+        key = f"{prefix}/{media.checksum[:8]}.png"
+        return StoredMedia(
+            url=f"https://bucket.example/{key}",
+            content_type=media.content_type,
+            bytes_written=len(media.data),
+            durable=True,
+            storage_key=key,
+            checksum=media.checksum,
+        )
+
+    def signed_url(self, key, *, expires_in=None):
+        return f"https://read.example/{key}?e={expires_in}"
+
+
+def _client(db, monkeypatch, storage: _FakeStorage, *, user_id, tenant_id):
+    """The real routes over the real session, with auth and storage swapped.
+
+    The auth override also binds `app.user_id`, because that binding is what the
+    real dependency does and the RLS self-update policy on `users` reads it.
+    """
+    app = create_app()
+    monkeypatch.setattr(users_router_module, "get_storage", lambda: storage)
+    # The read paths sign through avatar.py's own reference, so both seams get
+    # the fake: patching only the router would test a storage object the GET
+    # never uses.
+    monkeypatch.setattr(avatar, "get_storage", lambda: storage)
+    ctx = TenantContext(
+        session=db,
+        user=AuthedUser(id=user_id, tenant_id=tenant_id, role_code="owner"),
+        tenant_id=tenant_id,
+        role_code="owner",
+        permission_codes=set(),
+    )
+
+    async def _ctx():
+        await bind_tenant_user(db, user_id)
+        return ctx
+
+    async def _session():
+        yield db
+
+    app.dependency_overrides[get_tenant_ctx] = _ctx
+    app.dependency_overrides[get_db] = _session
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test", timeout=20)
+
+
+@pytest.fixture
+def account(db, tenant_ctx):
+    """The signed-in account is a real row: the avatar write updates it."""
+    return tenant_ctx.user.id, tenant_ctx.tenant_id
+
+
+async def test_put_stores_the_picture_and_the_row_points_at_its_key(
+    db, tenant_ctx, account, monkeypatch
+):
+    user_id, tenant_id = account
+    storage = _FakeStorage()
+    async with _client(db, monkeypatch, storage, user_id=user_id, tenant_id=tenant_id) as client:
+        response = await client.put(
+            "/api/v1/users/me/avatar", content=PNG, headers={"content-type": "image/png"}
+        )
+    key = f"avatars/{user_id}/{PNG_KEY_SUFFIX}.png"
+    assert response.status_code == 200, response.text
+    assert storage.stored == [(f"avatars/{user_id}", PNG)]
+    assert response.json()["avatar_url"] == f"https://read.example/{key}?e=86400"
+    stored = (await db.execute(select(User.avatar_url).where(User.id == user_id))).scalar_one()
+    assert stored == f"s3://{key}"
+
+
+async def test_put_refuses_bytes_that_are_not_the_declared_type(
+    db, tenant_ctx, account, monkeypatch
+):
+    user_id, tenant_id = account
+    storage = _FakeStorage()
+    async with _client(db, monkeypatch, storage, user_id=user_id, tenant_id=tenant_id) as client:
+        response = await client.put(
+            "/api/v1/users/me/avatar", content=JPEG, headers={"content-type": "image/png"}
+        )
+    assert response.status_code == 400, response.text
+    assert storage.stored == []
+
+
+async def test_put_refuses_a_type_no_avatar_can_be(db, tenant_ctx, account, monkeypatch):
+    user_id, tenant_id = account
+    storage = _FakeStorage()
+    async with _client(db, monkeypatch, storage, user_id=user_id, tenant_id=tenant_id) as client:
+        response = await client.put(
+            "/api/v1/users/me/avatar", content=PNG, headers={"content-type": "image/svg+xml"}
+        )
+    assert response.status_code == 400, response.text
+    assert storage.stored == []
+
+
+async def test_put_refuses_more_than_the_limit_without_storing_it(
+    db, tenant_ctx, account, monkeypatch
+):
+    """The cap is applied while streaming, so a lying Content-Length loses."""
+    user_id, tenant_id = account
+    storage = _FakeStorage()
+    oversized = PNG + b"\x00" * avatar.MAX_AVATAR_BYTES
+    async with _client(db, monkeypatch, storage, user_id=user_id, tenant_id=tenant_id) as client:
+        response = await client.put(
+            "/api/v1/users/me/avatar", content=oversized, headers={"content-type": "image/png"}
+        )
+    assert response.status_code == 413, response.text
+    assert storage.stored == []
+
+
+async def test_put_says_storage_is_unavailable_instead_of_losing_the_picture(
+    db, tenant_ctx, account, monkeypatch
+):
+    user_id, tenant_id = account
+    storage = _FakeStorage(configured=False)
+    async with _client(db, monkeypatch, storage, user_id=user_id, tenant_id=tenant_id) as client:
+        response = await client.put(
+            "/api/v1/users/me/avatar", content=PNG, headers={"content-type": "image/png"}
+        )
+    assert response.status_code == 503, response.text
+    stored = (await db.execute(select(User.avatar_url).where(User.id == user_id))).scalar_one()
+    assert stored is None
+
+
+async def test_delete_forgets_the_picture(db, tenant_ctx, account, monkeypatch):
+    user_id, tenant_id = account
+    async with _client(
+        db, monkeypatch, _FakeStorage(), user_id=user_id, tenant_id=tenant_id
+    ) as client:
+        await client.put(
+            "/api/v1/users/me/avatar", content=PNG, headers={"content-type": "image/png"}
+        )
+        cleared = await client.delete("/api/v1/users/me/avatar")
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {"avatar_url": None}
+    stored = (await db.execute(select(User.avatar_url).where(User.id == user_id))).scalar_one()
+    assert stored is None
+
+
+async def test_my_profile_reads_the_picture_back_as_a_signed_url(
+    db, tenant_ctx, account, monkeypatch
+):
+    user_id, tenant_id = account
+    async with _client(
+        db, monkeypatch, _FakeStorage(), user_id=user_id, tenant_id=tenant_id
+    ) as client:
+        await client.put(
+            "/api/v1/users/me/avatar", content=PNG, headers={"content-type": "image/png"}
+        )
+        profile = await client.get("/api/v1/users/me")
+    body = profile.json()
+    assert profile.status_code == 200, profile.text
+    assert body["avatar_url"].startswith(f"https://read.example/avatars/{user_id}/")
+    assert "e=86400" in body["avatar_url"]
