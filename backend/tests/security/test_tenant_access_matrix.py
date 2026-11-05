@@ -104,6 +104,12 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # deliberately absent. Tenancy comes from the one-time two-minute
         # ticket claims and is re-verified against tenant_users at redeem
         # time; both hops write audit_logs rows.
+        "GET /api/v1/platform/agent-catalog",
+        # Owner-console AGENT CATALOG (modules/platform/routers/agent_catalog.py):
+        # the caller is the OWNER CONSOLE (server-to-server), gated by the same
+        # shared platform token as impersonation. It reads CODE truth only —
+        # agent kinds and tool descriptions from the live registry — no tenant
+        # rows exist on this surface, so get_tenant_ctx is deliberately absent.
         "POST /api/v1/platform/impersonation/tickets",
         "GET /api/v1/platform/impersonation/redeem",
         "POST /api/v1/platform/impersonation/redeem/confirm",

@@ -216,6 +216,18 @@ def _resolve_cap(policies: list, agent_id: UUID | None) -> tuple[Decimal, str, b
     return _default_cap(), "block", False
 
 
+def _notification_service():
+    """The notifications service, imported at call scope.
+
+    Module-scope `.service` imports are a ratcheted surface
+    (test_module_scope_service_imports_do_not_grow) — the alert helpers share
+    ONE call-scoped import instead of each carrying its own.
+    """
+    from app.modules.notifications.service import NotificationService
+
+    return NotificationService
+
+
 async def _raise_budget_alerts(
     session: AsyncSession,
     tenant_id: UUID,
@@ -232,8 +244,7 @@ async def _raise_budget_alerts(
         return
     threshold = max(crossed)
 
-    from app.modules.notifications.service import NotificationService
-
+    NotificationService = _notification_service()
     owner_ids = await _owner_ids(session, tenant_id)
     if not owner_ids:
         return
@@ -271,8 +282,7 @@ async def _raise_soft_cap_alert(
     both configured hears both stories; dedup is per month, matching the cap
     window.
     """
-    from app.modules.notifications.service import NotificationService
-
+    NotificationService = _notification_service()
     owner_ids = await _owner_ids(session, tenant_id)
     if not owner_ids:
         return

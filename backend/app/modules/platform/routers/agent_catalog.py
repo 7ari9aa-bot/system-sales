@@ -21,10 +21,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core.agent_catalog import agent_catalog_provider
 from app.core.config import get_settings
 from app.core.errors import PermissionDeniedError
-from app.modules.ai.core.registry import AgentRegistry, discover_agents
-from app.modules.ai.tools import TOOLS
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
@@ -71,41 +70,20 @@ class AgentCatalogOut(BaseModel):
     dependencies=[Depends(_require_platform_token)],
 )
 async def get_agent_catalog() -> AgentCatalogOut:
-    """Every registered agent kind with its tools, straight from the code."""
-    discover_agents()
-    agents: list[AgentCatalogEntry] = []
-    for definition in AgentRegistry.get_all():
-        tools = []
-        for tool_name in definition.allowed_tools:
-            spec = TOOLS.get(tool_name)
-            if spec is None:
-                # validate_registry() refuses an unknown allowed_tool at boot,
-                # so this is unreachable in a healthy process — skip loudly
-                # in the log rather than inventing a fake description.
-                logger.warning(
-                    "agent-catalog: allowed tool %r of kind %r has no registered spec",
-                    tool_name,
-                    definition.kind,
-                )
-                continue
-            tools.append(
-                ToolCatalogEntry(
-                    name=spec.name,
-                    description=spec.description,
-                    risk_level=spec.risk_level,
-                    is_default=tool_name in definition.default_tools,
-                )
-            )
-        agents.append(
-            AgentCatalogEntry(
-                kind=definition.kind,
-                name=definition.name,
-                description=definition.description,
-                definition_version=definition.definition_version,
-                default_model=definition.default_model,
-                guardrail_profile=definition.guardrail_profile,
-                capabilities=[cap.model_dump() for cap in definition.capabilities],
-                tools=tools,
-            )
+    """Every registered agent kind with its tools, straight from the code.
+
+    The catalog arrives through the core provider registry
+    (core/agent_catalog.py) — the same dependency inversion as the spend
+    surface. Platform never imports ai here: a module-scope platform → ai
+    import grows the cross-module ratchet AND closes an import cycle back
+    through ai → notifications → platform models
+    (test_module_boundaries catches both).
+    """
+    provider = agent_catalog_provider()
+    if provider is None:
+        # ai never registered (its module was not imported) — the console
+        # degrades the same way it does without the spend provider.
+        raise HTTPException(
+            status_code=503, detail="agent catalog is unavailable on this deployment"
         )
-    return AgentCatalogOut(agents=agents)
+    return AgentCatalogOut(**provider())

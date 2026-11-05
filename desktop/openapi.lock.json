@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 432,
-    "sha256": "7b70a8db9a1888d0351631184ad171760984e5d02e6d6c236ece0018720c0ddc",
+    "sha256": "80759feebd4e095af3f074c90791a95c8256ab87bcdceab7b192c7cd09c33da7",
     "typed_operations": 271
   },
   "spec": {
@@ -1460,6 +1460,19 @@
             }
           },
           "title": "AnnouncementActiveOut",
+          "type": "object"
+        },
+        "AnnouncementDismissOut": {
+          "properties": {
+            "dismissed": {
+              "title": "Dismissed",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "dismissed"
+          ],
+          "title": "AnnouncementDismissOut",
           "type": "object"
         },
         "AnnouncementOut": {
@@ -47982,7 +47995,7 @@
       },
       "/api/v1/platform/agent-catalog": {
         "get": {
-          "description": "Every registered agent kind with its tools, straight from the code.",
+          "description": "Every registered agent kind with its tools, straight from the code.\n\nThe catalog arrives through the core provider registry\n(core/agent_catalog.py) — the same dependency inversion as the spend\nsurface. Platform never imports ai here: a module-scope platform → ai\nimport grows the cross-module ratchet AND closes an import cycle back\nthrough ai → notifications → platform models\n(test_module_boundaries catches both).",
           "operationId": "get_agent_catalog_api_v1_platform_agent_catalog_get",
           "responses": {
             "200": {
@@ -48185,11 +48198,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "additionalProperties": {
-                      "type": "boolean"
-                    },
-                    "title": "Response Dismiss Announcement Api V1 Platform Announcements  Announcement Id  Dismiss Post",
-                    "type": "object"
+                    "$ref": "#/components/schemas/AnnouncementDismissOut"
                   }
                 }
               },

@@ -36,6 +36,10 @@ class _Result:
     def scalar_one_or_none(self):
         return self._value
 
+    # The lifecycle reactivation dispatch runs the registered ai hooks against
+    # this stub; their UPDATE results are read via rowcount (lift_hard_stop).
+    rowcount = 0
+
 
 class _StubSession:
     """Enough of AsyncSession for the lifecycle service, with no database."""

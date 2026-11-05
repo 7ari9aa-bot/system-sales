@@ -13,7 +13,7 @@ import uuid
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.modules.identity.deps import TenantCtxDep
+from app.modules.platform.routers._deps import TenantCtxDep
 from app.modules.platform.services.announcements import active_for_user, dismiss
 
 router = APIRouter(prefix="/platform/announcements", tags=["announcements"])
@@ -33,6 +33,10 @@ class AnnouncementOut(BaseModel):
 
 class AnnouncementActiveOut(BaseModel):
     announcement: AnnouncementOut | None = None
+
+
+class AnnouncementDismissOut(BaseModel):
+    dismissed: bool
 
 
 @router.get("/active", response_model=AnnouncementActiveOut)
@@ -56,8 +60,10 @@ async def get_active_announcement(ctx: TenantCtxDep) -> AnnouncementActiveOut:
     )
 
 
-@router.post("/{announcement_id}/dismiss")
-async def dismiss_announcement(ctx: TenantCtxDep, announcement_id: uuid.UUID) -> dict[str, bool]:
+@router.post("/{announcement_id}/dismiss", response_model=AnnouncementDismissOut)
+async def dismiss_announcement(
+    ctx: TenantCtxDep, announcement_id: uuid.UUID
+) -> AnnouncementDismissOut:
     """Tombstone the banner for THIS user only; idempotent."""
     dismissed = await dismiss(ctx.session, announcement_id, ctx.user.id)
-    return {"dismissed": dismissed}
+    return AnnouncementDismissOut(dismissed=dismissed)

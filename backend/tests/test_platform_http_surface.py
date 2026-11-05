@@ -55,7 +55,7 @@ OTHER = uuid.UUID("33333333-3333-3333-3333-333333333333")
 #: per row, not listed) and ``GET /platform/audit-logs``. Both tables had
 #: writers and ZERO readers, the Wave C failure mode; all three routes are
 #: ``settings:read``-gated and typed.
-PLATFORM_ROUTE_COUNT = 34
+PLATFORM_ROUTE_COUNT = 37
 
 
 # --------------------------------------------------------------------------- harness

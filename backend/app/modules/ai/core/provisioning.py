@@ -274,3 +274,57 @@ async def _lift_budget_hard_stop_on_reactivation(session, tenant_id) -> None:
 from app.core.tenancy import register_tenant_reactivated_hook  # noqa: E402
 
 register_tenant_reactivated_hook(_lift_budget_hard_stop_on_reactivation)
+
+
+# Agent-catalog provider (core/agent_catalog.py): the owner console reads agent
+# and tool truth from HERE instead of importing ai — the same dependency
+# inversion the spend surface uses (core/console_spending.py). The builder runs
+# the live registry so the console can never show a stale copy of the runtime.
+def _build_agent_catalog() -> dict:
+    from app.modules.ai.core.registry import AgentRegistry, discover_agents
+    from app.modules.ai.tools import TOOLS
+
+    discover_agents()
+    agents: list[dict] = []
+    for definition in AgentRegistry.get_all():
+        tools = []
+        for tool_name in definition.allowed_tools:
+            spec = TOOLS.get(tool_name)
+            if spec is None:
+                # validate_registry() refuses an unknown allowed_tool at boot,
+                # so this is unreachable in a healthy process — skip loudly
+                # in the log rather than inventing a fake description.
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "agent-catalog: allowed tool %r of kind %r has no registered spec",
+                    tool_name,
+                    definition.kind,
+                )
+                continue
+            tools.append(
+                {
+                    "name": spec.name,
+                    "description": spec.description,
+                    "risk_level": spec.risk_level,
+                    "is_default": tool_name in definition.default_tools,
+                }
+            )
+        agents.append(
+            {
+                "kind": definition.kind,
+                "name": definition.name,
+                "description": definition.description,
+                "definition_version": definition.definition_version,
+                "default_model": definition.default_model,
+                "guardrail_profile": definition.guardrail_profile,
+                "capabilities": [cap.model_dump() for cap in definition.capabilities],
+                "tools": tools,
+            }
+        )
+    return {"agents": agents}
+
+
+from app.core.agent_catalog import register_agent_catalog_provider  # noqa: E402
+
+register_agent_catalog_provider(_build_agent_catalog)
