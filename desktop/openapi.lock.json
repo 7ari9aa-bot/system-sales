@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 429,
-    "sha256": "b616cd089a8791c7550bee27529948f2b38e81ba0ef8389dd48f355e98929cd7",
-    "typed_operations": 268
+    "operations": 432,
+    "sha256": "7b70a8db9a1888d0351631184ad171760984e5d02e6d6c236ece0018720c0ddc",
+    "typed_operations": 271
   },
   "spec": {
     "components": {
@@ -476,6 +476,77 @@
             "required"
           ],
           "title": "AgentCapabilityOut",
+          "type": "object"
+        },
+        "AgentCatalogEntry": {
+          "properties": {
+            "capabilities": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "default_model": {
+              "title": "Default Model",
+              "type": "string"
+            },
+            "definition_version": {
+              "title": "Definition Version",
+              "type": "integer"
+            },
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "guardrail_profile": {
+              "title": "Guardrail Profile",
+              "type": "string"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "$ref": "#/components/schemas/ToolCatalogEntry"
+              },
+              "title": "Tools",
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "description",
+            "definition_version",
+            "default_model",
+            "guardrail_profile",
+            "capabilities",
+            "tools"
+          ],
+          "title": "AgentCatalogEntry",
+          "type": "object"
+        },
+        "AgentCatalogOut": {
+          "properties": {
+            "agents": {
+              "items": {
+                "$ref": "#/components/schemas/AgentCatalogEntry"
+              },
+              "title": "Agents",
+              "type": "array"
+            }
+          },
+          "required": [
+            "agents"
+          ],
+          "title": "AgentCatalogOut",
           "type": "object"
         },
         "AgentCreateRequest": {
@@ -1373,6 +1444,94 @@
             "stock"
           ],
           "title": "AnalyticsOverviewOut",
+          "type": "object"
+        },
+        "AnnouncementActiveOut": {
+          "properties": {
+            "announcement": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AnnouncementOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "AnnouncementActiveOut",
+          "type": "object"
+        },
+        "AnnouncementOut": {
+          "properties": {
+            "body": {
+              "title": "Body",
+              "type": "string"
+            },
+            "cta_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Label"
+            },
+            "cta_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cta Url"
+            },
+            "dismissible": {
+              "title": "Dismissible",
+              "type": "boolean"
+            },
+            "ends_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "starts_at": {
+              "title": "Starts At",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "body",
+            "dismissible",
+            "starts_at"
+          ],
+          "title": "AnnouncementOut",
           "type": "object"
         },
         "AnomalyResult": {
@@ -17838,6 +17997,34 @@
             "expires_in"
           ],
           "title": "TokenPair",
+          "type": "object"
+        },
+        "ToolCatalogEntry": {
+          "properties": {
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "is_default": {
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "risk_level": {
+              "title": "Risk Level",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "risk_level",
+            "is_default"
+          ],
+          "title": "ToolCatalogEntry",
           "type": "object"
         },
         "TouchpointCreatedOut": {
@@ -47790,6 +47977,238 @@
           "summary": "Admin Update Tenant Status",
           "tags": [
             "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/agent-catalog": {
+        "get": {
+          "description": "Every registered agent kind with its tools, straight from the code.",
+          "operationId": "get_agent_catalog_api_v1_platform_agent_catalog_get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentCatalogOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Get Agent Catalog",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/platform/announcements/active": {
+        "get": {
+          "description": "The live banner for this tenant and user, or an honest null.",
+          "operationId": "get_active_announcement_api_v1_platform_announcements_active_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AnnouncementActiveOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Active Announcement",
+          "tags": [
+            "announcements"
+          ]
+        }
+      },
+      "/api/v1/platform/announcements/{announcement_id}/dismiss": {
+        "post": {
+          "description": "Tombstone the banner for THIS user only; idempotent.",
+          "operationId": "dismiss_announcement_api_v1_platform_announcements__announcement_id__dismiss_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "announcement_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Announcement Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "type": "boolean"
+                    },
+                    "title": "Response Dismiss Announcement Api V1 Platform Announcements  Announcement Id  Dismiss Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Dismiss Announcement",
+          "tags": [
+            "announcements"
           ]
         }
       },
