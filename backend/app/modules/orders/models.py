@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,6 +25,7 @@ from app.core.db import Base
 from app.core.model_kit import (
     MONEY,
     AppendOnlyCreatedAtMixin,
+    IdMixin,
     TenantMixin,
     TimestampMixin,
     VersionMixin,
@@ -167,3 +172,43 @@ class Refund(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Bas
     )
 
     __table_args__ = (Index("ix_refunds_tenant_payment", "tenant_id", "payment_id"),)
+
+
+class DepositPolicy(TenantMixin, TimestampMixin, IdMixin, Base):
+    """Versioned merchant rule; an order quote is not stored by this table."""
+
+    __tablename__ = "deposit_policies"
+
+    name: Mapped[str] = mapped_column(String(127))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    # allowed: none | percentage | fixed (`orders/deposit.py` DEPOSIT_TYPES)
+    deposit_type: Mapped[str] = mapped_column(String(31))
+    # Percentage points for `percentage`, an amount for `fixed`. MONEY(14,2)
+    # because the column is shared by both readings.
+    deposit_value: Mapped[Decimal] = mapped_column(MONEY)
+    currency: Mapped[str] = mapped_column(String(3), server_default="EGP")
+    # allowed: items_after_discounts | grand_total (deposit.py CALCULATION_BASES)
+    calculation_base: Mapped[str] = mapped_column(String(31), server_default="grand_total")
+    minimum_deposit: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    maximum_deposit: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+
+    __table_args__ = (
+        # One ACTIVE policy per tenant, enforced by the database. A service
+        # check would be a race: two concurrent saves both read "no active row"
+        # and both insert.
+        Index(
+            "uq_deposit_policies_one_active_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        Index("ix_deposit_policies_tenant_active", "tenant_id", "is_active"),
+        # A version is an IDENTITY, not a hint. The active-row index above
+        # cannot stop two concurrent saves both computing max(version)+1 and
+        # committing different rules under the SAME number, which would make
+        # `policy_version=2` an ambiguous citation. save_policy serialises on a
+        # tenant advisory lock; this is the backstop that makes the race
+        # impossible even for a writer that skips the lock.
+        UniqueConstraint("tenant_id", "version", name="uq_deposit_policies_tenant_version"),
+    )

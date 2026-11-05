@@ -153,6 +153,7 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "notification.queued",
     "order.cancelled",
     "order.created",
+    "order.deposit_policy_changed",
     "order.refunded",
     "order.shipping_updated",
     "order.status_changed",

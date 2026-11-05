@@ -20,6 +20,16 @@ _ORDER_PII_FIELDS = PII_FIELDS | {"shipping_address"}
 # shape pos/router.py uses) instead of a call in every default.
 OrdersWriteCtx = Annotated[TenantContext, Depends(require_permission("orders:write"))]
 
+# B008-safe, same shape as above. A deposit rule decides how much money a shop
+# collects before it ships goods, so it is gated on `settings:write`, NOT
+# `orders:write`: the provisioned role matrix deliberately withholds
+# `settings:write` from `manager`, because changing how money is collected is an
+# owner act. Letting anyone who can fulfil an order rewrite that rule would let
+# them set the deposit to `none` and ship their own order.
+DepositSettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+DepositSettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
+OrdersReadCtx = Annotated[TenantContext, Depends(require_permission("orders:read"))]
+
 
 def _redact_order_pii(payload: dict, permission_codes: set[str]) -> dict:
     """Apply the §146 field guard to one order payload.
@@ -111,6 +121,7 @@ def _shipment_out(shipment: Shipment) -> dict:
 
 
 __all__ = [
+    "DepositSettingsCtx",
     "IfMatch",
     "OrderPayment",
     "OrderService",

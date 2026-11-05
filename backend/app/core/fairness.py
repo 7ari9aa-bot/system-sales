@@ -150,6 +150,9 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # Normal Automation: orchestration and housekeeping events.
     "notification.queued": EventPriority.NORMAL_AUTOMATION,
     "customer.merged": EventPriority.NORMAL_AUTOMATION,
+    # A deposit RULE changing is a settings write: it moves no money and nobody
+    # waits on it, so it is not the money tier beside order.created.
+    "order.deposit_policy_changed": EventPriority.NORMAL_AUTOMATION,
     "saga.started": EventPriority.NORMAL_AUTOMATION,
     "saga.completed": EventPriority.NORMAL_AUTOMATION,
     "saga.failed": EventPriority.NORMAL_AUTOMATION,

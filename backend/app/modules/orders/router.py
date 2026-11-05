@@ -14,6 +14,13 @@ from app.modules.orders.routers._deps import (
     _redact_order_pii,
     _shipment_out,
 )
+from app.modules.orders.routers.deposits import (
+    DepositPolicyCreateRequest,
+    _policy_out,
+    create_deposit_policy,
+    get_order_deposit,
+    list_deposit_policies,
+)
 from app.modules.orders.routers.orders import (
     CreateOrderRequest,
     OrderItemRequest,
@@ -48,6 +55,9 @@ from app.modules.orders.routers.shipments import (
 
 # Preserve module qualification for introspection and test sweeps
 for _endpoint in (
+    list_deposit_policies,
+    create_deposit_policy,
+    get_order_deposit,
     list_orders,
     get_order,
     change_status,
@@ -68,6 +78,7 @@ for _endpoint in (
 
 __all__ = [
     "CreateOrderRequest",
+    "DepositPolicyCreateRequest",
     "OrderItemRequest",
     "PaymentCreateRequest",
     "PaymentReconciliationRequest",
@@ -81,15 +92,19 @@ __all__ = [
     "_history_out",
     "_order_detail_out",
     "_payment_out",
+    "_policy_out",
     "_redact_order_pii",
     "_shipment_out",
     "cancel_order",
     "change_status",
+    "create_deposit_policy",
     "create_order",
     "create_payment",
     "create_refund",
     "create_shipment",
     "get_order",
+    "get_order_deposit",
+    "list_deposit_policies",
     "list_order_payments",
     "list_order_status_history",
     "list_orders",

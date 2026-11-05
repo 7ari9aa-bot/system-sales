@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 424,
-    "sha256": "233692535d1f7a2a6f4a7a61b59513c32f3bf036b3e49aa1901be8737a3f4bea",
+    "operations": 427,
+    "sha256": "31104687da9b18fc036663cfb6fc375bed75a6151ef0e16244dcf1144ce6bd96",
     "typed_operations": 268
   },
   "spec": {
@@ -6367,6 +6367,82 @@
             "content_hash"
           ],
           "title": "DependencyRecord",
+          "type": "object"
+        },
+        "DepositPolicyCreateRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "calculation_base": {
+              "default": "grand_total",
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Calculation Base",
+              "type": "string"
+            },
+            "deposit_type": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Deposit Type",
+              "type": "string"
+            },
+            "deposit_value": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Deposit Value"
+            },
+            "maximum_deposit": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Maximum Deposit"
+            },
+            "minimum_deposit": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Minimum Deposit"
+            },
+            "name": {
+              "maxLength": 127,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "deposit_type",
+            "deposit_value"
+          ],
+          "title": "DepositPolicyCreateRequest",
           "type": "object"
         },
         "DiagnosticItemOut": {
@@ -44629,6 +44705,206 @@
           ]
         }
       },
+      "/api/v1/orders/deposit-policies": {
+        "get": {
+          "description": "Every deposit version this tenant has saved, newest first.",
+          "operationId": "list_deposit_policies_api_v1_orders_deposit_policies_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Deposit Policies",
+          "tags": [
+            "orders"
+          ]
+        },
+        "post": {
+          "description": "Save an active policy version; unchanged retries reuse the existing version.",
+          "operationId": "create_deposit_policy_api_v1_orders_deposit_policies_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositPolicyCreateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Deposit Policy",
+          "tags": [
+            "orders"
+          ]
+        }
+      },
       "/api/v1/orders/{order_id}": {
         "get": {
           "operationId": "get_order_api_v1_orders__order_id__get",
@@ -44835,6 +45111,112 @@
             }
           },
           "summary": "Cancel Order",
+          "tags": [
+            "orders"
+          ]
+        }
+      },
+      "/api/v1/orders/{order_id}/deposit": {
+        "get": {
+          "description": "Preview stored order amounts under today's policy, not a frozen customer quote.",
+          "operationId": "get_order_deposit_api_v1_orders__order_id__deposit_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "order_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Order Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Order Deposit",
           "tags": [
             "orders"
           ]

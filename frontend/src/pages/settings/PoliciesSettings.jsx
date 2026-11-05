@@ -5,14 +5,8 @@ import { api } from "@/lib/api";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
 
-/**
- * سياسات المتجر الأساسية — اللي الوكيل بيجاوب منها العميل (استبدال، استرجاع، شحن، مواعيد).
- *
- * التاجر بيكتب النص بس، والعناوين ثابتة من السيرفر. الوكيل بيقرأ اللي اتحفظ هنا زي ما هو،
- * فمفيش نص افتراضي: سياسة مش مكتوبة معناها إن الوكيل هيقول للعميل إنها مش متاحة عنده.
- * نص فاضي + حفظ = مسح السياسة.
- */
 export default function PoliciesSettings() {
   const t = useT();
   const [loading, setLoading] = React.useState(true);
@@ -71,6 +65,7 @@ export default function PoliciesSettings() {
 
   return (
     <SettingsShell title={t("settings.nav.policies")} subtitle={t("settings.policies.desc")}>
+      <DepositPolicySettings />
       {loading ? (
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground py-8">
           <Loader2 className="h-4 w-4 animate-spin" /> {t("policies.loading")}
@@ -88,14 +83,14 @@ export default function PoliciesSettings() {
             return (
               <SettingCard
                 key={row.key}
-                title={row.title}
+                title={t(`policies.title.${row.key}`, row.title)}
                 desc={row.published ? t("policies.published") : t("policies.unpublished")}
               >
                 <Textarea
                   dir="auto"
                   rows={5}
                   value={row.draft}
-                  aria-label={row.title}
+                  aria-label={t(`policies.title.${row.key}`, row.title)}
                   placeholder={t(`policies.placeholder.${row.key}`)}
                   onChange={(e) => patch(row.key, { draft: e.target.value, notice: "", error: "" })}
                 />

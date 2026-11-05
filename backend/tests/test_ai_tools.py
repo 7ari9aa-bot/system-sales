@@ -127,13 +127,12 @@ def test_escalation_tool_never_lets_the_model_choose_the_scope() -> None:
     assert "customer_id" not in dumped
 
 
-def test_get_store_info_has_one_optional_question() -> None:
-    """The model never chooses between "the list" and "a search": one tool, and
-    the question only reorders. It must stay optional so the plain pull works."""
+def test_get_store_info_keeps_general_lookup_optional() -> None:
     spec = get_tool("get_store_info")
     parameters = tool_to_openai_schema(spec)["function"]["parameters"]
-    assert set(parameters["properties"]) == {"question"}
-    assert "question" not in (parameters.get("required") or [])
+    assert set(parameters["properties"]) == {"question", "topic"}
+    assert not parameters.get("required")
+    assert spec.args_schema().model_dump() == {"topic": "all", "question": None}
 
 
 def test_search_knowledge_cannot_ask_for_hidden_visibility() -> None:
@@ -754,6 +753,10 @@ async def test_get_store_info_ranks_by_the_question_when_retrieval_works(
     tenant_id = tenant_ctx.tenant_id
     filler = await _knowledge(db, tenant_id, [f"بند {i}" for i in range(35)], content="ا" * 400)
     target = (await _knowledge(db, tenant_id, ["سياسة الاسترجاع"]))[0]
+    from datetime import timedelta
+
+    target.created_at = filler[0].created_at + timedelta(seconds=1)
+    await db.flush()
 
     async def _search(session, tid, query, *, limit=5, visibility="customer_facing"):
         return [(target, 0.1)]

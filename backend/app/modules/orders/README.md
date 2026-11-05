@@ -4,6 +4,8 @@ ORDERS domain — orders, order_items, status_history, shipments, payments, refu
 
 ## Where things are
 
+- `deposit.py`
+- `deposit_service.py`
 - `errors.py`
 - `models.py`
 - `money.py`
@@ -14,10 +16,11 @@ ORDERS domain — orders, order_items, status_history, shipments, payments, refu
 
 ## HTTP
 
-15 endpoints. Route prefixes: see `router.py`. Registered in `app/main.py`.
+18 endpoints. Route prefixes: see `router.py`. Registered in `app/main.py`.
 
 ## Tables
 
+- `deposit_policies`
 - `order_items`
 - `order_payments`
 - `order_status_history`

@@ -4,7 +4,7 @@ A policy is an ordinary ``knowledge_items`` row, so the customer agent reads it 
 ``get_store_info`` with no change: ``source_type="policy"`` and a fixed ``source_ref`` key
 identify it, which lets this screen find and edit it instead of piling up duplicates.
 
-The four keys are fixed on purpose. These are the questions every customer asks, and the
+The keys are fixed on purpose. These are the questions every customer asks, and the
 agent has nothing to answer them with until the store writes them. The title is fixed too
 (one source of truth for what the agent sees); the merchant only writes the text.
 Nothing here invents a policy: an unwritten one stays unpublished, and the agent says so.
@@ -29,10 +29,12 @@ POLICY_TITLES: dict[str, str] = {
     "return": "سياسة الاسترجاع",
     "shipping": "الشحن والتوصيل",
     "hours": "مواعيد العمل",
+    "ordering": "طريقة الطلب",
+    "cancellation": "سياسة الإلغاء",
 }
 
-# `get_store_info` stops at a 6000-character budget shared by everything the store published.
-# Four policies must fit inside it with room for the rest, so each one is capped.
+# Each policy is bounded; get_store_info's shared budget may truncate an all-topic pull.
+# Its exact topic selector retrieves a requested policy without unrelated items crowding it out.
 MAX_POLICY_CHARS = 1500
 
 
@@ -57,7 +59,7 @@ async def _find(session: AsyncSession, tenant_id: uuid.UUID, key: str) -> Knowle
 
 
 async def list_policies(session: AsyncSession, tenant_id: uuid.UUID) -> list[dict]:
-    """All four policies, in screen order, whether or not the store has written them."""
+    """All policies, in screen order, whether or not the store has written them."""
     rows = (
         (
             await session.execute(

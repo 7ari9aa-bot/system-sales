@@ -1,47 +1,53 @@
-"""Store information tools: get_store_info and search_knowledge.
-
-Split out of the former single-file ``customer/tools.py``; the code is unchanged.
-"""
+"""Store information tools: get_store_info and search_knowledge."""
 
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, ValidationError
-from app.modules.ai.agents.customer.tools._shared import _StrictArgs
+from app.modules.ai.agents.customer.tools._shared import _money, _StrictArgs
+
+_StoreInfoTopic = Literal[
+    "all", "exchange", "return", "shipping", "hours", "ordering", "cancellation", "deposit"
+]
 
 
 class GetStoreInfoArgs(_StrictArgs):
-    """The store's published info: one deterministic pull, optionally ranked.
+    """Published facts, optionally narrowed to an exact policy topic.
 
-    `question` only changes the ORDER: the same customer-facing items come back
-    either way, most relevant first, so a long knowledge base cuts the least
-    relevant items at the budget instead of the newest ones.
+    `question` only ranks the `all` topic. Specific topics are deterministic
+    and never need semantic retrieval, even when a question is supplied.
     """
 
+    topic: _StoreInfoTopic = Field(
+        default="all", description="Exact policy topic, or all store info"
+    )
     question: str | None = Field(default=None, min_length=1, max_length=1000)
 
 
 async def _get_store_info(
-    session: AsyncSession, tenant_id: uuid.UUID, *, question: str | None = None
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    topic: _StoreInfoTopic = "all",
+    question: str | None = None,
 ) -> dict:
-    """The store's own published facts: hours, branches, shipping, payment,
-    returns, how to order.
+    """Read published tenant facts, never calculate a deposit or mutate commerce.
 
-    Backed by the tenant's customer-facing knowledge items read directly —
-    no embedding call, fully deterministic. The merchant owns the content;
-    behavior lives in prompts, facts live HERE.
+    Exact policies bypass ranking. The all-topic pull can optionally rank its
+    customer-facing knowledge; both paths share the same bounded item contract.
     """
     from app.modules.ai.models import KnowledgeItem
 
     _LIMIT = 30
     ranking: str | None = None
     ranked_ids: list[uuid.UUID] = []
-    if question:
+    if topic == "all" and question:
         # Relevance ordering is a bonus on top of a pull that never needs the
         # embedding model. When retrieval is down the items still come back
         # (hours and returns must not depend on a vendor call), but the
@@ -68,6 +74,12 @@ async def _get_store_info(
         KnowledgeItem.tenant_id == tenant_id,
         KnowledgeItem.visibility == "customer_facing",
     )
+    if topic != "all":
+        visible += (
+            KnowledgeItem.source_type == "policy",
+            KnowledgeItem.source_ref == topic,
+            func.btrim(KnowledgeItem.content, " \t\n\r") != "",
+        )
     # Ranking must happen BEFORE the cut: fetching the first N by age and then
     # sorting them would never surface a relevant item that sits past N.
     ranked_rows: list = []
@@ -83,7 +95,7 @@ async def _get_store_info(
         await session.execute(
             select(*columns)
             .where(*visible, KnowledgeItem.id.notin_([r[0] for r in ranked_rows]))
-            .order_by(KnowledgeItem.created_at.asc())
+            .order_by(KnowledgeItem.created_at.asc(), KnowledgeItem.id.asc())
             # Enough to fill what the ranked items left of the cap, plus one,
             # so "there was more" is known rather than guessed.
             .limit(max(_LIMIT - len(ranked_rows), 0) + 1)
@@ -102,6 +114,11 @@ async def _get_store_info(
         if spent + cost > _BUDGET and items:
             truncated = True
             break
+        if cost > _BUDGET:
+            # Even a single oversized legacy knowledge row must fit the ceiling.
+            content = content[: max(_BUDGET - len(title), 0)]
+            cost = len(title) + len(content)
+            truncated = True
         items.append(
             {
                 "title": title,
@@ -116,15 +133,38 @@ async def _get_store_info(
     # `truncated` tells the model the list is NOT the whole store: silence
     # about a missing policy must not read as "the store has none".
     result: dict = {"items": items, "truncated": truncated}
-    if not items:
-        # An empty list reads as "nothing to say", and a model fills that gap with
-        # a policy of its own or with a handover. Say plainly what is true: the
-        # store has not published this information. It is not a customer
-        # problem, so it is answered, not handed over.
+    if topic in {"all", "deposit"}:
+        # Read-only bound SQL avoids the prohibited ai -> orders import cycle.
+        rule = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT deposit_type, deposit_value, currency, calculation_base, "
+                        "minimum_deposit, maximum_deposit FROM deposit_policies "
+                        "WHERE tenant_id = :tenant_id AND is_active IS TRUE "
+                        "ORDER BY version DESC, id ASC LIMIT 1"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        result["deposit_policy"] = (
+            {
+                "deposit_type": rule["deposit_type"],
+                "deposit_value": _money(rule["deposit_value"]),
+                "currency": rule["currency"],
+                "calculation_base": rule["calculation_base"],
+                "minimum_deposit": _money(rule["minimum_deposit"]),
+                "maximum_deposit": _money(rule["maximum_deposit"]),
+            }
+            if rule is not None
+            else None
+        )
+    if not items and result.get("deposit_policy") is None:
         result["note"] = (
-            "المتجر لسه منشرش أي معلومات هنا (سياسات أو مواعيد أو شحن). متخترعش "
-            "سياسة ومتوعدش بحاجة. قول للعميل بصراحة إن المعلومة دي مش متاحة "
-            "عندك دلوقتي، وكمّل معاه فيما تقدر عليه، ومتحوّلوش لمجرد ده."
+            "لا توجد معلومات منشورة مطابقة لهذا الطلب — متخترعش سياسة، قول إنها مش متاحة."
         )
     if ranking is not None:
         result["ranking"] = ranking

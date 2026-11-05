@@ -59,12 +59,47 @@ async def _rows(db, tenant_id, key=None):
     return (await db.execute(stmt)).scalars().all()
 
 
-async def test_a_new_store_lists_all_four_policies_unwritten(db, tenant_ctx, no_embeddings):
+async def test_a_new_store_lists_all_policies_unwritten(db, tenant_ctx, no_embeddings):
     listed = await policies.list_policies(db, tenant_ctx.tenant_id)
 
-    assert [p["key"] for p in listed] == ["exchange", "return", "shipping", "hours"]
+    assert [p["key"] for p in listed] == [
+        "exchange",
+        "return",
+        "shipping",
+        "hours",
+        "ordering",
+        "cancellation",
+    ]
     assert all(p["published"] is False and p["content"] == "" for p in listed)
     assert [p["title"] for p in listed][:2] == ["سياسة الاستبدال", "سياسة الاسترجاع"]
+
+
+@pytest.mark.parametrize("key", ["ordering", "cancellation"])
+def test_commerce_policy_keys_are_accepted(key):
+    policies._check_key(key)
+
+
+@pytest.mark.parametrize(
+    ("key", "title", "content"),
+    [
+        ("ordering", "طريقة الطلب", "الطلب من خلال فريق المتجر."),
+        ("cancellation", "سياسة الإلغاء", "تواصل مع الفريق قبل تجهيز الطلب."),
+    ],
+)
+async def test_commerce_policy_save_replace_and_unpublish(
+    db, tenant_ctx, no_embeddings, key, title, content
+):
+    tenant_id = tenant_ctx.tenant_id
+    saved = await policies.save_policy(db, tenant_id, key, content)
+    assert saved == {"key": key, "title": title, "content": content, "published": True}
+    await policies.save_policy(db, tenant_id, key, content + " اسألنا للتفاصيل.")
+    (row,) = await _rows(db, tenant_id, key)
+    assert row.content == content + " اسألنا للتفاصيل."
+
+    info = await get_tool("get_store_info").handler(db, tenant_id, topic=key)
+    assert [(i["title"], i["content"]) for i in info["items"]] == [(title, row.content)]
+    await policies.save_policy(db, tenant_id, key, " \n\t ")
+    assert (await get_tool("get_store_info").handler(db, tenant_id, topic=key))["items"] == []
 
 
 async def test_saving_creates_one_customer_facing_row(db, tenant_ctx, no_embeddings):
