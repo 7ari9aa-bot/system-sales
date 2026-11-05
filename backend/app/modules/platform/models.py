@@ -680,3 +680,69 @@ class SavedView(TenantMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (Index("ix_saved_views_tenant_entity", "tenant_id", "entity"),)
+
+
+class PlatformAnnouncement(Base):
+    """A platform-wide notice the owner console broadcasts to merchants.
+
+    GLOBAL table (no tenant_id, no RLS — same standing as ``plans``): the
+    platform owns the rows and tenants only ever read the resolved subset.
+    ``audience`` JSONB is ``NULL`` for "every tenant" or
+    ``{"tenant_ids": [...]}`` for a targeted list; the service filters in
+    Python so an empty list can never silently mean "all". Liveness is derived
+    from the clock (``is_active`` AND ``now()`` inside ``[starts_at, ends_at)``),
+    never from a stored status string that can drift.
+    """
+
+    __tablename__ = "platform_announcements"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # allowed: info | warning | maintenance | update (check constraint in DDL)
+    kind: Mapped[str] = mapped_column(String(15), server_default="info")
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+    cta_label: Mapped[str | None] = mapped_column(String(127))
+    cta_url: Mapped[str | None] = mapped_column(Text)
+    audience: Mapped[dict | None] = mapped_column(JSONB)
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissible: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_platform_announcements_active_window", "is_active", "starts_at"),)
+
+
+class PlatformAnnouncementDismissal(Base):
+    """Per (announcement, user) tombstone — the banner stays gone for THAT user.
+
+    Not per tenant: two staff of one shop dismiss independently, and a user
+    who never dismissed still sees the banner. The composite PK is the
+    idempotency arbiter for a double-dismiss.
+    """
+
+    __tablename__ = "platform_announcement_dismissals"
+
+    announcement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("platform_announcements.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    dismissed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_platform_announcement_dismissals_user", "user_id"),)

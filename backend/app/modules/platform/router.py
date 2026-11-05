@@ -21,6 +21,8 @@ from fastapi import APIRouter
 
 # ── Sub-routers (the actual endpoint implementations) ────────────────────
 from app.modules.platform.routers.admin import router as _admin_router
+from app.modules.platform.routers.agent_catalog import router as _agent_catalog_router
+from app.modules.platform.routers.announcements import router as _announcements_router
 from app.modules.platform.routers.audit import router as _audit_router
 from app.modules.platform.routers.dr import router as _dr_router
 from app.modules.platform.routers.flags import router as _flags_router
@@ -47,6 +49,8 @@ for _sub in (
     _secrets_router,
     _dr_router,
     _audit_router,
+    _announcements_router,
+    _agent_catalog_router,
 ):
     router.routes.extend(_sub.routes)
 

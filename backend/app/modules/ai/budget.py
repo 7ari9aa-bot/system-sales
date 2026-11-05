@@ -234,20 +234,7 @@ async def _raise_budget_alerts(
 
     from app.modules.notifications.service import NotificationService
 
-    owner_ids = (
-        (
-            await session.execute(
-                text(
-                    "SELECT tu.user_id FROM tenant_users tu "
-                    "JOIN roles r ON r.id = tu.role_id "
-                    "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
-                ),
-                {"tenant_id": str(tenant_id)},
-            )
-        )
-        .scalars()
-        .all()
-    )
+    owner_ids = await _owner_ids(session, tenant_id)
     if not owner_ids:
         return
 
@@ -269,6 +256,95 @@ async def _raise_budget_alerts(
             },
             dedup_key=f"ai_budget:{tenant_id}:{period_key}:{threshold}",
         )
+
+
+async def _raise_soft_cap_alert(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    soft_cap: Decimal,
+    committed: Decimal,
+) -> None:
+    """The SOFT tier: a renewal-asking warning. Usage continues.
+
+    Distinct kind and dedup key from the percent thresholds so a tenant with
+    both configured hears both stories; dedup is per month, matching the cap
+    window.
+    """
+    from app.modules.notifications.service import NotificationService
+
+    owner_ids = await _owner_ids(session, tenant_id)
+    if not owner_ids:
+        return
+
+    period_key = datetime.now(UTC).strftime("%Y-%m")
+    for owner_id in owner_ids:
+        await NotificationService.create(
+            session,
+            tenant_id,
+            owner_id,
+            kind="ai_budget_soft_cap",
+            title="AI usage warning — renewal needed soon",
+            body=(
+                "AI usage has reached the warning limit "
+                f"({committed} of {soft_cap}). Please renew or upgrade your "
+                "subscription to keep the assistant running."
+            ),
+            action_url="/settings/usage",
+            payload={
+                "soft_cap": str(soft_cap),
+                "committed": str(committed),
+                "period": period_key,
+            },
+            dedup_key=f"ai_budget_soft:{tenant_id}:{period_key}",
+        )
+
+
+async def _owner_ids(session: AsyncSession, tenant_id: UUID) -> list:
+    """The tenant's owner-role user ids (the alert audience)."""
+    return (
+        (
+            await session.execute(
+                text(
+                    "SELECT tu.user_id FROM tenant_users tu "
+                    "JOIN roles r ON r.id = tu.role_id "
+                    "WHERE tu.tenant_id = :tenant_id AND r.code = 'owner'"
+                ),
+                {"tenant_id": str(tenant_id)},
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _current_period() -> str:
+    """The "YYYY-MM" budget window key shared by the stop and lift states."""
+    return datetime.now(UTC).strftime("%Y-%m")
+
+
+async def lift_hard_stop(session: AsyncSession, tenant_id: UUID) -> bool:
+    """Clear the durable hard stop, honouring the lift for the rest of the period.
+
+    Called automatically when a tenant is reactivated (the registered
+    ``tenant_reactivated`` hook) and manually from the owner console. The
+    ``hard_stop_lifted_period`` stamp is what keeps a mid-month renewal from
+    flip-flopping stop/lift/stop: within the same period a lifted stop is not
+    re-applied, and next month the cap governs again.
+    """
+    from sqlalchemy import update
+
+    result = await session.execute(
+        update(BudgetPolicy)
+        .where(
+            BudgetPolicy.tenant_id == tenant_id,
+            BudgetPolicy.agent_id.is_(None),
+            BudgetPolicy.hard_stopped_at.is_not(None),
+        )
+        .values(hard_stopped_at=None, hard_stop_lifted_period=_current_period())
+    )
+    await session.flush()
+    return (result.rowcount or 0) > 0
 
 
 class AIBudgetFallbackRequested(Exception):
@@ -347,6 +423,23 @@ async def reserve_budget(
         .all()
     )
     cap, on_exceed, agent_scoped = _resolve_cap(list(policies), agent_id)
+    tenant_policy = next((p for p in policies if p.agent_id is None), None)
+
+    # The durable hard stop (two-tier budget, fe2026110504) short-circuits
+    # EVERYTHING once set: the platform stopped this tenant and only a lift —
+    # automatic on reactivation or manual from the console — resumes service.
+    # A lift is honoured for the rest of its period, so a stop stamped after a
+    # lift in the same month would be silent flip-flop and is refused.
+    if tenant_policy is not None and tenant_policy.hard_stopped_at is not None:
+        if tenant_policy.hard_stop_lifted_period != _current_period():
+            raise AIBudgetExhaustedError(
+                "AI service stopped — monthly budget hard limit reached. "
+                "Renew the subscription to resume.",
+                details={
+                    "hard_stopped_at": tenant_policy.hard_stopped_at.isoformat(),
+                    "reason": "hard_stop",
+                },
+            )
 
     if cap < 0:
         # A negative cap is a data error, not a statement — refuse to guess
@@ -374,9 +467,32 @@ async def reserve_budget(
 
     await _raise_budget_alerts(session, tenant_id, cap=cap, committed=committed)
 
+    # The SOFT tier (tenant scope only — an agent-scoped cap governs one agent,
+    # not the tenant's subscription): crossing it warns and asks for renewal,
+    # usage continues. Skipped when the hard stop already governs above.
+    soft_cap = tenant_policy.soft_cap if tenant_policy is not None else None
+    if (
+        not agent_scoped
+        and soft_cap is not None
+        and soft_cap > 0
+        and committed + estimate >= soft_cap
+    ):
+        await _raise_soft_cap_alert(session, tenant_id, soft_cap=soft_cap, committed=committed)
+
     day_spend = await _day_spend(session, tenant_id, agent_id=scope_agent_id)
     daily_cap = _daily_cap(cap)
     if committed + estimate >= cap:
+        if not agent_scoped and on_exceed == "block" and tenant_policy is not None:
+            # Stamp the durable stop ONCE per period. The flush before the
+            # raise matters: the caller catches AIBudgetExhaustedError and
+            # continues the same transaction (handover rows), so the stamp
+            # must already be dirty here to survive with it.
+            if (
+                tenant_policy.hard_stopped_at is None
+                and tenant_policy.hard_stop_lifted_period != _current_period()
+            ):
+                tenant_policy.hard_stopped_at = datetime.now(UTC)
+                await session.flush()
         _on_budget_exceeded(
             on_exceed,
             "monthly AI budget exceeded",

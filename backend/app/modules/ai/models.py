@@ -488,6 +488,13 @@ class BudgetPolicy(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     period: Mapped[str] = mapped_column(String(15), server_default="monthly")  # daily|monthly
     hard_cap: Mapped[Decimal] = mapped_column(AI_COST, server_default="0")
     warning_threshold: Mapped[int] = mapped_column(default=80)  # percent
+    # Two-tier budget (fe2026110504): soft_cap crossing WARNS (renewal nudge,
+    # usage continues); hard_stopped_at is the durable stop state stamped when
+    # the hard cap bites under on_exceed=block, and hard_stop_lifted_period is
+    # the "YYYY-MM" a lift is honoured for — see budget.py for the semantics.
+    soft_cap: Mapped[Decimal | None] = mapped_column(AI_COST, nullable=True)
+    hard_stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hard_stop_lifted_period: Mapped[str | None] = mapped_column(String(7))
     # allowed: block | fallback | warn
     on_exceed: Mapped[str] = mapped_column(String(15), server_default="block")
     fallback_alias: Mapped[str | None] = mapped_column(String(31))

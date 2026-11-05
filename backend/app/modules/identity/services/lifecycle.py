@@ -248,5 +248,13 @@ class TenantLifecycleService:
             tenant_id=tenant.id,
             actor_user_id=actor_user_id,
         )
+        if target == "active":
+            # Reactivation is the automatic "renewal" moment: registered
+            # modules (ai budget hard-stop lift) get the same decoupled hook
+            # contract tenant creation uses. Function-scope import — identity
+            # must not import ai (or anything module-scoped) at module scope.
+            from app.core.tenancy import dispatch_tenant_reactivated_hooks
+
+            await dispatch_tenant_reactivated_hooks(session, tenant.id)
         await session.flush()
         return tenant

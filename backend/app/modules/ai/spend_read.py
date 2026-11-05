@@ -44,6 +44,9 @@ class TenantSpend:
     cap_source: str  # "tenant_policy" | "default"
     on_exceed: str  # block | warn | fallback (the policy's own action)
     failed_runs_24h: int
+    # Two-tier budget (fe2026110504): the soft tier and the durable stop state.
+    soft_cap: Decimal | None = None
+    hard_stopped: bool = False
 
     @property
     def ratio_percent(self) -> int:
@@ -95,12 +98,16 @@ async def monthly_spend_rows(
             cap = Decimal(policies[0].hard_cap)
             on_exceed = policies[0].on_exceed
             cap_source = "tenant_policy"
+            soft_cap = Decimal(policies[0].soft_cap) if policies[0].soft_cap is not None else None
+            hard_stopped = policies[0].hard_stopped_at is not None
         else:
             from app.modules.ai.budget import _default_cap
 
             cap = _default_cap()
             on_exceed = "block"
             cap_source = "default"
+            soft_cap = None
+            hard_stopped = False
         failed_runs = (
             await session.execute(
                 select(func.count(AgentRun.id)).where(
@@ -117,6 +124,8 @@ async def monthly_spend_rows(
             cap_source=cap_source,
             on_exceed=on_exceed,
             failed_runs_24h=int(failed_runs or 0),
+            soft_cap=soft_cap,
+            hard_stopped=hard_stopped,
         )
         out[tenant_id] = row
     return out
@@ -134,6 +143,8 @@ async def console_spend_rows(
             "cap_source": row.cap_source,
             "on_exceed": row.on_exceed,
             "failed_runs_24h": row.failed_runs_24h,
+            "soft_cap": str(row.soft_cap) if row.soft_cap is not None else None,
+            "hard_stopped": row.hard_stopped,
         }
         for tenant_id, row in rows.items()
     }

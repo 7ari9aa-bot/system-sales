@@ -260,3 +260,17 @@ async def backfill_all_tenants(session: AsyncSession) -> dict[str, int]:
 from app.core.tenancy import register_tenant_created_hook  # noqa: E402
 
 register_tenant_created_hook(provision_canonical_agents)
+
+
+# Two-tier budget (fe2026110504): reactivation lifts the AI hard stop. The
+# hook runs inside the lifecycle transaction — services never commit; the
+# lifecycle caller owns the transaction.
+async def _lift_budget_hard_stop_on_reactivation(session, tenant_id) -> None:
+    from app.modules.ai.budget import lift_hard_stop
+
+    await lift_hard_stop(session, tenant_id)
+
+
+from app.core.tenancy import register_tenant_reactivated_hook  # noqa: E402
+
+register_tenant_reactivated_hook(_lift_budget_hard_stop_on_reactivation)

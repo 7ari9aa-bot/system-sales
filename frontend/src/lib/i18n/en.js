@@ -942,6 +942,7 @@ export default {
   "ai.stat.tokens": "Tokens used",
   "notfound.title": "Page not found",
   "notfound.back": "Back home",
+  "announcement.dismiss": "Dismiss announcement",
 "notifications.empty": "No notifications.",
   "common.loading": "Loading…",
 "inventory.balances": "Stock balances",

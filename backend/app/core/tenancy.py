@@ -237,3 +237,25 @@ def tenant_created_hooks() -> list:
 async def dispatch_tenant_created_hooks(session: AsyncSession, tenant_id: UUID) -> None:
     for hook in list(_tenant_created_hooks):
         await hook(session, tenant_id)
+
+
+# Tenant REACTIVATION lifecycle hooks — dispatched when a tenant transitions
+# back to "active" (from suspended/grace/past_due). Same decoupling contract
+# as the created hooks: core owns the registry, identity dispatches, the
+# interested module (ai — budget hard-stop lift) registers at import time.
+_tenant_reactivated_hooks: list = []
+
+
+def register_tenant_reactivated_hook(hook) -> None:
+    if hook not in _tenant_reactivated_hooks:
+        _tenant_reactivated_hooks.append(hook)
+
+
+def tenant_reactivated_hooks() -> list:
+    """The registered reactivation hooks, in registration order."""
+    return list(_tenant_reactivated_hooks)
+
+
+async def dispatch_tenant_reactivated_hooks(session: AsyncSession, tenant_id: UUID) -> None:
+    for hook in list(_tenant_reactivated_hooks):
+        await hook(session, tenant_id)
