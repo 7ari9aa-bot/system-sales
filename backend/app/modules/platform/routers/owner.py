@@ -333,7 +333,7 @@ async def owner_tenants(
     # at module scope would close the ai -> ... -> platform cycle.
     from app.core.console_spending import console_spend_rows
 
-    spends = console_spend_rows(ctx.session, [tenant.id for tenant in tenants])
+    spends = await console_spend_rows(ctx.session, [tenant.id for tenant in tenants])
     items: list[OwnerTenantRowOut] = []
     for tenant in tenants:
         users = (

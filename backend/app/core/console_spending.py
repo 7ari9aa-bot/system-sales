@@ -20,7 +20,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
-Provider = Callable[[Any, list[uuid.UUID]], dict[uuid.UUID, dict[str, Any]]]
+Provider = Callable[[Any, list[uuid.UUID]], Any]  # async callable -> dict
 
 _provider: Provider | None = None
 
@@ -42,10 +42,10 @@ def replace_console_spend_provider(provider: Provider) -> None:
     _provider = provider
 
 
-def console_spend_rows(
+async def console_spend_rows(
     session: Any, tenant_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, dict[str, Any]]:
-    """Delegate to the registered provider.
+    """Await the registered provider.
 
     Returns per-tenant dicts with (at least) Decimal-string money fields —
     ``month_spend``, ``cap``, ``cap_source``, ``on_exceed``,
@@ -65,4 +65,4 @@ def console_spend_rows(
             }
             for tenant_id in tenant_ids
         }
-    return _provider(session, tenant_ids)
+    return await _provider(session, tenant_ids)

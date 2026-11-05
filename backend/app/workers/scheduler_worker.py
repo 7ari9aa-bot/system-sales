@@ -328,7 +328,21 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
                 _json.dumps([a.as_dict() for a in alerts]),
                 ex=24 * 3600,
             )
-        return {"probes": len(probe_results), "alerts": len(alerts), "fresh": len(fresh)}
+
+        # TENANT-SCOPED business health: the merchant's own alert feed. The
+        # drain bound THIS tenant's GUC, so the evaluation is RLS-honest.
+        tenant_alerts = await monitors.evaluate_tenant_monitors(session, tenant_id)
+        tenant_fresh = tenant_alerts
+        if redis is not None:
+            tenant_fresh = await monitors.trip_if_new(redis, tenant_alerts, cooldown_minutes=720)
+        await monitors.notify_tenant_owners(session, tenant_id, tenant_fresh)
+
+        return {
+            "probes": len(probe_results),
+            "alerts": len(alerts),
+            "fresh": len(fresh),
+            "tenant_alerts": len(tenant_fresh),
+        }
     finally:
         if redis is not None:
             await redis.delete(lock_key)

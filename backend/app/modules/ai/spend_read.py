@@ -122,11 +122,11 @@ async def monthly_spend_rows(
     return out
 
 
-def console_spend_rows(
+async def console_spend_rows(
     session: AsyncSession, tenant_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, dict[str, Any]]:
     """The registry-facing shape: Decimal-STRING money (ADR-053) per tenant."""
-    rows = monthly_spend_rows(session, tenant_ids)
+    rows = await monthly_spend_rows(session, tenant_ids)
     return {
         tenant_id: {
             "month_spend": str(row.month_spend),

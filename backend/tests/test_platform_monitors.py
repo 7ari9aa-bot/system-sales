@@ -15,6 +15,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+
+import app.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
+import app.modules.customers.models  # noqa: F401 — registers notifications' customers FK
+from app.modules.notifications.models import Notification
 from app.modules.platform.models import VisitorEvent
 from app.modules.platform.services import monitors
 from app.modules.platform.services.monitors import evaluate_monitors
@@ -193,3 +198,79 @@ async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monk
 
     assert len(sent) == 2, "each operator gets their own send"
     assert sent[0][0] == admin.email and "visitor_error_spike" in sent[0][1]
+
+
+async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> None:
+    """The merchant's own feed: spend at 95% of the tenant cap lands a
+    health notification in the OWNER's bell (via the console registry)."""
+    from decimal import Decimal
+
+    from app.modules.ai.models import Agent, BudgetPolicy
+    from app.modules.ai.usage import record_usage
+    from app.modules.platform.services.monitors import evaluate_tenant_monitors
+
+    agent = Agent(
+        tenant_id=tenant_ctx.tenant_id,
+        kind="customer",
+        name="Assistant",
+        model="fast",
+        system_prompt="s",
+        is_active=True,
+    )
+    db.add(agent)
+    await db.flush()
+    await record_usage(db, tenant_ctx.tenant_id, agent_id=agent.id, cost=Decimal("9.60"))
+    db.add(
+        BudgetPolicy(
+            tenant_id=tenant_ctx.tenant_id,
+            period="monthly",
+            hard_cap=Decimal("10"),
+            on_exceed="warn",
+        )
+    )
+    await db.flush()
+
+    alerts = await evaluate_tenant_monitors(db, tenant_ctx.tenant_id)
+    near = next(a for a in alerts if a.code == "ai_cap_near")
+    assert near.severity == "warning"
+
+    created = await monitors.notify_tenant_owners(db, tenant_ctx.tenant_id, [near])
+    assert created >= 1
+
+    # The notification landed in the owner's bell, once (dedup_key per day).
+    rows = (
+        (
+            await db.execute(
+                select(Notification).where(
+                    Notification.tenant_id == tenant_ctx.tenant_id,
+                    Notification.kind == "health",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert any("ai_cap_near" in (row.title or "") for row in rows)
+    before = len(rows)
+    await monitors.notify_tenant_owners(db, tenant_ctx.tenant_id, [near])
+    rows_after = (
+        (
+            await db.execute(
+                select(Notification).where(
+                    Notification.tenant_id == tenant_ctx.tenant_id,
+                    Notification.kind == "health",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows_after) == before, "the same-day reminder must dedupe"
+
+
+async def test_tenant_monitor_silent_under_budget(db, tenant_ctx) -> None:
+    """A tenant far from its cap with clean ingress trips nothing."""
+    from app.modules.platform.services.monitors import evaluate_tenant_monitors
+
+    alerts = await evaluate_tenant_monitors(db, tenant_ctx.tenant_id)
+    assert alerts == []

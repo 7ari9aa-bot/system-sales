@@ -341,3 +341,147 @@ async def notify_operators(session: AsyncSession, alerts: list[Alert]) -> int:
                     exc_info=True,
                 )
     return sent
+
+
+# --------------------------------------------------------------------------
+# TENANT-SCOPED business-health monitors — the merchant's own alert feed.
+#
+# The platform-level monitors above watch the storefront; THESE watch one
+# tenant's own operations and land as IN-APP NOTIFICATIONS in the owners'
+# bell (NotificationService.create, dedup_key per monitor per day). The
+# scheduler's drain binds the tenant GUC before calling, so every query
+# here is RLS-honest by construction.
+# --------------------------------------------------------------------------
+
+INGRESS_FAILURE_THRESHOLD = 5
+FAILED_RUNS_THRESHOLD = 5
+
+
+async def _tenant_owner_ids(session: AsyncSession, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+    """Users holding the owner role in the tenant (the people to wake)."""
+    from app.modules.identity.models import Role, TenantUser
+
+    rows = (
+        await session.execute(
+            select(TenantUser.user_id)
+            .join(Role, Role.id == TenantUser.role_id)
+            .where(TenantUser.tenant_id == tenant_id, Role.code == "owner")
+        )
+    ).scalars()
+    return list(rows)
+
+
+async def evaluate_tenant_monitors(session: AsyncSession, tenant_id: uuid.UUID) -> list[Alert]:
+    """The tenant's own health, in the merchant's language.
+
+    Three monitors, each answering a question the merchant asks first:
+    - Is my AI budget about to cut my assistant off? (>=90% of cap)
+    - Is my inbound webhook integration failing? (failed/dead >=5 in 24h)
+    - Is my AI assistant erroring? (failed runs >=5 in 24h)
+    """
+    from app.core.console_spending import console_spend_rows
+    from app.modules.platform.models import WebhookEvent
+
+    alerts: list[Alert] = []
+    now = datetime.now(UTC)
+    since24 = now - timedelta(hours=24)
+
+    spend = (await console_spend_rows(session, [tenant_id])).get(tenant_id, {})
+    cap = float(spend.get("cap") or 0)
+    spent = float(spend.get("month_spend") or 0)
+    if cap > 0:
+        ratio = spent / cap
+        if ratio >= 1.0:
+            alerts.append(
+                Alert(
+                    severity="critical",
+                    code="ai_cap_reached",
+                    detail=(
+                        f"your AI budget is exhausted ({spent:.2f} of {cap:.2f} this "
+                        "month) — dispatch is blocked until the cap resets or is raised"
+                    ),
+                    fingerprint=f"ai_cap_reached:{tenant_id}",
+                )
+            )
+        elif ratio >= 0.9:
+            alerts.append(
+                Alert(
+                    severity="warning",
+                    code="ai_cap_near",
+                    detail=(
+                        f"your AI budget is {ratio:.0%} used ({spent:.2f} of {cap:.2f} "
+                        "this month) — raise the cap before dispatch is blocked"
+                    ),
+                    fingerprint=f"ai_cap_near:{tenant_id}",
+                )
+            )
+
+    ingress_failures = (
+        await session.execute(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.tenant_id == tenant_id,
+                WebhookEvent.processing_status.in_(("failed", "dead")),
+                WebhookEvent.received_at >= since24,
+            )
+        )
+    ).scalar_one()
+    if int(ingress_failures or 0) >= INGRESS_FAILURE_THRESHOLD:
+        alerts.append(
+            Alert(
+                severity="warning",
+                code="ingress_failing",
+                detail=(
+                    f"{int(ingress_failures)} inbound webhook events failed or "
+                    "dead-lettered in the last 24h — an integration is likely "
+                    "misconfigured; check Settings > Integrations"
+                ),
+                fingerprint=f"ingress_failing:{tenant_id}",
+            )
+        )
+
+    failed_runs = int(spend.get("failed_runs_24h") or 0)
+    if failed_runs >= FAILED_RUNS_THRESHOLD:
+        alerts.append(
+            Alert(
+                severity="warning",
+                code="ai_runs_failing",
+                detail=(
+                    f"{failed_runs} AI runs failed in the last 24h — the assistant "
+                    "may be degraded for your customers"
+                ),
+                fingerprint=f"ai_runs_failing:{tenant_id}",
+            )
+        )
+    return alerts
+
+
+async def notify_tenant_owners(
+    session: AsyncSession, tenant_id: uuid.UUID, alerts: list[Alert]
+) -> int:
+    """Land tripped tenant monitors in the owners' in-app bell.
+
+    NotificationService.create is server-side only and dedup_key-idempotent —
+    the dedup key carries the UTC date, so a monitor that stays tripped
+    reminds the merchant once per day instead of every five minutes.
+    """
+    if not alerts:
+        return 0
+    from app.modules.notifications.service import NotificationService
+
+    owner_ids = await _tenant_owner_ids(session, tenant_id)
+    created = 0
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    for alert in alerts:
+        for user_id in owner_ids:
+            await NotificationService.create(
+                session,
+                tenant_id,
+                user_id,
+                kind="health",
+                title=f"Monitor: {alert.code}",
+                body=alert.detail,
+                payload={"severity": alert.severity, "code": alert.code},
+                dedup_key=f"monitor:{alert.fingerprint}:{today}",
+            )
+            created += 1
+    return created
