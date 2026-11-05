@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 432,
-    "sha256": "80759feebd4e095af3f074c90791a95c8256ab87bcdceab7b192c7cd09c33da7",
-    "typed_operations": 271
+    "operations": 444,
+    "sha256": "c8211253da5ce555f2d141538b01620ae736a18b2f949f7f4314e27d3745b1f2",
+    "typed_operations": 286
   },
   "spec": {
     "components": {
@@ -9223,6 +9223,37 @@
           "title": "HoldCartRequest",
           "type": "object"
         },
+        "IdentityIn": {
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "theme_tokens": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme Tokens"
+            }
+          },
+          "title": "IdentityIn",
+          "type": "object"
+        },
         "IdentityOut": {
           "properties": {
             "channel": {
@@ -13102,6 +13133,21 @@
           "title": "PaymentReconciliationRequest",
           "type": "object"
         },
+        "PaymentReferenceIn": {
+          "properties": {
+            "reference": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Reference",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reference"
+          ],
+          "title": "PaymentReferenceIn",
+          "type": "object"
+        },
         "PaymentRowOut": {
           "properties": {
             "amount": {
@@ -13666,6 +13712,52 @@
           "title": "ProviderPolicyUpsertRequest",
           "type": "object"
         },
+        "PurchaseIn": {
+          "properties": {
+            "payment_reference": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Reference"
+            },
+            "site_name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Site Name",
+              "type": "string"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slug"
+            },
+            "template_id": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "template_id",
+            "site_name"
+          ],
+          "title": "PurchaseIn",
+          "type": "object"
+        },
         "QuoteRequest": {
           "properties": {
             "discount_total": {
@@ -13981,6 +14073,24 @@
             "password"
           ],
           "title": "RegisterRequest",
+          "type": "object"
+        },
+        "RejectIn": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "title": "RejectIn",
           "type": "object"
         },
         "Relationship": {
@@ -14743,6 +14853,20 @@
             "spend_roas"
           ],
           "title": "RoasRowOut",
+          "type": "object"
+        },
+        "RollbackIn": {
+          "properties": {
+            "version_id": {
+              "minLength": 1,
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "version_id"
+          ],
+          "title": "RollbackIn",
           "type": "object"
         },
         "SLAPolicyList": {
@@ -15536,6 +15660,26 @@
             "status"
           ],
           "title": "SecretRotatedOut",
+          "type": "object"
+        },
+        "SectionUpdateIn": {
+          "properties": {
+            "props": {
+              "additionalProperties": true,
+              "title": "Props",
+              "type": "object"
+            },
+            "section_id": {
+              "minLength": 1,
+              "title": "Section Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "section_id",
+            "props"
+          ],
+          "title": "SectionUpdateIn",
           "type": "object"
         },
         "SecurityEventListOut": {
@@ -20456,6 +20600,26 @@
     },
     "openapi": "3.1.0",
     "paths": {
+      "/": {
+        "get": {
+          "description": "Subdomain mode: ``{slug}.<websites_served_domain>`` resolves the site.\n\nOff when ``websites_served_domain`` is empty (the default until wildcard\nDNS + TLS are configured) — then this route is an honest 404 and never\nguesses from an untrusted Host header.",
+          "operationId": "public_site_root__get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Public Site Root",
+          "tags": [
+            "public-sites"
+          ]
+        }
+      },
       "/api/v1/activity": {
         "get": {
           "operationId": "feed_api_v1_activity_get",
@@ -47399,6 +47563,188 @@
           ]
         }
       },
+      "/api/v1/owner/website-purchases": {
+        "get": {
+          "description": "The purchase queue, read through the SECURITY DEFINER function — the\nadmin session has no tenant GUC and no tenant policy is weakened.",
+          "operationId": "owner_list_purchases_api_v1_owner_website_purchases_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Owner List Purchases Api V1 Owner Website Purchases Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner List Purchases",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/owner/website-purchases/{purchase_id}/confirm": {
+        "post": {
+          "operationId": "owner_confirm_purchase_api_v1_owner_website_purchases__purchase_id__confirm_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "purchase_id",
+              "required": true,
+              "schema": {
+                "title": "Purchase Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Owner Confirm Purchase Api V1 Owner Website Purchases  Purchase Id  Confirm Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Confirm Purchase",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/owner/website-purchases/{purchase_id}/reject": {
+        "post": {
+          "operationId": "owner_reject_purchase_api_v1_owner_website_purchases__purchase_id__reject_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "purchase_id",
+              "required": true,
+              "schema": {
+                "title": "Purchase Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejectIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Owner Reject Purchase Api V1 Owner Website Purchases  Purchase Id  Reject Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Owner Reject Purchase",
+          "tags": [
+            "website"
+          ]
+        }
+      },
       "/api/v1/platform/admin/break-glass": {
         "post": {
           "description": "§147: emergency access — records a security event + issues a capability token.\n\nThe token is one-shot and expires in 15 minutes. The event is NEVER silent:\neven the platform admin's own break-glass is recorded.",
@@ -66125,9 +66471,424 @@
           "summary": "Website Platform Products"
         }
       },
+      "/api/v1/website/content": {
+        "get": {
+          "operationId": "get_content_api_v1_website_content_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Get Content Api V1 Website Content Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Content",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/content/identity": {
+        "post": {
+          "operationId": "update_identity_api_v1_website_content_identity_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Update Identity Api V1 Website Content Identity Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Identity",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/content/section": {
+        "post": {
+          "operationId": "update_section_api_v1_website_content_section_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectionUpdateIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Update Section Api V1 Website Content Section Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Section",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/editor-schema": {
+        "get": {
+          "operationId": "editor_schema_api_v1_website_editor_schema_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Editor Schema Api V1 Website Editor Schema Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Editor Schema",
+          "tags": [
+            "website"
+          ]
+        }
+      },
       "/api/v1/website/overview": {
         "get": {
-          "description": "One call for the section: whether the tenant has a website, its\nstatus, and (when provisioned) publish/usage data. Products come from the\ntenant catalog automatically via the platform's sales-os binding.",
           "operationId": "overview_api_v1_website_overview_get",
           "parameters": [
             {
@@ -66199,7 +66960,11 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Overview Api V1 Website Overview Get",
+                    "type": "object"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -66216,209 +66981,6 @@
             }
           },
           "summary": "Overview",
-          "tags": [
-            "website"
-          ]
-        }
-      },
-      "/api/v1/website/products-count": {
-        "get": {
-          "description": "How many published products the merchant has — shown in the section so\nthe merchant knows what the website will display.",
-          "operationId": "products_count_api_v1_website_products_count_get",
-          "parameters": [
-            {
-              "in": "header",
-              "name": "x-tenant-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Tenant-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-workspace-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Workspace-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-location-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Location-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "authorization",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Authorization"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {}
-                }
-              },
-              "description": "Successful Response"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              },
-              "description": "Validation Error"
-            }
-          },
-          "summary": "Products Count",
-          "tags": [
-            "website"
-          ]
-        }
-      },
-      "/api/v1/website/provision": {
-        "post": {
-          "operationId": "provision_api_v1_website_provision_post",
-          "parameters": [
-            {
-              "in": "header",
-              "name": "x-tenant-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Tenant-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-workspace-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Workspace-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "x-location-id",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Location-Id"
-              }
-            },
-            {
-              "in": "header",
-              "name": "authorization",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Authorization"
-              }
-            }
-          ],
-          "requestBody": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Body",
-                  "type": "object"
-                }
-              }
-            },
-            "required": true
-          },
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {}
-                }
-              },
-              "description": "Successful Response"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              },
-              "description": "Validation Error"
-            }
-          },
-          "summary": "Provision",
           "tags": [
             "website"
           ]
@@ -66497,7 +67059,11 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Publish Api V1 Website Publish Post",
+                    "type": "object"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -66519,10 +67085,118 @@
           ]
         }
       },
-      "/api/v1/website/session": {
+      "/api/v1/website/purchase": {
         "post": {
-          "description": "SSO: returns a platform session token + Studio URL. The frontend stores\nthe token (localStorage `wp_token`) and opens the Studio in a new tab —\nthe merchant lands inside the builder already signed in.",
-          "operationId": "session_api_v1_website_session_post",
+          "operationId": "create_purchase_api_v1_website_purchase_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Create Purchase Api V1 Website Purchase Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Purchase",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/purchase/cancel": {
+        "post": {
+          "operationId": "cancel_purchase_api_v1_website_purchase_cancel_post",
           "parameters": [
             {
               "in": "header",
@@ -66593,7 +67267,11 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Cancel Purchase Api V1 Website Purchase Cancel Post",
+                    "type": "object"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -66609,7 +67287,423 @@
               "description": "Validation Error"
             }
           },
-          "summary": "Session",
+          "summary": "Cancel Purchase",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/purchase/payment-reference": {
+        "post": {
+          "operationId": "save_payment_reference_api_v1_website_purchase_payment_reference_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentReferenceIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Save Payment Reference Api V1 Website Purchase Payment Reference Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Save Payment Reference",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/rollback": {
+        "post": {
+          "operationId": "rollback_api_v1_website_rollback_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Rollback Api V1 Website Rollback Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Rollback",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/templates": {
+        "get": {
+          "operationId": "list_templates_api_v1_website_templates_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response List Templates Api V1 Website Templates Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Templates",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/versions": {
+        "get": {
+          "operationId": "list_versions_api_v1_website_versions_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response List Versions Api V1 Website Versions Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Versions",
           "tags": [
             "website"
           ]
@@ -67591,6 +68685,46 @@
           "summary": "Readyz",
           "tags": [
             "ops"
+          ]
+        }
+      },
+      "/sites/{slug}": {
+        "get": {
+          "operationId": "public_site_sites__slug__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "slug",
+              "required": true,
+              "schema": {
+                "title": "Slug",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Public Site",
+          "tags": [
+            "public-sites"
           ]
         }
       }

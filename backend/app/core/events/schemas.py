@@ -196,6 +196,12 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "test.relay",
     "test.redis_out",
     "test.schema",
+    # Website builder (modules/website): purchase lifecycle and the publish /
+    # rollback transitions that refresh the public snapshot in-transaction.
+    "website.purchase.confirmed",
+    "website.purchase.created",
+    "website.published",
+    "website.rolled_back",
 )
 
 

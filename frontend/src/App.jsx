@@ -34,7 +34,8 @@ const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const OwnerConsole = lazy(() => import('@/pages/OwnerConsole'));
 const Usage = lazy(() => import('@/pages/Usage'));
-const WebsiteComingSoon = lazy(() => import('@/pages/WebsiteComingSoon'));
+// «My Website» — the in-house website builder (template gallery -> purchase -> control page).
+const MyWebsite = lazy(() => import('@/pages/website/MyWebsite'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
@@ -104,7 +105,7 @@ const DashboardRoutes = () => (
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/owner" element={<OwnerConsole />} />
         <Route path="/usage" element={<Navigate to="/settings/usage" replace />} />
-        <Route path="/website" element={<WebsiteComingSoon />} />
+        <Route path="/website" element={<MyWebsite />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>

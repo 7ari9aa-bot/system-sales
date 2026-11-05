@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" font-family="Tajawal, Segoe UI, sans-serif">
+  <rect width="400" height="300" fill="#fffdf5"/>
+  <rect width="400" height="26" fill="#ffffff" stroke="#dad7e4"/>
+  <circle cx="26" cy="13" r="7" fill="#f3513f"/>
+  <circle cx="26" cy="13" r="3" fill="#ffc533"/>
+  <rect x="42" y="9" width="46" height="8" rx="4" fill="#241e38"/>
+  <rect x="300" y="9" width="26" height="8" rx="4" fill="#645e78"/>
+  <rect x="332" y="9" width="26" height="8" rx="4" fill="#645e78"/>
+  <!-- hero with color blobs -->
+  <circle cx="356" cy="76" r="52" fill="#ffc533" opacity="0.55"/>
+  <circle cx="48" cy="140" r="44" fill="#dcf9f6"/>
+  <text x="200" y="82" text-anchor="middle" fill="#241e38" font-size="20" font-weight="800" font-family="Baloo Bhaijaan 2, Tajawal, sans-serif">ملابس تلعب وتنام،</text>
+  <text x="200" y="106" text-anchor="middle" fill="#241e38" font-size="20" font-weight="800" font-family="Baloo Bhaijaan 2, Tajawal, sans-serif">وتكبر مع طفلك</text>
+  <rect x="140" y="112" width="120" height="7" rx="3.5" fill="#ffc533" opacity="0.7"/>
+  <rect x="160" y="128" width="80" height="16" rx="8" fill="#f3513f"/>
+  <!-- promise cards -->
+  <g>
+    <rect x="24" y="168" width="110" height="54" rx="16" fill="#ffffff" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="34" y="178" width="16" height="16" rx="6" fill="#f3513f"/>
+    <rect x="58" y="180" width="64" height="7" rx="3.5" fill="#241e38"/>
+    <rect x="34" y="202" width="88" height="6" rx="3" fill="#645e78" opacity="0.6"/>
+    <rect x="145" y="168" width="110" height="54" rx="16" fill="#dcf9f6" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="155" y="178" width="16" height="16" rx="6" fill="#241e38"/>
+    <rect x="179" y="180" width="64" height="7" rx="3.5" fill="#124749"/>
+    <rect x="155" y="202" width="88" height="6" rx="3" fill="#124749" opacity="0.55"/>
+    <rect x="266" y="168" width="110" height="54" rx="16" fill="#fff3d1" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="276" y="178" width="16" height="16" rx="6" fill="#ffc533"/>
+    <rect x="300" y="180" width="64" height="7" rx="3.5" fill="#241e38"/>
+    <rect x="276" y="202" width="88" height="6" rx="3" fill="#645e78" opacity="0.6"/>
+  </g>
+  <!-- product cards -->
+  <g>
+    <rect x="24" y="236" width="80" height="52" rx="14" fill="#ffffff" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="32" y="243" width="64" height="24" rx="8" fill="#f3513f" opacity="0.8"/>
+    <rect x="32" y="273" width="40" height="6" rx="3" fill="#241e38"/>
+    <rect x="120" y="236" width="80" height="52" rx="14" fill="#ffffff" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="128" y="243" width="64" height="24" rx="8" fill="#ffc533" opacity="0.85"/>
+    <rect x="128" y="273" width="40" height="6" rx="3" fill="#241e38"/>
+    <rect x="216" y="236" width="80" height="52" rx="14" fill="#ffffff" stroke="#241e38" stroke-opacity="0.1" stroke-width="2"/>
+    <rect x="224" y="243" width="64" height="24" rx="8" fill="#dcf9f6"/>
+    <rect x="224" y="273" width="40" height="6" rx="3" fill="#241e38"/>
+  </g>
+</svg>

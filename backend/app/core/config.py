@@ -320,6 +320,17 @@ class Settings(BaseSettings):
     website_platform_studio_url: str = "https://wp-studio-hamedadel7744-9853.vercel.app"
     website_platform_api_key: str = ""
 
+    # In-house website builder: the public-suffix under which customer sites
+    # are served as subdomains (e.g. "sites.example.com" -> "acme.sites...").
+    # Empty = subdomain mode OFF: GET / is an honest 404 and never resolves a
+    # site from an untrusted Host header; /sites/{slug} keeps working.
+    websites_served_domain: str = ""
+
+    # Shown on the pending-purchase card: how the merchant pays for their
+    # website (bank account / wallet / InstaPay). Free text; empty falls back
+    # to the frontend's localized placeholder.
+    website_purchase_instructions: str = ""
+
     # §68: at-rest envelope encryption of Integration.credentials
     # (app.core.secrets.EnvelopeSecretStore). Base64-encoded; must decode to
     # at least 32 bytes. Empty is tolerated ONLY in local/test, where a

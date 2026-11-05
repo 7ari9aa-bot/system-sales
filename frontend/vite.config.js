@@ -24,6 +24,8 @@ export default defineConfig(({ mode }) => {
   const apiProxy = {
     '/api': { target: apiProxyTarget, changeOrigin: true },
     '/auth': { target: apiProxyTarget, changeOrigin: true },
+    // مواقع العملاء المنشورة بتتخدم من الـbackend على الجذر (docs/SITES_SERVING.md)
+    '/sites': { target: apiProxyTarget, changeOrigin: true },
   };
 
   // الفرونت إند الجديد (بدون Base44) — alias @ على src، وفي التطوير
