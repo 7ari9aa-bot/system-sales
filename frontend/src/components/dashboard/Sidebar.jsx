@@ -12,7 +12,6 @@ import {
   PanelLeft,
   Settings,
   ShieldCheck,
-  Palette,
   Camera,
   ChevronDown,
   Loader2,
@@ -31,6 +30,10 @@ import useSalesStats from "@/hooks/useSalesStats";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -145,7 +148,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         ...(user?.is_platform_admin
           ? [{ to: "/owner", label: t("nav.ownerConsole"), icon: ShieldCheck }]
           : []),
-        { to: "/website", label: t("nav.website"), icon: Globe, locked: true },
+        { to: "/website", label: t("nav.website"), icon: Globe },
       ],
     },
   ];
@@ -304,113 +307,86 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                 </div>
               </div>
 
-              {/* Profile picture */}
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
+              {/* Profile picture — an action, so it is a menu item */}
+              <DropdownMenuSeparator className="my-2" />
+              <DropdownMenuItem
+                disabled={avatarBusy}
+                onSelect={(event) => { event.preventDefault(); avatarInput.current?.click(); }}
+                className="gap-2.5 text-[13px]"
+              >
+                {avatarBusy
+                  ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                  : <Camera className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                <span>{t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}</span>
+              </DropdownMenuItem>
+              {user?.avatar_url && (
+                <DropdownMenuItem
                   disabled={avatarBusy}
-                  onClick={() => avatarInput.current?.click()}
-                  className="flex h-8 flex-1 items-center justify-center rounded-lg border border-border bg-card text-[11.5px] font-semibold text-foreground hover:bg-surface transition-colors disabled:opacity-60"
+                  onSelect={(event) => { event.preventDefault(); void removeAvatar(); }}
+                  className="gap-2.5 text-[13px]"
                 >
-                  {avatarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Camera className="h-3.5 w-3.5" aria-hidden="true" />}
-                  <span className="ms-1.5">{t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}</span>
-                </button>
-                {user?.avatar_url && (
-                  <button
-                    type="button"
-                    disabled={avatarBusy}
-                    onClick={() => void removeAvatar()}
-                    className="h-8 rounded-lg px-2.5 text-[11.5px] font-medium text-muted-foreground hover:bg-surface hover:text-foreground transition-colors disabled:opacity-60"
+                  <span className="h-4 w-4" aria-hidden="true" />
+                  <span>{t("account.avatar.remove")}</span>
+                </DropdownMenuItem>
+              )}
+              <input
+                ref={avatarInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                aria-label={t("account.avatar.pick")}
+                className="sr-only"
+                onChange={uploadAvatar}
+              />
+              {avatarError && <p role="alert" className="mt-1.5 px-2 text-[11.5px] text-destructive">{avatarError}</p>}
+              {avatarNotice && <p role="status" className="mt-1.5 px-2 text-[11.5px] text-muted-foreground">{avatarNotice}</p>}
+
+              <DropdownMenuSeparator className="my-1.5" />
+
+              <DropdownMenuItem onSelect={() => { onClose?.(); navigate("/settings"); }} className="gap-2.5 text-[13px]">
+                <Settings className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <span>{t("nav.settings")}</span>
+                <kbd className="ms-auto text-[10px] text-muted-foreground/80 font-mono tracking-wider">Ctrl+,</kbd>
+              </DropdownMenuItem>
+
+              {/* Theme and language are choices, so they are radio groups */}
+              <div className="mt-1.5 px-2 pb-0.5 text-[11px] text-muted-foreground">{t("appearance.theme")}</div>
+              <DropdownMenuRadioGroup value={theme} onValueChange={setTheme} aria-label={t("appearance.theme")}>
+                {["system", "light", "dark"].map((option) => (
+                  <DropdownMenuRadioItem
+                    key={option}
+                    value={option}
+                    onSelect={(event) => event.preventDefault()}
+                    className="py-1 text-[12.5px]"
                   >
-                    {t("account.avatar.remove")}
-                  </button>
-                )}
-                <input
-                  ref={avatarInput}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  aria-label={t("account.avatar.pick")}
-                  className="sr-only"
-                  onChange={uploadAvatar}
-                />
-              </div>
-              {avatarError && <p role="alert" className="mt-1.5 text-[11.5px] text-destructive">{avatarError}</p>}
-              {avatarNotice && <p role="status" className="mt-1.5 text-[11.5px] text-muted-foreground">{avatarNotice}</p>}
+                    {t(`appearance.theme.${option}`)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
 
-              <div className="my-2.5 h-px bg-border/70" />
+              <div className="mt-1.5 px-2 pb-0.5 text-[11px] text-muted-foreground">{t("appearance.language")}</div>
+              <DropdownMenuRadioGroup value={lang} onValueChange={setLang} aria-label={t("appearance.language")}>
+                {["ar", "en"].map((option) => (
+                  <DropdownMenuRadioItem
+                    key={option}
+                    value={option}
+                    onSelect={(event) => event.preventDefault()}
+                    className="py-1 text-[12.5px]"
+                  >
+                    {t(`appearance.language.${option}`)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
 
-              {/* Menu items list */}
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => { onClose?.(); navigate("/settings"); }}
-                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[13px] text-foreground hover:bg-surface transition-colors"
-                >
-                  <span className="flex items-center gap-2.5">
-                    <Settings className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span>{t("nav.settings")}</span>
-                  </span>
-                  <kbd className="text-[10px] text-muted-foreground/80 font-mono tracking-wider">Ctrl+,</kbd>
-                </button>
+              <DropdownMenuSeparator className="my-1.5" />
 
-                <div className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] text-foreground">
-                  <span className="flex items-center gap-2.5">
-                    <Palette className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span>{t("appearance.theme")}</span>
-                  </span>
-                  <div role="group" aria-label={t("appearance.theme")} className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
-                    {["system", "light", "dark"].map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-pressed={theme === option}
-                        onClick={() => setTheme(option)}
-                        className={cn(
-                          "rounded-md px-2 py-0.5 font-medium transition-all",
-                          theme === option ? "bg-card text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {t(`appearance.theme.${option}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-[13px] text-foreground">
-                  <span className="flex items-center gap-2.5">
-                    <Globe className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span>{t("appearance.language")}</span>
-                  </span>
-                  <div role="group" aria-label={t("appearance.language")} className="flex items-center rounded-lg border border-border/80 bg-surface p-0.5 text-[11px]">
-                    {["ar", "en"].map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-pressed={lang === option}
-                        onClick={() => setLang(option)}
-                        className={cn(
-                          "rounded-md px-2 py-0.5 font-medium transition-all",
-                          lang === option ? "bg-card text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {t(`appearance.language.${option}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="my-1.5 h-px bg-border/70" />
-
-              <button
-                type="button"
+              <DropdownMenuItem
                 disabled={loggingOut}
-                onClick={() => { onClose?.(); void handleLogout(); }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-destructive hover:bg-destructive/10 transition-colors"
+                onSelect={() => { onClose?.(); void handleLogout(); }}
+                className="gap-2.5 text-[13px] text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
                 <LogOut className="h-4 w-4" aria-hidden="true" />
                 <span>{t(loggingOut ? "account.signingOut" : "account.signOut")}</span>
-              </button>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

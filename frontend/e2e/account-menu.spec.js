@@ -43,7 +43,7 @@ async function setup(page, { lang = "en", user = {}, avatarUrl = null, avatarSta
 }
 
 async function openMenu(page) {
-  await page.goto("/dashboard");
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 30_000 });
   const trigger = page.getByRole("button", { name: /Account menu|قائمة الحساب/ });
   await expect(trigger).toBeVisible();
   await trigger.click();
@@ -55,7 +55,7 @@ test("the account menu holds only what this product really has", async ({ page }
   const menu = await openMenu(page);
   await expect(menu.getByText("Hamed Adel")).toBeVisible();
   await expect(menu.getByText("merchant@example.com")).toBeVisible();
-  await expect(menu.getByRole("button", { name: /Settings|الإعدادات/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /Settings|الإعدادات/ })).toBeVisible();
   await expect(menu.getByRole("group", { name: /Theme|المظهر/ })).toBeVisible();
   await expect(menu.getByRole("group", { name: /language|اللغة/i })).toBeVisible();
 
@@ -74,10 +74,10 @@ test("the menu is translated and a stored picture replaces the letters", async (
   });
   const menu = await openMenu(page);
   await expect(menu.getByText("أحمد عادل")).toBeVisible();
-  await expect(menu.getByRole("button", { name: /الإعدادات/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /الإعدادات/ })).toBeVisible();
   await expect(menu.getByRole("group", { name: /المظهر/ })).toBeVisible();
   await expect(menu.getByRole("group", { name: /لغة الواجهة|اللغة/ })).toBeVisible();
-  await expect(menu.getByRole("button", { name: /إزالة/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /إزالة/ })).toBeVisible();
   await expect(menu.locator("img")).toHaveCount(1);
   await menu.screenshot({ path: testInfo.outputPath("account-menu-ar.png") });
 });
@@ -86,7 +86,7 @@ test("the avatar is the account's letters until a picture exists", async ({ page
   await setup(page);
   const menu = await openMenu(page);
   await expect(menu.locator('[aria-hidden="true"]').filter({ hasText: "HA" })).toBeVisible();
-  await expect(menu.getByRole("button", { name: /Add profile picture|إضافة صورة شخصية/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /Add profile picture|إضافة صورة شخصية/ })).toBeVisible();
   await expect(menu.locator("img")).toHaveCount(0);
 });
 
@@ -99,7 +99,7 @@ test("uploading a picture sends the bytes and repaints the avatar", async ({ pag
   expect(session.avatarUploads[0].method).toBe("PUT");
   expect(session.avatarUploads[0].contentType).toBe("image/png");
   await expect(menu.locator("img")).toHaveCount(1);
-  await expect(menu.getByRole("button", { name: /Remove|إزالة/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /Remove|إزالة/ })).toBeVisible();
 });
 
 test("a picture that is not one is refused before it leaves the browser", async ({ page }) => {
@@ -123,7 +123,7 @@ test("removing the picture asks the server and falls back to letters", async ({ 
   const session = await setup(page, { avatarUrl: `${ORIGIN}/api/v1/media/avatar.png` });
   const menu = await openMenu(page);
   await expect(menu.locator("img")).toHaveCount(1);
-  await menu.getByRole("button", { name: /Remove|إزالة/ }).click();
+  await menu.getByRole("menuitem", { name: /Remove|إزالة/ }).click();
   await expect(menu.getByText("Profile picture removed.")).toBeVisible();
   expect(session.avatarUploads.map((upload) => upload.method)).toEqual(["DELETE"]);
   await expect(menu.locator("img")).toHaveCount(0);
@@ -134,28 +134,47 @@ test("theme and language live in the menu and change the app", async ({ page }) 
   await setup(page);
   const menu = await openMenu(page);
   await expect(page.locator("html")).not.toHaveClass(/(^|\s)dark(\s|$)/);
-  await menu.getByRole("button", { name: "Dark" }).click();
+  await menu.getByRole("menuitemradio", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
-  await expect(menu.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+  await expect(menu.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
 
-  await menu.getByRole("button", { name: "Arabic" }).click();
-  await expect(menu.getByRole("button", { name: /الإعدادات/ })).toBeVisible();
-  await expect(menu.getByRole("button", { name: /تسجيل الخروج/ })).toBeVisible();
+  await menu.getByRole("menuitemradio", { name: "Arabic" }).click();
+  await expect(menu.getByRole("menuitem", { name: /الإعدادات/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /تسجيل الخروج/ })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("salesos.lang"))).toBe("ar");
   expect(await page.evaluate(() => localStorage.getItem("salesos.theme"))).toBe("dark");
 });
 
 test("the header no longer carries theme and language switches", async ({ page }) => {
   await setup(page);
-  await page.goto("/dashboard");
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.locator("header button").filter({ has: page.locator("svg.lucide-languages") })).toHaveCount(0);
   await expect(page.locator("header button").filter({ has: page.locator("svg.lucide-moon, svg.lucide-sun") })).toHaveCount(0);
+});
+
+test("mobile: the account menu opens from the drawer and fits a phone", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { lang: "ar", avatarUrl: `${ORIGIN}/api/v1/media/avatar.png` });
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.locator("header button").first().click();
+  const trigger = page.getByRole("button", { name: /قائمة الحساب/ });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const menu = page.getByRole("menu").first();
+  await expect(menu.getByRole("group", { name: /المظهر/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /تسجيل الخروج/ })).toBeVisible();
+  const widths = await page.evaluate(() => [
+    document.documentElement.scrollWidth,
+    document.documentElement.clientWidth,
+  ]);
+  expect(widths[0]).toBeLessThanOrEqual(widths[1]);
+  await menu.screenshot({ path: testInfo.outputPath("account-menu-mobile-ar.png") });
 });
 
 test("signing out calls the server once and leaves the app", async ({ page }) => {
   const session = await setup(page);
   const menu = await openMenu(page);
-  await menu.getByRole("button", { name: /Sign out|تسجيل الخروج/ }).click();
+  await menu.getByRole("menuitem", { name: /Sign out|تسجيل الخروج/ }).click();
   await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
   expect(session.logouts).toBe(1);
 });
