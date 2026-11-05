@@ -342,3 +342,40 @@ class NotificationService:
             "total_unread": sum(g["count"] for g in groups),
             "groups": groups,
         }
+
+    @staticmethod
+    async def record_monitor_alerts(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        owner_ids: list[uuid.UUID],
+        alerts: list[dict],
+    ) -> int:
+        """Land tripped tenant-health monitors in the owners' bell.
+
+        The producer is the platform monitors scheduler (workers layer), which
+        passes the alert dicts and the owner ids it already resolved — this
+        module imports nothing from the monitoring module, so the dependency
+        stays one-directional (deep-review boundary discipline). Dedup key
+        carries the UTC date: a monitor that stays tripped reminds the
+        merchant once per day, not every five minutes.
+        """
+        from datetime import datetime as _dt
+
+        if not alerts or not owner_ids:
+            return 0
+        today = _dt.now(UTC).strftime("%Y-%m-%d")
+        created = 0
+        for alert in alerts:
+            for user_id in owner_ids:
+                await NotificationService.create(
+                    session,
+                    tenant_id,
+                    user_id,
+                    kind="health",
+                    title=f"Monitor: {alert['code']}",
+                    body=alert["detail"],
+                    payload={"severity": alert["severity"], "code": alert["code"]},
+                    dedup_key=f"monitor:{alert['fingerprint']}:{today}",
+                )
+                created += 1
+        return created

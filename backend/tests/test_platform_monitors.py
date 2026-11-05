@@ -152,10 +152,11 @@ async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monk
 
     from app.core.config import get_settings
     from app.modules.identity.models import User
-    from app.modules.platform.services.monitors import Alert, notify_operators
+    from app.modules.platform.services.monitors import Alert
+    from app.workers.scheduler_worker import _push_operator_emails
 
-    # Force the delivery gate open: notify_operators returns silently when
-    # email delivery is unconfigured (the production default in some envs).
+    # Force the delivery gate open: the push returns silently when email
+    # delivery is unconfigured (the production default in some envs).
     monkeypatch.setattr(
         type(get_settings()),
         "auth_email_delivery_configured",
@@ -194,7 +195,7 @@ async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monk
     monkeypatch.setattr("app.modules.identity.email_delivery.ResendEmailSender", _Sender)
     alerts = [Alert("critical", "visitor_error_spike", "boom", "fp:/checkout")]
 
-    await notify_operators(db, alerts)
+    await _push_operator_emails(db, alerts)
 
     assert len(sent) == 2, "each operator gets their own send"
     assert sent[0][0] == admin.email and "visitor_error_spike" in sent[0][1]
@@ -234,7 +235,13 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
     near = next(a for a in alerts if a.code == "ai_cap_near")
     assert near.severity == "warning"
 
-    created = await monitors.notify_tenant_owners(db, tenant_ctx.tenant_id, [near])
+    from app.modules.notifications.service import NotificationService
+    from app.workers.scheduler_worker import _tenant_owner_ids
+
+    owner_ids = await _tenant_owner_ids(db, tenant_ctx.tenant_id)
+    created = await NotificationService.record_monitor_alerts(
+        db, tenant_ctx.tenant_id, owner_ids, [near.as_dict()]
+    )
     assert created >= 1
 
     # The notification landed in the owner's bell, once (dedup_key per day).
@@ -252,7 +259,12 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
     )
     assert any("ai_cap_near" in (row.title or "") for row in rows)
     before = len(rows)
-    await monitors.notify_tenant_owners(db, tenant_ctx.tenant_id, [near])
+    await NotificationService.record_monitor_alerts(
+        db,
+        tenant_ctx.tenant_id,
+        owner_ids,
+        [near.as_dict()],
+    )
     rows_after = (
         (
             await db.execute(

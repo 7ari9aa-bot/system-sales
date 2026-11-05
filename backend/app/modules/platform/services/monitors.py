@@ -255,94 +255,6 @@ async def trip_if_new(
     return fresh
 
 
-async def _operator_emails(session: AsyncSession) -> list[str]:
-    """Active platform admins — the operators the alerts page."""
-    from app.modules.identity.models import User
-
-    rows = (
-        (
-            await session.execute(
-                select(User.email).where(
-                    User.is_platform_admin.is_(True),
-                    User.is_active.is_(True),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return list(rows)
-
-
-async def notify_operators(session: AsyncSession, alerts: list[Alert]) -> int:
-    """Push tripped alerts to the operators' email — best-effort, contained.
-
-    Uses the existing generic transactional send (the receipt adapter): one
-    message per alert per operator, delivery-idempotent via a uuid5 of the
-    alert fingerprint + the trip hour so a scheduler retry inside the same
-    hour cannot double-send even if Resend's own idempotency lapses. ANY
-    failure (delivery disabled, Resend down, no operators) is logged and
-    swallowed — the monitors job must never die because its own alert could
-    not be delivered; the System tab still shows the alert.
-    """
-    if not alerts:
-        return 0
-    from datetime import datetime as _dt
-
-    from app.modules.identity.email_delivery import (
-        EmailDeliveryError,
-        ResendEmailSender,
-    )
-
-    settings = get_settings()
-    if not settings.auth_email_delivery_configured:
-        return 0
-    recipients = await _operator_emails(session)
-    if not recipients:
-        return 0
-
-    sender = ResendEmailSender()
-    sent = 0
-    hour_bucket = _dt.now(UTC).strftime("%Y%m%d%H")
-    for alert in alerts:
-        subject = f"[SalesOS monitor] {alert.severity}: {alert.code}"
-        text = f"{alert.detail}\n\nFingerprint: {alert.fingerprint}"
-        html = (
-            "<!doctype html><html><body>"
-            f"<h2>Platform monitor: {alert.code}</h2>"
-            f"<p><b>{alert.severity}</b> — {alert.detail}</p>"
-            f"<p style='color:#666'>fingerprint: {alert.fingerprint}</p>"
-            "</body></html>"
-        )
-        for recipient in recipients:
-            idempotency = f"monitor:{alert.fingerprint}:{hour_bucket}:{recipient}"
-            delivery_id = uuid.uuid5(uuid.NAMESPACE_URL, idempotency)
-            try:
-                await sender.send_receipt(
-                    delivery_id=delivery_id,
-                    recipient=recipient,
-                    subject=subject,
-                    html=html,
-                    text=text,
-                )
-                sent += 1
-            except EmailDeliveryError as exc:
-                logger.warning(
-                    "platform.monitor_alert_undelivered code=%s to=%s retryable=%s",
-                    alert.code,
-                    recipient,
-                    exc,
-                )
-            except Exception:  # noqa: BLE001 — alerting must never kill the job
-                logger.warning(
-                    "platform.monitor_alert_failed code=%s to=%s",
-                    alert.code,
-                    recipient,
-                    exc_info=True,
-                )
-    return sent
-
-
 # --------------------------------------------------------------------------
 # TENANT-SCOPED business-health monitors — the merchant's own alert feed.
 #
@@ -355,20 +267,6 @@ async def notify_operators(session: AsyncSession, alerts: list[Alert]) -> int:
 
 INGRESS_FAILURE_THRESHOLD = 5
 FAILED_RUNS_THRESHOLD = 5
-
-
-async def _tenant_owner_ids(session: AsyncSession, tenant_id: uuid.UUID) -> list[uuid.UUID]:
-    """Users holding the owner role in the tenant (the people to wake)."""
-    from app.modules.identity.models import Role, TenantUser
-
-    rows = (
-        await session.execute(
-            select(TenantUser.user_id)
-            .join(Role, Role.id == TenantUser.role_id)
-            .where(TenantUser.tenant_id == tenant_id, Role.code == "owner")
-        )
-    ).scalars()
-    return list(rows)
 
 
 async def evaluate_tenant_monitors(session: AsyncSession, tenant_id: uuid.UUID) -> list[Alert]:
@@ -453,35 +351,3 @@ async def evaluate_tenant_monitors(session: AsyncSession, tenant_id: uuid.UUID) 
             )
         )
     return alerts
-
-
-async def notify_tenant_owners(
-    session: AsyncSession, tenant_id: uuid.UUID, alerts: list[Alert]
-) -> int:
-    """Land tripped tenant monitors in the owners' in-app bell.
-
-    NotificationService.create is server-side only and dedup_key-idempotent —
-    the dedup key carries the UTC date, so a monitor that stays tripped
-    reminds the merchant once per day instead of every five minutes.
-    """
-    if not alerts:
-        return 0
-    from app.modules.notifications.service import NotificationService
-
-    owner_ids = await _tenant_owner_ids(session, tenant_id)
-    created = 0
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-    for alert in alerts:
-        for user_id in owner_ids:
-            await NotificationService.create(
-                session,
-                tenant_id,
-                user_id,
-                kind="health",
-                title=f"Monitor: {alert.code}",
-                body=alert.detail,
-                payload={"severity": alert.severity, "code": alert.code},
-                dedup_key=f"monitor:{alert.fingerprint}:{today}",
-            )
-            created += 1
-    return created

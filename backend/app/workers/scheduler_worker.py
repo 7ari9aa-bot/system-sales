@@ -288,6 +288,110 @@ async def _handle_webhook_delivery_sweep(session, tenant_id, payload: dict) -> d
 register_job_handler("webhook_delivery_sweep", _handle_webhook_delivery_sweep)
 
 
+async def _operator_emails(session, tenant_id=None) -> list[str]:
+    """Active platform admins — the recipients of platform-level alerts."""
+    from sqlalchemy import select as sa_select
+
+    from app.modules.identity.models import User
+
+    rows = (
+        (
+            await session.execute(
+                sa_select(User.email).where(
+                    User.is_platform_admin.is_(True), User.is_active.is_(True)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+async def _push_operator_emails(session, alerts: list) -> int:
+    """Email each platform admin per fresh trip — best-effort, contained.
+
+    Uses the existing generic transactional send; delivery-idempotent via
+    uuid5(fingerprint + hour + recipient). An unconfigured gate, a Resend
+    outage or a dead operator record is logged and swallowed — the monitors
+    job must never die because its own alert could not be delivered.
+    """
+    if not alerts:
+        return 0
+    import uuid as _uuid
+    from datetime import datetime as _dt
+
+    from app.core.config import get_settings
+    from app.modules.identity.email_delivery import (
+        EmailDeliveryError,
+        ResendEmailSender,
+    )
+
+    settings = get_settings()
+    if not settings.auth_email_delivery_configured:
+        return 0
+    recipients = await _operator_emails(session)
+    if not recipients:
+        return 0
+
+    sender = ResendEmailSender()
+    sent = 0
+    hour_bucket = _dt.now(UTC).strftime("%Y%m%d%H")
+    for alert in alerts:
+        subject = f"[SalesOS monitor] {alert.severity}: {alert.code}"
+        text = f"{alert.detail}\n\nFingerprint: {alert.fingerprint}"
+        html = (
+            "<!doctype html><html><body>"
+            f"<h2>Platform monitor: {alert.code}</h2>"
+            f"<p><b>{alert.severity}</b> — {alert.detail}</p>"
+            "<p style='color:#666'>"
+            f"fingerprint: {alert.fingerprint}</p></body></html>"
+        )
+        for recipient in recipients:
+            key = f"monitor:{alert.fingerprint}:{hour_bucket}:{recipient}"
+            delivery_id = _uuid.uuid5(_uuid.NAMESPACE_URL, key)
+            try:
+                await sender.send_receipt(
+                    delivery_id=delivery_id,
+                    recipient=recipient,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                )
+                sent += 1
+            except EmailDeliveryError as exc:
+                logger.warning(
+                    "platform.monitor_alert_undelivered code=%s to=%s retryable=%s",
+                    alert.code,
+                    recipient,
+                    exc,
+                )
+            except Exception:  # noqa: BLE001 — alerting must never kill the job
+                logger.warning(
+                    "platform.monitor_alert_failed code=%s to=%s",
+                    alert.code,
+                    recipient,
+                    exc_info=True,
+                )
+    return sent
+
+
+async def _tenant_owner_ids(session, tenant_id) -> list:
+    """Users holding the owner role in the tenant (the people to wake)."""
+    from sqlalchemy import select as sa_select
+
+    from app.modules.identity.models import Role, TenantUser
+
+    rows = (
+        await session.execute(
+            sa_select(TenantUser.user_id)
+            .join(Role, Role.id == TenantUser.role_id)
+            .where(TenantUser.tenant_id == tenant_id, Role.code == "owner")
+        )
+    ).scalars()
+    return list(rows)
+
+
 async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
     """Synthetic probes + RUM monitors, deduplicated over a cooldown.
 
@@ -315,6 +419,7 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         # an undeliverable alert never kills the job; the System tab still
         # shows it).
         await monitors.notify_operators(session, fresh)
+        await _push_operator_emails(session, fresh)
         for alert in fresh:
             logger.warning(
                 "platform.monitor_tripped code=%s severity=%s detail=%s",
@@ -335,7 +440,18 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         tenant_fresh = tenant_alerts
         if redis is not None:
             tenant_fresh = await monitors.trip_if_new(redis, tenant_alerts, cooldown_minutes=720)
-        await monitors.notify_tenant_owners(session, tenant_id, tenant_fresh)
+        if tenant_fresh:
+            # The glue: monitors evaluates, notifications records — the two
+            # modules never import each other (boundary discipline).
+            from app.modules.notifications.service import NotificationService
+
+            owner_ids = await _tenant_owner_ids(session, tenant_id)
+            await NotificationService.record_monitor_alerts(
+                session,
+                tenant_id,
+                owner_ids,
+                [a.as_dict() for a in tenant_fresh],
+            )
 
         return {
             "probes": len(probe_results),
