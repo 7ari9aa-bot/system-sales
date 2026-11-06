@@ -52,9 +52,17 @@ def _rewrite_anchors(value: Any, slug_to_url: dict[str, str]) -> Any:
     return value
 
 
-def render_template_preview(template_id: str, page_slug: str | None = None) -> str | None:
+def render_template_preview(
+    template_id: str,
+    page_slug: str | None = None,
+    *,
+    url_prefix: str | None = None,
+) -> str | None:
     """The full demo-site HTML for a template, or None when the template (or
-    the requested page slug) does not exist."""
+    the requested page slug) does not exist. ``url_prefix`` overrides the
+    default ``/sites/preview/<id>`` walk base — the /api/v1 surface passes an
+    absolute prefix built from the request so the demo's internal links stay
+    on the origin the visitor actually opened."""
     try:
         manifest = catalog.get(template_id)
     except Exception:  # noqa: BLE001 - unknown template is a plain 404 upstream
@@ -73,7 +81,7 @@ def render_template_preview(template_id: str, page_slug: str | None = None) -> s
     if page_slug is not None and page_slug not in {p["slug"] for p in pages}:
         return None
 
-    prefix = f"/sites/preview/{template_id}"
+    prefix = url_prefix or f"/sites/preview/{template_id}"
     slug_to_url = {f"#page-{p['slug']}": f"{prefix}/{p['slug']}" for p in pages}
 
     demo_name = manifest.name_ar
