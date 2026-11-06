@@ -13,6 +13,7 @@ the Sales OS catalog and selling happens through the chat/cashier.
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 from app.modules.website.templates.catalog import (
     TemplateManifest,
@@ -20,126 +21,8 @@ from app.modules.website.templates.catalog import (
     TemplateSection,
 )
 
-CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&display=swap');
+CSS = (Path(__file__).parent / "funny_baby.css").read_text(encoding="utf-8")
 
-:root{
-  --fg:#241e38;--muted-fg:#645e78;--card:#ffffff;
-  --secondary:#dcf9f6;--secondary-fg:#124749;
-  --accent:#ffc533;--accent-fg:#201b32;
-  --muted:#f8f4e7;--line:#dad7e4;--whatsapp:#1f8452;
-  --ink-border:2px solid rgba(36,30,56,.1)
-}
-*{box-sizing:border-box}
-body{margin:0;font-family:'Tajawal',system-ui,sans-serif;color:var(--fg);background:var(--background)}
-h1,h2,h3,h4{font-family:'Baloo Bhaijaan 2','Tajawal',sans-serif;letter-spacing:0;text-wrap:balance}
-a{color:inherit;text-decoration:none}
-::selection{background:rgba(243,81,63,.2)}
-
-.site-nav{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;
-  padding:.85rem 1.25rem;background:var(--card);border-bottom:var(--ink-border);position:sticky;top:0;z-index:5}
-.site-nav .brand{font-family:'Baloo Bhaijaan 2',sans-serif;font-weight:800;font-size:1.15rem;display:flex;align-items:center;gap:.5rem}
-.site-nav .brand::before{content:'';display:inline-block;width:1.6rem;height:1.6rem;border-radius:50%;
-  background:radial-gradient(circle at 30% 30%,var(--accent) 0 40%,var(--primary) 42% 100%)}
-.site-nav nav{display:flex;gap:.35rem 1rem;flex-wrap:wrap;font-weight:500}
-.site-nav nav a{padding:.3rem .6rem;border-radius:999px}
-.site-nav nav a:hover{background:rgba(243,81,63,.1);color:var(--primary)}
-
-.site-page{max-width:72rem;margin:0 auto;padding:1rem 1.25rem 3.5rem}
-.page-title{font-size:1.9rem;font-weight:800;margin:1.5rem 0 1rem}
-
-.eyebrow{display:inline-block;border-radius:999px;background:rgba(243,81,63,.1);
-  padding:.25rem .75rem;font-size:.75rem;font-weight:700;color:var(--primary);margin:0}
-
-.hero{position:relative;overflow:hidden;border-radius:0 0 2.5rem 2.5rem}
-.hero::before{content:'';position:absolute;top:-6rem;inset-inline-end:-8%;width:26rem;height:26rem;
-  border-radius:50%;background:var(--accent);opacity:.55;filter:blur(64px)}
-.hero::after{content:'';position:absolute;bottom:-9rem;inset-inline-start:-8%;width:22rem;height:22rem;
-  border-radius:50%;background:var(--secondary);filter:blur(64px)}
-.hero>*{position:relative;z-index:1}
-.hero{padding:4.5rem 1.25rem 5rem;display:flex;flex-direction:column;align-items:center;text-align:center;gap:.75rem}
-.hero .eyebrow{border:var(--ink-border);background:var(--accent);color:var(--accent-fg);font-weight:700}
-.hero h1{margin:.75rem 0 0;font-size:clamp(2.2rem,5vw,3.6rem);font-weight:800;line-height:1.15}
-.hero h1::after{content:'';display:block;width:min(14rem,60%);height:.65rem;margin:.35rem auto 0;
-  border-radius:999px;background:var(--accent);opacity:.65}
-.hero p{margin:0;max-width:34rem;color:var(--muted-fg);line-height:1.9}
-.hero a{display:inline-block;margin-top:1.25rem;background:var(--primary);color:#fff;
-  padding:.8rem 1.9rem;border-radius:999px;font-weight:700;font-family:'Baloo Bhaijaan 2',sans-serif;
-  box-shadow:4px 4px 0 0 var(--fg);transition:transform .15s ease,box-shadow .15s ease}
-.hero a:hover{transform:translateY(-2px);box-shadow:5px 6px 0 0 var(--fg)}
-
-.features{padding:2.5rem 0}
-.features h2{margin:.5rem 0 1.25rem;font-size:1.7rem}
-.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}
-.feature-card{display:flex;align-items:flex-start;gap:.85rem;border-radius:1.75rem;border:var(--ink-border);padding:1.15rem}
-.feature-card--0{background:var(--card)}
-.feature-card--1{background:var(--secondary);color:var(--secondary-fg)}
-.feature-card--2{background:rgba(255,197,51,.25)}
-.feature-card--1 p,.feature-card--2 p{color:inherit;opacity:.75}
-.feature-badge{flex-shrink:0;width:2.4rem;height:2.4rem;border-radius:.9rem;margin-top:.1rem}
-.feature-card--0 .feature-badge{background:var(--primary)}
-.feature-card--1 .feature-badge{background:var(--fg)}
-.feature-card--2 .feature-badge{background:var(--accent)}
-.feature-card h3{margin:0;font-size:1rem;font-weight:700}
-.feature-card p{margin:.35rem 0 0;font-size:.875rem;line-height:1.8;color:var(--muted-fg)}
-
-.image-text{display:flex;gap:1.75rem;align-items:center;margin:2.5rem 0;flex-wrap:wrap}
-.image-text--right{flex-direction:row-reverse}
-.image-text img{max-width:22rem;width:100%;border-radius:2.25rem;border:3px solid rgba(36,30,56,.15)}
-.image-text h2{margin:0 0 .5rem;font-size:1.8rem;font-weight:800}
-.image-text p{margin:0;line-height:1.9;color:var(--muted-fg)}
-
-.steps{border-top:var(--ink-border);margin-top:2.5rem;padding:3.5rem 0}
-.steps .eyebrow{margin-bottom:.4rem}
-.steps h2{margin:0;font-size:1.9rem;font-weight:800}
-.steps-text{max-width:28rem;color:var(--muted-fg);line-height:1.9;margin:.75rem 0 1.5rem}
-.steps-list{list-style:none;margin:0;padding:0;display:grid;gap:1rem}
-.step-card{background:var(--card);border:var(--ink-border);border-radius:1.75rem;padding:1.4rem 1.5rem;
-  transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
-.step-card:hover{transform:translateY(-2px);border-color:rgba(243,81,63,.4);box-shadow:6px 6px 0 0 var(--accent)}
-.step-num{display:inline-flex;align-items:center;justify-content:center;width:2.1rem;height:2.1rem;
-  border-radius:50%;background:var(--primary);color:#fff;font-family:'Baloo Bhaijaan 2',sans-serif;font-weight:700}
-.step-card h3{display:inline;margin:0 0 0 .6rem;font-size:1.1rem;font-weight:700;vertical-align:middle}
-.step-card p{margin:.6rem 0 0;max-width:34rem;color:var(--muted-fg);font-size:.9rem;line-height:1.9}
-
-.product-grid h2,.collection-grid h2,.branches h2{margin:2.5rem 0 1.1rem;font-size:1.7rem;font-weight:800}
-.product-grid .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
-.product-card{background:var(--card);border:var(--ink-border);border-radius:1.5rem;padding:1rem;text-align:center;
-  transition:transform .15s ease,box-shadow .15s ease}
-.product-card:hover{transform:translateY(-2px);box-shadow:5px 5px 0 0 var(--accent)}
-.product-card .ph{height:7.5rem;border-radius:1rem;margin-bottom:.75rem;
-  background:linear-gradient(135deg,var(--primary),var(--accent));opacity:.85}
-.product-card .name{font-weight:700}
-.product-card .price{color:var(--primary);margin-top:.3rem;font-weight:800;font-family:'Baloo Bhaijaan 2',sans-serif}
-
-.branch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
-.branch-card{background:var(--card);border:var(--ink-border);border-radius:1.75rem;padding:1.3rem 1.4rem}
-.branch-card h3{margin:0;font-size:1.15rem;font-weight:700}
-.branch-card p{margin:.5rem 0 0;color:var(--muted-fg);line-height:1.8}
-.branch-phone{display:inline-block;margin-top:.6rem;color:var(--primary);font-weight:700;direction:ltr}
-.branch-hours{font-size:.85rem !important}
-
-.testimonial{background:var(--card);border:var(--ink-border);border-radius:1.75rem;padding:1.5rem;margin:2rem 0}
-.testimonial blockquote{margin:0 0 .75rem;font-size:1.05rem;line-height:1.9}
-
-.faq details{background:var(--card);border:var(--ink-border);border-radius:1.25rem;padding:.85rem 1.1rem;margin:.6rem 0}
-.faq summary{font-weight:700;cursor:pointer;font-family:'Baloo Bhaijaan 2',sans-serif}
-.faq p{color:var(--muted-fg);line-height:1.9;margin:.6rem 0 0}
-
-.cta{text-align:center;background:var(--card);border:var(--ink-border);border-radius:2rem;
-  padding:2.75rem 1rem;margin:2.5rem 0;box-shadow:6px 6px 0 0 var(--accent)}
-.cta h2{margin:0 0 .4rem;font-size:1.6rem;font-weight:800}
-.cta p{margin:0;color:var(--muted-fg)}
-.cta a{display:inline-block;margin-top:1.25rem;background:var(--primary);color:#fff;
-  padding:.75rem 1.9rem;border-radius:999px;font-weight:700;box-shadow:4px 4px 0 0 var(--fg)}
-
-.newsletter{text-align:center;margin:2rem 0}
-.rich-text{line-height:2;max-width:44rem}
-.rich-text a{color:var(--primary);font-weight:700}
-
-.site-footer{background:var(--fg);color:#efeef6;padding:2rem 1.25rem;text-align:center;margin-top:2rem}
-.site-footer a{color:var(--accent);font-weight:700}
-"""
 
 manifest = TemplateManifest(
     id="funny-baby",

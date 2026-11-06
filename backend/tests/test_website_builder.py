@@ -818,8 +818,13 @@ def test_the_preview_walk_renders_the_full_demo_site() -> None:
     assert html is not None
     assert "preview-ribbon" in html  # the demo marker
     assert "بودي سوت قطن" in html  # themed demo products, not generic ones
-    assert '/sites/preview/funny-baby/faq"' in html  # nav links per page
-    assert 'href="/sites/preview/funny-baby/products"' in html  # hero CTA rewritten
+    assert 'href="/sites/preview/funny-baby/faq"' in html  # nav links per page
+    assert 'href="/sites/preview/funny-baby/products"' in html  # their hero CTA rewritten
+    # VERBATIM fidelity: their exact markup, images and chrome
+    assert "media.base44.com" in html  # their real images hotlinked
+    assert "موسم جديد" in html and "ملابس تلعب وتنام" in html  # their hero copy
+    assert "sticky top-0 z-50" in html  # their header chrome
+    assert "bg-[#25D366]" in html  # their floating whatsapp button
 
 
 def test_the_preview_walk_serves_single_pages() -> None:
@@ -827,13 +832,13 @@ def test_the_preview_walk_serves_single_pages() -> None:
 
     page = preview_service.render_template_preview("funny-baby", page_slug="faq")
     assert page is not None
-    assert page.count('<section class="site-page"') == 1
-    assert 'id="page-faq"' in page
+    assert "الأسئلة الشائعة" in page
+    assert "ملابس تلعب وتنام" not in page  # the HOME hero never leaks into a sub-page
     # navigation still points at the sibling pages
-    assert '/sites/preview/funny-baby/products"' in page
-    # the demo products ride along on grids of ANY page
+    assert '/sites/preview/funny-baby/offers"' in page
     stores = preview_service.render_template_preview("funny-baby", page_slug="stores")
-    assert stores is not None and "branch-card" in stores
+    assert stores is not None and "الاتجاهات" in stores  # their branch-card actions
+    assert "ملابس تلعب وتنام" not in stores
 
 
 def test_the_preview_walk_fails_closed_on_unknowns() -> None:
