@@ -614,3 +614,101 @@ def test_the_new_list_sections_validate_and_render() -> None:
     assert 'href="tel:01000000001"' in html
     # Baloo Bhaijaan 2 travels with the template's CSS.
     assert "Baloo+Bhaijaan" in html
+
+
+# ------------------------------------------------------- warm-paper design ----
+
+
+def test_the_warm_paper_design_is_registered() -> None:
+    """Design-2 (the men's-wear paper restyle) is in the catalog."""
+    manifest = catalog.get("warm-paper")
+    assert {p.slug for p in manifest.pages} == {
+        "home",
+        "products",
+        "offers",
+        "stores",
+        "faq",
+        "track-order",
+        "shipping",
+        "exchange-return",
+        "privacy",
+        "terms",
+    }
+    home_types = [s.type for p in manifest.pages if p.slug == "home" for s in p.sections]
+    assert home_types == ["hero", "features", "product_grid", "features", "steps", "cta"]
+    assert len(catalog.list()) >= 4
+
+
+def test_the_warm_paper_overrides_render_the_paper_identity() -> None:
+    """The hero renders the paper card + ticker + BOTH CTAs; feature items
+    WITH hrefs render as chapter link cards, items WITHOUT as promise cards;
+    steps render inside the yellow paper card."""
+    snapshot = {
+        "name": "ورق دافئ",
+        "default_locale": "ar",
+        "template_id": "warm-paper",
+        "theme_tokens": {"primary": "#d98974", "background": "#fff8ef"},
+        "navigation": [],
+        "projection": {
+            "pages": [
+                {
+                    "id": "1",
+                    "title": "الرئيسية",
+                    "slug": "home",
+                    "sections": [
+                        {
+                            "type": "hero",
+                            "props": {
+                                "eyebrow": "مجموعة الموسم ٢٠٢٦",
+                                "heading": "ستايل هادي\nيفرق في إطلالتك",
+                                "cta_label": "ابدأ التسوق",
+                                "cta_url": "#page-products",
+                                "secondary_label": "زيارة الفروع",
+                                "secondary_url": "#page-stores",
+                                "note": "تغليف هدايا مجاني",
+                                "ticker": ["توصيل لكل المحافظات", "استبدال ١٤ يوم"],
+                            },
+                        },
+                        {
+                            "type": "features",
+                            "props": {
+                                "items": [
+                                    {
+                                        "title": "الكتالوج",
+                                        "text": "كل المنتجات",
+                                        "href": "#page-products",
+                                    },
+                                    {
+                                        "title": "العروض",
+                                        "text": "أكواد الخصم",
+                                        "href": "#page-offers",
+                                    },
+                                ],
+                            },
+                        },
+                        {
+                            "type": "features",
+                            "props": {
+                                "items": [{"title": "مقاس بالسنتيمتر", "text": "على كل قطعة"}],
+                            },
+                        },
+                        {
+                            "type": "steps",
+                            "props": {"items": [{"title": "اختار", "text": "بدقة"}]},
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+    html = render_website(snapshot, RenderContext())
+    assert "hero-paper" in html and "story-paper-green" in html
+    assert "story-mark" in html and "إطلالتك" in html
+    assert html.count("story-btn") >= 2  # both CTAs rendered
+    assert "story-ticker" in html and "توصيل لكل المحافظات" in html
+    # chapters: link cards with the allowlisted anchors
+    assert 'href="#page-products"' in html and "story-chap" in html
+    # promises: numbered cards, NOT link cards
+    assert "story-promise" in html and "story-pn" in html
+    # steps inside the yellow paper card
+    assert "story-paper-yellow" in html and "story-step" in html

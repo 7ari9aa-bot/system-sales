@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" font-family="IBM Plex Sans Arabic, Tajawal, sans-serif">
+  <rect width="400" height="300" fill="#fff8ef"/>
+  <rect width="400" height="26" fill="#fffdf8" stroke="#4a3a33" stroke-width="1.5"/>
+  <rect x="14" y="7" width="22" height="12" rx="5" fill="#d98974" stroke="#4a3a33" stroke-width="1.5"/>
+  <rect x="42" y="9" width="46" height="8" rx="4" fill="#4a3a33"/>
+  <rect x="300" y="9" width="26" height="8" rx="4" fill="#7a665c"/>
+  <rect x="332" y="9" width="26" height="8" rx="4" fill="#7a665c"/>
+  <!-- paper hero card with sage shadow -->
+  <rect x="22" y="40" width="356" height="120" rx="18" fill="#fffdf8" stroke="#4a3a33" stroke-width="2"/>
+  <rect x="22" y="152" width="356" height="8" rx="4" fill="#82a99b"/>
+  <rect x="30" y="154" width="340" height="4" rx="2" fill="#82a99b" opacity="0.4"/>
+  <rect x="42" y="56" width="88" height="14" rx="7" fill="#e9c86a55" stroke="#d98974" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="46" y="66" fill="#a85a47" font-size="9" font-weight="700">مجموعة الموسم</text>
+  <text x="42" y="96" fill="#4a3a33" font-size="19" font-weight="800" font-family="Baloo Bhaijaan 2, IBM Plex Sans Arabic, sans-serif">ستايل هادي يفرق في</text>
+  <rect x="42" y="102" width="86" height="9" rx="3" fill="#e9c86a" opacity="0.7"/>
+  <text x="130" y="97" fill="#4a3a33" font-size="19" font-weight="800" font-family="Baloo Bhaijaan 2, IBM Plex Sans Arabic, sans-serif">إطلالتك</text>
+  <rect x="42" y="112" width="120" height="26" rx="13" fill="#d98974" stroke="#4a3a33" stroke-width="1.5"/>
+  <rect x="170" y="112" width="96" height="26" rx="13" fill="#ffffff" stroke="#4a3a33" stroke-width="1.5"/>
+  <!-- tilted frame -->
+  <rect x="268" y="56" width="96" height="88" rx="14" fill="#ffffff" stroke="#4a3a33" stroke-width="2" transform="rotate(2 316 100)"/>
+  <rect x="274" y="64" width="84" height="72" rx="9" fill="#e9c86a55" transform="rotate(2 316 100)"/>
+  <!-- chapters -->
+  <g>
+    <rect x="24" y="180" width="108" height="54" rx="14" fill="#ffffff" stroke="#4a3a33" stroke-width="2"/>
+    <rect x="24" y="196" width="108" height="38" rx="12" fill="#e9c86a55"/>
+    <rect x="24" y="228" width="108" height="6" rx="3" fill="#4a3a33" opacity="0.85"/>
+    <rect x="140" y="180" width="108" height="54" rx="14" fill="#ffffff" stroke="#4a3a33" stroke-width="2"/>
+    <rect x="140" y="196" width="108" height="38" rx="12" fill="#dcf9f6"/>
+    <rect x="140" y="228" width="108" height="6" rx="3" fill="#4a3a33" opacity="0.85"/>
+    <rect x="256" y="180" width="108" height="54" rx="14" fill="#ffffff" stroke="#4a3a33" stroke-width="2"/>
+    <rect x="256" y="196" width="108" height="38" rx="12" fill="#f3d9cf"/>
+    <rect x="256" y="228" width="108" height="6" rx="3" fill="#4a3a33" opacity="0.85"/>
+  </g>
+  <!-- promise strip -->
+  <rect x="24" y="248" width="340" height="40" rx="14" fill="#fffdf8" stroke="#4a3a33" stroke-width="2"/>
+  <circle cx="46" cy="268" r="12" fill="#82a99b" stroke="#4a3a33" stroke-width="1.5"/>
+  <rect x="66" y="262" width="70" height="7" rx="3.5" fill="#4a3a33"/>
+  <rect x="66" y="274" width="110" height="6" rx="3" fill="#7a665c" opacity="0.6"/>
+  <rect x="196" y="262" width="150" height="6" rx="3" fill="#e9c86a"/>
+</svg>

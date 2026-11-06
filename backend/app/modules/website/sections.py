@@ -33,6 +33,14 @@ class HeroProps(SectionProps):
     image: str | None = None
     cta_label: str | None = None
     cta_url: str | None = None
+    # Additive v2 fields: the base renderer ignores them; richer templates
+    # (warm-paper) use the eyebrow pill, the secondary CTA, the note pill
+    # and the ticker strip.
+    eyebrow: str | None = None
+    secondary_label: str | None = None
+    secondary_url: str | None = None
+    note: str | None = None
+    ticker: list[str] | None = None
 
 
 class RichTextProps(SectionProps):
@@ -97,6 +105,9 @@ class FeatureItemProps(BaseModel):
 
     title: str
     text: str
+    # Optional link target (page anchor or allowlisted URL): when present the
+    # item renders as a link card (warm-paper chapters), else as a plain card.
+    href: str | None = None
 
 
 class FeaturesProps(SectionProps):

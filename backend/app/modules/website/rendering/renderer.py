@@ -197,6 +197,98 @@ def _render_branches(props: dict, _ctx: RenderContext) -> str:
     return f'<section class="branches">{head}<div class="branch-grid">{cards}</div></section>'
 
 
+def _render_hero_paper(props: dict, _ctx: RenderContext) -> str:
+    """Warm-paper hero: a paper card with dashed eyebrow pill, highlighted
+    heading (the text after the last newline gets the marker underline), two
+    CTAs, a note pill, a tilted photo frame, and the sage ticker strip."""
+    eyebrow = _e(props.get("eyebrow"))
+    # The seeded heading carries a newline; the trailing line is highlighted.
+    parts = str(props.get("heading") or "").split("\n")
+    heading_html = "<br />".join(
+        _e(part) if index < len(parts) - 1 else f'<span class="story-mark">{_e(part)}</span>'
+        for index, part in enumerate(parts)
+    )
+    sub = _e(props.get("subheading"))
+    ctas = ""
+    if props.get("cta_label") and props.get("cta_url"):
+        url = _safe_url(props.get("cta_url"))
+        if url and url != "#":
+            ctas += (
+                f'<a class="story-btn story-btn-1" href="{url}">{_e(props.get("cta_label"))}</a>'
+            )
+    if props.get("secondary_label") and props.get("secondary_url"):
+        url = _safe_url(props.get("secondary_url"))
+        if url and url != "#":
+            label = _e(props.get("secondary_label"))
+            ctas += f'<a class="story-btn story-btn-2" href="{url}">{label}</a>'
+    note = _e(props.get("note"))
+    note_html = f'<div class="story-note">{note}</div>' if note else ""
+    image_html = '<div class="story-frame story-frame-empty" aria-hidden="true"></div>'
+    if props.get("image"):
+        url = _safe_url(props.get("image"))
+        if url and url != "#":
+            image_html = f'<div class="story-frame"><img src="{url}" alt=""></div>'
+    ticker_items = props.get("ticker") or []
+    ticker = ""
+    if ticker_items:
+        spans = "".join(
+            f'<span class="story-tick">{_e(phrase)}<i aria-hidden="true">✳</i></span>'
+            for phrase in ticker_items
+        )
+        ticker = (
+            '<section class="story-ticker" aria-hidden="true">'
+            f'<div class="story-ticker-row">{spans}{spans}</div></section>'
+        )
+    return (
+        f'<section class="hero-paper">'
+        f'<div class="story-paper story-paper-green">'
+        f'<div class="hero-paper-grid">'
+        f"<div>{f'<p class="eyebrow">{eyebrow}</p>' if eyebrow else ''}"
+        f"<h1>{heading_html}</h1>"
+        f"{f'<p class="hero-sub">{sub}</p>' if sub else ''}"
+        f'<div class="hero-ctas">{ctas}</div>{note_html}</div>'
+        f"<div>{image_html}</div>"
+        f"</div></div>{ticker}</section>"
+    )
+
+
+def _render_features_paper(props: dict, _ctx: RenderContext) -> str:
+    """Warm-paper features: items WITH hrefs render as chapter link cards
+    (numbered, ink border, terracotta shadow); items without render as
+    numbered promise cards on the sage band."""
+    head = _section_head(props)
+    items = props.get("items", [])
+    if any(item.get("href") for item in items):
+        cards = "".join(
+            f'<a class="story-chap" href="{_safe_url(item.get("href"))}">'
+            f'<span class="story-chap-img" aria-hidden="true"></span>'
+            f'<span class="story-chap-body"><span class="story-chap-title">'
+            f"{_e(item.get('title'))}</span>"
+            f'<span class="story-chap-note">{_e(item.get("text"))}</span></span></a>'
+            for item in items
+        )
+        return f'<section class="features">{head}<div class="chap-grid">{cards}</div></section>'
+    cards = "".join(
+        f'<div class="story-promise"><span class="story-pn">{index + 1:02d}</span>'
+        f"<h3>{_e(item.get('title'))}</h3><p>{_e(item.get('text'))}</p></div>"
+        for index, item in enumerate(items)
+    )
+    return f'<section class="features">{head}<div class="promise-grid">{cards}</div></section>'
+
+
+def _render_steps_paper(props: dict, _ctx: RenderContext) -> str:
+    head = _section_head(props)
+    items = "".join(
+        f'<li class="story-step"><span class="story-ghost">{index + 1:02d}</span>'
+        f"<h3>{_e(item.get('title'))}</h3><p>{_e(item.get('text'))}</p></li>"
+        for index, item in enumerate(props.get("items", []))
+    )
+    return (
+        f'<section class="steps"><div class="story-paper story-paper-yellow">'
+        f'{head}<ol class="step-grid">{items}</ol></div></section>'
+    )
+
+
 class RendererRegistry:
     """Per-template renderer set. A template may override any section's markup
     (its CSS alone usually suffices — the reference templates override none);
@@ -236,6 +328,20 @@ _base_registry = RendererRegistry()
 # Per-template overrides live here; a template id without an entry just uses
 # the base registry. (The merchant templates will plug in here or via CSS.)
 _TEMPLATE_REGISTRIES: dict[str, RendererRegistry] = {}
+
+
+def _register_paper_overrides() -> None:
+    """The warm-paper template renders its hero, feature cards and steps with
+    bespoke markup (paper cards, chapter links, ticker); everything else is
+    CSS-only on the base renderers."""
+    registry = RendererRegistry()
+    registry.register("hero", _render_hero_paper)
+    registry.register("features", _render_features_paper)
+    registry.register("steps", _render_steps_paper)
+    _TEMPLATE_REGISTRIES["warm-paper"] = registry
+
+
+_register_paper_overrides()
 
 
 def _registry_for(template_id: str) -> RendererRegistry:

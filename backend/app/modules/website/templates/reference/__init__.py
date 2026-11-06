@@ -7,7 +7,6 @@ exposes a ``manifest`` and gets registered.
 
 
 def register_all(catalog) -> None:  # noqa: ANN001 - catalog type kept local to avoid a cycle
-    from app.modules.website.templates.funny_baby import manifest as funny_baby
     from app.modules.website.templates.reference.general_commerce import (
         manifest as general_commerce,
     )
@@ -15,4 +14,3 @@ def register_all(catalog) -> None:  # noqa: ANN001 - catalog type kept local to 
 
     catalog.register(general_commerce)
     catalog.register(restaurant)
-    catalog.register(funny_baby)
