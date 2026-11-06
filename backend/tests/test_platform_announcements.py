@@ -12,7 +12,9 @@ merchant-facing behaviours and the traps around them:
   list) = hidden — a targeting bug must never widen into "everyone";
 * dismissal is per (announcement, user): one staff member's dismiss leaves
   the banner up for colleagues, a double-dismiss is a no-op, and the banner
-  returns for a user who never dismissed.
+  returns for a user who never dismissed; a notice the user was never shown
+  (unknown id, outside its window, targeted away) refuses the tombstone, so
+  a ``true`` dismiss confirms a live, visible notice only.
 """
 
 from __future__ import annotations
@@ -144,8 +146,8 @@ async def test_dismissal_hides_for_that_user_only_and_is_idempotent(db, tenant_c
     row = await _make_announcement(db)
     colleague_id = uuid.uuid4()
 
-    first = await dismiss(db, row.id, tenant_ctx.user.id)
-    again = await dismiss(db, row.id, tenant_ctx.user.id)
+    first = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
+    again = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
 
     assert first is True
     assert again is False, "a double-dismiss must be a no-op, not a second row"
@@ -161,18 +163,44 @@ async def test_a_non_dismissible_announcement_refuses_the_tombstone(db, tenant_c
     row.dismissible = False
     await db.flush()
 
-    dismissed = await dismiss(db, row.id, tenant_ctx.user.id)
+    dismissed = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
 
     assert dismissed is False, "a notice marked non-dismissable must not vanish"
     assert await active_for_user(db, tenant_ctx.tenant_id, tenant_ctx.user.id) is not None
 
 
 async def test_dismissal_of_a_nonexistent_announcement_is_harmless(db, tenant_ctx) -> None:
-    dismissed = await dismiss(db, uuid.uuid4(), tenant_ctx.user.id)
+    dismissed = await dismiss(db, uuid.uuid4(), tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
     assert dismissed is False, "an unknown announcement id must be a no-op, not an FK error"
 
     remaining = (await db.execute(select(PlatformAnnouncementDismissal))).scalars().all()
     assert remaining == []  # no orphan tombstone rows
+
+
+async def test_dismiss_of_a_notice_targeted_elsewhere_refuses_the_tombstone(db, tenant_ctx) -> None:
+    """A dismiss response must not confirm a notice the caller was never
+    shown: targeted away from this tenant refuses with False and no row."""
+    row = await _make_announcement(db, audience={"tenant_ids": [str(uuid.uuid4())]})
+
+    dismissed = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
+
+    assert dismissed is False, "a notice targeted away must not be dismissible by this user"
+    remaining = (await db.execute(select(PlatformAnnouncementDismissal))).scalars().all()
+    assert remaining == []  # no tombstone for a notice the user never saw
+
+
+async def test_dismiss_refuses_a_notice_outside_its_window(db, tenant_ctx) -> None:
+    """A notice that has not started, or has already ended, was never on the
+    caller's screen — dismissing it refuses instead of writing a tombstone."""
+    future = await _make_announcement(db, starts_delta=timedelta(hours=1))
+    ended = await _make_announcement(db, ends_delta=timedelta(minutes=-1))
+
+    for row in (future, ended):
+        dismissed = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
+        assert dismissed is False, "a notice outside its window must refuse the tombstone"
+
+    remaining = (await db.execute(select(PlatformAnnouncementDismissal))).scalars().all()
+    assert remaining == []
 
 
 # ---------------------------------------------------------------------------

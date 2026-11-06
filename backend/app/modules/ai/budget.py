@@ -133,11 +133,20 @@ def _daily_cap(monthly_cap: Decimal) -> Decimal:
 async def _reserved_spend(
     session: AsyncSession, tenant_id: UUID, *, agent_id: UUID | None = None
 ) -> Decimal:
-    """Budget already committed to in-flight runs (not yet settled)."""
+    """Budget already committed to in-flight runs (not yet settled).
+
+    Only reservations created inside the CURRENT window count: the spend side
+    is bounded to the calendar month, so a reservation taken in the last
+    minutes of the previous month — still inside its TTL — must not charge
+    the fresh month's budget a second time (over-counting is fail-safe, but
+    it is still a wrong bill for a window the spend already left behind).
+    """
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     conditions = [
         AIBudgetReservation.tenant_id == tenant_id,
         AIBudgetReservation.status == "active",
         AIBudgetReservation.expires_at > datetime.now(UTC),
+        AIBudgetReservation.created_at >= month_start,
     ]
     if agent_id is not None:
         conditions.append(AIBudgetReservation.agent_id == agent_id)
@@ -234,8 +243,16 @@ async def _raise_budget_alerts(
     *,
     cap: Decimal,
     committed: Decimal,
+    agent_id: UUID | None = None,
 ) -> None:
-    """Notify the tenant's owners when spend crosses a §42 threshold."""
+    """Notify the tenant's owners when spend crosses a §42 threshold.
+
+    ``agent_id`` is the CAP'S SCOPE — None for the tenant-wide cap, the agent's
+    id for an agent-scoped one — and it is part of the dedup key. Two different
+    caps can cross the same threshold in one period; a scope-less key let
+    whichever crossed first swallow the other's alert for the whole period,
+    worst case the tenant cap's alert (the one the owners must hear).
+    """
     if cap <= 0:
         return
     ratio = (committed / cap) * Decimal(100)
@@ -250,6 +267,9 @@ async def _raise_budget_alerts(
         return
 
     period_key = datetime.now(UTC).strftime("%Y-%m")
+    # The key carries the cap's scope so a tenant alert and an agent alert can
+    # never dedup each other away (same pattern as the soft-cap key below).
+    scope = f"agent:{agent_id}" if agent_id is not None else "tenant"
     for owner_id in owner_ids:
         await NotificationService.create(
             session,
@@ -265,7 +285,7 @@ async def _raise_budget_alerts(
                 "committed": str(committed),
                 "period": period_key,
             },
-            dedup_key=f"ai_budget:{tenant_id}:{period_key}:{threshold}",
+            dedup_key=f"ai_budget:{tenant_id}:{period_key}:{threshold}:{scope}",
         )
 
 
@@ -475,7 +495,9 @@ async def reserve_budget(
     estimate = Decimal(str(estimated_cost or 0))
     committed = spend + reserved
 
-    await _raise_budget_alerts(session, tenant_id, cap=cap, committed=committed)
+    await _raise_budget_alerts(
+        session, tenant_id, cap=cap, committed=committed, agent_id=scope_agent_id
+    )
 
     # The SOFT tier (tenant scope only — an agent-scoped cap governs one agent,
     # not the tenant's subscription): crossing it warns and asks for renewal,
@@ -513,12 +535,16 @@ async def reserve_budget(
             },
         )
 
-    if daily_cap > 0 and day_spend + estimate >= daily_cap:
+    # The day check mirrors the month check: active reservations count here
+    # too, or N concurrent runs each under the daily cap pass together by
+    # N×estimate until their reservations settle.
+    if daily_cap > 0 and day_spend + reserved + estimate >= daily_cap:
         _on_budget_exceeded(
             on_exceed,
             "daily AI budget exceeded",
             details={
                 "day_spend": str(day_spend),
+                "reserved": str(reserved),
                 "daily_cap": str(daily_cap),
                 "estimate": str(estimate),
             },

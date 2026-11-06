@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Info, Megaphone, TriangleAlert, Wrench, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -17,8 +18,15 @@ const KINDS = {
 
 export default function AnnouncementBanner() {
   const { t } = useI18n();
+  // The banner stays mounted across navigation inside DashboardLayout, so a
+  // fetch-on-mount only ever saw what existed at load time. The route path is
+  // the dependency: a notice published mid-session appears on the next
+  // navigation without a full reload.
+  const { pathname } = useLocation();
   const [announcement, setAnnouncement] = useState(null);
-  const [hidden, setHidden] = useState(false);
+  // The dismissed id, not a boolean: a route-change re-fetch must keep the
+  // dismissed notice hidden while letting a NEW announcement through.
+  const [dismissedId, setDismissedId] = useState(null);
   const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
@@ -33,9 +41,9 @@ export default function AnnouncementBanner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname]);
 
-  if (!announcement || hidden) return null;
+  if (!announcement || announcement.id === dismissedId) return null;
 
   const kind = KINDS[announcement.kind] ?? KINDS.info;
   const Icon = kind.icon;
@@ -48,7 +56,7 @@ export default function AnnouncementBanner() {
       // Optimistic hide regardless: the server re-shows it only if the
       // tombstone never landed, which is the honest failure direction.
     }
-    setHidden(true);
+    setDismissedId(announcement.id);
   };
 
   return (
