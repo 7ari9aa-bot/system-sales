@@ -29,9 +29,10 @@ The cashier has no mock data any more; it reads the real backend through `cashie
 Marketing is not in the first release. Its screens (campaigns, audience, automation) and the
 dashboard marketing card were deleted on 2026-10-28 after a build showed they were not in the
 bundle; the backend `marketing` module is untouched. Old `/marketing/*` links redirect to the
-dashboard. "My Website" is different: `pages/Website.jsx` is kept on purpose, unrouted, and talks
-to the real `backend/app/modules/website` (provision, publish, Studio sign-in). `/website` shows
-`WebsiteComingSoon` until it is switched on with one line in `App.jsx`. Do not delete `Website.jsx`.
+dashboard. "My Website" is LIVE since 2026-11-05: `/website` renders the in-house website builder
+(`pages/website/` — template gallery -> purchase -> control page) against `backend/app/modules/website`.
+The old external-platform `pages/Website.jsx` and the `WebsiteComingSoon.jsx` placeholder were deleted
+with that switch-on; do not reintroduce them.
 
 Tests: `*.test.js` sit next to the code (Vitest, `npm test`). Browser tests are in `e2e/`
 (Playwright, `npm run test:e2e`).

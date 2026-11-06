@@ -35,6 +35,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | Channels (WhatsApp, Instagram, Messenger, Telegram, web chat) | [CHANNELS.md](CHANNELS.md), [META_SETUP.md](META_SETUP.md), [channels/](channels/) |
 | Cashier / POS | [POS_IMPLEMENTATION_PLAN.md](POS_IMPLEMENTATION_PLAN.md), [POS_EXPANSION_PLAN.md](POS_EXPANSION_PLAN.md), [POS_ERPNEXT_STUDY.md](POS_ERPNEXT_STUDY.md), [COMMERCE_CORE_ARCHITECTURE.md](COMMERCE_CORE_ARCHITECTURE.md) |
 | Customer commerce (deposits, orders, payments) | [COMMERCE_FIT_REPORT.md](COMMERCE_FIT_REPORT.md) — Phase 0: what the commerce spec asks for vs what the code already owns, the real gaps, and the blocking decisions. |
+| Customer websites (website builder) | [SITES_SERVING.md](SITES_SERVING.md) — how published customer sites are served: path mode today, subdomain mode with wildcard DNS, slug rules, custom domains later. |
 | Customer AI agent | [design/](design/) (core design, M1 handoff, red team) |
 | Desktop app | [DESKTOP_ARCH_REVIEW.md](DESKTOP_ARCH_REVIEW.md), and `desktop/docs/` in the repo root |
 

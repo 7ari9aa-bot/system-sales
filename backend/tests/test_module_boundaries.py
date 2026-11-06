@@ -193,7 +193,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # conversations -> platform.services.channel_access — a SERVICE-level import
 # (no platform tables imported): the inbox reads the per-user channel-access
 # allowlist the owner console manages. Both sides of the edge are services.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 236
+# 236 -> 240 on 2026-11-05: the website builder replaced the external-platform
+# bridge (client.py deleted, −1 site). The in-house module needs identity.deps
+# for the tenant context on its merchant/admin surfaces (4 sites — the same
+# edge the old router already had, now also from two services) and ONE
+# function-scope catalog import: public_service registers the catalog tables
+# in Base.metadata so the public product read stays boundary-safe (no module-
+# scope coupling; see app/modules/website/services/public_service.py).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 240
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

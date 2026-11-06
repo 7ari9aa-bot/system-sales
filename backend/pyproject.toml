@@ -76,6 +76,14 @@ extend-immutable-calls = [
     "app.modules.orders.routers._deps.require_permission",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Template manifests carry their CSS design blocks as authored string
+# constants; reflowing a stylesheet would only obscure it.
+"app/modules/website/templates/reference/*.py" = ["E501"]
+"app/modules/website/templates/funny_baby.py" = ["E501"]
+"app/modules/website/templates/warm_paper.py" = ["E501"]
+"app/modules/website/templates/street_poster.py" = ["E501"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # The live model evaluation costs money; it only runs when asked for with `-m live_eval`.
