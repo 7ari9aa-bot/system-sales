@@ -26,7 +26,12 @@ from app.core.config import get_settings
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import DbSession, TenantContext, TenantCtxDep
 from app.modules.identity.models import Tenant
-from app.modules.website.services import content_service, public_service, purchase_service
+from app.modules.website.services import (
+    content_service,
+    preview_service,
+    public_service,
+    purchase_service,
+)
 from app.modules.website.services.publishing_service import publish as publish_website
 from app.modules.website.services.publishing_service import rollback as rollback_website
 from app.modules.website.templates import catalog
@@ -295,8 +300,29 @@ async def _serve_site(session: DbSession, *, slug: str | None, hostname: str | N
     return _html(await public_service.render_html(session, site))
 
 
+@public_sites_router.get("/sites/preview/{template_id}")
+async def public_site_preview(template_id: str) -> Response:
+    """The template preview walk: the FULL demo site — no database, no
+    purchase. Every page is walkable at /sites/preview/<id>/<page-slug>."""
+    html = preview_service.render_template_preview(template_id)
+    if html is None:
+        raise NotFoundError("template not found")
+    return _html(html)
+
+
+@public_sites_router.get("/sites/preview/{template_id}/{page_slug}")
+async def public_site_preview_page(template_id: str, page_slug: str) -> Response:
+    html = preview_service.render_template_preview(template_id, page_slug=page_slug)
+    if html is None:
+        raise NotFoundError("template or page not found")
+    return _html(html)
+
+
 @public_sites_router.get("/sites/{slug}")
 async def public_site(slug: str, session: DbSession) -> Response:
+    if slug == "preview":
+        # Guard the namespace: a published site may never be named "preview".
+        raise NotFoundError("site not found")
     return await _serve_site(session, slug=slug, hostname=None)
 
 

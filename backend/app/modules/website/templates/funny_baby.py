@@ -150,6 +150,16 @@ manifest = TemplateManifest(
     price=Decimal("2000.00"),
     css=CSS,
     theme_tokens={"primary": "#f3513f", "background": "#fffdf5"},
+    demo_products=(
+        {"title": "بودي سوت قطن — ٠-٣ شهور", "price": "185.00 ج.م"},
+        {"title": "أفرول شتوي بالكابوت — ٣-٦ شهور", "price": "320.00 ج.م"},
+        {"title": "طقم نوم قطن قطعتين — ٦-٩ شهور", "price": "240.00 ج.م"},
+        {"title": "تيشيرت تريكو ملون — ١-٢ سنة", "price": "150.00 ج.م"},
+        {"title": "جاكيت شتوي بالفرو — ٢-٣ سنة", "price": "395.00 ج.م"},
+        {"title": "فستان حفلات مطرز — ٣-٤ سنة", "price": "465.00 ج.م"},
+        {"title": "بنطلون قطن مرن — ٤-٥ سنة", "price": "175.00 ج.م"},
+        {"title": "بيجامة قطن قطعتين — ٥-٦ سنة", "price": "210.00 ج.م"},
+    ),
     preview_image="/templates/funny-baby.svg",
     pages=(
         TemplatePage(

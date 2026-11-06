@@ -50,6 +50,10 @@ class TemplateManifest:
     pages: tuple[TemplatePage, ...] = ()
     # Frontend asset path for the gallery card (bundled by the web app).
     preview_image: str = ""
+    # Sample products shown on the template's live preview walk
+    # (/sites/preview/<id>): themed demo items so the product grids read
+    # like a real store before the merchant buys. Empty = the generic set.
+    demo_products: tuple[dict, ...] = ()
 
 
 class WebsiteTemplateCatalog:

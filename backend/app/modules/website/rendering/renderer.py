@@ -498,12 +498,26 @@ def _render_page(page: dict, reg: RendererRegistry, ctx: RenderContext) -> str:
     return f'<section class="site-page" id="page-{escape(slug)}">{header}{sections}</section>'
 
 
-def render_website(snapshot: dict, ctx: RenderContext | None = None) -> str:
+def render_website(
+    snapshot: dict,
+    ctx: RenderContext | None = None,
+    *,
+    page_slug: str | None = None,
+    page_url_prefix: str | None = None,
+    banner_html: str | None = None,
+) -> str:
     """Render the published snapshot into a full HTML document.
 
     ``snapshot`` is the ``website_published_sites`` row as a dict: name,
     default_locale, template_id, theme_tokens, navigation and the projection
     (pages of validated sections).
+
+    ``page_slug`` renders ONE page of the projection instead of the whole
+    document (the preview-walk mode); with ``page_url_prefix`` set, the
+    auto-navigation links become real per-page URLs
+    (``{prefix}/{page-slug}``) instead of same-document anchors, so a visitor
+    clicks through the site like a real multi-page website. ``banner_html``
+    (preview mode only) is injected right after ``<body>``.
     """
     ctx = ctx or RenderContext()
     template_id = str(snapshot.get("template_id") or "")
@@ -517,20 +531,36 @@ def render_website(snapshot: dict, ctx: RenderContext | None = None) -> str:
 
     name = _e(snapshot.get("name"))
     pages = snapshot.get("projection", {}).get("pages", [])
+
+    def _page_url(slug: Any) -> str:
+        if page_url_prefix:
+            return f"{page_url_prefix}/{slug}"
+        return f"#page-{slug}"
+
     nav_items = snapshot.get("navigation") or [
-        {"label": p.get("title"), "url": f"#page-{p.get('slug')}"} for p in pages
+        {"label": p.get("title"), "url": _page_url(p.get("slug"))} for p in pages
     ]
     style = render_style(snapshot.get("theme_tokens") or {})
     nav = render_navigation(nav_items)
-    body = "\n".join(_render_page(p, reg, ctx) for p in pages)
+
+    if page_slug is not None:
+        rendered = [p for p in pages if str(p.get("slug") or "") == page_slug]
+        body = "\n".join(_render_page(p, reg, ctx) for p in rendered)
+    else:
+        body = "\n".join(_render_page(p, reg, ctx) for p in pages)
+
+    title = name
+    if page_slug is not None and rendered:
+        title = f"{rendered[0].get('title')} — {name}"
     return (
         "<!doctype html>"
         f'<html dir="{direction}" lang="{escape(locale)}">'
         f'<head><meta charset="utf-8">'
         f'<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{name}</title>{style}"
+        f"<title>{_e(title)}</title>{style}"
         f"<style>{css}</style></head>"
-        f'<body class="site-body"><header class="site-nav">'
+        f'<body class="site-body">{banner_html or ""}'
+        f'<header class="site-nav">'
         f'<span class="brand">{name}</span>{nav}</header>'
         f"<main>{body}</main></body></html>"
     )

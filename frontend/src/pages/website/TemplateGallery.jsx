@@ -1,5 +1,5 @@
 import React from "react";
-import { Check, Globe, Rocket } from "lucide-react";
+import { Check, ExternalLink, Globe, Rocket } from "lucide-react";
 import { SectionCard } from "@/components/dashboard/ui";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -90,11 +90,18 @@ export default function TemplateGallery({ onPurchased }) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((tpl) => (
-            <button
+            <div
               key={tpl.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setSelected(tpl.id)}
-              className={`group rounded-xl border p-3 text-start transition ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelected(tpl.id);
+                }
+              }}
+              className={`group cursor-pointer rounded-xl border p-3 text-start transition ${
                 selected === tpl.id
                   ? "border-primary ring-2 ring-primary/30"
                   : "hover:border-primary/40"
@@ -122,10 +129,24 @@ export default function TemplateGallery({ onPurchased }) {
                   </span>
                 ) : null}
               </div>
-              <div className="mt-2 text-sm font-semibold text-primary">
-                {formatPrice(tpl.price, isAr)}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-primary">
+                  {formatPrice(tpl.price, isAr)}
+                </span>
+                {/* المعاينة الحية: الموقع الديمو كامل يفتح في تاب جديد —
+                    زرار مستقل عن تحديد الكارت عشان الزائر يتجول الأول. */}
+                <a
+                  href={`/sites/preview/${tpl.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {isAr ? "معاينة حية" : "Live preview"}
+                </a>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
