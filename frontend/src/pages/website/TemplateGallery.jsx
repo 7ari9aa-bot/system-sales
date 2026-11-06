@@ -1,7 +1,7 @@
 import React from "react";
 import { Check, ExternalLink, Globe, Rocket } from "lucide-react";
 import { SectionCard } from "@/components/dashboard/ui";
-import { api } from "@/lib/api";
+import { api, apiUrl } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { slugError, slugify } from "./slugRules";
 
@@ -135,8 +135,11 @@ export default function TemplateGallery({ onPurchased }) {
                 </span>
                 {/* المعاينة الحية: الموقع الديمو كامل يفتح في تاب جديد —
                     زرار مستقل عن تحديد الكارت عشان الزائر يتجول الأول. */}
+                {/* عبر قاعدة الـ API: في الإنتاج الواجهة بتكلم الباك على أصل
+                    مختلف، فالمعاينة لازم تتفتح من أصل الباك عشان روابط
+                    التنقل جوه الديمو تفضل شغالة. */}
                 <a
-                  href={`/sites/preview/${tpl.id}`}
+                  href={apiUrl(`/public/preview/${tpl.id}`)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
