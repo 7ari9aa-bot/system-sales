@@ -105,6 +105,13 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # AI Response: inbound customer messages drive the AI reply path.
     "message.received": EventPriority.AI_RESPONSE,
     # Critical system: money, privacy, security and restore lifecycle events.
+    # Website builder: purchases are human/admin actions on the merchant's
+    # behalf; publish/rollback refresh the public snapshot in-transaction and
+    # have no worker consumer, so they ride the automation tier.
+    "website.purchase.created": EventPriority.HUMAN_RESPONSE,
+    "website.purchase.confirmed": EventPriority.HUMAN_RESPONSE,
+    "website.published": EventPriority.NORMAL_AUTOMATION,
+    "website.rolled_back": EventPriority.NORMAL_AUTOMATION,
     "order.created": EventPriority.CRITICAL_SYSTEM,
     "order.status_changed": EventPriority.CRITICAL_SYSTEM,
     "order.cancelled": EventPriority.CRITICAL_SYSTEM,

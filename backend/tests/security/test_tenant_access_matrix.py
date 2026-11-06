@@ -137,6 +137,14 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # What makes this safe to declare is the closed `stream` label set in
         # app/core/metrics.py — an open label there would publish tenant ids.
         "GET /metrics",
+        # Customer websites (modules/website): the PUBLIC read model. Both
+        # routes read ONLY website_published_sites (no tenant_id column, no
+        # tenant GUC by design) and the live product read binds the snapshot's
+        # server-stamped tenant via bind_tenant before any RLS-scoped query.
+        # GET / serves the same renderer by Host header for the subdomain
+        # phase and 404s unless websites_served_domain is configured.
+        "GET /sites/{slug}",
+        "GET /",
     }
 )
 
@@ -145,7 +153,7 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
 #: a heuristic that assumes "everything except the two probes is versioned" turns
 #: a new root route into a phantom `/api/v1/...` and reports the wrong URL in a
 #: security failure.
-_ROOT_MOUNTED: frozenset[str] = frozenset({"/healthz", "/readyz", "/metrics"})
+_ROOT_MOUNTED: frozenset[str] = frozenset({"/", "/healthz", "/readyz", "/metrics", "/sites/{slug}"})
 
 
 def _walk_routes(app):  # noqa: ANN001, ANN201

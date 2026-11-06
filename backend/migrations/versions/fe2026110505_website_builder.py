@@ -91,17 +91,13 @@ def _timestamps() -> list[sa.Column]:
     ]
 
 
-def _tenant_column() -> sa.Column:
-    return sa.Column(
-        "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-
-
 def upgrade() -> None:
     op.create_table(
         "websites",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        _tenant_column(),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         *_timestamps(),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("status", sa.String(16), server_default="draft", nullable=False),
@@ -129,7 +125,9 @@ def upgrade() -> None:
     op.create_table(
         "website_versions",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        _tenant_column(),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         *_timestamps(),
         sa.Column(
             "website_id",
@@ -153,7 +151,9 @@ def upgrade() -> None:
     op.create_table(
         "website_pages",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        _tenant_column(),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         *_timestamps(),
         sa.Column(
             "version_id",
@@ -172,7 +172,9 @@ def upgrade() -> None:
     op.create_table(
         "website_page_sections",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        _tenant_column(),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -193,7 +195,9 @@ def upgrade() -> None:
     op.create_table(
         "website_purchases",
         sa.Column("id", sa.Uuid(), primary_key=True),
-        _tenant_column(),
+        sa.Column(
+            "tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         *_timestamps(),
         sa.Column("template_id", sa.String(64), nullable=False),
         sa.Column("status", sa.String(20), server_default="pending_payment", nullable=False),

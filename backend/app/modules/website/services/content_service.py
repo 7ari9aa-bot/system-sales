@@ -25,6 +25,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.modules.identity.deps import TenantContext
 from app.modules.website import models as ws
 from app.modules.website.errors import PurchaseStateError
+from app.modules.website.models import WebsitePurchase
 from app.modules.website.sections import registry as section_registry
 from app.modules.website.services.publishing_service import load_tree
 
@@ -95,12 +96,12 @@ def _live_url(slug: str) -> str:
 async def overview(session: AsyncSession, ctx: TenantContext) -> dict:
     purchase = (
         await session.execute(
-            sa.select(ws.WebsitePurchase)
+            sa.select(WebsitePurchase)
             .where(
-                ws.WebsitePurchase.tenant_id == ctx.tenant_id,
-                ws.WebsitePurchase.status.in_(["pending_payment", "paid"]),
+                WebsitePurchase.tenant_id == ctx.tenant_id,
+                WebsitePurchase.status.in_(["pending_payment", "paid"]),
             )
-            .order_by(ws.WebsitePurchase.created_at.desc())
+            .order_by(WebsitePurchase.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()

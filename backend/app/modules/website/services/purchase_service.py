@@ -35,6 +35,7 @@ from app.modules.website.errors import (
     TemplateNotFoundError,
     WebsiteDomainError,
 )
+from app.modules.website.models import WebsitePurchase
 from app.modules.website.services.publishing_service import publish as publish_website
 from app.modules.website.slugs import slugify, validate_slug
 from app.modules.website.templates import TemplateManifest, catalog
@@ -60,15 +61,15 @@ async def _live_website(session: AsyncSession, tenant_id: uuid.UUID) -> ws.Websi
     ).scalar_one_or_none()
 
 
-async def _open_purchase(session: AsyncSession, tenant_id: uuid.UUID) -> ws.WebsitePurchase | None:
+async def _open_purchase(session: AsyncSession, tenant_id: uuid.UUID) -> WebsitePurchase | None:
     return (
         await session.execute(
-            sa.select(ws.WebsitePurchase)
+            sa.select(WebsitePurchase)
             .where(
-                ws.WebsitePurchase.tenant_id == tenant_id,
-                ws.WebsitePurchase.status.in_(sorted(ws.WEBSITE_PURCHASE_OPEN_STATUSES)),
+                WebsitePurchase.tenant_id == tenant_id,
+                WebsitePurchase.status.in_(sorted(ws.WEBSITE_PURCHASE_OPEN_STATUSES)),
             )
-            .order_by(ws.WebsitePurchase.created_at.desc())
+            .order_by(WebsitePurchase.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -82,7 +83,7 @@ async def create(
     site_name: str,
     slug: str | None = None,
     payment_reference: str | None = None,
-) -> ws.WebsitePurchase:
+) -> WebsitePurchase:
     manifest = catalog.get(template_id)  # TemplateNotFoundError -> 404
 
     if await _live_website(session, ctx.tenant_id) is not None:
@@ -116,7 +117,7 @@ async def create(
         raise SlugUnavailableError(details={"slug": desired})
 
     reference = (payment_reference or "").strip()[:200] or None
-    purchase = ws.WebsitePurchase(
+    purchase = WebsitePurchase(
         tenant_id=ctx.tenant_id,
         template_id=manifest.id,
         status="pending_payment",
@@ -147,7 +148,7 @@ async def create(
 
 async def set_payment_reference(
     session: AsyncSession, ctx: TenantContext, *, reference: str
-) -> ws.WebsitePurchase:
+) -> WebsitePurchase:
     purchase = await _open_purchase(session, ctx.tenant_id)
     if purchase is None:
         raise PurchaseStateError("there is no open website purchase to reference")
@@ -159,7 +160,7 @@ async def set_payment_reference(
     return purchase
 
 
-async def cancel(session: AsyncSession, ctx: TenantContext) -> ws.WebsitePurchase:
+async def cancel(session: AsyncSession, ctx: TenantContext) -> WebsitePurchase:
     purchase = await _open_purchase(session, ctx.tenant_id)
     if purchase is None:
         raise PurchaseStateError("there is no open website purchase to cancel")
@@ -184,11 +185,11 @@ async def _admin_purchase_tenant(session: AsyncSession, purchase_id: uuid.UUID) 
 
 async def _load_pending_purchase(
     session: AsyncSession, purchase_id: uuid.UUID, tenant_id: uuid.UUID
-) -> ws.WebsitePurchase:
+) -> WebsitePurchase:
     purchase = (
         await session.execute(
-            sa.select(ws.WebsitePurchase).where(
-                ws.WebsitePurchase.id == purchase_id, ws.WebsitePurchase.tenant_id == tenant_id
+            sa.select(WebsitePurchase).where(
+                WebsitePurchase.id == purchase_id, WebsitePurchase.tenant_id == tenant_id
             )
         )
     ).scalar_one_or_none()
@@ -198,7 +199,7 @@ async def _load_pending_purchase(
 
 
 async def _activate_website(
-    session: AsyncSession, purchase: ws.WebsitePurchase, manifest: TemplateManifest
+    session: AsyncSession, purchase: WebsitePurchase, manifest: TemplateManifest
 ) -> ws.Website:
     """Create the website (template content) and publish its initial version."""
     website = ws.Website(
