@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 446,
-    "sha256": "a6f070b1aa52395a423c91f045e9f2dbbb6c1201f7a9c500e534328f69dc717a",
+    "operations": 448,
+    "sha256": "6753c6b5fa385377185bf1a026d8c56a45d9d46b0843212ba729e2463d5838f5",
     "typed_operations": 286
   },
   "spec": {
@@ -59000,6 +59000,95 @@
           "summary": "Add Product Variant",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/public/preview/{template_id}": {
+        "get": {
+          "operationId": "api_public_site_preview_api_v1_public_preview__template_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Api Public Site Preview",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/public/preview/{template_id}/{page_slug}": {
+        "get": {
+          "operationId": "api_public_site_preview_page_api_v1_public_preview__template_id___page_slug__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "page_slug",
+              "required": true,
+              "schema": {
+                "title": "Page Slug",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Api Public Site Preview Page",
+          "tags": [
+            "website"
           ]
         }
       },

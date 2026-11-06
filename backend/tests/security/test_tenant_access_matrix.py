@@ -151,6 +151,11 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # deliberately absent; unknown templates/slugs are plain 404s.
         "GET /sites/preview/{template_id}",
         "GET /sites/preview/{template_id}/{page_slug}",
+        # The SAME walk served under /api/v1 so production frontends reach it
+        # through their existing API base (same zero-database contract; the
+        # demo's internal links are absolute to the forwarded origin).
+        "GET /api/v1/public/preview/{template_id}",
+        "GET /api/v1/public/preview/{template_id}/{page_slug}",
     }
 )
 

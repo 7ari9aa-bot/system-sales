@@ -318,6 +318,43 @@ async def public_site_preview_page(template_id: str, page_slug: str) -> Response
     return _html(html)
 
 
+def _preview_prefix_from_request(request: Request, template_id: str) -> str:
+    """The absolute walk base for the /api/v1-served preview.
+
+    Production reaches the API through the frontend origin's proxy, so the
+    links inside the demo document must be ABSOLUTE to the origin the
+    visitor opened — derived from the forwarded Host/Proto (never from
+    app base_url, which is the loopback bind behind the proxy)."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
+    return f"{proto}://{host}/api/v1/public/preview/{template_id}"
+
+
+@router.get("/public/preview/{template_id}")
+async def api_public_site_preview(template_id: str, request: Request) -> Response:
+    html = preview_service.render_template_preview(
+        template_id,
+        url_prefix=_preview_prefix_from_request(request, template_id),
+    )
+    if html is None:
+        raise NotFoundError("template not found")
+    return _html(html)
+
+
+@router.get("/public/preview/{template_id}/{page_slug}")
+async def api_public_site_preview_page(
+    template_id: str, page_slug: str, request: Request
+) -> Response:
+    html = preview_service.render_template_preview(
+        template_id,
+        page_slug=page_slug,
+        url_prefix=_preview_prefix_from_request(request, template_id),
+    )
+    if html is None:
+        raise NotFoundError("template or page not found")
+    return _html(html)
+
+
 @public_sites_router.get("/sites/{slug}")
 async def public_site(slug: str, session: DbSession) -> Response:
     if slug == "preview":
