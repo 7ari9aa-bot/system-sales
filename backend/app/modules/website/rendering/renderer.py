@@ -330,6 +330,129 @@ _base_registry = RendererRegistry()
 _TEMPLATE_REGISTRIES: dict[str, RendererRegistry] = {}
 
 
+def _render_hero_poster(props: dict, _ctx: RenderContext) -> str:
+    """Street-poster hero: the brick block with the ink-highlighted headline,
+    two poster buttons, the gift pill, the rotated ink frame, the black stats
+    strip, and the ink ticker."""
+    eyebrow = _e(props.get("eyebrow"))
+    parts = str(props.get("heading") or "").split("\n")
+    heading_html = "<br />".join(
+        _e(part) if index < len(parts) - 1 else f"<span>{_e(part)}</span>"
+        for index, part in enumerate(parts)
+    )
+    sub = _e(props.get("subheading"))
+    ctas = ""
+    if props.get("cta_label") and props.get("cta_url"):
+        url = _safe_url(props.get("cta_url"))
+        if url and url != "#":
+            ctas += f'<a class="b b1" href="{url}">{_e(props.get("cta_label"))}</a>'
+    if props.get("secondary_label") and props.get("secondary_url"):
+        url = _safe_url(props.get("secondary_url"))
+        if url and url != "#":
+            label = _e(props.get("secondary_label"))
+            ctas += f'<a class="b b2" href="{url}">{label}</a>'
+    note = _e(props.get("note"))
+    note_html = f'<div class="gift">★ {note}</div>' if note else ""
+    image_html = '<div class="fr-img fr-img-empty"></div>'
+    if props.get("image"):
+        url = _safe_url(props.get("image"))
+        if url and url != "#":
+            image_html = f'<img class="fr-img" src="{url}" alt="">'
+    stats = props.get("stats") or []
+    stats_html = ""
+    if stats:
+        cells = "".join(
+            f'<div class="st"><b>{_e(st.get("value"))}</b><span>{_e(st.get("label"))}</span></div>'
+            for st in stats
+        )
+        stats_html = f'<dl class="stats">{cells}</dl>'
+    ticker_items = props.get("ticker") or []
+    ticker = ""
+    if ticker_items:
+        spans = "".join(
+            f'<span>{_e(phrase)}<i aria-hidden="true">✳</i></span>' for phrase in ticker_items
+        )
+        ticker = (
+            '<section class="tick" aria-hidden="true">'
+            f'<div class="tk"><div class="tg">{spans}</div><div class="tg">{spans}</div></div>'
+            "</section>"
+        )
+    return (
+        '<section class="poster-hero">'
+        '<section class="blk"><div class="hero"><div>'
+        f"{f'<span class="eb">{eyebrow}</span>' if eyebrow else ''}"
+        f"<h1>{heading_html}</h1>"
+        f"{f'<p class="lead">{sub}</p>' if sub else ''}"
+        f'<div class="btns">{ctas}</div>{note_html}'
+        f"</div><div><div class="
+        rf">{image_html}</div></div>"
+        f"</div></section>{stats_html}{ticker}</section>"
+    )
+
+
+def _render_features_poster(props: dict, _ctx: RenderContext) -> str:
+    """Poster features: href items become the giant-number ROWS; href-less
+    items become the numbered columns on the olive promise block."""
+    head = _section_head_poster(props)
+    items = props.get("items", [])
+    if any(item.get("href") for item in items):
+        rows = "".join(
+            f'<a class="row" href="{_safe_url(item.get("href"))}">'
+            f'<span class="n">{index + 1:02d}</span>'
+            f"<h3>{_e(item.get('title'))}<small>{_e(item.get('text'))}</small></h3>"
+            f'<span class="row-img" aria-hidden="true"></span></a>'
+            for index, item in enumerate(items)
+        )
+        return f'<section class="poster-sec">{head}<div class="rows">{rows}</div></section>'
+    cols = "".join(
+        f'<div class="col"><span class="pn">{index + 1:02d}</span>'
+        f"<h3>{_e(item.get('title'))}</h3><p>{_e(item.get('text'))}</p></div>"
+        for index, item in enumerate(items)
+    )
+    return f'<section class="poster-pro">{head}<div class="cols">{cols}</div></section>'
+
+
+def _render_steps_poster(props: dict, _ctx: RenderContext) -> str:
+    head = _section_head_poster(props)
+    items = "".join(
+        f'<li class="sp"><span class="big">{index + 1:02d}</span>'
+        f"<h3>{_e(item.get('title'))}</h3><p>{_e(item.get('text'))}</p></li>"
+        for index, item in enumerate(props.get("items", []))
+    )
+    return f'<section class="poster-path">{head}<ol class="psteps">{items}</ol></section>'
+
+
+def _section_head_poster(props: dict) -> str:
+    """The poster head: eyebrow chip + oversized heading, with the trailing
+    line rendered on an ink block when the heading carries a newline."""
+    head = ""
+    if props.get("eyebrow"):
+        head += f'<span class="eb2">{_e(props.get("eyebrow"))}</span>'
+    if props.get("heading"):
+        parts = str(props.get("heading")).split("\n")
+        heading_html = "<br />".join(
+            _e(part) if index < len(parts) - 1 else f"<em>{_e(part)}</em>"
+            for index, part in enumerate(parts)
+        )
+        head += f"<h2>{heading_html}</h2>"
+    if props.get("text"):
+        head += f'<p class="sh-lead">{_e(props.get("text"))}</p>'
+    return head
+
+
+def _register_poster_overrides() -> None:
+    """The street-poster template renders hero, features and steps with
+    poster markup; everything else rides the base renderers + CSS."""
+    registry = RendererRegistry()
+    registry.register("hero", _render_hero_poster)
+    registry.register("features", _render_features_poster)
+    registry.register("steps", _render_steps_poster)
+    _TEMPLATE_REGISTRIES["street-poster"] = registry
+
+
+_register_poster_overrides()
+
+
 def _register_paper_overrides() -> None:
     """The warm-paper template renders its hero, feature cards and steps with
     bespoke markup (paper cards, chapter links, ticker); everything else is

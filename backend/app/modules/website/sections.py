@@ -41,6 +41,10 @@ class HeroProps(SectionProps):
     secondary_url: str | None = None
     note: str | None = None
     ticker: list[str] | None = None
+    # Poster-style stats strip under the hero ({"value": "S – XXL",
+    # "label": "المقاسات"}); a list of dicts, so it stays out of the v1
+    # editor and is seeded by the template.
+    stats: list[dict[str, str]] | None = None
 
 
 class RichTextProps(SectionProps):
@@ -115,6 +119,7 @@ class FeaturesProps(SectionProps):
 
     eyebrow: str | None = None
     heading: str | None = None
+    text: str | None = None
     items: list[FeatureItemProps] = Field(min_length=1, max_length=6)
 
 

@@ -14,11 +14,13 @@ from app.modules.website.templates.catalog import (
     catalog,
 )
 from app.modules.website.templates.funny_baby import manifest as _funny_baby
+from app.modules.website.templates.street_poster import manifest as _street_poster
 from app.modules.website.templates.warm_paper import manifest as _warm_paper
 
 _reference.register_all(catalog)
 catalog.register(_funny_baby)
 catalog.register(_warm_paper)
+catalog.register(_street_poster)
 
 __all__ = [
     "TemplateManifest",

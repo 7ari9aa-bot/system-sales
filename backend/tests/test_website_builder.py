@@ -712,3 +712,94 @@ def test_the_warm_paper_overrides_render_the_paper_identity() -> None:
     assert "story-promise" in html and "story-pn" in html
     # steps inside the yellow paper card
     assert "story-paper-yellow" in html and "story-step" in html
+
+
+# ---------------------------------------------------- street-poster design ----
+
+
+def test_the_street_poster_design_is_registered() -> None:
+    """Design-3 (the printed street-poster restyle) is in the catalog."""
+    manifest = catalog.get("street-poster")
+    assert {p.slug for p in manifest.pages} == {
+        "home",
+        "products",
+        "offers",
+        "stores",
+        "faq",
+        "track-order",
+        "shipping",
+        "exchange-return",
+        "privacy",
+        "terms",
+    }
+    home_types = [s.type for p in manifest.pages if p.slug == "home" for s in p.sections]
+    assert home_types == ["hero", "features", "product_grid", "features", "steps", "cta"]
+    # The hero carries the poster stats strip.
+    hero_props = manifest.pages[0].sections[0].props
+    assert hero_props["stats"][0]["value"] == "S – XXL"
+    assert len(catalog.list()) >= 5
+
+
+def test_the_street_poster_overrides_render_the_poster_identity() -> None:
+    snapshot = {
+        "name": "بوستر",
+        "default_locale": "ar",
+        "template_id": "street-poster",
+        "theme_tokens": {"primary": "#c24a2b", "background": "#f2f0e9"},
+        "navigation": [],
+        "projection": {
+            "pages": [
+                {
+                    "id": "1",
+                    "title": "الرئيسية",
+                    "slug": "home",
+                    "sections": [
+                        {
+                            "type": "hero",
+                            "props": {
+                                "eyebrow": "مجموعة الموسم ٢٠٢٦",
+                                "heading": "ستايل هادي\nيفرق في إطلالتك",
+                                "cta_label": "ابدأ التسوق",
+                                "cta_url": "#page-products",
+                                "secondary_label": "زيارة الفروع",
+                                "secondary_url": "#page-stores",
+                                "note": "تغليف هدايا مجاني",
+                                "stats": [{"value": "S – XXL", "label": "المقاسات"}],
+                                "ticker": ["توصيل لكل المحافظات"],
+                            },
+                        },
+                        {
+                            "type": "features",
+                            "props": {
+                                "items": [
+                                    {
+                                        "title": "الكتالوج",
+                                        "text": "كل المنتجات",
+                                        "href": "#page-products",
+                                    },
+                                ],
+                            },
+                        },
+                        {
+                            "type": "features",
+                            "props": {
+                                "items": [{"title": "مقاس بالسنتيمتر", "text": "على كل قطعة"}],
+                            },
+                        },
+                        {
+                            "type": "steps",
+                            "props": {"items": [{"title": "اختار", "text": "بدقة"}]},
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+    html = render_website(snapshot, RenderContext())
+    assert "poster-hero" in html and '"blk"' in html
+    assert "<span>يفرق في إطلالتك</span>" in html
+    assert html.count('class="b b') >= 2
+    assert "gift" in html and '"stats"' in html and '"tick"' in html
+    assert 'href="#page-products"' in html and '"row"' in html
+    assert "poster-pro" in html and '"pn"' in html
+    assert "poster-path" in html and '"sp"' in html

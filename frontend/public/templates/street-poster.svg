@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" font-family="IBM Plex Sans Arabic, Tajawal, sans-serif">
+  <rect width="400" height="300" fill="#f2f0e9"/>
+  <!-- brick hero block with white stripe -->
+  <rect x="0" y="0" width="400" height="150" fill="#c24a2b"/>
+  <rect x="0" y="118" width="400" height="14" fill="#ffffff"/>
+  <rect x="24" y="16" width="96" height="20" fill="#111111"/>
+  <text x="30" y="31" fill="#f2f0e9" font-size="11" font-weight="800">مجموعة الموسم</text>
+  <text x="24" y="66" fill="#f2f0e9" font-size="26" font-weight="900" font-family="Baloo Bhaijaan 2, IBM Plex Sans Arabic, sans-serif">ستايل هادي</text>
+  <rect x="24" y="74" width="102" height="24" fill="#111111"/>
+  <text x="30" y="92" fill="#f2f0e9" font-size="22" font-weight="900" font-family="Baloo Bhaijaan 2, IBM Plex Sans Arabic, sans-serif">يفرق في إطلالتك</text>
+  <rect x="24" y="106" width="70" height="18" fill="#111111"/>
+  <rect x="102" y="106" width="56" height="18" fill="#f2f0e9" stroke="#111111" stroke-width="3"/>
+  <!-- rotated ink frame -->
+  <g transform="rotate(3 320 62)">
+    <rect x="272" y="18" width="100" height="86" fill="#f2f0e9" stroke="#111111" stroke-width="6"/>
+    <rect x="280" y="26" width="84" height="70" fill="#e9c86a"/>
+  </g>
+  <!-- black stats strip -->
+  <rect x="0" y="150" width="400" height="42" fill="#111111"/>
+  <text x="30" y="178" fill="#c24a2b" font-size="22" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">S–XXL</text>
+  <text x="30" y="188" fill="#f2f0e9" font-size="8" font-weight="700">المقاسات المتاحة</text>
+  <text x="170" y="178" fill="#8fa593" font-size="22" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">٣</text>
+  <text x="170" y="188" fill="#f2f0e9" font-size="8" font-weight="700">فروع بالقاهرة</text>
+  <text x="290" y="178" fill="#f2f0e9" font-size="22" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">٤٨ س</text>
+  <text x="290" y="188" fill="#f2f0e9" font-size="8" font-weight="700">توصيل للمحافظات</text>
+  <!-- ink ticker -->
+  <rect x="0" y="192" width="400" height="18" fill="#111111" stroke="#c24a2b" stroke-width="3"/>
+  <text x="16" y="205" fill="#f2f0e9" font-size="10" font-weight="900">توصيل لكل المحافظات ✳ استبدال ١٤ يوم ✳ مقاسات بالسنتيمتر ✳ فروع بالقاهرة ✳</text>
+  <!-- poster rows -->
+  <g>
+    <rect x="0" y="216" width="400" height="28" fill="#f2f0e9" stroke="#111111" stroke-width="4"/>
+    <text x="24" y="237" fill="#c24a2b" font-size="20" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">01</text>
+    <text x="80" y="236" fill="#111111" font-size="14" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">الكتالوج</text>
+    <rect x="336" y="219" width="60" height="22" fill="#e9c86a"/>
+  </g>
+  <g>
+    <rect x="0" y="244" width="400" height="28" fill="#f2f0e9" stroke="#111111" stroke-width="4"/>
+    <text x="24" y="265" fill="#c24a2b" font-size="20" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">02</text>
+    <text x="80" y="264" fill="#111111" font-size="14" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">الفروع</text>
+    <rect x="336" y="247" width="60" height="22" fill="#82a99b"/>
+  </g>
+  <!-- olive promise band -->
+  <rect x="0" y="272" width="400" height="28" fill="#4f6152"/>
+  <text x="24" y="291" fill="#ffffff" font-size="13" font-weight="900" font-family="Baloo Bhaijaan 2, sans-serif">لا نعرض قطعة لم نقتنع بها</text>
+  <rect x="300" y="278" width="76" height="16" fill="#111111"/>
+</svg>
