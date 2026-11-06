@@ -173,6 +173,14 @@ manifest = TemplateManifest(
     price=Decimal("2500.00"),
     css=CSS,
     theme_tokens={"primary": "#d98974", "background": "#fff8ef"},
+    demo_products=(
+        {"title": "قميص قطن كلاسيك — M", "price": "420.00 ج.م"},
+        {"title": "تيشيرت بولو بيكي — L", "price": "310.00 ج.م"},
+        {"title": "بنطلون قماش سليم — 32", "price": "540.00 ج.م"},
+        {"title": "بدلة سموكينج كاملة", "price": "1850.00 ج.م"},
+        {"title": "جاكيت صوف كاجوال", "price": "690.00 ج.م"},
+        {"title": "قميص كاروهات شتوي — XL", "price": "480.00 ج.م"},
+    ),
     preview_image="/templates/warm-paper.svg",
     pages=(
         TemplatePage(

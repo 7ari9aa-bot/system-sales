@@ -803,3 +803,44 @@ def test_the_street_poster_overrides_render_the_poster_identity() -> None:
     assert 'href="#page-products"' in html and '"row"' in html
     assert "poster-pro" in html and '"pn"' in html
     assert "poster-path" in html and '"sp"' in html
+
+
+# ------------------------------------------------------ preview walk ----
+
+
+def test_the_preview_walk_renders_the_full_demo_site() -> None:
+    """«معاينة حية»: every template walks as a complete demo site with NO
+    database — home renders themed demo products, the ribbon marks it a
+    demo, and the seeded #page- anchors become real per-page URLs."""
+    from app.modules.website.services import preview_service
+
+    html = preview_service.render_template_preview("funny-baby")
+    assert html is not None
+    assert "preview-ribbon" in html  # the demo marker
+    assert "بودي سوت قطن" in html  # themed demo products, not generic ones
+    assert '/sites/preview/funny-baby/faq"' in html  # nav links per page
+    assert 'href="/sites/preview/funny-baby/products"' in html  # hero CTA rewritten
+
+
+def test_the_preview_walk_serves_single_pages() -> None:
+    from app.modules.website.services import preview_service
+
+    page = preview_service.render_template_preview("funny-baby", page_slug="faq")
+    assert page is not None
+    assert page.count('<section class="site-page"') == 1
+    assert 'id="page-faq"' in page
+    # navigation still points at the sibling pages
+    assert '/sites/preview/funny-baby/products"' in page
+    # the demo products ride along on grids of ANY page
+    stores = preview_service.render_template_preview("funny-baby", page_slug="stores")
+    assert stores is not None and "branch-card" in stores
+
+
+def test_the_preview_walk_fails_closed_on_unknowns() -> None:
+    from app.modules.website.services import preview_service
+
+    assert preview_service.render_template_preview("no-such-template") is None
+    assert preview_service.render_template_preview("funny-baby", page_slug="nope") is None
+    # a template without demo products falls back to the generic set
+    html = preview_service.render_template_preview("general-commerce")
+    assert html is not None and "منتج تجريبي ١" in html

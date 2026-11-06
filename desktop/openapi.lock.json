@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 444,
-    "sha256": "6070f3a0995eda7cfc61afcaddb2757dc7bc88e7c9c835ca7addb237ea8674de",
+    "operations": 446,
+    "sha256": "a6f070b1aa52395a423c91f045e9f2dbbb6c1201f7a9c500e534328f69dc717a",
     "typed_operations": 286
   },
   "spec": {
@@ -68829,6 +68829,96 @@
           "summary": "Readyz",
           "tags": [
             "ops"
+          ]
+        }
+      },
+      "/sites/preview/{template_id}": {
+        "get": {
+          "description": "The template preview walk: the FULL demo site — no database, no\npurchase. Every page is walkable at /sites/preview/<id>/<page-slug>.",
+          "operationId": "public_site_preview_sites_preview__template_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Public Site Preview",
+          "tags": [
+            "public-sites"
+          ]
+        }
+      },
+      "/sites/preview/{template_id}/{page_slug}": {
+        "get": {
+          "operationId": "public_site_preview_page_sites_preview__template_id___page_slug__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "page_slug",
+              "required": true,
+              "schema": {
+                "title": "Page Slug",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Public Site Preview Page",
+          "tags": [
+            "public-sites"
           ]
         }
       },

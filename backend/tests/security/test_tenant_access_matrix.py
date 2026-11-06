@@ -145,6 +145,12 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # phase and 404s unless websites_served_domain is configured.
         "GET /sites/{slug}",
         "GET /",
+        # The template preview walk: renders the fail-closed manifest's seed
+        # content with demo products — reads NO database row at all (no
+        # tenant data exists on this surface), so get_tenant_ctx is
+        # deliberately absent; unknown templates/slugs are plain 404s.
+        "GET /sites/preview/{template_id}",
+        "GET /sites/preview/{template_id}/{page_slug}",
     }
 )
 
@@ -153,7 +159,17 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
 #: a heuristic that assumes "everything except the two probes is versioned" turns
 #: a new root route into a phantom `/api/v1/...` and reports the wrong URL in a
 #: security failure.
-_ROOT_MOUNTED: frozenset[str] = frozenset({"/", "/healthz", "/readyz", "/metrics", "/sites/{slug}"})
+_ROOT_MOUNTED: frozenset[str] = frozenset(
+    {
+        "/",
+        "/healthz",
+        "/readyz",
+        "/metrics",
+        "/sites/{slug}",
+        "/sites/preview/{template_id}",
+        "/sites/preview/{template_id}/{page_slug}",
+    }
+)
 
 
 def _walk_routes(app):  # noqa: ANN001, ANN201
