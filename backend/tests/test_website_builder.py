@@ -825,6 +825,10 @@ async def _activated_funny_baby(db: AsyncSession, tenant_ctx) -> tuple[ws.Websit
         template_id="funny-baby",
         site_name="محل مصطفى",
         slug=f"shop-{uuid.uuid4().hex[:8]}",
+        # The merchant's WhatsApp rides the PURCHASE so the seeded CTA
+        # sections are personalized at activation (_personalize_props);
+        # identity edits later only reach the snapshot, not seed props.
+        whatsapp_number="+201234567890",
     )
     await purchase_service.confirm(
         db, purchase_id=purchase.id, confirmed_by_user_id=tenant_ctx.user.id
