@@ -266,7 +266,7 @@ export async function api(path, {
     // The caller cancelled on purpose (unmount, newer search): not a failure.
     if (isCallerAbort(networkErr)) throw networkErr;
     if (networkErr instanceof ApiError) {
-      if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, networkErr);
+      if (shouldReportFailure(method, path, networkErr)) reportFailure(path, networkErr);
       throw networkErr;
     }
     // فشل الشبكة (الخادم وايقف، انقطاع نت، اعتراض) — أخطر أنواع الفشل
@@ -276,7 +276,7 @@ export async function api(path, {
       code: "network",
       retryable: true,
     });
-    if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, err);
+    if (shouldReportFailure(method, path, err)) reportFailure(path, err);
     throw err;
   }
 
@@ -303,7 +303,7 @@ export async function api(path, {
     try {
       ok = await refreshTokens();
     } catch (refreshError) {
-      if (method === "GET" && !path.startsWith("/auth/")) reportFailure(path, refreshError);
+      if (shouldReportFailure(method, path, refreshError)) reportFailure(path, refreshError);
       throw refreshError;
     }
     if (ok) return api(path, { method, body, rawBody, contentType, retry: false, headers, signal, timeoutMs });
@@ -327,7 +327,7 @@ export async function api(path, {
       retryable: res.status >= 500,
       details: errorDetails,
     });
-    if (method === "GET" && !path.startsWith("/auth/")) {
+    if (shouldReportFailure(method, path, err)) {
       reportFailure(path, err);
     }
     throw err;
@@ -350,6 +350,20 @@ let cacheGeneration = 0;
 
 export const DEFAULT_TTL_MS = 20_000;
 
+/** Which failures does the owner need to see?
+ *  - Any method: the network is down, the request timed out, or the SERVER failed (5xx).
+ *    A failed payment or save is exactly as serious as a failed read.
+ *  - GET only: any other non-OK status (kept as before). For writes, a 4xx is the user's own
+ *    input being refused (wrong password, duplicate email, validation) and would drown the
+ *    Errors page in noise.
+ *  Auth endpoints stay out: a wrong password is an expected outcome, not a fault. */
+export function shouldReportFailure(method, path, err) {
+  if (path.startsWith("/auth/")) return false;
+  const status = err?.status ?? 0;
+  if (status === 0 || status >= 500) return true;
+  return method === "GET";
+}
+
 /** الفشل في أي قراءة بيتسجل في الحارس قبل ما يرجع للمُستهلك —
  *  الـhooks اللي بتقبض الخطأ في catch بتاعها مش بتقدر تخفيه. */
 function reportFailure(path, err) {
@@ -357,6 +371,7 @@ function reportFailure(path, err) {
     kind: "api",
     source: path,
     message: err?.message || String(err),
+    status: err?.status || null,
   });
 }
 

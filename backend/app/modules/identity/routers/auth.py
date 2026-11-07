@@ -81,6 +81,7 @@ async def register(body: schemas.RegisterRequest, session: DbSession, response: 
             email=body.email,
             password=body.password,
             full_name=body.full_name,
+            visitor_id=body.visitor_id,
         )
     except service.EmailAlreadyRegistered:
         # The service already queued the re-verification on its way out. The

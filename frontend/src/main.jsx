@@ -4,6 +4,7 @@ import App from '@/App.jsx'
 import GuardianErrorBoundary from '@/components/GuardianErrorBoundary'
 import Guardian from '@/components/Guardian'
 import { guardianReport } from '@/lib/guardian'
+import { startErrorTelemetry } from '@/lib/errorTelemetry'
 import '@/index.css'
 
 // الحارس: أي خطأ جافاسكريبت أو promise مرفوض بيتصطاد ويظهر في الشارة
@@ -19,6 +20,9 @@ window.addEventListener('unhandledrejection', (e) => {
     message: reason?.message || String(reason ?? 'rejected promise'),
   });
 });
+
+// يبعت للأونر كل فشل الحارس بيلتقطه (كان بيضيع في الإنتاج لأن الشارة DEV بس).
+startErrorTelemetry()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

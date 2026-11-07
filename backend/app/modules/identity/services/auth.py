@@ -69,6 +69,7 @@ class AuthService:
         email: str,
         password: str,
         full_name: str | None,
+        visitor_id: str | None = None,
     ) -> tuple[User, Tenant]:
         from app.core.errors import ConflictError
 
@@ -109,7 +110,7 @@ class AuthService:
                 raise ConflictError("tenant slug already taken")
 
         owner_role = (await session.execute(select(Role).where(Role.code == "owner"))).scalar_one()
-        tenant = Tenant(slug=tenant_slug, name=tenant_name)
+        tenant = Tenant(slug=tenant_slug, name=tenant_name, signup_visitor_id=visitor_id)
         user = User(
             email=email.strip().lower(),
             password_hash=await hash_password_async(password),
