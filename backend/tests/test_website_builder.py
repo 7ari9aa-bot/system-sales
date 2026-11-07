@@ -561,12 +561,13 @@ def test_the_new_list_sections_validate_and_render() -> None:
     with pytest.raises(Exception):  # noqa: B017 - InvalidSection via registry
         section_registry.validate("branches", {"items": [{"name": "فرع"}]})  # address missing
 
-    # ...and render the design's neo-brutalist structures.
+    # ...and render through the BASE renderers (general-commerce has no
+    # template overrides, so the shared components do the work).
     snapshot = {
-        "name": "فاني بيبي",
+        "name": "متجر عام",
         "default_locale": "ar",
-        "template_id": "funny-baby",
-        "theme_tokens": {"primary": "#f3513f", "background": "#fffdf5"},
+        "template_id": "general-commerce",
+        "theme_tokens": {"primary": "#0f172a", "background": "#ffffff"},
         "navigation": [],
         "projection": {
             "pages": [
@@ -612,8 +613,39 @@ def test_the_new_list_sections_validate_and_render() -> None:
     assert "وعودنا ليك" in html and "المعادي" in html
     # The branch phone renders as a tel: link (allowlisted scheme).
     assert 'href="tel:01000000001"' in html
-    # Baloo Bhaijaan 2 travels with the template's CSS.
-    assert "Baloo+Bhaijaan" in html
+
+
+def test_funny_baby_renders_their_verbatim_list_components() -> None:
+    """Funny-baby's features/steps/branches now render the Base44 app's
+    exact components — not the base approximation classes."""
+    snapshot = {
+        "name": "فاني بيبي",
+        "default_locale": "ar",
+        "template_id": "funny-baby",
+        "theme_tokens": {"primary": "#f3513f", "background": "#fffdf5"},
+        "navigation": [],
+        "projection": {
+            "pages": [
+                {
+                    "id": "1",
+                    "title": "الرئيسية",
+                    "slug": "home",
+                    "sections": [
+                        {"type": "features", "props": {}},
+                        {"type": "steps", "props": {}},
+                        {"type": "branches", "props": {}},
+                    ],
+                }
+            ]
+        },
+    }
+    html = render_website(snapshot, RenderContext())
+    # Their PromiseStrip cards, their HomeSteps numbered cards, their
+    # BranchCard actions — the verbatim module's own markers.
+    assert "مقاس مكتوب بالسنتيمتر" in html
+    assert "اعمل حسابك في دقيقة" in html
+    assert "الاتجاهات" in html
+    assert "feature-card" not in html and "step-card" not in html
 
 
 # ------------------------------------------------------- warm-paper design ----
