@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 448,
-    "sha256": "6753c6b5fa385377185bf1a026d8c56a45d9d46b0843212ba729e2463d5838f5",
-    "typed_operations": 286
+    "operations": 451,
+    "sha256": "44e5c5085548de7608c17b4468f0eb7ccaf5557eeef857f9fd2de7a0a5e8201a",
+    "typed_operations": 287
   },
   "spec": {
     "components": {
@@ -9225,6 +9225,30 @@
         },
         "IdentityIn": {
           "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "logo_url": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Logo Url"
+            },
             "name": {
               "anyOf": [
                 {
@@ -9238,6 +9262,33 @@
               ],
               "title": "Name"
             },
+            "site_category": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site Category"
+            },
+            "social_links": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Social Links"
+            },
             "theme_tokens": {
               "anyOf": [
                 {
@@ -9249,6 +9300,18 @@
                 }
               ],
               "title": "Theme Tokens"
+            },
+            "whatsapp_number": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Whatsapp Number"
             }
           },
           "title": "IdentityIn",
@@ -13726,6 +13789,18 @@
               ],
               "title": "Payment Reference"
             },
+            "site_category": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site Category"
+            },
             "site_name": {
               "maxLength": 200,
               "minLength": 1,
@@ -13744,11 +13819,37 @@
               ],
               "title": "Slug"
             },
+            "social_links": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialLinkIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Social Links"
+            },
             "template_id": {
               "maxLength": 64,
               "minLength": 1,
               "title": "Template Id",
               "type": "string"
+            },
+            "whatsapp_number": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Whatsapp Number"
             }
           },
           "required": [
@@ -16296,6 +16397,40 @@
             }
           },
           "title": "ShippingUpdateRequest",
+          "type": "object"
+        },
+        "SocialLinkIn": {
+          "properties": {
+            "handle": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle"
+            },
+            "href": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Href",
+              "type": "string"
+            },
+            "platform": {
+              "maxLength": 30,
+              "minLength": 1,
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          "required": [
+            "platform",
+            "href"
+          ],
+          "title": "SocialLinkIn",
           "type": "object"
         },
         "StatementOut": {
@@ -27453,6 +27588,88 @@
           "summary": "Analytics Summary",
           "tags": [
             "analytics"
+          ]
+        }
+      },
+      "/api/v1/auth/google/authorize": {
+        "get": {
+          "description": "Redirect the browser to Google's consent screen.",
+          "operationId": "google_authorize_api_v1_auth_google_authorize_get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Google Authorize",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/google/callback": {
+        "get": {
+          "description": "Handle Google's redirect: exchange the code, create/find the user, issue JWTs.",
+          "operationId": "google_callback_api_v1_auth_google_callback_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "code",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Code",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "state",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "State",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "error",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Error",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Google Callback",
+          "tags": [
+            "auth"
           ]
         }
       },
@@ -67115,6 +67332,106 @@
             }
           },
           "summary": "Editor Schema",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/images/upload": {
+        "post": {
+          "description": "Store a merchant site image and return its stable public URL.\n\nSame screen-then-store discipline as product image uploads: the bytes are\nscreened by magic byte and size BEFORE anything is written to the bucket.\nThe returned URL is stable (never expiring), so it is safe to persist as a\nsection image or the site logo.",
+          "operationId": "upload_site_image_api_v1_website_images_upload_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Upload Site Image Api V1 Website Images Upload Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Site Image",
           "tags": [
             "website"
           ]

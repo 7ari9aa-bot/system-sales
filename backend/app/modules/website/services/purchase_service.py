@@ -17,6 +17,7 @@ cannot answer the question with one per-tenant SELECT.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -204,6 +205,33 @@ async def _load_pending_purchase(
     return purchase
 
 
+def _personalize_props(props: dict, merchant_whatsapp: str | None) -> dict:
+    """Swap the template's demo WhatsApp number for the merchant's own.
+
+    The seed content embeds `wa.me/<demo-number>` CTA links; a merchant who
+    gave their WhatsApp at purchase time must have their number rendered on
+    day one, everywhere the template pointed at its placeholder. Unknown
+    structure passes through untouched.
+    """
+    if not merchant_whatsapp:
+        return dict(props)
+    digits = "".join(ch for ch in merchant_whatsapp if ch.isdigit())
+    replacement = f"https://wa.me/{digits}" if digits else ""
+    if not replacement:
+        return dict(props)
+
+    def walk(value):
+        if isinstance(value, str):
+            return replacement if re.fullmatch(r"https://wa\.me/\d+", value) else value
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(item) for item in value]
+        return value
+
+    return walk(dict(props))
+
+
 async def _activate_website(
     session: AsyncSession, purchase: WebsitePurchase, manifest: TemplateManifest
 ) -> ws.Website:
@@ -249,7 +277,7 @@ async def _activate_website(
                     tenant_id=purchase.tenant_id,
                     page_id=page.id,
                     section_type=preset_section.type,
-                    props=dict(preset_section.props),
+                    props=_personalize_props(preset_section.props, purchase.whatsapp_number),
                     sort_order=order,
                 )
             )

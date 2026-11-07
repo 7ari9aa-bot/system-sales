@@ -189,6 +189,7 @@ async def _upsert_snapshot(
                 whatsapp_number=website.whatsapp_number,
                 social_links=list(website.social_links or []),
                 logo_url=website.logo_url,
+                meta_description=website.meta_description,
                 default_locale=website.default_locale,
                 theme_tokens=dict(website.theme_tokens or {}),
                 navigation=list(website.navigation or []),
@@ -205,6 +206,7 @@ async def _upsert_snapshot(
         row.whatsapp_number = website.whatsapp_number
         row.social_links = list(website.social_links or [])
         row.logo_url = website.logo_url
+        row.meta_description = website.meta_description
         row.default_locale = website.default_locale
         row.theme_tokens = dict(website.theme_tokens or {})
         row.navigation = list(website.navigation or [])
