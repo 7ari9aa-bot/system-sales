@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 451,
-    "sha256": "44e5c5085548de7608c17b4468f0eb7ccaf5557eeef857f9fd2de7a0a5e8201a",
+    "sha256": "7107d947c9e043e51e921111a42a07388dfcfe16e9854593dc555224a1b13964",
     "typed_operations": 287
   },
   "spec": {
@@ -14167,6 +14167,18 @@
                 }
               ],
               "title": "Tenant Slug"
+            },
+            "visitor_id": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Visitor Id"
             }
           },
           "required": [
