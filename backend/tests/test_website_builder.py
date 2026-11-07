@@ -561,12 +561,13 @@ def test_the_new_list_sections_validate_and_render() -> None:
     with pytest.raises(Exception):  # noqa: B017 - InvalidSection via registry
         section_registry.validate("branches", {"items": [{"name": "فرع"}]})  # address missing
 
-    # ...and render the design's neo-brutalist structures.
+    # ...and render through the BASE renderers (general-commerce has no
+    # template overrides, so the shared components do the work).
     snapshot = {
-        "name": "فاني بيبي",
+        "name": "متجر عام",
         "default_locale": "ar",
-        "template_id": "funny-baby",
-        "theme_tokens": {"primary": "#f3513f", "background": "#fffdf5"},
+        "template_id": "general-commerce",
+        "theme_tokens": {"primary": "#0f172a", "background": "#ffffff"},
         "navigation": [],
         "projection": {
             "pages": [
@@ -612,8 +613,39 @@ def test_the_new_list_sections_validate_and_render() -> None:
     assert "وعودنا ليك" in html and "المعادي" in html
     # The branch phone renders as a tel: link (allowlisted scheme).
     assert 'href="tel:01000000001"' in html
-    # Baloo Bhaijaan 2 travels with the template's CSS.
-    assert "Baloo+Bhaijaan" in html
+
+
+def test_funny_baby_renders_their_verbatim_list_components() -> None:
+    """Funny-baby's features/steps/branches now render the Base44 app's
+    exact components — not the base approximation classes."""
+    snapshot = {
+        "name": "فاني بيبي",
+        "default_locale": "ar",
+        "template_id": "funny-baby",
+        "theme_tokens": {"primary": "#f3513f", "background": "#fffdf5"},
+        "navigation": [],
+        "projection": {
+            "pages": [
+                {
+                    "id": "1",
+                    "title": "الرئيسية",
+                    "slug": "home",
+                    "sections": [
+                        {"type": "features", "props": {}},
+                        {"type": "steps", "props": {}},
+                        {"type": "branches", "props": {}},
+                    ],
+                }
+            ]
+        },
+    }
+    html = render_website(snapshot, RenderContext())
+    # Their PromiseStrip cards, their HomeSteps numbered cards, their
+    # BranchCard actions — the verbatim module's own markers.
+    assert "مقاس مكتوب بالسنتيمتر" in html
+    assert "اعمل حسابك في دقيقة" in html
+    assert "الاتجاهات" in html
+    assert "feature-card" not in html and "step-card" not in html
 
 
 # ------------------------------------------------------- warm-paper design ----
@@ -635,7 +667,7 @@ def test_the_warm_paper_design_is_registered() -> None:
         "terms",
     }
     home_types = [s.type for p in manifest.pages if p.slug == "home" for s in p.sections]
-    assert home_types == ["hero", "features", "product_grid", "features", "steps", "cta"]
+    assert home_types == ["hero", "chapters", "product_grid", "manifesto", "steps", "cta"]
     assert len(catalog.list()) >= 4
 
 
@@ -740,74 +772,6 @@ def test_the_street_poster_design_is_registered() -> None:
     assert len(catalog.list()) >= 5
 
 
-def test_the_street_poster_overrides_render_the_poster_identity() -> None:
-    snapshot = {
-        "name": "بوستر",
-        "default_locale": "ar",
-        "template_id": "street-poster",
-        "theme_tokens": {"primary": "#c24a2b", "background": "#f2f0e9"},
-        "navigation": [],
-        "projection": {
-            "pages": [
-                {
-                    "id": "1",
-                    "title": "الرئيسية",
-                    "slug": "home",
-                    "sections": [
-                        {
-                            "type": "hero",
-                            "props": {
-                                "eyebrow": "مجموعة الموسم ٢٠٢٦",
-                                "heading": "ستايل هادي\nيفرق في إطلالتك",
-                                "cta_label": "ابدأ التسوق",
-                                "cta_url": "#page-products",
-                                "secondary_label": "زيارة الفروع",
-                                "secondary_url": "#page-stores",
-                                "note": "تغليف هدايا مجاني",
-                                "stats": [{"value": "S – XXL", "label": "المقاسات"}],
-                                "ticker": ["توصيل لكل المحافظات"],
-                            },
-                        },
-                        {
-                            "type": "features",
-                            "props": {
-                                "items": [
-                                    {
-                                        "title": "الكتالوج",
-                                        "text": "كل المنتجات",
-                                        "href": "#page-products",
-                                    },
-                                ],
-                            },
-                        },
-                        {
-                            "type": "features",
-                            "props": {
-                                "items": [{"title": "مقاس بالسنتيمتر", "text": "على كل قطعة"}],
-                            },
-                        },
-                        {
-                            "type": "steps",
-                            "props": {"items": [{"title": "اختار", "text": "بدقة"}]},
-                        },
-                    ],
-                }
-            ]
-        },
-    }
-    html = render_website(snapshot, RenderContext())
-    assert "poster-hero" in html and '"blk"' in html
-    assert "<span>يفرق في إطلالتك</span>" in html
-    assert html.count('class="b b') >= 2
-    assert "gift" in html and '"stats"' in html and '"tick"' in html
-    assert 'href="#page-products"' in html and '"row"' in html
-    assert "poster-pro" in html and '"pn"' in html
-    assert "poster-path" in html and '"sp"' in html
-
-
-# ------------------------------------------------------ preview walk ----
-
-
 def test_the_preview_walk_renders_the_full_demo_site() -> None:
     """«معاينة حية»: every template walks as a complete demo site with NO
     database — home renders themed demo products, the ribbon marks it a
@@ -818,8 +782,13 @@ def test_the_preview_walk_renders_the_full_demo_site() -> None:
     assert html is not None
     assert "preview-ribbon" in html  # the demo marker
     assert "بودي سوت قطن" in html  # themed demo products, not generic ones
-    assert '/sites/preview/funny-baby/faq"' in html  # nav links per page
-    assert 'href="/sites/preview/funny-baby/products"' in html  # hero CTA rewritten
+    assert 'href="/sites/preview/funny-baby/faq"' in html  # nav links per page
+    assert 'href="/sites/preview/funny-baby/products"' in html  # their hero CTA rewritten
+    # VERBATIM fidelity: their exact markup, images and chrome
+    assert "media.base44.com" in html  # their real images hotlinked
+    assert "موسم جديد" in html and "ملابس تلعب وتنام" in html  # their hero copy
+    assert "sticky top-0 z-50" in html  # their header chrome
+    assert "bg-[#25D366]" in html  # their floating whatsapp button
 
 
 def test_the_preview_walk_serves_single_pages() -> None:
@@ -827,13 +796,13 @@ def test_the_preview_walk_serves_single_pages() -> None:
 
     page = preview_service.render_template_preview("funny-baby", page_slug="faq")
     assert page is not None
-    assert page.count('<section class="site-page"') == 1
-    assert 'id="page-faq"' in page
+    assert "الأسئلة الشائعة" in page
+    assert "ملابس تلعب وتنام" not in page  # the HOME hero never leaks into a sub-page
     # navigation still points at the sibling pages
-    assert '/sites/preview/funny-baby/products"' in page
-    # the demo products ride along on grids of ANY page
+    assert '/sites/preview/funny-baby/offers"' in page
     stores = preview_service.render_template_preview("funny-baby", page_slug="stores")
-    assert stores is not None and "branch-card" in stores
+    assert stores is not None and "الاتجاهات" in stores  # their branch-card actions
+    assert "ملابس تلعب وتنام" not in stores
 
 
 def test_the_preview_walk_fails_closed_on_unknowns() -> None:

@@ -132,6 +132,24 @@ class StepsProps(SectionProps):
     items: list[FeatureItemProps] = Field(min_length=1, max_length=8)
 
 
+class ChapterItemProps(BaseModel):
+    """A chapter card: image + link + caption (the funny-baby HomeIndex)."""
+
+    model_config = {"extra": "forbid"}
+
+    title: str
+    text: str
+    href: str
+    image: str | None = None
+
+
+class ChaptersProps(SectionProps):
+    eyebrow: str | None = None
+    heading: str | None = None
+    text: str | None = None
+    items: list[ChapterItemProps] = Field(min_length=1, max_length=8)
+
+
 class BranchItemProps(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -262,6 +280,8 @@ def build_default_registry() -> SectionRegistry:
         SectionSpec("features", 1, FeaturesProps),
         SectionSpec("steps", 1, StepsProps),
         SectionSpec("branches", 1, BranchesProps),
+        SectionSpec("chapters", 1, ChaptersProps),
+        SectionSpec("manifesto", 1, FeaturesProps),
     ):
         reg.register(spec)
     return reg

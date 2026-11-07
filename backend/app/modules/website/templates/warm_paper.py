@@ -209,7 +209,7 @@ manifest = TemplateManifest(
                     },
                 ),
                 TemplateSection(
-                    type="features",
+                    type="chapters",
                     props={
                         "eyebrow": "أقسام الموقع",
                         "heading": "ابدأ من الباب اللي يريحك",
@@ -247,7 +247,7 @@ manifest = TemplateManifest(
                     },
                 ),
                 TemplateSection(
-                    type="features",
+                    type="manifesto",
                     props={
                         "eyebrow": "وعدنا لك",
                         "heading": "لا نعرض قطعة لم نقتنع بها",
