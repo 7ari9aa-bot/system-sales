@@ -309,6 +309,12 @@ class Settings(BaseSettings):
     # owner console's server; the browser never sees it.
     impersonation_platform_token: str = ""
 
+    # Google OAuth for social sign-in. Get these from Google Cloud Console
+    # → APIs & Services → Credentials → OAuth 2.0 Client ID (Web application).
+    # The redirect URI must include {api_public_base_url}/api/v1/auth/google/callback
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # Website Platform integration (external presentation plane): per-tenant
     # keys for the catalog exposure endpoint. JSON of tenant_id -> key.
     # Example: WEBSITE_PLATFORM_TENANT_KEYS='{"<tenant-uuid>":"wpk-tenant-secret"}'
