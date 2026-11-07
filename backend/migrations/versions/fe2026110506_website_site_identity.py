@@ -22,23 +22,40 @@ down_revision: str | None = "fe2026110505"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_IDENTITY_COLUMNS = [
-    sa.Column("site_category", sa.String(50), nullable=True),
-    sa.Column("whatsapp_number", sa.String(30), nullable=True),
-    sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
-    sa.Column("logo_url", sa.Text(), nullable=True),
-]
-
 _TABLES = ("websites", "website_purchases", "website_published_sites")
 
 
 def upgrade() -> None:
-    for table in _TABLES:
-        for col in _IDENTITY_COLUMNS:
-            kwargs = dict(nullable=col.nullable)
-            if col.server_default is not None:
-                kwargs["server_default"] = col.server_default
-            op.add_column(table, sa.Column(col.name, col.type, **kwargs))
+    # Spelled out per table (not a loop over Column objects) on purpose:
+    # tests/test_migrations.py reads migrations statically and only sees
+    # add_column("<table>", sa.Column("<name>", ...)) with literal names.
+    op.add_column("websites", sa.Column("site_category", sa.String(50), nullable=True))
+    op.add_column("websites", sa.Column("whatsapp_number", sa.String(30), nullable=True))
+    op.add_column(
+        "websites",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("websites", sa.Column("logo_url", sa.Text(), nullable=True))
+
+    op.add_column("website_purchases", sa.Column("site_category", sa.String(50), nullable=True))
+    op.add_column("website_purchases", sa.Column("whatsapp_number", sa.String(30), nullable=True))
+    op.add_column(
+        "website_purchases",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("website_purchases", sa.Column("logo_url", sa.Text(), nullable=True))
+
+    op.add_column(
+        "website_published_sites", sa.Column("site_category", sa.String(50), nullable=True)
+    )
+    op.add_column(
+        "website_published_sites", sa.Column("whatsapp_number", sa.String(30), nullable=True)
+    )
+    op.add_column(
+        "website_published_sites",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("website_published_sites", sa.Column("logo_url", sa.Text(), nullable=True))
     op.execute(
         """DO $$
         BEGIN
@@ -54,6 +71,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for table in reversed(_TABLES):
-        for col in reversed(_IDENTITY_COLUMNS):
-            op.drop_column(table, col.name)
-    op.drop_column("website_purchases", "logo_url")
+        for name in ("logo_url", "social_links", "whatsapp_number", "site_category"):
+            op.drop_column(table, name)

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 448,
-    "sha256": "6753c6b5fa385377185bf1a026d8c56a45d9d46b0843212ba729e2463d5838f5",
+    "operations": 450,
+    "sha256": "693638cd3735998bab6519307c74e4b150bded011cb864fa84b9c9caee7e5a8c",
     "typed_operations": 286
   },
   "spec": {
@@ -13726,6 +13726,18 @@
               ],
               "title": "Payment Reference"
             },
+            "site_category": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site Category"
+            },
             "site_name": {
               "maxLength": 200,
               "minLength": 1,
@@ -13744,11 +13756,37 @@
               ],
               "title": "Slug"
             },
+            "social_links": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/SocialLinkIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Social Links"
+            },
             "template_id": {
               "maxLength": 64,
               "minLength": 1,
               "title": "Template Id",
               "type": "string"
+            },
+            "whatsapp_number": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Whatsapp Number"
             }
           },
           "required": [
@@ -14066,6 +14104,18 @@
                 }
               ],
               "title": "Tenant Slug"
+            },
+            "visitor_id": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Visitor Id"
             }
           },
           "required": [
@@ -16296,6 +16346,40 @@
             }
           },
           "title": "ShippingUpdateRequest",
+          "type": "object"
+        },
+        "SocialLinkIn": {
+          "properties": {
+            "handle": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle"
+            },
+            "href": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Href",
+              "type": "string"
+            },
+            "platform": {
+              "maxLength": 30,
+              "minLength": 1,
+              "title": "Platform",
+              "type": "string"
+            }
+          },
+          "required": [
+            "platform",
+            "href"
+          ],
+          "title": "SocialLinkIn",
           "type": "object"
         },
         "StatementOut": {
@@ -27453,6 +27537,120 @@
           "summary": "Analytics Summary",
           "tags": [
             "analytics"
+          ]
+        }
+      },
+      "/api/v1/auth/google/authorize": {
+        "get": {
+          "description": "Redirect the browser to Google's consent screen.",
+          "operationId": "google_authorize_api_v1_auth_google_authorize_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "returnTo",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Returnto",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "visitor_id",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Visitor Id",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Google Authorize",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/google/callback": {
+        "get": {
+          "description": "Handle Google's redirect: exchange the code, then sign in through the service.",
+          "operationId": "google_callback_api_v1_auth_google_callback_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "code",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Code",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "state",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "State",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "error",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Error",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Google Callback",
+          "tags": [
+            "auth"
           ]
         }
       },

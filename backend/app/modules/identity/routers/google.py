@@ -3,94 +3,127 @@
 The flow:
 1. Frontend links to GET /auth/google/authorize → 302 to Google consent
 2. User consents on Google → 302 back to GET /auth/google/callback?code=...
-3. Backend exchanges the code for tokens, fetches the profile, and either
-   finds or creates the user in our DB, then issues our JWT pair.
+3. Backend exchanges the code for the profile and hands the *proven* address to
+   ``AuthService.login_with_google``, which applies the same gates as a password
+   login (workspace state, MFA, session recording) and creates a full workspace
+   for a brand-new address.
+
+The CSRF ``state`` is a short-lived signed token (not an in-memory dict) so the
+flow survives several API instances and restarts. It also carries the two things
+that must survive the round trip to Google: where to send the user afterwards
+and which website visitor this is (for the owner-console signup funnel).
 """
 
 from __future__ import annotations
 
-import secrets
-from datetime import UTC, datetime
+import re
+from urllib.parse import quote, urlencode
 
 import httpx
-import sqlalchemy as sa
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
-from app.core.security import create_access_token, create_refresh_token
+from app.core.errors import PermissionDeniedError
+from app.core.security import create_oauth_state_token, decode_token
 from app.modules.identity import cookies
+from app.modules.identity import service as service
 from app.modules.identity.deps import DbSession
-from app.modules.identity.models import User
+from app.modules.identity.routers._deps import _client_meta
+from app.modules.identity.service import GoogleMfaRequired
 
 router = APIRouter(tags=["auth"])
 
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-_GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+_GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
-_state_store: dict[str, datetime] = {}
+_PROVIDER = "google"
+_DEFAULT_LANDING = "/dashboard"
+_VISITOR_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
 def _google_config() -> tuple[str, str]:
     settings = get_settings()
-    client_id = settings.google_client_id
-    client_secret = settings.google_client_secret
-    if not client_id or not client_secret:
-        raise ValidationError("Google OAuth is not configured on this server")
-    return client_id, client_secret
-
-
-from app.core.errors import ValidationError  # noqa: E402
+    return settings.google_client_id, settings.google_client_secret
 
 
 def _redirect_uri(request: Request) -> str:
+    # Behind the platform proxy the app sees http; Google needs the public scheme/host.
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("host") or request.url.netloc
     return f"{proto}://{host}/api/v1/auth/google/callback"
 
 
+def safe_return_to(raw: str | None) -> str:
+    """A same-origin path or the dashboard. Mirrors frontend ``safeReturnTo``.
+
+    ``//evil.com`` and ``/\\evil.com`` look like paths but browsers treat them as
+    another host, so only a single leading slash with no backslash is allowed.
+    """
+    if not raw or not raw.startswith("/") or raw.startswith("//") or "\\" in raw:
+        return _DEFAULT_LANDING
+    if any(ord(ch) < 0x20 for ch in raw) or len(raw) > 512:
+        return _DEFAULT_LANDING
+    return raw
+
+
+def _login_error(code: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/login?error={quote(code)}", status_code=302)
+
+
 @router.get("/auth/google/authorize")
-async def google_authorize(request: Request) -> RedirectResponse:
+async def google_authorize(
+    request: Request, returnTo: str = "", visitor_id: str = ""
+) -> RedirectResponse:
     """Redirect the browser to Google's consent screen."""
     client_id, _ = _google_config()
-    state = secrets.token_urlsafe(32)
-    _state_store[state] = datetime.now(UTC)
-    cutoff = datetime.now(UTC).timestamp() - 600
-    expired = [k for k, v in _state_store.items() if v.timestamp() < cutoff]
-    for k in expired:
-        _state_store.pop(k, None)
+    if not client_id:
+        return _login_error("google_not_configured")
 
-    redirect_uri = _redirect_uri(request)
-    params = (
-        f"?client_id={client_id}"
-        f"&redirect_uri={redirect_uri}"
-        "&response_type=code"
-        "&scope=openid email profile"
-        f"&state={state}"
-        "&access_type=offline"
-        "&prompt=select_account"
+    claims = {
+        "provider": _PROVIDER,
+        "return_to": safe_return_to(returnTo),
+        # Same rule as /auth/register: a malformed id is dropped, never invented.
+        "visitor_id": visitor_id if _VISITOR_ID.fullmatch(visitor_id or "") else None,
+    }
+    state = create_oauth_state_token(_PROVIDER, claims, ttl_seconds=600)
+    query = urlencode(
+        {
+            "client_id": client_id,
+            "redirect_uri": _redirect_uri(request),
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "prompt": "select_account",
+        }
     )
-    return RedirectResponse(url=_GOOGLE_AUTH_URL + params, status_code=302)
+    return RedirectResponse(url=f"{_GOOGLE_AUTH_URL}?{query}", status_code=302)
 
 
 @router.get("/auth/google/callback")
 async def google_callback(
     request: Request,
+    session: DbSession,
     code: str = "",
     state: str = "",
     error: str = "",
-    session: DbSession = None,  # type: ignore[assignment]
 ) -> RedirectResponse:
-    """Handle Google's redirect: exchange the code, create/find the user, issue JWTs."""
+    """Handle Google's redirect: exchange the code, then sign in through the service."""
     if error:
-        return RedirectResponse(url="/login?error=google_denied", status_code=302)
-    if not code or not state or state not in _state_store:
-        return RedirectResponse(url="/login?error=google_invalid_state", status_code=302)
-    _state_store.pop(state, None)
+        return _login_error("google_denied")
+    if not code or not state:
+        return _login_error("google_invalid_state")
+    try:
+        claims = decode_token(state)
+    except Exception:
+        return _login_error("google_invalid_state")
+    if claims.get("type") != "oauth_state" or claims.get("provider") != _PROVIDER:
+        return _login_error("google_invalid_state")
 
     client_id, client_secret = _google_config()
-    redirect_uri = _redirect_uri(request)
+    if not client_id or not client_secret:
+        return _login_error("google_not_configured")
 
     async with httpx.AsyncClient(timeout=15) as client:
         token_res = await client.post(
@@ -99,48 +132,49 @@ async def google_callback(
                 "code": code,
                 "client_id": client_id,
                 "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
+                "redirect_uri": _redirect_uri(request),
                 "grant_type": "authorization_code",
             },
         )
         if token_res.status_code != 200:
-            return RedirectResponse(url="/login?error=google_token_exchange", status_code=302)
+            return _login_error("google_token_exchange")
         access_token = token_res.json().get("access_token")
         if not access_token:
-            return RedirectResponse(url="/login?error=google_no_token", status_code=302)
+            return _login_error("google_no_token")
 
         profile_res = await client.get(
-            _GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
+            _GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
         )
         if profile_res.status_code != 200:
-            return RedirectResponse(url="/login?error=google_profile", status_code=302)
+            return _login_error("google_profile")
         profile = profile_res.json()
 
-    email = profile.get("email", "")
+    email = (profile.get("email") or "").strip()
     if not email:
-        return RedirectResponse(url="/login?error=google_no_email", status_code=302)
+        return _login_error("google_no_email")
 
-    user = (
-        await session.execute(sa.select(User).where(sa.func.lower(User.email) == email.lower()))
-    ).scalar_one_or_none()
-
-    if user is None:
-        user = User(
+    user_agent, ip = _client_meta(request)
+    try:
+        pair, _user, _tenant_id = await service.AuthService.login_with_google(
+            session,
             email=email,
-            password_hash="",
-            is_active=True,
-            email_verified=profile.get("verified_email", False),
+            # OIDC userinfo says `email_verified`; the old v2 endpoint said
+            # `verified_email`. Accept only an explicit true.
+            email_verified=profile.get("email_verified") is True,
+            full_name=(profile.get("name") or None),
+            visitor_id=claims.get("visitor_id"),
+            user_agent=user_agent,
+            ip=ip,
         )
-        session.add(user)
-        await session.flush()
+    except GoogleMfaRequired:
+        return _login_error("google_mfa_required")
+    except PermissionDeniedError as exc:
+        reason = str(exc)
+        if "not verified" in reason:
+            return _login_error("google_email_unverified")
+        return _login_error("google_account_unavailable")
 
-    if not user.is_active:
-        return RedirectResponse(url="/login?error=account_inactive", status_code=302)
-
-    access_jwt = create_access_token(str(user.id), {"auth_version": user.auth_version})
-    refresh_jwt = create_refresh_token(str(user.id), {"auth_version": user.auth_version})
-
-    response = RedirectResponse(url="/dashboard", status_code=302)
-    cookies.set_auth_cookies(response, access_jwt, refresh_jwt)
+    response = RedirectResponse(url=safe_return_to(claims.get("return_to")), status_code=302)
+    cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
+    response.headers["Cache-Control"] = "no-store"
     return response

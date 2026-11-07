@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { googleAuthorizeUrl } from "@/lib/googleAuth";
 
 const c = (ar, en) => ({ ar, en });
 const tx = (copy, locale) => copy[locale];
@@ -86,7 +87,7 @@ export default function Register() {
           <div className="relative flex justify-center text-xs"><span className="bg-card px-2 text-muted-foreground">{tx(c("أو", "or"), locale)}</span></div>
         </div>
         <a
-          href="/api/v1/auth/google/authorize"
+          href={googleAuthorizeUrl(safeReturnTo())}
           className="flex items-center justify-center gap-2 w-full rounded-md border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" className="shrink-0">
