@@ -77,6 +77,7 @@ from app.modules.evidence.router import router as evidence_router
 from app.modules.expenses.router import router as expenses_router
 from app.modules.financial.router import router as financial_router
 from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
+from app.modules.identity.routers.google import router as google_auth_router
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
 from app.modules.identity.router import users_router as identity_users_router
