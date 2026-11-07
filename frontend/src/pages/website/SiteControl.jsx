@@ -63,7 +63,7 @@ export default function SiteControl({ overview, onMutate }) {
       alive = false;
     };
      
-  }, [attempt, isAr]);
+  }, [attempt]);
 
   const refreshAll = () => {
     setAttempt((n) => n + 1);
@@ -272,7 +272,7 @@ export default function SiteControl({ overview, onMutate }) {
   return (
     <div className="space-y-6">
       {message ? (
-        <div
+        <div role="status"
           className={`rounded-lg border p-3 text-sm ${
             message.kind === "ok"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"

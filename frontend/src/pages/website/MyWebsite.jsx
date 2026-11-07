@@ -21,6 +21,7 @@ export default function MyWebsite() {
 
   const [overview, setOverview] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const initialLoad = React.useRef(true);
   const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
   const refresh = useCallback(() => setAttempt((n) => n + 1), []);
@@ -37,13 +38,16 @@ export default function MyWebsite() {
         if (alive) setError(err?.message || L("تعذر تحميل حالة الموقع", "Could not load website status"));
       })
       .finally(() => {
-        if (alive) setLoading(false);
+        if (alive) {
+          setLoading(false);
+          initialLoad.current = false;
+        }
       });
     return () => {
       alive = false;
     };
      
-  }, [attempt, isAr]);
+  }, [attempt]);
 
   return (
     <div className="space-y-6">
@@ -59,7 +63,7 @@ export default function MyWebsite() {
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>
       ) : null}
 
-      {loading ? (
+      {loading && initialLoad.current ? (
         <div className="rounded-xl border bg-card p-6">
           <div className="animate-pulse space-y-3">
             <div className="h-4 w-1/3 rounded bg-muted" />

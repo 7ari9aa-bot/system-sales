@@ -51,10 +51,13 @@ export function SectionCard({ title, action, actionTo, children, className, body
         <Link
           to={actionTo}
           className="inline-flex items-center gap-1 text-[12.5px] font-medium text-primary hover:gap-1.5 transition-all">
-          
+
               {action}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
+        }
+          {action && !actionTo &&
+        <span className="text-[12.5px]">{action}</span>
         }
         </div>
       }
