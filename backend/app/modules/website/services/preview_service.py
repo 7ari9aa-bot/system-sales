@@ -99,6 +99,16 @@ def render_template_preview(
         },
     }
 
+    setter = getattr(
+        __import__(
+            "app.modules.website.templates.funny_baby_verbatim", fromlist=["set_walk_prefix"]
+        ),
+        "set_walk_prefix",
+        None,
+    )
+    if setter is not None:
+        setter(prefix)
+
     ctx = RenderContext()
     collections: set[str] = set()
     for page in pages:

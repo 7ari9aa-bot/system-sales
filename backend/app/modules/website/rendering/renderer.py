@@ -453,15 +453,85 @@ def _register_poster_overrides() -> None:
 _register_poster_overrides()
 
 
+def _register_funny_baby_verbatim() -> None:
+    """Funny Baby renders 1:1 from the merchant's source markup: a custom
+    shell (their header/footer/whatsapp) plus a section dispatch to their
+    exact components."""
+    registry = RendererRegistry()
+
+    def dispatch(kind, props, ctx):
+        from app.modules.website.templates import funny_baby_verbatim as vb
+
+        return vb.render_section_funny_baby(kind, props, ctx)
+
+    def shell(**kwargs):
+        from app.modules.website.templates import funny_baby_verbatim as vb
+
+        return vb.render_shell_funny_baby(**kwargs)
+
+    registry.dispatch_fn = dispatch
+    registry.shell_fn = shell
+    _TEMPLATE_REGISTRIES["funny-baby"] = registry
+
+
+_register_funny_baby_verbatim()
+
+
+def _register_warm_paper_verbatim() -> None:
+    """Warm-paper renders 1:1 from the v3 source: their story-paper chrome
+    and components via the verbatim module."""
+    registry = RendererRegistry()
+
+    def dispatch(kind, props, ctx):
+        from app.modules.website.templates import warm_paper_verbatim as wp
+
+        return wp.render_section_warm_paper(kind, props, ctx)
+
+    def shell(**kwargs):
+        from app.modules.website.templates import warm_paper_verbatim as wp
+
+        return wp.render_shell_warm_paper(**kwargs)
+
+    registry.dispatch_fn = dispatch
+    registry.shell_fn = shell
+    _TEMPLATE_REGISTRIES["warm-paper"] = registry
+
+
+_register_warm_paper_verbatim()
+
+
+def _register_street_poster_verbatim() -> None:
+    """Street-poster renders 1:1 from the v4 source: their poster blocks via
+    the verbatim module."""
+    registry = RendererRegistry()
+
+    def dispatch(kind, props, ctx):
+        from app.modules.website.templates import street_poster_verbatim as sp
+
+        return sp.render_section_street_poster(kind, props, ctx)
+
+    def shell(**kwargs):
+        from app.modules.website.templates import street_poster_verbatim as sp
+
+        return sp.render_shell_street_poster(**kwargs)
+
+    registry.dispatch_fn = dispatch
+    registry.shell_fn = shell
+    _TEMPLATE_REGISTRIES["street-poster"] = registry
+
+
+_register_street_poster_verbatim()
+
+
 def _register_paper_overrides() -> None:
-    """The warm-paper template renders its hero, feature cards and steps with
-    bespoke markup (paper cards, chapter links, ticker); everything else is
-    CSS-only on the base renderers."""
+    """The street-poster template renders its hero, feature rows and path
+    steps with bespoke poster markup; everything else is CSS-only on the
+    base renderers. (Warm-paper is now verbatim — see above.)"""
     registry = RendererRegistry()
     registry.register("hero", _render_hero_paper)
     registry.register("features", _render_features_paper)
     registry.register("steps", _render_steps_paper)
-    _TEMPLATE_REGISTRIES["warm-paper"] = registry
+    _TEMPLATE_REGISTRIES["street-poster"] = registry
 
 
 _register_paper_overrides()
@@ -522,6 +592,8 @@ def render_website(
     ctx = ctx or RenderContext()
     template_id = str(snapshot.get("template_id") or "")
     reg = _registry_for(template_id)
+    dispatch_fn = getattr(reg, "dispatch_fn", None)
+    shell_fn = getattr(reg, "shell_fn", None)
     css = ""
     manifest = _manifest_for(template_id)
     if manifest is not None:
@@ -543,15 +615,33 @@ def render_website(
     style = render_style(snapshot.get("theme_tokens") or {})
     nav = render_navigation(nav_items)
 
+    def _page_html(p):
+        if dispatch_fn is not None:
+            return "\n".join(
+                dispatch_fn(s.get("type", ""), s.get("props") or {}, ctx)
+                for s in p.get("sections", [])
+            )
+        return _render_page(p, reg, ctx)
+
     if page_slug is not None:
         rendered = [p for p in pages if str(p.get("slug") or "") == page_slug]
-        body = "\n".join(_render_page(p, reg, ctx) for p in rendered)
+        body = "\n".join(_page_html(p) for p in rendered)
     else:
-        body = "\n".join(_render_page(p, reg, ctx) for p in pages)
+        body = "\n".join(_page_html(p) for p in pages)
 
     title = name
     if page_slug is not None and rendered:
         title = f"{rendered[0].get('title')} — {name}"
+
+    if shell_fn is not None:
+        return shell_fn(
+            body=body,
+            title=title,
+            page_slug=page_slug,
+            page_url_prefix=page_url_prefix,
+            banner_html=banner_html,
+            site_slug=snapshot.get("slug"),
+        )
     return (
         "<!doctype html>"
         f'<html dir="{direction}" lang="{escape(locale)}">'
