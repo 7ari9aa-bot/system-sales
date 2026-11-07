@@ -1,7 +1,7 @@
 """website meta_description: the Settings tab's site description.
 
-Revision ID: fe2026110507
-Revises: fe2026110506
+Revision ID: fe2026110508
+Revises: fe2026110507
 Create Date: 2026-11-07 20:00:00.000000
 
 The Website Dashboard's Settings tab collects a site description alongside
@@ -15,8 +15,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "fe2026110507"
-down_revision: str | None = "fe2026110506"
+revision: str = "fe2026110508"
+down_revision: str | None = "fe2026110507"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
