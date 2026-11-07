@@ -9,7 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Badge, SectionCard } from "@/components/dashboard/ui";
-import { api } from "@/lib/api";
+import { api, apiUrl } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 const SECTION_TYPE_LABELS = {
@@ -51,7 +51,6 @@ export default function Dashboard() {
   const [name, setName] = useState("");
   const [tokens, setTokens] = useState({});
   const [sectionEdits, setSectionEdits] = useState({});
-  const [logoFile, setLogoFile] = useState(null);
   const logoRef = useRef(null);
 
   const refreshAll = useCallback(() => setAttempt((n) => n + 1), []);
@@ -83,7 +82,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [attempt, isAr]);
+  }, [attempt]);
 
   const saveIdentity = async () => {
     setBusy("identity");
@@ -163,9 +162,14 @@ export default function Dashboard() {
         body: form,
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message || `HTTP ${res.status}`);
+      }
       const data = await res.json();
-      setTokens((prev) => ({ ...prev }));
+      if (data?.url) {
+        setTokens((prev) => ({ ...prev, logo_url: data.url }));
+      }
       setMessage({ kind: "ok", text: L("تم رفع الصورة", "Image uploaded") });
       refreshAll();
     } catch (err) {
@@ -291,7 +295,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {message ? (
-        <div className={`rounded-lg border p-3 text-sm ${
+        <div role="status" className={`rounded-lg border p-3 text-sm ${
           message.kind === "ok"
             ? "border-emerald-200 bg-emerald-50 text-emerald-800"
             : "border-red-200 bg-red-50 text-red-800"
@@ -316,7 +320,7 @@ export default function Dashboard() {
         }
       >
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={publish} disabled={busy === "publish"}
+          <button type="button" onClick={publish} disabled={busy === "publish" || busy === "load"}
             className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             <Rocket className="h-4 w-4" />
             {busy === "publish" ? L("جارٍ النشر…", "Publishing…") : L("نشر التحديثات", "Publish updates")}
@@ -333,7 +337,7 @@ export default function Dashboard() {
           { id: "images", label: L("الصور", "Images"), icon: ImageIcon },
           { id: "settings", label: L("الإعدادات", "Settings"), icon: SettingsIcon },
         ].map((t) => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
             className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-medium transition-colors ${
               tab === t.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface"
             }`}>

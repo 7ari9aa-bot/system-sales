@@ -83,13 +83,16 @@ def _version_tree(
 def _live_url(slug: str) -> str:
     """The merchant-facing link to the published site. Subdomain mode (when
     WEBSITES_SERVED_DOMAIN is set) wins — that is the customer-facing shape;
-    otherwise the path mode the backend serves today (proxied by the dev
-    server and, in path deployments, by the edge)."""
+    otherwise an absolute URL to this backend's /sites/{slug} path, which
+    works through both the dev proxy and the production API rewrite."""
     from app.core.config import get_settings
 
     served = (get_settings().websites_served_domain or "").strip()
     if served:
         return f"https://{slug}.{served}"
+    base = (get_settings().api_public_base_url or "").strip().rstrip("/")
+    if base:
+        return f"{base}/sites/{slug}"
     return f"/sites/{slug}"
 
 

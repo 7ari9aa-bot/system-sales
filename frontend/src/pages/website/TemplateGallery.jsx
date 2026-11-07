@@ -60,7 +60,7 @@ export default function TemplateGallery({ onPurchased }) {
     try {
       await api("/website/purchase", {
         method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        headers: { "Idempotency-Key": (crypto.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`) },
         body: JSON.stringify({
           template_id: selected,
           site_name: siteName.trim(),
@@ -105,6 +105,7 @@ export default function TemplateGallery({ onPurchased }) {
             <div
               key={tpl.id}
               role="button"
+              aria-pressed={selected === tpl.id}
               tabIndex={0}
               onClick={() => setSelected(tpl.id)}
               onKeyDown={(e) => {
@@ -121,7 +122,7 @@ export default function TemplateGallery({ onPurchased }) {
             >
               <div className="mb-3 aspect-[4/3] overflow-hidden rounded-lg bg-gradient-to-br from-primary/10 to-primary/5">
                 {tpl.preview_image ? (
-                  <img src={tpl.preview_image} alt={tpl.name} className="h-full w-full object-cover" />
+                  <img src={tpl.preview_image} alt={isAr ? tpl.name_ar : tpl.name} loading="lazy" className="h-full w-full object-cover" />
                 ) : (
                   <div className="grid h-full place-items-center">
                     <Globe className="h-10 w-10 text-primary/40" />
@@ -276,7 +277,7 @@ export default function TemplateGallery({ onPurchased }) {
           </label>
         </div>
 
-        {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+        {error ? <div role="alert" className="mt-3 text-sm text-red-600">{error}</div> : null}
 
         <button
           type="button"
