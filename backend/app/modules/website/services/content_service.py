@@ -126,6 +126,11 @@ async def overview(session: AsyncSession, ctx: TenantContext) -> dict:
                 "status": website.status,
                 "template_id": website.template_id,
                 "theme_tokens": website.theme_tokens or {},
+                "whatsapp_number": website.whatsapp_number,
+                "social_links": website.social_links or [],
+                "logo_url": website.logo_url,
+                "site_category": website.site_category,
+                "description": website.meta_description,
                 "published": website.published_version_id is not None,
                 "live_url": _live_url(website.slug),
                 "aggregate_version": website.aggregate_version,
@@ -207,12 +212,59 @@ def _validate_theme_tokens(theme_tokens: dict) -> dict:
     return cleaned
 
 
+_SOCIAL_PLATFORMS = {"instagram", "facebook", "tiktok", "x", "youtube", "snapchat"}
+
+
+def _validate_social_links(links: list) -> list[dict]:
+    if len(links) > 6:
+        raise ValidationError("at most 6 social links are allowed")
+    out: list[dict] = []
+    for link in links:
+        if not isinstance(link, dict):
+            raise ValidationError("each social link must be an object")
+        platform = str(link.get("platform") or "").strip().lower()
+        href = str(link.get("href") or "").strip()
+        if platform not in _SOCIAL_PLATFORMS:
+            raise ValidationError(f"unsupported social platform: {platform or 'missing'}")
+        if not href.startswith(("https://", "http://")) or len(href) > 2048:
+            raise ValidationError("social link href must be an absolute https URL")
+        out.append(
+            {
+                "platform": platform,
+                "handle": str(link.get("handle") or "").strip()[:80],
+                "href": href,
+            }
+        )
+    return out
+
+
+def _validate_logo_url(url: str) -> str:
+    cleaned = url.strip()
+    if not cleaned.startswith(("https://", "http://", "/", "s3://")):
+        raise ValidationError("logo URL must be an https URL or an uploaded image key")
+    if len(cleaned) > 2048:
+        raise ValidationError("logo URL is too long")
+    return cleaned
+
+
+def _validate_whatsapp(number: str) -> str:
+    cleaned = "".join(ch for ch in number.strip() if ch in "+0123456789")
+    if len(cleaned) > 20 or (cleaned.startswith("+") and len(cleaned) < 8):
+        raise ValidationError("WhatsApp number must be a valid phone number with country code")
+    return cleaned
+
+
 async def update_identity(
     session: AsyncSession,
     ctx: TenantContext,
     *,
     name: str | None = None,
     theme_tokens: dict | None = None,
+    whatsapp_number: str | None = None,
+    social_links: list | None = None,
+    logo_url: str | None = None,
+    site_category: str | None = None,
+    description: str | None = None,
 ) -> dict:
     website = await _require_live_website(session, ctx.tenant_id)
     if name is not None:
@@ -222,6 +274,16 @@ async def update_identity(
         website.name = cleaned_name[:200]
     if theme_tokens is not None:
         website.theme_tokens = _validate_theme_tokens(theme_tokens)
+    if whatsapp_number is not None:
+        website.whatsapp_number = _validate_whatsapp(whatsapp_number) or None
+    if social_links is not None:
+        website.social_links = _validate_social_links(social_links)
+    if logo_url is not None:
+        website.logo_url = _validate_logo_url(logo_url) or None
+    if site_category is not None:
+        website.site_category = site_category.strip()[:50] or None
+    if description is not None:
+        website.meta_description = description.strip()[:500] or None
 
     # Identity renders immediately: refresh the public snapshot in the SAME
     # transaction (no republish needed — identity is not versioned content).
@@ -235,6 +297,10 @@ async def update_identity(
     if snapshot is not None:
         snapshot.name = website.name
         snapshot.theme_tokens = dict(website.theme_tokens or {})
+        snapshot.whatsapp_number = website.whatsapp_number
+        snapshot.social_links = list(website.social_links or [])
+        snapshot.logo_url = website.logo_url
+        snapshot.site_category = website.site_category
         if snapshot.projection:
             snapshot.projection = {**snapshot.projection, "name": website.name}
     await session.flush()
@@ -244,6 +310,11 @@ async def update_identity(
             "name": website.name,
             "slug": website.slug,
             "theme_tokens": website.theme_tokens or {},
+            "whatsapp_number": website.whatsapp_number,
+            "social_links": website.social_links or [],
+            "logo_url": website.logo_url,
+            "site_category": website.site_category,
+            "description": website.meta_description,
         }
     }
 

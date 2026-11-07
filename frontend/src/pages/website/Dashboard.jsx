@@ -28,8 +28,6 @@ const SECTION_TYPE_LABELS = {
   branches: ["الفروع", "Branches"],
 };
 
-const COLOR_TOKENS = new Set(["primary", "background", "secondary", "accent"]);
-
 function isColorValue(value) {
   return /^#[0-9a-fA-F]{3,8}$/.test(String(value ?? ""));
 }
@@ -50,6 +48,11 @@ export default function Dashboard() {
 
   const [name, setName] = useState("");
   const [tokens, setTokens] = useState({});
+  const [description, setDescription] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [category, setCategory] = useState("");
+  const [socials, setSocials] = useState([]);
+  const [logoUrl, setLogoUrl] = useState("");
   const [sectionEdits, setSectionEdits] = useState({});
   const logoRef = useRef(null);
 
@@ -73,6 +76,11 @@ export default function Dashboard() {
         if (ov?.website) {
           setName(ov.website.name);
           setTokens(ov.website.theme_tokens ?? {});
+          setDescription(ov.website.description ?? "");
+          setWhatsapp(ov.website.whatsapp_number ?? "");
+          setCategory(ov.website.site_category ?? "");
+          setSocials(Array.isArray(ov.website.social_links) ? ov.website.social_links : []);
+          setLogoUrl(ov.website.logo_url ?? "");
         }
       })
       .catch((err) => {
@@ -90,7 +98,15 @@ export default function Dashboard() {
     try {
       await api("/website/content/identity", {
         method: "POST",
-        body: JSON.stringify({ name, theme_tokens: tokens }),
+        body: JSON.stringify({
+          name,
+          theme_tokens: tokens,
+          whatsapp_number: whatsapp || null,
+          social_links: socials.filter((s) => s.href),
+          logo_url: logoUrl || null,
+          site_category: category || null,
+          description: description || null,
+        }),
       });
       setMessage({ kind: "ok", text: L("تم الحفظ — ظهر على الموقع", "Saved — live on the site") });
       refreshAll();
@@ -168,7 +184,12 @@ export default function Dashboard() {
       }
       const data = await res.json();
       if (data?.url) {
-        setTokens((prev) => ({ ...prev, logo_url: data.url }));
+        setLogoUrl(data.url);
+        // Persist immediately — the logo is identity, not draft content.
+        await api("/website/content/identity", {
+          method: "POST",
+          body: JSON.stringify({ logo_url: data.url }),
+        });
       }
       setMessage({ kind: "ok", text: L("تم رفع الصورة", "Image uploaded") });
       refreshAll();
@@ -393,7 +414,7 @@ export default function Dashboard() {
               <span className="mb-2 block text-sm font-medium">{L("لوجو الموقع", "Site logo")}</span>
               <div className="flex items-center gap-3">
                 <input type="file" accept="image/*" ref={logoRef} className="hidden"
-                  onChange={(e) => { setLogoFile(e.target.files?.[0]); uploadLogo(e.target.files?.[0]); }} />
+                  onChange={(e) => uploadLogo(e.target.files?.[0])} />
                 <button type="button" onClick={() => logoRef.current?.click()} disabled={busy === "logo"}
                   className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50">
                   <Upload className="h-4 w-4" />
@@ -411,12 +432,107 @@ export default function Dashboard() {
 
       {tab === "settings" ? (
         <SectionCard title={L("الإعدادات", "Settings")}>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {L("اسم الموقع: ", "Site name: ")}{website.name}
+          <div className="space-y-5">
+            <p className="text-xs text-muted-foreground" dir="ltr">
+              /{website.slug} · {website.template_id}
             </p>
-            <p className="text-sm text-muted-foreground" dir="ltr">/{website.slug}</p>
-            <p className="text-sm text-muted-foreground">{L("التصميم: ", "Template: ")}{website.template_id}</p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium">{L("اسم الموقع", "Site name")}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={200}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium">{L("التصنيف", "Category")}</span>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">{L("— اختر —", "— choose —")}</option>
+                  {["ملابس", "أحذية", "إكسسوارات", "أثاث", "إلكترونيات", "مستلزمات أطفال", "أخرى"].map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-1 block text-sm font-medium">{L("وصف الموقع", "Description")}</span>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium">{L("رقم الواتساب (بالكود الدولي)", "WhatsApp number (with country code)")}</span>
+                <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} dir="ltr" maxLength={30}
+                  placeholder="+201234567890"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              </label>
+              <div>
+                <span className="mb-1 block text-sm font-medium">{L("لوجو الموقع", "Site logo")}</span>
+                <div className="flex items-center gap-3">
+                  {logoUrl ? <img src={logoUrl} alt="logo" className="h-10 w-10 rounded-md border object-cover" /> : null}
+                  <input type="file" accept="image/*" ref={logoRef} className="hidden"
+                    onChange={(e) => uploadLogo(e.target.files?.[0])} />
+                  <button type="button" onClick={() => logoRef.current?.click()} disabled={busy === "logo"}
+                    className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent disabled:opacity-50">
+                    <Upload className="h-4 w-4" />
+                    {busy === "logo" ? L("جارٍ الرفع…", "Uploading…") : L("رفع", "Upload")}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-2 block text-sm font-medium">{L("روابط السوشيال", "Social links")}</span>
+              <div className="space-y-2">
+                {socials.map((s, idx) => (
+                  <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+                    <select value={s.platform ?? "instagram"}
+                      onChange={(e) => setSocials((prev) => prev.map((it, i) => (i === idx ? { ...it, platform: e.target.value } : it)))}
+                      className="rounded-md border bg-background px-2 py-1.5 text-xs">
+                      {["instagram", "facebook", "tiktok", "x", "youtube", "snapchat"].map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                    <input value={s.handle ?? ""} placeholder={L("المعرّف", "handle")} maxLength={80}
+                      onChange={(e) => setSocials((prev) => prev.map((it, i) => (i === idx ? { ...it, handle: e.target.value } : it)))}
+                      className="w-32 rounded-md border bg-background px-2 py-1.5 text-xs" />
+                    <input value={s.href ?? ""} placeholder="https://…" dir="ltr"
+                      onChange={(e) => setSocials((prev) => prev.map((it, i) => (i === idx ? { ...it, href: e.target.value } : it)))}
+                      className="min-w-40 flex-1 rounded-md border bg-background px-2 py-1.5 text-xs" />
+                    <button type="button"
+                      onClick={() => setSocials((prev) => prev.filter((_, i) => i !== idx))}
+                      className="rounded-md border px-2 py-1 text-xs text-destructive hover:bg-destructive/10">
+                      {L("حذف", "Remove")}
+                    </button>
+                  </div>
+                ))}
+                {socials.length < 6 ? (
+                  <button type="button"
+                    onClick={() => setSocials((prev) => [...prev, { platform: "instagram", handle: "", href: "" }])}
+                    className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent">
+                    {L("+ إضافة رابط", "+ Add link")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-2 block text-sm font-medium">{L("ألوان التصميم", "Colors")}</span>
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(tokens).map(([key, value]) => (
+                  <label key={key} className="flex items-center gap-2 text-xs">
+                    <span dir="ltr" className="text-muted-foreground">{key}</span>
+                    <input type="color" value={isColorValue(value) ? value : "#000000"}
+                      onChange={(e) => setTokens((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="h-8 w-10 cursor-pointer rounded border" />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button type="button" onClick={saveIdentity} disabled={busy === "identity"}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              <Paintbrush className="h-4 w-4" />
+              {busy === "identity" ? L("جارٍ الحفظ…", "Saving…") : L("حفظ — يظهر فورًا على الموقع", "Save — live on the site immediately")}
+            </button>
           </div>
         </SectionCard>
       ) : null}

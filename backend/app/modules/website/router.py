@@ -15,6 +15,7 @@ Routers parse and authorise, then call services — no rows are written here.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 import sqlalchemy as sa
@@ -23,7 +24,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
+from app.core.errors import (
+    NotFoundError,
+    PermissionDeniedError,
+    StorageUnavailableError,
+    ValidationError,
+)
+from app.core.storage import FetchedMedia, get_storage
 from app.modules.identity.deps import DbSession, TenantContext, TenantCtxDep
 from app.modules.identity.models import Tenant
 from app.modules.website.services import (
@@ -88,6 +95,11 @@ class PaymentReferenceIn(BaseModel):
 class IdentityIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     theme_tokens: dict | None = None
+    whatsapp_number: str | None = Field(default=None, max_length=30)
+    social_links: list[dict] | None = None
+    logo_url: str | None = Field(default=None, max_length=2048)
+    site_category: str | None = Field(default=None, max_length=50)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class SectionUpdateIn(BaseModel):
@@ -182,8 +194,64 @@ async def get_content(ctx: TenantCtxDep) -> dict:
 @router.post("/website/content/identity")
 async def update_identity(body: IdentityIn, ctx: TenantCtxDep) -> dict:
     return await content_service.update_identity(
-        ctx.session, ctx, name=body.name, theme_tokens=body.theme_tokens
+        ctx.session,
+        ctx,
+        name=body.name,
+        theme_tokens=body.theme_tokens,
+        whatsapp_number=body.whatsapp_number,
+        social_links=body.social_links,
+        logo_url=body.logo_url,
+        site_category=body.site_category,
+        description=body.description,
     )
+
+
+@router.post("/website/images/upload", status_code=201)
+async def upload_site_image(request: Request, ctx: TenantCtxDep) -> dict:
+    """Store a merchant site image and return its stable public URL.
+
+    Same screen-then-store discipline as product image uploads: the bytes are
+    screened by magic byte and size BEFORE anything is written to the bucket.
+    The returned URL is stable (never expiring), so it is safe to persist as a
+    section image or the site logo.
+    """
+    storage = get_storage()
+    if not storage.configured:
+        raise StorageUnavailableError()
+
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    signatures = {
+        "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+        "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": lambda data: (
+            len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+        ),
+    }
+    signature = signatures.get(content_type)
+    if signature is None:
+        raise ValidationError("unsupported image type; use JPEG, PNG, or WebP")
+
+    chunks = bytearray()
+    async for chunk in request.stream():
+        chunks.extend(chunk)
+        if len(chunks) > 10 * 1024 * 1024:
+            raise ValidationError("image exceeds the 10 MB upload limit")
+    image_data = bytes(chunks)
+    if not image_data or not signature(image_data):
+        raise ValidationError("image content does not match its file type")
+
+    stored = await storage.store(
+        FetchedMedia(
+            data=image_data,
+            content_type=content_type,
+            checksum=hashlib.sha256(image_data).hexdigest(),
+        ),
+        prefix=f"site-images/{ctx.tenant_id}",
+        original_url="",
+    )
+    if not stored.durable or not stored.storage_key:
+        raise StorageUnavailableError()
+    return {"url": stored.url, "key": f"s3://{stored.storage_key}"}
 
 
 @router.post("/website/content/section")

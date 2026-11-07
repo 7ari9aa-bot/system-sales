@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from html import escape
 from typing import Any
 
+from app.modules.website.rendering.brand import reset_site_brand, set_site_brand
+
 # (props, ctx) -> html fragment
 SectionRenderer = Callable[[dict, "RenderContext"], str]
 
@@ -590,6 +592,28 @@ def render_website(
     (preview mode only) is injected right after ``<body>``.
     """
     ctx = ctx or RenderContext()
+    identity = snapshot.get("identity") or {}
+    brand_token = set_site_brand(identity)
+    try:
+        return _render_website_inner(
+            snapshot,
+            ctx,
+            page_slug=page_slug,
+            page_url_prefix=page_url_prefix,
+            banner_html=banner_html,
+        )
+    finally:
+        reset_site_brand(brand_token)
+
+
+def _render_website_inner(
+    snapshot: dict,
+    ctx: RenderContext,
+    *,
+    page_slug: str | None = None,
+    page_url_prefix: str | None = None,
+    banner_html: str | None = None,
+) -> str:
     template_id = str(snapshot.get("template_id") or "")
     reg = _registry_for(template_id)
     dispatch_fn = getattr(reg, "dispatch_fn", None)

@@ -9,6 +9,9 @@ WhatsApp number, social links) and the activation copies it onto the
 Website, which carries it into the published snapshot — so the public
 site renders the merchant's own WhatsApp button and social links from
 day one, and the Website Dashboard can edit them later.
+
+The add_column calls are written out literally per table (no loops) so
+the model/migration drift audit can see each column statically.
 """
 
 from collections.abc import Sequence
@@ -22,23 +25,29 @@ down_revision: str | None = "fe2026110505"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_IDENTITY_COLUMNS = [
-    sa.Column("site_category", sa.String(50), nullable=True),
-    sa.Column("whatsapp_number", sa.String(30), nullable=True),
-    sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
-    sa.Column("logo_url", sa.Text(), nullable=True),
-]
-
-_TABLES = ("websites", "website_purchases", "website_published_sites")
-
 
 def upgrade() -> None:
-    for table in _TABLES:
-        for col in _IDENTITY_COLUMNS:
-            kwargs = dict(nullable=col.nullable)
-            if col.server_default is not None:
-                kwargs["server_default"] = col.server_default
-            op.add_column(table, sa.Column(col.name, col.type, **kwargs))
+    op.add_column("websites", sa.Column("site_category", sa.String(50), nullable=True))
+    op.add_column("websites", sa.Column("whatsapp_number", sa.String(30), nullable=True))
+    op.add_column(
+        "websites",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("websites", sa.Column("logo_url", sa.Text(), nullable=True))
+    op.add_column("website_purchases", sa.Column("site_category", sa.String(50), nullable=True))
+    op.add_column("website_purchases", sa.Column("whatsapp_number", sa.String(30), nullable=True))
+    op.add_column(
+        "website_purchases",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("website_purchases", sa.Column("logo_url", sa.Text(), nullable=True))
+    op.add_column("website_published_sites", sa.Column("site_category", sa.String(50), nullable=True))
+    op.add_column("website_published_sites", sa.Column("whatsapp_number", sa.String(30), nullable=True))
+    op.add_column(
+        "website_published_sites",
+        sa.Column("social_links", JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+    )
+    op.add_column("website_published_sites", sa.Column("logo_url", sa.Text(), nullable=True))
     op.execute(
         """DO $$
         BEGIN
@@ -53,7 +62,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for table in reversed(_TABLES):
-        for col in reversed(_IDENTITY_COLUMNS):
-            op.drop_column(table, col.name)
+    op.drop_column("website_published_sites", "logo_url")
+    op.drop_column("website_published_sites", "social_links")
+    op.drop_column("website_published_sites", "whatsapp_number")
+    op.drop_column("website_published_sites", "site_category")
     op.drop_column("website_purchases", "logo_url")
+    op.drop_column("website_purchases", "social_links")
+    op.drop_column("website_purchases", "whatsapp_number")
+    op.drop_column("website_purchases", "site_category")
+    op.drop_column("websites", "logo_url")
+    op.drop_column("websites", "social_links")
+    op.drop_column("websites", "whatsapp_number")
+    op.drop_column("websites", "site_category")
