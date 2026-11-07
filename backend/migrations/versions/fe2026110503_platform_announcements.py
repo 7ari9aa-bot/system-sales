@@ -71,6 +71,10 @@ def upgrade() -> None:
         sa.Column("ends_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("dismissible", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
+        # created_by stays NULL on purpose: nothing in THIS repository writes
+        # it — the backend here only ever READS announcements (the owner
+        # console composes them on its own surface), and actor attribution
+        # lives in audit_logs, not in this column. Audited as notif-3.
         sa.Column(
             "created_by",
             postgresql.UUID(as_uuid=True),

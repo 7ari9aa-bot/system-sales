@@ -65,5 +65,5 @@ async def dismiss_announcement(
     ctx: TenantCtxDep, announcement_id: uuid.UUID
 ) -> AnnouncementDismissOut:
     """Tombstone the banner for THIS user only; idempotent."""
-    dismissed = await dismiss(ctx.session, announcement_id, ctx.user.id)
+    dismissed = await dismiss(ctx.session, announcement_id, ctx.user.id, tenant_id=ctx.tenant_id)
     return AnnouncementDismissOut(dismissed=dismissed)

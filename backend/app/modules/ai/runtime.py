@@ -1874,6 +1874,16 @@ class AgentRunner:
                     # the model may act on — it never carries internals.
                     status = "error"
                     error = str(exc)
+                except AIBudgetFallbackRequested as exc:
+                    # Designed outcome too (§42 on_exceed == "fallback"): the
+                    # budget gate refused the call because a cap is exhausted.
+                    # It is a plain Exception, not a DomainError, so without
+                    # this guard it fell into the generic branch below and the
+                    # model heard "tool failed unexpectedly" — retrying blind
+                    # against a budget that cannot move. The explicit budget
+                    # story is the data the model needs to stop and report.
+                    status = "error"
+                    error = str(exc)
                 except Exception:
                     # Unexpected failure. The exception text may carry SQL
                     # fragments, connection strings, filesystem paths, keys

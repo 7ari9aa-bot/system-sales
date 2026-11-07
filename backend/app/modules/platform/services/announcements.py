@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,15 @@ async def active_for_user(
                 .where(
                     PlatformAnnouncement.is_active.is_(True),
                     PlatformAnnouncement.starts_at <= now,
+                    # Ended rows are filtered in SQL so they never consume the
+                    # candidate cap: lifecycle is derived from the clock (no
+                    # sweeper flips is_active), so ended rows ACCUMULATE, and
+                    # fifty of them created after a live notice would drop
+                    # that live notice out of the limit entirely.
+                    or_(
+                        PlatformAnnouncement.ends_at.is_(None),
+                        PlatformAnnouncement.ends_at > now,
+                    ),
                 )
                 .order_by(PlatformAnnouncement.created_at.desc())
                 .limit(_MAX_CANDIDATES)
@@ -87,23 +96,36 @@ def _covers_tenant(audience: dict | None, tenant_id: uuid.UUID) -> bool:
     return str(tenant_id) in {str(value) for value in tenant_ids}
 
 
-async def dismiss(session: AsyncSession, announcement_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+async def dismiss(
+    session: AsyncSession,
+    announcement_id: uuid.UUID,
+    user_id: uuid.UUID,
+    *,
+    tenant_id: uuid.UUID,
+) -> bool:
     """Record a dismissal; idempotent via the composite PK. True on first write.
 
-    An unknown announcement id is a no-op (False), never an orphan tombstone
-    row that would violate the FK. A notice the platform marked
-    non-dismissable refuses the tombstone instead of vanishing.
+    The tombstone is only written for a notice this user can actually SEE:
+    an unknown announcement id is a no-op (False), never an orphan tombstone
+    row that would violate the FK; a notice the platform marked
+    non-dismissable refuses the tombstone instead of vanishing; and a notice
+    outside its window or targeted away from this tenant refuses too — a
+    dismiss response must not confirm the existence of a notice the caller
+    was never shown, so ``true`` means "dismissed a live, visible notice".
     """
     row = (
         await session.execute(
-            select(PlatformAnnouncement.id, PlatformAnnouncement.dismissible).where(
-                PlatformAnnouncement.id == announcement_id
-            )
+            select(PlatformAnnouncement).where(PlatformAnnouncement.id == announcement_id)
         )
-    ).one_or_none()
+    ).scalar_one_or_none()
     if row is None:
         return False
     if not row.dismissible:
+        return False
+    now = datetime.now(UTC)
+    if row.starts_at > now or (row.ends_at is not None and row.ends_at <= now):
+        return False
+    if not _covers_tenant(row.audience, tenant_id):
         return False
     result = await session.execute(
         pg_insert(PlatformAnnouncementDismissal)
