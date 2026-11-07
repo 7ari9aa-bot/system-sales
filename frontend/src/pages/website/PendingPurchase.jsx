@@ -121,7 +121,7 @@ export default function PendingPurchase({ overview, onMutate }) {
           </button>
           <button
             type="button"
-            onClick={cancel}
+            onClick={() => { if (window.confirm(L("متأكد إنك عايز تلغي الطلب؟", "Are you sure you want to cancel?"))) cancel(); }}
             disabled={busy === "cancel"}
             className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
@@ -129,7 +129,7 @@ export default function PendingPurchase({ overview, onMutate }) {
           </button>
         </div>
         {message ? (
-          <div className={`mt-2 text-sm ${message.kind === "ok" ? "text-emerald-700" : "text-red-600"}`}>
+          <div role="status" className={`mt-2 text-sm ${message.kind === "ok" ? "text-emerald-700" : "text-red-600"}`}>
             {message.text}
           </div>
         ) : null}
