@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useNavigate } from "react-router-dom";
 import { api, getTokens, setTokens, prefetchDashboard, ApiError } from "@/lib/api";
 import { queryClientInstance } from "@/lib/query-client";
+import { currentVisitorId } from "@/lib/visitorId";
 
 /** مصادقة حقيقية على /auth/* — login و register و logout و me.
  *  بيتحمل مرة واحدة: لو فيه توكنات بيجيب /auth/me، ولو فشلت بيمسح
@@ -94,7 +95,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   const register = useCallback(async (payload) => {
-    const data = await api("/auth/register", { method: "POST", body: payload });
+    // Attribution: tell the server which tracked visitor is signing up. Omitted when this
+    // browser was never tracked; the server also drops a malformed value, so this can
+    // never make a signup fail.
+    const visitor_id = currentVisitorId();
+    const body = visitor_id ? { ...payload, visitor_id } : payload;
+    const data = await api("/auth/register", { method: "POST", body });
     if (data?.access_token) {
       setTokens({ access_token: data.access_token, refresh_token: data.refresh_token });
       const me = await api("/auth/me");

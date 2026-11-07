@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+# Same shape the telemetry ingest accepts (platform/services/telemetry.py). Always
+# used with fullmatch: a "$" anchor would let a trailing newline through.
+_VISITOR_ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
 class RegisterRequest(BaseModel):
@@ -17,6 +22,17 @@ class RegisterRequest(BaseModel):
     tenant_name: str | None = Field(default=None, max_length=255)
     tenant_slug: str | None = Field(default=None, max_length=63, pattern=r"^[a-z0-9-]+$")
     full_name: str | None = Field(default=None, max_length=255)
+    # The anonymous id the website tracker keeps in localStorage. Optional, and
+    # a malformed value is DROPPED, never a reason to refuse a signup: attribution
+    # must not be able to break registration.
+    visitor_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("visitor_id", mode="before")
+    @classmethod
+    def _drop_bad_visitor_id(cls, value):
+        if value is None:
+            return None
+        return value if isinstance(value, str) and _VISITOR_ID_RE.fullmatch(value) else None
 
 
 class LoginRequest(BaseModel):

@@ -62,6 +62,11 @@ class Tenant(TimestampMixin, Base):
     # Why the tenant is in its current (usually restrictive) state — without it
     # a suspended tenant is indistinguishable from a billing mistake.
     status_reason: Mapped[str | None] = mapped_column(String(255))
+    # Which anonymous website visitor (visitor_events.visitor_id) became this
+    # tenant. Lives here, not on visitor_events, because that table is
+    # platform-level telemetry with no tenant column and no RLS. NULL for API
+    # signups, invitations and accounts that predate the link.
+    signup_visitor_id: Mapped[str | None] = mapped_column(String(64))
     # §47: the ONE currency this tenant trades in. Every money column in the
     # system is NUMERIC(14,2), so this is restricted to a two-decimal currency
     # (see TenantService.set_currency) — an amount stored here is always the

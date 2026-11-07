@@ -8,13 +8,15 @@ const MAX_EVENTS = 50;
 let events = [];
 const listeners = new Set();
 
-export function guardianReport({ source, message, kind = "api" }) {
+export function guardianReport({ source, message, kind = "api", status = null }) {
   const event = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     at: new Date(),
     kind, // api | window | promise | render
     source: String(source || "unknown").slice(0, 120),
     message: String(message || "Unknown failure").slice(0, 300),
+    // HTTP status when the failure came from a response; null for window/promise/render.
+    status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
   };
   // منع التكرار: نفس المصدر ونفس الرسالة في آخر 10 أحداث = تحديث آخر ظهور بس
   const dup = events

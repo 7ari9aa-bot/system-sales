@@ -696,3 +696,74 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
         "reuse past the window must revoke EVERY live token the user owns — "
         "the rotation heir and the tolerated replay's pair included"
     )
+
+
+async def test_register_records_which_visitor_became_the_tenant(db):
+    """The website tracker's anonymous id is stored on the tenant, so the owner
+    console can tie "visitor X" to "merchant Y". visitor_events itself stays
+    tenant-free on purpose."""
+    visitor = f"v-{uuid.uuid4().hex}"
+    _user, tenant = await AuthService.register(
+        db,
+        tenant_name=None,
+        tenant_slug=None,
+        email=f"vis-{uuid.uuid4().hex[:8]}@test.local",
+        password="Probe-1234",
+        full_name=None,
+        visitor_id=visitor,
+    )
+    stored = (
+        await db.execute(
+            text("SELECT signup_visitor_id FROM tenants WHERE id = :t"), {"t": tenant.id}
+        )
+    ).scalar_one()
+    assert stored == visitor
+
+
+async def test_register_without_a_visitor_id_still_works_and_stores_null(db):
+    """API signups and old clients send no visitor id: registration is unchanged."""
+    _user, tenant = await AuthService.register(
+        db,
+        tenant_name=None,
+        tenant_slug=None,
+        email=f"novis-{uuid.uuid4().hex[:8]}@test.local",
+        password="Probe-1234",
+        full_name=None,
+    )
+    stored = (
+        await db.execute(
+            text("SELECT signup_visitor_id FROM tenants WHERE id = :t"), {"t": tenant.id}
+        )
+    ).scalar_one()
+    assert stored is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "short",
+        "has space here",
+        "<script>alert(1)</script>",
+        "x'; drop table tenants;--",
+        "a" * 65,
+        "abcdefgh\n",
+        "زائر12345678",
+        12345678,
+    ],
+)
+def test_register_request_drops_a_malformed_visitor_id_instead_of_refusing_signup(raw):
+    """Attribution must never be able to break registration: a bad id is dropped."""
+    from app.modules.identity.schemas import RegisterRequest
+
+    body = RegisterRequest(email="a@example.com", password="Probe-1234", visitor_id=raw)
+    assert body.visitor_id is None
+
+
+@pytest.mark.parametrize("good", ["abcdefgh", "aa72cf42-c1e3-4ad8-9320-48fb28f34804", "a" * 64])
+def test_register_request_keeps_a_wellformed_visitor_id(good):
+    from app.modules.identity.schemas import RegisterRequest
+
+    assert (
+        RegisterRequest(email="a@example.com", password="Probe-1234", visitor_id=good).visitor_id
+        == good
+    )

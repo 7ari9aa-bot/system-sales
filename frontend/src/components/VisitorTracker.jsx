@@ -1,26 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { apiUrl } from "@/lib/api";
-
-const VISITOR_KEY = "fihrist:visitorId";
-const SESSION_KEY = "fihrist:visitorSession";
-
-function randomId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-}
-
-function getOrCreate(storage, key) {
-  try {
-    const existing = storage.getItem(key);
-    if (existing) return existing;
-    const next = randomId();
-    storage.setItem(key, next);
-    return next;
-  } catch {
-    return randomId();
-  }
-}
+import { VISITOR_KEY, SESSION_KEY, getOrCreate } from "@/lib/visitorId";
 
 function send(event) {
   const payload = JSON.stringify(event);
