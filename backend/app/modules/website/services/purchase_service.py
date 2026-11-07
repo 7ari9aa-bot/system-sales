@@ -83,6 +83,9 @@ async def create(
     site_name: str,
     slug: str | None = None,
     payment_reference: str | None = None,
+    site_category: str | None = None,
+    whatsapp_number: str | None = None,
+    social_links: list | None = None,
 ) -> WebsitePurchase:
     manifest = catalog.get(template_id)  # TemplateNotFoundError -> 404
 
@@ -126,6 +129,9 @@ async def create(
         site_name=name,
         slug=desired,
         payment_reference=reference,
+        site_category=(site_category or "").strip()[:50] or None,
+        whatsapp_number=(whatsapp_number or "").strip()[:30] or None,
+        social_links=social_links or [],
     )
     session.add(purchase)
     await session.flush()
@@ -210,6 +216,10 @@ async def _activate_website(
         template_id=purchase.template_id,
         theme_tokens=dict(manifest.theme_tokens),
         navigation=[],
+        site_category=purchase.site_category,
+        whatsapp_number=purchase.whatsapp_number,
+        social_links=list(purchase.social_links or []),
+        logo_url=purchase.logo_url,
     )
     session.add(website)
     await session.flush()
