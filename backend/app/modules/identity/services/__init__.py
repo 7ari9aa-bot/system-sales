@@ -14,7 +14,7 @@ from app.modules.identity.services._common import (
     _record_security_event,
     _revoke_family_on_reuse,
 )
-from app.modules.identity.services.auth import AuthService
+from app.modules.identity.services.auth import AuthService, GoogleMfaRequired
 from app.modules.identity.services.hierarchy import HierarchyService
 from app.modules.identity.services.lifecycle import (
     ALLOWED_TRANSITIONS,
@@ -39,6 +39,7 @@ from app.modules.identity.services.user import UserService
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "AuthService",
+    "GoogleMfaRequired",
     "EmailAlreadyRegistered",
     "GRACE_PERIOD_DAYS",
     "HierarchyService",

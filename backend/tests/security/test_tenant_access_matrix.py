@@ -82,14 +82,6 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # reads tenant-scoped data or binds a GUC.
         "POST /api/v1/auth/verify-email",
         "POST /api/v1/auth/resend-verification",
-        # Google OAuth social sign-in (modules/identity/routers/google.py):
-        # ACCOUNT-global by design, like the register/login pair above — the
-        # flow runs BEFORE any tenant scope exists. The callback exchanges the
-        # one-time code server-side and touches only the account row (users);
-        # the session it mints is the standard JWT pair, and tenancy binding
-        # happens later through the normal switch-tenant surface.
-        "GET /api/v1/auth/google/authorize",
-        "GET /api/v1/auth/google/callback",
         # Website Platform bridge (modules/catalog/website_platform.py): the
         # caller is the EXTERNAL website builder, not a browser session —
         # tenancy resolves from the X-Website-Platform-Key header contract
@@ -132,6 +124,14 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # authorization, and the route only ever redirects back to the
         # frontend with an outcome marker (it reads no tenant data).
         "GET /api/v1/integrations/meta/oauth/callback",
+        # Google sign-in (modules/identity/routers/google.py): the visitor has no
+        # session yet, so there is no tenant to resolve. /authorize only redirects
+        # to Google with a signed, 10-minute state; /callback verifies that state,
+        # takes the address only from Google's token-exchanged profile, and signs
+        # in through AuthService.login_with_google (which resolves the workspace
+        # and applies the suspended-workspace and MFA gates like a password login).
+        "GET /api/v1/auth/google/authorize",
+        "GET /api/v1/auth/google/callback",
         # SSE streams carry their own ticket auth in-body
         "GET /api/v1/conversations/stream",
         "GET /api/v1/realtime/events",

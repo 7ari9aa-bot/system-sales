@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 451,
-    "sha256": "7107d947c9e043e51e921111a42a07388dfcfe16e9854593dc555224a1b13964",
+    "sha256": "1ac9f092f204562763b4d1fb0d2ef08122d7510c0d2c471850c68dafc0317a52",
     "typed_operations": 287
   },
   "spec": {
@@ -27607,6 +27607,28 @@
         "get": {
           "description": "Redirect the browser to Google's consent screen.",
           "operationId": "google_authorize_api_v1_auth_google_authorize_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "returnTo",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Returnto",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "visitor_id",
+              "required": false,
+              "schema": {
+                "default": "",
+                "title": "Visitor Id",
+                "type": "string"
+              }
+            }
+          ],
           "responses": {
             "200": {
               "content": {
@@ -27615,6 +27637,16 @@
                 }
               },
               "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
             }
           },
           "summary": "Google Authorize",
@@ -27625,7 +27657,7 @@
       },
       "/api/v1/auth/google/callback": {
         "get": {
-          "description": "Handle Google's redirect: exchange the code, create/find the user, issue JWTs.",
+          "description": "Handle Google's redirect: exchange the code, then sign in through the service.",
           "operationId": "google_callback_api_v1_auth_google_callback_get",
           "parameters": [
             {

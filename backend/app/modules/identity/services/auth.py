@@ -59,6 +59,10 @@ def _get_state_policies():
     return _STATE_POLICIES
 
 
+class GoogleMfaRequired(PermissionDeniedError):
+    """Google sign-in refused because the account has MFA (use password + code)."""
+
+
 class AuthService:
     @staticmethod
     async def register(
@@ -67,10 +71,19 @@ class AuthService:
         tenant_name: str | None,
         tenant_slug: str | None,
         email: str,
-        password: str,
+        password: str | None,
         full_name: str | None,
         visitor_id: str | None = None,
+        email_verified: bool = False,
     ) -> tuple[User, Tenant]:
+        """Create user + tenant + owner membership + seeded defaults.
+
+        ``password=None`` and ``email_verified=True`` are for an identity the
+        provider already proved (Google sign-in): the account gets an empty
+        password hash (``verify_password`` never accepts it, so it can only be
+        entered through the provider or after a password reset) and no
+        verification email is sent.
+        """
         from app.core.errors import ConflictError
 
         local_part = email.split("@", 1)[0]
@@ -113,8 +126,9 @@ class AuthService:
         tenant = Tenant(slug=tenant_slug, name=tenant_name, signup_visitor_id=visitor_id)
         user = User(
             email=email.strip().lower(),
-            password_hash=await hash_password_async(password),
+            password_hash=await hash_password_async(password) if password else "",
             full_name=full_name,
+            email_verified=email_verified,
         )
         session.add_all([tenant, user])
         await session.flush()
@@ -132,7 +146,8 @@ class AuthService:
         from app.core.tenancy import dispatch_tenant_created_hooks
 
         await dispatch_tenant_created_hooks(session, tenant.id)
-        await AuthService.queue_email_verification(session, user=user)
+        if not email_verified:
+            await AuthService.queue_email_verification(session, user=user)
         await AuthService._audit(
             session, None, "auth.registered", "user", str(user.id), tenant_id=tenant.id
         )
@@ -255,6 +270,94 @@ class AuthService:
             )
             raise MfaRequiredError(challenge_id)
         pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        return pair, user, tenant_id
+
+    @staticmethod
+    async def login_with_google(
+        session,
+        *,
+        email: str,
+        email_verified: bool,
+        full_name: str | None = None,
+        visitor_id: str | None = None,
+        user_agent: str | None = None,
+        ip: str | None = None,
+    ) -> tuple[TokenPair, User, uuid.UUID | None]:
+        """Sign in (or sign up) with an identity Google has already proven.
+
+        Goes through the same gates as the password login so Google is not a
+        side door: Google must vouch for the address, a taken-but-unverified
+        password account is never handed over (pre-hijack), a suspended
+        workspace cannot enter, MFA is not bypassed, and the token pair is
+        recorded like any other session. A brand-new address gets a full
+        workspace via ``register`` instead of an orphan user.
+        """
+        email = email.strip().lower()
+        if not email_verified:
+            raise PermissionDeniedError("google email is not verified")
+
+        user = (
+            await session.execute(select(User).where(sa.func.lower(User.email) == email))
+        ).scalar_one_or_none()
+
+        if user is None:
+            user, tenant = await AuthService.register(
+                session,
+                tenant_name=None,
+                tenant_slug=None,
+                email=email,
+                password=None,
+                full_name=full_name,
+                visitor_id=visitor_id,
+                email_verified=True,
+            )
+            tenant_id: uuid.UUID | None = tenant.id
+        else:
+            if not user.is_active:
+                await _record_security_event(
+                    "account_disabled_login",
+                    details={"email_domain": email.split("@")[-1], "via": "google"},
+                    ip=ip,
+                    actor_user_id=user.id,
+                )
+                raise PermissionDeniedError("account disabled")
+            if not user.email_verified:
+                # The password account was created by someone who never proved
+                # the mailbox. Linking Google to it would let a squatter keep
+                # access, so refuse until the owner verifies or resets.
+                await _record_security_event(
+                    "google_link_refused_unverified",
+                    details={"email_domain": email.split("@")[-1]},
+                    ip=ip,
+                    actor_user_id=user.id,
+                )
+                raise PermissionDeniedError("account email is not verified")
+            await session.execute(
+                sa.text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user.id)}
+            )
+            membership = (
+                await session.execute(
+                    select(TenantUser)
+                    .where(TenantUser.user_id == user.id)
+                    .order_by(TenantUser.is_default.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            tenant_id = membership.tenant_id if membership else None
+            await AuthService._assert_tenant_allows_login(
+                session, tenant_id, user_id=user.id, ip=ip
+            )
+            from app.core.mfa import is_mfa_enabled
+
+            if await is_mfa_enabled(session, user_id=user.id):
+                # A redirect flow has no place to ask for the code. Send them
+                # to the password + MFA form rather than skipping the factor.
+                raise GoogleMfaRequired("mfa enabled: sign in with password")
+
+        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        await AuthService._audit(
+            session, user.id, "auth.google_login", "user", str(user.id), tenant_id=tenant_id
+        )
         return pair, user, tenant_id
 
     @staticmethod
