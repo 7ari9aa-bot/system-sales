@@ -27,6 +27,11 @@ export default function TemplateGallery({ onPurchased }) {
   const [siteName, setSiteName] = React.useState("");
   const [slug, setSlug] = React.useState("");
   const [slugTouched, setSlugTouched] = React.useState(false);
+  const [siteCategory, setSiteCategory] = React.useState("");
+  const [whatsappNumber, setWhatsappNumber] = React.useState("");
+  const [instagramUrl, setInstagramUrl] = React.useState("");
+  const [facebookUrl, setFacebookUrl] = React.useState("");
+  const [tiktokUrl, setTiktokUrl] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -60,6 +65,13 @@ export default function TemplateGallery({ onPurchased }) {
           template_id: selected,
           site_name: siteName.trim(),
           slug: effectiveSlug,
+          site_category: siteCategory || null,
+          whatsapp_number: whatsappNumber.trim() || null,
+          social_links: [
+            ...(instagramUrl.trim() ? [{ platform: "instagram", href: instagramUrl.trim() }] : []),
+            ...(facebookUrl.trim() ? [{ platform: "facebook", href: facebookUrl.trim() }] : []),
+            ...(tiktokUrl.trim() ? [{ platform: "tiktok", href: tiktokUrl.trim() }] : []),
+          ],
         }),
       });
       onPurchased();
@@ -197,6 +209,70 @@ export default function TemplateGallery({ onPurchased }) {
                     : L("حروف إنجليزية صغيرة وأرقام وشرطة فقط، ويبدأ وينتهي بحرف أو رقم", "Lowercase letters, digits and hyphens only")}
               </span>
             ) : null}
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{L("فئة الموقع", "Site category")}</span>
+            <select
+              value={siteCategory}
+              onChange={(e) => setSiteCategory(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">{L("اختار الفئة", "Select category")}</option>
+              <option value="clothing">{L("ملابس", "Clothing")}</option>
+              <option value="shoes">{L("أحذية", "Shoes")}</option>
+              <option value="accessories">{L("إكسسوارات", "Accessories")}</option>
+              <option value="electronics">{L("إلكترونيات", "Electronics")}</option>
+              <option value="furniture">{L("أثاث", "Furniture")}</option>
+              <option value="food">{L("أكل ومشروبات", "Food & Drinks")}</option>
+              <option value="beauty">{L("عناية وجمال", "Beauty")}</option>
+              <option value="other">{L("أخرى", "Other")}</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">
+              {L("رقم الواتساب", "WhatsApp number")}
+              <span className="ms-1 font-normal text-muted-foreground">
+                {L("(هيظهر على موقعك)", "(shown on your site)")}
+              </span>
+            </span>
+            <input
+              value={whatsappNumber}
+              onChange={(e) => setWhatsappNumber(e.target.value)}
+              placeholder="201000000000"
+              maxLength={30}
+              dir="ltr"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{L("إنستجرام", "Instagram")}</span>
+            <input
+              value={instagramUrl}
+              onChange={(e) => setInstagramUrl(e.target.value)}
+              placeholder="https://instagram.com/..."
+              dir="ltr"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{L("فيسبوك", "Facebook")}</span>
+            <input
+              value={facebookUrl}
+              onChange={(e) => setFacebookUrl(e.target.value)}
+              placeholder="https://facebook.com/..."
+              dir="ltr"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{L("تيك توك", "TikTok")}</span>
+            <input
+              value={tiktokUrl}
+              onChange={(e) => setTiktokUrl(e.target.value)}
+              placeholder="https://tiktok.com/..."
+              dir="ltr"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
           </label>
         </div>
 

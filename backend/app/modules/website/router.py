@@ -65,11 +65,20 @@ def _money(value) -> str:  # noqa: ANN001 - Decimal from Numeric columns
 # ---------------------------------------------------------------------------
 
 
+class SocialLinkIn(BaseModel):
+    platform: str = Field(min_length=1, max_length=30)
+    handle: str | None = Field(default=None, max_length=100)
+    href: str = Field(min_length=1, max_length=300)
+
+
 class PurchaseIn(BaseModel):
     template_id: str = Field(min_length=1, max_length=64)
     site_name: str = Field(min_length=1, max_length=200)
     slug: str | None = Field(default=None, max_length=80)
     payment_reference: str | None = Field(default=None, max_length=200)
+    site_category: str | None = Field(default=None, max_length=50)
+    whatsapp_number: str | None = Field(default=None, max_length=30)
+    social_links: list[SocialLinkIn] | None = None
 
 
 class PaymentReferenceIn(BaseModel):
@@ -125,6 +134,12 @@ async def create_purchase(body: PurchaseIn, ctx: TenantCtxDep) -> dict:
         site_name=body.site_name,
         slug=body.slug,
         payment_reference=body.payment_reference,
+        site_category=body.site_category,
+        whatsapp_number=body.whatsapp_number,
+        social_links=[
+            {"platform": sl.platform, "handle": sl.handle, "href": sl.href}
+            for sl in (body.social_links or [])
+        ],
     )
     return {
         "purchase": {

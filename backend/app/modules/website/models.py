@@ -76,6 +76,13 @@ class Website(TenantMixin, TimestampMixin, IdMixin, Base):
         UUID(as_uuid=True), nullable=True
     )
     aggregate_version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
+    # Site identity — set at purchase, editable from the dashboard
+    site_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    social_links: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("slug", name="uq_websites_slug"),
@@ -169,6 +176,12 @@ class WebsitePurchase(TenantMixin, TimestampMixin, IdMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), server_default="EGP", nullable=False)
     site_name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    site_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    social_links: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
     confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -230,6 +243,12 @@ class WebsitePublishedSite(IdMixin, TimestampMixin, Base):
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     template_id: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    site_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    social_links: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     default_locale: Mapped[str] = mapped_column(String(8), server_default="ar", nullable=False)
     theme_tokens: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
