@@ -813,3 +813,137 @@ def test_the_preview_walk_fails_closed_on_unknowns() -> None:
     # a template without demo products falls back to the generic set
     html = preview_service.render_template_preview("general-commerce")
     assert html is not None and "منتج تجريبي ١" in html
+
+
+# ------------------------------------------------- merchant identity ----
+
+
+async def _activated_funny_baby(db: AsyncSession, tenant_ctx) -> tuple[ws.Website, TenantContext]:
+    purchase = await purchase_service.create(
+        db,
+        _ctx(db, tenant_ctx),
+        template_id="funny-baby",
+        site_name="محل مصطفى",
+        slug=f"shop-{uuid.uuid4().hex[:8]}",
+    )
+    await purchase_service.confirm(
+        db, purchase_id=purchase.id, confirmed_by_user_id=tenant_ctx.user.id
+    )
+    website = (
+        await db.execute(
+            select(ws.Website).where(
+                ws.Website.tenant_id == tenant_ctx.tenant_id, ws.Website.status != "deleted"
+            )
+        )
+    ).scalar_one()
+    return website, _ctx(db, tenant_ctx)
+
+
+async def test_merchant_identity_overrides_the_verbatim_brand(db: AsyncSession, tenant_ctx) -> None:
+    """The published site renders the merchant's OWN whatsapp/socials; the
+    template's placeholder constants disappear from the live page."""
+    website, ctx = await _activated_funny_baby(db, tenant_ctx)
+    await content_service.update_identity(
+        db,
+        ctx,
+        whatsapp_number="+201234567890",
+        social_links=[
+            {"platform": "tiktok", "handle": "@mostafa", "href": "https://tiktok.com/@mostafa"}
+        ],
+        logo_url="https://cdn.example.com/logo.png",
+        site_category="ملابس أطفال",
+        description="أهلاً بكم",
+    )
+    html = await public_service.render_html(db, await _snapshot(db, website.id))
+    assert "wa.me/201234567890" in html
+    assert "tiktok.com/@mostafa" in html
+    assert "201000000000" not in html  # the template's placeholder never leaks
+    assert "facebook.com/funnybaby.eg" not in html  # nor their socials
+
+
+def test_the_preview_walk_keeps_the_template_defaults() -> None:
+    """A preview has no merchant identity — the template's own constants win."""
+    from app.modules.website.services import preview_service
+
+    page = preview_service.render_template_preview("funny-baby")
+    assert page is not None
+    assert "wa.me/201000000000" in page
+
+
+async def test_identity_settings_persist_and_refresh_the_snapshot(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    website, ctx = await _activated_website(db, tenant_ctx)
+    result = await content_service.update_identity(
+        db,
+        ctx,
+        whatsapp_number="201098765432",
+        social_links=[
+            {
+                "platform": "instagram",
+                "handle": "mostafa.shop",
+                "href": "https://instagram.com/mostafa.shop",
+            }
+        ],
+        logo_url="https://cdn.example.com/logo.png",
+        site_category="إكسسوارات",
+        description="أفضل الأسعار",
+    )
+    stored = result["website"]
+    assert stored["whatsapp_number"] == "201098765432"
+    assert stored["social_links"][0]["platform"] == "instagram"
+    assert stored["logo_url"] == "https://cdn.example.com/logo.png"
+    assert stored["site_category"] == "إكسسوارات"
+    assert stored["description"] == "أفضل الأسعار"
+
+    snapshot = await _snapshot(db, website.id)
+    assert snapshot.whatsapp_number == "201098765432"
+    assert snapshot.social_links[0]["href"] == "https://instagram.com/mostafa.shop"
+    assert snapshot.logo_url == "https://cdn.example.com/logo.png"
+    assert snapshot.site_category == "إكسسوارات"
+
+
+async def test_identity_settings_validate_hostile_input(db: AsyncSession, tenant_ctx) -> None:
+    from app.core.errors import ValidationError
+
+    _, ctx = await _activated_website(db, tenant_ctx)
+    with pytest.raises(ValidationError):
+        await content_service.update_identity(
+            db, ctx, social_links=[{"platform": "nope", "href": "https://x.com/a"}]
+        )
+    with pytest.raises(ValidationError):
+        await content_service.update_identity(
+            db, ctx, social_links=[{"platform": "tiktok", "href": "javascript:alert(1)"}]
+        )
+    with pytest.raises(ValidationError):
+        await content_service.update_identity(db, ctx, logo_url="javascript:alert(1)")
+    with pytest.raises(ValidationError):
+        await content_service.update_identity(db, ctx, whatsapp_number="+123")
+
+
+async def test_site_image_upload_fails_closed_without_storage(
+    db: AsyncSession, tenant_ctx, monkeypatch
+) -> None:
+    """No object storage configured → a structured 503, never a silent URL."""
+    from starlette.requests import Request as StarletteRequest
+
+    from app.core.errors import StorageUnavailableError
+    from app.modules.website import router as website_router
+
+    class _NoStorage:
+        configured = False
+
+    monkeypatch.setattr(website_router, "get_storage", lambda: _NoStorage())
+    request = StarletteRequest(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "path": "/api/v1/website/images/upload",
+            "query_string": b"",
+            "headers": [(b"content-type", b"image/png")],
+        }
+    )
+    with pytest.raises(StorageUnavailableError):
+        await website_router.upload_site_image(request, _ctx(db, tenant_ctx))

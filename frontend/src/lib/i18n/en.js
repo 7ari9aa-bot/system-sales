@@ -15,6 +15,7 @@ export default {
   "nav.sell": "Sell",
   "nav.grow": "Grow",
   "nav.website": "My Website",
+  "nav.websiteDashboard": "Website Dashboard",
   "website.locked": "Locked for now",
   "website.soon.badge": "Coming soon",
   "website.soon.title": "Your website is coming soon",

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.modules.website.rendering.brand import site_brand
+
 _LUCIDE = _LUCIDE = {
     "smile": (
         ("circle", {"cx": "12", "cy": "12", "r": "10", "key": "1mglay"}),
@@ -350,6 +352,28 @@ BRANCHES = [
     },
 ]
 
+
+def _brand(key: str):
+    """The merchant's own identity value; the template constant is the fallback."""
+    return site_brand(key) or BRAND[key]
+
+
+def _social():
+    """The merchant's own social links when provided; SOCIAL is the fallback."""
+    links = site_brand("social_links") or []
+    if not links:
+        return SOCIAL
+    return [
+        {
+            "platform": str(s.get("platform") or "instagram"),
+            "handle": str(s.get("handle") or s.get("platform") or ""),
+            "href": str(s.get("href") or ""),
+        }
+        for s in links
+        if s.get("href")
+    ]
+
+
 SOCIAL = [
     {
         "platform": "instagram",
@@ -424,7 +448,7 @@ FAQ_ITEMS = [
 
 def _open_now() -> bool:
     hour = (datetime.now(UTC).hour + 2) % 24  # Africa/Cairo ≈ UTC+2
-    return BRAND["open_hour"] <= hour < BRAND["close_hour"]
+    return _brand("open_hour") <= hour < _brand("close_hour")
 
 
 def _open_status(inverted: bool = False) -> str:
@@ -477,8 +501,8 @@ def _site_header(prefix: str, active_slug: str) -> str:
         'text-primary-foreground shadow-[3px_3px_0_0_hsl(var(--accent))]" style="transform:rotate(-6deg)">'
         f"{_icon('smile', 'h-5 w-5')}</span>"
         '<span class="leading-none"><span class="block font-heading text-xl font-extrabold '
-        f'text-foreground">{BRAND["name"]}</span>'
-        f'<span class="mt-0.5 block text-[11px] text-muted-foreground">{BRAND["tagline"]}</span></span></a>'
+        f'text-foreground">{_brand("name")}</span>'
+        f'<span class="mt-0.5 block text-[11px] text-muted-foreground">{_brand("tagline")}</span></span></a>'
         f'<nav class="hidden items-center gap-7 lg:flex">{links}'
         '<div class="group relative inline-block">'
         '<button class="inline-flex items-center gap-1 text-sm transition-colors hover:text-foreground '
@@ -511,21 +535,21 @@ def _site_footer(prefix: str) -> str:
         f'<a href="{_e(s["href"])}" target="_blank" rel="noreferrer" class="flex items-center '
         'gap-2 text-background/65 transition-colors hover:text-background">'
         f"{_icon(s['platform'], 'h-4 w-4')}{_e(s['handle'])}</a>"
-        for s in SOCIAL
+        for s in _social()
     )
     branches_line = " · ".join(b["name"] for b in BRANCHES)
     contact = (
         '<div class="rounded-3xl border border-background/15 bg-background/5 p-5">'
         '<h3 class="font-heading text-sm font-bold text-accent">تواصل معنا</h3>'
         '<ul class="mt-4 space-y-3 text-background/65">'
-        f'<li><a href="tel:{BRAND["phone"].replace(" ", "")}" class="flex items-center gap-2.5 '
+        f'<li><a href="tel:{_brand("phone").replace(" ", "")}" class="flex items-center gap-2.5 '
         'transition-colors hover:text-background">'
-        f'{_icon("phone", "h-4 w-4 shrink-0")}<span dir="ltr">{BRAND["phone"]}</span></a></li>'
-        f'<li><a href="{BRAND["whatsapp"]}" target="_blank" rel="noreferrer" class="flex '
+        f'{_icon("phone", "h-4 w-4 shrink-0")}<span dir="ltr">{_brand("phone")}</span></a></li>'
+        f'<li><a href="{_brand("whatsapp")}" target="_blank" rel="noreferrer" class="flex '
         'items-center gap-2.5 transition-colors hover:text-background">'
         f"{_icon('message-circle', 'h-4 w-4 shrink-0')}واتساب المحل</a></li>"
-        f'<li><a href="mailto:{BRAND["email"]}" class="flex items-center gap-2.5 transition-colors '
-        f'hover:text-background">{_icon("mail", "h-4 w-4 shrink-0")}<span dir="ltr">{BRAND["email"]}</span></a></li>'
+        f'<li><a href="mailto:{_brand("email")}" class="flex items-center gap-2.5 transition-colors '
+        f'hover:text-background">{_icon("mail", "h-4 w-4 shrink-0")}<span dir="ltr">{_brand("email")}</span></a></li>'
         '<li class="flex items-start gap-2.5">'
         f"{_icon('map-pin', 'mt-0.5 h-4 w-4 shrink-0')}<span>{branches_line}</span></li></ul>"
         f'<div class="mt-4">{_open_status(inverted=True)}</div></div>'
@@ -541,7 +565,7 @@ def _site_footer(prefix: str) -> str:
         '<span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary '
         'text-primary-foreground shadow-[4px_4px_0_0_hsl(var(--accent))]" style="transform:rotate(-6deg)">'
         f"{_icon('smile', 'h-6 w-6')}</span>"
-        f'<p class="mt-4 font-heading text-3xl font-extrabold leading-none sm:text-4xl">{BRAND["name"]}</p></div>'
+        f'<p class="mt-4 font-heading text-3xl font-extrabold leading-none sm:text-4xl">{_brand("name")}</p></div>'
         '<div class="mt-12 h-px w-full bg-background/15"></div>'
         f'<div class="mt-10 grid gap-10 text-sm lg:grid-cols-[1fr_1fr_1fr_1.1fr]">{columns}{contact}</div>'
         f'<div class="mt-8 flex flex-wrap items-center justify-center gap-4">{social}</div>'
@@ -551,7 +575,7 @@ def _site_footer(prefix: str) -> str:
 
 def _floating_whatsapp() -> str:
     return (
-        f'<a href="{BRAND["whatsapp"]}" target="_blank" rel="noreferrer" aria-label="تواصل واتساب" '
+        f'<a href="{_brand("whatsapp")}" target="_blank" rel="noreferrer" aria-label="تواصل واتساب" '
         'class="fixed bottom-5 end-5 z-50 flex h-14 w-14 items-center justify-center rounded-full '
         "bg-[#25D366] text-white shadow-[0_10px_30px_-10px_rgba(0,0,0,.4)] transition-transform "
         f'hover:scale-105">{_icon("message-circle", "h-6 w-6")}</a>'

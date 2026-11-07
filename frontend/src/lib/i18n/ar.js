@@ -15,6 +15,7 @@ export default {
   "nav.sell": "بيع",
   "nav.grow": "نمو",
   "nav.website": "My Website",
+  "nav.websiteDashboard": "لوحة موقعي",
   "website.locked": "مغلق حالياً",
   "website.soon.badge": "قريباً",
   "website.soon.title": "موقعك الإلكتروني قادم قريباً",
