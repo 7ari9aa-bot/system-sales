@@ -39,6 +39,36 @@ async def load_snapshot(
     return (await session.execute(stmt.limit(1))).scalar_one_or_none()
 
 
+async def _site_identity(site: WebsitePublishedSite) -> dict:
+    """The merchant's own identity for the renderer's brand override.
+
+    Uploaded images are stored as ``s3://`` keys; they resolve to a read URL
+    here so the renderer's URL allowlist never sees the private scheme.
+    """
+    logo = (site.logo_url or "").strip()
+    if logo.startswith("s3://"):
+        try:
+            from app.core.storage import get_storage
+
+            logo = get_storage().public_url(logo[len("s3://") :])
+        except Exception:
+            logo = ""
+    whatsapp_raw = (site.whatsapp_number or "").strip()
+    whatsapp = ""
+    if whatsapp_raw:
+        digits = "".join(ch for ch in whatsapp_raw if ch.isdigit())
+        if digits:
+            whatsapp = f"https://wa.me/{digits}"
+    return {
+        "name": site.name,
+        "logo_url": logo,
+        "whatsapp": whatsapp,
+        "whatsapp_number": whatsapp_raw,
+        "social_links": list(site.social_links or []),
+        "site_category": site.site_category or "",
+    }
+
+
 def _collections_in(projection: dict) -> list[str]:
     out: list[str] = []
     for page in projection.get("pages", []):
@@ -86,6 +116,7 @@ async def render_html(session, site: WebsitePublishedSite) -> str:  # noqa: ANN0
         "theme_tokens": site.theme_tokens or {},
         "navigation": site.navigation or [],
         "projection": site.projection or {},
+        "identity": await _site_identity(site),
     }
     ctx = RenderContext()
     collections = _collections_in(site.projection or {})

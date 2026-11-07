@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 450,
-    "sha256": "693638cd3735998bab6519307c74e4b150bded011cb864fa84b9c9caee7e5a8c",
-    "typed_operations": 286
+    "operations": 451,
+    "sha256": "1ac9f092f204562763b4d1fb0d2ef08122d7510c0d2c471850c68dafc0317a52",
+    "typed_operations": 287
   },
   "spec": {
     "components": {
@@ -9225,6 +9225,30 @@
         },
         "IdentityIn": {
           "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "logo_url": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Logo Url"
+            },
             "name": {
               "anyOf": [
                 {
@@ -9238,6 +9262,33 @@
               ],
               "title": "Name"
             },
+            "site_category": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site Category"
+            },
+            "social_links": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Social Links"
+            },
             "theme_tokens": {
               "anyOf": [
                 {
@@ -9249,6 +9300,18 @@
                 }
               ],
               "title": "Theme Tokens"
+            },
+            "whatsapp_number": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Whatsapp Number"
             }
           },
           "title": "IdentityIn",
@@ -67313,6 +67376,106 @@
             }
           },
           "summary": "Editor Schema",
+          "tags": [
+            "website"
+          ]
+        }
+      },
+      "/api/v1/website/images/upload": {
+        "post": {
+          "description": "Store a merchant site image and return its stable public URL.\n\nSame screen-then-store discipline as product image uploads: the bytes are\nscreened by magic byte and size BEFORE anything is written to the bucket.\nThe returned URL is stable (never expiring), so it is safe to persist as a\nsection image or the site logo.",
+          "operationId": "upload_site_image_api_v1_website_images_upload_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Upload Site Image Api V1 Website Images Upload Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Site Image",
           "tags": [
             "website"
           ]

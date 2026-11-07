@@ -83,6 +83,7 @@ class Website(TenantMixin, TimestampMixin, IdMixin, Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("slug", name="uq_websites_slug"),
@@ -249,6 +250,7 @@ class WebsitePublishedSite(IdMixin, TimestampMixin, Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     default_locale: Mapped[str] = mapped_column(String(8), server_default="ar", nullable=False)
     theme_tokens: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
