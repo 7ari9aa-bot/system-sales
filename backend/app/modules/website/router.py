@@ -208,12 +208,12 @@ async def update_identity(body: IdentityIn, ctx: TenantCtxDep) -> dict:
 
 @router.post("/website/images/upload", status_code=201)
 async def upload_site_image(request: Request, ctx: TenantCtxDep) -> dict:
-    """Store a merchant site image and return its stable public URL.
+    """Store a merchant site image; return the durable key plus a preview URL.
 
     Same screen-then-store discipline as product image uploads: the bytes are
     screened by magic byte and size BEFORE anything is written to the bucket.
-    The returned URL is stable (never expiring), so it is safe to persist as a
-    section image or the site logo.
+    The bucket is private — persist ``key`` (``s3://…``, like avatars), never
+    ``url`` (a short-lived signed preview for the editor only).
     """
     storage = get_storage()
     if not storage.configured:
@@ -251,7 +251,10 @@ async def upload_site_image(request: Request, ctx: TenantCtxDep) -> dict:
     )
     if not stored.durable or not stored.storage_key:
         raise StorageUnavailableError()
-    return {"url": stored.url, "key": f"s3://{stored.storage_key}"}
+    return {
+        "key": f"s3://{stored.storage_key}",
+        "url": storage.signed_url(stored.storage_key, expires_in=60 * 60),
+    }
 
 
 @router.post("/website/content/section")
