@@ -204,6 +204,55 @@ def test_service_refusals_become_a_readable_login_error(app_client, monkeypatch,
     assert not res.headers.get_list("set-cookie")
 
 
+# ------------------------------------------------- redirect URI (must equal Google Cloud's)
+
+
+def _req(host="p01--system-sales--x.code.run", proto="https"):
+    from starlette.requests import Request
+
+    return Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "server": ("internal", 80),
+            "path": "/",
+            "headers": [(b"host", host.encode()), (b"x-forwarded-proto", proto.encode())],
+        }
+    )
+
+
+def test_redirect_uri_uses_the_configured_public_origin_not_the_internal_host(monkeypatch):
+    """Production: the proxy hands the app an internal Host, but Google has fihrist.world."""
+    monkeypatch.setattr(
+        google_router,
+        "get_settings",
+        lambda: SimpleNamespace(api_public_base_url="https://fihrist.world/"),
+    )
+    assert (
+        google_router._redirect_uri(_req()) == "https://fihrist.world/api/v1/auth/google/callback"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "http://fihrist.world",
+        "https://u:p@fihrist.world",
+        "https://fihrist.world/x",
+        "fihrist.world",
+        "",
+    ],
+)
+def test_an_unsafe_or_missing_public_origin_falls_back_to_the_request_host(monkeypatch, bad):
+    monkeypatch.setattr(
+        google_router, "get_settings", lambda: SimpleNamespace(api_public_base_url=bad)
+    )
+    assert google_router._public_base() is None
+    assert google_router._redirect_uri(_req("localhost:8000", "http")) == (
+        "http://localhost:8000/api/v1/auth/google/callback"
+    )
+
+
 # ------------------------------------------------------------ service (real DB)
 
 

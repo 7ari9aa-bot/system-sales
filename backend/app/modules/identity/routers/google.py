@@ -17,7 +17,7 @@ and which website visitor this is (for the owner-console signup funnel).
 from __future__ import annotations
 
 import re
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 
 import httpx
 from fastapi import APIRouter, Request
@@ -48,11 +48,35 @@ def _google_config() -> tuple[str, str]:
     return settings.google_client_id, settings.google_client_secret
 
 
+def _public_base() -> str | None:
+    """The configured public origin (API_PUBLIC_BASE_URL), or None if unset or unsafe.
+
+    The callback URL must match, character for character, the one registered in Google Cloud.
+    Behind a proxy the Host the app sees is the platform's internal address, and a client-controlled
+    Host header is not something to build a redirect from, so the configured origin wins.
+    """
+    base = (get_settings().api_public_base_url or "").strip().rstrip("/")
+    parsed = urlparse(base)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return base
+
+
 def _redirect_uri(request: Request) -> str:
-    # Behind the platform proxy the app sees http; Google needs the public scheme/host.
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = request.headers.get("host") or request.url.netloc
-    return f"{proto}://{host}/api/v1/auth/google/callback"
+    base = _public_base()
+    if base is None:  # local development: no public origin configured
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("host") or request.url.netloc
+        base = f"{proto}://{host}"
+    return f"{base}/api/v1/auth/google/callback"
 
 
 def safe_return_to(raw: str | None) -> str:
