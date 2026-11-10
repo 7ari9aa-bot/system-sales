@@ -149,6 +149,7 @@ CASES: tuple[Case, ...] = (
                     min_reply_chars=25,
                     reply_contains_any=(
                         "مش مكتوب",
+                        "مش منشور",
                         "مفيش",
                         "مش متاح",
                         "مش عندي",

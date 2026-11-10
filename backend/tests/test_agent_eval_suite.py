@@ -107,15 +107,45 @@ async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
         pytest.fail(f"live_eval requested but {', '.join(missing)} not set; refusing to fake it")
 
     await _seed_live_embedding(db, tenant_ctx.tenant_id)
+    _throttle_model_calls()
 
     results = []
     records_by_case = {}
-    for case in ALL:
+    progress_path = os.environ.get("AGENT_EVAL_PROGRESS_FILE")
+    only = {c.strip() for c in os.environ.get("AGENT_EVAL_ONLY", "").split(",") if c.strip()}
+    selected = [c for c in ALL if not only or c.id in only]
+    for index, case in enumerate(selected, 1):
         result, records = await run_case(db, tenant_ctx.tenant_id, case)
+        print(f"[{index}/{len(selected)}] {case.id}", flush=True)
+        if only:
+            for record in records:
+                print(
+                    f"  >> {record.customer!r}\n     tools={record.observed.tools} "
+                    f"handed_over={record.observed.handed_over} blocked={record.blocked_reason} "
+                    f"grounding={record.grounding}\n     reply={record.observed.reply!r}",
+                    flush=True,
+                )
+        if progress_path:
+            # One line per finished case, so a dropped session loses one case, not the whole run.
+            import json
+
+            with open(progress_path, "a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "case": case.id,
+                            "risk": result.risk,
+                            "passed": result.passed,
+                            "findings": [repr(f)[:400] for f in result.findings],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
         results.append(result)
         records_by_case[case.id] = records
 
-    verdict = summarise(ALL, results)
+    verdict = summarise(selected, results)
     print("\n" + render(verdict))
 
     # Quality (natural, grounded, per-case rubric) is judged by a model, and only when asked:
@@ -129,6 +159,37 @@ async def test_live_model_against_the_golden_set(db, tenant_ctx) -> None:
         print("\n(quality judge skipped: set AGENT_EVAL_JUDGE_ALIAS to e.g. 'strong' to run it)")
 
     assert verdict.ship, "\n" + render(verdict)
+
+
+def _throttle_model_calls() -> None:
+    """Optional pacing for a rate-limited gateway (a free tier allows ~5 requests a minute).
+
+    ``AGENT_EVAL_MIN_SECONDS_BETWEEN_CALLS=12.5`` spaces the chat requests so a 429 never turns
+    into a false "the agent is bad" verdict. Unset (the default, and in CI) it does nothing.
+    This wraps the HTTP call made by the test process only; production code is untouched.
+    """
+    gap = float(os.environ.get("AGENT_EVAL_MIN_SECONDS_BETWEEN_CALLS", "0") or 0)
+    if gap <= 0:
+        return
+    import asyncio
+    import time
+
+    from app.modules.ai import providers
+
+    original = providers.httpx.AsyncClient.post
+    state = {"last": 0.0}
+    lock = asyncio.Lock()
+
+    async def paced(self, url, *args, **kwargs):
+        if "/chat/completions" in str(url):
+            async with lock:
+                wait = state["last"] + gap - time.monotonic()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                state["last"] = time.monotonic()
+        return await original(self, url, *args, **kwargs)
+
+    providers.httpx.AsyncClient.post = paced
 
 
 async def _seed_live_embedding(db, tenant_id) -> None:

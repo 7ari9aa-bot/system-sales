@@ -59,6 +59,11 @@ from app.modules.conversations.voice import omni_audio_format  # noqa: E402
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 5
+_FINAL_STEP_INSTRUCTION = (
+    "دي آخر خطوة: مفيش أدوات تاني. اكتب دلوقتي ردك للعميل بناءً على اللي "
+    "لقيته بس. لو بحثت ومفيش نتيجة، قول له بصراحة إن اللي سأل عنه مش موجود "
+    "دلوقتي واعرض اللي المتجر بيبيعه. متحوّلش ومتسكتش."
+)
 HISTORY_MESSAGES = 10
 
 # Outbound rows whose send did not land: "failed" is terminal and "unknown" is
@@ -1096,6 +1101,14 @@ class AgentRunner:
                 chat_alias = get_settings().ai_voice_model_alias
             else:
                 chat_alias = self._alias_for(agent)
+            # The LAST allowed step is an answer step: no tools. A model that keeps
+            # searching ("no match" -> retry -> retry ...) would otherwise spend the whole
+            # budget, never write a word, and the run would end as a silent handover.
+            # With tools withdrawn it has to tell the customer what it found, which for an
+            # empty search is exactly the right answer ("we don't carry that").
+            final_step = _iteration == limits["max_steps"] - 1 and _iteration > 0
+            if final_step:
+                messages.append({"role": "system", "content": _FINAL_STEP_INSTRUCTION})
             try:
                 chat_result = await asyncio.wait_for(
                     self.gateway.chat(
@@ -1103,7 +1116,7 @@ class AgentRunner:
                         tenant_id,
                         alias=chat_alias,
                         messages=messages,
-                        tools=tools_schema,
+                        tools=None if final_step else tools_schema,
                         temperature=float(agent.temperature),
                         max_tokens=agent.max_output_tokens,
                         agent_id=agent.id,
@@ -1168,6 +1181,47 @@ class AgentRunner:
             # because ai_usage was written only on the success path.
             run.tokens_in = tokens_in
             run.tokens_out = tokens_out
+
+            if final_step and chat_result.tool_calls:
+                # Some providers still emit a tool call on the answer step although no tools
+                # were offered. Honour the contract: this step is text only. Ask once more
+                # with the findings flattened into plain text, so there is nothing left to call.
+                findings = "\n".join(
+                    str(m.get("content"))[:600] for m in messages if m.get("role") == "tool"
+                )
+                flat = [m for m in messages if m.get("role") in ("system", "user")][:1] + [
+                    m for m in messages if m.get("role") == "user"
+                ][-1:]
+                flat.append(
+                    {
+                        "role": "system",
+                        "content": _FINAL_STEP_INSTRUCTION + "\nنتائج البحث:\n" + findings,
+                    }
+                )
+                try:
+                    chat_result = await asyncio.wait_for(
+                        self.gateway.chat(
+                            session,
+                            tenant_id,
+                            alias=chat_alias,
+                            messages=flat,
+                            tools=None,
+                            temperature=float(agent.temperature),
+                            max_tokens=agent.max_output_tokens,
+                            agent_id=agent.id,
+                            run_id=run.id,
+                        ),
+                        timeout=max(
+                            5.0, (max_wall_time - (datetime.now(UTC) - started_at)).total_seconds()
+                        ),
+                    )
+                except TimeoutError:
+                    hit_limit = "max_wall_time"
+                    break
+                tokens_in += chat_result.tokens_in
+                tokens_out += chat_result.tokens_out
+                # Text only from here: whatever it still tries to call is discarded.
+                chat_result.tool_calls = []
 
             if not chat_result.tool_calls:
                 content = chat_result.content
