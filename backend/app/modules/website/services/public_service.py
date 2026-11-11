@@ -39,6 +39,32 @@ async def load_snapshot(
     return (await session.execute(stmt.limit(1))).scalar_one_or_none()
 
 
+def _resolve_site_image_url(value: str, site: WebsitePublishedSite) -> str:
+    """An uploaded ``s3://`` key as a browser-readable URL, or "".
+
+    The bucket is private — the avatar and product-image flows store keys and
+    sign them at read time, never persisting an expiring URL. The key must sit
+    inside the snapshot's own tenant prefix; anything else renders as "".
+    """
+    from app.core.storage import get_storage
+
+    storage = get_storage()
+    if not storage.configured:
+        return ""
+    tenant_raw = (site.projection or {}).get("tenant_id")
+    if not tenant_raw:
+        return ""
+    key = value[len("s3://") :]
+    prefix = f"site-images/{tenant_raw}/"
+    filename = key[len(prefix) :] if key.startswith(prefix) else ""
+    if not filename or "/" in filename:
+        return ""
+    try:
+        return storage.signed_url(key, expires_in=7 * 24 * 60 * 60)
+    except (RuntimeError, ValueError):
+        return ""
+
+
 async def _site_identity(site: WebsitePublishedSite) -> dict:
     """The merchant's own identity for the renderer's brand override.
 
@@ -47,12 +73,7 @@ async def _site_identity(site: WebsitePublishedSite) -> dict:
     """
     logo = (site.logo_url or "").strip()
     if logo.startswith("s3://"):
-        try:
-            from app.core.storage import get_storage
-
-            logo = get_storage().public_url(logo[len("s3://") :])
-        except Exception:
-            logo = ""
+        logo = _resolve_site_image_url(logo, site)
     whatsapp_raw = (site.whatsapp_number or "").strip()
     whatsapp = ""
     if whatsapp_raw:

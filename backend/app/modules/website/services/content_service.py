@@ -240,7 +240,9 @@ def _validate_social_links(links: list) -> list[dict]:
 
 def _validate_logo_url(url: str) -> str:
     cleaned = url.strip()
-    if not cleaned.startswith(("https://", "http://", "/", "s3://")):
+    # https only — the published site is https, and an http asset would be
+    # blocked as mixed content by every browser.
+    if not cleaned.startswith(("https://", "/", "s3://")):
         raise ValidationError("logo URL must be an https URL or an uploaded image key")
     if len(cleaned) > 2048:
         raise ValidationError("logo URL is too long")

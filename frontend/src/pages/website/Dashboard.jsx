@@ -53,6 +53,7 @@ export default function Dashboard() {
   const [category, setCategory] = useState("");
   const [socials, setSocials] = useState([]);
   const [logoUrl, setLogoUrl] = useState("");
+  const [logoPreview, setLogoPreview] = useState("");
   const [sectionEdits, setSectionEdits] = useState({});
   const logoRef = useRef(null);
 
@@ -81,6 +82,9 @@ export default function Dashboard() {
           setCategory(ov.website.site_category ?? "");
           setSocials(Array.isArray(ov.website.social_links) ? ov.website.social_links : []);
           setLogoUrl(ov.website.logo_url ?? "");
+          setLogoPreview(
+            ov.website.logo_url && !ov.website.logo_url.startsWith("s3://") ? ov.website.logo_url : ""
+          );
         }
       })
       .catch((err) => {
@@ -183,12 +187,14 @@ export default function Dashboard() {
         throw new Error(body?.error?.message || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      if (data?.url) {
-        setLogoUrl(data.url);
-        // Persist immediately — the logo is identity, not draft content.
+      if (data?.key) {
+        // The bucket is private: persist the durable s3 key (like avatars);
+        // the signed url is only for the immediate editor preview.
+        setLogoUrl(data.key);
+        setLogoPreview(data.url ?? "");
         await api("/website/content/identity", {
           method: "POST",
-          body: JSON.stringify({ logo_url: data.url }),
+          body: JSON.stringify({ logo_url: data.key }),
         });
       }
       setMessage({ kind: "ok", text: L("تم رفع الصورة", "Image uploaded") });
@@ -467,7 +473,12 @@ export default function Dashboard() {
               <div>
                 <span className="mb-1 block text-sm font-medium">{L("لوجو الموقع", "Site logo")}</span>
                 <div className="flex items-center gap-3">
-                  {logoUrl ? <img src={logoUrl} alt="logo" className="h-10 w-10 rounded-md border object-cover" /> : null}
+                  {logoPreview ? <img src={logoPreview} alt="logo" className="h-10 w-10 rounded-md border object-cover" /> : null}
+                  {logoUrl && !logoPreview ? (
+                    <span className="rounded-md border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+                      {L("لوجو مرفوع ✓", "Logo uploaded ✓")}
+                    </span>
+                  ) : null}
                   <input type="file" accept="image/*" ref={logoRef} className="hidden"
                     onChange={(e) => uploadLogo(e.target.files?.[0])} />
                   <button type="button" onClick={() => logoRef.current?.click()} disabled={busy === "logo"}

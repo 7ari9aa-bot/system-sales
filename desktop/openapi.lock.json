@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 451,
-    "sha256": "1ac9f092f204562763b4d1fb0d2ef08122d7510c0d2c471850c68dafc0317a52",
+    "sha256": "798802d21a345b79b8236da4f7eb18765be182c56776b07c4b042b8a95826f83",
     "typed_operations": 287
   },
   "spec": {
@@ -67383,7 +67383,7 @@
       },
       "/api/v1/website/images/upload": {
         "post": {
-          "description": "Store a merchant site image and return its stable public URL.\n\nSame screen-then-store discipline as product image uploads: the bytes are\nscreened by magic byte and size BEFORE anything is written to the bucket.\nThe returned URL is stable (never expiring), so it is safe to persist as a\nsection image or the site logo.",
+          "description": "Store a merchant site image; return the durable key plus a preview URL.\n\nSame screen-then-store discipline as product image uploads: the bytes are\nscreened by magic byte and size BEFORE anything is written to the bucket.\nThe bucket is private — persist ``key`` (``s3://…``, like avatars), never\n``url`` (a short-lived signed preview for the editor only).",
           "operationId": "upload_site_image_api_v1_website_images_upload_post",
           "parameters": [
             {
