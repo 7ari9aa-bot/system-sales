@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -38,7 +39,22 @@ _SITE_STATUS = frozenset({"active", "suspended"})
 _LIMIT_KEY = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 # At most this many sites get live counts, and only a few requests run at once.
 _COUNTED_SITES = 50
-_CONCURRENCY = 6
+_CONCURRENCY = 3  # ten reads per site now, so fewer sites at once
+_SUM_ROWS = 500
+_VIEW_DAYS = 30
+_CANCELLED = "ملغي"
+_OPEN = ("جديد", "قيد التجهيز")  # an order the merchant still has to deal with
+
+
+def _money_sum(rows: list[dict[str, Any]], field: str) -> str:
+    """Total as an exact decimal string. Money never goes through float."""
+    total = Decimal(0)
+    for r in rows:
+        try:
+            total += Decimal(str(r.get(field) or 0))
+        except ArithmeticError:
+            continue
+    return format(total, "f")
 
 
 def _guard(ctx: TenantCtxDep) -> None:
@@ -289,30 +305,73 @@ async def set_link_sync(ctx: TenantCtxDep, site_id: str, body: SyncIn) -> DoneOu
 
 @router.get("/sites", response_model=ItemsOut)
 async def list_sites(ctx: TenantCtxDep) -> ItemsOut:
-    """Per-site counts only. No customer names, phones or addresses ever pass through here."""
+    """Per-site activity, numbers only. No customer name, phone or address passes through here.
+
+    Customers and subscribers are deliberately NOT counted: those tables hold names, phones and
+    emails, and the client never lists a table like that, even for a count.
+
+    Orders, revenue and open orders leave out cancelled ones. Revenue and views are summed over at
+    most ``_SUM_ROWS`` rows, and ``revenue_capped`` / ``views_capped`` say so when a site has more,
+    so a big shop shows "at least" instead of a quietly wrong total.
+    """
     _guard(ctx)
+    since = (datetime.now(UTC) - timedelta(days=_VIEW_DAYS)).date().isoformat()
     try:
         sites = await sp.select("sites", order="-created_at", limit=_COUNTED_SITES)
         gate = asyncio.Semaphore(_CONCURRENCY)
 
-        async def counts(site_id: str) -> dict[str, int]:
+        async def activity(site_id: str) -> dict[str, Any]:
             async with gate:
-                n_products, n_orders, n_coupons, n_msgs = await asyncio.gather(
+                (
+                    n_products,
+                    n_orders,
+                    n_coupons,
+                    n_msgs,
+                    paid_rows,
+                    open_new,
+                    open_prep,
+                    view_rows,
+                ) = await asyncio.gather(
                     sp.select("products", eq={"site_id": site_id}, count_only=True),
-                    sp.select("orders", eq={"site_id": site_id}, count_only=True),
+                    sp.select(
+                        "orders",
+                        eq={"site_id": site_id},
+                        neq={"status": _CANCELLED},
+                        count_only=True,
+                    ),
                     sp.select(
                         "coupons", eq={"site_id": site_id, "is_active": "true"}, count_only=True
                     ),
                     sp.select("contact_messages", eq={"site_id": site_id}, count_only=True),
+                    sp.select(
+                        "orders",
+                        eq={"site_id": site_id},
+                        neq={"status": _CANCELLED},
+                        limit=_SUM_ROWS,
+                    ),
+                    sp.select(
+                        "orders", eq={"site_id": site_id, "status": _OPEN[0]}, count_only=True
+                    ),
+                    sp.select(
+                        "orders", eq={"site_id": site_id, "status": _OPEN[1]}, count_only=True
+                    ),
+                    sp.select(
+                        "page_stats", eq={"site_id": site_id}, gte={"day": since}, limit=_SUM_ROWS
+                    ),
                 )
                 return {
                     "products": n_products,
                     "orders": n_orders,
+                    "open_orders": open_new + open_prep,
                     "coupons": n_coupons,
                     "messages": n_msgs,
+                    "revenue": _money_sum(paid_rows, "total"),
+                    "revenue_capped": len(paid_rows) >= _SUM_ROWS,
+                    "views_30d": sum(int(r.get("views") or 0) for r in view_rows),
+                    "views_capped": len(view_rows) >= _SUM_ROWS,
                 }
 
-        rows = await asyncio.gather(*(counts(s["id"]) for s in sites))
+        rows = await asyncio.gather(*(activity(s["id"]) for s in sites))
     except (sp.SitesPlatformError, sp.SitesPlatformNotConfigured) as exc:
         raise _http(exc) from exc
     return ItemsOut(items=[{**s, **c} for s, c in zip(sites, rows, strict=True)])

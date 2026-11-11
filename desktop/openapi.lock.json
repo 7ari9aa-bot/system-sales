@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 444,
-    "sha256": "06ca4659c0c0b74380fe778787da92fcc206d30fc58d7fe4e47aabec4bcde41a",
+    "sha256": "970c5467c16b692fe1e9dc6150dc73810a81b98f2732bcbf5457b17b1f21f543",
     "typed_operations": 286
   },
   "spec": {
@@ -48367,7 +48367,7 @@
       },
       "/api/v1/owner/sites-platform/sites": {
         "get": {
-          "description": "Per-site counts only. No customer names, phones or addresses ever pass through here.",
+          "description": "Per-site activity, numbers only. No customer name, phone or address passes through here.\n\nCustomers and subscribers are deliberately NOT counted: those tables hold names, phones and\nemails, and the client never lists a table like that, even for a count.\n\nOrders, revenue and open orders leave out cancelled ones. Revenue and views are summed over at\nmost ``_SUM_ROWS`` rows, and ``revenue_capped`` / ``views_capped`` say so when a site has more,\nso a big shop shows \"at least\" instead of a quietly wrong total.",
           "operationId": "list_sites_api_v1_owner_sites_platform_sites_get",
           "parameters": [
             {

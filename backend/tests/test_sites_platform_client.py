@@ -178,3 +178,42 @@ async def test_count_only_reads_the_total_from_the_header(configured):
         )
         == 7
     )
+
+
+async def test_neq_and_gte_filters_reach_the_platform_encoded_and_only_on_listed_columns(
+    configured,
+):
+    await sp.select(
+        "orders",
+        eq={"site_id": "3bcfd644-e959-4a69-8189-d0e4da86a14d"},
+        neq={"status": "ملغي"},
+    )
+    await sp.select("page_stats", gte={"day": "2026-10-12"})
+    q1, q2 = SEEN[-2].url.params, SEEN[-1].url.params
+    assert q1["status"] == "neq.ملغي"
+    assert q2["day"] == "gte.2026-10-12"
+    with pytest.raises(sp.SitesPlatformError):  # a column that is not on the list
+        await sp.select("orders", neq={"customer_name": "x"})
+    with pytest.raises(sp.SitesPlatformError):
+        await sp.select("page_stats", gte={"phone": "2026-10-12"})
+
+
+@pytest.mark.parametrize(
+    "evil",
+    ["a,b", "x)&select=*", "1.or.(id.neq.0)", "a b", "x&limit=1000", "", "q" * 41, "a=b", "x;y"],
+)
+async def test_a_neq_or_gte_value_cannot_add_a_second_filter(configured, evil):
+    """The value is checked BEFORE the request exists: nothing reaches the platform."""
+    before = len(SEEN)
+    for group in ("neq", "gte"):
+        with pytest.raises(sp.SitesPlatformError):
+            await sp.select("orders", **{group: {"status": evil}})
+    assert len(SEEN) == before
+
+
+async def test_tables_that_hold_customer_personal_data_are_still_unreadable(configured):
+    """Not even for a count: a service key opens every column, so the table itself stays off."""
+    for table in ("site_customers", "newsletter_subscribers", "profiles"):
+        with pytest.raises(sp.SitesPlatformError):
+            await sp.select(table, count_only=True)
+    assert SEEN == []

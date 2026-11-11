@@ -90,7 +90,8 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # alternative resolver instead of flagging it as unguarded.
         "GET /api/v1/website-platform/catalog/products",
         # The same external caller PLACING an order (modules/orders/website_orders.py). Unlike the
-        # catalog read this WRITES, so the guarantees are pinned by tests/test_website_bridge_orders.py:
+        # catalog read this WRITES, so the guarantees are pinned by
+        # tests/test_website_bridge_orders.py:
         # the tenant comes only from the per-tenant key (bind_tenant runs before any read or
         # write), prices are Fihrist's and never the caller's (extra="forbid"), stock is
         # reserved in the same transaction, and a retried external_ref cannot book twice (a

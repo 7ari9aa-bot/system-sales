@@ -14,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.modules.platform.routers import sites_platform
 from app.modules.platform.services import sites_platform as sp
 
 BASE = "/api/v1/owner/sites-platform"
@@ -272,10 +273,70 @@ async def test_site_counts_are_numbers_only(monkeypatch) -> None:
     r, platform, _ = await _call("GET", "/sites", monkeypatch=monkeypatch)
     assert r.status_code == 200
     item = r.json()["items"][0]
-    assert item["products"] == item["orders"] == item["coupons"] == item["messages"] == 3
+    for k in ("products", "orders", "coupons", "messages"):
+        assert item[k] == 3, k
+    assert "customers" not in item and "subscribers" not in item
+    assert item["open_orders"] == 6  # "new" 3 + "in preparation" 3
     for _kind, (table, *_), _kw in [(c[0], c[1], c[2]) for c in platform.calls]:
-        assert table in {"sites", "products", "orders", "coupons", "contact_messages"}
+        assert table in {
+            "sites",
+            "products",
+            "orders",
+            "coupons",
+            "contact_messages",
+            "page_stats",
+        }
     assert not any(w in r.text for w in ("customer_name", "phone", "address"))
+
+
+class _Rows(_Platform):
+    """Orders and page views come back as rows, so the sums can be checked exactly."""
+
+    def __init__(self, n_orders: int = 3, n_views: int = 3) -> None:
+        super().__init__()
+        self.n_orders, self.n_views = n_orders, n_views
+
+    async def select(self, table, **kw):
+        self.calls.append(("select", (table,), kw))
+        if kw.get("count_only"):
+            return 2
+        if table == "orders":
+            return [{"id": str(i), "status": "جديد", "total": "0.10"} for i in range(self.n_orders)]
+        if table == "page_stats":
+            return [{"site_id": SITE, "day": "2026-11-01", "views": 7}] * self.n_views
+        if table == "sites":
+            return [{"id": SITE, "slug": "a", "name": "A", "design": "d", "status": "active"}]
+        return [{"x": 1}]
+
+
+async def test_revenue_is_an_exact_decimal_string_never_a_float(monkeypatch) -> None:
+    """0.10 x 3 is 0.30 exactly. In binary floating point it is 0.30000000000000004."""
+    r, _, _ = await _call("GET", "/sites", monkeypatch=monkeypatch, platform=_Rows())
+    item = r.json()["items"][0]
+    assert item["revenue"] == "0.30"
+    assert isinstance(item["revenue"], str)
+    assert item["views_30d"] == 21
+    assert item["revenue_capped"] is False and item["views_capped"] is False
+
+
+async def test_a_site_bigger_than_the_row_cap_says_so_instead_of_a_wrong_total(
+    monkeypatch,
+) -> None:
+    big = _Rows(n_orders=sites_platform._SUM_ROWS, n_views=sites_platform._SUM_ROWS)
+    r, _, _ = await _call("GET", "/sites", monkeypatch=monkeypatch, platform=big)
+    item = r.json()["items"][0]
+    assert item["revenue_capped"] is True and item["views_capped"] is True
+
+
+async def test_cancelled_orders_are_left_out_of_orders_and_revenue(monkeypatch) -> None:
+    r, platform, _ = await _call("GET", "/sites", monkeypatch=monkeypatch)
+    order_reads = [c for c in platform.calls if c[1] == ("orders",)]
+    assert order_reads, "orders were never read"
+    leaving_out = [c for c in order_reads if c[2].get("neq") == {"status": "ملغي"}]
+    assert len(leaving_out) == 2  # the count and the sum both skip cancelled
+    # the views window is a date, not free text
+    views = [c for c in platform.calls if c[1] == ("page_stats",)][0]
+    assert list(views[2]["gte"]) == ["day"]
 
 
 async def test_there_is_no_route_to_delete_or_to_confirm_a_payment() -> None:

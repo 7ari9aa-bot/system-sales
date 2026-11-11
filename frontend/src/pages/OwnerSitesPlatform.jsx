@@ -188,7 +188,7 @@ export default function OwnerSitesPlatform() {
       );
     if (panel === "sites")
       return table(
-        [L("الموقع", "Site"), L("التصميم", "Design"), L("الحالة", "Status"), L("منتجات", "Products"), L("طلبات", "Orders"), L("كوبونات نشطة", "Active coupons"), L("رسائل", "Messages"), ""],
+        [L("الموقع", "Site"), L("التصميم", "Design"), L("الحالة", "Status"), L("منتجات", "Products"), L("طلبات", "Orders"), L("مفتوحة", "Open"), L("الإيراد (ج.م)", "Revenue (EGP)"), L("زيارات 30 يوم", "Views 30d"), L("كوبونات نشطة", "Active coupons"), L("رسائل", "Messages"), ""],
         rows.map((s) => (
           <tr key={s.id} className="border-b border-border/60">
             <td className={td}><div className="font-medium">{s.name}</div><a className="text-[11px] text-primary" dir="ltr" href={`https://${s.slug}.sites.fihrist.world`} target="_blank" rel="noreferrer noopener">{s.slug}</a></td>
@@ -196,6 +196,9 @@ export default function OwnerSitesPlatform() {
             <td className={td}><Badge tone={s.status === "active" ? "success" : "warning"}>{s.status}</Badge></td>
             <td className={td}>{s.products}</td>
             <td className={td}>{s.orders}</td>
+            <td className={td}>{s.open_orders ?? 0}</td>
+            <td className={td} title={s.revenue_capped ? L("على الأقل: الموقع تجاوز حد الحساب", "At least: the site is past the calculation cap") : undefined}>{Number(s.revenue ?? 0).toLocaleString()}{s.revenue_capped ? "+" : ""}</td>
+            <td className={td} title={s.views_capped ? L("على الأقل: الموقع تجاوز حد الحساب", "At least: the site is past the calculation cap") : undefined}>{Number(s.views_30d ?? 0).toLocaleString()}{s.views_capped ? "+" : ""}</td>
             <td className={td}>{s.coupons}</td>
             <td className={td}>{s.messages}</td>
             <td className={cn(td, "text-end")}>

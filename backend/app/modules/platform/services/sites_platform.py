@@ -113,6 +113,9 @@ _WRITE: dict[str, frozenset[str]] = {
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+# A value for neq/gte: a date or a short word (status names are Arabic, so letters of any script),
+# never anything with a comma, parenthesis, dot-operator or space that could start another filter.
+_FILTER_VALUE = re.compile(r"^[\w\u0600-\u06FF-]{1,40}$")
 
 
 class SitesPlatformNotConfigured(RuntimeError):
@@ -180,11 +183,18 @@ async def select(
     *,
     eq: dict[str, str] | None = None,
     in_: tuple[str, list[str]] | None = None,
+    neq: dict[str, str] | None = None,
+    gte: dict[str, str] | None = None,
     order: str | None = None,
     limit: int = 100,
     count_only: bool = False,
 ) -> Any:
-    """Read rows. ``eq`` values must be UUIDs or short keys (see uuid_or_none)."""
+    """Read rows. ``eq`` values must be UUIDs or short keys (see uuid_or_none).
+
+    ``neq`` (not equal) and ``gte`` (on or after) are for the per-site activity numbers: a status
+    to leave out, a day to start from. Both go through the same column allow-list and the same
+    value check as ``eq``, so neither can smuggle in a second filter.
+    """
     cols = _READ.get(table)
     if cols is None:
         raise SitesPlatformError(f"table not readable: {table}", 400)
@@ -196,6 +206,13 @@ async def select(
         if col not in cols:
             raise SitesPlatformError(f"column not filterable: {col}", 400)
         params.append((col, "eq." + str(val)))
+    for op, group in (("neq", neq), ("gte", gte)):
+        for col, val in (group or {}).items():
+            if col not in cols:
+                raise SitesPlatformError(f"column not filterable: {col}", 400)
+            if not _FILTER_VALUE.match(str(val)):
+                raise SitesPlatformError(f"value not allowed in a filter: {col}", 400)
+            params.append((col, f"{op}.{val}"))
     if in_:
         col, vals = in_
         if col not in cols:
