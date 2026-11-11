@@ -135,7 +135,7 @@ jobs:
       - name: Dump API log (live-api failures are 404-after-create; the server log is the evidence)
         if: failure()
         run: tail -n 400 /tmp/fihrist-api.log
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: live-api-playwright-results
@@ -188,7 +188,7 @@ jobs:
       - run: npm run test:e2e
       # Traces/screenshots are captured on the first retry — keep them when the
       # run fails so a red build is debuggable without a re-run.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: playwright-test-results
