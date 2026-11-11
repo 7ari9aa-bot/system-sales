@@ -18,21 +18,17 @@ from __future__ import annotations
 import hashlib
 import uuid
 
-import sqlalchemy as sa
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.errors import (
     NotFoundError,
-    PermissionDeniedError,
     StorageUnavailableError,
     ValidationError,
 )
 from app.core.storage import FetchedMedia, get_storage
-from app.modules.identity.deps import DbSession, TenantContext, TenantCtxDep
-from app.modules.identity.models import Tenant
+from app.modules.identity.deps import DbSession, TenantCtxDep
 from app.modules.website.services import (
     content_service,
     preview_service,
@@ -45,15 +41,6 @@ from app.modules.website.templates import catalog
 
 router = APIRouter(tags=["website"])
 public_sites_router = APIRouter(tags=["public-sites"])
-
-
-def _require_console_admin(ctx: TenantContext) -> None:
-    """The purchase queue is the deployment operator's plane: the same
-    platform-admin gate the owner console applies, checked INSIDE the request
-    so every route keeps get_tenant_ctx in its dependency chain (the
-    resource-route audit requires membership + RLS binding on each handler)."""
-    if not ctx.user.is_platform_admin:
-        raise PermissionDeniedError("platform admin access required")
 
 
 def _uuid(raw: str, *, what: str) -> uuid.UUID:
@@ -297,74 +284,6 @@ async def list_versions(ctx: TenantCtxDep) -> dict:
 # ---------------------------------------------------------------------------
 # Platform-admin purchase queue (owner console)
 # ---------------------------------------------------------------------------
-
-
-class RejectIn(BaseModel):
-    reason: str | None = Field(default=None, max_length=200)
-
-
-@router.get("/owner/website-purchases")
-async def owner_list_purchases(ctx: TenantCtxDep) -> dict:
-    """The purchase queue, read through the SECURITY DEFINER function — the
-    admin session has no tenant GUC and no tenant policy is weakened."""
-    _require_console_admin(ctx)
-    session = ctx.session
-    rows = (
-        (await session.execute(text("SELECT * FROM public.admin_website_purchases()")))
-        .mappings()
-        .all()
-    )
-    tenant_ids = {row["tenant_id"] for row in rows}
-    names: dict[uuid.UUID, str] = {}
-    if tenant_ids:
-        names = dict(
-            (
-                await session.execute(
-                    sa.select(Tenant.id, Tenant.name).where(Tenant.id.in_(tenant_ids))
-                )
-            ).all()
-        )
-    return {
-        "items": [
-            {
-                "id": str(row["id"]),
-                "tenant_id": str(row["tenant_id"]),
-                "tenant_name": names.get(row["tenant_id"]),
-                "template_id": row["template_id"],
-                "status": row["status"],
-                "price": _money(row["price"]),
-                "currency": row["currency"],
-                "site_name": row["site_name"],
-                "slug": row["slug"],
-                "payment_reference": row["payment_reference"],
-                "website_id": str(row["website_id"]) if row["website_id"] else None,
-                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-                "confirmed_at": row["confirmed_at"].isoformat() if row["confirmed_at"] else None,
-            }
-            for row in rows
-        ]
-    }
-
-
-@router.post("/owner/website-purchases/{purchase_id}/confirm")
-async def owner_confirm_purchase(purchase_id: str, ctx: TenantCtxDep) -> dict:
-    _require_console_admin(ctx)
-    return await purchase_service.confirm(
-        ctx.session,
-        purchase_id=_uuid(purchase_id, what="purchase_id"),
-        confirmed_by_user_id=ctx.user.id,
-    )
-
-
-@router.post("/owner/website-purchases/{purchase_id}/reject")
-async def owner_reject_purchase(purchase_id: str, body: RejectIn, ctx: TenantCtxDep) -> dict:
-    _require_console_admin(ctx)
-    return await purchase_service.reject(
-        ctx.session,
-        purchase_id=_uuid(purchase_id, what="purchase_id"),
-        confirmed_by_user_id=ctx.user.id,
-        reason=body.reason,
-    )
 
 
 # ---------------------------------------------------------------------------

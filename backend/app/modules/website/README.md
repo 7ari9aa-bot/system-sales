@@ -29,9 +29,12 @@ only (e.g. `ProductGridProps.collection_id`).
   `Base.metadata.tables` (boundary-safe, no cross-module import).
 - `rendering/renderer.py` — snapshot -> HTML; escapes everything, URL scheme
   allowlist, per-template renderer overrides, RTL default.
-- `router.py` — three surfaces: merchant (`/website/*`, TenantCtxDep),
-  platform-admin purchase queue (`/owner/website-purchases*`),
+- `router.py` — two surfaces: merchant (`/website/*`, TenantCtxDep) and
   public (`/sites/{slug}` + Host-based `GET /`) mounted at ROOT in `app/main.py`.
+  The owner purchase queue (`/owner/website-purchases*`) was REMOVED: the owner now manages
+  websites from the owner console's "Websites" section (Fihrist Sites platform,
+  `platform/routers/sites_platform.py`). The purchase service and its SECURITY DEFINER
+  functions remain; nothing in the app routes to them any more.
 
 ## HTTP
 
@@ -41,9 +44,6 @@ Merchant: `GET /website/templates`, `GET /website/overview`,
 `GET /website/content`, `POST /website/content/identity`,
 `POST /website/content/section`, `POST /website/publish`,
 `POST /website/rollback`, `GET /website/versions`.
-Admin: `GET /owner/website-purchases`,
-`POST /owner/website-purchases/{id}/confirm`,
-`POST /owner/website-purchases/{id}/reject`.
 Public (root, no auth): `GET /sites/{slug}`, `GET /` (Host mode when
 `websites_served_domain` is set). See `docs/SITES_SERVING.md`.
 

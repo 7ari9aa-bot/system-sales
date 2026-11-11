@@ -21,8 +21,7 @@ const OwnerSitesPlatform = lazy(() => import("@/pages/OwnerSitesPlatform"));
 const TABS = [
   { id: "overview", ar: "نظرة عامة", en: "Overview" },
   { id: "tenants", ar: "المستأجرون", en: "Tenants" },
-  { id: "websites", ar: "المواقع", en: "Websites" },
-  { id: "sites-platform", ar: "نظام المواقع الجديد", en: "Sites platform" },
+  { id: "sites-platform", ar: "المواقع", en: "Websites" },
   { id: "visitors", ar: "الزوار", en: "Visitors" },
   { id: "system", ar: "الصحة", en: "System" },
 ];
@@ -211,8 +210,6 @@ export default function OwnerConsole() {
           onOpenMatrix={openMatrix}
           onToggle={toggleAccess}
         />
-      ) : tab === "websites" ? (
-        <WebsitesTab L={L} onRefresh={setRefresh} />
       ) : tab === "system" ? (
         <SystemTab L={L} data={system} summary={visitorSummary} />
       ) : (
@@ -664,147 +661,3 @@ function SpendCell({ L, tenant }) {
   );
 }
 
-function WebsitesTab({ L, onRefresh }) {
-  // The website purchase queue: the one place a manual payment gets
-  // confirmed. Confirming builds + publishes the customer's site in one
-  // transaction; rejecting frees the slug back.
-  const [purchases, setPurchases] = useState(null);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      const data = await api("/owner/website-purchases");
-      setPurchases(Array.isArray(data?.items) ? data.items : []);
-    } catch (err) {
-      setError(err?.message || L("تعذر تحميل طلبات المواقع.", "Could not load website purchases."));
-    }
-  }, [L]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const act = async (purchaseId, action) => {
-    setBusy(`${action}-${purchaseId}`);
-    setError("");
-    setNotice("");
-    try {
-      if (action === "confirm") {
-        const result = await api(`/owner/website-purchases/${purchaseId}/confirm`, { method: "POST" });
-        setNotice(
-          L(
-            `تم التفعيل والنشر: /${result?.slug ?? ""}`,
-            `Activated and published: /${result?.slug ?? ""}`,
-          ),
-        );
-      } else {
-        await api(`/owner/website-purchases/${purchaseId}/reject`, { method: "POST", body: {} });
-        setNotice(L("تم رفض الطلب.", "Purchase rejected."));
-      }
-      await load();
-      onRefresh((n) => n + 1);
-    } catch (err) {
-      setError(err?.message || L("تعذر تنفيذ العملية.", "Could not perform the action."));
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const STATUS_TONE = {
-    pending_payment: "warning",
-    paid: "warning",
-    activated: "success",
-    rejected: "destructive",
-    cancelled: "muted",
-  };
-  const pending = (purchases ?? []).filter((p) => p.status === "pending_payment" || p.status === "paid");
-  const rest = (purchases ?? []).filter((p) => p.status !== "pending_payment" && p.status !== "paid");
-
-  const row = (p) => (
-    <tr key={p.id} className="border-b border-border/60 last:border-0">
-      <td className="py-3 font-medium">{p.tenant_name ?? p.tenant_id.slice(0, 8)}</td>
-      <td className="py-3">
-        {p.site_name}
-        <span className="ms-2 text-[11px] text-muted-foreground" dir="ltr">/{p.slug}</span>
-      </td>
-      <td className="py-3">
-        {Number(p.price).toLocaleString()} {p.currency}
-        {p.payment_reference ? (
-          <div className="text-[11px] text-muted-foreground" dir="ltr">{p.payment_reference}</div>
-        ) : null}
-      </td>
-      <td className="py-3"><Badge tone={STATUS_TONE[p.status] ?? "muted"}>{p.status}</Badge></td>
-      <td className="py-3 text-[12px] text-muted-foreground">{time(p.created_at)}</td>
-      <td className="py-3 text-end">
-        {p.status === "pending_payment" || p.status === "paid" ? (
-          <div className="flex justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => act(p.id, "confirm")}
-              disabled={busy !== ""}
-              className="rounded-lg border border-border px-2.5 py-1.5 text-[12px] font-medium hover:bg-surface disabled:opacity-50"
-            >
-              {busy === `confirm-${p.id}` ? L("جارٍ التفعيل…", "Activating…") : L("تأكيد الدفع", "Confirm payment")}
-            </button>
-            <button
-              type="button"
-              onClick={() => act(p.id, "reject")}
-              disabled={busy !== ""}
-              className="rounded-lg border border-border px-2.5 py-1.5 text-[12px] font-medium hover:bg-surface disabled:opacity-50"
-            >
-              {L("رفض", "Reject")}
-            </button>
-          </div>
-        ) : null}
-      </td>
-    </tr>
-  );
-
-  const table = (items, emptyText) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[12.5px]">
-        <thead>
-          <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-            <th className="py-2.5 text-start font-medium">{L("المتجر", "Tenant")}</th>
-            <th className="py-2.5 text-start font-medium">{L("الموقع", "Site")}</th>
-            <th className="py-2.5 text-start font-medium">{L("المبلغ", "Amount")}</th>
-            <th className="py-2.5 text-start font-medium">{L("الحالة", "Status")}</th>
-            <th className="py-2.5 text-start font-medium">{L("أُنشئ", "Created")}</th>
-            <th className="py-2.5 text-end font-medium">{L("تحكم", "Control")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.length === 0 ? (
-            <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">{emptyText}</td></tr>
-          ) : (
-            items.map(row)
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      {notice && (
-        <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-[13px] text-success">{notice}</div>
-      )}
-      {error && (
-        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">{error}</div>
-      )}
-      <SectionCard title={L("بانتظار تأكيد الدفع", "Awaiting payment confirmation")}>
-        {purchases === null ? (
-          <div className="grid min-h-20 place-items-center text-[13px] text-muted-foreground">{L("جارٍ التحميل…", "Loading…")}</div>
-        ) : (
-          table(pending, L("مفيش طلبات معلقة.", "No pending purchases."))
-        )}
-      </SectionCard>
-      <SectionCard title={L("السجل", "History")}>
-        {purchases === null ? null : table(rest, L("مفيش سجل بعد.", "Nothing yet."))}
-      </SectionCard>
-    </div>
-  );
-}
