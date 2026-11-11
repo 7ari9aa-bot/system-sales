@@ -52,10 +52,13 @@ export function AuthProvider({ children }) {
     void checkUserAuth();
   }, [checkUserAuth]);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, captchaToken) => {
     let data;
     try {
-      data = await api("/auth/login", { method: "POST", body: { email, password } });
+      data = await api("/auth/login", {
+        method: "POST",
+        body: captchaToken ? { email, password, captcha_token: captchaToken } : { email, password },
+      });
     } catch (error) {
       if (error?.code === "mfa_required") {
         const challengeId = error?.details?.challenge_id ?? error?.details?.challengeId;

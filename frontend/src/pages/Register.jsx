@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import Turnstile, { turnstileEnabled } from "@/components/Turnstile";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import { googleAuthorizeUrl } from "@/lib/googleAuth";
 
@@ -20,6 +21,8 @@ export default function Register() {
   const [error, setError] = useState("");
   const { register, login } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,11 +33,13 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await register({ email, password });
+      await register(captchaToken ? { email, password, captcha_token: captchaToken } : { email, password });
       await login(email, password);
       window.location.href = safeReturnTo();
     } catch (err) {
       setError(err.message || tx(c("فشل التسجيل", "Registration failed"), locale));
+      setCaptchaToken(null); // a token is spent by the attempt that used it
+      setCaptchaReset((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -79,7 +84,8 @@ export default function Register() {
             <Input id="confirm" type="password" autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="auth-input" required />
           </div>
         </div>
-        <Button type="submit" className="auth-btn-primary" disabled={loading}>
+        <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} action="register" />
+        <Button type="submit" className="auth-btn-primary" disabled={loading || (turnstileEnabled() && !captchaToken)}>
           {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tx(c("جارٍ الإنشاء...", "Creating account..."), locale)}</>) : tx(c("إنشاء الحساب", "Create account"), locale)}
         </Button>
         <div className="relative my-4">

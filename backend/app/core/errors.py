@@ -81,6 +81,19 @@ class ValidationError(DomainError):
     default_message = "Validation failed"
 
 
+class CaptchaRequiredError(ValidationError):
+    """A Turnstile token is missing, expired, reused or refused.
+
+    One code for every one of those reasons on purpose: the caller learns only
+    "solve the challenge and retry", never which check failed, and the answer
+    never depends on whether the account exists (the auth routes answer
+    neutrally to stay clear of an enumeration oracle).
+    """
+
+    code = "captcha_required"
+    default_message = "Please complete the verification challenge and try again."
+
+
 class InvalidCursorError(ValidationError):
     """Malformed / expired pagination cursor (subclass of ValidationError)."""
 

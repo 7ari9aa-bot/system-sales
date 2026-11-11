@@ -180,6 +180,17 @@ class AuthService:
             )
 
     @staticmethod
+    async def recent_login_failures(*, ip: str | None, email: str) -> int:
+        """Consecutive failed sign-ins for this (ip, email); 0 if Redis is down.
+
+        Fail-open on purpose: a cache outage must not lock people into a captcha
+        they cannot be asked for, and the layered limiter in front of login still
+        fails closed.
+        """
+        status = await _lockout_op(auth_lockout.check, ip=ip, email=email)
+        return status.failures if status is not None else 0
+
+    @staticmethod
     async def login(
         session,
         *,

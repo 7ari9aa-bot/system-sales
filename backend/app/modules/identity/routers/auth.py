@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
+from app.core import turnstile
+from app.core.config import get_settings
 from app.core.errors import PermissionDeniedError
 from app.modules.identity import avatar, cookies, schemas, service
 from app.modules.identity.deps import CurrentUserDep, DbSession
@@ -59,7 +61,9 @@ class MfaDisableRequest(BaseModel):
 
 
 @router.post("/auth/register", status_code=202)
-async def register(body: schemas.RegisterRequest, session: DbSession, response: Response):
+async def register(
+    body: schemas.RegisterRequest, request: Request, session: DbSession, response: Response
+):
     """Signup, neutral on purpose (external audit, account pre-hijack).
 
     The same 202 body is returned whether the address was fresh or already
@@ -73,6 +77,9 @@ async def register(body: schemas.RegisterRequest, session: DbSession, response: 
     account). CONTRACT CHANGE: callers that read the registered user's id from
     this response must move to /auth/me after sign-in.
     """
+    # Bot gate BEFORE any work or any account lookup, and identical for every
+    # address, so it can never reveal whether the address is already taken.
+    await turnstile.verify(body.captcha_token, ip=_client_meta(request)[1])
     try:
         await service.AuthService.register(
             session,
@@ -106,7 +113,10 @@ async def verify_email(body: schemas.VerifyEmailRequest, session: DbSession, res
 
 @router.post("/auth/resend-verification", status_code=202)
 async def resend_verification(
-    body: schemas.ResendVerificationRequest, session: DbSession, response: Response
+    body: schemas.ResendVerificationRequest,
+    request: Request,
+    session: DbSession,
+    response: Response,
 ):
     """Re-queue the verification email — neutral, like password-reset/request.
 
@@ -115,6 +125,7 @@ async def resend_verification(
     account existence or verification state. Throttling (60s) lives in the
     service; the delivery worker picks the row up like any other token email.
     """
+    await turnstile.verify(body.captcha_token, ip=_client_meta(request)[1])
     await service.AuthService.request_email_verification(session, email=str(body.email))
     response.headers["Cache-Control"] = "no-store"
     return {
@@ -127,6 +138,13 @@ async def login(
     body: schemas.LoginRequest, request: Request, session: DbSession, response: Response
 ):
     user_agent, ip = _client_meta(request)
+    # A challenge is demanded only once this (ip, email) has already failed a few
+    # times, so a normal sign-in never sees one and the desktop/API clients keep
+    # working. The count is the lockout counter, which sits below its threshold.
+    if turnstile.enabled():
+        failures = await service.AuthService.recent_login_failures(ip=ip, email=body.email)
+        if failures >= get_settings().turnstile_login_after_failures:
+            await turnstile.verify(body.captcha_token, ip=ip)
     pair, _user, _tenant_id = await service.AuthService.login(
         session, email=body.email, password=body.password, user_agent=user_agent, ip=ip
     )
@@ -139,6 +157,7 @@ async def login(
 @router.post("/auth/password-reset/request", status_code=202)
 async def request_password_reset(
     body: schemas.PasswordResetRequest,
+    request: Request,
     session: DbSession,
     response: Response,
 ):
@@ -147,6 +166,7 @@ async def request_password_reset(
     The same 202 response is returned for known, unknown, inactive, and
     recently-throttled accounts to avoid an email-address enumeration oracle.
     """
+    await turnstile.verify(body.captcha_token, ip=_client_meta(request)[1])
     await service.AuthService.request_password_reset(session, email=str(body.email))
     response.headers["Cache-Control"] = "no-store"
     return {"message": "If the account exists, password reset instructions will be sent shortly."}

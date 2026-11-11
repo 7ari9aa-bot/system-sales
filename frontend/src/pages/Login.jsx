@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2, ShieldCheck } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import Turnstile, { turnstileEnabled } from "@/components/Turnstile";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import { googleAuthorizeUrl, googleErrorMessage } from "@/lib/googleAuth";
 
@@ -21,6 +22,11 @@ export default function Login() {
   const [mfaCode, setMfaCode] = useState("");
   const [useBackupCode, setUseBackupCode] = useState(false);
   const { login, verifyMfa } = useAuth();
+  // The server asks for a challenge only after a few failed attempts, so the
+  // widget stays hidden for a normal sign-in and appears when it is required.
+  const [needsCaptcha, setNeedsCaptcha] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
   const [loading, setLoading] = useState(false);
   const returnTo = safeReturnTo();
 
@@ -32,7 +38,7 @@ export default function Login() {
       if (challengeId) {
         await verifyMfa(challengeId, mfaCode.trim());
       } else {
-        const result = await login(email, password);
+        const result = await login(email, password, captchaToken);
         if (result?.requiresMfa) {
           setChallengeId(result.challengeId);
           setMfaCode("");
@@ -41,7 +47,15 @@ export default function Login() {
       }
       window.location.href = returnTo;
     } catch (err) {
-      setError(err.message || tx(c("بريد إلكتروني أو كلمة مرور غير صحيحة", "Invalid email or password"), locale));
+      if (err?.code === "captcha_required") {
+        setNeedsCaptcha(true);
+        setError(tx(c("أكمل التحقق الأمني ثم حاول مرة أخرى", "Complete the security check, then try again"), locale));
+      } else {
+        setError(err.message || tx(c("بريد إلكتروني أو كلمة مرور غير صحيحة", "Invalid email or password"), locale));
+      }
+      // A token is spent by the attempt that used it.
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -80,7 +94,8 @@ export default function Login() {
             <Input id="password" type="password" autoComplete="current-password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="auth-input" required />
           </div>
         </div>
-        <Button type="submit" className="auth-btn-primary" disabled={loading}>
+        {needsCaptcha && <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} action="login" />}
+        <Button type="submit" className="auth-btn-primary" disabled={loading || (needsCaptcha && turnstileEnabled() && !captchaToken)}>
           {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tx(c("جارٍ الدخول...", "Logging in..."), locale)}</>) : tx(c("تسجيل الدخول", "Log in"), locale)}
         </Button>
         <div className="relative my-4">

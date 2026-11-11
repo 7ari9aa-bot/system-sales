@@ -34,14 +34,18 @@ class RegisterRequest(BaseModel):
             return None
         return value if isinstance(value, str) and _VISITOR_ID_RE.fullmatch(value) else None
 
+    captcha_token: str | None = Field(default=None, max_length=2048)
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+    captcha_token: str | None = Field(default=None, max_length=2048)
 
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+    captcha_token: str | None = Field(default=None, max_length=2048)
 
 
 class VerifyEmailRequest(BaseModel):
@@ -59,6 +63,7 @@ class ResendVerificationRequest(BaseModel):
     """
 
     email: EmailStr
+    captcha_token: str | None = Field(default=None, max_length=2048)
 
 
 class PasswordResetConfirmRequest(BaseModel):

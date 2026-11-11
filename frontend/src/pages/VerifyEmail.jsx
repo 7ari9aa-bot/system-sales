@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, MailCheck, MailWarning } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import Turnstile, { turnstileEnabled } from "@/components/Turnstile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,9 +60,13 @@ export default function VerifyEmail() {
     try {
       // Deliberately neutral (202 always): the backend answers identically
       // for known, unknown, verified and throttled addresses.
-      await publicApi("/auth/resend-verification", { body: { email: email.trim() } });
+      await publicApi("/auth/resend-verification", {
+        body: captchaToken ? { email: email.trim(), captcha_token: captchaToken } : { email: email.trim() },
+      });
       setResendSent(true);
     } catch {
+      setCaptchaToken(null); // a token is spent by the attempt that used it
+      setCaptchaReset((n) => n + 1);
       setResendError(tx(
         c("تعذّر الإرسال الآن. حاول بعد قليل.", "Couldn't send right now. Try again shortly."),
         locale,
@@ -88,7 +93,8 @@ export default function VerifyEmail() {
         />
       </div>
       {resendError && <div className="auth-error" role="alert" dir="auto">{resendError}</div>}
-      <Button type="submit" className="auth-btn-primary w-full" disabled={resending}>
+      <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} action="resend-verification" />
+      <Button type="submit" className="auth-btn-primary w-full" disabled={resending || (turnstileEnabled() && !captchaToken)}>
         {resending ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{tx(c("جارٍ الإرسال...", "Sending..."), locale)}</>
         ) : tx(c("أعد إرسال رابط التأكيد", "Resend confirmation link"), locale)}

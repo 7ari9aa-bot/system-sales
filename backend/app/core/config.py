@@ -328,6 +328,17 @@ class Settings(BaseSettings):
     website_platform_studio_url: str = "https://wp-studio-hamedadel7744-9853.vercel.app"
     website_platform_api_key: str = ""
 
+    # Cloudflare Turnstile (bot protection on the public auth routes). Empty
+    # secret = the whole feature is OFF (nothing is enforced, nothing is called),
+    # so shipping the code before the keys exist is safe. The SITE key is public
+    # and lives in the frontend build (VITE_TURNSTILE_SITE_KEY); only the secret
+    # is read here.
+    turnstile_secret_key: str = ""
+    # Consecutive failed sign-ins for one (ip, email) after which /auth/login
+    # also demands a token. Kept below the lockout threshold (5) so a real user
+    # who mistypes is asked to prove they are human BEFORE being locked out.
+    turnstile_login_after_failures: int = 3
+
     # Fihrist Sites (the standalone sites platform) is managed from the owner
     # console's "Websites" section. The backend reads/changes ONLY allow-listed
     # tables through app.modules.platform.services.sites_platform.

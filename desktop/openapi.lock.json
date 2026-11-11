@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 444,
-    "sha256": "970c5467c16b692fe1e9dc6150dc73810a81b98f2732bcbf5457b17b1f21f543",
+    "sha256": "35fc128f6ca94490f8a7933d80b3d71a2f2938a71e5c403df389390655d05814",
     "typed_operations": 286
   },
   "spec": {
@@ -10747,6 +10747,18 @@
         },
         "LoginRequest": {
           "properties": {
+            "captcha_token": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Captcha Token"
+            },
             "email": {
               "format": "email",
               "title": "Email",
@@ -12997,6 +13009,18 @@
         },
         "PasswordResetRequest": {
           "properties": {
+            "captcha_token": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Captcha Token"
+            },
             "email": {
               "format": "email",
               "title": "Email",
@@ -14071,6 +14095,18 @@
         "RegisterRequest": {
           "description": "email + password only is the minimal signup contract; the tenant\nname/slug and display name are derived server-side when omitted.",
           "properties": {
+            "captcha_token": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Captcha Token"
+            },
             "email": {
               "format": "email",
               "title": "Email",
@@ -14209,6 +14245,18 @@
         "ResendVerificationRequest": {
           "description": "Body for POST /auth/resend-verification — an address, nothing else.\n\nShape-identical to PasswordResetRequest on purpose: both endpoints answer\nwith the same neutral response regardless of account state. It stays its\nown type so the two contracts can evolve independently.",
           "properties": {
+            "captcha_token": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Captcha Token"
+            },
             "email": {
               "format": "email",
               "title": "Email",

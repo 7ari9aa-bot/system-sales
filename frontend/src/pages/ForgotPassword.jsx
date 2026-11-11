@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { KeyRound, Loader2, Mail } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import Turnstile, { turnstileEnabled } from "@/components/Turnstile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,12 +25,14 @@ export default function ForgotPassword() {
     setLoading(true);
     try {
       await publicApi("/auth/password-reset/request", {
-        body: { email: email.trim() },
+        body: captchaToken ? { email: email.trim(), captcha_token: captchaToken } : { email: email.trim() },
       });
       // The API intentionally gives the same response for existing and
       // unknown accounts; keep the UI equally neutral.
       setSubmitted(true);
     } catch {
+      setCaptchaToken(null); // a token is spent by the attempt that used it
+      setCaptchaReset((n) => n + 1);
       setError(tx(
         c("تعذّر إرسال الطلب الآن. حاول مرة أخرى بعد قليل.", "We couldn't submit the request. Please try again shortly."),
         locale,
@@ -83,7 +86,8 @@ export default function ForgotPassword() {
               />
             </div>
           </div>
-          <Button type="submit" className="auth-btn-primary w-full" disabled={loading}>
+          <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} action="password-reset" />
+          <Button type="submit" className="auth-btn-primary w-full" disabled={loading || (turnstileEnabled() && !captchaToken)}>
             {loading ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{tx(c("جارٍ الإرسال...", "Sending..."), locale)}</>
             ) : tx(c("إرسال رابط الاستعادة", "Send reset link"), locale)}
