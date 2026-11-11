@@ -74,3 +74,16 @@ cd ../frontend && npm run lint && npm test
   listed in `docs/README.md`. `backend/tests/test_repo_hygiene.py` enforces both.
 - Import boundaries between modules are ratcheted by `tests/test_module_boundaries.py`. Do not
   add new cross-module imports casually, and never raise the baseline without the owner's say.
+
+## OpenAPI lock: regenerate it with Python 3.13, not 3.12
+
+`desktop/openapi.lock.json` is checked by `tests/test_openapi_lock.py` against the schema CI builds,
+and CI runs Python 3.13. Pydantic emits a `pattern` on every `Decimal` money field under 3.13 and
+omits it under 3.12 (43 places), so the same code hashes differently per interpreter and a lock
+written with 3.12 fails CI even though it passes locally. Regenerate and check with 3.13:
+
+    cd backend && ENVIRONMENT=local python3.13 scripts/export_openapi_lock.py
+    ENVIRONMENT=local python3.13 scripts/export_openapi_lock.py --check
+
+Install that interpreter's dependencies the way CI does: `pip install -e ".[dev]" -c constraints.txt`.
+Any route or schema change needs a regenerated lock in the same commit.

@@ -65,14 +65,41 @@ def _grants_in(text_blob: str) -> set[str]:
     return {m.group(1).lower() for m in _GRANT_RE.finditer(joined)}
 
 
+_DROP_RE = re.compile(r"DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?([\w.]+\([^)]*\))", re.IGNORECASE)
+
+
+def _strings_in(path: Path) -> list[str]:
+    return [
+        node.value
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+
+
+def _normalise(signature: str) -> str:
+    """`public.f(text)` and `f(text)` are the same function; qualify and lower-case it."""
+    sig = signature.lower().replace(" ", "")
+    return sig if "." in sig.split("(")[0] else f"public.{sig}"
+
+
 def _grants_declared_by_migrations() -> set[str]:
-    """Every function signature a migration hands to the app role."""
-    found: set[str] = set()
-    for path in sorted(MIGRATIONS_DIR.glob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                found |= _grants_in(node.value)
-    return found
+    """Every function signature a migration hands to the app role AND still leaves in place.
+
+    A function a LATER migration drops cannot be re-issued by provision.py (GRANT on a missing
+    function fails the whole provision run), so it is not an obligation. Dropping is matched by
+    signature and only counts when the dropping migration sorts after the granting one, so a
+    function that is dropped and then recreated by a still-later migration stays an obligation.
+    """
+    granted_at: dict[str, int] = {}
+    dropped_at: dict[str, int] = {}
+    paths = sorted(MIGRATIONS_DIR.glob("*.py"))
+    for index, path in enumerate(paths):
+        for value in _strings_in(path):
+            for sig in _grants_in(value):
+                granted_at[_normalise(sig)] = index
+            for match in _DROP_RE.finditer(re.sub(r'"\s*\n\s*"', "", value)):
+                dropped_at[_normalise(match.group(1))] = index
+    return {sig for sig, at in granted_at.items() if dropped_at.get(sig, -1) <= at}
 
 
 def _setup_app_role_body() -> str:
@@ -99,7 +126,7 @@ def test_the_migrations_do_grant_the_app_role_function_execute() -> None:
     """
     declared = _grants_declared_by_migrations()
     assert declared, "no migration grants EXECUTE to sales_app: the probe matches nothing"
-    missing = {sig.lower() for sig in MAINTENANCE_FUNCTIONS} - declared
+    missing = {_normalise(sig) for sig in MAINTENANCE_FUNCTIONS} - declared
     assert not missing, f"{sorted(missing)} are not granted by any migration"
 
 
@@ -124,7 +151,7 @@ def test_a_migration_grant_never_ships_unguarded() -> None:
 def test_every_function_the_migrations_grant_is_reissued_by_provision() -> None:
     """A migration-only grant is a grant the app role does not hold in CI."""
     declared = _grants_declared_by_migrations()
-    missing = declared - _grants_reissued_by_provision()
+    missing = declared - {_normalise(sig) for sig in _grants_reissued_by_provision()}
     assert not missing, (
         f"provision.py never grants the app role EXECUTE on {sorted(missing)}; "
         "CI creates the role after alembic runs, so the migration's guarded GRANT "

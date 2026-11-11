@@ -72,7 +72,9 @@ class DesignIn(BaseModel):
 
 
 class LimitIn(BaseModel):
-    value: int = Field(ge=0, le=10**12)
+    # Named `limit`, not `value`: `value` is a money field name in the published-contract guard
+    # (test_marketing_analytics_contracts), and a quota is a count, not an amount of money.
+    limit: int = Field(ge=0, le=10**12)
 
 
 class LegalSection(BaseModel):
@@ -181,12 +183,12 @@ async def set_limit(ctx: TenantCtxDep, key: str, body: LimitIn) -> DoneOut:
     if not _LIMIT_KEY.match(key):
         raise HTTPException(status_code=400, detail="invalid limit key")
     try:
-        changed = await sp.update("platform_limits", {"key": key}, {"value": body.value})
+        changed = await sp.update("platform_limits", {"key": key}, {"value": body.limit})
     except (sp.SitesPlatformError, sp.SitesPlatformNotConfigured) as exc:
         raise _http(exc) from exc
     if changed == 0:
         raise HTTPException(status_code=404, detail="unknown limit")
-    await _audit(ctx, "limit.set", key, value=body.value)
+    await _audit(ctx, "limit.set", key, value=body.limit)
     return DoneOut(changed=changed)
 
 

@@ -106,7 +106,7 @@ def _concrete(path: str) -> str:
 
 _BODY = {
     "PATCH": {"is_listed": True},
-    "PUT": {"value": 5},
+    "PUT": {"limit": 5},
     "POST": {"publish": True},
 }
 
@@ -168,8 +168,8 @@ async def test_a_bad_id_or_key_never_reaches_the_platform(monkeypatch) -> None:
         ("PATCH", f"/fihrist-links/{SITE}x", {"sync_enabled": False}),
         ("PATCH", "/fihrist-links/not-a-uuid", {"sync_enabled": False}),
         ("PATCH", "/sites/1%27%20or%20%271", {"status": "suspended"}),
-        ("PUT", "/limits/Max-Products", {"value": 5}),
-        ("PUT", "/limits/%26a%3Db", {"value": 5}),
+        ("PUT", "/limits/Max-Products", {"limit": 5}),
+        ("PUT", "/limits/%26a%3Db", {"limit": 5}),
     ]
     for method, path, body in cases:
         r, platform, _ = await _call(method, path, body=body, monkeypatch=monkeypatch)
@@ -187,8 +187,8 @@ async def test_values_are_validated_before_they_reach_the_platform(monkeypatch) 
             "/designs/funny-baby",
             {"origin": "https://evil"},
         ),  # not a field: ignored => nothing to change
-        ("PUT", "/limits/max_products", {"value": -1}),
-        ("PUT", "/limits/max_products", {"value": "lots"}),
+        ("PUT", "/limits/max_products", {"limit": -1}),
+        ("PUT", "/limits/max_products", {"limit": "lots"}),
         ("PATCH", f"/sites/{SITE}", {"status": "deleted"}),
         ("PATCH", f"/sites/{SITE}", {"status": "banned"}),
         ("PUT", "/legal/privacy", {"title": "  ", "sections": [{"title": "a", "body": "b"}]}),
@@ -297,7 +297,7 @@ async def test_every_write_leaves_exactly_one_audit_row_with_its_own_action(monk
     writes = [
         ("PATCH", f"/sites/{SITE}", {"status": "suspended"}, "sites_platform.site.status", SITE),
         ("PATCH", f"/sites/{SITE}", {"status": "active"}, "sites_platform.site.status", SITE),
-        ("PUT", "/limits/max_products", {"value": 600}, "sites_platform.limit.set", "max_products"),
+        ("PUT", "/limits/max_products", {"limit": 600}, "sites_platform.limit.set", "max_products"),
         (
             "PATCH",
             f"/fihrist-links/{SITE}",
@@ -331,8 +331,24 @@ async def test_a_site_status_change_sends_exactly_the_requested_status(monkeypat
     )
     assert platform.calls == [("update", ("sites", {"id": SITE}), {"status": "suspended"})]
     r, platform, _ = await _call(
-        "PUT", "/limits/max_products", body={"value": 7}, monkeypatch=monkeypatch
+        "PUT", "/limits/max_products", body={"limit": 7}, monkeypatch=monkeypatch
     )
     assert platform.calls == [
         ("update", ("platform_limits", {"key": "max_products"}), {"value": 7})
     ]
+
+
+def test_limit_body_field_is_a_count_named_limit_not_money() -> None:
+    """`value` is a money field name to the published-contract guard; a quota is a count.
+
+    A regression to `value` fails test_the_published_money_fields_are_strings_everywhere, and a
+    client still sending the old `value` key is refused instead of silently saving 0.
+    """
+    from app.modules.platform.routers.sites_platform import LimitIn
+
+    assert set(LimitIn.model_fields) == {"limit"}
+    assert LimitIn(limit=600).limit == 600
+    with pytest.raises(ValueError):
+        LimitIn.model_validate({"value": 600})
+    with pytest.raises(ValueError):
+        LimitIn(limit=-1)

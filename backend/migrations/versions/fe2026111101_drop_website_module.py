@@ -39,12 +39,6 @@ _TABLES = (
     "websites",
 )
 
-_FUNCTIONS = (
-    "public.admin_website_purchases()",
-    "public.resolve_website_purchase_tenant(uuid)",
-    "public.website_slug_taken(text)",
-)
-
 
 def _refuse_if_populated(table: str) -> str:
     """One DO block per table: raise (aborting the whole transaction) when the table has rows.
@@ -69,8 +63,11 @@ def upgrade() -> None:
     for table in _TABLES:
         op.execute(_refuse_if_populated(table))
 
-    for fn in _FUNCTIONS:
-        op.execute(f"DROP FUNCTION IF EXISTS {fn}")
+    # Literal statements (not built from _FUNCTIONS) so tests/test_app_role_function_grants.py can
+    # read the dropped signatures and stop requiring provision.py to re-grant them.
+    op.execute("DROP FUNCTION IF EXISTS public.admin_website_purchases()")
+    op.execute("DROP FUNCTION IF EXISTS public.resolve_website_purchase_tenant(uuid)")
+    op.execute("DROP FUNCTION IF EXISTS public.website_slug_taken(text)")
     for table in _TABLES:
         op.execute(f"DROP TABLE IF EXISTS public.{table}")
 

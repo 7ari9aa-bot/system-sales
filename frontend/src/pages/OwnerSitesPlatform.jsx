@@ -122,7 +122,7 @@ export default function OwnerSitesPlatform() {
       setError(L("الحد لازم يكون رقم صحيح لا يقل عن صفر.", "A limit must be a whole number, zero or more."));
       return;
     }
-    act(`limit:${limit.key}`, () => api(`${BASE}/limits/${limit.key}`, { method: "PUT", body: { value } }), L("تم حفظ الحد.", "Limit saved."));
+    act(`limit:${limit.key}`, () => api(`${BASE}/limits/${limit.key}`, { method: "PUT", body: { limit: value } }), L("تم حفظ الحد.", "Limit saved."));
   }
 
   function saveLegal(page) {
