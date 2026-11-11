@@ -693,6 +693,24 @@ class OrderService:
         return order
 
     @staticmethod
+    async def customer_for_channel_order(
+        session: AsyncSession, tenant_id: UUID, *, phone: str, name: str, source: str
+    ):
+        """The customer an order from an outside channel books to, matched by phone.
+
+        Returns ``None`` when the order must be refused: a number that is not a phone, or a
+        customer the merchant has blocked. The caller does not learn which. Matching, the
+        unique-phone race and the blocked rule all stay in ``CustomerService``; this is the one
+        door the orders module uses to reach them.
+        """
+        from app.modules.customers.service import CustomerService
+
+        customer, _problem = await CustomerService.find_or_create_by_phone(
+            session, tenant_id, phone=phone, name=name, source=source
+        )
+        return customer
+
+    @staticmethod
     async def _insert_order(session: AsyncSession, tenant_id: UUID, **values: object) -> Order:
         """Insert the order; retry once if the random number collides.
 

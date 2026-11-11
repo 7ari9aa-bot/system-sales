@@ -89,6 +89,13 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # website-bridge suite. Declared here so the matrix sees the
         # alternative resolver instead of flagging it as unguarded.
         "GET /api/v1/website-platform/catalog/products",
+        # The same external caller PLACING an order (modules/orders/website_orders.py). Unlike the
+        # catalog read this WRITES, so the guarantees are pinned by tests/test_website_bridge_orders.py:
+        # the tenant comes only from the per-tenant key (bind_tenant runs before any read or
+        # write), prices are Fihrist's and never the caller's (extra="forbid"), stock is
+        # reserved in the same transaction, and a retried external_ref cannot book twice (a
+        # unique index, proven by the parallel-retry test).
+        "POST /api/v1/website-platform/orders",
         # Anonymous WEBSITE telemetry (modules/platform/routers/telemetry.py):
         # the caller is an unauthenticated VISITOR's browser before any
         # tenant/account exists. The write is platform-level (visitor_events

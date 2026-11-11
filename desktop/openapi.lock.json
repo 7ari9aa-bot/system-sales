@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 443,
-    "sha256": "21fc106b34420406bc2f726242f94d60b545fb980bca2acfbf20eb29f8e44cec",
-    "typed_operations": 285
+    "operations": 444,
+    "sha256": "06ca4659c0c0b74380fe778787da92fcc206d30fc58d7fe4e47aabec4bcde41a",
+    "typed_operations": 286
   },
   "spec": {
     "components": {
@@ -20286,6 +20286,168 @@
             "retry"
           ],
           "title": "WebhookRetryOut",
+          "type": "object"
+        },
+        "WebsiteOrderCustomer": {
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            },
+            "name": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "phone": {
+              "maxLength": 31,
+              "minLength": 5,
+              "title": "Phone",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "phone"
+          ],
+          "title": "WebsiteOrderCustomer",
+          "type": "object"
+        },
+        "WebsiteOrderIn": {
+          "additionalProperties": false,
+          "description": "An order as the storefront knows it. There is deliberately no price field: ``extra=forbid``\nturns a storefront that tries to name one into a 422 instead of a silently ignored number.",
+          "properties": {
+            "customer": {
+              "$ref": "#/components/schemas/WebsiteOrderCustomer"
+            },
+            "external_ref": {
+              "maxLength": 80,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "External Ref",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/WebsiteOrderLine"
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "shipping_address": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shipping Address"
+            }
+          },
+          "required": [
+            "external_ref",
+            "customer",
+            "items"
+          ],
+          "title": "WebsiteOrderIn",
+          "type": "object"
+        },
+        "WebsiteOrderLine": {
+          "additionalProperties": false,
+          "description": "One cart line. ``variant_id`` is the id the catalog endpoint gave the storefront.",
+          "properties": {
+            "quantity": {
+              "maximum": 1000.0,
+              "minimum": 1.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "WebsiteOrderLine",
+          "type": "object"
+        },
+        "WebsiteOrderOut": {
+          "properties": {
+            "already_received": {
+              "default": false,
+              "title": "Already Received",
+              "type": "boolean"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "grand_total": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Grand Total",
+              "type": "string"
+            },
+            "number": {
+              "title": "Number",
+              "type": "string"
+            },
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "subtotal": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Subtotal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "order_id",
+            "number",
+            "status",
+            "currency",
+            "subtotal",
+            "grand_total"
+          ],
+          "title": "WebsiteOrderOut",
           "type": "object"
         },
         "WhatsAppSignupCompleteBody": {
@@ -67934,6 +68096,56 @@
             }
           },
           "summary": "Website Platform Products"
+        }
+      },
+      "/api/v1/website-platform/orders": {
+        "post": {
+          "description": "Book a storefront order in Fihrist.\n\nIdempotent on ``external_ref``: a retry after a lost response returns the order the first call\nmade (``already_received``) and reserves nothing a second time. The unique index on\n(tenant, channel, external_ref) is the guarantee; the lookup below is the fast path, and a\nconcurrent twin that loses the race is turned back into that same lookup.",
+          "operationId": "website_platform_create_order_api_v1_website_platform_orders_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-wp-key",
+              "required": true,
+              "schema": {
+                "title": "X-Wp-Key",
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebsiteOrderIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebsiteOrderOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Website Platform Create Order"
         }
       },
       "/api/v1/workflows": {

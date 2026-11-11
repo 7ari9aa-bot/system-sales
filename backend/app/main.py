@@ -99,6 +99,7 @@ from app.modules.operations.router import (
     sla_router as operations_sla_router,
 )
 from app.modules.orders.router import router as orders_router
+from app.modules.orders.website_orders import router as website_orders_router
 from app.modules.platform.impersonation import router as platform_impersonation_router
 from app.modules.platform.router import router as platform_module_router
 from app.modules.platform.routers.channels import router as channel_status_router
@@ -464,6 +465,7 @@ def create_app() -> FastAPI:
         conversations_webhook_router,
         catalog_router,
         website_platform_catalog_router,
+        website_orders_router,
         inventory_router,
         orders_router,
         customers_router,

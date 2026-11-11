@@ -59,6 +59,9 @@ class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     shipping_address: Mapped[dict | None] = mapped_column(JSONB)
     placed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     extra: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # The id an outside storefront (Fihrist Sites) gave this order. With the channel it makes a
+    # retried POST land on the order it already created instead of booking a second one.
+    external_ref: Mapped[str | None] = mapped_column(String(80))
     # §143: tombstone — soft-delete columns (privacy/GDPR deletion).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
@@ -66,6 +69,14 @@ class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_orders_tenant_number"),
+        Index(
+            "uq_orders_tenant_channel_external_ref",
+            "tenant_id",
+            "channel",
+            "external_ref",
+            unique=True,
+            postgresql_where=text("external_ref IS NOT NULL"),
+        ),
         Index("ix_orders_tenant_status_placed", "tenant_id", "status", "placed_at"),
         Index("ix_orders_tenant_customer", "tenant_id", "customer_id"),
     )
