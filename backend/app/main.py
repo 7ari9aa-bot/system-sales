@@ -103,6 +103,7 @@ from app.modules.platform.impersonation import router as platform_impersonation_
 from app.modules.platform.router import router as platform_module_router
 from app.modules.platform.routers.channels import router as channel_status_router
 from app.modules.platform.routers.owner import router as owner_console_router
+from app.modules.platform.routers.sites_platform import router as sites_platform_router
 from app.modules.platform.routers.telemetry import router as public_telemetry_router
 from app.modules.pos.router import router as pos_router
 from app.modules.privacy.router import router as privacy_router
@@ -484,6 +485,7 @@ def create_app() -> FastAPI:
         platform_module_router,
         platform_impersonation_router,
         owner_console_router,
+        sites_platform_router,
         channel_status_router,
         public_telemetry_router,
         segments_router,

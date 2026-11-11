@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -16,10 +16,13 @@ import { useI18n } from "@/lib/i18n";
 import { Badge, KpiCard, PageHeader, SectionCard } from "@/components/dashboard/ui";
 import { cn } from "@/lib/utils";
 
+const OwnerSitesPlatform = lazy(() => import("@/pages/OwnerSitesPlatform"));
+
 const TABS = [
   { id: "overview", ar: "نظرة عامة", en: "Overview" },
   { id: "tenants", ar: "المستأجرون", en: "Tenants" },
   { id: "websites", ar: "المواقع", en: "Websites" },
+  { id: "sites-platform", ar: "نظام المواقع الجديد", en: "Sites platform" },
   { id: "visitors", ar: "الزوار", en: "Visitors" },
   { id: "system", ar: "الصحة", en: "System" },
 ];
@@ -153,7 +156,7 @@ export default function OwnerConsole() {
         }
       />
 
-      {error && (
+      {error && tab !== "sites-platform" && (
         <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
           {error}
         </div>
@@ -175,7 +178,17 @@ export default function OwnerConsole() {
         ))}
       </div>
 
-      {loading && !overview ? (
+      {tab === "sites-platform" ? (
+        <Suspense
+          fallback={
+            <div className="grid min-h-48 place-items-center text-[13px] text-muted-foreground">
+              {L("جارٍ التحميل…", "Loading…")}
+            </div>
+          }
+        >
+          <OwnerSitesPlatform />
+        </Suspense>
+      ) : loading && !overview ? (
         <div className="grid min-h-48 place-items-center text-[13px] text-muted-foreground">
           {L("جارٍ تحميل حالة النظام…", "Loading system status…")}
         </div>

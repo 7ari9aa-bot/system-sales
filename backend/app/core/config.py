@@ -317,7 +317,9 @@ class Settings(BaseSettings):
 
     # Website Platform integration (external presentation plane): per-tenant
     # keys for the catalog exposure endpoint. JSON of tenant_id -> key.
-    # Example: WEBSITE_PLATFORM_TENANT_KEYS='{"<tenant-uuid>":"wpk-tenant-secret"}'
+    # The mapping is KEY -> tenant id (the catalog endpoint looks the caller's
+    # X-WP-Key up as the dict key).
+    # Example: WEBSITE_PLATFORM_TENANT_KEYS='{"wpk-tenant-secret":"<tenant-uuid>"}'
     website_platform_tenant_keys: dict[str, str] = Field(default_factory=dict)
 
     # Where the external Website Platform lives (API + Studio), used by the
@@ -325,6 +327,14 @@ class Settings(BaseSettings):
     website_platform_api_url: str = "https://wp-platform-hamedadel7744-9853.vercel.app"
     website_platform_studio_url: str = "https://wp-studio-hamedadel7744-9853.vercel.app"
     website_platform_api_key: str = ""
+
+    # Fihrist Sites (the standalone sites platform) is managed from the owner
+    # console's "Websites" section. The backend reads/changes ONLY allow-listed
+    # tables through app.modules.platform.services.sites_platform.
+    # Both empty = the section is switched off.
+    sites_platform_supabase_url: str = ""  # https://<ref>.supabase.co
+    # Service-role key: opens every merchant's data. The most sensitive secret.
+    sites_platform_service_key: str = ""
 
     # In-house website builder: the public-suffix under which customer sites
     # are served as subdomains (e.g. "sites.example.com" -> "acme.sites...").
