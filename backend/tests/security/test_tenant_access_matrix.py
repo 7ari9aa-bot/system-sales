@@ -145,25 +145,6 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # What makes this safe to declare is the closed `stream` label set in
         # app/core/metrics.py — an open label there would publish tenant ids.
         "GET /metrics",
-        # Customer websites (modules/website): the PUBLIC read model. Both
-        # routes read ONLY website_published_sites (no tenant_id column, no
-        # tenant GUC by design) and the live product read binds the snapshot's
-        # server-stamped tenant via bind_tenant before any RLS-scoped query.
-        # GET / serves the same renderer by Host header for the subdomain
-        # phase and 404s unless websites_served_domain is configured.
-        "GET /sites/{slug}",
-        "GET /",
-        # The template preview walk: renders the fail-closed manifest's seed
-        # content with demo products — reads NO database row at all (no
-        # tenant data exists on this surface), so get_tenant_ctx is
-        # deliberately absent; unknown templates/slugs are plain 404s.
-        "GET /sites/preview/{template_id}",
-        "GET /sites/preview/{template_id}/{page_slug}",
-        # The SAME walk served under /api/v1 so production frontends reach it
-        # through their existing API base (same zero-database contract; the
-        # demo's internal links are absolute to the forwarded origin).
-        "GET /api/v1/public/preview/{template_id}",
-        "GET /api/v1/public/preview/{template_id}/{page_slug}",
     }
 )
 
@@ -178,9 +159,6 @@ _ROOT_MOUNTED: frozenset[str] = frozenset(
         "/healthz",
         "/readyz",
         "/metrics",
-        "/sites/{slug}",
-        "/sites/preview/{template_id}",
-        "/sites/preview/{template_id}/{page_slug}",
     }
 )
 

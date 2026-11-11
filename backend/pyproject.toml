@@ -79,13 +79,6 @@ extend-immutable-calls = [
 [tool.ruff.lint.per-file-ignores]
 # Template manifests carry their CSS design blocks as authored string
 # constants; reflowing a stylesheet would only obscure it.
-"app/modules/website/templates/reference/*.py" = ["E501"]
-"app/modules/website/templates/funny_baby.py" = ["E501"]
-"app/modules/website/templates/warm_paper.py" = ["E501"]
-"app/modules/website/templates/street_poster.py" = ["E501"]
-"app/modules/website/templates/funny_baby_verbatim.py" = ["E501"]
-"app/modules/website/templates/warm_paper_verbatim.py" = ["E501"]
-"app/modules/website/templates/street_poster_verbatim.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

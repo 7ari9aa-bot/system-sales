@@ -7,7 +7,6 @@ import {
   Sparkles,
   BarChart3,
   Globe,
-  LayoutTemplate,
   Lock,
   LogOut,
   PanelLeft,
@@ -69,17 +68,6 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
   const stockIssues = live?.lowStock == null || live?.outOfStock == null
     ? null
     : live.lowStock + live.outOfStock;
-
-  // «Website Dashboard» appears only once the tenant has an active website —
-  // re-checked on every route change so it shows right after purchase.
-  const [hasActiveSite, setHasActiveSite] = React.useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    api("/website/overview")
-      .then((data) => { if (alive) setHasActiveSite(data?.state === "active"); })
-      .catch(() => { if (alive) setHasActiveSite(false); });
-    return () => { alive = false; };
-  }, [pathname]);
 
   const displayName = user?.full_name?.trim() || user?.email || "—";
   const userEmail = user?.email || "—";
@@ -161,9 +149,6 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
           ? [{ to: "/owner", label: t("nav.ownerConsole"), icon: ShieldCheck }]
           : []),
         { to: "/website", label: t("nav.website"), icon: Globe },
-        ...(hasActiveSite
-          ? [{ to: "/website/dashboard", label: t("nav.websiteDashboard"), icon: LayoutTemplate }]
-          : []),
       ],
     },
   ];

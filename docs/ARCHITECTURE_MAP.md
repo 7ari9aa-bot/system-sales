@@ -47,7 +47,6 @@
 | privacy | consent, data-subject requests, retention policies | /privacy | 7 | PrivacyService | test_privacy_erasure, test_consent_enforcement, test_retention, test_row_retention_policy |
 | realtime | SSE gateway over Redis Streams, read-only, cursor resume | /realtime | 2 | (router only, no service) | none dedicated — SSE auth covered by test_conversations_stream_auth |
 | inventory | warehouses, balances, movements, transfers, reservations, reconciliation | /inventory | 5 | InventoryService, reconciliation | test_inventory_service, test_inventory_ledger_invariant, test_inventory_reconciliation, test_inventory_reservation_ledger |
-| website | bridge to external Website Platform: provision, SSO session, publish | /website | 5 | client (WebsitePlatformError contract) | none dedicated |
 | effects | EffectLedger, ambiguous state, external dispatch, reconciliation | /effects | 4 | EffectLedger | test_effects_ledger, test_atomic_execution |
 | automation | tenant-owned versioned workflows and executions | /workflows | 8 | AutomationService (versions, publish, executions) | test_automation_service, test_automation_routes |
 

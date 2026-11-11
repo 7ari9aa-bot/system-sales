@@ -110,8 +110,6 @@ from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
-from app.modules.website.router import public_sites_router
-from app.modules.website.router import router as website_router
 
 
 @asynccontextmanager
@@ -466,7 +464,6 @@ def create_app() -> FastAPI:
         conversations_webhook_router,
         catalog_router,
         website_platform_catalog_router,
-        website_router,
         inventory_router,
         orders_router,
         customers_router,
@@ -508,12 +505,6 @@ def create_app() -> FastAPI:
     # Prometheus scraper has no tenant JWT to present, and the route carries its
     # own admission (internal service token wherever SECURE_ENVIRONMENT is on).
     app.include_router(metrics_router)
-
-    # Public customer websites ride at the ROOT too: /sites/{slug} serves a
-    # published site by path today, and GET / serves it by Host header once
-    # wildcard DNS is on (docs/SITES_SERVING.md). No auth, no tenant GUC —
-    # the snapshot row IS the public read model.
-    app.include_router(public_sites_router)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

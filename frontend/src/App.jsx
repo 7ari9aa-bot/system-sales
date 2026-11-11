@@ -34,9 +34,8 @@ const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const OwnerConsole = lazy(() => import('@/pages/OwnerConsole'));
 const Usage = lazy(() => import('@/pages/Usage'));
-// «My Website» — the in-house website builder (template gallery -> purchase -> control page).
-const MyWebsite = lazy(() => import('@/pages/website/MyWebsite'));
-const WebsiteDashboard = lazy(() => import('@/pages/website/Dashboard'));
+// «My Website» — a pointer to the standalone Fihrist Sites platform (Fihrist no longer builds sites).
+const Websites = lazy(() => import('@/pages/Websites'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
@@ -106,8 +105,7 @@ const DashboardRoutes = () => (
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/owner" element={<OwnerConsole />} />
         <Route path="/usage" element={<Navigate to="/settings/usage" replace />} />
-        <Route path="/website" element={<MyWebsite />} />
-        <Route path="/website/dashboard" element={<WebsiteDashboard />} />
+        <Route path="/website" element={<Websites />} />
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>

@@ -200,7 +200,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # function-scope catalog import: public_service registers the catalog tables
 # in Base.metadata so the public product read stays boundary-safe (no module-
 # scope coupling; see app/modules/website/services/public_service.py).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 240
+# 240 -> 233 on 2026-11-11: the in-house website builder (modules/website) was removed in favour
+# of the standalone Fihrist Sites platform, taking its 7 cross-module imports with it
+# (identity.deps x4, identity.models, catalog.models and the function-scope catalog registration).
+# Measured, not guessed.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 233
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

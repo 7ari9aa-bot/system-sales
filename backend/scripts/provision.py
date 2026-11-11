@@ -283,11 +283,6 @@ FUNCTION_EXECUTE_GRANTS: tuple[str, ...] = (
     # guarded grants cannot fire when CI runs alembic before the role exists.
     "GRANT EXECUTE ON FUNCTION public.auth_lookup_user_by_email(text) TO sales_app",
     "GRANT EXECUTE ON FUNCTION public.auth_user_is_tenant_member(uuid, uuid) TO sales_app",
-    # Website builder (fe2026110505): the slug-claim check, the purchase
-    # owner resolver for the admin confirm path, and the admin queue reader.
-    "GRANT EXECUTE ON FUNCTION public.website_slug_taken(text) TO sales_app",
-    "GRANT EXECUTE ON FUNCTION public.resolve_website_purchase_tenant(uuid) TO sales_app",
-    "GRANT EXECUTE ON FUNCTION public.admin_website_purchases() TO sales_app",
 )
 
 #: fd2026100805's `sales_app_read` policies on the RBAC reference plane — the
