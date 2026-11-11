@@ -204,7 +204,17 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # of the standalone Fihrist Sites platform, taking its 7 cross-module imports with it
 # (identity.deps x4, identity.models, catalog.models and the function-scope catalog registration).
 # Measured, not guessed.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 233
+# 233 -> 234 on 2026-11-12, ONE deliberate edge: orders -> customers.service, inside
+# OrderService.customer_for_channel_order. An order that arrives from an outside storefront
+# (POST /website-platform/orders) must book to the customer matched by phone, and the matching,
+# the unique-phone race and the blocked-customer rule belong to CustomerService; copying them
+# would fork a rule that decides who may buy. The edge adds no cycle (orders and customers
+# were already in the same component), the new endpoint's own file adds NO cross-module import
+# (it reaches get_db through orders' shared deps and reads its key mapping from app.core), and
+# the alternative, rewriting an existing orders -> inventory import as SQL to make room, would
+# touch the returns and reservation paths that move money. Pay-back, when someone is already in
+# those paths: convert one of the repeated InventoryService aliases in orders/service.py.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 234
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
