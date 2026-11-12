@@ -417,6 +417,42 @@ class PosService(PosReceiptReads):
         return (10 - total % 10) % 10
 
     @staticmethod
+    def _clean_scanned_code(value: str) -> str:
+        """What a scanner or a keyboard really meant, before the code is looked up or judged.
+
+        Arabic-Indic and full-width digits become plain digits (an Arabic keyboard types them),
+        a leading AIM symbology prefix (``]E0``, ``]C1``...) that some scanners add is dropped,
+        and invisible characters (zero-width, control) are removed. Anything else is left exactly
+        as it was: a SKU or a free-text code must still match what the shop registered.
+        """
+        import unicodedata
+
+        out: list[str] = []
+        for ch in value:
+            if unicodedata.category(ch) in ("Cc", "Cf"):
+                continue
+            digit = unicodedata.digit(ch, None)
+            out.append(str(digit) if digit is not None and ch.isdigit() else ch)
+        code = "".join(out).strip()
+        if len(code) > 3 and code[0] == "]" and code[1].isalpha() and code[2].isalnum():
+            code = code[3:]
+        return code
+
+    @staticmethod
+    def _zero_padded_forms(code: str) -> list[str]:
+        """The same product's other GS1 spellings: UPC-A (12), EAN-13 and GTIN-14 differ only by
+        leading zeros, and a scanner may report either. Only plain digits of a barcode length."""
+        if not (code.isascii() and code.isdigit()) or len(code) not in (8, 12, 13, 14):
+            return []
+        bare = code.lstrip("0")
+        forms = []
+        for width in (12, 13, 14):
+            padded = bare.zfill(width)
+            if padded != code and len(bare) <= width:
+                forms.append(padded)
+        return forms
+
+    @staticmethod
     def _is_misread_barcode(value: str) -> bool:
         """True for a code shaped like a packaged barcode whose check digit does not add up.
 
@@ -468,9 +504,21 @@ class PosService(PosReceiptReads):
         types = [identifier_type]
         if identifier_type == "barcode":
             types += ["ean", "gtin", "upc"]
+        # A generic scan is cleaned first (Arabic digits, scanner prefix, invisible characters). A
+        # named type stays exactly what was sent: it never widens.
+        if identifier_type == "barcode":
+            value = PosService._clean_scanned_code(value)
+        spellings = [value]
+        if identifier_type == "barcode":
+            spellings += PosService._zero_padded_forms(value)
         variant = None
-        for candidate in types:
-            variant = await CatalogService.resolve_identifier(session, tenant_id, candidate, value)
+        for spelling in spellings:
+            for candidate in types:
+                variant = await CatalogService.resolve_identifier(
+                    session, tenant_id, candidate, spelling
+                )
+                if variant is not None:
+                    break
             if variant is not None:
                 break
         if variant is None:
@@ -1946,6 +1994,21 @@ class PosService(PosReceiptReads):
     RECEIPT_EMAIL_PER_ADDRESS_PER_DAY = 20
 
     @staticmethod
+    def _receipt_email_key(address: str) -> str:
+        """One key per MAILBOX, so the per-address cap cannot be got round by respelling it.
+
+        Lower-cased always. For Gmail (``gmail.com`` and ``googlemail.com`` are one service) the
+        dots in the name are ignored and everything after a ``+`` is a tag, so ``v.i.c+1@`` and
+        ``vic@`` reach the same inbox. Other providers are left alone: a dot or a ``+`` can be
+        significant there, and merging them would block two real, different customers.
+        """
+        local, _, domain = address.strip().lower().rpartition("@")
+        if domain in ("gmail.com", "googlemail.com"):
+            local = local.split("+", 1)[0].replace(".", "")
+            domain = "gmail.com"
+        return f"{local}@{domain}"
+
+    @staticmethod
     async def _ensure_receipt_email_room(
         session: AsyncSession, tenant_id: UUID, receipt_id: UUID, address: str
     ) -> None:
@@ -1960,18 +2023,27 @@ class PosService(PosReceiptReads):
 
         from app.core.errors import RateLimitExceededError
 
+        # Count and insert are two steps. Without this, requests that arrive together all read the
+        # same count and all pass, so the cap held for one-at-a-time callers only. One lock per
+        # shop makes them queue; it is released with the transaction, which also holds the insert.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"receipt_email:{tenant_id}"},
+        )
+        key = PosService._receipt_email_key(address)
         row = (
             await session.execute(
                 text(
                     "SELECT"
                     " count(*) FILTER (WHERE payload->>'receipt_id' = :receipt),"
-                    " count(*) FILTER (WHERE lower(payload->>'email') = lower(:email))"
+                    " count(*) FILTER (WHERE coalesce(payload->>'email_key',"
+                    " lower(payload->>'email')) = :key)"
                     " FROM outbox_events"
                     " WHERE payload->>'event_type' = 'pos.receipt.email_requested'"
                     " AND meta->>'tenant_id' = :tenant"
                     " AND created_at > now() - interval '1 day'"
                 ),
-                {"receipt": str(receipt_id), "email": address, "tenant": str(tenant_id)},
+                {"receipt": str(receipt_id), "key": key, "tenant": str(tenant_id)},
             )
         ).one()
         if row[0] >= PosService.RECEIPT_EMAIL_PER_RECEIPT_PER_DAY:
@@ -2027,6 +2099,7 @@ class PosService(PosReceiptReads):
                 "receipt_id": str(receipt.id),
                 "session_id": str(receipt.session_id),
                 "email": cleaned,
+                "email_key": PosService._receipt_email_key(cleaned),
                 "requested_by": str(requested_by) if requested_by else None,
             },
             producer="pos",
@@ -2787,6 +2860,17 @@ class PosService(PosReceiptReads):
         )
         # ---------- the new half: the original order's own customer ----------
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, new_lines)
+        # The replacement half takes line discounts like a sale, so it is held to the same ceiling.
+        # Without this an exchange was a way round the owner's limit: return an item, take the
+        # replacement at 100% off.
+        await PosService._ensure_within_discount_ceiling(
+            session,
+            tenant_id,
+            await PosService.resolve_profile(session, tenant_id, pos_session),
+            new_lines,
+            None,
+            override=shift_override,
+        )
         new_subtotal, _prepared, new_line_discounts = await PosService._price_lines(
             session, tenant_id, new_lines
         )

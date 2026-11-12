@@ -580,6 +580,12 @@ class OrderService:
             ),
             "line discounts",
         )
+        # The typed discount is judged on its own, before it is added to the line discounts.
+        # Judged only after adding, a negative figure could hide behind a line percentage (-40
+        # beside a 50% line nets to +10 and passed), and the receipt would show a 50% line
+        # discount and a negative one that cancelled it.
+        if discount_total is not None and to_money(discount_total, "discount") < 0:
+            raise ValidationError("discount_total must not be negative")
         discount_total = (
             None
             if discount_total is None and line_discounts == 0
