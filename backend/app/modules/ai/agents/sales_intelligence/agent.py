@@ -304,6 +304,25 @@ def _facts_to_contracts(
     return facts
 
 
+async def _owner_notes_for_prompt(
+    session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID | None
+) -> str:
+    """The asker's own notes as a labelled block, or "" when there is nothing to show.
+
+    Memory is a convenience, never a dependency: any failure reads as "no notes", and the read runs
+    in a savepoint so a failed statement cannot poison the transaction the answer still needs."""
+    if user_id is None:
+        return ""
+    from app.modules.ai.owner_memory import OwnerMemoryService
+
+    try:
+        async with session.begin_nested():
+            return await OwnerMemoryService(session, tenant_id, user_id).render_for_prompt()
+    except Exception:  # noqa: BLE001 - a memory problem must never cost the owner an answer
+        logger.warning("owner_memory.read_failed tenant=%s", tenant_id, exc_info=True)
+        return ""
+
+
 async def run_sales_analysis(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -313,8 +332,12 @@ async def run_sales_analysis(
     runner=None,
     history: list[dict[str, str]] | None = None,
     actor_permissions: set[str] | frozenset[str] | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> AnalysisResult:
-    """One sales question → an evidence-backed answer (or a safe one)."""
+    """One sales question → an evidence-backed answer (or a safe one).
+
+    ``user_id`` is the person asking. It selects THEIR owner notes, which ride to the model in the
+    untrusted-context slot. Absent (a scheduled job, an unknown asker) means no notes, never all."""
     from sqlalchemy import text as sa_text
 
     from app.modules.ai.gateway import AIGateway
@@ -338,6 +361,7 @@ async def run_sales_analysis(
     merchant_currency = tenant_row[0] if tenant_row else "EGP"
 
     profile = await load_store_metric_profile(session, tenant_id)
+    owner_notes = await _owner_notes_for_prompt(session, tenant_id, user_id)
 
     runner = runner or AgentRunner(gateway=AIGateway())
     analysis_id = uuid.uuid4()
@@ -367,6 +391,10 @@ async def run_sales_analysis(
             # empty, so the configured prompt still always reaches the model.
             history=history,
             actor_permissions=actor_permissions,
+            # The owner's notes are free text, so they travel as UNTRUSTED context (a separate user
+            # message the model is told is data), never in the system prompt and never as
+            # system-owned facts.
+            knowledge_context=owner_notes or None,
         )
     except Exception:
         # A started event with no counterpart reads as "stuck forever" to

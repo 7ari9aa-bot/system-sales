@@ -741,3 +741,19 @@ async def test_a_context_without_permissions_reaches_the_analysis_as_unknown(mon
     not be promoted to an empty set that happens to behave the same today, nor to everything."""
     seen = await _permissions_seen_by_the_analysis(monkeypatch, _Ctx())
     assert seen["actor_permissions"] is None
+
+
+async def test_the_askers_own_user_id_reaches_the_analysis_for_their_notes(monkeypatch):
+    """Whose notes the model sees is decided here, from the session. It must be the person who is
+    asking, so a colleague in the same shop gets their own notes and never this person's."""
+    asker = uuid.uuid4()
+    seen = await _permissions_seen_by_the_analysis(monkeypatch, _Ctx(user_id=asker))
+    assert seen["user_id"] == asker
+
+
+async def test_a_context_with_no_user_reaches_the_analysis_as_no_one(monkeypatch):
+    """Unknown asker is None ('no notes'), never a made-up id and never 'everyone'."""
+    ctx = _Ctx()
+    ctx.user = None
+    seen = await _permissions_seen_by_the_analysis(monkeypatch, ctx)
+    assert seen["user_id"] is None
