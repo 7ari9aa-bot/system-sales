@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import select
 
+from app.core import db as core_db
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError
 from app.modules.ai.models import AIChatMessage
@@ -21,6 +24,41 @@ from app.modules.ai.models import AIChatMessage
 HISTORY_MESSAGE_LIMIT = 12  # 6 turns max reach the prompt
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def turn_session(tenant_id: uuid.UUID) -> AsyncIterator:
+    """A session the chat turn OWNS, with the tenant bound for RLS.
+
+    A chat turn must commit in the middle: the user's question and the
+    ``generating`` assistant row have to be durable BEFORE the model is called,
+    or a crash loses the question. The request session cannot do that. ``get_db``
+    wraps it in ``async with session.begin()``, so a ``commit()`` inside the route
+    ENDS that transaction and the next statement on the same session raises
+    ``InvalidRequestError: Can't operate on closed transaction inside context
+    manager``. Production returned 500 on every send for that reason: 11 questions
+    saved, 0 answers. The tests could not see it, because they ran on a scripted
+    session or on one outer transaction joined with savepoints, where ``commit()``
+    is harmless.
+
+    This session has no surrounding context manager, so ``commit()`` and
+    ``rollback()`` mean what the turn code says they mean. It also holds no
+    database connection while the model runs, which the request session did for the
+    whole model call. The tenant is re-bound by the callers after each commit
+    (the binding is transaction-local), exactly as they already do.
+
+    ``core_db.get_sessionmaker`` is read through the module, not imported by
+    name, so the test harness that swaps the factory still reaches this code.
+    """
+    async with core_db.get_sessionmaker()() as session:
+        try:
+            await bind_tenant(session, tenant_id)
+            yield session
+        finally:
+            try:
+                await session.rollback()
+            except Exception:  # noqa: BLE001 — closing must never mask the real outcome
+                logger.warning("chat_turn.session_rollback_failed", exc_info=True)
 
 
 async def _mark_turn_failed(session, tenant_id: uuid.UUID, thread, assistant_id: uuid.UUID) -> None:

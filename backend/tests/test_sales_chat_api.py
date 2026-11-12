@@ -22,6 +22,7 @@ from app.modules.ai.models import AIChatThread
 from app.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
 from app.modules.identity.deps import AuthedUser, get_tenant_ctx
 
+_SESSIONS: list = []
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
 
@@ -110,6 +111,7 @@ def _app(session: _FakeSession, *, role_code: str = "member") -> FastAPI:
         return TenantContextLike(session, role_code)
 
     app.dependency_overrides[get_tenant_ctx] = _ctx
+    _SESSIONS.append(session)
     return app
 
 
@@ -142,6 +144,31 @@ def _stub_ai_entitlement(monkeypatch):
         "app.modules.billing.services.entitlements.EntitlementService.can",
         _can,
     )
+
+
+@pytest.fixture(autouse=True)
+def _turn_session_is_the_scripted_session(monkeypatch):
+    """The send/retry routes run on a session they open themselves (``turn_session``), so a
+    scripted double on the request context would never be reached. Point it at the double the
+    app was built with. The real-transaction behaviour is covered by
+    tests/test_sales_chat_real_transaction.py, which uses real connections."""
+    from contextlib import asynccontextmanager
+
+    holder: dict[str, object] = {}
+
+    @asynccontextmanager
+    async def _session(tenant_id):
+        yield _SESSIONS[-1]
+
+    monkeypatch.setattr("app.modules.ai.routers.sales.turn_session", _session)
+    monkeypatch.setattr(
+        "app.modules.ai.routers.sales.bind_tenant", lambda session, tenant_id: _noop()
+    )
+    return holder
+
+
+async def _noop():
+    return None
 
 
 def _client(app: FastAPI) -> AsyncClient:

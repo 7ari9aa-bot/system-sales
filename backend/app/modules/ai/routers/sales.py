@@ -39,7 +39,7 @@ from app.modules.ai.chat.schemas import (
 from app.modules.ai.chat.schemas import (
     ThreadUpdateRequest as SalesChatThreadUpdateRequest,
 )
-from app.modules.ai.chat.turns import retry_chat_turn, run_chat_turn
+from app.modules.ai.chat.turns import retry_chat_turn, run_chat_turn, turn_session
 from app.modules.ai.routers._deps import AnalyticsAICtx, AnalyticsCtx
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -233,24 +233,27 @@ async def list_sales_chat_messages(
 async def send_sales_chat_message(
     thread_id: uuid.UUID, body: SalesChatMessageSendRequest, ctx: AnalyticsAICtx
 ) -> SalesChatMessageOut:
-    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
-    user_row, created = await chat_service.append_user_message(
-        ctx.session, ctx, thread, content=body.content, idempotency_key=body.idempotency_key
-    )
-    await ctx.session.commit()
-    # COMMIT ends the transaction-local RLS binding. The replay lookup and the
-    # turn executor below both query FORCE-RLS tables, so the tenant must be
-    # re-bound before either of them runs.
-    await bind_tenant(ctx.session, ctx.tenant_id)
-    if not created:
-        # Replayed key: the answer already exists — return it verbatim. A
-        # second run here would double-bill the gateway for the same question.
-        reply = await chat_service.get_assistant_reply_for(
-            ctx.session, ctx, thread, user_seq=user_row.sequence_no
+    # The turn runs on a session it owns (see ``turn_session``): it commits the
+    # question before calling the model, which the request session cannot do.
+    async with turn_session(ctx.tenant_id) as session:
+        thread = await chat_service.get_thread(session, ctx, thread_id)
+        user_row, created = await chat_service.append_user_message(
+            session, ctx, thread, content=body.content, idempotency_key=body.idempotency_key
         )
-        if reply is not None:
-            return reply
-    return await run_chat_turn(ctx.session, ctx, thread)
+        await session.commit()
+        # COMMIT ends the transaction-local RLS binding. The replay lookup and the
+        # turn executor below both query FORCE-RLS tables, so re-bind first.
+        await bind_tenant(session, ctx.tenant_id)
+        if not created:
+            # Replayed key: the answer already exists — return it verbatim. A
+            # second run here would double-bill the gateway for the same question.
+            reply = await chat_service.get_assistant_reply_for(
+                session, ctx, thread, user_seq=user_row.sequence_no
+            )
+            if reply is not None:
+                return SalesChatMessageOut.model_validate(reply)
+        # Serialised INSIDE the session: the row is detached once it closes.
+        return SalesChatMessageOut.model_validate(await run_chat_turn(session, ctx, thread))
 
 
 @router.post(
@@ -260,5 +263,8 @@ async def send_sales_chat_message(
 async def retry_sales_chat_message(
     thread_id: uuid.UUID, message_id: uuid.UUID, ctx: AnalyticsAICtx
 ) -> SalesChatMessageOut:
-    thread = await chat_service.get_thread(ctx.session, ctx, thread_id)
-    return await retry_chat_turn(ctx.session, ctx, thread, message_id=message_id)
+    async with turn_session(ctx.tenant_id) as session:
+        thread = await chat_service.get_thread(session, ctx, thread_id)
+        return SalesChatMessageOut.model_validate(
+            await retry_chat_turn(session, ctx, thread, message_id=message_id)
+        )
