@@ -20,10 +20,12 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -77,8 +79,19 @@ class PosProfile(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     # = the tenant's whole catalog; the browse grid and the scan both refuse
     # outside it.
     item_group_ids: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    # The shop owner's own rule: the most a cashier may take off a sale, as a percent of the sale
+    # before any discount (typed invoice discount plus every line percentage). NULL = no ceiling,
+    # which is what every profile had before this setting existed. A manager (pos:override) is
+    # not held to it.
+    max_discount_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
 
-    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_pos_profiles_tenant_code"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_pos_profiles_tenant_code"),
+        CheckConstraint(
+            "max_discount_pct IS NULL OR (max_discount_pct >= 0 AND max_discount_pct <= 100)",
+            name="ck_pos_profiles_max_discount_pct",
+        ),
+    )
 
 
 class PosProfileUser(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):

@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 444,
-    "sha256": "608623c0f180c38e8b931a1111c25b06dc1230aca8a04ad88778dccd7c80b951",
+    "sha256": "adfc2a6c343a476da2569d7a5b379a7b5ff42fd3baee374cf1f1c66e52d4b4cf",
     "typed_operations": 286
   },
   "spec": {
@@ -4448,6 +4448,23 @@
                 }
               ],
               "title": "Item Group Ids"
+            },
+            "max_discount_pct": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Discount Pct"
             },
             "name": {
               "maxLength": 127,
@@ -19548,6 +19565,23 @@
                 }
               ],
               "title": "Item Group Ids"
+            },
+            "max_discount_pct": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Discount Pct"
             },
             "name": {
               "anyOf": [

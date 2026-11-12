@@ -11,6 +11,7 @@ Services are flush-only; the caller owns the transaction (§186).
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -59,6 +60,24 @@ def _clean_default_method(value: object) -> str | None:
     return method
 
 
+def _clean_max_discount(value: object) -> Decimal:
+    """The owner's discount ceiling: a percent from 0 to 100 with at most two decimals.
+
+    Clearing it is a separate, explicit act (``clear_max_discount``), so a blank or a missing
+    value here is an error rather than a silent "no ceiling".
+    """
+    text = str(value).strip() if value is not None else ""
+    try:
+        pct = Decimal(text)
+    except InvalidOperation:
+        raise ValidationError("max_discount_pct must be a number from 0 to 100") from None
+    if not pct.is_finite() or pct < 0 or pct > 100:
+        raise ValidationError("max_discount_pct must be a number from 0 to 100")
+    if pct != pct.quantize(Decimal("0.01")):
+        raise ValidationError("max_discount_pct takes at most two decimal places")
+    return pct.quantize(Decimal("0.01"))
+
+
 def _clean_item_groups(value: object) -> list[str]:
     """Category ids this terminal serves (ERPNext `POS Item Group`); empty
     list = the tenant's whole catalog."""
@@ -95,6 +114,7 @@ class PosProfileService:
         require_customer: bool = False,
         default_payment_method: object = None,
         item_group_ids: object = None,
+        max_discount_pct: object = None,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -120,6 +140,9 @@ class PosProfileService:
             require_customer=bool(require_customer),
             default_payment_method=_clean_default_method(default_payment_method),
             item_group_ids=cleaned_groups,
+            max_discount_pct=(
+                None if max_discount_pct is None else _clean_max_discount(max_discount_pct)
+            ),
         )
         session.add(profile)
         try:
@@ -173,6 +196,8 @@ class PosProfileService:
         is_active: bool | None = None,
         default_payment_method: object = None,
         item_group_ids: object = None,
+        max_discount_pct: object = None,
+        clear_max_discount: bool = False,
     ) -> PosProfile:
         from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import InventoryService
@@ -216,6 +241,11 @@ class PosProfileService:
             profile.require_customer = bool(require_customer)
         if default_payment_method is not None:
             profile.default_payment_method = _clean_default_method(default_payment_method)
+        if clear_max_discount:
+            # An explicit ``null``: the shop owner removes the ceiling.
+            profile.max_discount_pct = None
+        elif max_discount_pct is not None:
+            profile.max_discount_pct = _clean_max_discount(max_discount_pct)
         if item_group_ids is not None:
             cleaned_groups = _clean_item_groups(item_group_ids)
             if cleaned_groups:

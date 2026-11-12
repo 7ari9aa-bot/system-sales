@@ -44,6 +44,7 @@ function ProfilesAndRegistersTab() {
     default_payment_method: "cash",
     allowed_payment_methods: ["cash"],
     require_customer: false,
+    max_discount_pct: "",
   });
   const [registerForm, setRegisterForm] = React.useState({
     name: "",
@@ -119,6 +120,7 @@ function ProfilesAndRegistersTab() {
           default_payment_method: profileForm.default_payment_method,
           allowed_payment_methods: profileForm.allowed_payment_methods,
           require_customer: profileForm.require_customer,
+          max_discount_pct: profileForm.max_discount_pct.trim() === "" ? undefined : profileForm.max_discount_pct.trim(),
         },
       });
       setShowProfileForm(false);
@@ -130,6 +132,7 @@ function ProfilesAndRegistersTab() {
         default_payment_method: "cash",
         allowed_payment_methods: ["cash"],
         require_customer: false,
+        max_discount_pct: "",
       });
       await load();
       flash(t("posSettings.created", "Profile created."));
@@ -149,6 +152,11 @@ function ProfilesAndRegistersTab() {
           default_payment_method: p.default_payment_method || undefined,
           allowed_payment_methods: p.allowed_payment_methods,
           require_customer: p.require_customer,
+          // A blank field is sent as null on purpose: the owner removed the ceiling.
+          max_discount_pct:
+            p.max_discount_pct === null || p.max_discount_pct === undefined || String(p.max_discount_pct).trim() === ""
+              ? null
+              : String(p.max_discount_pct).trim(),
         },
       });
       setEditing(null);
@@ -279,6 +287,23 @@ function ProfilesAndRegistersTab() {
                               </option>
                             ))}
                           </select>
+                          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground sm:col-span-2">
+                            {t("posSettings.maxDiscount", "Highest discount a cashier may give (%)")}
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              inputMode="decimal"
+                              dir="ltr"
+                              value={p.max_discount_pct ?? ""}
+                              placeholder={t("posSettings.maxDiscountNone", "Empty = no limit")}
+                              onChange={(e) =>
+                                setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, max_discount_pct: e.target.value } : row)))
+                              }
+                              className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
+                            />
+                          </label>
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -306,7 +331,9 @@ function ProfilesAndRegistersTab() {
                             </div>
                             <div className="text-[12px] text-muted-foreground">
                               {t("posSettings.warehouse", "Warehouse")}: {whName(p.warehouse_id)} ·{" "}
-                              {t("posSettings.walkIn", "Walk-in")}: {p.default_customer_id ? custName(p.default_customer_id) : t("posSettings.none", "none")}
+                              {t("posSettings.walkIn", "Walk-in")}: {p.default_customer_id ? custName(p.default_customer_id) : t("posSettings.none", "none")} ·{" "}
+                              {t("posSettings.maxDiscountShort", "Max discount")}:{" "}
+                              {p.max_discount_pct == null ? t("posSettings.none", "None") : `${Number(p.max_discount_pct)}%`}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -427,6 +454,21 @@ function ProfilesAndRegistersTab() {
                       </option>
                     ))}
                   </select>
+                  <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
+                    {t("posSettings.maxDiscount", "Highest discount a cashier may give (%)")}
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      inputMode="decimal"
+                      dir="ltr"
+                      value={profileForm.max_discount_pct}
+                      placeholder={t("posSettings.maxDiscountNone", "Empty = no limit")}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, max_discount_pct: e.target.value }))}
+                      className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
+                    />
+                  </label>
                 </div>
                 <button
                   type="button"

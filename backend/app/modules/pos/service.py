@@ -684,8 +684,8 @@ class PosService(PosReceiptReads):
         The same ``compute_totals`` the order will use, so the number on screen
         is the number charged. Line discounts (§189: the cashier types a
         percentage on a piece) compose with the caller's invoice-level
-        discount into one discount_total — no approval gate: a ground-shop
-        discount is the cashier's call.
+        discount into one discount_total — unless the shop owner set a discount
+        ceiling on the profile, in which case a discount above it is refused (a manager is exempt).
         """
 
         pos_session = await PosService._get_session(session, tenant_id, session_id)
@@ -701,6 +701,14 @@ class PosService(PosReceiptReads):
             raise ValidationError("a quote must contain at least one item")
 
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
+        await PosService._ensure_within_discount_ceiling(
+            session,
+            tenant_id,
+            await PosService.resolve_profile(session, tenant_id, pos_session),
+            items,
+            discount_total,
+            override=override,
+        )
         subtotal, _lines, line_discounts = await PosService._price_lines(session, tenant_id, items)
         composed = (
             None
@@ -720,6 +728,36 @@ class PosService(PosReceiptReads):
             "discount_total": str(totals["discount_total"]),
             "grand_total": str(totals["grand_total"]),
         }
+
+    @staticmethod
+    async def _ensure_within_discount_ceiling(
+        session: AsyncSession,
+        tenant_id: UUID,
+        profile: PosProfile | None,
+        items: list[dict],
+        discount_total: object,
+        *,
+        override: bool,
+    ) -> None:
+        """The shop owner's discount ceiling (``pos_profiles.max_discount_pct``).
+
+        Measures the discount that really applies, the typed invoice discount PLUS every line
+        percentage, as a share of the sale before any discount. Looking at one field alone would
+        let a cashier split a discount across the two. No ceiling set (NULL), a till with no
+        profile, or a manager (``pos:override``) means no check, exactly as before the setting.
+        """
+        ceiling = None if profile is None else profile.max_discount_pct
+        if ceiling is None or override:
+            return
+        subtotal, _lines, line_discounts = await PosService._price_lines(session, tenant_id, items)
+        if subtotal <= 0:
+            return
+        applied = to_money(discount_total or 0, "discount_total") + line_discounts
+        if applied * Decimal("100") > subtotal * Decimal(ceiling):
+            raise ValidationError(
+                f"this discount is above the {ceiling:f}% this shop allows; "
+                "ask a manager or lower the discount"
+            )
 
     @staticmethod
     def _line_discount_pct(item: dict) -> Decimal:
@@ -945,6 +983,7 @@ class PosService(PosReceiptReads):
         discount_total: object = None,
         note: str | None = None,
         actor_user_id: UUID | None = None,
+        discount_override: bool = False,
     ) -> dict:
         """RECORD a counter sale: what was sold, at what price, by whom. No payment taken.
 
@@ -989,6 +1028,9 @@ class PosService(PosReceiptReads):
         if profile is not None and not profile.is_active:
             raise ConflictError("this POS profile is not active")
         await PosService._ensure_cart_in_scope(session, tenant_id, pos_session, items)
+        await PosService._ensure_within_discount_ceiling(
+            session, tenant_id, profile, items, discount_total, override=discount_override
+        )
         customer_notice: str | None = None
         if customer_id is None and customer_phone and customer_phone.strip():
             from app.modules.customers.service import CustomerService

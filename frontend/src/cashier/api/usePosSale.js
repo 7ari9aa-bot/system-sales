@@ -4,6 +4,7 @@ import { BALANCES_LIMIT, posApi } from "./posApi";
 import { buildCatalog, searchCatalog } from "./catalogAdapter";
 import { fetchAllItems, fetchAllProducts, fetchAllStock, mergeSessionItems, withBarcodes } from "./sessionCatalog";
 import { clampQty, restoreRemovedLine } from "./checkout";
+import { discountRefusal } from "./discountRule";
 import { createSaleSession } from "./saleSession";
 import { receiptFromApi } from "./receiptAdapter";
 import { sellableCustomers } from "./customerRule";
@@ -128,7 +129,7 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
     () =>
       latestOnly(
         (q) => setQuote({ ...q, loading: false, error: null }),
-        (e) => setQuote((q) => ({ ...q, loading: false, error: e?.message || "تعذّر حساب الإجمالي" })),
+        (e) => setQuote((q) => ({ ...q, loading: false, error: discountRefusal(e?.message) || "تعذّر حساب الإجمالي" })),
       ),
     [],
   );
@@ -239,7 +240,7 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
         // The sale is recorded either way; the notice only says the typed phone was not attached.
         return { ...receipt, customerNotice };
       } catch (e) {
-        setPayError(e?.message || "تعذّر إتمام البيع");
+        setPayError(discountRefusal(e?.message) || "تعذّر إتمام البيع");
         throw e;
       } finally {
         setPaying(false);

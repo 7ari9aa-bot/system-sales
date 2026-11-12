@@ -47,6 +47,8 @@ class CreateProfileRequest(BaseModel):
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
     )
     item_group_ids: list[str] | None = None
+    # The shop owner's discount ceiling, percent 0 to 100. Absent or null = no ceiling.
+    max_discount_pct: str | int | float | None = None
 
 
 class UpdateProfileRequest(BaseModel):
@@ -60,6 +62,8 @@ class UpdateProfileRequest(BaseModel):
         default=None, pattern="^(cash|card|wallet|bank_transfer)$"
     )
     item_group_ids: list[str] | None = None
+    # A number sets the ceiling; ``null`` sent on purpose removes it; leaving it out keeps it.
+    max_discount_pct: str | int | float | None = None
 
 
 class GrantUserRequest(BaseModel):
@@ -80,6 +84,9 @@ def _profile_out(profile) -> dict:
         "is_active": profile.is_active,
         "default_payment_method": profile.default_payment_method,
         "item_group_ids": [str(g) for g in (profile.item_group_ids or [])],
+        "max_discount_pct": (
+            None if profile.max_discount_pct is None else str(profile.max_discount_pct)
+        ),
     }
 
 
@@ -96,6 +103,7 @@ async def create_profile(body: CreateProfileRequest, ctx: PosConfigCtx):
         require_customer=body.require_customer,
         default_payment_method=body.default_payment_method,
         item_group_ids=body.item_group_ids,
+        max_discount_pct=body.max_discount_pct,
     )
     return _profile_out(profile)
 
@@ -130,6 +138,10 @@ async def update_profile(profile_id: UUID, body: UpdateProfileRequest, ctx: PosC
         is_active=body.is_active,
         default_payment_method=body.default_payment_method,
         item_group_ids=body.item_group_ids,
+        max_discount_pct=body.max_discount_pct,
+        clear_max_discount=(
+            "max_discount_pct" in body.model_fields_set and body.max_discount_pct is None
+        ),
     )
     return _profile_out(profile)
 
@@ -483,7 +495,9 @@ async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
 
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)
-async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx):
+async def record_sale(
+    register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     """Record a sale: no shift to open, no payment to take. Stock comes off the shelf."""
     return await PosService.record_sale(
         ctx.session,
@@ -496,6 +510,7 @@ async def record_sale(register_id: UUID, body: RecordSaleRequest, ctx: PosWriteC
         discount_total=body.discount_total,
         note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,
+        discount_override=override.active,
     )
 
 
