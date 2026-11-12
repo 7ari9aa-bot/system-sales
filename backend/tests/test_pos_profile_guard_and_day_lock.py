@@ -57,6 +57,11 @@ async def test_an_ungranted_user_cannot_return_exchange_or_close(db, tenant_ctx)
     stranger = await _user(db, "stranger")
     tid = tenant_ctx.tenant_id
     line = {"variant_id": str(variant.id), "quantity": 1}
+    # A day opened now has a holder, so the drawer guard would stop the stranger before the
+    # profile guard is reached. This test is about the PROFILE guard: a legacy day with no holder
+    # is open to everyone as far as the drawer goes, so what is left standing is the operator list.
+    day.cashier_user_id = None
+    await db.flush()
     with pytest.raises(PermissionDeniedError, match="does not operate"):
         await PosService.return_sale(
             db, tid, day.id, order_id=sale["order_id"], lines=[line], actor_user_id=stranger.id
@@ -73,6 +78,17 @@ async def test_an_ungranted_user_cannot_return_exchange_or_close(db, tenant_ctx)
         )
     with pytest.raises(PermissionDeniedError, match="does not operate"):
         await PosService.close_session(db, tid, day.id, closed_by=stranger.id)
+
+
+async def test_a_held_day_refuses_a_stranger_at_the_drawer_before_the_profile(
+    db, tenant_ctx
+) -> None:
+    """With a holder on the day (the normal case now) the drawer guard answers first."""
+    register, day, variant, sale = await _open_restricted_day(db, tenant_ctx)
+    stranger = await _user(db, "stranger")
+    assert day.cashier_user_id == tenant_ctx.user.id
+    with pytest.raises(PermissionDeniedError, match="held by another cashier"):
+        await PosService.close_session(db, tenant_ctx.tenant_id, day.id, closed_by=stranger.id)
 
 
 async def test_a_manager_override_covers_the_restricted_profile(db, tenant_ctx) -> None:

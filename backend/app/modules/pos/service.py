@@ -438,9 +438,19 @@ class PosService(PosReceiptReads):
         )
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
 
-        variant = await CatalogService.resolve_identifier(
-            session, tenant_id, identifier_type, value
-        )
+        # A hand scanner reads a code, not its type: the till sends ``barcode`` for everything.
+        # But a packaged product is registered as ``ean``/``gtin``/``upc``, so an exact-type lookup
+        # alone missed most real codes and the till fell back to a substring search that can match
+        # two items. A generic ``barcode`` scan therefore tries the other scannable types too, in
+        # the same order the stock list shows them. A specific type stays exact (it never widens).
+        types = [identifier_type]
+        if identifier_type == "barcode":
+            types += ["ean", "gtin", "upc"]
+        variant = None
+        for candidate in types:
+            variant = await CatalogService.resolve_identifier(session, tenant_id, candidate, value)
+            if variant is not None:
+                break
         if variant is None:
             return {"found": False}
         product = await CatalogService.get_product(session, tenant_id, variant.product_id)
@@ -908,6 +918,10 @@ class PosService(PosReceiptReads):
                         register_id=register.id,
                         profile_id=register.profile_id,
                         opened_by_user_id=actor_user_id,
+                        # The day has a holder: without it ``_ensure_holds_shift`` treats the
+                        # drawer as nobody's and any ``orders:write`` user could close it or
+                        # return against it. ``pos:override`` (a manager) still covers for it.
+                        cashier_user_id=actor_user_id,
                         status="OPEN",
                         opening_float=opening,
                     )
@@ -2398,6 +2412,7 @@ class PosService(PosReceiptReads):
             order,
             number_prefix="POS-RET",
             kind="return",
+            sold_by_user_id=actor_user_id,
         )
         for entry in refund_lines:
             session.add(
@@ -2426,6 +2441,7 @@ class PosService(PosReceiptReads):
                 "receipt_id": str(return_receipt.id),
                 "refunded_total": str(refund_total),
                 "restocked": restocked,
+                "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
             producer="pos",
         )
@@ -2698,6 +2714,7 @@ class PosService(PosReceiptReads):
             order,
             number_prefix="POS-RET",
             kind="return",
+            sold_by_user_id=actor_user_id,
         )
         for entry in return_entries:
             session.add(
@@ -2717,6 +2734,7 @@ class PosService(PosReceiptReads):
             pos_session,
             new_order,
             exchange_return_receipt_id=return_receipt.id,  # the stored pairing
+            sold_by_user_id=actor_user_id,
         )
         await session.flush()
 
@@ -2738,6 +2756,7 @@ class PosService(PosReceiptReads):
                 "new_total": str(new_grand_total),
                 "net": str(net),
                 "restocked": restock,
+                "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
             producer="pos",
         )
