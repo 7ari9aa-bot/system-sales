@@ -32,3 +32,17 @@ describe("the discount ceiling: blank means 'none' but says it differently on cr
     expect(updateProfileBody({ ...base, max_discount_pct: "0" }).max_discount_pct).toBe("0");
   });
 });
+
+describe("the walk-in customer: emptying the field on edit removes it", () => {
+  it("sends null when the owner chose 'none', so the server clears it", () => {
+    for (const none of ["", null, undefined]) {
+      expect(updateProfileBody({ ...base, default_customer_id: none }).default_customer_id).toBeNull();
+    }
+  });
+  it("sends the chosen customer when there is one", () => {
+    expect(updateProfileBody({ ...base, default_customer_id: "c1" }).default_customer_id).toBe("c1");
+  });
+  it("is left out on create when none is chosen (a new profile has nothing to clear)", () => {
+    expect(createProfileBody({ ...base, default_customer_id: "" }).default_customer_id).toBeUndefined();
+  });
+});
