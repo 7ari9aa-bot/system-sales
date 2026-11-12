@@ -1939,6 +1939,50 @@ class PosService(PosReceiptReads):
         except EmailNotValidError:
             raise ValidationError("a valid email address is required") from None
 
+    # Ceilings on "email me this receipt", over a rolling day. They guard abuse of the shop's own
+    # sending domain (one receipt mailed over and over, or one stranger's address aimed at from many
+    # receipts); they are not a shop policy, so they are fixed.
+    RECEIPT_EMAIL_PER_RECEIPT_PER_DAY = 5
+    RECEIPT_EMAIL_PER_ADDRESS_PER_DAY = 20
+
+    @staticmethod
+    async def _ensure_receipt_email_room(
+        session: AsyncSession, tenant_id: UUID, receipt_id: UUID, address: str
+    ) -> None:
+        """Refuse (429) when this receipt or this address has used up the day's room.
+
+        Counted from the requests already staged in the outbox, so nothing new is stored and a
+        refused request stages nothing. Plain SQL on purpose: pos must not import the platform
+        module just to count its own events. The address is compared lower-cased, so changing its
+        case does not escape the count. Only this shop's requests count.
+        """
+        from sqlalchemy import text
+
+        from app.core.errors import RateLimitExceededError
+
+        row = (
+            await session.execute(
+                text(
+                    "SELECT"
+                    " count(*) FILTER (WHERE payload->>'receipt_id' = :receipt),"
+                    " count(*) FILTER (WHERE lower(payload->>'email') = lower(:email))"
+                    " FROM outbox_events"
+                    " WHERE payload->>'event_type' = 'pos.receipt.email_requested'"
+                    " AND meta->>'tenant_id' = :tenant"
+                    " AND created_at > now() - interval '1 day'"
+                ),
+                {"receipt": str(receipt_id), "email": address, "tenant": str(tenant_id)},
+            )
+        ).one()
+        if row[0] >= PosService.RECEIPT_EMAIL_PER_RECEIPT_PER_DAY:
+            raise RateLimitExceededError(
+                "this receipt was already emailed several times today; try again tomorrow"
+            )
+        if row[1] >= PosService.RECEIPT_EMAIL_PER_ADDRESS_PER_DAY:
+            raise RateLimitExceededError(
+                "too many receipts were sent to this address today; try again tomorrow"
+            )
+
     @staticmethod
     async def request_receipt_email(
         session: AsyncSession,
@@ -1970,6 +2014,7 @@ class PosService(PosReceiptReads):
         if not get_settings().auth_email_delivery_configured:
             raise ValidationError("email delivery is not configured on this deployment")
         cleaned = PosService._clean_receipt_email(email)
+        await PosService._ensure_receipt_email_room(session, tenant_id, receipt.id, cleaned)
 
         await add_outbox_event(
             session,
