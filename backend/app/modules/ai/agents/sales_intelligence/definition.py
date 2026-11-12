@@ -86,6 +86,16 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
+            name="si_find_order",
+            description="Find an order by number, customer name or phone",
+            required=False,
+        ),
+        AgentCapability(
+            name="si_find_customer",
+            description="Find a customer by name, phone or email with their spend and orders",
+            required=False,
+        ),
+        AgentCapability(
             name="si_customer_activity",
             description="Customers who contacted the store, with conversation volume",
             required=False,

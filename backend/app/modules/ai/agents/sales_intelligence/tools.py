@@ -1146,6 +1146,261 @@ async def _si_cashier_summary(
     }
 
 
+class SIFindOrderArgs(BaseModel):
+    query: str = Field(max_length=120)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class SIFindCustomerArgs(BaseModel):
+    query: str = Field(max_length=120)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+#: A search shorter than this would match half the shop, and a lookup tool is not a report.
+_MIN_LOOKUP_CHARS = 2
+
+#: Orders match by number, by the customer's name (any Arabic spelling) or by the customer's phone.
+#: ``:code`` / ``:text`` are regexes built by ``arabic_regex``, which escapes everything the caller
+#: typed, so a query can never inject regex syntax. A deleted order is never a match.
+_FIND_ORDER_SQL = (
+    "SELECT o.id::text AS order_id, o.number AS number, o.status AS status, "
+    "o.grand_total AS grand_total, o.channel AS channel, o.placed_at AS placed_at, "
+    "COALESCE(c.name, '') AS customer_name, COUNT(*) OVER () AS total_matches "
+    "FROM orders o JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id "
+    "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+    "AND (o.number ~* :code OR c.name ~* :text OR regexp_replace(COALESCE(c.phone, ''), "
+    "'[^0-9]', '', 'g') LIKE :digits ESCAPE '\\') "
+    "ORDER BY COALESCE(o.placed_at, o.created_at) DESC LIMIT :limit"
+)
+
+_FIND_ORDER_ITEMS_SQL = (
+    "SELECT oi.order_id::text AS order_id, oi.title AS title, oi.quantity AS quantity, "
+    "oi.total AS total FROM order_items oi "
+    "WHERE oi.tenant_id = :tenant_id AND oi.order_id = ANY(CAST(:order_ids AS uuid[])) "
+    "ORDER BY oi.created_at"
+)
+
+#: Customers match by name (any Arabic spelling), phone digits or email. A merged-away row stays in
+#: the table for history but points at the survivor, so it is never listed beside it.
+_FIND_CUSTOMER_SQL = (
+    "SELECT c.id::text AS customer_id, COALESCE(c.name, '') AS name, c.phone AS phone, "
+    "c.email AS email, c.is_blocked AS is_blocked, COUNT(*) OVER () AS total_matches, "
+    "(SELECT COUNT(*) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id "
+    "AND o.deleted_at IS NULL AND o.status <> 'cancelled') AS order_count, "
+    "(SELECT COALESCE(SUM(o.grand_total), 0) FROM orders o WHERE o.tenant_id = c.tenant_id "
+    "AND o.customer_id = c.id AND o.deleted_at IS NULL AND o.status <> 'cancelled') AS spent, "
+    "(SELECT MAX(COALESCE(o.placed_at, o.created_at)) FROM orders o "
+    "WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.deleted_at IS NULL "
+    "AND o.status <> 'cancelled') AS last_order_at "
+    "FROM customers c WHERE c.tenant_id = :tenant_id AND c.deleted_at IS NULL "
+    "AND c.merged_into_customer_id IS NULL "
+    "AND (c.name ~* :text OR c.email ILIKE :email ESCAPE '\\' OR "
+    "regexp_replace(COALESCE(c.phone, ''), '[^0-9]', '', 'g') LIKE :digits ESCAPE '\\') "
+    "ORDER BY c.last_seen_at DESC NULLS LAST, c.name LIMIT :limit"
+)
+
+
+def _lookup_terms(query: str) -> dict | None:
+    """Everything a lookup binds from what the owner typed, or None when it is too short to run.
+
+    Digits are matched against the phone only when the query has some; a query with no digits
+    binds a pattern that cannot match, so a name search never matches every phone by accident."""
+    from app.core.sql import arabic_regex, like_pattern, normalize_digits
+
+    text = normalize_digits(query).strip()
+    if len(text) < _MIN_LOOKUP_CHARS:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    # An Egyptian number is typed 01001234567 and stored +201001234567: compare the last 10 digits.
+    return {
+        "code": arabic_regex(text),
+        "text": arabic_regex(text),
+        "email": like_pattern(text),
+        "digits": like_pattern(digits[-10:]) if len(digits) >= _MIN_LOOKUP_CHARS + 4 else "",
+    }
+
+
+def _mask_phone(phone: str | None) -> str | None:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    return f"***{digits[-4:]}" if len(digits) >= 4 else None
+
+
+def _mask_email(email: str | None) -> str | None:
+    if not email or "@" not in email:
+        return None
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}"
+
+
+async def _lookup_window(session: AsyncSession, tenant_id: uuid.UUID) -> AnalysisPeriod:
+    """A record can be of any age, so evidence for a looked-up record spans a long window."""
+    return await _resolve_window(session, tenant_id, 366)
+
+
+async def _si_find_order(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    query: str,
+    limit: int = 5,
+    context: dict | None = None,
+) -> dict:
+    """Find orders by number, customer name or customer phone. Read-only, newest first.
+
+    Returns status, total, channel, date and the items; never an address or a phone number."""
+    terms = _lookup_terms(query)
+    if terms is None:
+        return {
+            "capability": "find_order",
+            "status": "query_too_short",
+            "matches": [],
+            "total_matches": 0,
+            "limitations": ["type at least two characters of the order number, name or phone"],
+            "facts": [],
+        }
+    rows = (
+        await session.execute(
+            _sql(_FIND_ORDER_SQL),
+            {"tenant_id": str(tenant_id), **terms, "limit": limit},
+        )
+    ).all()
+    if not rows:
+        return {
+            "capability": "find_order",
+            "status": "no_match",
+            "matches": [],
+            "total_matches": 0,
+            "limitations": ["no order matches that number, name or phone"],
+            "facts": [],
+        }
+    items: dict[str, list[dict]] = {}
+    item_rows = (
+        await session.execute(
+            _sql(_FIND_ORDER_ITEMS_SQL),
+            {"tenant_id": str(tenant_id), "order_ids": [r.order_id for r in rows]},
+        )
+    ).all()
+    for it in item_rows:
+        items.setdefault(it.order_id, []).append(
+            {
+                "title": it.title,
+                "quantity": int(it.quantity),
+                "total": f"{Decimal(str(it.total)):.2f}",
+            }
+        )
+    total_matches = int(rows[0].total_matches)
+    matches = [
+        {
+            "order_id": r.order_id,
+            "number": r.number,
+            "status": r.status,
+            "grand_total": f"{Decimal(str(r.grand_total)):.2f}",
+            "channel": r.channel,
+            "customer_name": r.customer_name,
+            "placed_at": r.placed_at.isoformat() if r.placed_at else None,
+            "items": items.get(r.order_id, []),
+        }
+        for r in rows
+    ]
+    limitations = []
+    if total_matches > len(matches):
+        limitations.append(f"showing the newest {len(matches)} of {total_matches} matching orders")
+    facts = _typed_facts(
+        _evidence_store(),
+        await _lookup_window(session, tenant_id),
+        "find_order",
+        [("order_total", Decimal(str(r.grand_total)), "money", {"order": r.number}) for r in rows],
+    )
+    return {
+        "capability": "find_order",
+        "status": "ok",
+        "matches": matches,
+        "total_matches": total_matches,
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
+async def _si_find_customer(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    query: str,
+    limit: int = 5,
+    context: dict | None = None,
+) -> dict:
+    """Find customers by name, phone or email, with their order count, spend and last purchase.
+
+    Phone and email come back masked: enough to tell two people with the same name apart."""
+    terms = _lookup_terms(query)
+    if terms is None:
+        return {
+            "capability": "find_customer",
+            "status": "query_too_short",
+            "matches": [],
+            "total_matches": 0,
+            "limitations": ["type at least two characters of the name, phone or email"],
+            "facts": [],
+        }
+    rows = (
+        await session.execute(
+            _sql(_FIND_CUSTOMER_SQL),
+            {
+                "tenant_id": str(tenant_id),
+                "text": terms["text"],
+                "email": terms["email"],
+                "digits": terms["digits"],
+                "limit": limit,
+            },
+        )
+    ).all()
+    if not rows:
+        return {
+            "capability": "find_customer",
+            "status": "no_match",
+            "matches": [],
+            "total_matches": 0,
+            "limitations": ["no customer matches that name, phone or email"],
+            "facts": [],
+        }
+    total_matches = int(rows[0].total_matches)
+    matches = [
+        {
+            "customer_id": r.customer_id,
+            "name": r.name,
+            "phone_hint": _mask_phone(r.phone),
+            "email_hint": _mask_email(r.email),
+            "is_blocked": bool(r.is_blocked),
+            "order_count": int(r.order_count),
+            "total_spent": f"{Decimal(str(r.spent)):.2f}",
+            "last_order_at": r.last_order_at.isoformat() if r.last_order_at else None,
+        }
+        for r in rows
+    ]
+    limitations = [
+        "spend counts every order that was not cancelled or deleted, whatever its payment state"
+    ]
+    if total_matches > len(matches):
+        limitations.append(f"showing {len(matches)} of {total_matches} matching customers")
+    numbers = []
+    for r in rows:
+        numbers.append(
+            ("customer_total_spent", Decimal(str(r.spent)), "money", {"c": r.customer_id})
+        )
+        numbers.append(("customer_order_count", int(r.order_count), "count", {"c": r.customer_id}))
+    facts = _typed_facts(
+        _evidence_store(), await _lookup_window(session, tenant_id), "find_customer", numbers
+    )
+    return {
+        "capability": "find_customer",
+        "status": "ok",
+        "matches": matches,
+        "total_matches": total_matches,
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
 class SICustomerActivityArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     limit: int = Field(default=10, ge=1, le=50)
@@ -1524,6 +1779,8 @@ SI_TOOLS: tuple[str, ...] = (
     "si_profit_summary",
     "si_purchasing_summary",
     "si_cashier_summary",
+    "si_find_order",
+    "si_find_customer",
 )
 
 
@@ -1687,6 +1944,28 @@ def register_si_tools() -> None:
             handler=_si_cashier_summary,
             tags=["sales-intelligence"],
             requires="orders:read",
+        ),
+        ToolSpec(
+            name="si_find_order",
+            description=(
+                "Find an order by number, customer name or phone: status, total, items, "
+                "channel and date. Read-only; never returns an address."
+            ),
+            args_schema=SIFindOrderArgs,
+            handler=_si_find_order,
+            tags=["sales-intelligence"],
+            requires="orders:read",
+        ),
+        ToolSpec(
+            name="si_find_customer",
+            description=(
+                "Find a customer by name, phone or email: order count, total spent and "
+                "last purchase. Phone and email come back masked. Read-only."
+            ),
+            args_schema=SIFindCustomerArgs,
+            handler=_si_find_customer,
+            tags=["sales-intelligence"],
+            requires="customers:read",
         ),
         ToolSpec(
             name="si_customer_activity",
