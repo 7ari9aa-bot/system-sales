@@ -264,6 +264,7 @@ from app.modules.ai.chat.turns import (  # noqa: E402
     HISTORY_MESSAGE_LIMIT,
     _bounded_history,
     _maybe_compact,
+    build_structured_blocks,
     run_chat_turn,
 )
 from app.modules.analytics.contracts import (  # noqa: E402
@@ -757,3 +758,117 @@ async def test_a_context_with_no_user_reaches_the_analysis_as_no_one(monkeypatch
     ctx.user = None
     seen = await _permissions_seen_by_the_analysis(monkeypatch, ctx)
     assert seen["user_id"] is None
+
+
+def _session_for(text):
+    user_row = SimpleNamespace(sequence_no=1, content=text)
+    return _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[SimpleNamespace(role="user", content=text)]),
+        ]
+    )
+
+
+def _spy_on_the_analysis(monkeypatch):
+    called = []
+
+    async def fake_analysis(session, tenant_id, **kw):
+        called.append(kw)
+        return _analysis_result()
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+    )
+    return called
+
+
+def _memory_double(monkeypatch, reply="حفظت: «x»."):
+    seen = []
+
+    async def fake_run(service, command):
+        seen.append((service.user_id, service.tenant_id, command))
+        return reply
+
+    monkeypatch.setattr("app.modules.ai.owner_memory_chat.run_memory_command", fake_run)
+    return seen
+
+
+async def test_a_memory_command_is_answered_without_calling_the_model(monkeypatch):
+    called = _spy_on_the_analysis(monkeypatch)
+    seen = _memory_double(monkeypatch, "حفظت: «المورد حسين».")
+    asker = uuid.uuid4()
+    answer = await run_chat_turn(
+        _session_for("افتكر إن المورد حسين"), _Ctx(user_id=asker), _Thread(agent_id=uuid.uuid4())
+    )
+    assert called == [], "the model must not run for a memory command"
+    assert answer.content == "حفظت: «المورد حسين»."
+    assert answer.status == "completed"
+    assert answer.structured_content == [{"type": "text", "body": "حفظت: «المورد حسين»."}]
+    assert [(u, c.kind, c.note) for u, _t, c in seen] == [(asker, "remember", "المورد حسين")]
+
+
+async def test_an_ordinary_question_still_goes_to_the_model_and_touches_no_memory(monkeypatch):
+    called = _spy_on_the_analysis(monkeypatch)
+    seen = _memory_double(monkeypatch)
+    await run_chat_turn(_session_for("ربحي كام؟"), _Ctx(), _Thread(agent_id=uuid.uuid4()))
+    assert len(called) == 1 and seen == []
+
+
+async def test_a_question_that_only_mentions_remembering_goes_to_the_model(monkeypatch):
+    called = _spy_on_the_analysis(monkeypatch)
+    seen = _memory_double(monkeypatch)
+    await run_chat_turn(
+        _session_for("تفتكر إيه اللي اتباع الأسبوع ده؟"), _Ctx(), _Thread(agent_id=uuid.uuid4())
+    )
+    assert len(called) == 1 and seen == []
+
+
+async def test_a_context_with_no_user_never_runs_a_memory_command(monkeypatch):
+    """No user means no notes. The sentence goes to the model as an ordinary message, and nothing
+    is saved against nobody."""
+    called = _spy_on_the_analysis(monkeypatch)
+    seen = _memory_double(monkeypatch)
+    ctx = _Ctx()
+    ctx.user = None
+    await run_chat_turn(_session_for("افتكر إن المورد حسين"), ctx, _Thread(agent_id=uuid.uuid4()))
+    assert seen == [] and len(called) == 1
+
+
+async def test_a_failing_memory_command_fails_the_turn_and_never_falls_back_to_the_model(
+    monkeypatch,
+):
+    """If it fell through, the model would read "remember that..." as a question and might say it
+    had saved the note when it had not."""
+    called = _spy_on_the_analysis(monkeypatch)
+
+    async def boom(service, command):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr("app.modules.ai.owner_memory_chat.run_memory_command", boom)
+    with pytest.raises(ConflictError):
+        await run_chat_turn(
+            _session_for("افتكر إن المورد حسين"), _Ctx(), _Thread(agent_id=uuid.uuid4())
+        )
+    assert called == []
+
+
+def test_the_structured_blocks_are_json_because_they_are_stored_in_a_jsonb_column():
+    """``structured_content`` is JSONB. A raw UUID in a block makes the UPDATE raise TypeError, so a
+    successful answer was reported as "assistant turn failed" on every question. The fake sessions
+    above never serialise anything, which is why nothing caught it before a real database did."""
+    import json
+
+    blocks = build_structured_blocks(_analysis_result())
+    json.dumps(blocks)  # raises TypeError on a non-JSON value
+    refs = [b for b in blocks if b["type"] == "refs"]
+    assert len(refs) == 1
+    assert isinstance(refs[0]["analysis_id"], str) and isinstance(refs[0]["run_id"], str)
+    uuid.UUID(refs[0]["analysis_id"])
+    uuid.UUID(refs[0]["run_id"])
+
+
+def test_a_result_with_no_ids_gets_no_refs_block():
+    blocks = build_structured_blocks(_analysis_result(saved_evidence_id=None, run_id=None))
+    assert [b for b in blocks if b["type"] == "refs"] == []

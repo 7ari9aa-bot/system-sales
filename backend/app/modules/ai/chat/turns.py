@@ -167,8 +167,10 @@ def build_structured_blocks(result) -> list[dict]:
         blocks.append(
             {
                 "type": "refs",
-                "analysis_id": result.saved_evidence_id,
-                "run_id": result.run_id,
+                # Strings, not UUIDs: this list is stored in a JSONB column, and a raw UUID there
+                # makes the UPDATE raise, so a good answer was reported as a failed turn.
+                "analysis_id": str(result.saved_evidence_id) if result.saved_evidence_id else None,
+                "run_id": str(result.run_id) if result.run_id else None,
             }
         )
     return blocks
@@ -255,6 +257,23 @@ async def _maybe_compact(session, ctx, thread, *, through_seq: int) -> None:
     thread.summary_through_seq = through_seq
 
 
+async def _memory_reply(session, ctx, text: str) -> str | None:
+    """If the owner typed a memory command, carry it out on THEIR notes and return the reply.
+
+    None means this is an ordinary question for the model. The model never sees a memory command
+    and never saves a note: the assistant reads, and a memory is a write, so only the owner's own
+    sentence, recognised here, can change it. An unknown asker gets None (no user, no notes)."""
+    from app.modules.ai.owner_memory import OwnerMemoryService
+    from app.modules.ai.owner_memory_chat import run_memory_command
+    from app.modules.ai.owner_memory_command import parse_memory_command
+
+    command = parse_memory_command(text)
+    user_id = getattr(getattr(ctx, "user", None), "id", None)
+    if command is None or user_id is None:
+        return None
+    return await run_memory_command(OwnerMemoryService(session, ctx.tenant_id, user_id), command)
+
+
 async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     """Execute one assistant turn against the SI agent and persist the answer.
 
@@ -326,6 +345,26 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     # Prior turns ONLY: the question itself rides the runner's user_message,
     # so including the current user row here put it in the prompt TWICE — the
     # same echo the customer agent's history mapping had to un-deliver.
+    try:
+        memory_reply = await _memory_reply(session, ctx, user_row.content)
+    except Exception as exc:  # noqa: BLE001 — the row must land `failed`, retry is available
+        await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
+        raise ConflictError("assistant turn failed; retry is available") from exc
+    if memory_reply is not None:
+        # A memory command is answered here, with no model call and no analysis: nothing to
+        # cite, so the row carries plain text only.
+        try:
+            assistant.content = memory_reply
+            assistant.structured_content = [{"type": "text", "body": memory_reply}]
+            assistant.status = "completed"
+            if thread.title == "" and user_row.sequence_no == 1:
+                thread.title = "الذاكرة"
+            await session.commit()
+        except Exception as exc:  # noqa: BLE001
+            await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
+            raise ConflictError("assistant turn failed; retry is available") from exc
+        return assistant
+
     history = await _bounded_history(session, ctx, thread, through_seq=user_row.sequence_no - 1)
     try:
         from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
