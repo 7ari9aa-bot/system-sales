@@ -1857,6 +1857,19 @@ class PosService(PosReceiptReads):
     # ------------------------------------------------------- receipt email ----
 
     @staticmethod
+    def _clean_receipt_email(email: object) -> str:
+        """One strict address or a ValidationError: no lists, no whitespace, no header injection."""
+        from email_validator import EmailNotValidError, validate_email
+
+        raw = str(email).strip()
+        if len(raw) > 254 or any(ch in raw for ch in ("\r", "\n", ",", ";", " ")):
+            raise ValidationError("a valid email address is required")
+        try:
+            return validate_email(raw, check_deliverability=False).normalized
+        except EmailNotValidError:
+            raise ValidationError("a valid email address is required") from None
+
+    @staticmethod
     async def request_receipt_email(
         session: AsyncSession,
         tenant_id: UUID,
@@ -1886,9 +1899,7 @@ class PosService(PosReceiptReads):
             raise NotFoundError(f"pos receipt {receipt_id} not found")
         if not get_settings().auth_email_delivery_configured:
             raise ValidationError("email delivery is not configured on this deployment")
-        cleaned = str(email).strip()
-        if "@" not in cleaned or len(cleaned) > 254 or cleaned.startswith("@"):
-            raise ValidationError("a valid email address is required")
+        cleaned = PosService._clean_receipt_email(email)
 
         await add_outbox_event(
             session,

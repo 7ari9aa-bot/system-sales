@@ -13,7 +13,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator
 
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, require_permission
@@ -651,7 +651,9 @@ async def get_receipt(receipt_id: UUID, ctx: PosReadCtx):
 
 
 class ReceiptEmailRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
+    # EmailStr, like every other address in the app: a bare '@' check let 'a@b.com,c@d.com' and a
+    # header-injection string queue a real send from the merchant's domain.
+    email: EmailStr = Field(max_length=254)
 
 
 @router.post("/receipts/{receipt_id}/email", status_code=202)

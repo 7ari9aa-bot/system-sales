@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 444,
-    "sha256": "35fc128f6ca94490f8a7933d80b3d71a2f2938a71e5c403df389390655d05814",
+    "sha256": "608623c0f180c38e8b931a1111c25b06dc1230aca8a04ad88778dccd7c80b951",
     "typed_operations": 286
   },
   "spec": {
@@ -13866,8 +13866,8 @@
         "ReceiptEmailRequest": {
           "properties": {
             "email": {
+              "format": "email",
               "maxLength": 254,
-              "minLength": 3,
               "title": "Email",
               "type": "string"
             }
