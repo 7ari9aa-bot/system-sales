@@ -27,6 +27,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
@@ -851,4 +852,55 @@ class AIChatMessage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
             postgresql_where=text("idempotency_key IS NOT NULL"),
         ),
         Index("ix_ai_chat_messages_thread_seq", "thread_id", "sequence_no"),
+    )
+
+
+class OwnerMemory(TenantMixin, Base):
+    """A note the shop owner gave the assistant. One USER's, never shared with staff or customers.
+
+    Deliberately not ``Memory``: that table is the customer agent's, so owner words kept there
+    would be reachable from the customer-facing side. Rows are written only by
+    ``OwnerMemoryService`` (which refuses secrets and instructions) and deleted for real on forget.
+    """
+
+    __tablename__ = "owner_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    source: Mapped[str] = mapped_column(String(15))  # explicit | inferred
+    content: Mapped[str] = mapped_column(Text)
+    content_key: Mapped[str] = mapped_column(Text)
+    # clock_timestamp(), not now(): now() is frozen for the whole transaction, so notes saved in
+    # one request would share an instant and "newest" would be arbitrary.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("clock_timestamp()"),
+        onupdate=func.clock_timestamp(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "user_id", "content_key", name="uq_owner_memories_user_content"
+        ),
+        Index("ix_owner_memories_tenant_user", "tenant_id", "user_id"),
+    )
+
+
+class OwnerMemorySettings(TenantMixin, Base):
+    """Per-user switch: memory off means nothing is saved and nothing is shown to the model."""
+
+    __tablename__ = "owner_memory_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
