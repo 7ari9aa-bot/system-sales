@@ -79,10 +79,81 @@ def _should_ignore_key(key: str) -> bool:
     return any(k.endswith(suffix) for suffix in _IGNORED_KEY_SUFFIXES)
 
 
+_MONTH_NAMES: dict[int, tuple[str, ...]] = {
+    1: ("يناير", "كانون الثاني", "january", "jan"),
+    2: ("فبراير", "شباط", "february", "feb"),
+    3: ("مارس", "آذار", "march", "mar"),
+    4: ("أبريل", "ابريل", "نيسان", "april", "apr"),
+    5: ("مايو", "أيار", "may"),
+    6: ("يونيو", "يونية", "حزيران", "june", "jun"),
+    7: ("يوليو", "يولية", "تموز", "july", "jul"),
+    8: ("أغسطس", "اغسطس", "آب", "august", "aug"),
+    9: ("سبتمبر", "أيلول", "september", "sep", "sept"),
+    10: ("أكتوبر", "اكتوبر", "تشرين الأول", "october", "oct"),
+    11: ("نوفمبر", "تشرين الثاني", "november", "nov"),
+    12: ("ديسمبر", "كانون الأول", "december", "dec"),
+}
+_PERIOD_KEYS = ("period_start", "period_end")
+_EVIDENCE_BUCKETS = ("facts", "comparisons", "dimensions", "drivers", "summaries")
+_ISO_DATE_IN_TEXT = re.compile(r"(?<![0-9])(\d{4})-(\d{2})-(\d{2})(?:[T ][0-9:.+Zz-]*)?(?![0-9])")
+
+
+def period_dates_from_evidence(evidence: dict) -> set[tuple[int, int, int]]:
+    """The calendar days the tools measured: every ``period_start``/``period_end`` they returned.
+
+    Only these keys count. A date the model invents, or one a tool merely mentioned, is not a
+    measured boundary and stays subject to the number gate.
+    """
+    found: set[tuple[int, int, int]] = set()
+
+    def _walk(obj: object) -> None:
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key in _PERIOD_KEYS and isinstance(value, str):
+                    match = _ISO_DATE_IN_TEXT.match(value.strip())
+                    if match:
+                        found.add((int(match[1]), int(match[2]), int(match[3])))
+                else:
+                    _walk(value)
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                _walk(item)
+
+    for bucket in _EVIDENCE_BUCKETS:
+        _walk(evidence.get(bucket))
+    return found
+
+
+def _strip_period_dates(folded: str, dates: set[tuple[int, int, int]]) -> str:
+    """Remove whole dates that equal a measured period boundary; leave everything else.
+
+    A date is matched as a unit (day, month, year together), so naming a real boundary never
+    unlocks its digits elsewhere: "13 October 2026" is legal, a lone "13" still is not.
+    """
+    if not dates:
+        return folded
+
+    def _iso(match: re.Match[str]) -> str:
+        key = (int(match[1]), int(match[2]), int(match[3]))
+        return " " if key in dates else match[0]
+
+    out = _ISO_DATE_IN_TEXT.sub(_iso, folded)
+    for year, month, day in dates:
+        for name in _MONTH_NAMES[month]:
+            pattern = re.compile(
+                rf"(?<![0-9]){day:d}\s+(?:من\s+)?(?:شهر\s+)?{re.escape(name)}\s*,?\s*{year}(?![0-9])",
+                re.IGNORECASE,
+            )
+            out = pattern.sub(" ", out)
+    return out
+
+
 def validate_answer(
     text: str,
     allowed_numbers: set[str],
     findings: list[Finding],
+    *,
+    period_dates: set[tuple[int, int, int]] | None = None,
 ) -> list[str]:
     """§10.3 v1 — the deterministic gates on the model's answer.
 
@@ -92,7 +163,7 @@ def validate_answer(
     Also executes `validate_response` on the synthesized AnswerDraft.
     """
     problems: list[str] = []
-    folded = text.translate(_ARABIC_INDIC)
+    folded = _strip_period_dates(text.translate(_ARABIC_INDIC), period_dates or set())
     numeric_allowed = _numeric_forms(allowed_numbers)
 
     def _is_free(numeral: str) -> bool:

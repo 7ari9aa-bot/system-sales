@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 
 import httpx
@@ -81,6 +82,38 @@ class ChatCompletionResult:
     # Gemini 3.x: must be echoed back on the assistant tool-call message,
     # otherwise the next turn fails with 400 (missing thought_signature).
     thought_signature: str | None = None
+
+
+_THINK_BLOCK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
+
+
+def _answer_text(content: object) -> str | None:
+    """The text the merchant should read, whichever shape the model replied in.
+
+    The model is a per-shop setting and the platform default changes, so nothing here may
+    assume one vendor. OpenAI-compatible endpoints return the content as a string, as a list
+    of typed parts, or with the model's thinking inline in <think> tags. Only the answer is
+    returned. Thinking is dropped, and a reply that was only thinking (or was cut off inside
+    a <think> block) is ``None``, the same as no reply, so the caller's existing "no answer"
+    handling applies instead of a half-thought being shown as an answer. Separate reasoning
+    fields (``reasoning``, ``reasoning_content``) are never read.
+    """
+    if content is None:
+        return None
+    if isinstance(content, list):
+        content = "".join(
+            str(part.get("text") or "")
+            for part in content
+            if isinstance(part, dict) and part.get("type", "text") == "text"
+        )
+    if not isinstance(content, str):
+        return None
+    text = _THINK_BLOCK.sub("", content)
+    if _THINK_OPEN.search(text):
+        return None
+    text = text.strip()
+    return text or None
 
 
 def _auth_headers(api_key: str) -> dict[str, str]:
@@ -169,7 +202,7 @@ class AIProvider:
             usage = body.get("usage") or {}
             google_extra = (message.get("extra_content") or {}).get("google") or {}
             return ChatCompletionResult(
-                content=message.get("content"),
+                content=_answer_text(message.get("content")),
                 tool_calls=tool_calls,
                 tokens_in=int(usage.get("prompt_tokens") or 0),
                 tokens_out=int(usage.get("completion_tokens") or 0),

@@ -28,7 +28,7 @@ from app.modules.analytics.contracts import (
     Relationship,
 )
 from app.modules.analytics.maturity import maturity_status
-from app.modules.analytics.semantic import metric
+from app.modules.analytics.semantic import all_metrics, metric
 
 
 class UnsupportedFilter(Exception):
@@ -88,6 +88,15 @@ _STATEMENTS: dict[str, tuple[str, str | None]] = {
         None,
     ),
 }
+
+
+def computable_metric_names() -> frozenset[str]:
+    """Registered metrics that compile to a statement; composites (aov, net_revenue) do not."""
+    return frozenset(
+        name
+        for name, definition in all_metrics().items()
+        if definition.source != "composite" and name in _STATEMENTS
+    )
 
 
 def compile_metric(

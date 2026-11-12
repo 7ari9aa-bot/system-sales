@@ -22,7 +22,10 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.agents.sales_intelligence.response import validate_answer
+from app.modules.ai.agents.sales_intelligence.response import (
+    period_dates_from_evidence,
+    validate_answer,
+)
 from app.modules.analytics.contracts import Finding
 
 logger = logging.getLogger(__name__)
@@ -153,6 +156,39 @@ def coverage_gaps(question: str, content: str | None, evidence: dict | None) -> 
     return gaps
 
 
+_EVIDENCE_KEYS = ("facts", "comparisons", "dimensions", "drivers", "summaries")
+_EVIDENCE_CHAR_BUDGET = 6000
+
+
+def build_evidence_message(evidence: dict) -> str:
+    """The gathered tool results, as the plain text the corrective rewrite works from.
+
+    The corrective instruction tells the model to rewrite "from the evidence the tools
+    gathered" and the call offers no tools, so the evidence has to be IN the messages. It was
+    not: the model had only the rules and its own first draft, and answered that no tool
+    results existed. Every number here is a tool's own, so the number gate still holds. The
+    block is capped so a wide analysis cannot blow the prompt; an item is dropped whole rather
+    than cut mid-number.
+    """
+    lines: list[str] = []
+    used = 0
+    for key in _EVIDENCE_KEYS:
+        for item in evidence.get(key) or []:
+            line = f"- {key}: " + json.dumps(item, ensure_ascii=False, default=str)
+            if used + len(line) > _EVIDENCE_CHAR_BUDGET:
+                lines.append("- (باقي الأدلة مقطوعة للاختصار)")
+                return _evidence_header() + "\n".join(lines)
+            lines.append(line)
+            used += len(line)
+    if not lines:
+        return ""
+    return _evidence_header() + "\n".join(lines)
+
+
+def _evidence_header() -> str:
+    return "الأدلة اللي الأدوات جمعتها (دي المصدر الوحيد للأرقام في إجابتك):\n"
+
+
 def build_corrective_instruction(gaps: list[str]) -> str:
     """The between-rounds corrective instruction (SI system-prompt voice).
 
@@ -226,7 +262,16 @@ async def regenerate_on_coverage_gap(
     ]
     messages.extend(history or [])
     messages.append({"role": "assistant", "content": draft})
-    messages.append({"role": "user", "content": build_corrective_instruction(gaps)})
+    evidence_text = build_evidence_message(evidence)
+    instruction = build_corrective_instruction(gaps)
+    # One user turn, evidence first: the correction stays the last turn and the model reads
+    # the material before the instruction that refers to it.
+    messages.append(
+        {
+            "role": "user",
+            "content": f"{evidence_text}\n\n{instruction}" if evidence_text else instruction,
+        }
+    )
     try:
         chat = await AIGateway().chat(
             session,
@@ -256,7 +301,12 @@ async def regenerate_on_coverage_gap(
     if verdict.decision != "allow":
         logger.warning("si.coverage_regen_blocked run=%s reason=%s", run_id, verdict.reason)
         return None, note, regen_tokens
-    if validate_answer(candidate, allowed_numbers, findings):
+    if validate_answer(
+        candidate,
+        allowed_numbers,
+        findings,
+        period_dates=period_dates_from_evidence(evidence),
+    ):
         return None, note, regen_tokens
     if coverage_gaps(question, candidate, evidence):
         return None, note, regen_tokens

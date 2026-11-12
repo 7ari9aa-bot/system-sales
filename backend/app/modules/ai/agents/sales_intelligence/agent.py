@@ -46,6 +46,7 @@ from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E40
 )
 from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
+    period_dates_from_evidence,
     safe_response,
     validate_answer,
 )
@@ -480,7 +481,12 @@ async def run_sales_analysis(
     guardrail_reason: str | None = None
     safe_resp: bool = False
     if result.content:
-        problems = validate_answer(result.content, allowed, findings)
+        problems = validate_answer(
+            result.content,
+            allowed,
+            findings,
+            period_dates=period_dates_from_evidence(evidence),
+        )
         if problems:
             logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
             outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA

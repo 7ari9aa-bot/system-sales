@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text as _sql
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.core.guardrails import screen_inbound
 from app.modules.ai.tools import ToolSpec, register_tool
 from app.modules.analytics.contracts import AnalysisPeriod
@@ -62,6 +63,55 @@ async def _context(session: AsyncSession, tenant_id: uuid.UUID):
 
     profile = await load_store_metric_profile(session, tenant_id)
     return CapabilityContext(tenant_id=tenant_id, profile=profile)
+
+
+def _metric_registry():
+    """The analytics metric registry and the compiler's computable set, imported once.
+
+    Every metric-name guard and the unsupported-request wrapper need these, and each import
+    of another module's name is counted by the module-boundary guard, so they share this one.
+    """
+    from app.modules.analytics import compiler, semantic
+
+    return semantic.all_metrics, compiler.computable_metric_names, compiler.UnsupportedFilter
+
+
+def _known_metric(name: str) -> None:
+    """Refuse an unregistered metric name WITH the registered ones.
+
+    The model is a per-shop setting and may be any ordinary model, so it will sometimes guess
+    a name (``revenue``). The runner shows the model only a DomainError's message; a bare
+    KeyError becomes "the tool failed unexpectedly" and the model repeats the same guess until
+    its tool budget is gone. Naming the registry lets it correct itself on the next call.
+    """
+    all_metrics, _, _ = _metric_registry()
+    available = all_metrics()
+    if name not in available:
+        raise ValidationError(
+            f"unknown metric '{name}'. Use one of these exact names: "
+            + ", ".join(sorted(available))
+        )
+
+
+def _computable_metric(name: str) -> None:
+    """Refuse a metric the tool cannot COMPUTE, offering only the ones it can.
+
+    ``aov`` and ``net_revenue`` are registered (they can be explained) yet have no compiled
+    statement, so computing them raises the compiler's bare ``UnsupportedFilter``, which the
+    model hears as an unexplained failure. Listing them as "valid names" for a computing tool
+    would send the model straight into the second refusal, so every message here names only
+    what can actually be computed, and says why a derived metric is not on the list.
+    """
+    all_metrics, computable_metric_names, _ = _metric_registry()
+    computable = ", ".join(sorted(computable_metric_names()))
+    registered = all_metrics()
+    if name not in registered:
+        raise ValidationError(f"unknown metric '{name}'. Metrics you can compute: {computable}")
+    if name not in computable_metric_names():
+        raise ValidationError(
+            f"metric '{name}' is derived from other metrics and cannot be computed directly. "
+            f"Compute it from its components. Metrics you can compute: {computable}"
+        )
 
 
 def _fact_payload(fact) -> dict:
@@ -122,9 +172,8 @@ async def _si_get_metric(
     context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, get_metric
-    from app.modules.analytics.semantic import metric
 
-    metric(metric_name)  # unknown metric fails loudly — never a guess
+    _computable_metric(metric_name)  # refused with the names the model may use
     store = EvidenceStore()
     ctx = await _context(session, tenant_id)
     period = await _resolve_window(session, tenant_id, days)
@@ -160,9 +209,8 @@ async def _si_compare_periods(
     context: dict | None = None,
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, compare_periods
-    from app.modules.analytics.semantic import metric
 
-    metric(metric_name)
+    _computable_metric(metric_name)
     store = EvidenceStore()
     ctx = await _context(session, tenant_id)
     result = await compare_periods(session, ctx, store, metric_name=metric_name, days=days)
@@ -181,7 +229,7 @@ async def _si_compare_periods(
                 "delta": str(c.delta),
                 "delta_pct": str(c.delta_pct) if c.delta_pct is not None else None,
             }
-            for c in store.comparisons
+            for c in store.comparisons.values()
         ],
     }
 
@@ -203,6 +251,7 @@ async def _si_breakdown(
 ) -> dict:
     from app.modules.analytics.capabilities import EvidenceStore, breakdown_metric
 
+    _computable_metric(metric_name)
     store = EvidenceStore()
     ctx = await _context(session, tenant_id)
     result = await breakdown_metric(
@@ -270,7 +319,7 @@ async def _si_analyze_drivers(
                 "aov_contribution": str(d.aov_contribution),
                 "total_delta": str(d.total_delta),
             }
-            for d in store.drivers
+            for d in store.drivers.values()
         ],
     }
 
@@ -288,6 +337,7 @@ async def _si_explain_metric(
 ) -> dict:
     from app.modules.analytics.capabilities import explain_metric
 
+    _known_metric(metric_name)
     result = explain_metric(metric_name)
     return {
         "capability": result.capability,
@@ -790,6 +840,30 @@ SI_TOOLS: tuple[str, ...] = (
 )
 
 
+def _explain_unsupported(handler):
+    """Let the model hear WHY a request is unsupported instead of "failed unexpectedly".
+
+    The compiler refuses a combination it has no statement for (a derived metric, a breakdown
+    the metric lacks) with a bare ``UnsupportedFilter``. The runner shows the model only a
+    DomainError's message, so a bare exception becomes an unexplained failure and the model
+    retries the same request until its tool budget is gone. The compiler's messages name only
+    a metric and a dimension, so they are safe to show. Nothing else is caught.
+    """
+    import functools
+
+    _, _, UnsupportedFilter = _metric_registry()  # noqa: N806 - it is a class
+
+    @functools.wraps(handler)
+    async def wrapped(*args, **kwargs):
+        try:
+            return await handler(*args, **kwargs)
+        except UnsupportedFilter as exc:
+            raise ValidationError(str(exc)) from exc
+
+    wrapped.explains_unsupported = True  # type: ignore[attr-defined]
+    return wrapped
+
+
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
     specs = [
@@ -902,6 +976,7 @@ def register_si_tools() -> None:
 
     for spec in specs:
         if get_tool(spec.name) is None:
+            spec.handler = _explain_unsupported(spec.handler)
             register_tool(spec)
 
 
