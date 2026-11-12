@@ -76,6 +76,11 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
+            name="si_purchasing_summary",
+            description="What the shop bought and what it owes its suppliers",
+            required=False,
+        ),
+        AgentCapability(
             name="si_customer_activity",
             description="Customers who contacted the store, with conversation volume",
             required=False,

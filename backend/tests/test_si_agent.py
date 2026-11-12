@@ -367,7 +367,9 @@ async def test_coverage_gap_triggers_exactly_one_corrective_regen(db, tenant_ctx
     instruction = regen["messages"][-1]["content"]
     assert "المبيعات" in instruction, "the instruction names the uncovered dimension"
     assert "ممنوع" in instruction, "the instruction forbids inventing numbers"
-    assert "99" not in instruction
+    # As a whole number: the evidence JSON in the instruction carries timestamps whose
+    # microseconds hold "99" by chance, which made a plain substring check flaky.
+    assert not re.search(r"(?<![\d.:-])99(?![\d.:-])", instruction)
 
     assert result.answer == "المبيعات الشهر ده قيمة الطلبات الموضوعة: 1"
     assert result.outcome.value == "ANSWERED"
@@ -412,7 +414,7 @@ async def test_failed_regen_keeps_the_original_and_never_a_wrong_number(
 
     assert result.answer == "عدد الطلبات الموضوعة الشهر ده: 1"
     assert result.outcome.value == "ANSWERED"
-    assert "500" not in result.answer
+    assert not re.search(r"(?<![\d.:-])500(?![\d.:-])", result.answer)
 
     run = await _run_row(db, result.run_id)
     note = run.output["coverage_regen"]

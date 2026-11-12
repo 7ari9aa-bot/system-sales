@@ -850,6 +850,135 @@ async def _si_profit_summary(
     }
 
 
+class SIPurchasingArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)
+    limit: int = Field(default=8, ge=1, le=25)
+
+
+#: Purchases in the window are RECEIVED orders only. A draft is not bought until it arrives.
+_PURCHASES_SQL = (
+    "SELECT po.status AS status, po.total AS total, s.name AS supplier, "
+    "po.order_date AS order_date "
+    "FROM purchase_orders po "
+    "JOIN suppliers s ON s.id = po.supplier_id AND s.tenant_id = po.tenant_id "
+    "WHERE po.tenant_id = :tenant_id AND po.status IN ('received', 'draft') "
+    "AND po.order_date >= :start_date AND po.order_date < :end_date"
+)
+
+#: What each supplier is owed, by the SAME formula as the supplier statement screen:
+#: received orders, minus payments (a reversal cancels one), minus accepted credit returns.
+#: A standing balance, so it does not depend on the window.
+_OWED_SQL = (
+    "SELECT s.name AS supplier, "
+    " COALESCE((SELECT SUM(po.total) FROM purchase_orders po"
+    "  WHERE po.supplier_id = s.id AND po.tenant_id = s.tenant_id"
+    "  AND po.status = 'received'), 0)"
+    " - COALESCE((SELECT SUM(CASE WHEN sp.reverses_payment_id IS NULL"
+    "  THEN sp.amount ELSE -sp.amount END) FROM supplier_payments sp"
+    "  WHERE sp.supplier_id = s.id AND sp.tenant_id = s.tenant_id), 0)"
+    " - COALESCE((SELECT SUM(sr.total) FROM supplier_returns sr"
+    "  WHERE sr.supplier_id = s.id AND sr.tenant_id = s.tenant_id"
+    "  AND sr.status = 'accepted' AND sr.settlement = 'credit'), 0) AS owed "
+    "FROM suppliers s WHERE s.tenant_id = :tenant_id"
+)
+
+
+async def _si_purchasing_summary(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 8,
+    context: dict | None = None,
+) -> dict:
+    """What the shop bought in the window, what is waiting to arrive, and what it owes suppliers.
+
+    Read-only. A draft order is waiting, not bought. The balance owed uses the same formula as the
+    supplier statement, so the two screens never disagree; negative = the supplier owes the shop."""
+    window = await _resolve_window(session, tenant_id, days)
+    start_date, end_date = _window_dates(window)
+    params = {"tenant_id": str(tenant_id)}
+    owed_rows = (await session.execute(_sql(_OWED_SQL), params)).all()
+    if not owed_rows:
+        return {
+            "capability": "purchasing_summary",
+            "status": "no_data",
+            "summary": {
+                "purchased": "0",
+                "orders_received": 0,
+                "pending_orders": 0,
+                "pending_value": "0",
+                "total_owed": "0",
+                "owed_by_supplier": [],
+                "top_suppliers": [],
+            },
+            "limitations": ["no suppliers are recorded yet, so there are no purchases to report"],
+            "facts": [],
+        }
+    rows = (
+        await session.execute(
+            _sql(_PURCHASES_SQL),
+            {**params, "start_date": start_date, "end_date": end_date},
+        )
+    ).all()
+    purchased = Decimal(0)
+    received = 0
+    pending = 0
+    pending_value = Decimal(0)
+    by_supplier: dict[str, Decimal] = {}
+    for r in rows:
+        total = Decimal(str(r.total))
+        if r.status == "received":
+            purchased += total
+            received += 1
+            by_supplier[r.supplier] = by_supplier.get(r.supplier, Decimal(0)) + total
+        else:
+            pending += 1
+            pending_value += total
+    top = [
+        {"supplier": name, "purchased": str(value)}
+        for name, value in sorted(by_supplier.items(), key=lambda kv: -kv[1])[:limit]
+    ]
+    balances = [(r.supplier, Decimal(str(r.owed))) for r in owed_rows]
+    total_owed = sum((owed for _, owed in balances), Decimal(0))
+    owed_list = [
+        {"supplier": name, "owed": str(owed)}
+        for name, owed in sorted((b for b in balances if b[1] != 0), key=lambda kv: -kv[1])[:limit]
+    ]
+    limitations = [
+        "purchases are orders received in the window; drafts are waiting, not bought",
+        "the balance owed is the standing total, not limited to the window",
+        "total_owed is the shop's net position: a supplier that was overpaid offsets a debt",
+    ]
+    if any(owed < 0 for _, owed in balances):
+        limitations.append("a negative balance means that supplier owes the shop")
+    facts = _typed_facts(
+        _evidence_store(),
+        window,
+        "purchasing_summary",
+        [
+            ("purchased_total", purchased, "money", {}),
+            ("purchase_orders_received", received, "count", {}),
+            ("total_owed", total_owed, "money", {}),
+        ],
+    )
+    return {
+        "capability": "purchasing_summary",
+        "status": "ok",
+        "summary": {
+            "purchased": str(purchased),
+            "orders_received": received,
+            "pending_orders": pending,
+            "pending_value": str(pending_value),
+            "total_owed": str(total_owed),
+            "owed_by_supplier": owed_list,
+            "top_suppliers": top,
+        },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
 class SICustomerActivityArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     limit: int = Field(default=10, ge=1, le=50)
@@ -1226,6 +1355,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_stock_status",
     "si_expenses_summary",
     "si_profit_summary",
+    "si_purchasing_summary",
 )
 
 
@@ -1367,6 +1497,17 @@ def register_si_tools() -> None:
             handler=_si_profit_summary,
             tags=["sales-intelligence"],
             requires="finance:read",
+        ),
+        ToolSpec(
+            name="si_purchasing_summary",
+            description=(
+                "What the shop bought in the window, orders waiting to arrive, and how "
+                "much it owes each supplier. Read-only."
+            ),
+            args_schema=SIPurchasingArgs,
+            handler=_si_purchasing_summary,
+            tags=["sales-intelligence"],
+            requires="purchasing:read",
         ),
         ToolSpec(
             name="si_customer_activity",
