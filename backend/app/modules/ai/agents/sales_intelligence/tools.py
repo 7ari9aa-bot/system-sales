@@ -25,6 +25,15 @@ from app.modules.ai.tools import ToolSpec, register_tool
 from app.modules.analytics.contracts import AnalysisPeriod
 
 
+async def _shop_timezone(session: AsyncSession, tenant_id: uuid.UUID):
+    """The shop's reporting zone. The analytics import lives here, once, not in each tool."""
+    from zoneinfo import ZoneInfo
+
+    from app.modules.analytics.service import resolve_report_timezone
+
+    return ZoneInfo(str(await resolve_report_timezone(session, tenant_id)))
+
+
 async def _resolve_window(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -33,13 +42,10 @@ async def _resolve_window(
     reference: datetime | None = None,
 ) -> AnalysisPeriod:
     """§6.5 — the system resolves the period in the store's configured timezone (P1-19)."""
-    from zoneinfo import ZoneInfo
-
     from app.modules.analytics.capabilities import _period_window
-    from app.modules.analytics.service import resolve_report_timezone
 
-    tz_str = await resolve_report_timezone(session, tenant_id)
-    zone = ZoneInfo(str(tz_str))
+    zone = await _shop_timezone(session, tenant_id)
+    tz_str = str(zone)
     ref = reference or datetime.now(zone)
     if ref.tzinfo is None:
         ref = ref.replace(tzinfo=zone)
@@ -979,6 +985,167 @@ async def _si_purchasing_summary(
     }
 
 
+class SICashierArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)
+    limit: int = Field(default=8, ge=1, le=25)
+
+
+#: Sales are counted on ``kind = 'sale'`` receipts only: a return receipt points at the SAME order,
+#: so counting every receipt would count that order's total twice. Same rule as the shift report.
+_CASHIER_SALES_SQL = (
+    "SELECT r.issued_at AS issued_at, r.sold_by_user_id AS sold_by, "
+    "o.grand_total AS total, o.tax_total AS tax "
+    "FROM pos_receipts r "
+    "JOIN orders o ON o.id = r.order_id AND o.tenant_id = r.tenant_id "
+    "WHERE r.tenant_id = :tenant_id AND r.kind = 'sale' "
+    "AND r.issued_at >= :start AND r.issued_at < :end"
+)
+
+#: Returns come from the return lines (what was actually refunded), by the receipt's own date.
+_CASHIER_RETURNS_SQL = (
+    "SELECT r.id AS receipt_id, rl.refund_total AS refund "
+    "FROM pos_return_lines rl "
+    "JOIN pos_receipts r ON r.id = rl.receipt_id AND r.tenant_id = rl.tenant_id "
+    "WHERE rl.tenant_id = :tenant_id "
+    "AND r.issued_at >= :start AND r.issued_at < :end"
+)
+
+_CASHIER_SHIFTS_SQL = (
+    "SELECT s.status AS status, s.cashier_user_id AS cashier, s.opened_at AS opened_at, "
+    "s.closed_at AS closed_at "
+    "FROM pos_sessions s WHERE s.tenant_id = :tenant_id "
+    "AND (s.status = 'OPEN' OR (s.closed_at >= :start AND s.closed_at < :end))"
+)
+
+_CASHIER_REGISTERS_SQL = "SELECT COUNT(*) AS n FROM pos_registers WHERE tenant_id = :tenant_id"
+
+
+async def _si_cashier_summary(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 8,
+    context: dict | None = None,
+) -> dict:
+    """What the till sold and refunded in the window, per cashier and per hour, and who is on shift.
+
+    Read-only. The cashier is a sales LEDGER: it records no payment method, no cash tendered to a
+    drawer count and no variance, so this reports none of those and says so."""
+    window = await _resolve_window(session, tenant_id, days)
+    # A till receipt exists the moment the sale happens, so unlike delivery-based metrics there is
+    # nothing immature about today. The shared window stops at midnight and would answer "nothing
+    # sold" for a day that has sales, so this tool runs the same length of window up to now.
+    window = window.model_copy(
+        update={"start": window.start + timedelta(days=1), "end": datetime.now(UTC)}
+    )
+    params = {"tenant_id": str(tenant_id)}
+    registers = (await session.execute(_sql(_CASHIER_REGISTERS_SQL), params)).scalar_one()
+    empty = {
+        "invoice_count": 0,
+        "sales_total": "0",
+        "taxes_total": "0",
+        "return_count": 0,
+        "returns_total": "0",
+        "net_sales": "0",
+        "by_cashier": [],
+        "busiest_hours": [],
+        "open_shifts": [],
+        "closed_shifts": 0,
+    }
+    if not registers:
+        return {
+            "capability": "cashier_summary",
+            "status": "no_data",
+            "summary": empty,
+            "limitations": ["no cashier register is set up yet, so there are no till sales"],
+            "facts": [],
+        }
+    win = {**params, "start": window.start, "end": window.end}
+    sales = (await session.execute(_sql(_CASHIER_SALES_SQL), win)).all()
+    returns = (await session.execute(_sql(_CASHIER_RETURNS_SQL), win)).all()
+    shifts = (await session.execute(_sql(_CASHIER_SHIFTS_SQL), win)).all()
+    zone = await _shop_timezone(session, tenant_id)
+
+    sales_total = sum((Decimal(str(r.total)) for r in sales), Decimal(0))
+    taxes_total = sum((Decimal(str(r.tax)) for r in sales), Decimal(0))
+    returns_total = sum((Decimal(str(r.refund)) for r in returns), Decimal(0))
+    return_count = len({r.receipt_id for r in returns})
+    net = sales_total - returns_total
+
+    per_cashier: dict[str, list] = {}
+    per_hour: dict[int, int] = {}
+    for r in sales:
+        key = str(r.sold_by) if r.sold_by else "unknown"
+        row = per_cashier.setdefault(key, [0, Decimal(0)])
+        row[0] += 1
+        row[1] += Decimal(str(r.total))
+        hour = r.issued_at.astimezone(zone).hour
+        per_hour[hour] = per_hour.get(hour, 0) + 1
+    by_cashier = [
+        {"cashier_id": key, "invoice_count": n, "sales_total": str(total)}
+        for key, (n, total) in sorted(per_cashier.items(), key=lambda kv: -kv[1][1])[:limit]
+    ]
+    busiest = [
+        {"hour": hour, "invoice_count": n}
+        for hour, n in sorted(per_hour.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+    ]
+    now = datetime.now(UTC)
+    open_shifts = []
+    for sh in shifts:
+        if sh.status == "OPEN":
+            open_shifts.append(
+                {
+                    "cashier_id": str(sh.cashier) if sh.cashier else "unknown",
+                    "opened_at": sh.opened_at.isoformat(),
+                    "open_hours": int((now - sh.opened_at).total_seconds() // 3600),
+                }
+            )
+    closed = sum(1 for sh in shifts if sh.status == "CLOSED")
+
+    limitations = [
+        "the cashier records sales and returns only: it keeps no payment method, no cash count "
+        "and no drawer difference, so none of those can be reported",
+        "net sales is sales minus returns made in the window, including returns of older sales",
+        "the window includes today up to now: a till sale is recorded the moment it happens",
+    ]
+    if net < 0:
+        limitations.append(f"net sales is negative ({net}): refunds exceeded sales in this window")
+    if "unknown" in per_cashier:
+        limitations.append("some receipts have no recorded seller, so they are listed as unknown")
+    if any(sh["open_hours"] >= 24 for sh in open_shifts):
+        limitations.append("a shift has been open for more than a day")
+    facts = _typed_facts(
+        _evidence_store(),
+        window,
+        "cashier_summary",
+        [
+            ("pos_sales_total", sales_total, "money", {}),
+            ("pos_invoice_count", len(sales), "count", {}),
+            ("pos_returns_total", returns_total, "money", {}),
+            ("pos_net_sales", net, "money", {}),
+        ],
+    )
+    return {
+        "capability": "cashier_summary",
+        "status": "ok",
+        "summary": {
+            "invoice_count": len(sales),
+            "sales_total": str(sales_total),
+            "taxes_total": str(taxes_total),
+            "return_count": return_count,
+            "returns_total": str(returns_total),
+            "net_sales": str(net),
+            "by_cashier": by_cashier,
+            "busiest_hours": busiest,
+            "open_shifts": open_shifts,
+            "closed_shifts": closed,
+        },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
 class SICustomerActivityArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     limit: int = Field(default=10, ge=1, le=50)
@@ -1356,6 +1523,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_expenses_summary",
     "si_profit_summary",
     "si_purchasing_summary",
+    "si_cashier_summary",
 )
 
 
@@ -1508,6 +1676,17 @@ def register_si_tools() -> None:
             handler=_si_purchasing_summary,
             tags=["sales-intelligence"],
             requires="purchasing:read",
+        ),
+        ToolSpec(
+            name="si_cashier_summary",
+            description=(
+                "What the cashier sold and refunded in the window: totals, net, per "
+                "cashier, busiest hours and open shifts. Read-only."
+            ),
+            args_schema=SICashierArgs,
+            handler=_si_cashier_summary,
+            tags=["sales-intelligence"],
+            requires="orders:read",
         ),
         ToolSpec(
             name="si_customer_activity",

@@ -81,6 +81,11 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
+            name="si_cashier_summary",
+            description="What the cashier sold and refunded, per cashier and hour, and open shifts",
+            required=False,
+        ),
+        AgentCapability(
             name="si_customer_activity",
             description="Customers who contacted the store, with conversation volume",
             required=False,
