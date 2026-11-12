@@ -13,7 +13,7 @@ const CELL = "border border-border px-2 py-0.5";
 // إخفاء أسهم حقول الأرقام: الخانات مخصصة لرقم صغير فقط.
 const NO_SPINNER = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 // أزرار الكمية: هادئة حتى لا تنافس خانة الكتابة المباشرة.
-const QTY_BTN = "h-5 w-5 shrink-0 text-muted-foreground hover:bg-accent hover:text-primary";
+const QTY_BTN = "h-6 w-6 shrink-0 text-muted-foreground hover:bg-accent hover:text-primary";
 
 // خانة الكمية: الكتابة المباشرة هي الأساس، والأزرار مساعدة سريعة.
 function QtyCell({ line, onQty, onQtyStep, onActivate, overStock }) {
@@ -36,7 +36,7 @@ function QtyCell({ line, onQty, onQtyStep, onActivate, overStock }) {
         onFocus={() => onActivate(line.lineId)}
         onChange={(e) => onQty(line.lineId, e.target.value)}
         className={cn(
-          "num h-6 w-8 rounded-md border border-input bg-background text-center text-[13px] font-bold outline-none focus:border-ring focus:ring-1 focus:ring-ring",
+          "num h-7 w-10 rounded-md border border-input bg-background text-center text-[14px] font-bold outline-none focus:border-ring focus:ring-1 focus:ring-ring",
           NO_SPINNER,
         )}
         aria-label={`كمية ${line.name}`}
@@ -133,7 +133,8 @@ export default function PosInvoiceTable({
           <colgroup>
             {/* الرقم والإجمالي بعرض ثابت حتى لا يُقصّا أبدًا؛ اسم المنتج يأخذ المساحة المتبقية فيتقلص ويتوسع مع فتح/طي القائمة الجانبية */}
             <col className="w-[40px]" />
-            <col className="w-[11%]" />
+            {/* الباركود بعرض ثابت يتسع لـ 13 رقمًا (EAN-13) بخط 14px بلا قص؛ النسبة المئوية كانت تقصه تحت 1366 */}
+            <col className="w-[128px]" />
             <col />
             <col className="w-[6%]" />
             <col className="w-[7%]" />
@@ -165,7 +166,7 @@ export default function PosInvoiceTable({
                 // صف الإدخال: أول صف فاضي بعد آخر صنف يحمل خانة كتابة الباركود يدوياً أو بالمسح.
                 const isEntryRow = index === lines.length;
                 return (
-                  <tr key={`empty-${index}`} className={cn("h-8", index % 2 === 1 ? "bg-muted/20" : "bg-card")}>
+                  <tr key={`empty-${index}`} className={cn("h-9", index % 2 === 1 ? "bg-muted/20" : "bg-card")}>
                     <td className={cn(CELL, "num text-center text-xs text-muted-foreground/70")}>{index + 1}</td>
                     <td className={cn(CELL, "p-0.5")}>
                       {isEntryRow ? (
@@ -181,7 +182,7 @@ export default function PosInvoiceTable({
                           }}
                           placeholder="امسح أو اكتب الباركود"
                           autoComplete="off"
-                          className="num h-6 w-full rounded-md border border-input bg-background px-1 text-center text-[12px] font-semibold outline-none focus:ring-1 focus:ring-ring"
+                          className="num h-8 w-full rounded-md border border-input bg-background px-1 text-center text-[14px] font-semibold outline-none focus:ring-1 focus:ring-ring"
                           aria-label="باركود المنتج"
                         />
                       ) : null}
@@ -207,7 +208,7 @@ export default function PosInvoiceTable({
                   key={line.lineId}
                   onClick={() => onActivate(line.lineId)}
                   className={cn(
-                    "h-8 transition-colors",
+                    "h-9 transition-colors",
                     overStock ? "bg-amber-50" : active ? "bg-accent/70" : index % 2 === 1 ? "bg-muted/20" : "bg-card",
                     !overStock && !active && "hover:bg-accent/25",
                   )}
@@ -249,7 +250,7 @@ export default function PosInvoiceTable({
                         onFocus={() => onActivate(line.lineId)}
                         onChange={(e) => onDiscount(line.lineId, e.target.value)}
                         className={cn(
-                          "num h-6 w-9 rounded-md border border-input bg-background text-center outline-none focus:ring-1 focus:ring-ring",
+                          "num h-7 w-11 rounded-md border border-input bg-background text-center text-[13px] outline-none focus:ring-1 focus:ring-ring",
                           NO_SPINNER,
                         )}
                         aria-label={`نسبة الخصم على ${line.name}`}
@@ -264,7 +265,7 @@ export default function PosInvoiceTable({
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-6 w-6 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      className="h-7 w-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemove(line);
