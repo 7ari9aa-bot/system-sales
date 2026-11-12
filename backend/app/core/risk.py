@@ -112,6 +112,8 @@ _REGISTRY: dict[str, RiskLevel] = {
     # Owner assistant reads (stock, and the money reads that follow). Read-only by contract:
     # tests/test_si_tools_are_read_only.py scans every si_* tool for a write.
     "si_stock_status": RiskLevel.LOW,
+    "si_expenses_summary": RiskLevel.LOW,
+    "si_profit_summary": RiskLevel.LOW,
     "add_to_cart": RiskLevel.MEDIUM,
     "create_order": RiskLevel.HIGH,
     "send_campaign": RiskLevel.HIGH,

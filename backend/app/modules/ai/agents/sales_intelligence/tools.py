@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text as _sql
@@ -141,6 +142,14 @@ def _fact_payload(fact) -> dict:
         "data_as_of": fact.data_as_of.isoformat() if getattr(fact, "data_as_of", None) else None,
         "computed_at": fact.computed_at.isoformat() if getattr(fact, "computed_at", None) else None,
     }
+
+
+def _evidence_store():
+    """A fresh evidence store. The analytics import lives HERE, once, so a new tool does not add
+    another cross-module import edge (the boundary guard counts every import statement)."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    return EvidenceStore()
 
 
 def _typed_facts(store, period, source: str, numbers) -> list[dict]:
@@ -533,8 +542,6 @@ async def _si_stock_status(
     Read-only. Every figure is computed in SQL; "running low" is the shop's OWN reorder level (0 =
     the owner set none, so never called low), and an item with no balance row is "not tracked",
     never "sold out"."""
-    from app.modules.analytics.capabilities import EvidenceStore
-
     window = await _resolve_window(session, tenant_id, 1)
     since = datetime.now(UTC) - timedelta(days=stagnant_days)
     rows = (
@@ -571,7 +578,7 @@ async def _si_stock_status(
         "running low = at or under the shop's own reorder level (not set = never low)"
     )
 
-    store = EvidenceStore()
+    store = _evidence_store()
     facts = _typed_facts(
         store,
         window,
@@ -604,6 +611,240 @@ async def _si_stock_status(
             "stagnant": shown_stagnant,
             "not_tracked": shown_untracked,
         },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
+class SIExpensesArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)
+    limit: int = Field(default=8, ge=1, le=25)
+
+
+#: POSTED expenses only: a voided one was cancelled and is not money the shop spent.
+_EXPENSES_SQL = (
+    "SELECT c.name AS category, e.payment_method AS method, "
+    "e.amount AS amount, e.expense_date AS expense_date, e.description AS description "
+    "FROM expenses e "
+    "JOIN expense_categories c ON c.id = e.category_id AND c.tenant_id = e.tenant_id "
+    "WHERE e.tenant_id = :tenant_id AND e.status = 'posted' "
+    "AND e.expense_date >= :start_date AND e.expense_date < :end_date"
+)
+
+
+def _window_dates(window) -> tuple:
+    """The window as plain dates, for the columns that hold a date rather than a moment."""
+    return window.start.date(), window.end.date()
+
+
+async def _expenses_total(session: AsyncSession, tenant_id: uuid.UUID, window) -> Decimal:
+    start_date, end_date = _window_dates(window)
+    rows = (
+        await session.execute(
+            _sql(_EXPENSES_SQL),
+            {"tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date},
+        )
+    ).all()
+    return sum((Decimal(str(r.amount)) for r in rows), Decimal(0))
+
+
+async def _si_expenses_summary(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 8,
+    context: dict | None = None,
+) -> dict:
+    """What the shop spent in the window: total, by category, by payment method, biggest items.
+
+    Read-only. Only POSTED expenses count (a voided one is not spending)."""
+    window = await _resolve_window(session, tenant_id, days)
+    start_date, end_date = _window_dates(window)
+    rows = (
+        await session.execute(
+            _sql(_EXPENSES_SQL),
+            {"tenant_id": str(tenant_id), "start_date": start_date, "end_date": end_date},
+        )
+    ).all()
+    total = sum((Decimal(str(r.amount)) for r in rows), Decimal(0))
+    by_category: dict[str, Decimal] = {}
+    by_method: dict[str, Decimal] = {}
+    for r in rows:
+        amount = Decimal(str(r.amount))
+        by_category[r.category] = by_category.get(r.category, Decimal(0)) + amount
+        by_method[r.method] = by_method.get(r.method, Decimal(0)) + amount
+    categories = [
+        {"category": name, "total": str(value)}
+        for name, value in sorted(by_category.items(), key=lambda kv: -kv[1])[:limit]
+    ]
+    methods = [
+        {"method": name, "total": str(value)}
+        for name, value in sorted(by_method.items(), key=lambda kv: -kv[1])
+    ]
+    biggest = [
+        {
+            "category": r.category,
+            "description": r.description,
+            "amount": str(r.amount),
+            "date": r.expense_date.isoformat(),
+        }
+        for r in sorted(rows, key=lambda r: -Decimal(str(r.amount)))[:limit]
+    ]
+    store = _evidence_store()
+    facts = _typed_facts(
+        store,
+        window,
+        "expenses_summary",
+        [
+            ("expenses_total", total, "money", {}),
+            ("expenses_count", len(rows), "count", {}),
+            *(
+                ("expenses_by_category", c["total"], "money", {"category": c["category"]})
+                for c in categories
+            ),
+        ],
+    )
+    limitations = ["only posted expenses are counted; voided ones are left out"]
+    if len(by_category) > limit:
+        limitations.append(f"showing {limit} of {len(by_category)} categories")
+    return {
+        "capability": "expenses_summary",
+        "status": "ok",
+        "summary": {
+            "total": str(total),
+            "count": len(rows),
+            "by_category": categories,
+            "by_method": methods,
+            "biggest": biggest,
+        },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
+class SIProfitArgs(BaseModel):
+    days: int = Field(default=30, ge=1, le=366)
+
+
+#: Revenue as the shop's own sales number defines it: orders DELIVERED in the window. The line
+#: total is used so revenue and cost are measured over the same lines.
+_PROFIT_REVENUE_SQL = (
+    "SELECT COALESCE(SUM(oi.total), 0) AS revenue, COUNT(*) AS line_count "
+    "FROM order_items oi "
+    "JOIN orders o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id "
+    "WHERE oi.tenant_id = :tenant_id AND o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+    "AND o.id IN ("
+    " SELECT DISTINCT s.order_id FROM shipments s"
+    " WHERE s.tenant_id = :tenant_id AND s.status = 'delivered'"
+    " AND s.delivered_at >= :start AND s.delivered_at < :end)"
+)
+
+#: One row per sold line with its unit cost. avg_cost NULL (or no row) = UNKNOWN, never zero.
+_PROFIT_LINES_SQL = (
+    "SELECT oi.total AS line_total, oi.quantity AS quantity, c.avg_cost AS avg_cost "
+    "FROM order_items oi "
+    "JOIN orders o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id "
+    "LEFT JOIN variant_costs c ON c.variant_id = oi.variant_id AND c.tenant_id = oi.tenant_id "
+    "WHERE oi.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+    "AND o.id IN ("
+    " SELECT DISTINCT s.order_id FROM shipments s"
+    " WHERE s.tenant_id = :tenant_id AND s.status = 'delivered'"
+    " AND s.delivered_at >= :start AND s.delivered_at < :end)"
+)
+
+
+#: A delivered order with no item rows is a real sale whose cost cannot be known. Left out of
+#: the line sums it would silently look like zero revenue and a fully-costed window.
+_PROFIT_EMPTY_ORDERS_SQL = (
+    "SELECT COUNT(*) AS orders, COALESCE(SUM(o.grand_total), 0) AS revenue "
+    "FROM orders o "
+    "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL "
+    "AND NOT EXISTS (SELECT 1 FROM order_items oi "
+    " WHERE oi.order_id = o.id AND oi.tenant_id = o.tenant_id) "
+    "AND o.id IN ("
+    " SELECT DISTINCT s.order_id FROM shipments s"
+    " WHERE s.tenant_id = :tenant_id AND s.status = 'delivered'"
+    " AND s.delivered_at >= :start AND s.delivered_at < :end)"
+)
+
+
+async def _si_profit_summary(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """Revenue, cost of goods, expenses and profit for delivered orders in the window.
+
+    Profit is shown ONLY when the cost of every sold line is known. A variant with no recorded
+    cost is unknown, not free, so when any is missing this reports how many lines and how much
+    revenue are uncosted and gives NO profit figure."""
+    window = await _resolve_window(session, tenant_id, days)
+    params = {"tenant_id": str(tenant_id), "start": window.start, "end": window.end}
+    head = (await session.execute(_sql(_PROFIT_REVENUE_SQL), params)).one()
+    revenue = Decimal(str(head.revenue))
+    lines = (await session.execute(_sql(_PROFIT_LINES_SQL), params)).all()
+    empty = (await session.execute(_sql(_PROFIT_EMPTY_ORDERS_SQL), params)).one()
+    revenue += Decimal(str(empty.revenue))
+
+    cost = Decimal(0)
+    # an order with no item rows is uncosted by definition: count it as one uncosted line
+    uncosted_lines = int(empty.orders)
+    uncosted_revenue = Decimal(str(empty.revenue))
+    for row in lines:
+        if row.avg_cost is None:
+            uncosted_lines += 1
+            uncosted_revenue += Decimal(str(row.line_total))
+        else:
+            cost += Decimal(str(row.avg_cost)) * int(row.quantity)
+    expenses = await _expenses_total(session, tenant_id, window)
+    profit_known = uncosted_lines == 0
+
+    summary: dict = {
+        "revenue": str(revenue),
+        "line_count": len(lines),
+        "profit_known": profit_known,
+        "uncosted_lines": uncosted_lines,
+        "uncosted_revenue": str(uncosted_revenue),
+        "expenses": str(expenses),
+    }
+    limitations = [
+        "revenue is the sum of item lines on orders delivered in the window",
+        "cost uses each variant's recorded average purchase cost",
+    ]
+    numbers: list = [("revenue", revenue, "money", {}), ("expenses_total", expenses, "money", {})]
+    if profit_known:
+        gross = revenue - cost
+        net = gross - expenses
+        summary.update(
+            {
+                "cost_of_goods": str(cost),
+                "gross_profit": str(gross),
+                "net_profit": str(net),
+            }
+        )
+        numbers += [
+            ("cost_of_goods", cost, "money", {}),
+            ("gross_profit", gross, "money", {}),
+            ("net_profit", net, "money", {}),
+        ]
+        if net < 0:
+            # register_numbers refuses a negative, so a real loss would never reach the model
+            limitations.append(f"this window is a loss of {-net}; net_profit is negative")
+    else:
+        summary.update({"cost_of_goods": None, "gross_profit": None, "net_profit": None})
+        limitations.append(
+            f"profit is not shown: {uncosted_lines} sold line(s) worth {uncosted_revenue} "
+            "have no recorded cost, and a missing cost is unknown, not zero"
+        )
+    store = _evidence_store()
+    facts = _typed_facts(store, window, "profit_summary", numbers)
+    return {
+        "capability": "profit_summary",
+        "status": "ok",
+        "summary": summary,
         "limitations": limitations,
         "facts": facts,
     }
@@ -983,6 +1224,8 @@ SI_TOOLS: tuple[str, ...] = (
     "si_channel_activity",
     "si_social_comments",
     "si_stock_status",
+    "si_expenses_summary",
+    "si_profit_summary",
 )
 
 
@@ -1101,6 +1344,29 @@ def register_si_tools() -> None:
             handler=_si_stock_status,
             tags=["sales-intelligence"],
             requires="inventory:read",
+        ),
+        ToolSpec(
+            name="si_expenses_summary",
+            description=(
+                "What the shop spent in the window: total, by category, by payment "
+                "method and the biggest expenses. Posted expenses only. Read-only."
+            ),
+            args_schema=SIExpensesArgs,
+            handler=_si_expenses_summary,
+            tags=["sales-intelligence"],
+            requires="finance:read",
+        ),
+        ToolSpec(
+            name="si_profit_summary",
+            description=(
+                "Revenue, cost of goods, expenses and profit for delivered orders. "
+                "Profit is shown only when every sold item has a recorded cost; "
+                "otherwise it reports how much revenue is uncosted. Read-only."
+            ),
+            args_schema=SIProfitArgs,
+            handler=_si_profit_summary,
+            tags=["sales-intelligence"],
+            requires="finance:read",
         ),
         ToolSpec(
             name="si_customer_activity",
