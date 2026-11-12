@@ -439,6 +439,8 @@ export default {
   "posSettings.maxDiscount": "Highest discount a cashier may give (%)",
   "posSettings.maxDiscountNone": "Empty = no limit",
   "posSettings.maxDiscountShort": "Max discount",
+  "posSettings.requireCustomer": "A sale needs a customer",
+  "posSettings.requireCustomerShort": "Customer required",
   "posSettings.discountCeiling": "Max discount without a manager (%)",
   "posSettings.refundCeiling": "Max return without a manager (EGP)",
   "posSettings.cashOutCeiling": "Max cash out without a manager (EGP)",

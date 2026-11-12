@@ -439,6 +439,8 @@ export default {
   "posSettings.maxDiscount": "أعلى خصم يقدر الكاشير يديه (%)",
   "posSettings.maxDiscountNone": "فاضي = من غير حد",
   "posSettings.maxDiscountShort": "أعلى خصم",
+  "posSettings.requireCustomer": "البيع يتطلب اختيار عميل",
+  "posSettings.requireCustomerShort": "يتطلب عميل",
   "posSettings.discountCeiling": "أقصى خصم من غير موافقة مدير (%)",
   "posSettings.refundCeiling": "أقصى مرتجع من غير موافقة مدير (ج.م)",
   "posSettings.cashOutCeiling": "أقصى سحب كاش من غير موافقة مدير (ج.م)",

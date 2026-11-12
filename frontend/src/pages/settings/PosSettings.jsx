@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/cashier/components/u
 import { Toaster } from "@/cashier/components/ui/sonner";
 import "@/cashier/cashier.css";
 import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
+import { createProfileBody, updateProfileBody } from "./posProfileBody";
 import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
 import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
 import UsersSettings from "@/cashier/components/settings/UsersSettings";
@@ -112,16 +113,7 @@ function ProfilesAndRegistersTab() {
     try {
       await api("/pos/profiles", {
         method: "POST",
-        body: {
-          name: profileForm.name,
-          code: profileForm.code,
-          warehouse_id: profileForm.warehouse_id,
-          default_customer_id: profileForm.default_customer_id || undefined,
-          default_payment_method: profileForm.default_payment_method,
-          allowed_payment_methods: profileForm.allowed_payment_methods,
-          require_customer: profileForm.require_customer,
-          max_discount_pct: profileForm.max_discount_pct.trim() === "" ? undefined : profileForm.max_discount_pct.trim(),
-        },
+        body: createProfileBody(profileForm),
       });
       setShowProfileForm(false);
       setProfileForm({
@@ -145,19 +137,7 @@ function ProfilesAndRegistersTab() {
     try {
       await api(`/pos/profiles/${p.id}`, {
         method: "PATCH",
-        body: {
-          name: p.name,
-          warehouse_id: p.warehouse_id,
-          default_customer_id: p.default_customer_id || undefined,
-          default_payment_method: p.default_payment_method || undefined,
-          allowed_payment_methods: p.allowed_payment_methods,
-          require_customer: p.require_customer,
-          // A blank field is sent as null on purpose: the owner removed the ceiling.
-          max_discount_pct:
-            p.max_discount_pct === null || p.max_discount_pct === undefined || String(p.max_discount_pct).trim() === ""
-              ? null
-              : String(p.max_discount_pct).trim(),
-        },
+        body: updateProfileBody(p),
       });
       setEditing(null);
       await load();
@@ -304,6 +284,17 @@ function ProfilesAndRegistersTab() {
                               className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
                             />
                           </label>
+                          <label className="flex items-center gap-2 text-[13px] sm:col-span-2">
+                            <input
+                              type="checkbox"
+                              checked={!!p.require_customer}
+                              onChange={(e) =>
+                                setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, require_customer: e.target.checked } : row)))
+                              }
+                              className="h-4 w-4 accent-primary"
+                            />
+                            {t("posSettings.requireCustomer", "A sale needs a customer")}
+                          </label>
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -334,6 +325,7 @@ function ProfilesAndRegistersTab() {
                               {t("posSettings.walkIn", "Walk-in")}: {p.default_customer_id ? custName(p.default_customer_id) : t("posSettings.none", "none")} ·{" "}
                               {t("posSettings.maxDiscountShort", "Max discount")}:{" "}
                               {p.max_discount_pct == null ? t("posSettings.none", "None") : `${Number(p.max_discount_pct)}%`}
+                              {p.require_customer ? ` · ${t("posSettings.requireCustomerShort", "Customer required")}` : ""}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -468,6 +460,15 @@ function ProfilesAndRegistersTab() {
                       onChange={(e) => setProfileForm((prev) => ({ ...prev, max_discount_pct: e.target.value }))}
                       className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
                     />
+                  </label>
+                  <label className="flex items-center gap-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.require_customer}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, require_customer: e.target.checked }))}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    {t("posSettings.requireCustomer", "A sale needs a customer")}
                   </label>
                 </div>
                 <button
