@@ -19,7 +19,7 @@ import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
 import { customerBlock } from "@/cashier/api/customerRule";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
-import { searchCatalog } from "@/cashier/api/catalogAdapter";
+import { resolveTypedCode } from "@/cashier/api/catalogAdapter";
 import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
 import { registerScanHandler, unregisterScanHandler } from "@/lib/scannerBridge";
@@ -150,16 +150,20 @@ function PosScreen({ user, session }) {
     } catch {
       /* fall through to the local search */
     }
-    const matches = searchCatalog(catalog, clean, 2).filter((v) => v.stock > 0);
-    if (matches.length === 1) {
-      if (addVariant(matches[0])) {
+    const hit = resolveTypedCode(catalog, clean);
+    if (hit.kind === "one") {
+      if (addVariant(hit.variant)) {
         setScanError("");
         clearIfStill(clean);
-        toast.success(`تمت إضافة ${matches[0].productName}`);
+        toast.success(`تمت إضافة ${hit.variant.productName}`);
       }
       return;
     }
-    setScanError(matches.length > 1 ? `أكثر من صنف يطابق «${clean}» — اكتب الباركود أو الكود بالكامل` : `لا يوجد صنف متاح بـ ${clean}`);
+    if (hit.kind === "soldout") {
+      setScanError(`«${hit.variant.productName}» نفد من المخزون`);
+      return;
+    }
+    setScanError(hit.kind === "many" ? `أكثر من صنف يطابق «${clean}» — اكتب الباركود أو الكود بالكامل` : `لا يوجد صنف بـ ${clean}`);
   }
 
   function removeLine(line) {

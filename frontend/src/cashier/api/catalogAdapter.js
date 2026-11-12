@@ -5,7 +5,7 @@
  * /quote does NOT check stock (only /sell does), so the screen must stop over-selling itself
  * instead of letting the cashier discover it at payment time.
  */
-import { foldedIncludes } from "@/cashier/lib/searchText";
+import { foldCode, foldedIncludes } from "@/cashier/lib/searchText";
 import { parseMoney } from "./money";
 
 const price = (wire) => parseMoney(wire).minor / 100;
@@ -47,4 +47,33 @@ export function searchCatalog(catalog, term, limit = 20) {
   return catalog
     .filter((v) => [v.productName, v.sku, v.barcode, v.color, v.size].some((f) => foldedIncludes(f ?? "", q)))
     .slice(0, limit);
+}
+
+/**
+ * What a typed or scanned term means at the till, when the backend scan did not answer.
+ *
+ * An EXACT code (barcode, then SKU, compared after the same folding the search uses) always wins
+ * over a partial match, so a short code that is a piece of a longer one never selects two items.
+ * Only when no code matches exactly does it fall back to a partial search. An item that matches
+ * but has no stock says so ("soldout") instead of reading as "not found".
+ * Returns { kind: "one" | "many" | "soldout" | "none", variant? }.
+ */
+export function resolveTypedCode(catalog, term) {
+  const q = foldCode(String(term ?? ""));
+  if (!q) return { kind: "none" };
+  const sellable = (v) => Number(v.stock) > 0;
+  for (const field of ["barcode", "sku"]) {
+    const exact = (catalog ?? []).filter((v) => foldCode(v[field] ?? "") === q);
+    if (exact.length === 0) continue;
+    const inStock = exact.filter(sellable);
+    if (inStock.length === 1) return { kind: "one", variant: inStock[0] };
+    if (inStock.length > 1) return { kind: "many" };
+    return { kind: "soldout", variant: exact[0] };
+  }
+  const partial = searchCatalog(catalog ?? [], term, 50);
+  const inStock = partial.filter(sellable);
+  if (inStock.length === 1) return { kind: "one", variant: inStock[0] };
+  if (inStock.length > 1) return { kind: "many" };
+  if (partial.length > 0) return { kind: "soldout", variant: partial[0] };
+  return { kind: "none" };
 }
