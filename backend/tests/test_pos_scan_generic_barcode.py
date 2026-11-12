@@ -92,3 +92,97 @@ async def test_a_code_registered_as_barcode_still_wins_and_unknown_is_not_found(
 
     assert (await _scan(staff, shift.id, "barcode", "LOCAL-001"))["found"] is True
     assert (await _scan(staff, shift.id, "barcode", "NOPE-404"))["found"] is False
+
+
+# ---------------------------------------------------------------------------------------------
+# A scanned code that is not in the shop AND looks like a packaged barcode whose check digit does
+# not add up is a misread, not an unknown product. The cashier is told the barcode is wrong.
+# ---------------------------------------------------------------------------------------------
+
+VALID_EAN13 = "6221234567891"  # check digit computed by the GS1 rule
+WRONG_EAN13 = "6221234567890"  # same body, wrong check digit
+NINE_DIGITS = "963850742"  # no GS1 code has 9 digits
+
+
+async def test_a_misread_barcode_is_refused_as_wrong_not_just_not_found(db, tenant_ctx) -> None:
+    shift, _variant, _ = await till(db, tenant_ctx)
+    staff = await ctx_for(db, tenant_ctx, "staff")
+
+    result = await _scan(staff, shift.id, "barcode", WRONG_EAN13)
+
+    assert result["found"] is False
+    assert result["refusal"] == "invalid_barcode"
+
+
+async def test_a_valid_but_unknown_barcode_is_plain_not_found(db, tenant_ctx) -> None:
+    shift, _variant, _ = await till(db, tenant_ctx)
+    staff = await ctx_for(db, tenant_ctx, "staff")
+
+    result = await _scan(staff, shift.id, "barcode", VALID_EAN13)
+
+    assert result == {"found": False}
+
+
+async def test_a_code_the_shop_registered_is_found_even_if_its_check_digit_is_wrong(
+    db, tenant_ctx
+) -> None:
+    # Shops register old and internal numbers of barcode length. Finding it comes first, so the
+    # check digit never locks a registered product out of the till.
+    shift, variant, _ = await till(db, tenant_ctx)
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    staff = await ctx_for(db, tenant_ctx, "staff")
+    await _register(owner, variant.id, "ean", WRONG_EAN13)
+
+    found = await _scan(staff, shift.id, "barcode", WRONG_EAN13)
+
+    assert found["found"] is True
+    assert found["variant_id"] == str(variant.id)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "NOPE-404",
+        "LOCAL-001",
+        "12345",
+        NINE_DIGITS,
+        "62212345678",
+        "ABCDEFGHIJKLM",
+        "62212345678x0",
+    ],
+)
+async def test_a_code_that_does_not_look_like_a_barcode_is_never_called_invalid(
+    db, tenant_ctx, code
+) -> None:
+    # Only 8, 12, 13 or 14 digits can be a GS1 barcode. Anything else (a SKU, a short internal code,
+    # text) stays a plain "not found" so the cashier can still type it into the search.
+    shift, _variant, _ = await till(db, tenant_ctx)
+    staff = await ctx_for(db, tenant_ctx, "staff")
+
+    assert await _scan(staff, shift.id, "barcode", code) == {"found": False}
+
+
+@pytest.mark.parametrize(
+    ("good", "bad"),
+    [
+        ("96385074", "96385075"),  # EAN-8
+        ("036000291452", "036000291453"),  # UPC-A (12)
+        ("5901234123457", "5901234123458"),  # EAN-13
+        ("15901234123454", "15901234123455"),  # GTIN-14
+    ],
+)
+async def test_every_gs1_length_is_checked(db, tenant_ctx, good, bad) -> None:
+    shift, _variant, _ = await till(db, tenant_ctx)
+    staff = await ctx_for(db, tenant_ctx, "staff")
+
+    assert await _scan(staff, shift.id, "barcode", good) == {"found": False}
+    assert (await _scan(staff, shift.id, "barcode", bad))["refusal"] == "invalid_barcode"
+
+
+async def test_a_specific_type_scan_is_not_second_guessed(db, tenant_ctx) -> None:
+    # Only the generic `barcode` scan (a hand scanner) is checked; a caller who names a type gets
+    # the exact lookup it asked for and nothing else.
+    shift, _variant, _ = await till(db, tenant_ctx)
+    staff = await ctx_for(db, tenant_ctx, "staff")
+
+    assert await _scan(staff, shift.id, "ean", WRONG_EAN13) == {"found": False}

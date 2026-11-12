@@ -24,6 +24,7 @@ import { posApi } from "@/cashier/api/posApi";
 import { useAuth } from "@/lib/AuthContext";
 import { registerScanHandler, unregisterScanHandler } from "@/lib/scannerBridge";
 import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
+import { scanRefusalText } from "../../api/scanRefusal";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
 
@@ -135,7 +136,7 @@ function PosScreen({ user, session }) {
     try {
       const scan = await sale.scan(clean);
       if (scan && scan.found === false && scan.refusal) {
-        setScanError(scan.refusal); // e.g. "outside this terminal's catalog": say so instead of "not found"
+        setScanError(scanRefusalText(scan.refusal, clean)); // a misread barcode or an out-of-catalog item: say so instead of "not found"
         return;
       }
       const hit = scan?.found ? catalog.find((v) => v.id === scan.variant_id) : null;

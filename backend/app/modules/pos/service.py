@@ -407,6 +407,28 @@ class PosService(PosReceiptReads):
         return await PosProfileService.get(session, tenant_id, pos_session.profile_id)
 
     @staticmethod
+    def _gs1_check_digit(body: str) -> int:
+        """The GS1 check digit for ``body`` (the code without its last digit).
+
+        From the right, digits are weighted 3, 1, 3, 1...; the check digit tops the sum up to the
+        next multiple of ten. The same rule covers EAN-8, UPC-A (12), EAN-13 and GTIN-14.
+        """
+        total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(body)))
+        return (10 - total % 10) % 10
+
+    @staticmethod
+    def _is_misread_barcode(value: str) -> bool:
+        """True for a code shaped like a packaged barcode whose check digit does not add up.
+
+        Only 8, 12, 13 or 14 plain digits can be a GS1 barcode. Anything else (a SKU, a short
+        internal number, text) is not judged: it is just an unknown code.
+        """
+        code = value.strip()
+        if len(code) not in (8, 12, 13, 14) or not (code.isascii() and code.isdigit()):
+            return False
+        return PosService._gs1_check_digit(code[:-1]) != int(code[-1])
+
+    @staticmethod
     async def scan(
         session: AsyncSession,
         tenant_id: UUID,
@@ -452,6 +474,12 @@ class PosService(PosReceiptReads):
             if variant is not None:
                 break
         if variant is None:
+            # Looked up FIRST on purpose: a shop may have registered an old or internal number of
+            # barcode length, and that must still sell. Only a code that is nowhere in the shop AND
+            # fails its check digit is called a misread. A hand scanner (the generic ``barcode``
+            # scan) is where misreads happen; a caller that names a type gets the exact lookup.
+            if identifier_type == "barcode" and PosService._is_misread_barcode(value):
+                return {"found": False, "refusal": "invalid_barcode"}
             return {"found": False}
         product = await CatalogService.get_product(session, tenant_id, variant.product_id)
         refusal = sellable_refusal(None if product is None else product.status)
