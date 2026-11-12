@@ -40,7 +40,7 @@ const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
 /** Meta OAuth popup result event type (sent by our callback page). */
 const META_OAUTH_RESULT = "META_OAUTH_RESULT";
 
-function loadFacebookSdk(appId, version) {
+export function loadFacebookSdk(appId, version, isAr) {
   if (window.FB) return Promise.resolve(window.FB);
   return new Promise((resolve, reject) => {
     window.fbAsyncInit = function () {
@@ -288,7 +288,7 @@ export default function ChannelsSettings() {
             : "WhatsApp connect is not configured on the server: set META_WHATSAPP_CONFIG_ID (see docs/META_SETUP.md)."
         );
       }
-      const fb = await loadFacebookSdk(appId, version || "v26.0");
+      const fb = await loadFacebookSdk(appId, version || "v26.0", isAr);
 
       let resolveCode;
       let rejectCode;
