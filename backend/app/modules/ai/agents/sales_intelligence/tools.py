@@ -866,24 +866,28 @@ def _explain_unsupported(handler):
 
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
+    _, computable_metric_names, _ = _metric_registry()
+    # Read from the registry the tools validate against, so the model is never told to ask for
+    # a metric that does not exist (the old text said "revenue", and every model believed it).
+    metrics = ", ".join(sorted(computable_metric_names()))
     specs = [
         ToolSpec(
             name="si_get_metric",
-            description="One store metric (orders/revenue/refunds) for the last N days.",
+            description=f"One store metric for the last N days. Metrics: {metrics}.",
             args_schema=SIGetMetricArgs,
             handler=_si_get_metric,
             tags=["sales-intelligence"],
         ),
         ToolSpec(
             name="si_compare_periods",
-            description="Compare a metric: this window vs the preceding equal window.",
+            description=f"Compare a metric to the preceding equal window. Metrics: {metrics}.",
             args_schema=SIComparePeriodsArgs,
             handler=_si_compare_periods,
             tags=["sales-intelligence"],
         ),
         ToolSpec(
             name="si_breakdown",
-            description="Split a metric by a dimension (channel).",
+            description=f"Split a metric by a dimension (channel). Metrics: {metrics}.",
             args_schema=SIBreakdownArgs,
             handler=_si_breakdown,
             tags=["sales-intelligence"],
