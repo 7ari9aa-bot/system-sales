@@ -109,6 +109,12 @@ async def _deliver_email_verification_email() -> int:
     return await EmailVerificationEmailDelivery.run_once()
 
 
+async def _lock_expired_trials() -> int:
+    from app.modules.billing.services.trial_expiry import lock_expired_trials
+
+    return await lock_expired_trials()
+
+
 async def _purge_expired_offboarding_tenants() -> int:
     from app.workers.retention_worker import OffboardingWorker
 
@@ -130,6 +136,9 @@ GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
     "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
     "offboarding.purge": (timedelta(hours=1), _purge_expired_offboarding_tenants),
+    # A free trial that ran out unpaid closes the business API (sign-in and billing stay open).
+    # OFF unless settings.trial_lock_starts_at is set, and then only trials started after it.
+    "billing.lock_expired_trials": (timedelta(minutes=30), _lock_expired_trials),
     # 6.3: product image embeddings lived only behind a manual CLI — prod sat
     # at images=1/embeddings=0 and vision matched nothing. Hourly, idempotent,
     # only-missing selection doubles as backfill, reconciliation, and the

@@ -138,7 +138,7 @@ async def test_active_tenant_reaches_a_business_route(db: AsyncSession, tenant_c
     assert ctx.tenant_id == tenant_ctx.tenant_id
 
 
-@pytest.mark.parametrize("state", ["suspended", "offboarding", "deleted"])
+@pytest.mark.parametrize("state", ["suspended", "offboarding", "trial_expired", "deleted"])
 async def test_non_operational_tenant_is_blocked_from_business_routes(
     db: AsyncSession, tenant_ctx, state: str
 ):
@@ -149,7 +149,7 @@ async def test_non_operational_tenant_is_blocked_from_business_routes(
     assert state in str(exc.value)
 
 
-@pytest.mark.parametrize("state", ["suspended", "offboarding", "deleted"])
+@pytest.mark.parametrize("state", ["suspended", "offboarding", "trial_expired", "deleted"])
 async def test_non_operational_tenant_still_reaches_recovery_routes(
     db: AsyncSession, tenant_ctx, state: str
 ):

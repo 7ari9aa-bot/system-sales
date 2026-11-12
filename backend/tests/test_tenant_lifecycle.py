@@ -323,6 +323,7 @@ from app.modules.identity.deps import get_db, get_tenant_ctx  # noqa: E402
 _LIFECYCLE_TARGETS = (
     "provisioning",
     "trial",
+    "trial_expired",
     "active",
     "past_due",
     "grace",
@@ -347,7 +348,9 @@ TRANSITION_MATRIX: dict[tuple[str, str], int] = {
         # only draws past_due / suspended / offboarding / deleted.
         (
             "platform_admin",
-            200 if target in ("past_due", "suspended", "offboarding", "deleted") else 409,
+            200
+            if target in ("trial_expired", "past_due", "suspended", "offboarding", "deleted")
+            else 409,
         ),
         # No credentials → no tenant context → refused outright.
         ("anonymous", 403),
@@ -444,7 +447,7 @@ async def test_transition_matrix_target_x_actor(
 
 
 def test_the_matrix_covers_every_target_and_actor_exactly_once() -> None:
-    """The matrix is complete by construction: 8 targets × 4 actors, no gaps.
+    """The matrix is complete by construction: 9 targets × 4 actors, no gaps.
 
     This is the guard that keeps the parametrized test above honest — a new
     lifecycle state or actor kind added to the system without extending the

@@ -47,6 +47,8 @@ class Plan(IdMixin, TimestampMixin, Base):
     interval: Mapped[str] = mapped_column(String(15), server_default="month")
     features: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+    # The Polar product that sells this plan; NULL = not sold online (starter, enterprise).
+    polar_product_id: Mapped[str | None] = mapped_column(String(63), nullable=True)
 
     __table_args__ = (UniqueConstraint("code", name="uq_plans_code"),)
 

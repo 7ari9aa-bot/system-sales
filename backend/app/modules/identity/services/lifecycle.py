@@ -36,6 +36,7 @@ from app.modules.identity.services._common import (
 TENANT_LIFECYCLE_STATES: tuple[str, ...] = (
     "provisioning",
     "trial",
+    "trial_expired",
     "active",
     "past_due",
     "grace",
@@ -49,8 +50,16 @@ TENANT_INITIAL_STATE = "provisioning"
 # current state -> states it may move to. `deleted` is terminal.
 ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     "provisioning": frozenset({"trial", "active", "deleted"}),
-    "trial": frozenset({"active", "past_due", "suspended", "offboarding", "deleted"}),
-    "active": frozenset({"past_due", "suspended", "offboarding", "deleted"}),
+    "trial": frozenset(
+        {"trial_expired", "active", "past_due", "suspended", "offboarding", "deleted"}
+    ),
+    # A trial that ran out unpaid. Paying (or the platform admin) brings it back to active;
+    # the owner can still ask to leave. It never goes to past_due/grace: nothing was ever billed.
+    "trial_expired": frozenset({"active", "suspended", "offboarding", "deleted"}),
+    # active -> trial_expired exists ONLY for the trial-expiry sweep. A new tenant is created
+    # `active` (the column default) and its trial lives on the subscription, so that is where it
+    # lapses from. The sweep refuses any tenant that ever paid: this is not a general lock switch.
+    "active": frozenset({"trial_expired", "past_due", "suspended", "offboarding", "deleted"}),
     "past_due": frozenset({"active", "grace", "suspended", "offboarding", "deleted"}),
     "grace": frozenset({"active", "suspended", "offboarding", "deleted"}),
     "suspended": frozenset({"active", "offboarding", "deleted"}),
@@ -63,7 +72,7 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
 # re-opens the money firehose, and `deleted` is the irreversible half of the
 # same authority. Those transitions are platform-admin-only.
 PLATFORM_ONLY_LIFECYCLE_TARGETS: frozenset[str] = frozenset(
-    {"active", "past_due", "grace", "deleted"}
+    {"active", "past_due", "grace", "trial_expired", "deleted"}
 )
 # The only target a non-platform-admin may request through the route.
 TENANT_REQUESTABLE_LIFECYCLE_TARGETS: frozenset[str] = frozenset({"offboarding"})
@@ -133,6 +142,11 @@ _OFFBOARDING = TenantCapabilityPolicy(
     allows_automation=False,
     allows_data_access=True,
 )
+# A trial that ended without payment: the owner can sign in, see the billing page and export their
+# data, but the business API is closed until they pay. Same capabilities as offboarding, but it does
+# NOT start the deletion clock (see transition()).
+_TRIAL_EXPIRED = _OFFBOARDING
+
 _DELETED = TenantCapabilityPolicy(
     allows_login=False,
     allows_api=False,
@@ -145,6 +159,7 @@ _DELETED = TenantCapabilityPolicy(
 STATE_POLICIES: dict[str, TenantCapabilityPolicy] = {
     "provisioning": _SETUP,
     "trial": _FULL,
+    "trial_expired": _TRIAL_EXPIRED,
     "active": _FULL,
     "past_due": _FULL,
     "grace": _FULL,

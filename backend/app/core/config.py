@@ -339,6 +339,12 @@ class Settings(BaseSettings):
     # who mistypes is asked to prove they are human BEFORE being locked out.
     turnstile_login_after_failures: int = 3
 
+    # Trial-expiry lock. EMPTY = OFF: nothing is locked and the sweep does nothing, so shipping the
+    # code changes no tenant. Set to an ISO timestamp (e.g. 2026-12-01T00:00:00+00:00) and only
+    # trials that STARTED at or after it are ever locked when they run out unpaid. Trials that began
+    # earlier are never touched, by design, rather than by a list of exceptions that would rot.
+    trial_lock_starts_at: str = ""
+
     # Fihrist Sites (the standalone sites platform) is managed from the owner
     # console's "Websites" section. The backend reads/changes ONLY allow-listed
     # tables through app.modules.platform.services.sites_platform.

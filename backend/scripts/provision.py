@@ -394,7 +394,14 @@ PLANS = [
         0,
         {"max_users": 3, "channels": ["whatsapp", "webchat"], "ai_agents": 1},
     ),
+    (
+        "basic",
+        "Basic",
+        590,
+        {"max_users": 5, "channels": ["whatsapp", "telegram", "webchat"], "ai_agents": 1},
+    ),
     ("pro", "Pro", 1500, {"max_users": 15, "channels": ALL_CHANNELS, "ai_agents": 10}),
+    ("business", "Business", 3500, {"max_users": 40, "channels": ALL_CHANNELS, "ai_agents": 25}),
     (
         "enterprise",
         "Enterprise",
