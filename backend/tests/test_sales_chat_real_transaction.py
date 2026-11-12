@@ -131,7 +131,7 @@ async def _rows(shop):
 
 
 async def test_send_message_answers_on_a_real_request_transaction(shop, monkeypatch):
-    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         return _result()
 
     monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
@@ -154,7 +154,7 @@ async def test_replaying_the_same_key_returns_the_saved_answer_without_a_second_
 ):
     runs = {"n": 0}
 
-    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         runs["n"] += 1
         return _result()
 
@@ -176,7 +176,7 @@ async def test_replaying_the_same_key_returns_the_saved_answer_without_a_second_
 async def test_a_failed_analysis_leaves_a_failed_row_that_can_be_retried(shop, monkeypatch):
     state = {"boom": True}
 
-    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         if state["boom"]:
             raise RuntimeError("model unreachable")
         return _result()

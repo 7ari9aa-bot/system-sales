@@ -464,6 +464,151 @@ async def _si_top_products(
     }
 
 
+class SIStockStatusArgs(BaseModel):
+    limit: int = Field(default=10, ge=1, le=25)
+    stagnant_days: int = Field(default=30, ge=7, le=365)
+
+
+#: A balance row per warehouse holds the stock. A variant is "tracked" when it has at least one;
+#: with none, its stock is UNKNOWN, which is not the same as sold out.
+_STOCK_SQL = (
+    "WITH stock AS ("
+    " SELECT v.id AS variant_id, p.title AS product_title, v.title AS variant_title, v.sku,"
+    "  v.option_values,"
+    "  COUNT(b.id) AS balance_rows,"
+    "  COALESCE(SUM(b.on_hand), 0) AS on_hand,"
+    "  COALESCE(SUM(b.reserved), 0) AS reserved,"
+    # per warehouse, then summed: an oversold warehouse must not eat another one's stock
+    "  COALESCE(SUM(GREATEST(b.on_hand - b.reserved, 0)), 0) AS available,"
+    "  COALESCE(MAX(s.reorder_level), 0) AS reorder_level"
+    " FROM product_variants v"
+    " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
+    " LEFT JOIN inventory_balances b ON b.variant_id = v.id AND b.tenant_id = v.tenant_id"
+    " LEFT JOIN variant_stock_settings s ON s.variant_id = v.id AND s.tenant_id = v.tenant_id"
+    " WHERE v.tenant_id = :tenant_id AND v.is_active AND p.status = 'active'"
+    " GROUP BY v.id, p.title, v.title, v.sku, v.option_values"
+    "), sold AS ("
+    " SELECT DISTINCT oi.variant_id FROM order_items oi"
+    " JOIN orders o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id"
+    " WHERE oi.tenant_id = :tenant_id AND o.deleted_at IS NULL"
+    "  AND o.status NOT IN ('cancelled', 'canceled')"
+    "  AND COALESCE(o.placed_at, o.created_at) >= :since"
+    ") "
+    "SELECT st.*,"
+    " (st.balance_rows > 0) AS tracked,"
+    " (st.balance_rows > 0 AND st.available = 0) AS is_out,"
+    " (st.balance_rows > 0 AND st.available > 0 AND st.reorder_level > 0"
+    "   AND st.available <= st.reorder_level) AS is_low,"
+    " (st.balance_rows > 0 AND st.available > 0 AND sd.variant_id IS NULL) AS is_stagnant "
+    "FROM stock st LEFT JOIN sold sd ON sd.variant_id = st.variant_id"
+)
+
+
+def _stock_row(row) -> dict:
+    options = dict(row.option_values or {})
+    title = row.product_title or row.variant_title
+    return {
+        "variant_id": str(row.variant_id),
+        "title": title,
+        "sku": row.sku,
+        "size": options.get("size"),
+        "color": options.get("color"),
+        "on_hand": int(row.on_hand),
+        "reserved": int(row.reserved),
+        "available": int(row.available),
+        "reorder_level": int(row.reorder_level),
+    }
+
+
+async def _si_stock_status(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int = 10,
+    stagnant_days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """What is left in the shop: out, running low, sitting unsold, and not tracked at all.
+
+    Read-only. Every figure is computed in SQL; "running low" is the shop's OWN reorder level (0 =
+    the owner set none, so never called low), and an item with no balance row is "not tracked",
+    never "sold out"."""
+    from app.modules.analytics.capabilities import EvidenceStore
+
+    window = await _resolve_window(session, tenant_id, 1)
+    since = datetime.now(UTC) - timedelta(days=stagnant_days)
+    rows = (
+        await session.execute(_sql(_STOCK_SQL), {"tenant_id": str(tenant_id), "since": since})
+    ).all()
+
+    items = [_stock_row(r) for r in rows if r.tracked]
+    out = [_stock_row(r) for r in rows if r.is_out]
+    low = sorted((_stock_row(r) for r in rows if r.is_low), key=lambda x: x["available"])
+    stagnant = sorted((_stock_row(r) for r in rows if r.is_stagnant), key=lambda x: -x["available"])
+    not_tracked = [_stock_row(r) for r in rows if not r.tracked]
+    counts = {
+        "tracked": len(items),
+        "low_stock": len(low),
+        "out_of_stock": len(out),
+        "stagnant": len(stagnant),
+        "not_tracked": len(not_tracked),
+    }
+    shown_low, shown_out = low[:limit], out[:limit]
+    shown_stagnant, shown_untracked = stagnant[:limit], not_tracked[:limit]
+    shown_items = sorted(items, key=lambda x: x["available"])[:limit]
+
+    limitations = []
+    for name, total, shown in (
+        ("running low", len(low), shown_low),
+        ("out of stock", len(out), shown_out),
+        ("unsold in the window", len(stagnant), shown_stagnant),
+        ("not tracked", len(not_tracked), shown_untracked),
+    ):
+        if total > len(shown):
+            limitations.append(f"showing {len(shown)} of {total} variants {name}")
+    limitations.append(
+        f"unsold = no non-cancelled sale in the last {stagnant_days} days; "
+        "running low = at or under the shop's own reorder level (not set = never low)"
+    )
+
+    store = EvidenceStore()
+    facts = _typed_facts(
+        store,
+        window,
+        "stock_status",
+        [
+            ("stock_tracked_variants", counts["tracked"], "count", {}),
+            ("stock_low_variants", counts["low_stock"], "count", {}),
+            ("stock_out_variants", counts["out_of_stock"], "count", {}),
+            ("stock_stagnant_variants", counts["stagnant"], "count", {}),
+            ("stock_untracked_variants", counts["not_tracked"], "count", {}),
+            *(
+                (
+                    "stock_available",
+                    r["available"],
+                    "count",
+                    {"sku": r["sku"] or "", "title": r["title"] or ""},
+                )
+                for r in shown_items + shown_low + shown_stagnant
+            ),
+        ],
+    )
+    return {
+        "capability": "stock_status",
+        "status": "ok",
+        "summary": {
+            "counts": counts,
+            "items": shown_items,
+            "low_stock": shown_low,
+            "out_of_stock": shown_out,
+            "stagnant": shown_stagnant,
+            "not_tracked": shown_untracked,
+        },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
 class SICustomerActivityArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     limit: int = Field(default=10, ge=1, le=50)
@@ -837,6 +982,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_customer_activity",
     "si_channel_activity",
     "si_social_comments",
+    "si_stock_status",
 )
 
 
@@ -943,6 +1089,18 @@ def register_si_tools() -> None:
             args_schema=SITopProductsArgs,
             handler=_si_top_products,
             tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_stock_status",
+            description=(
+                "What is left in the shop: variants out of stock, running low "
+                "(at or under the shop's own reorder level), sitting unsold for "
+                "stagnant_days, and not tracked at all. Read-only."
+            ),
+            args_schema=SIStockStatusArgs,
+            handler=_si_stock_status,
+            tags=["sales-intelligence"],
+            requires="inventory:read",
         ),
         ToolSpec(
             name="si_customer_activity",

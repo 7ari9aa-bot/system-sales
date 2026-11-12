@@ -361,10 +361,16 @@ ACTIONS = ["read", "write"]
 EXTRA_PERMISSIONS = [
     ("ai", "approve", "ai:approve"),
     ("pos", "override", "pos:override"),
+    # What the owner assistant may read about the shop's MONEY. Deliberately not in RESOURCES:
+    # the manager is built from RESOURCES x ACTIONS, so listing these there would hand profit and
+    # supplier balances to every manager. They start owner-only; the owner grants them on.
+    ("finance", "read", "finance:read"),
+    ("purchasing", "read", "purchasing:read"),
 ]
 
 ROLE_MATRIX: dict[str, list[str]] = {
-    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS] + ["ai:approve", "pos:override"],
+    "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS]
+    + ["ai:approve", "pos:override", "finance:read", "purchasing:read"],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES

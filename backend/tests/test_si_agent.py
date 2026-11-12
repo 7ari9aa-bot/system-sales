@@ -9,6 +9,7 @@ runner's tool loop exercises them end-to-end.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -99,10 +100,15 @@ async def _seed(db, tenant_id, agent_with_tools: bool = True):
 
 
 async def test_si_tools_registered_in_the_platform_registry():
+    from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
     from app.modules.ai.tools import TOOLS
 
+    # A fixed count here went stale with every new tool. What must hold is that the tools that
+    # are REGISTERED and the tools the agent is ALLOWED to call are the same set: a tool that is
+    # registered but missing from SI_TOOLS is refused by the agent without any error.
     si_tools = sorted(n for n in TOOLS if n.startswith("si_"))
-    assert len(si_tools) == 13
+    assert si_tools == sorted(SI_TOOLS)
+    assert len(si_tools) >= 13
 
 
 async def test_orchestrator_rejects_a_free_number_with_the_safe_response(
@@ -142,7 +148,11 @@ async def test_orchestrator_rejects_a_free_number_with_the_safe_response(
 
     # The runner's evidence guardrail blocks the unsourced 99 BEFORE the
     # SI response gate — defense in depth; either way it never survives.
-    assert "99" not in result.answer, "the free number never survives"
+    # As a whole number, not as two digits: the answer can carry evidence JSON whose timestamps
+    # hold "99" by chance (a microsecond field), which made this assertion fail one run in a while.
+    assert not re.search(r"(?<![\d.:-])99(?![\d.:-])", result.answer), (
+        "the free number never survives"
+    )
     assert result.outcome.value in ("ANSWERED", "INSUFFICIENT_DATA")
     assert result.findings == []  # one metric alone makes no change finding
 
@@ -613,3 +623,40 @@ async def test_regen_unit_rejects_an_invented_number(monkeypatch):
 
     assert replacement is None
     assert note == {"attempted": True, "succeeded": False, "gaps": ["sales"]}
+
+
+async def test_the_askers_permissions_reach_the_runner(db, tenant_ctx, monkeypatch):
+    """``run_sales_analysis`` is the last hop between the chat and the runner. If it drops
+    ``actor_permissions`` the runner sees an unknown asker, and every permission-gated tool
+    silently disappears for the OWNER too. The chat-level test mocks this function away, so only
+    a test through it can see the loss."""
+    from app.modules.ai.runtime import AgentRunner
+
+    tenant_id = tenant_ctx.tenant_id
+    agent = await _seed(db, tenant_id)
+    seen: dict = {}
+    real_run = AgentRunner.run
+
+    async def spy(self, *args, **kwargs):
+        seen["actor_permissions"] = kwargs.get("actor_permissions", "NOT PASSED")
+        return await real_run(self, *args, **kwargs)
+
+    monkeypatch.setattr(AgentRunner, "run", spy)
+    _patch_gateway(
+        monkeypatch,
+        [
+            ChatCompletionResult(
+                content="تمام", tool_calls=[], tokens_in=1, tokens_out=1, raw_model="m"
+            )
+        ],
+    )
+
+    await run_sales_analysis(
+        db,
+        tenant_id,
+        agent_id=agent.id,
+        question="كام طلب؟",
+        actor_permissions={"analytics:read", "finance:read"},
+    )
+
+    assert seen["actor_permissions"] == {"analytics:read", "finance:read"}

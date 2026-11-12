@@ -41,9 +41,39 @@ class ToolSpec:
     # durable ApprovalRequest (human-in-the-loop) before execution; LOW runs
     # inline. See requires_approval().
     risk_level: str = "LOW"
+    # The permission code the ASKER must hold to see this tool at all (e.g. ``finance:read``).
+    # ``None`` = no extra requirement. See ``tools_visible_to``.
+    requires: str | None = None
 
 
 TOOLS: dict[str, ToolSpec] = {}
+
+
+def tools_visible_to(tools, permission_codes) -> list:
+    """The tools the asker may be shown, by the permission each one ``requires``.
+
+    A tool the asker cannot use is not refused after the call, it is never offered: a model that
+    never saw ``si_profit`` cannot be talked into calling it. Every shop user shares one
+    ``tenant_id``, so this is the only thing standing between an employee and the shop's money.
+
+    FAILS CLOSED, on purpose, unlike the publish-time tool policy (which fails open so a typo
+    cannot strip a live agent). Here a doubt must hide the tool:
+
+    * unknown asker (``None``) or a permission set that is not a collection of strings -> only
+      the tools with no requirement;
+    * a ``requires`` that is empty, blank, or not a string -> hidden, never read as "none".
+    """
+    held: set[str] = set()
+    if isinstance(permission_codes, (set, frozenset, list, tuple)):
+        held = {p for p in permission_codes if isinstance(p, str) and p.strip()}
+    shown = []
+    for tool in tools:
+        need = getattr(tool, "requires", None)
+        if need is None:
+            shown.append(tool)
+        elif isinstance(need, str) and need.strip() and need in held:
+            shown.append(tool)
+    return shown
 
 
 def register_tool(spec: ToolSpec, *, allow_override: bool = False) -> ToolSpec:

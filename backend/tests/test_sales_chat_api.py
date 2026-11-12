@@ -190,7 +190,7 @@ def _analysis_result():
 def _patch_analysis(monkeypatch, *, explode=False, result=None):
     calls = {"count": 0}
 
-    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         if explode:
             raise AssertionError("the analysis must not run again for a replayed key")
         calls["count"] += 1

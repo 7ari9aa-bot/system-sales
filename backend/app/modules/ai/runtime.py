@@ -132,6 +132,20 @@ def _tool_for(agent_tool: AgentTool):
     return get_tool(agent_tool.name)
 
 
+def _tools_the_asker_may_use(agent_tools: list[AgentTool], permissions) -> list[AgentTool]:
+    """Keep the agent-tool rows whose registered spec the asker is allowed to see.
+
+    An unregistered name has no spec to read a requirement from, so it is kept: it is already
+    answered as "unknown tool" at execution, and hiding it here would only change the message.
+    """
+    from app.modules.ai.tools import tools_visible_to
+
+    specs = {t.name: _tool_for(t) for t in agent_tools}
+    known = [spec for spec in specs.values() if spec is not None]
+    allowed = {spec.name for spec in tools_visible_to(known, permissions)}
+    return [t for t in agent_tools if specs[t.name] is None or t.name in allowed]
+
+
 @dataclass(slots=True)
 class AgentRunResult:
     content: str | None
@@ -271,6 +285,10 @@ class AgentRunner:
         # re-propose a kind the server already refused) and a precomputed
         # MatchResult is REUSED instead of re-running the paid pipeline.
         vision_state: dict | None = None,
+        # WHO is asking, as the permission codes they hold. ``None`` = unknown asker: only the
+        # tools with no ``requires`` are shown (fails closed, see ``tools_visible_to``). The
+        # customer agent never sets it and so never sees a gated tool; the owner chat does.
+        actor_permissions: set[str] | frozenset[str] | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         # Fail BEFORE the first paid model call when the kind has no definition:
@@ -316,6 +334,9 @@ class AgentRunner:
         agent_tools = await self._load_agent_tools(
             session, tenant_id, agent_id, agent_kind=agent.kind
         )
+        # Filtering the ROWS once covers both layers: the model is only shown what is left, and a
+        # call to a removed tool lands in "tool not enabled for this agent" at execution.
+        agent_tools = _tools_the_asker_may_use(agent_tools, actor_permissions)
 
         # §169: canary deployment decision — deterministic per conversation so
         # the same conversation does not flip between stable and candidate

@@ -61,6 +61,11 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
+            name="si_stock_status",
+            description="Stock left: out, running low, unsold, and not tracked",
+            required=False,
+        ),
+        AgentCapability(
             name="si_customer_activity",
             description="Customers who contacted the store, with conversation volume",
             required=False,

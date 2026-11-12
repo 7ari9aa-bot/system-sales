@@ -312,6 +312,7 @@ async def run_sales_analysis(
     question: str,
     runner=None,
     history: list[dict[str, str]] | None = None,
+    actor_permissions: set[str] | frozenset[str] | None = None,
 ) -> AnalysisResult:
     """One sales question → an evidence-backed answer (or a safe one)."""
     from sqlalchemy import text as sa_text
@@ -365,6 +366,7 @@ async def run_sales_analysis(
             # `_resolve_system_prompt` falls back to that definition when the row is
             # empty, so the configured prompt still always reaches the model.
             history=history,
+            actor_permissions=actor_permissions,
         )
     except Exception:
         # A started event with no counterpart reads as "stuck forever" to

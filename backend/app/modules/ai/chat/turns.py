@@ -336,6 +336,10 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
             agent_id=thread.agent_id,
             question=user_row.content,
             history=history,
+            # WHO is asking, as the permissions they hold, so a tool that needs more than
+            # ``analytics:read`` is never offered to someone without it. Absent = unknown asker,
+            # which the runner reads as "ungated tools only", never as "everything".
+            actor_permissions=getattr(ctx, "permission_codes", None),
         )
     except Exception as exc:  # noqa: BLE001 — the row must land `failed`
         await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)

@@ -347,7 +347,9 @@ async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
     thread = _Thread(agent_id=uuid.uuid4())
     recorded = {}
 
-    async def fake_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fake_analysis(
+        session, tenant_id, *, agent_id, question, runner=None, history=None, **_
+    ):
         recorded["question"] = question
         recorded["agent_id"] = agent_id
         recorded["history"] = history
@@ -404,7 +406,9 @@ async def test_run_chat_turn_rebinds_tenant_after_each_commit(monkeypatch):
         ]
     )
 
-    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fine_analysis(
+        session, tenant_id, *, agent_id, question, runner=None, history=None, **_
+    ):
         return _analysis_result()
 
     monkeypatch.setattr(
@@ -627,7 +631,9 @@ async def test_a_failed_completion_write_still_lands_the_failed_row(monkeypatch)
     )
     thread = _Thread(agent_id=uuid.uuid4())
 
-    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fine_analysis(
+        session, tenant_id, *, agent_id, question, runner=None, history=None, **_
+    ):
         return _analysis_result()
 
     async def poison_on_third_commit():
@@ -671,7 +677,9 @@ async def test_run_chat_turn_history_excludes_the_current_question(monkeypatch):
     )
     thread = _Thread(agent_id=uuid.uuid4())
 
-    async def fine_analysis(session, tenant_id, *, agent_id, question, runner=None, history=None):
+    async def fine_analysis(
+        session, tenant_id, *, agent_id, question, runner=None, history=None, **_
+    ):
         return _analysis_result()
 
     monkeypatch.setattr(
@@ -685,3 +693,51 @@ async def test_run_chat_turn_history_excludes_the_current_question(monkeypatch):
         "history must stop BEFORE the current user row (seq 5), not include it"
     )
     assert "sequence_no <= 5" not in compiled
+
+
+# ---- who is asking reaches the analysis, as the permissions they hold -------------------------
+
+
+class _PermCtx(_Ctx):
+    def __init__(self, permission_codes, **kw):
+        super().__init__(**kw)
+        self.permission_codes = permission_codes
+
+
+def _one_turn_session():
+    user_row = SimpleNamespace(sequence_no=1, content="ربحي كام؟")
+    return _CommittingSession(
+        [
+            _FakeResult(rows=[user_row]),
+            _FakeResult(None),
+            _FakeResult(rows=[SimpleNamespace(role="user", content=user_row.content)]),
+        ]
+    )
+
+
+async def _permissions_seen_by_the_analysis(monkeypatch, ctx):
+    seen = {}
+
+    async def fake_analysis(session, tenant_id, **kw):
+        seen.update(kw)
+        return _analysis_result()
+
+    monkeypatch.setattr(
+        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+    )
+    await run_chat_turn(_one_turn_session(), ctx, _Thread(agent_id=uuid.uuid4()))
+    return seen
+
+
+async def test_the_askers_real_permissions_reach_the_analysis(monkeypatch):
+    seen = await _permissions_seen_by_the_analysis(
+        monkeypatch, _PermCtx({"analytics:read", "finance:read"})
+    )
+    assert seen["actor_permissions"] == {"analytics:read", "finance:read"}
+
+
+async def test_a_context_without_permissions_reaches_the_analysis_as_unknown(monkeypatch):
+    """No attribute is "we do not know", which the runner reads as the ungated subset. It must
+    not be promoted to an empty set that happens to behave the same today, nor to everything."""
+    seen = await _permissions_seen_by_the_analysis(monkeypatch, _Ctx())
+    assert seen["actor_permissions"] is None
