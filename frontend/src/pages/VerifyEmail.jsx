@@ -27,6 +27,8 @@ export default function VerifyEmail() {
   const [resendSent, setResendSent] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
   const submitted = useRef(false);
 
   useEffect(() => {

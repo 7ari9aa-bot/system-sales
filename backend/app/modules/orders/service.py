@@ -442,10 +442,11 @@ class OrderService:
     ) -> Order:
         from app.core.tenancy import resolve_tenant_currency
         from app.modules.catalog.service import CatalogService
-        from app.modules.customers.service import CustomerService
         from app.modules.inventory.service import (
             InventoryService,
         )
+
+        CustomerService = OrderService._customer_service()
 
         """Checkout: validate, reserve stock, persist order + snapshots.
 
@@ -703,12 +704,22 @@ class OrderService:
         unique-phone race and the blocked rule all stay in ``CustomerService``; this is the one
         door the orders module uses to reach them.
         """
-        from app.modules.customers.service import CustomerService
-
-        customer, _problem = await CustomerService.find_or_create_by_phone(
+        customer, _problem = await OrderService._customer_service().find_or_create_by_phone(
             session, tenant_id, phone=phone, name=name, source=source
         )
         return customer
+
+    @staticmethod
+    def _customer_service():
+        """The one door the orders module uses to reach ``CustomerService``.
+
+        Checkout reads a customer and the website-order path finds or creates one by phone; both
+        go through this single function-scope import so ``orders`` keeps exactly one
+        ``customers`` edge (``test_the_write_reaches_customers_without_a_new_module_edge``).
+        """
+        from app.modules.customers.service import CustomerService
+
+        return CustomerService
 
     @staticmethod
     async def _insert_order(session: AsyncSession, tenant_id: UUID, **values: object) -> Order:
