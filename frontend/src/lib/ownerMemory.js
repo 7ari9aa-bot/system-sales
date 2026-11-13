@@ -6,7 +6,8 @@
 
 /** A note as the screen shows it: who wrote it, in words. */
 export function sourceLabel(source, isAr = true) {
-  if (source === "inferred") return isAr ? "استنتجتها من كلامك" : "Inferred from your chats";
+  if (source === "inferred")
+    return isAr ? "استنتجتها من كلامك" : "Inferred from your chats";
   return isAr ? "قلتلي أفتكرها" : "You asked me to remember";
 }
 
@@ -43,10 +44,43 @@ export function isFull(count, maxNotes) {
 export function memoryErrorMessage(error, isAr = true) {
   const own = typeof error?.message === "string" ? error.message.trim() : "";
   if (own && error?.status >= 400 && error?.status < 500) return own;
-  return isAr ? "حصلت مشكلة. جرّب تاني بعد شوية." : "Something went wrong. Try again in a moment.";
+  return isAr
+    ? "حصلت مشكلة. جرّب تاني بعد شوية."
+    : "Something went wrong. Try again in a moment.";
 }
 
 /** The notes in the order the server sent them (newest first), without ever mutating the input. */
 export function visibleNotes(notes) {
   return Array.isArray(notes) ? [...notes] : [];
+}
+
+// The five periods the server can suggest and accept. A suggestion naming anything else is
+// dropped here, so the screen never offers a button the server would refuse.
+const HABIT_PERIODS = [
+  "today",
+  "yesterday",
+  "last_7_days",
+  "last_30_days",
+  "this_month",
+];
+
+/**
+ * The habit suggestions worth showing: well formed, a known period, some text. The sentence itself
+ * comes from the server (a fixed sentence per period, never the owner's own words).
+ */
+export function visibleSuggestions(suggestions) {
+  if (!Array.isArray(suggestions)) return [];
+  return suggestions.filter(
+    (s) =>
+      s &&
+      HABIT_PERIODS.includes(s.period) &&
+      typeof s.text === "string" &&
+      s.text.trim().length > 0,
+  );
+}
+
+/** "You asked this 8 times", or "" when the count is missing or not a positive whole number. */
+export function habitEvidence(count, isAr = true) {
+  if (!Number.isInteger(count) || count <= 0) return "";
+  return isAr ? `سألت عنها ${count} مرة` : `You asked about it ${count} times`;
 }

@@ -901,6 +901,10 @@ class OwnerMemorySettings(TenantMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    # Period keys of habit suggestions the owner said no to (fixed names, never free text).
+    dismissed_habits: Mapped[list] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import ConflictError, DomainError, NotFoundError
+from app.modules.ai.owner_habits_service import HabitNotFound, OwnerHabitService
 from app.modules.ai.owner_memory import (
     MAX_ACTIVE_MEMORIES,
     MAX_MEMORY_CHARS,
@@ -99,8 +101,33 @@ class OwnerMemoryRemovedOut(BaseModel):
     removed: int
 
 
+# The only values a habit request may carry: the fixed period keys. A request names one of these,
+# never text, and the server decides the sentence.
+HabitPeriod = Literal["today", "yesterday", "last_7_days", "last_30_days", "this_month"]
+
+
+class HabitPeriodIn(BaseModel):
+    # extra fields are IGNORED: a forged "text" or "content" next to the period is never read
+    model_config = ConfigDict(extra="ignore")
+    period: HabitPeriod
+
+
+class HabitSuggestionOut(BaseModel):
+    period: HabitPeriod
+    text: str
+    count: int
+
+
+class HabitSuggestionsOut(BaseModel):
+    suggestions: list[HabitSuggestionOut]
+
+
 def _service(ctx: AnalyticsCtx) -> OwnerMemoryService:
     return OwnerMemoryService(ctx.session, ctx.tenant_id, ctx.user.id)
+
+
+def _habits(ctx: AnalyticsCtx) -> OwnerHabitService:
+    return OwnerHabitService(ctx.session, ctx.tenant_id, ctx.user.id)
 
 
 def _note(row) -> OwnerNoteOut:
@@ -132,6 +159,33 @@ async def add_owner_memory(body: OwnerNoteIn, ctx: AnalyticsCtx) -> OwnerNoteOut
     except MemoryRefused as refused:
         raise _refusal(refused) from None
     return _note(row)
+
+
+# Registered before the "/{note_id}" routes so "suggestions" and "enabled" are never read as an id.
+@router.get("/owner-memory/suggestions", response_model=HabitSuggestionsOut)
+async def list_habit_suggestions(ctx: AnalyticsCtx) -> HabitSuggestionsOut:
+    found = await _habits(ctx).suggestions()
+    return HabitSuggestionsOut(
+        suggestions=[
+            HabitSuggestionOut(period=h.period, text=h.suggestion, count=h.count) for h in found
+        ]
+    )
+
+
+@router.post("/owner-memory/suggestions/accept", status_code=201, response_model=OwnerNoteOut)
+async def accept_habit_suggestion(body: HabitPeriodIn, ctx: AnalyticsCtx) -> OwnerNoteOut:
+    try:
+        row = await _habits(ctx).accept(body.period)
+    except HabitNotFound:
+        raise NotFoundError("الاقتراح ده مش موجود") from None
+    except MemoryRefused as refused:
+        raise _refusal(refused) from None
+    return _note(row)
+
+
+@router.post("/owner-memory/suggestions/dismiss", status_code=204)
+async def dismiss_habit_suggestion(body: HabitPeriodIn, ctx: AnalyticsCtx) -> None:
+    await _habits(ctx).dismiss(body.period)
 
 
 # Registered before the "/{note_id}" routes so the word "enabled" is never read as an id.

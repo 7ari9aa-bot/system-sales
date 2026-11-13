@@ -5,7 +5,7 @@
 
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Pencil, Trash2, X } from "lucide-react";
+import { Brain, Lightbulb, Pencil, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
 import {
@@ -13,11 +13,14 @@ import {
   isFull,
   memoryErrorMessage,
   noteDraftState,
+  habitEvidence,
   sourceLabel,
   visibleNotes,
+  visibleSuggestions,
 } from "@/lib/ownerMemory";
 
 const MEMORY_KEY = ["owner-memory"];
+const SUGGESTIONS_KEY = ["owner-memory", "suggestions"];
 
 export default function MemoryPanel({ onClose }) {
   const t = useT();
@@ -34,11 +37,23 @@ export default function MemoryPanel({ onClose }) {
     queryFn: () => api("/ai/owner-memory"),
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: MEMORY_KEY, exact: true });
+  // Suggestions are only offered while memory is on; the server returns none when it is off.
+  const suggestions = useQuery({
+    queryKey: SUGGESTIONS_KEY,
+    queryFn: () => api("/ai/owner-memory/suggestions"),
+    enabled:
+      memory.data?.enabled !== false && !memory.isLoading && !memory.isError,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: MEMORY_KEY, exact: true });
+    queryClient.invalidateQueries({ queryKey: SUGGESTIONS_KEY, exact: true });
+  };
   const fail = (err) => setError(memoryErrorMessage(err, isAr));
 
   const add = useMutation({
-    mutationFn: (content) => api("/ai/owner-memory", { method: "POST", body: { content } }),
+    mutationFn: (content) =>
+      api("/ai/owner-memory", { method: "POST", body: { content } }),
     onSuccess: () => {
       setDraft("");
       setError("");
@@ -73,8 +88,35 @@ export default function MemoryPanel({ onClose }) {
     },
     onError: fail,
   });
+  // The request carries the period KEY only. The server measures the habit again and saves its own
+  // fixed sentence, so nothing typed here (or forged) can become a note.
+  const accept = useMutation({
+    mutationFn: (period) =>
+      api("/ai/owner-memory/suggestions/accept", {
+        method: "POST",
+        body: { period },
+      }),
+    onSuccess: () => {
+      setError("");
+      refresh();
+    },
+    onError: fail,
+  });
+  const dismiss = useMutation({
+    mutationFn: (period) =>
+      api("/ai/owner-memory/suggestions/dismiss", {
+        method: "POST",
+        body: { period },
+      }),
+    onSuccess: () => {
+      setError("");
+      refresh();
+    },
+    onError: fail,
+  });
   const toggle = useMutation({
-    mutationFn: (enabled) => api("/ai/owner-memory/enabled", { method: "PUT", body: { enabled } }),
+    mutationFn: (enabled) =>
+      api("/ai/owner-memory/enabled", { method: "PUT", body: { enabled } }),
     onSuccess: () => {
       setError("");
       refresh();
@@ -87,7 +129,15 @@ export default function MemoryPanel({ onClose }) {
   const enabled = data?.enabled !== false;
   const full = isFull(notes.length, data?.max_notes);
   const state = noteDraftState(draft, data?.max_chars);
-  const busy = add.isPending || edit.isPending || remove.isPending || clear.isPending;
+  const busy =
+    add.isPending ||
+    edit.isPending ||
+    remove.isPending ||
+    clear.isPending ||
+    accept.isPending ||
+    dismiss.isPending;
+  const offered =
+    enabled && !full ? visibleSuggestions(suggestions.data?.suggestions) : [];
 
   const submitAdd = () => {
     const text = cleanNote(draft, data?.max_chars);
@@ -112,7 +162,9 @@ export default function MemoryPanel({ onClose }) {
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold">{t("memory.title")}</h2>
-          <p className="mt-0.5 text-[11.5px] leading-5 text-muted-foreground">{t("memory.hint")}</p>
+          <p className="mt-0.5 text-[11.5px] leading-5 text-muted-foreground">
+            {t("memory.hint")}
+          </p>
         </div>
         <button
           type="button"
@@ -125,9 +177,13 @@ export default function MemoryPanel({ onClose }) {
       </header>
 
       {memory.isLoading ? (
-        <p className="p-6 text-center text-[12.5px] text-muted-foreground">{t("memory.loading")}</p>
+        <p className="p-6 text-center text-[12.5px] text-muted-foreground">
+          {t("memory.loading")}
+        </p>
       ) : memory.isError ? (
-        <p className="p-6 text-center text-[12.5px] text-destructive">{t("memory.failed")}</p>
+        <p className="p-6 text-center text-[12.5px] text-destructive">
+          {t("memory.failed")}
+        </p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <label className="flex cursor-pointer items-center justify-between gap-3 border-b border-border px-4 py-2.5 text-[12.5px] select-none">
@@ -142,8 +198,56 @@ export default function MemoryPanel({ onClose }) {
             />
           </label>
 
+          {offered.length > 0 ? (
+            <section
+              aria-label={t("memory.suggestions.title")}
+              className="border-b border-border bg-primary/5 px-4 py-3"
+            >
+              <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold">
+                <Lightbulb className="h-3.5 w-3.5 text-primary" />
+                {t("memory.suggestions.title")}
+              </h3>
+              <ul className="mt-2 space-y-2.5">
+                {offered.map((item) => (
+                  <li key={item.period} data-testid="habit-suggestion">
+                    <p className="text-[13px] leading-6">{item.text}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {[
+                        habitEvidence(item.count, isAr),
+                        t("memory.suggestions.note"),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    <div className="mt-1.5 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => accept.mutate(item.period)}
+                        className="rounded-md bg-primary px-3 py-1 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+                      >
+                        {t("memory.suggestions.accept")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => dismiss.mutate(item.period)}
+                        className="rounded-md border border-border px-3 py-1 text-[12px] disabled:opacity-50"
+                      >
+                        {t("memory.suggestions.dismiss")}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           {error ? (
-            <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-2 text-[12px] text-destructive">
+            <p
+              role="alert"
+              className="border-b border-border bg-destructive/10 px-4 py-2 text-[12px] text-destructive"
+            >
               {error}
             </p>
           ) : null}
@@ -155,12 +259,17 @@ export default function MemoryPanel({ onClose }) {
               </li>
             ) : (
               notes.map((note) => (
-                <li key={note.id} className="rounded-xl border border-border bg-surface/40 p-3">
+                <li
+                  key={note.id}
+                  className="rounded-xl border border-border bg-surface/40 p-3"
+                >
                   {editing?.id === note.id ? (
                     <div className="space-y-2">
                       <textarea
                         value={editing.text}
-                        onChange={(e) => setEditing({ id: note.id, text: e.target.value })}
+                        onChange={(e) =>
+                          setEditing({ id: note.id, text: e.target.value })
+                        }
                         rows={3}
                         className="w-full resize-none rounded-lg border border-border bg-card p-2 text-[13px] outline-none focus:border-primary/40"
                       />
@@ -168,7 +277,11 @@ export default function MemoryPanel({ onClose }) {
                         <button
                           type="button"
                           onClick={submitEdit}
-                          disabled={busy || !noteDraftState(editing.text, data?.max_chars).canSend}
+                          disabled={
+                            busy ||
+                            !noteDraftState(editing.text, data?.max_chars)
+                              .canSend
+                          }
                           className="rounded-lg bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
                         >
                           {t("memory.save")}
@@ -184,7 +297,9 @@ export default function MemoryPanel({ onClose }) {
                     </div>
                   ) : (
                     <>
-                      <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{note.content}</p>
+                      <p className="whitespace-pre-wrap break-words text-[13px] leading-6">
+                        {note.content}
+                      </p>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-muted-foreground">
                           {sourceLabel(note.source, isAr)}
@@ -192,7 +307,9 @@ export default function MemoryPanel({ onClose }) {
                         <span className="flex gap-1">
                           <button
                             type="button"
-                            onClick={() => setEditing({ id: note.id, text: note.content })}
+                            onClick={() =>
+                              setEditing({ id: note.id, text: note.content })
+                            }
                             aria-label={t("memory.edit")}
                             className="rounded-lg p-1.5 text-muted-foreground hover:bg-surface"
                           >
@@ -217,7 +334,11 @@ export default function MemoryPanel({ onClose }) {
           </ul>
 
           <div className="space-y-2 border-t border-border p-3">
-            {full ? <p className="text-[12px] text-muted-foreground">{t("memory.full")}</p> : null}
+            {full ? (
+              <p className="text-[12px] text-muted-foreground">
+                {t("memory.full")}
+              </p>
+            ) : null}
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -227,7 +348,9 @@ export default function MemoryPanel({ onClose }) {
               className="w-full resize-none rounded-lg border border-border bg-card p-2 text-[13px] outline-none focus:border-primary/40 disabled:opacity-60"
             />
             <div className="flex items-center justify-between gap-2">
-              <span className={`text-[11px] ${state.over ? "text-destructive" : "text-muted-foreground"}`}>
+              <span
+                className={`text-[11px] ${state.over ? "text-destructive" : "text-muted-foreground"}`}
+              >
                 {state.remaining === null
                   ? ""
                   : state.over

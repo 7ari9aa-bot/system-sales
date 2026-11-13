@@ -238,7 +238,11 @@ export default {
   // Assistant memory screen
   "memory.open": "ذاكرة المساعد",
   "memory.title": "اللي المساعد فاكره عنك",
-  "memory.hint": "دي ملاحظات إنت قلتلي أفتكرها. بتظهر ليك إنت بس، ومش بتوصل لموظفينك ولا لعملائك.",
+  "memory.hint": "دي ملاحظات قلتلي أفتكرها أو وافقت عليها. بتظهر ليك إنت بس، ومش بتوصل لموظفينك ولا لعملائك.",
+  "memory.suggestions.title": "لاحظت حاجة",
+  "memory.suggestions.accept": "احفظها",
+  "memory.suggestions.dismiss": "لا، شكراً",
+  "memory.suggestions.note": "مش هحفظها إلا لو وافقت.",
   "memory.enabled": "الذاكرة شغالة",
   "memory.disabled": "الذاكرة مقفولة. المساعد مش بيحفظ ولا بيستخدم أي ملاحظة.",
   "memory.empty": "مفيش ملاحظات لسه. قول للمساعد «افتكر إن…» في الشات، أو أضف ملاحظة من هنا.",

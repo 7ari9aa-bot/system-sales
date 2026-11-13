@@ -238,7 +238,11 @@ export default {
   // Assistant memory screen
   "memory.open": "Assistant memory",
   "memory.title": "What the assistant remembers about you",
-  "memory.hint": "These are notes you asked me to remember. Only you see them; your staff and customers do not.",
+  "memory.hint": "These are notes you asked me to remember or agreed to. Only you see them; your staff and customers never do.",
+  "memory.suggestions.title": "I noticed something",
+  "memory.suggestions.accept": "Remember it",
+  "memory.suggestions.dismiss": "No thanks",
+  "memory.suggestions.note": "I only save it if you agree.",
   "memory.enabled": "Memory is on",
   "memory.disabled": "Memory is off. The assistant neither saves nor uses any note.",
   "memory.empty": "No notes yet. Tell the assistant \u201cremember that\u2026\u201d in the chat, or add one here.",

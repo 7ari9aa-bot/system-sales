@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 450,
-    "sha256": "0b52db418c556ce541e3d0c9d280c36d5d95aa74587f8ba31ee84372f236c25a",
-    "typed_operations": 291
+    "operations": 453,
+    "sha256": "033ebbd2e875c217fad060a211b2c97a09a7194639a41dab97fa303660d09c5d",
+    "typed_operations": 293
   },
   "spec": {
     "components": {
@@ -9010,6 +9010,72 @@
             }
           },
           "title": "HTTPValidationError",
+          "type": "object"
+        },
+        "HabitPeriodIn": {
+          "properties": {
+            "period": {
+              "enum": [
+                "today",
+                "yesterday",
+                "last_7_days",
+                "last_30_days",
+                "this_month"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          "required": [
+            "period"
+          ],
+          "title": "HabitPeriodIn",
+          "type": "object"
+        },
+        "HabitSuggestionOut": {
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "period": {
+              "enum": [
+                "today",
+                "yesterday",
+                "last_7_days",
+                "last_30_days",
+                "this_month"
+              ],
+              "title": "Period",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "period",
+            "text",
+            "count"
+          ],
+          "title": "HabitSuggestionOut",
+          "type": "object"
+        },
+        "HabitSuggestionsOut": {
+          "properties": {
+            "suggestions": {
+              "items": {
+                "$ref": "#/components/schemas/HabitSuggestionOut"
+              },
+              "title": "Suggestions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "suggestions"
+          ],
+          "title": "HabitSuggestionsOut",
           "type": "object"
         },
         "HandoverList": {
@@ -24721,6 +24787,310 @@
             }
           },
           "summary": "Set Owner Memory Enabled",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/owner-memory/suggestions": {
+        "get": {
+          "operationId": "list_habit_suggestions_api_v1_ai_owner_memory_suggestions_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HabitSuggestionsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Habit Suggestions",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/owner-memory/suggestions/accept": {
+        "post": {
+          "operationId": "accept_habit_suggestion_api_v1_ai_owner_memory_suggestions_accept_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HabitPeriodIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OwnerNoteOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Accept Habit Suggestion",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/owner-memory/suggestions/dismiss": {
+        "post": {
+          "operationId": "dismiss_habit_suggestion_api_v1_ai_owner_memory_suggestions_dismiss_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HabitPeriodIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Dismiss Habit Suggestion",
           "tags": [
             "ai"
           ]
