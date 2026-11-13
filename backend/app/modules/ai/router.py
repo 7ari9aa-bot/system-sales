@@ -17,6 +17,7 @@ from app.modules.ai.routers.governance import router as _governance_router
 from app.modules.ai.routers.knowledge import router as _knowledge_router
 from app.modules.ai.routers.memories import router as _memories_router
 from app.modules.ai.routers.observability import router as _observability_router
+from app.modules.ai.routers.owner_memory import router as _owner_memory_router
 from app.modules.ai.routers.sales import router as _sales_router
 
 # ── Assemble the public router exactly as before ─────────────────────────
@@ -43,6 +44,7 @@ for _sub in (
     _governance_router,
     _observability_router,
     _memories_router,
+    _owner_memory_router,
 ):
     router.routes.extend(_sub.routes)
 

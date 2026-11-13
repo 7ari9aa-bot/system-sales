@@ -303,6 +303,9 @@ class OwnerMemoryService:
             raise MemoryRefused("duplicate")
         row.content, row.content_key, row.source = text, key, "explicit"
         await self.session.flush()
+        # updated_at is rewritten by the database on UPDATE; without this the first read of it
+        # (the API response) would lazy-load outside the async context and raise.
+        await self.session.refresh(row)
         return row
 
     async def forget(self, memory_id: uuid.UUID) -> bool:

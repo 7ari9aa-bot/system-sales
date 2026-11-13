@@ -501,3 +501,14 @@ async def test_each_instruction_shape_is_refused_on_its_own(db, tenant_ctx, atta
     with pytest.raises(MemoryRefused) as e:
         await _svc(db, tenant_ctx).remember(attack, source="explicit")
     assert e.value.reason == "instruction", attack
+
+
+async def test_an_edited_note_can_be_read_back_with_its_new_timestamp(db, tenant_ctx):
+    """The API returns the row it just edited. updated_at is rewritten by the database, so reading
+    it right after the edit must not need a second lazy load."""
+    svc = _svc(db, tenant_ctx)
+    first = await svc.remember("القديمة", source="explicit")
+    before = first.updated_at
+    edited = await svc.edit(first.id, "الجديدة")
+    assert edited.updated_at >= before
+    assert edited.content == "الجديدة"
