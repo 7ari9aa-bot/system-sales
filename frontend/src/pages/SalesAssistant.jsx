@@ -6,10 +6,11 @@
 
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, MessageSquareText, PanelLeftClose, ShieldCheck, Sparkles, X } from "lucide-react";
+import { BarChart3, Brain, MessageSquareText, PanelLeftClose, ShieldCheck, Sparkles, X } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/ui";
 import Logo from "@/components/dashboard/Logo";
 import Composer from "@/components/salesAssistant/Composer";
+import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
 import MessageList from "@/components/salesAssistant/MessageList";
 import ThreadListPanel from "@/components/salesAssistant/ThreadListPanel";
 import { api } from "@/lib/api";
@@ -49,6 +50,7 @@ export default function SalesAssistant() {
   const [includeArchived, setIncludeArchived] = React.useState(false);
   const [drafts, setDrafts] = React.useState({});
   const [panelOpen, setPanelOpen] = React.useState(false);
+  const [memoryOpen, setMemoryOpen] = React.useState(false);
   const scrollRef = React.useRef(null);
 
   const threadsQuery = useQuery({
@@ -249,14 +251,25 @@ export default function SalesAssistant() {
         title={t("nav.salesAssistant")}
         subtitle={t("salesAssistant.subtitle")}
         actions={
-          <button
-            type="button"
-            onClick={() => setPanelOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium shadow-sm lg:hidden"
-          >
-            {panelOpen ? <PanelLeftClose className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-            {t("salesAssistant.threads")}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMemoryOpen((v) => !v)}
+              aria-pressed={memoryOpen}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium shadow-sm hover:bg-surface"
+            >
+              <Brain className="h-4 w-4" />
+              {t("memory.open")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium shadow-sm lg:hidden"
+            >
+              {panelOpen ? <PanelLeftClose className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+              {t("salesAssistant.threads")}
+            </button>
+          </div>
         }
       />
 
@@ -290,6 +303,21 @@ export default function SalesAssistant() {
         )}
 
         {chatSurface}
+
+        {memoryOpen && (
+          <>
+            {/* One panel, two placements: a side column from lg up, a sheet over a backdrop below.
+                Rendering it twice would give two copies of the draft and edit state. */}
+            <div
+              className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[2px] lg:hidden"
+              onClick={() => setMemoryOpen(false)}
+              aria-hidden
+            />
+            <div className="fixed inset-y-0 end-0 z-50 flex w-[92%] max-w-[380px] p-2 animate-fade-in lg:static lg:z-auto lg:block lg:w-[340px] lg:max-w-none lg:shrink-0 lg:p-0">
+              <MemoryPanel onClose={() => setMemoryOpen(false)} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
