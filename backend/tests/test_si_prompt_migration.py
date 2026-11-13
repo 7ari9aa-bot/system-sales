@@ -55,12 +55,13 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
     module = _load()
     assert module.revision == "fe2026111206"
     assert module.down_revision == "fe2026111205"
-    # the text the migration writes IS the text the code provisions for new shops
-    assert module._NEW == SI_SYSTEM_PROMPT
+    # fe2026111206 is already in production, so its text is frozen as shipped: the code prompt has
+    # moved on since (fe2026111208), and that later migration is what carries shops to it
     assert module._OLD != module._NEW
+    assert "ابدأ بالإيراد المحصّل" in module._NEW
 
 
-def test_the_prompt_says_sales_means_money_and_names_real_metrics() -> None:
+def test_the_code_prompt_says_sales_means_money_and_names_real_metrics() -> None:
     from app.modules.analytics import compiler
 
     computable = compiler.computable_metric_names()
