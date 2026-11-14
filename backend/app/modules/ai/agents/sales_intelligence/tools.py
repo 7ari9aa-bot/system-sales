@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text as _sql
@@ -359,6 +360,51 @@ async def _si_explain_metric(
         "status": result.status,
         "summary": result.summary,
     }
+
+
+_METRIC_MODES = ("value", "compare", "split", "explain")
+
+
+class SIMetricArgs(BaseModel):
+    """One question about one store metric. ``mode`` says which kind of answer is wanted."""
+
+    mode: Literal["value", "compare", "split", "explain"]
+    metric_name: str
+    days: int = Field(default=30, ge=1, le=90)
+    dimension: str = "channel"
+    channel: str | None = None
+
+
+async def _si_metric(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    mode: str,
+    metric_name: str,
+    days: int = 30,
+    dimension: str = "channel",
+    channel: str | None = None,
+    context: dict | None = None,
+) -> dict:
+    """A thin router: each mode runs the same tested computation it always did.
+
+    The four tools it replaces were four choices the model weighed on every question. Nothing
+    is recomputed here, so every guarantee of the originals (the numbers come from evidence,
+    the metric name is checked against the registry) is the originals' own.
+    """
+    if mode == "value":
+        return await _si_get_metric(
+            session, tenant_id, metric_name=metric_name, days=days, channel=channel
+        )
+    if mode == "compare":
+        return await _si_compare_periods(session, tenant_id, metric_name=metric_name, days=days)
+    if mode == "split":
+        return await _si_breakdown(
+            session, tenant_id, metric_name=metric_name, dimension=dimension, days=days
+        )
+    if mode == "explain":
+        return await _si_explain_metric(session, tenant_id, metric_name=metric_name)
+    raise ValidationError(f"mode must be one of: {', '.join(_METRIC_MODES)} (got {mode!r})")
 
 
 class SIStatusArgs(BaseModel):
@@ -1761,11 +1807,8 @@ async def _si_social_comments(
 #: The SI tool names in one place — the configure script and the orchestrator
 #: read this tuple instead of re-listing them.
 SI_TOOLS: tuple[str, ...] = (
-    "si_get_metric",
-    "si_compare_periods",
-    "si_breakdown",
+    "si_metric",
     "si_analyze_drivers",
-    "si_explain_metric",
     "si_data_status",
     "si_analyze_seasonality",
     "si_analyze_customers",
@@ -1816,27 +1859,6 @@ def register_si_tools() -> None:
     metrics = ", ".join(sorted(computable_metric_names()))
     specs = [
         ToolSpec(
-            name="si_get_metric",
-            description=f"One store metric for the last N days. Metrics: {metrics}.",
-            args_schema=SIGetMetricArgs,
-            handler=_si_get_metric,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_compare_periods",
-            description=f"Compare a metric to the preceding equal window. Metrics: {metrics}.",
-            args_schema=SIComparePeriodsArgs,
-            handler=_si_compare_periods,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_breakdown",
-            description=f"Split a metric by a dimension (channel). Metrics: {metrics}.",
-            args_schema=SIBreakdownArgs,
-            handler=_si_breakdown,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
             name="si_analyze_drivers",
             description="Decompose the revenue change: orders vs AOV (exact).",
             args_schema=SIDriversArgs,
@@ -1844,10 +1866,21 @@ def register_si_tools() -> None:
             tags=["sales-intelligence"],
         ),
         ToolSpec(
-            name="si_explain_metric",
-            description="How a metric is defined, attributed, and versioned.",
-            args_schema=SIExplainArgs,
-            handler=_si_explain_metric,
+            name="si_metric",
+            description=(
+                "Answer a question about ONE store metric. Pick mode: "
+                "value = the number for the last N days (use for 'how much / how many'); "
+                "compare = this window against the one before it (use for 'up or down / vs "
+                "last month'); "
+                "split = the number divided by a dimension such as channel (use for 'which "
+                "channel / where from'); "
+                "explain = what the metric means and how it is counted (use only when the "
+                "owner asks what a word means, never to fetch a number). "
+                "Pass days (1 to 90, default 30). dimension is only for mode=split. "
+                f"Metrics: {metrics}."
+            ),
+            args_schema=SIMetricArgs,
+            handler=_si_metric,
             tags=["sales-intelligence"],
         ),
         ToolSpec(

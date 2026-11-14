@@ -95,11 +95,15 @@ async def test_an_unsupported_combination_reaches_the_model_as_a_readable_refusa
     from app.modules.ai.tools import get_tool
 
     register_si_tools()
-    spec = get_tool("si_breakdown")
+    spec = get_tool("si_metric")
 
     with pytest.raises(ValidationError) as caught:
         await spec.handler(
-            db, tenant_ctx.tenant_id, metric_name="collected_revenue", dimension="channel"
+            db,
+            tenant_ctx.tenant_id,
+            mode="split",
+            metric_name="collected_revenue",
+            dimension="channel",
         )
 
     assert "collected_revenue" in str(caught.value)
@@ -127,3 +131,34 @@ async def test_the_wrapper_does_not_swallow_a_real_failure():
 
     with pytest.raises(RuntimeError):
         await _explain_unsupported(broken)(None, None)
+
+
+@pytest.mark.parametrize("mode", ["value", "compare", "split"])
+async def test_the_registered_si_metric_refuses_an_unknown_metric_in_every_computing_mode(
+    mode, db, tenant_ctx
+):
+    """What the MODEL calls is `si_metric`, so the refusal must hold through the registered tool,
+    not just through the handlers behind it."""
+    from app.modules.ai.agents.sales_intelligence.tools import register_si_tools
+    from app.modules.ai.tools import get_tool
+
+    register_si_tools()
+    with pytest.raises(ValidationError) as caught:
+        await get_tool("si_metric").handler(
+            db, tenant_ctx.tenant_id, mode=mode, metric_name="revenue"
+        )
+    message = str(caught.value)
+    assert "revenue" in message
+    for name in computable_metric_names():
+        assert name in message, f"{name} missing from the hint the model reads"
+
+
+async def test_the_registered_si_metric_explains_a_composite_metric(db, tenant_ctx):
+    from app.modules.ai.agents.sales_intelligence.tools import register_si_tools
+    from app.modules.ai.tools import get_tool
+
+    register_si_tools()
+    out = await get_tool("si_metric").handler(
+        db, tenant_ctx.tenant_id, mode="explain", metric_name="aov"
+    )
+    assert out["status"] == "ok"

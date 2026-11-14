@@ -17,7 +17,7 @@ from app.modules.ai.agents.sales_intelligence.tools import (
 )
 from app.modules.ai.tools import get_tool
 
-METRIC_TOOLS = ("si_get_metric", "si_compare_periods", "si_breakdown")
+METRIC_TOOLS = ("si_metric",)
 
 
 def _descriptions() -> dict[str, str]:

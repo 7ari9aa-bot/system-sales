@@ -74,9 +74,7 @@ async def _seed(db, tenant_id, agent_with_tools: bool = True):
     await db.flush()
     if agent_with_tools:
         for name in (
-            "si_get_metric",
-            "si_compare_periods",
-            "si_breakdown",
+            "si_metric",
             "si_analyze_drivers",
         ):
             db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name))
@@ -124,8 +122,8 @@ async def test_orchestrator_rejects_a_free_number_with_the_safe_response(
             tool_calls=[
                 ToolCallRequest(
                     id="c1",
-                    name="si_get_metric",
-                    arguments={"metric_name": "orders_placed", "days": 30},
+                    name="si_metric",
+                    arguments={"mode": "value", "metric_name": "orders_placed", "days": 30},
                 )
             ],
             tokens_in=1,
@@ -166,8 +164,8 @@ async def test_grounded_answer_passes_through(db, tenant_ctx, monkeypatch):
             tool_calls=[
                 ToolCallRequest(
                     id="c1",
-                    name="si_get_metric",
-                    arguments={"metric_name": "orders_placed", "days": 30},
+                    name="si_metric",
+                    arguments={"mode": "value", "metric_name": "orders_placed", "days": 30},
                 )
             ],
             tokens_in=1,
@@ -256,8 +254,8 @@ async def test_unknown_metric_fails_the_tool_loudly(db, tenant_ctx, monkeypatch)
             tool_calls=[
                 ToolCallRequest(
                     id="c1",
-                    name="si_get_metric",
-                    arguments={"metric_name": "profit_margin"},
+                    name="si_metric",
+                    arguments={"mode": "value", "metric_name": "profit_margin"},
                 )
             ],
             tokens_in=1,
@@ -274,7 +272,7 @@ async def test_unknown_metric_fails_the_tool_loudly(db, tenant_ctx, monkeypatch)
     # The tool call FAILED loudly (unknown metric) — the run continued, but
     # no fact was fabricated: the facts list stays empty.
     assert result.facts == []
-    metric_call = next(c for c in result.tool_calls_made if c["name"] == "si_get_metric")
+    metric_call = next(c for c in result.tool_calls_made if c["name"] == "si_metric")
     assert metric_call["status"] == "error"
 
 
@@ -321,8 +319,8 @@ _TOOL_ROUND = ChatCompletionResult(
     tool_calls=[
         ToolCallRequest(
             id="c1",
-            name="si_get_metric",
-            arguments={"metric_name": "orders_placed", "days": 30},
+            name="si_metric",
+            arguments={"mode": "value", "metric_name": "orders_placed", "days": 30},
         )
     ],
     tokens_in=1,

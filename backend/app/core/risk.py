@@ -94,11 +94,8 @@ _REGISTRY: dict[str, RiskLevel] = {
     "find_product_by_image": RiskLevel.LOW,
     "get_product_photos": RiskLevel.LOW,
     # Sales Intelligence tools (read-only analytics; §14 read-only agent)
-    "si_get_metric": RiskLevel.LOW,
-    "si_compare_periods": RiskLevel.LOW,
-    "si_breakdown": RiskLevel.LOW,
+    "si_metric": RiskLevel.LOW,
     "si_analyze_drivers": RiskLevel.LOW,
-    "si_explain_metric": RiskLevel.LOW,
     "si_data_status": RiskLevel.LOW,
     "si_analyze_seasonality": RiskLevel.LOW,
     "si_analyze_customers": RiskLevel.LOW,

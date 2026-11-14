@@ -596,7 +596,7 @@ def test_worker_process_discovers_registry() -> None:
             "assert 'customer' in AgentRegistry.kinds(), 'customer missing in worker'\n"
             "assert 'sales_intelligence' in AgentRegistry.kinds(), 'sales_intelligence missing'\n"
             "assert not AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
-            "assert AgentRegistry.is_tool_authorized('sales_intelligence', 'si_get_metric')\n"
+            "assert AgentRegistry.is_tool_authorized('sales_intelligence', 'si_metric')\n"
         ),
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
@@ -815,7 +815,7 @@ def test_evidence_reconstruction_and_store_from() -> None:
 
     tool_calls = [
         {
-            "name": "si_get_metric",
+            "name": "si_metric",
             "status": "ok",
             "result": {
                 "facts": [
@@ -841,7 +841,7 @@ def test_evidence_reconstruction_and_store_from() -> None:
             },
         },
         {
-            "name": "si_compare_periods",
+            "name": "si_metric",
             "status": "ok",
             "result": {
                 "comparisons": [

@@ -21,7 +21,7 @@ THIRD_KIND = "inventory_ops"
 # A tool the CUSTOMER agent owns — the third kind must NOT be able to use it.
 CUSTOMER_TOOL = "search_catalog"
 # A tool the SALES-INTELLIGENCE agent owns.
-SI_TOOL = "si_get_metric"
+SI_TOOL = "si_metric"
 
 
 def _third_definition() -> AgentDefinition:

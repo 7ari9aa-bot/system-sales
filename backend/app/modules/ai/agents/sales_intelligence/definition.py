@@ -19,23 +19,12 @@ _DEFINITION = AgentDefinition(
     ),
     capabilities=[
         AgentCapability(
-            name="si_get_metric", description="Query specific metric window", required=True
-        ),
-        AgentCapability(
-            name="si_compare_periods",
-            description="Compare current period to previous window",
+            name="si_metric",
+            description="One metric: value, comparison, split by a dimension, or definition",
             required=True,
         ),
         AgentCapability(
-            name="si_breakdown", description="Dimension breakdown for metrics", required=False
-        ),
-        AgentCapability(
             name="si_analyze_drivers", description="Revenue driver decomposition", required=False
-        ),
-        AgentCapability(
-            name="si_explain_metric",
-            description="Metric definition and attribution",
-            required=False,
         ),
         AgentCapability(
             name="si_data_status", description="Store data freshness and maturity", required=False
