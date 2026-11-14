@@ -243,6 +243,13 @@ export default {
   "salesAssistant.voiceNoSpeech": "ماسمعتش حاجة. جرّب تاني وأنت قريب من الميكروفون.",
   "salesAssistant.voiceNoMic": "مش لاقي ميكروفون متوصّل بالجهاز.",
   "salesAssistant.voiceFailed": "التسجيل الصوتي وقف. جرّب تاني أو اكتب سؤالك.",
+  "salesAssistant.sendFailed": "مابعتتش رسالتك. اتأكد من الاتصال وجرّب تاني، النص لسه في الخانة.",
+  "salesAssistant.attach.button": "إرفاق ملف نصي",
+  "salesAssistant.attach.type": "النوع ده مش مدعوم. ارفق ملف txt أو csv أو md أو json.",
+  "salesAssistant.attach.size": "الملف كبير. الحد الأقصى حوالي 12 كيلوبايت.",
+  "salesAssistant.attach.empty": "الملف فاضي.",
+  "salesAssistant.attach.long": "النص كبير على رسالة واحدة. قصّر الملف أو اكتب سؤالك أقصر.",
+  "salesAssistant.attach.read": "مقدرتش أقرأ الملف.",
   "salesAssistant.composerHint": "Enter للإرسال · Shift+Enter لسطر جديد — كل إجابة بتتحقق من أدلة متجرك.",
   "salesAssistant.groundingNote": "كل رقم في الإجابات دي جاي من بيانات متجرك الحقيقية — مفيش تخمين.",
 

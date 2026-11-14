@@ -117,13 +117,14 @@ test("the composer floats clear of the bottom edge", async ({ page }) => {
   expect(DESKTOP.height - (field.y + field.height), "the composer is glued to the bottom").toBeGreaterThanOrEqual(36);
 });
 
-test("the composer is a taller, softer pill with a visible shadow", async ({ page }) => {
+test("the composer is a compact, softly rounded bar with a visible shadow", async ({ page }) => {
   await open(page);
   const s = await page.getByTestId("assistant-composer-field").evaluate((n) => { const c = getComputedStyle(n); return { h: n.getBoundingClientRect().height, r: parseFloat(c.borderTopLeftRadius), shadow: c.boxShadow }; });
-  expect(s.h, "the composer is not tall enough").toBeGreaterThanOrEqual(60);
+  expect(s.h, "the composer is too short").toBeGreaterThanOrEqual(76);
+  expect(s.h, "the composer is too tall for a compact bar").toBeLessThanOrEqual(104);
   const ta = await page.getByTestId("assistant-composer-field").locator("textarea").boundingBox();
-  expect(ta.height, "the typing area itself is cramped").toBeGreaterThanOrEqual(44);
-  expect(s.r).toBeGreaterThanOrEqual(28);
+  expect(ta.height, "the typing area itself is cramped").toBeGreaterThanOrEqual(24);
+  expect(s.r).toBeGreaterThanOrEqual(20);
   expect(s.shadow, "the composer has no shadow").not.toBe("none");
 });
 
@@ -144,7 +145,7 @@ test("a mic button sits in the composer next to send", async ({ page }) => {
   const m = await mic.boundingBox();
   const field = await page.getByTestId("assistant-composer-field").boundingBox();
   expect(m.x >= field.x && m.x + m.width <= field.x + field.width, "the mic is outside the composer").toBe(true);
-  expect(m.width).toBeGreaterThanOrEqual(36);
+  expect(m.width).toBeGreaterThanOrEqual(32);
 });
 
 test("tapping the mic listens in Egyptian Arabic and shows it is recording", async ({ page }) => {
@@ -250,5 +251,5 @@ test("mobile: the mic is reachable and the composer still fits", async ({ page }
   const field = await page.getByTestId("assistant-composer-field").boundingBox();
   expect(mic.x >= field.x && mic.x + mic.width <= field.x + field.width + 1).toBe(true);
   expect(field.x + field.width).toBeLessThanOrEqual(390);
-  expect(mic.width).toBeGreaterThanOrEqual(36);
+  expect(mic.width).toBeGreaterThanOrEqual(32);
 });

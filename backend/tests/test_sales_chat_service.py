@@ -370,7 +370,8 @@ async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
     assert assistant.status == "completed"
     assert assistant.sequence_no == 2
     assert assistant.run_id is not None and assistant.analysis_id is not None
-    assert thread.title == user_row.content[:60]
+    # the plain title is the question as a clean one-liner (no trailing full stop), not a blind cut
+    assert thread.title == "قارن مبيعات الشهر ده باللي فات"
     # durable before the model call, terminal after
     assert session.commits >= 2
     # the stored blocks validate against the wire contract

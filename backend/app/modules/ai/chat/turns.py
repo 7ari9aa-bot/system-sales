@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.core import db as core_db
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError
+from app.modules.ai.chat.titles import fallback_title, model_title
 from app.modules.ai.models import AIChatMessage
 
 HISTORY_MESSAGE_LIMIT = 12  # 6 turns max reach the prompt
@@ -393,13 +394,40 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
         assistant.run_id = result.run_id
         assistant.analysis_id = result.saved_evidence_id or result.analysis_id
         if thread.title == "" and user_row.sequence_no == 1:
-            thread.title = user_row.content[:60]
+            # a plain, word-boundary title now; the model's nicer one replaces it below
+            thread.title = fallback_title(user_row.content)
         await _maybe_compact(session, ctx, thread, through_seq=user_row.sequence_no)
         await session.commit()
     except Exception as exc:  # noqa: BLE001 — same poison rule as the call itself
         await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc
+    await _upgrade_title(session, ctx, thread, user_row)
     return assistant
+
+
+async def _upgrade_title(session, ctx, thread, user_row) -> None:
+    """Replace the plain first-question title with a model-written one. Best effort, AFTER the
+    answer is durable: whatever happens here the owner already has their reply."""
+    if user_row.sequence_no != 1 or thread.title != fallback_title(user_row.content):
+        return  # not the opening question, or the owner already renamed it
+    try:
+        from app.modules.ai.models import Agent
+
+        await bind_tenant(session, ctx.tenant_id)
+        agent = await session.get(Agent, thread.agent_id)
+        if agent is None:
+            return
+        title = await model_title(session, ctx.tenant_id, agent, user_row.content)
+        if title:
+            await bind_tenant(session, ctx.tenant_id)
+            thread.title = title
+            await session.commit()
+    except Exception:  # noqa: BLE001 - the answer is already saved
+        logger.warning("si.chat_title_failed thread=%s", thread.id, exc_info=True)
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def retry_chat_turn(session, ctx, thread, *, message_id) -> AIChatMessage:

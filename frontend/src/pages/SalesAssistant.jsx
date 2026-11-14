@@ -74,6 +74,10 @@ export default function SalesAssistant() {
     queryClient.invalidateQueries({ queryKey: ["sales-chat", "threads"], exact: false });
   };
 
+  // what the owner just asked, shown at once while the server works; and the last send error
+  const [outgoing, setOutgoing] = React.useState(null);
+  const [sendError, setSendError] = React.useState(null);
+
   const createThread = useMutation({
     mutationFn: (payload) => api("/ai/sales-chat/threads", { method: "POST", body: payload }),
     onSuccess: (thread) => {
@@ -89,8 +93,17 @@ export default function SalesAssistant() {
         method: "POST",
         body: { content, idempotency_key },
       }),
-    onSuccess: (_data, vars) => invalidateThread(vars.id),
-    onError: (_err, vars) => invalidateThread(vars.id),
+    onSuccess: (_data, vars) => {
+      setOutgoing(null);
+      invalidateThread(vars.id);
+    },
+    onError: (_err, vars) => {
+      // the server refused: give the text back and say so, never swallow the question
+      setOutgoing(null);
+      setSendError(true);
+      setDrafts((d) => ({ ...d, [vars.id ?? "new"]: vars.content, ...(vars.fromNew ? { new: vars.content } : {}) }));
+      invalidateThread(vars.id);
+    },
   });
 
   const updateThread = useMutation({
@@ -128,13 +141,21 @@ export default function SalesAssistant() {
   }, [messages.length, sending, activeId]);
 
   const send = (content) => {
+    setSendError(null);
     setDrafts((d) => ({ ...d, [activeId ?? "new"]: "" }));
+    setOutgoing({ threadId: activeId, content });
     const key = `${activeId ?? "new"}:${Date.now()}`;
     if (!activeId) {
       createThread.mutate({}, {
         onSuccess: (thread) => {
           setActiveId(thread.id);
-          sendTurn.mutate({ id: thread.id, content, idempotency_key: key });
+          setOutgoing({ threadId: thread.id, content });
+          sendTurn.mutate({ id: thread.id, content, idempotency_key: key, fromNew: true });
+        },
+        onError: () => {
+          setOutgoing(null);
+          setSendError(true);
+          setDrafts((d) => ({ ...d, new: content }));
         },
       });
       return;
@@ -217,7 +238,8 @@ export default function SalesAssistant() {
         ) : (
           <MessageList
             messages={messages}
-            pending={sending}
+            outgoing={outgoing && (outgoing.threadId ?? null) === (activeId ?? null) ? outgoing.content : null}
+            pending={sending || createThread.isPending}
             onRetry={(m) => retryTurn.mutate({ threadId: activeId, messageId: m.id })}
           />
         )}
@@ -226,7 +248,11 @@ export default function SalesAssistant() {
 
       <Composer
         value={draft}
-        onChange={(v) => setDrafts((d) => ({ ...d, [activeId ?? "new"]: v }))}
+        onChange={(v) => {
+          if (sendError) setSendError(null);
+          setDrafts((d) => ({ ...d, [activeId ?? "new"]: v }));
+        }}
+        error={sendError ? t("salesAssistant.sendFailed") : null}
         onSend={send}
         disabled={sending || createThread.isPending}
       />

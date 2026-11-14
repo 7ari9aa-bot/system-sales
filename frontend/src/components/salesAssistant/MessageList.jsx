@@ -38,7 +38,7 @@ function CopyButton({ text }) {
 
 function Thinking() {
   return (
-    <div className="flex items-center gap-2.5 py-1">
+    <div data-testid="assistant-pending" className="flex items-center gap-2.5 py-1">
       <span className="inline-flex gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-primary/70 animate-bounce [animation-delay:-0.25s]" />
         <span className="h-1.5 w-1.5 rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
@@ -49,10 +49,13 @@ function Thinking() {
   );
 }
 
-export default function MessageList({ messages, pending, onRetry }) {
+export default function MessageList({ messages, outgoing, pending, onRetry }) {
   const t = useT();
   const { ago } = useFormatters();
   const items = [...(messages ?? [])];
+  if (outgoing) {
+    items.push({ id: "outgoing", role: "user", status: "completed", content: outgoing });
+  }
   if (pending) {
     items.push({ id: "pending", role: "assistant", status: "generating", content: "" });
   }

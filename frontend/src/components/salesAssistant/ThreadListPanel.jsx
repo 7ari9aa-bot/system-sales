@@ -137,14 +137,15 @@ export default function ThreadListPanel({
                       </span>
                     </div>
                   ) : (
-                    <div className="group flex items-center gap-2 px-2 py-2">
+                    <div className="group flex items-start gap-2.5 px-2.5 py-2.5">
                       <span
+                        data-testid="thread-icon"
                         className={
                           archived
-                            ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground/50"
+                            ? "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground/50"
                             : active
-                              ? "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary"
-                              : "grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
+                              ? "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary"
+                              : "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
                         }
                       >
                         <MessageSquare className="h-4 w-4" />
@@ -155,13 +156,14 @@ export default function ThreadListPanel({
                         className="min-w-0 flex-1 text-start"
                       >
                         <span
-                          className={`block truncate text-[13px] ${
+                          data-testid="thread-title"
+                          className={`line-clamp-2 break-words text-[13px] leading-5 ${
                             archived ? "text-muted-foreground" : "font-medium"
                           }`}
                         >
                           {th.title || t("salesAssistant.untitled")}
                         </span>
-                        <span className="block truncate text-[11px] text-muted-foreground/80">
+                        <span data-testid="thread-time" className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
                           {th.last_message_at ? ago(th.last_message_at) : ago(th.created_at)}
                           {archived ? ` · ${t("salesAssistant.archived")}` : ""}
                         </span>

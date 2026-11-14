@@ -6,8 +6,9 @@
  *  server). Spoken words never send by themselves: the owner reads them, fixes them, then sends. */
 
 import React from "react";
-import { ArrowUp, Mic, Square } from "lucide-react";
+import { ArrowUp, Mic, Plus, Square } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { ATTACH_EXTENSIONS, checkAttachment, mergeAttachment } from "./fileAttach";
 import {
   isVoiceSupported,
   mergeDictation,
@@ -17,7 +18,7 @@ import {
   voiceErrorKey,
 } from "./voiceInput";
 
-export default function Composer({ value, onChange, onSend, disabled }) {
+export default function Composer({ value, onChange, onSend, disabled, error }) {
   const { t, lang } = useI18n();
   const ref = React.useRef(null);
   const recRef = React.useRef(null);
@@ -26,6 +27,8 @@ export default function Composer({ value, onChange, onSend, disabled }) {
   valueRef.current = value;
   const [listening, setListening] = React.useState(false);
   const [voiceError, setVoiceError] = React.useState(null);
+  const [attachError, setAttachError] = React.useState(null);
+  const fileRef = React.useRef(null);
   const supported = isVoiceSupported();
 
   // auto-grow: the textarea tracks its content height up to a ceiling
@@ -88,6 +91,26 @@ export default function Composer({ value, onChange, onSend, disabled }) {
     }
   };
 
+  // A small text file is read here in the browser and its text joins the box (nothing uploads).
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // the same file can be picked again
+    if (!file) return;
+    setAttachError(null);
+    const verdict = checkAttachment(file);
+    if (!verdict.ok) return setAttachError(`salesAssistant.attach.${verdict.reason}`);
+    let raw;
+    try {
+      raw = await file.text();
+    } catch {
+      return setAttachError("salesAssistant.attach.read");
+    }
+    const merged = mergeAttachment(valueRef.current, file.name, raw);
+    if (!merged.ok) return setAttachError(`salesAssistant.attach.${merged.reason}`);
+    onChange(merged.text);
+    ref.current?.focus();
+  };
+
   const toggleMic = () => (listening ? stopListening() : startListening());
 
   const submit = () => {
@@ -100,70 +123,106 @@ export default function Composer({ value, onChange, onSend, disabled }) {
 
   return (
     <div data-testid="assistant-composer" className="mx-auto w-full max-w-4xl shrink-0 bg-background px-4 pb-6 pt-2 sm:px-6">
+      {error ? (
+        <p data-testid="assistant-send-error" role="alert" className="mb-2 px-3 text-center text-[12.5px] text-destructive">
+          {error}
+        </p>
+      ) : null}
       {voiceError ? (
         <p data-testid="assistant-voice-error" role="alert" className="mb-2 px-3 text-center text-[12.5px] text-destructive">
           {t(voiceError)}
         </p>
       ) : null}
+      {attachError ? (
+        <p data-testid="assistant-attach-error" role="alert" className="mb-2 px-3 text-center text-[12.5px] text-destructive">
+          {t(attachError)}
+        </p>
+      ) : null}
       <div
         data-testid="assistant-composer-field"
-        className={`flex items-end gap-1.5 rounded-[32px] border bg-card py-2.5 ps-6 pe-2.5 shadow-[0_6px_24px_-8px_rgba(0,0,0,0.18)] transition-all ${
+        className={`rounded-3xl border bg-card px-4 pb-2 pt-3 shadow-[0_4px_18px_-8px_rgba(0,0,0,0.18)] transition-all ${
           disabled
             ? "border-border opacity-70"
             : listening
               ? "border-primary/50 ring-4 ring-primary/10"
-              : "border-border focus-within:border-foreground/25 focus-within:shadow-[0_8px_28px_-8px_rgba(0,0,0,0.24)]"
+              : "border-border focus-within:border-foreground/25 focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.24)]"
         }`}
       >
-        <div className="min-w-0 flex-1">
-          {listening ? (
-            <span data-testid="assistant-listening" className="mb-0.5 flex items-center gap-1.5 text-[11.5px] font-medium text-primary">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-              {t("salesAssistant.listening")}
-            </span>
-          ) : null}
-          <textarea
-            ref={ref}
-            rows={1}
-            value={value}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={t("salesAssistant.composerPlaceholder")}
-            className="max-h-40 min-h-[44px] w-full resize-none bg-transparent py-2.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground"
+        {listening ? (
+          <span data-testid="assistant-listening" className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-primary">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+            {t("salesAssistant.listening")}
+          </span>
+        ) : null}
+        <textarea
+          ref={ref}
+          rows={1}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            if (attachError) setAttachError(null);
+            onChange(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder={t("salesAssistant.composerPlaceholder")}
+          className="max-h-40 min-h-[28px] w-full resize-none bg-transparent text-[15px] leading-6 outline-none placeholder:text-muted-foreground"
+        />
+        <div className="mt-1 flex items-center justify-between gap-1">
+          <input
+            ref={fileRef}
+            type="file"
+            data-testid="assistant-file-input"
+            accept={ATTACH_EXTENSIONS.map((x) => `.${x}`).join(",")}
+            onChange={onFile}
+            className="hidden"
+            tabIndex={-1}
           />
-        </div>
-        {supported ? (
           <button
             type="button"
-            data-testid="assistant-mic"
-            onClick={toggleMic}
+            data-testid="assistant-attach"
+            onClick={() => fileRef.current?.click()}
             disabled={disabled}
-            aria-pressed={listening}
-            aria-label={listening ? t("salesAssistant.micStop") : t("salesAssistant.micStart")}
-            title={listening ? t("salesAssistant.micStop") : t("salesAssistant.micStart")}
-            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40 ${
-              listening ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-surface hover:text-foreground"
-            }`}
+            title={t("salesAssistant.attach.button")}
+            aria-label={t("salesAssistant.attach.button")}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:opacity-40"
           >
-            {listening ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-5 w-5" />}
+            <Plus className="h-[18px] w-[18px]" />
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={submit}
-          disabled={disabled || !value.trim()}
-          title={t("salesAssistant.send")}
-          aria-label={t("salesAssistant.send")}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-35 disabled:shadow-none"
-        >
-          <ArrowUp className="h-5 w-5" />
-        </button>
+          <span className="flex items-center gap-1">
+            {supported ? (
+              <button
+                type="button"
+                data-testid="assistant-mic"
+                onClick={toggleMic}
+                disabled={disabled}
+                aria-pressed={listening}
+                aria-label={listening ? t("salesAssistant.micStop") : t("salesAssistant.micStart")}
+                title={listening ? t("salesAssistant.micStop") : t("salesAssistant.micStart")}
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40 ${
+                  listening ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-surface hover:text-foreground"
+                }`}
+              >
+                {listening ? <Square className="h-3.5 w-3.5 fill-current" /> : <Mic className="h-[18px] w-[18px]" />}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="assistant-send"
+              onClick={submit}
+              disabled={disabled || !value.trim()}
+              title={t("salesAssistant.send")}
+              aria-label={t("salesAssistant.send")}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-30"
+            >
+              <ArrowUp className="h-[18px] w-[18px]" />
+            </button>
+          </span>
+        </div>
       </div>
       <p className="mt-2.5 px-1 text-center text-[11px] text-muted-foreground/70">
         {t("salesAssistant.composerHint")}

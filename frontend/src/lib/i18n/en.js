@@ -243,6 +243,13 @@ export default {
   "salesAssistant.voiceNoSpeech": "Didn't hear anything. Try again closer to the microphone.",
   "salesAssistant.voiceNoMic": "No microphone is connected to this device.",
   "salesAssistant.voiceFailed": "Dictation stopped. Try again or type your question.",
+  "salesAssistant.sendFailed": "Your message wasn't sent. Check your connection and try again; your text is still in the box.",
+  "salesAssistant.attach.button": "Attach a text file",
+  "salesAssistant.attach.type": "That kind of file isn't supported. Attach a txt, csv, md or json file.",
+  "salesAssistant.attach.size": "The file is too large. The limit is about 12 KB.",
+  "salesAssistant.attach.empty": "The file is empty.",
+  "salesAssistant.attach.long": "That's too much text for one message. Shorten the file or your question.",
+  "salesAssistant.attach.read": "Couldn't read the file.",
   "salesAssistant.composerHint": "Enter to send · Shift+Enter for a new line — every answer is validated against your store's evidence.",
   "salesAssistant.groundingNote": "Every number in these answers comes from your store's real data — no guessing.",
 
