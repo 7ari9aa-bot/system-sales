@@ -75,6 +75,7 @@ export default function SettingsLayout() {
           <button
             className="ml-auto lg:hidden h-8 w-8 grid place-items-center rounded-lg hover:bg-sidebar-accent text-muted-foreground"
             onClick={() => setOpen(false)}
+            aria-label={t("nav.closeMenu")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -147,6 +148,7 @@ export default function SettingsLayout() {
           <button
             className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-surface text-muted-foreground"
             onClick={() => setOpen(true)}
+            aria-label={t("nav.openMenu")}
           >
             <Menu className="h-5 w-5" />
           </button>

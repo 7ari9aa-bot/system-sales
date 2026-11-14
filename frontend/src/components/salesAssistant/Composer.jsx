@@ -15,7 +15,7 @@ export default function Composer({ value, onChange, onSend, disabled }) {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [value]);
 
   const submit = () => {
@@ -26,10 +26,11 @@ export default function Composer({ value, onChange, onSend, disabled }) {
   };
 
   return (
-    <div className="border-t border-border bg-card/70 backdrop-blur p-3">
+    <div data-testid="assistant-composer" className="mx-auto w-full max-w-3xl shrink-0 bg-background px-4 pb-3 pt-2">
       <div
-        className={`flex items-end gap-2 rounded-2xl border bg-card p-2 shadow-sm transition-colors ${
-          disabled ? "border-border opacity-70" : "border-border focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20"
+        data-testid="assistant-composer-field"
+        className={`flex items-end gap-2 rounded-[28px] border bg-card py-2 ps-5 pe-2 shadow-sm transition-colors ${
+          disabled ? "border-border opacity-70" : "border-border focus-within:border-foreground/25"
         }`}
       >
         <textarea
@@ -45,19 +46,19 @@ export default function Composer({ value, onChange, onSend, disabled }) {
             }
           }}
           placeholder={t("salesAssistant.composerPlaceholder")}
-          className="max-h-36 min-h-[36px] w-full resize-none bg-transparent px-2 py-1.5 text-[13.5px] leading-6 outline-none placeholder:text-muted-foreground"
+          className="max-h-40 min-h-[40px] w-full resize-none bg-transparent py-2 text-[14.5px] leading-6 outline-none placeholder:text-muted-foreground"
         />
         <button
           type="button"
           onClick={submit}
           disabled={disabled || !value.trim()}
           title={t("salesAssistant.send")}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-35 disabled:shadow-none"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-35 disabled:shadow-none"
         >
           <ArrowUp className="h-4.5 w-4.5" />
         </button>
       </div>
-      <p className="mt-1.5 px-1 text-[10.5px] text-muted-foreground/70">
+      <p className="mt-2 px-1 text-center text-[11px] text-muted-foreground/70">
         {t("salesAssistant.composerHint")}
       </p>
     </div>

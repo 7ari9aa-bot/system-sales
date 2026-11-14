@@ -57,7 +57,7 @@ export default function MessageList({ messages, pending, onRetry }) {
     items.push({ id: "pending", role: "assistant", status: "generating", content: "" });
   }
   return (
-    <div className="space-y-5">
+    <div data-testid="assistant-column" className="space-y-6">
       {items.map((m) => {
         const isUser = m.role === "user";
         const isGenerating = m.status === "generating" || m.status === "pending";
@@ -65,18 +65,19 @@ export default function MessageList({ messages, pending, onRetry }) {
         const textBody =
           m.structured_content?.find?.((b) => b?.type === "text")?.body ?? m.content ?? "";
         return (
-          <div key={m.id} className={`flex gap-2.5 animate-fade-in ${isUser ? "justify-end" : "justify-start"}`}>
+          <div key={m.id} className={`flex gap-3 animate-fade-in ${isUser ? "justify-end" : "justify-start"}`}>
             {!isUser && (
-              <span className="mt-0.5 shrink-0">
+              <span className="mt-1 shrink-0">
                 <Logo size={28} />
               </span>
             )}
-            <div className={`min-w-0 max-w-[88%] ${isUser ? "flex flex-col items-end" : ""}`}>
+            <div className={isUser ? "flex min-w-0 max-w-[85%] flex-col items-end" : "min-w-0 flex-1"}>
               <div
+                data-testid={isUser ? "user-message" : "assistant-message"}
                 className={
                   isUser
-                    ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm"
-                    : "w-fit min-w-0 rounded-2xl rounded-bl-md bg-card border border-border px-4 py-3 shadow-sm"
+                    ? "rounded-3xl bg-surface px-4 py-2.5 text-foreground"
+                    : "min-w-0 py-1"
                 }
               >
                 {isUser ? (

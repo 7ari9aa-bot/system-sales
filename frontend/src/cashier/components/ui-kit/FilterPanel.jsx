@@ -9,7 +9,7 @@ export default function FilterPanel({ children, activeCount = 0, onReset, defaul
     <Collapsible defaultOpen={defaultOpen} className={cn("rounded-xl border border-border bg-card card-soft", className)}>
       <div className={cn("flex items-center justify-between gap-2 px-3 py-2", headerClassName)}>
         <CollapsibleTrigger asChild>
-          <button type="button" className="group flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <button type="button" className="group flex min-h-8 items-center gap-2 rounded-md px-1 text-[13px] font-semibold text-foreground">
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
             فلاتر البحث
             {activeCount > 0 && (
@@ -18,7 +18,7 @@ export default function FilterPanel({ children, activeCount = 0, onReset, defaul
           </button>
         </CollapsibleTrigger>
         {onReset && (
-          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground" onClick={onReset}>
+          <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={onReset}>
             مسح الفلاتر
           </Button>
         )}

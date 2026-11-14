@@ -45,7 +45,7 @@ export default function ThreadListPanel({
         <button
           type="button"
           onClick={onNew}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2.5 text-[13px] font-semibold text-primary-foreground shadow-sm hover:opacity-90 active:scale-[0.99] transition-all"
+          className="inline-flex w-full items-center justify-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-surface active:scale-[0.99]"
         >
           <MessageSquarePlus className="h-4 w-4" />
           {t("salesAssistant.newChat")}
@@ -59,7 +59,7 @@ export default function ThreadListPanel({
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div data-testid="assistant-threads-scroll" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {(threads ?? []).length === 0 && (
           <div className="px-3 py-8 text-center">
             <span className="mx-auto grid h-9 w-9 place-items-center rounded-xl bg-surface text-muted-foreground">

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import TokenIndicator from "@/components/dashboard/TokenIndicator";
 import GlobalSearch from "@/components/dashboard/GlobalSearch";
 
-function Dropdown({ trigger, children, align = "left", width = "w-52" }) {
+function Dropdown({ trigger, children, align = "left", width = "w-52", label }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -22,7 +22,7 @@ function Dropdown({ trigger, children, align = "left", width = "w-52" }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="outline-hidden">
+      <button onClick={() => setOpen((v) => !v)} className="outline-hidden" aria-label={label} aria-haspopup="menu" aria-expanded={open}>
         {trigger(open)}
       </button>
       {open && (
@@ -127,6 +127,7 @@ export default function Header({ onMenu }) {
       <div className="h-16 px-4 sm:px-6 flex items-center gap-3">
         <button
           onClick={onMenu}
+          aria-label={t("nav.openMenu")}
           className="lg:hidden h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground"
         >
           <Menu className="h-5 w-5" />
@@ -143,6 +144,8 @@ export default function Header({ onMenu }) {
           {/* Mobile search toggle */}
           <button
             onClick={() => setSearchOpen((v) => !v)}
+            aria-label={t("nav.search")}
+            aria-expanded={searchOpen}
             className="sm:hidden h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-surface text-muted-foreground"
           >
             <Search className="h-4 w-4" />
@@ -152,6 +155,7 @@ export default function Header({ onMenu }) {
           <Dropdown
             width="w-72"
             align="right"
+            label={unreadCount > 0 ? `${t("notifications.title")} (${unreadCount > 99 ? "99+" : unreadCount})` : t("notifications.title")}
             trigger={() => (
               <span className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground relative cursor-pointer">
                 <Bell className="h-[18px] w-[18px]" />
@@ -217,6 +221,7 @@ export default function Header({ onMenu }) {
           <Dropdown
             width="w-56"
             align="right"
+            label={t("nav.help")}
             trigger={() => (
               <span className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground cursor-pointer hidden sm:grid">
                 <CircleHelp className="h-[18px] w-[18px]" />

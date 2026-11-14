@@ -7,7 +7,6 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Brain, MessageSquareText, PanelLeftClose, ShieldCheck, Sparkles, X } from "lucide-react";
-import { PageHeader } from "@/components/dashboard/ui";
 import Logo from "@/components/dashboard/Logo";
 import Composer from "@/components/salesAssistant/Composer";
 import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
@@ -145,17 +144,37 @@ export default function SalesAssistant() {
 
   const draft = drafts[activeId ?? "new"] ?? "";
   const chatSurface = (
-    <section className="flex min-h-[60vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      {activeThread && activeThread.title ? (
-        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-          <Logo size={24} />
-          <h2 className="min-w-0 truncate text-[14px] font-semibold">{activeThread.title}</h2>
-        </div>
-      ) : null}
+    <div
+      data-testid="assistant-chat"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+    >
+      <div className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
+        <button
+          type="button"
+          onClick={() => setPanelOpen((v) => !v)}
+          aria-label={t("salesAssistant.threads")}
+          className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-surface lg:hidden"
+        >
+          {panelOpen ? <PanelLeftClose className="h-5 w-5" /> : <MessageSquareText className="h-5 w-5" />}
+        </button>
+        <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+          {activeThread && activeThread.title ? activeThread.title : t("nav.salesAssistant")}
+        </h1>
+        <button
+          type="button"
+          onClick={() => setMemoryOpen((v) => !v)}
+          aria-pressed={memoryOpen}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-surface hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground"
+        >
+          <Brain className="h-4 w-4" />
+          {t("memory.open")}
+        </button>
+      </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} data-testid="assistant-chat-scroll" className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-4 py-4">
         {!activeId ? (
-          <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center animate-fade-in">
+          <div className="flex min-h-[55vh] flex-col items-center justify-center gap-5 py-8 text-center animate-fade-in">
             <span className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary shadow-sm">
               <Logo size={38} />
             </span>
@@ -202,6 +221,7 @@ export default function SalesAssistant() {
             onRetry={(m) => retryTurn.mutate({ threadId: activeId, messageId: m.id })}
           />
         )}
+        </div>
       </div>
 
       <Composer
@@ -210,7 +230,7 @@ export default function SalesAssistant() {
         onSend={send}
         disabled={sending || createThread.isPending}
       />
-    </section>
+    </div>
   );
 
   const sidebarBody = (
@@ -246,38 +266,14 @@ export default function SalesAssistant() {
   );
 
   return (
-    <div className="min-h-0 flex-1 space-y-4">
-      <PageHeader
-        title={t("nav.salesAssistant")}
-        subtitle={t("salesAssistant.subtitle")}
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMemoryOpen((v) => !v)}
-              aria-pressed={memoryOpen}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium shadow-sm hover:bg-surface"
-            >
-              <Brain className="h-4 w-4" />
-              {t("memory.open")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanelOpen((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12.5px] font-medium shadow-sm lg:hidden"
-            >
-              {panelOpen ? <PanelLeftClose className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-              {t("salesAssistant.threads")}
-            </button>
-          </div>
-        }
-      />
-
-      <div className="flex min-h-[68vh] gap-4">
-        {/* لوحة المحادثات — ثابتة على الشاشات الكبيرة، drawer فوق خلفية على الموبايل */}
-        <aside className="hidden w-[300px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-7rem)]">
-          {sidebarBody}
-        </aside>
+    <div data-testid="assistant-workspace" className="flex h-full min-h-0 w-full overflow-hidden bg-background">
+      {/* thread sidebar: fixed from lg up, a drawer over a backdrop below. It scrolls on its own. */}
+      <aside
+        data-testid="assistant-sidebar"
+        className="hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-e border-border bg-surface/60 lg:flex"
+      >
+        {sidebarBody}
+      </aside>
 
         {panelOpen && (
           <div className="fixed inset-0 z-50 flex lg:hidden">
@@ -313,12 +309,11 @@ export default function SalesAssistant() {
               onClick={() => setMemoryOpen(false)}
               aria-hidden
             />
-            <div className="fixed inset-y-0 end-0 z-50 flex w-[92%] max-w-[380px] p-2 animate-fade-in lg:static lg:z-auto lg:block lg:w-[340px] lg:max-w-none lg:shrink-0 lg:p-0">
+            <div className="fixed inset-y-0 end-0 z-50 flex w-[92%] max-w-[380px] p-2 animate-fade-in lg:static lg:z-auto lg:flex lg:h-full lg:w-[340px] lg:max-w-none lg:shrink-0 lg:p-0">
               <MemoryPanel onClose={() => setMemoryOpen(false)} />
             </div>
           </>
         )}
-      </div>
     </div>
   );
 }

@@ -154,7 +154,7 @@ export default function MemoryPanel({ onClose }) {
     <aside
       role="dialog"
       aria-label={t("memory.title")}
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-border bg-card max-lg:rounded-xl max-lg:border max-lg:shadow-sm lg:border-s"
     >
       <header className="flex items-start gap-2.5 border-b border-border px-4 py-3">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">

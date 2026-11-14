@@ -143,7 +143,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.grow"),
       items: [
-        { to: "/sales-assistant", label: "AI analysis", icon: Sparkles },
+        { to: "/sales-assistant", label: t("nav.salesAssistant"), icon: Sparkles },
         { to: "/analytics", label: t("nav.analytics"), icon: BarChart3 },
         ...(user?.is_platform_admin
           ? [{ to: "/owner", label: t("nav.ownerConsole"), icon: ShieldCheck }]
