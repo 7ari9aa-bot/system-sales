@@ -171,10 +171,10 @@ export default function SalesAssistant() {
         </button>
       </div>
 
-      <div ref={scrollRef} data-testid="assistant-chat-scroll" className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-4">
+      <div ref={scrollRef} data-testid="assistant-chat-scroll" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 py-2 sm:px-6">
         {!activeId ? (
-          <div className="flex min-h-[55vh] flex-col items-center justify-center gap-5 py-8 text-center animate-fade-in">
+          <div data-testid="assistant-empty" className="flex flex-1 flex-col items-center justify-center gap-5 py-6 text-center animate-fade-in">
             <span className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary shadow-sm">
               <Logo size={38} />
             </span>

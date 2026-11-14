@@ -41,15 +41,7 @@ export default function ThreadListPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="space-y-2 p-3">
-        <button
-          type="button"
-          onClick={onNew}
-          className="inline-flex w-full items-center justify-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-surface active:scale-[0.99]"
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-          {t("salesAssistant.newChat")}
-        </button>
+      <div data-testid="assistant-sidebar-head" className="shrink-0 space-y-2 p-3">
         <div className="relative">
           <input
             value={search}
@@ -58,6 +50,15 @@ export default function ThreadListPanel({
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/25 focus:border-primary/40 transition-shadow"
           />
         </div>
+        <button
+          type="button"
+          onClick={onNew}
+          data-testid="new-chat"
+          className="inline-flex w-full items-center justify-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-surface active:scale-[0.99]"
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+          {t("salesAssistant.newChat")}
+        </button>
       </div>
       <div data-testid="assistant-threads-scroll" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {(threads ?? []).length === 0 && (

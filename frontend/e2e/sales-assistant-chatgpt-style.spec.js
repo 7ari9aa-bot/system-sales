@@ -48,7 +48,7 @@ test("everything sits in one centred column, the composer included", async ({ pa
   const col = await page.getByTestId("assistant-column").boundingBox();
   const comp = await page.getByTestId("assistant-composer").boundingBox();
   const chat = await page.getByTestId("assistant-chat").boundingBox();
-  expect(col.width, "the column is wider than a readable measure").toBeLessThanOrEqual(780);
+  expect(col.width, "the column is wider than a readable measure").toBeLessThanOrEqual(900);
   expect(Math.abs(col.x + col.width / 2 - (chat.x + chat.width / 2)), "the column is off-centre").toBeLessThanOrEqual(2);
   expect(Math.abs(comp.x + comp.width / 2 - (chat.x + chat.width / 2)), "the composer is off-centre").toBeLessThanOrEqual(2);
   // the composer's pill lines up with the text column (the column's own side padding is the same)
@@ -85,7 +85,7 @@ test("Enter sends and the box clears; Shift+Enter makes a new line", async ({ pa
 
 test("the send button is disabled until there is text", async ({ page }) => {
   await open(page);
-  const send = page.getByTestId("assistant-composer-field").getByRole("button");
+  const send = page.getByTestId("assistant-composer-field").getByRole("button", { name: "إرسال" });
   await expect(send).toBeDisabled();
   await page.getByTestId("assistant-composer-field").locator("textarea").fill("سؤال");
   await expect(send).toBeEnabled();

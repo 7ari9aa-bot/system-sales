@@ -236,6 +236,13 @@ export default {
   "salesAssistant.refRun": "Run record",
   "salesAssistant.findingsTitle": "Evidence-backed findings",
   "salesAssistant.confidence": "Confidence",
+  "salesAssistant.listening": "Listening…",
+  "salesAssistant.micStart": "Dictate with your voice",
+  "salesAssistant.micStop": "Stop dictation",
+  "salesAssistant.voiceDenied": "Can't reach the microphone. Allow it for this site in your browser settings.",
+  "salesAssistant.voiceNoSpeech": "Didn't hear anything. Try again closer to the microphone.",
+  "salesAssistant.voiceNoMic": "No microphone is connected to this device.",
+  "salesAssistant.voiceFailed": "Dictation stopped. Try again or type your question.",
   "salesAssistant.composerHint": "Enter to send · Shift+Enter for a new line — every answer is validated against your store's evidence.",
   "salesAssistant.groundingNote": "Every number in these answers comes from your store's real data — no guessing.",
 

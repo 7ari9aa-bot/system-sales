@@ -236,6 +236,13 @@ export default {
   "salesAssistant.refRun": "سجل تشغيل",
   "salesAssistant.findingsTitle": "النتائج المدعومة بالأدلة",
   "salesAssistant.confidence": "الثقة",
+  "salesAssistant.listening": "بسمعك…",
+  "salesAssistant.micStart": "سجّل بصوتك",
+  "salesAssistant.micStop": "إيقاف التسجيل",
+  "salesAssistant.voiceDenied": "مقدرتش أوصل للميكروفون. اسمح للمتصفح باستخدامه من إعدادات الموقع.",
+  "salesAssistant.voiceNoSpeech": "ماسمعتش حاجة. جرّب تاني وأنت قريب من الميكروفون.",
+  "salesAssistant.voiceNoMic": "مش لاقي ميكروفون متوصّل بالجهاز.",
+  "salesAssistant.voiceFailed": "التسجيل الصوتي وقف. جرّب تاني أو اكتب سؤالك.",
   "salesAssistant.composerHint": "Enter للإرسال · Shift+Enter لسطر جديد — كل إجابة بتتحقق من أدلة متجرك.",
   "salesAssistant.groundingNote": "كل رقم في الإجابات دي جاي من بيانات متجرك الحقيقية — مفيش تخمين.",
 
