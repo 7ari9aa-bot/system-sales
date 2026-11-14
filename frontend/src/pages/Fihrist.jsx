@@ -20,6 +20,8 @@ import Spotlight from '@/components/Spotlight'
 import { getTokens } from '@/lib/api'
 import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
 import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
+import BlogPost, { BlogIndex } from '@/pages/fhrist/Blog'
+import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
 import { localizePath, localizeHtmlLinks } from '@/lib/locale-paths'
 import { routeForPath, resolveLocalizedPath, absoluteUrl } from '@/lib/public-seo-routes.mjs'
 
@@ -31,6 +33,7 @@ const navItems = [
   { href: '/conversations', label: c('المحادثات', 'Conversations') },
   { href: '/assistant', label: c('AI', 'AI') },
   { href: '/solutions', label: c('الحلول', 'Solutions') },
+  { href: '/blog', label: c('المدونة', 'Blog') },
   { href: '/pricing', label: c('الأسعار', 'Pricing') },
   { href: '/security', label: c('الأمان', 'Security') },
 ]
@@ -69,6 +72,8 @@ export const pageDescription = {
 }
 
 const solutionMeta = (key, kind) => {
+  if (key === 'blog') return BLOG_INDEX[kind]
+  if (key?.startsWith('post:')) return BLOG_POSTS[key.slice('post:'.length)]?.[kind]
   if (key === 'solutions') return SOLUTIONS_INDEX[kind]
   if (key?.startsWith('solution:')) return SOLUTIONS[key.slice('solution:'.length)]?.[kind]
   return null
@@ -254,10 +259,12 @@ function App() {
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => {
+    if (page === 'blog') return <BlogIndex locale={locale}/>
+    if (page.startsWith('post:')) return <BlogPost slug={page.slice('post:'.length)} locale={locale}/>
     if (page === 'solutions') return <SolutionsIndex locale={locale}/>
     if (page.startsWith('solution:')) return <SolutionPage slug={page.slice('solution:'.length)} locale={locale}/>
     return page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>
-  }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
+  }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/blog">{tx(c('المدونة','Blog'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
 
 function ChannelChips({ locale }) {
   return <div className="channel-chips"><span>{tx(c('القنوات','Channels'), locale)}</span>{['WhatsApp','Messenger','Instagram','Email','Web chat'].map((n) => <b key={n}><i/>{n}</b>)}</div>

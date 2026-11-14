@@ -58,3 +58,21 @@ test("every keyword landing page renders a distinct H1, FAQ and FAQ schema in bo
   }
   expect(headings.size).toBe(slugs.length * 2);
 });
+
+test("blog index and articles render in both languages with FAQ and schema", async ({ page }) => {
+  for (const [prefix, lang] of [["", "ar"], ["/en", "en"]]) {
+    const index = await page.goto(`${prefix}/blog`, { waitUntil: "domcontentloaded" });
+    expect(index?.status()).toBe(200);
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    expect(await page.locator('a[href*="/blog/"]').count()).toBeGreaterThanOrEqual(10);
+
+    const response = await page.goto(`${prefix}/blog/how-to-sell-on-whatsapp-organized`, { waitUntil: "domcontentloaded" });
+    expect(response?.status()).toBe(200);
+    expect(await page.locator("article h2").count()).toBeGreaterThanOrEqual(7);
+    expect(await page.locator("details.faq-item").count()).toBeGreaterThanOrEqual(4);
+    const schemas = (await page.locator('script[type="application/ld+json"]').allInnerTexts()).join("");
+    expect(schemas).toContain('"Article"');
+    expect(schemas).toContain('"FAQPage"');
+  }
+  expect((await page.goto("/blog/unknown-post"))?.status()).toBe(404);
+});
