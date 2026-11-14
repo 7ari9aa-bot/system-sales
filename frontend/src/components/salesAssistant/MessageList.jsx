@@ -52,7 +52,9 @@ function Thinking() {
 export default function MessageList({ messages, outgoing, pending, onRetry }) {
   const t = useT();
   const { ago } = useFormatters();
-  const items = [...(messages ?? [])];
+  // The API lists newest first (it pages backwards). A chat reads oldest to newest, so the order is
+  // fixed here by the turn number, whatever order the list arrives in.
+  const items = [...(messages ?? [])].sort((a, b) => (a.sequence_no ?? 0) - (b.sequence_no ?? 0));
   if (outgoing) {
     items.push({ id: "outgoing", role: "user", status: "completed", content: outgoing });
   }

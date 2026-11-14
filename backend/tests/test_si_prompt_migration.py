@@ -22,7 +22,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 PATH = (
     Path(__file__).resolve().parents[1]
@@ -66,9 +65,9 @@ def test_the_code_prompt_says_sales_means_money_and_names_real_metrics() -> None
 
     computable = compiler.computable_metric_names()
     for name in ("collected_revenue", "delivered_revenue", "orders_placed"):
-        assert name in SI_SYSTEM_PROMPT
+        assert name in _load()._NEW
         assert name in computable, f"the prompt sends the model to {name}, which no tool computes"
-    assert "مش عدد الأوردرات" in SI_SYSTEM_PROMPT
+    assert "مش عدد الأوردرات" in _load()._NEW
 
 
 @pytest.fixture

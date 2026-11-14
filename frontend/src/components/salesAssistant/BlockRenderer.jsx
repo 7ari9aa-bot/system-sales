@@ -121,7 +121,9 @@ export default function BlockRenderer({ blocks }) {
   if (!Array.isArray(blocks) || blocks.length === 0) return null;
   const kpis = blocks.filter((b) => b?.type === "kpi");
   const findings = blocks.filter((b) => b?.type === "findings");
-  const rest = blocks.filter((b) => !["kpi", "findings"].includes(b?.type));
+  // "text" is the answer itself and MessageList already shows it as formatted text, so showing the
+  // block again printed every answer twice. "refs" are run ids for engineers, not for the owner.
+  const rest = blocks.filter((b) => !["kpi", "findings", "text", "refs"].includes(b?.type));
 
   return (
     <div className="space-y-2.5 min-w-0">

@@ -31,7 +31,7 @@ export const messages = (threadId) =>
 /** Mount the mocked day. `sent` collects the bodies of the messages the page posts. */
 export async function mockAssistantDay(page, { lang = "ar", empty = false, sendStatus = 200, sendDelayMs = 0, createStatus = 200 } = {}) {
   const sent = [];
-  const state = { sendStatus, sendDelayMs, createStatus };
+  const state = { sendStatus, sendDelayMs, createStatus, custom: null };
   await page.context().addCookies([{ name: "csrf_token", value: "ui-test", url: "http://127.0.0.1:4173" }]);
   await page.addInitScript((l) => localStorage.setItem("salesos.lang", l), lang);
   await page.route("**/api/v1/**", (r) => {
@@ -42,7 +42,8 @@ export async function mockAssistantDay(page, { lang = "ar", empty = false, sendS
     if (p === "/ai/sales-chat/threads" && req.method() === "GET") return r.fulfill({ json: empty ? [] : threads });
     if (p === "/ai/sales-chat/threads" && req.method() === "POST") return state.createStatus === 200 ? r.fulfill({ json: threads[0] }) : r.fulfill({ status: state.createStatus, json: { detail: "boom" } });
     const m = p.match(/^\/ai\/sales-chat\/threads\/([^/]+)\/messages$/);
-    if (m && req.method() === "GET") return r.fulfill({ json: messages(m[1]) });
+    // The real API lists NEWEST FIRST (it pages backwards); the page has to put them in order.
+    if (m && req.method() === "GET") return r.fulfill({ json: state.custom ? [...state.custom] : [...messages(m[1])].reverse() });
     if (m && req.method() === "POST") {
       sent.push(req.postDataJSON());
       const reply = () => (state.sendStatus === 200 ? r.fulfill({ json: { ok: true } }) : r.fulfill({ status: state.sendStatus, json: { detail: "boom" } }));
@@ -53,3 +54,17 @@ export async function mockAssistantDay(page, { lang = "ar", empty = false, sendS
   });
   return { sent, state };
 }
+
+/** One real exchange as production stores it: the answer text appears in `content` AND as a text
+ *  block, followed by a refs block with the run id. Newest first, as the API returns it. */
+export const realExchange = (answer, question = "هلا") => [
+  {
+    id: "m-2", thread_id: "t", sequence_no: 2, role: "assistant", status: "completed", content: answer,
+    structured_content: [{ type: "text", body: answer }, { type: "refs", run_id: "c26f61a9-48b7-474c-9c6d-82b5f75fb318", analysis_id: null }],
+    run_id: "c26f61a9-48b7-474c-9c6d-82b5f75fb318", analysis_id: null, error_code: null, created_at: "2026-11-14T16:05:35Z",
+  },
+  {
+    id: "m-1", thread_id: "t", sequence_no: 1, role: "user", status: "completed", content: question,
+    structured_content: null, run_id: null, analysis_id: null, error_code: null, created_at: "2026-11-14T16:05:35Z",
+  },
+];

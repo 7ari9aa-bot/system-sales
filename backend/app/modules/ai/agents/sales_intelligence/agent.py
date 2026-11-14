@@ -41,6 +41,7 @@ from app.modules.ai.agents.sales_intelligence import (
 from app.modules.ai.agents.sales_intelligence.coverage import (
     regenerate_on_coverage_gap,
 )
+from app.modules.ai.agents.sales_intelligence.plain_words import plain_words
 from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E402
     SI_SYSTEM_PROMPT as SI_SYSTEM_PROMPT,
 )
@@ -542,15 +543,16 @@ async def run_sales_analysis(
         if problems:
             logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
             outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
-            answer = safe_response(findings, {})
+            answer = plain_words(safe_response(findings, {}))
             guardrail_reason = "si_response_invalid"
             safe_resp = True
         else:
             outcome = Outcome.ANSWERED
-            answer = result.content
+            # numbers are already proven above; only the words are touched here
+            answer = plain_words(result.content)
     else:
         outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
-        answer = safe_response(findings, {})
+        answer = plain_words(safe_response(findings, {}))
         guardrail_reason = result.guardrail_reason
 
     saved_evidence_id = None

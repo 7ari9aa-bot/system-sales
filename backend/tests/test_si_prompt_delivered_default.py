@@ -50,20 +50,20 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
     module = _load()
     assert module.revision == "fe2026111208"
     assert module.down_revision == "fe2026111207"
-    # the text it writes IS the text the code provisions for new shops
-    assert module._NEW == SI_SYSTEM_PROMPT
+    # the text it writes is what production holds now; the code text has since moved on
+    assert module._NEW != SI_SYSTEM_PROMPT  # frozen: fe2026111210 moved the code text on
     # and the text it replaces is exactly what fe2026111206 put in production
     assert module._OLD == _load(PREVIOUS)._NEW
     assert module._OLD != module._NEW
 
 
 def test_the_prompt_starts_with_delivered_and_no_longer_with_collected() -> None:
-    assert "ابدأ بالإيراد المسلَّم (delivered_revenue" in SI_SYSTEM_PROMPT
+    assert "ابدأ بالإيراد المسلَّم (delivered_revenue" in _load()._NEW
     # collected is still named, but only as the answer to an explicit question about money received
-    assert "collected_revenue" in SI_SYSTEM_PROMPT
-    assert "ابدأ بالإيراد المحصّل" not in SI_SYSTEM_PROMPT
-    start = SI_SYSTEM_PROMPT.index("ابدأ بالإيراد")
-    assert SI_SYSTEM_PROMPT.index("delivered_revenue", start) < SI_SYSTEM_PROMPT.index(
+    assert "collected_revenue" in _load()._NEW
+    assert "ابدأ بالإيراد المحصّل" not in _load()._NEW
+    start = _load()._NEW.index("ابدأ بالإيراد")
+    assert _load()._NEW.index("delivered_revenue", start) < _load()._NEW.index(
         "collected_revenue", start
     )
 
@@ -73,9 +73,9 @@ def test_every_metric_the_prompt_names_is_one_a_tool_computes() -> None:
 
     computable = compiler.computable_metric_names()
     for name in ("delivered_revenue", "collected_revenue", "orders_placed"):
-        assert name in SI_SYSTEM_PROMPT
+        assert name in _load()._NEW
         assert name in computable, f"the prompt sends the model to {name}, which no tool computes"
-    assert "مش عدد الأوردرات" in SI_SYSTEM_PROMPT
+    assert "مش عدد الأوردرات" in _load()._NEW
 
 
 @pytest.fixture
