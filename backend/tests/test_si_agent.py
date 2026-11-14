@@ -75,7 +75,7 @@ async def _seed(db, tenant_id, agent_with_tools: bool = True):
     if agent_with_tools:
         for name in (
             "si_metric",
-            "si_analyze_drivers",
+            "si_why",
         ):
             db.add(AgentTool(tenant_id=tenant_id, agent_id=agent.id, name=name))
     customer = Customer(tenant_id=tenant_id, name="SI Customer")

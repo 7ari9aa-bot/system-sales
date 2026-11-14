@@ -380,6 +380,12 @@ async def run_sales_analysis(
         tenant_row[1] if tenant_row else None, merchant_currency, tenant_id
     )
 
+    # Attach any tool the agent row does not have yet. Only the old /ai/sales route used to do
+    # this, so an agent created before a tool existed never received it on the chat path: in
+    # production 11 of 12 agents held three tools and answered "no stock data" with the stock tool
+    # deployed. It adds the missing ones and never removes or re-enables anything.
+    await ensure_si_tools(session, tenant_id, agent_id)
+
     profile = await load_store_metric_profile(session, tenant_id)
     owner_notes = await _owner_notes_for_prompt(session, tenant_id, user_id)
 
