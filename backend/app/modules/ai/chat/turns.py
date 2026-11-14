@@ -366,24 +366,6 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
             raise ConflictError("assistant turn failed; retry is available") from exc
         return assistant
 
-    # A bare greeting or thanks is answered here with a fixed short line: no analysis, no model.
-    # The match is the WHOLE message against a closed list, so a real question never lands here.
-    from app.modules.ai.agents.sales_intelligence.smalltalk import smalltalk_reply
-
-    greeting = smalltalk_reply(user_row.content)
-    if greeting is not None:
-        try:
-            assistant.content = greeting
-            assistant.structured_content = [{"type": "text", "body": greeting}]
-            assistant.status = "completed"
-            if thread.title == "" and user_row.sequence_no == 1:
-                thread.title = fallback_title(user_row.content)
-            await session.commit()
-        except Exception as exc:  # noqa: BLE001
-            await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
-            raise ConflictError("assistant turn failed; retry is available") from exc
-        return assistant
-
     history = await _bounded_history(session, ctx, thread, through_seq=user_row.sequence_no - 1)
     try:
         from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
