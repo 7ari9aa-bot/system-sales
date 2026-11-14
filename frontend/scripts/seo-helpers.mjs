@@ -1,5 +1,6 @@
 import { SITE_ORIGIN, absoluteUrl } from '../src/lib/public-seo-routes.mjs';
 import { SOLUTIONS } from '../src/lib/solutions-content.js';
+import { BLOG_POSTS } from '../src/lib/blog-content.js';
 
 const NAME = 'FIHRIST';
 
@@ -16,6 +17,7 @@ const BREADCRUMB_LABEL = {
   'contact-sales': { ar: 'تواصل مع المبيعات', en: 'Contact sales' },
   support: { ar: 'الدعم', en: 'Support' },
   solutions: { ar: 'الحلول', en: 'Solutions' },
+  blog: { ar: 'المدونة', en: 'Blog' },
 };
 
 const ORG_DESCRIPTION = {
@@ -43,6 +45,7 @@ const website = () => ({
 
 function breadcrumbs(route) {
   const baseKey = route.key.startsWith('solution:') ? 'solutions' : route.key;
+  const isPost = route.key.startsWith('post:');
   const homePath = route.locale === 'en' ? '/en' : '/';
   const items = [{ name: NAME, item: absoluteUrl(homePath) }];
   if (route.key !== 'home') {
@@ -50,7 +53,13 @@ function breadcrumbs(route) {
       const solutionsPath = route.locale === 'en' ? '/en/solutions' : '/solutions';
       items.push({ name: BREADCRUMB_LABEL.solutions[route.locale], item: absoluteUrl(solutionsPath) });
     }
-    const label = route.key.startsWith('solution:')
+    if (isPost) {
+      const blogPath = route.locale === 'en' ? '/en/blog' : '/blog';
+      items.push({ name: BREADCRUMB_LABEL.blog[route.locale], item: absoluteUrl(blogPath) });
+    }
+    const label = isPost
+      ? BLOG_POSTS[route.key.slice('post:'.length)].h1[route.locale]
+      : route.key.startsWith('solution:')
       ? SOLUTIONS[route.key.slice('solution:'.length)].kicker[route.locale]
       : BREADCRUMB_LABEL[baseKey]?.[route.locale];
     if (label) items.push({ name: label, item: absoluteUrl(route.path) });
@@ -62,8 +71,10 @@ function breadcrumbs(route) {
 }
 
 function faqSchema(route) {
-  if (!route.key.startsWith('solution:')) return null;
-  const page = SOLUTIONS[route.key.slice('solution:'.length)];
+  let page = null;
+  if (route.key.startsWith('solution:')) page = SOLUTIONS[route.key.slice('solution:'.length)];
+  if (route.key.startsWith('post:')) page = BLOG_POSTS[route.key.slice('post:'.length)];
+  if (!page) return null;
   if (!page?.faq?.length) return null;
   return {
     '@type': 'FAQPage',
@@ -99,6 +110,20 @@ export function buildSchemas(route, title, description) {
     };
   }
   const blocks = [page, breadcrumbs(route)];
+  if (route.key.startsWith('post:')) {
+    const post = BLOG_POSTS[route.key.slice('post:'.length)];
+    blocks.push({
+      '@type': 'Article',
+      headline: post.h1[route.locale],
+      description,
+      inLanguage: route.locale,
+      datePublished: post.date,
+      dateModified: post.date,
+      mainEntityOfPage: canonical,
+      author: { '@id': `${SITE_ORIGIN}/#organization` },
+      publisher: { '@id': `${SITE_ORIGIN}/#organization` },
+    });
+  }
   if (route.key === 'home') blocks.unshift(organization(), website());
   const faq = faqSchema(route);
   if (faq) blocks.push(faq);
@@ -130,11 +155,18 @@ export function buildLlmsTxt(routes) {
   const label = (route) => {
     if (route.key === 'home') return 'Home';
     if (route.key === 'solutions') return 'Solutions';
+    if (route.key === 'blog') return 'Blog';
+    if (route.key.startsWith('post:')) return BLOG_POSTS[route.key.slice('post:'.length)].h1.en;
     if (route.key.startsWith('solution:')) return SOLUTIONS[route.key.slice('solution:'.length)].kicker.en;
     return BREADCRUMB_LABEL[route.key]?.en ?? route.key;
   };
-  const line = (route) => `- [${label(route)}](${absoluteUrl(route.path)}): ${route.key.startsWith('solution:') ? SOLUTIONS[route.key.slice('solution:'.length)].description.en : ''}`.replace(/: $/, '');
-  const core = routes.filter((r) => !r.key.startsWith('solution') && !['privacy', 'terms'].includes(r.key));
+  const line = (route) => {
+    const desc = route.key.startsWith('solution:') ? SOLUTIONS[route.key.slice('solution:'.length)].description.en
+      : route.key.startsWith('post:') ? BLOG_POSTS[route.key.slice('post:'.length)].description.en : '';
+    return `- [${label(route)}](${absoluteUrl(route.path)})${desc ? `: ${desc}` : ''}`;
+  };
+  const core = routes.filter((r) => !r.key.startsWith('solution') && !r.key.startsWith('post:') && !['privacy', 'terms'].includes(r.key));
+  const posts = routes.filter((r) => r.key.startsWith('post:'));
   const solutions = routes.filter((r) => r.key.startsWith('solution:'));
   const english = (route) => ({ ...route, path: route.path === '/' ? '/en' : `/en${route.path}` });
   return [
@@ -149,6 +181,9 @@ export function buildLlmsTxt(routes) {
     '',
     '## Solutions',
     ...solutions.map((r) => line(english(r))),
+    '',
+    '## Articles',
+    ...posts.map((r) => line(english(r))),
     '',
     '## Legal',
     `- [Privacy](${absoluteUrl('/en/privacy')})`,

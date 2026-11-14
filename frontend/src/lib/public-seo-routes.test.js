@@ -54,7 +54,7 @@ describe('vercel rewrites (no soft 404)', () => {
   const matchesSpa = (pathname) => spaRules.some((r) => toRegex(r.source).test(pathname));
 
   it('does not rewrite arbitrary paths to the SPA shell', () => {
-    for (const bad of ['/nonexistent', '/en/nonexistent', '/blog', '/llms.txt.bak', '/wp-admin', '/pricing/extra']) {
+    for (const bad of ['/nonexistent', '/en/nonexistent', '/blogs', '/blog/unknown-post', '/llms.txt.bak', '/wp-admin', '/pricing/extra']) {
       expect(matchesSpa(bad), bad).toBe(false);
     }
   });

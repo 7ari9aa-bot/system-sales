@@ -34,6 +34,21 @@ export const SOLUTION_SLUGS = [
   'order-management-system',
 ];
 
+// Blog articles. Copy lives in blog-content.js; the slug list lives here so the
+// sitemap, hreflang, prerender and the Vercel allow-list stay in sync.
+export const BLOG_SLUGS = [
+  'how-to-sell-on-whatsapp-organized',
+  'inventory-tracking-for-small-stores',
+  'crm-vs-order-log-difference',
+  'reply-to-customers-faster-unified-inbox',
+  'follow-up-customers-who-went-quiet',
+  'prevent-overselling-and-stockouts',
+  'whatsapp-order-taking-checklist',
+  'ai-assistant-for-store-customer-replies',
+  'pos-for-small-shops-what-to-look-for',
+  'sales-report-basics-for-store-owners',
+];
+
 export const LOCALES = ['ar', 'en'];
 export const DEFAULT_LOCALE = 'ar';
 
@@ -47,6 +62,8 @@ export const PUBLIC_SEO_ROUTES = [
   ...CORE_KEYS.map(([path, key]) => ({ path, key })),
   ...SOLUTION_SLUGS.map((slug) => ({ path: `/solutions/${slug}`, key: `solution:${slug}` })),
   { path: '/solutions', key: 'solutions' },
+  { path: '/blog', key: 'blog' },
+  ...BLOG_SLUGS.map((slug) => ({ path: `/blog/${slug}`, key: `post:${slug}` })),
 ];
 
 /** Every route in every locale: [{ path, key, locale, arPath, enPath }]. */
