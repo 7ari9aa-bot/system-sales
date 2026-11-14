@@ -24,25 +24,12 @@ _DEFINITION = AgentDefinition(
             required=True,
         ),
         AgentCapability(
-            name="si_analyze_drivers", description="Revenue driver decomposition", required=False
+            name="si_why",
+            description="Why revenue moved, weekday mix, new vs returning customers, carriers",
+            required=False,
         ),
         AgentCapability(
             name="si_data_status", description="Store data freshness and maturity", required=False
-        ),
-        AgentCapability(
-            name="si_analyze_seasonality",
-            description="Weekday mix and seasonality analysis",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_analyze_customers",
-            description="New vs returning customers analysis",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_analyze_fulfillment",
-            description="Carrier delivery and rejection rates",
-            required=False,
         ),
         AgentCapability(
             name="si_top_products",

@@ -407,6 +407,45 @@ async def _si_metric(
     raise ValidationError(f"mode must be one of: {', '.join(_METRIC_MODES)} (got {mode!r})")
 
 
+_WHY_FOCUSES = ("drivers", "seasonality", "customers", "fulfillment")
+
+
+class SIWhyArgs(BaseModel):
+    """One analysis of the store as a whole. ``focus`` says which."""
+
+    focus: Literal["drivers", "seasonality", "customers", "fulfillment"]
+    days: int = Field(default=30, ge=1, le=90)
+    # only for focus=fulfillment: carriers with fewer shipments than this are left out
+    minimum_volume: int = Field(default=10, ge=1, le=100)
+
+
+async def _si_why(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    focus: str,
+    days: int = 30,
+    minimum_volume: int = 10,
+    context: dict | None = None,
+) -> dict:
+    """A thin router: each focus runs the same tested analysis it always did.
+
+    The four tools it replaces were four more choices for the model on every question. Nothing is
+    recomputed here, so every guarantee of the originals is the originals' own.
+    """
+    if focus == "drivers":
+        return await _si_analyze_drivers(session, tenant_id, days=days)
+    if focus == "seasonality":
+        return await _si_analyze_seasonality(session, tenant_id, days=days)
+    if focus == "customers":
+        return await _si_analyze_customers(session, tenant_id, days=days)
+    if focus == "fulfillment":
+        return await _si_analyze_fulfillment(
+            session, tenant_id, days=days, minimum_volume=minimum_volume
+        )
+    raise ValidationError(f"focus must be one of: {', '.join(_WHY_FOCUSES)} (got {focus!r})")
+
+
 class SIStatusArgs(BaseModel):
     pass
 
@@ -1808,11 +1847,8 @@ async def _si_social_comments(
 #: read this tuple instead of re-listing them.
 SI_TOOLS: tuple[str, ...] = (
     "si_metric",
-    "si_analyze_drivers",
+    "si_why",
     "si_data_status",
-    "si_analyze_seasonality",
-    "si_analyze_customers",
-    "si_analyze_fulfillment",
     "si_top_products",
     "si_customer_activity",
     "si_channel_activity",
@@ -1859,10 +1895,23 @@ def register_si_tools() -> None:
     metrics = ", ".join(sorted(computable_metric_names()))
     specs = [
         ToolSpec(
-            name="si_analyze_drivers",
-            description="Decompose the revenue change: orders vs AOV (exact).",
-            args_schema=SIDriversArgs,
-            handler=_si_analyze_drivers,
+            name="si_why",
+            description=(
+                "Analyse the store as a whole over the last N days. Pick focus: "
+                "drivers = WHY revenue moved, split exactly into more or fewer orders versus "
+                "a bigger or smaller basket (use for 'why did sales go up or down'); "
+                "seasonality = whether the weekday mix explains the change, with the daily "
+                "revenue shape (use for 'which days are strong, is it just the weekend'); "
+                "customers = new versus returning customers (use for 'who is buying, are "
+                "they coming back'); "
+                "fulfillment = delivery and rejection rate per carrier (use for 'which "
+                "carrier is failing, why are orders returned'). "
+                "Pass days (1 to 90, default 30). minimum_volume (default 10) is only for "
+                "fulfillment: a carrier with fewer shipments than that is left out. "
+                "To get one metric's number, comparison or split use si_metric instead."
+            ),
+            args_schema=SIWhyArgs,
+            handler=_si_why,
             tags=["sales-intelligence"],
         ),
         ToolSpec(
@@ -1888,27 +1937,6 @@ def register_si_tools() -> None:
             description="Data freshness/maturity status for the store.",
             args_schema=SIStatusArgs,
             handler=_si_data_status,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_analyze_seasonality",
-            description="Does the weekday mix explain the change? Daily revenue shape.",
-            args_schema=SISeasonalityArgs,
-            handler=_si_analyze_seasonality,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_analyze_customers",
-            description="New vs returning customers in the window.",
-            args_schema=SICustomersArgs,
-            handler=_si_analyze_customers,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_analyze_fulfillment",
-            description="Carrier delivery/rejection rates (minimum volume applies).",
-            args_schema=SIFulfillmentArgs,
-            handler=_si_analyze_fulfillment,
             tags=["sales-intelligence"],
         ),
         ToolSpec(

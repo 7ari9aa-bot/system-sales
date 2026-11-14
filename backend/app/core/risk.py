@@ -95,11 +95,8 @@ _REGISTRY: dict[str, RiskLevel] = {
     "get_product_photos": RiskLevel.LOW,
     # Sales Intelligence tools (read-only analytics; §14 read-only agent)
     "si_metric": RiskLevel.LOW,
-    "si_analyze_drivers": RiskLevel.LOW,
+    "si_why": RiskLevel.LOW,
     "si_data_status": RiskLevel.LOW,
-    "si_analyze_seasonality": RiskLevel.LOW,
-    "si_analyze_customers": RiskLevel.LOW,
-    "si_analyze_fulfillment": RiskLevel.LOW,
     # Read-only merchant-facing reads (sales detail, contact activity,
     # platform interactions, public comments) — no mutation surface.
     "si_top_products": RiskLevel.LOW,

@@ -48,12 +48,12 @@ def test_registry_registration_and_queries() -> None:
     for transacting in ("create_order", "add_task", "add_tag"):
         assert AgentRegistry.is_tool_authorized("customer", transacting) is False
     # Customer agent must NEVER be authorized for sales intelligence tools
-    assert AgentRegistry.is_tool_authorized("customer", "si_analyze_drivers") is False
+    assert AgentRegistry.is_tool_authorized("customer", "si_why") is False
     assert AgentRegistry.is_tool_authorized("customer", "unknown_tool_xyz") is False
 
     # Sales Intelligence authorization checks
     assert AgentRegistry.get("sales_intelligence") is not None
-    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_analyze_drivers") is True
+    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_why") is True
     assert AgentRegistry.is_tool_authorized("sales_intelligence", "create_order") is False
 
 
@@ -119,9 +119,7 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     transacting_tool = AgentTool(
         tenant_id=tenant_id, agent_id=agent_id, name="create_order", is_active=True
     )
-    injected_tool = AgentTool(
-        tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True
-    )
+    injected_tool = AgentTool(tenant_id=tenant_id, agent_id=agent_id, name="si_why", is_active=True)
 
     mock_session = AsyncMock()
     mock_execute_result = MagicMock()
@@ -149,7 +147,7 @@ async def test_runtime_tool_isolation_enforcement() -> None:
     # anyway — authorization is the definition's allowlist, not the row.
     assert "create_order" not in loaded_names
     # Injected / unauthorized tool MUST be stripped by the enforcement boundary
-    assert "si_analyze_drivers" not in loaded_names
+    assert "si_why" not in loaded_names
     # search_catalog + get_product_details survive; create_order and the
     # injected SI tool are both stripped.
     assert len(loaded) == 2
@@ -225,7 +223,7 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
         # Step 4: Verify tool authorization boundary
         assert AgentRegistry.is_tool_authorized("inventory_ops", "inv_check_reorder_level") is True
         assert AgentRegistry.is_tool_authorized("inventory_ops", "create_order") is False
-        assert AgentRegistry.is_tool_authorized("inventory_ops", "si_analyze_drivers") is False
+        assert AgentRegistry.is_tool_authorized("inventory_ops", "si_why") is False
 
         # Step 5: Test runtime loading with isolation
         tenant_id = uuid.uuid4()
@@ -326,7 +324,7 @@ async def test_two_way_tool_reconciliation_quarantines_unauthorized_tools() -> N
         tenant_id=tenant_id, agent_id=agent_id, name="search_catalog", is_active=True
     )
     unauthorized_tool = AgentTool(
-        tenant_id=tenant_id, agent_id=agent_id, name="si_analyze_drivers", is_active=True
+        tenant_id=tenant_id, agent_id=agent_id, name="si_why", is_active=True
     )
 
     mock_session = AsyncMock()
@@ -862,7 +860,7 @@ def test_evidence_reconstruction_and_store_from() -> None:
             },
         },
         {
-            "name": "si_analyze_drivers",
+            "name": "si_why",
             "status": "ok",
             "result": {
                 "drivers": [
