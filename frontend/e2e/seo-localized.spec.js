@@ -1,0 +1,60 @@
+import { expect, test } from "@playwright/test";
+
+const ORIGIN = "https://fihrist.world";
+
+test("English home is English, self-canonical and linked to its Arabic twin", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  const response = await page.goto("/en", { waitUntil: "domcontentloaded" });
+  expect(response?.status()).toBe(200);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("h1")).toContainText("From customer conversation to");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `${ORIGIN}/en`);
+  await expect(page.locator('link[rel="alternate"][hreflang="ar"]')).toHaveAttribute("href", `${ORIGIN}/`);
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute("href", `${ORIGIN}/en`);
+  await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute("href", `${ORIGIN}/`);
+
+  // A saved Arabic preference must not override the URL.
+  await page.evaluate(() => localStorage.setItem("fh_locale", "ar"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+
+  // Marketing links stay inside /en, app links are untouched.
+  const hrefs = await page.locator("header a[href], footer a[href]").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
+  expect(hrefs).toContain("/en/pricing");
+  expect(hrefs).toContain("/login");
+  expect(hrefs.filter((h) => ["/pricing", "/product", "/security"].includes(h))).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("language switch moves to the matching page in the other language", async ({ page }) => {
+  await page.goto("/en/solutions/whatsapp-sales-system", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("button-toggle-language").click();
+  await expect(page).toHaveURL(/\/solutions\/whatsapp-sales-system$/);
+  await expect(page).not.toHaveURL(/\/en\//);
+  await expect(page.locator("html")).toHaveAttribute("lang", "ar");
+
+  await page.getByTestId("button-toggle-language").click();
+  await expect(page).toHaveURL(/\/en\/solutions\/whatsapp-sales-system$/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("every keyword landing page renders a distinct H1, FAQ and FAQ schema in both languages", async ({ page }) => {
+  const slugs = [
+    "whatsapp-sales-system", "inventory-management-system", "ai-sales-assistant", "unified-inbox",
+    "pos-cashier-system", "sales-crm-for-stores", "order-management-system",
+  ];
+  const headings = new Set();
+  for (const prefix of ["", "/en"]) {
+    for (const slug of slugs) {
+      const response = await page.goto(`${prefix}/solutions/${slug}`, { waitUntil: "domcontentloaded" });
+      expect(response?.status(), `${prefix}/solutions/${slug}`).toBe(200);
+      headings.add(await page.locator("h1").first().innerText());
+      expect(await page.locator("details.faq-item").count()).toBeGreaterThanOrEqual(4);
+      const schemas = await page.locator('script[type="application/ld+json"]').allInnerTexts();
+      expect(schemas.some((s) => s.includes('"FAQPage"'))).toBe(true);
+    }
+  }
+  expect(headings.size).toBe(slugs.length * 2);
+});

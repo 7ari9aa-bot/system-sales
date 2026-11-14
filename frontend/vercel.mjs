@@ -1,3 +1,5 @@
+import { APP_PATH_PREFIXES } from "./src/lib/public-seo-routes.mjs";
+
 const PRODUCTION_API_ORIGIN = "https://p01--system-sales--smkyc4wjfbtq.code.run";
 
 function normalizeApiOrigin(value) {
@@ -52,8 +54,16 @@ export function createVercelConfig({
       },
     );
   }
+  // Only real SPA screens fall back to index.html (dashboard, cashier, auth...).
+  // Public marketing pages are prerendered files, so Vercel serves them before
+  // any rewrite. Everything else must be a true 404, otherwise every mistyped
+  // URL answers 200 with the home page (a "soft 404" that Google penalises).
   rewrites.push({
-    source: "/((?!api/|auth/).*)",
+    source: `/(${APP_PATH_PREFIXES.join("|")})/:path*`,
+    destination: "/index.html",
+  });
+  rewrites.push({
+    source: `/(${APP_PATH_PREFIXES.join("|")})`,
     destination: "/index.html",
   });
 
@@ -77,6 +87,8 @@ export function createVercelConfig({
       },
     ],
     rewrites,
+    // Unknown paths get the static 404 page with a real 404 status.
+    // (Vercel only applies this after files and rewrites have been tried.)
   };
 }
 

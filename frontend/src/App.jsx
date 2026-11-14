@@ -13,7 +13,7 @@ import { I18nProvider } from '@/lib/i18n';
 import { RegionalProvider } from '@/lib/regional';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import VisitorTracker from '@/components/VisitorTracker';
-import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs';
+import { ALL_LOCALIZED_ROUTES } from '@/lib/public-seo-routes.mjs';
 const Fihrist = lazy(() => import('@/pages/Fihrist'));
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
@@ -51,7 +51,7 @@ const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSetting
 const MarketingRoutes = () => (
   <LanguageProvider>
     <Routes>
-      {PUBLIC_SEO_ROUTES.map(({ path }) => (
+      {ALL_LOCALIZED_ROUTES.map(({ path }) => (
         <Route key={path} path={path} element={<Fihrist />} />
       ))}
       <Route path="*" element={<PageNotFound />} />
