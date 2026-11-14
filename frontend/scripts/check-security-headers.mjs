@@ -35,6 +35,13 @@ for (const directive of [
   assert.ok(csp.includes(directive), `CSP is missing ${directive}`);
 }
 
+// Dictation in the sales assistant needs the microphone for our own origin. A blanket
+// microphone=() silently blocks it in Chrome without ever asking the user.
+const permissions = headers.get("permissions-policy");
+assert.ok(/(^|,\s*)microphone=\(self\)/.test(permissions), `microphone must be allowed for self only, got: ${permissions}`);
+assert.ok(/(^|,\s*)camera=\(\)/.test(permissions), "camera must stay blocked");
+assert.ok(/(^|,\s*)geolocation=\(\)/.test(permissions), "geolocation must stay blocked");
+
 assert.equal(headers.get("x-content-type-options"), "nosniff");
 assert.equal(headers.get("x-frame-options"), "DENY");
 assert.ok(csp.includes("connect-src 'self'"), "API requests should stay same-origin through the Vercel proxy");
