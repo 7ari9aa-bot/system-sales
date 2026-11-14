@@ -85,6 +85,22 @@ export function createVercelConfig({
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
         ],
       },
+      // Plain-text and Markdown files for AI assistants: explicit UTF-8 so Arabic
+      // is read correctly, and a short cache so edits reach crawlers quickly.
+      {
+        source: "/(.*)\\.md",
+        headers: [
+          { key: "Content-Type", value: "text/markdown; charset=utf-8" },
+          { key: "Cache-Control", value: "public, max-age=0, s-maxage=3600, must-revalidate" },
+        ],
+      },
+      {
+        source: "/(llms[a-z-]*\\.txt)",
+        headers: [
+          { key: "Content-Type", value: "text/plain; charset=utf-8" },
+          { key: "Cache-Control", value: "public, max-age=0, s-maxage=3600, must-revalidate" },
+        ],
+      },
     ],
     rewrites,
     // Unknown paths get the static 404 page with a real 404 status.
