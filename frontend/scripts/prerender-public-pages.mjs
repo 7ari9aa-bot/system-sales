@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { buildLlmsAr, buildLlmsFull, postMarkdown, solutionMarkdown } from './ai-text.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,10 +52,18 @@ function replaceRoot(html, markup) {
 function hreflangTags(route) {
   const ar = absoluteUrl(route.arPath);
   const en = absoluteUrl(route.enPath);
+  // A clean Markdown twin exists for articles and solutions; every page points
+  // AI assistants at llms.txt, the machine-readable site summary.
+  const hasMarkdown = route.key.startsWith('post:') || route.key.startsWith('solution:');
+  const aiLinks = [
+    ...(hasMarkdown ? [`<link rel="alternate" type="text/markdown" href="${escapeAttribute(absoluteUrl(`${route.path}.md`))}" />`] : []),
+    `<link rel="alternate" type="text/plain" href="${escapeAttribute(absoluteUrl(route.locale === 'en' ? '/llms-full.txt' : '/llms-full-ar.txt'))}" title="llms-full" />`,
+  ];
   return [
     `<link rel="alternate" hreflang="ar" href="${escapeAttribute(ar)}" />`,
     `<link rel="alternate" hreflang="en" href="${escapeAttribute(en)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${escapeAttribute(ar)}" />`,
+    ...aiLinks,
   ].join('\n    ');
 }
 
@@ -145,6 +154,19 @@ async function main() {
     const lastmod = new Date().toISOString().slice(0, 10);
     await writeFile(path.join(distRoot, 'sitemap.xml'), buildSitemap(ALL_LOCALIZED_ROUTES, lastmod));
     await writeFile(path.join(distRoot, 'llms.txt'), buildLlmsTxt(PUBLIC_SEO_ROUTES));
+    await writeFile(path.join(distRoot, 'llms-ar.txt'), buildLlmsAr());
+    await writeFile(path.join(distRoot, 'llms-full.txt'), buildLlmsFull('en'));
+    await writeFile(path.join(distRoot, 'llms-full-ar.txt'), buildLlmsFull('ar'));
+    // A clean Markdown twin of every article and solution (e.g. /blog/<slug>.md).
+    for (const route of ALL_LOCALIZED_ROUTES) {
+      const base = route.arPath;
+      const slug = base.split('/').pop();
+      const kind = route.key.startsWith('post:') ? postMarkdown : route.key.startsWith('solution:') ? solutionMarkdown : null;
+      if (!kind) continue;
+      const file = path.join(distRoot, `${route.path.slice(1)}.md`);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, kind(slug, route.locale));
+    }
     console.log(`Prerendered ${generated.length} public FIHRIST pages (ar + en) with route-specific HTML, hreflang and schema.`);
   } finally {
     await vite.close();
