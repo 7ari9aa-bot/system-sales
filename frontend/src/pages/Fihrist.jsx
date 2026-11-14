@@ -18,7 +18,10 @@ import InteractiveBackground from '@/components/InteractiveBackground'
 import HeroRelationCanvas from '@/components/HeroRelationCanvas'
 import Spotlight from '@/components/Spotlight'
 import { getTokens } from '@/lib/api'
-import { PUBLIC_SEO_ROUTES } from '@/lib/public-seo-routes.mjs'
+import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
+import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
+import { localizePath, localizeHtmlLinks } from '@/lib/locale-paths'
+import { routeForPath, resolveLocalizedPath, absoluteUrl } from '@/lib/public-seo-routes.mjs'
 
 const c = (ar, en) => ({ ar, en })
 const tx = (copy, locale) => copy[locale]
@@ -27,14 +30,13 @@ const navItems = [
   { href: '/product', label: c('المنصة', 'Platform') },
   { href: '/conversations', label: c('المحادثات', 'Conversations') },
   { href: '/assistant', label: c('AI', 'AI') },
+  { href: '/solutions', label: c('الحلول', 'Solutions') },
   { href: '/pricing', label: c('الأسعار', 'Pricing') },
   { href: '/security', label: c('الأمان', 'Security') },
 ]
 
-const pageFromPath = () => {
-  const path = window.location.pathname.replace(/\/+$/, '') || '/'
-  return PUBLIC_SEO_ROUTES.find((route) => route.path === path)?.key || 'home'
-}
+const pageFromPath = () => routeForPath(window.location.pathname)?.key || 'home'
+const localeFromPath = () => resolveLocalizedPath(window.location.pathname).locale
 
 export const pageMeta = {
   home: c('FIHRIST | نظام تشغيل المبيعات للمتاجر', 'FIHRIST | Sales Operating System for Stores'),
@@ -65,6 +67,13 @@ export const pageDescription = {
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
   support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
 }
+
+const solutionMeta = (key, kind) => {
+  if (key === 'solutions') return SOLUTIONS_INDEX[kind]
+  if (key?.startsWith('solution:')) return SOLUTIONS[key.slice('solution:'.length)]?.[kind]
+  return null
+}
+export const metaFor = (key, kind) => solutionMeta(key, kind) || (kind === 'title' ? pageMeta : pageDescription)[key]
 
 function KineticHeadline({ locale }) {
   const words = locale === 'ar' ? ['البيع.'] : ['sale.']
@@ -182,14 +191,16 @@ function Home({ locale }) { return <><section className="hero"><div className="h
 function AudienceCard({icon: Icon, title, body, href, locale}) { return <Reveal className="reveal-cell"><a className="audience-card" href={href}><span className="icon-tile"><Icon size={20}/></span><h3>{tx(title, locale)}</h3><p>{tx(body, locale)}</p><span className="card-arrow"><ArrowRight size={17}/></span></a></Reveal> }
 
 function App() {
-  const [locale, setLocale] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('fh_locale')
-      return saved === 'en' ? 'en' : 'ar'
-    } catch {
-      return 'ar'
-    }
-  })
+  // The URL decides the language: /en/... is English, everything else Arabic.
+  // (A saved preference must never override the URL, or crawlers and shared
+  // links would see a different language than the address promises.)
+  const [locale, setLocaleState] = useState(localeFromPath)
+  const setLocale = (next) => {
+    if (next === locale) return
+    try { window.localStorage.setItem('fh_locale', next); window.localStorage.setItem('fihrist.locale', next) } catch {}
+    const { basePath } = resolveLocalizedPath(window.location.pathname)
+    window.location.assign(`${localizePath(basePath, next)}${window.location.search}${window.location.hash}`)
+  }
   const [theme, setTheme] = useState(() => {
     try {
       const saved = window.localStorage.getItem('fh_theme')
@@ -202,7 +213,7 @@ function App() {
   const [page, setPage] = useState(pageFromPath())
 
   useEffect(() => {
-    const onPop = () => setPage(pageFromPath())
+    const onPop = () => { setPage(pageFromPath()); setLocaleState(localeFromPath()) }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
@@ -215,8 +226,8 @@ function App() {
       window.localStorage.setItem('fh_theme', theme)
     } catch {}
 
-    const title = tx(pageMeta[page] || pageMeta.home, locale)
-    const description = tx(pageDescription[page] || pageDescription.home, locale)
+    const title = tx(metaFor(page, 'title') || pageMeta.home, locale)
+    const description = tx(metaFor(page, 'description') || pageDescription.home, locale)
     document.title = title
 
     const setMetaContent = (selector, content) => {
@@ -231,15 +242,22 @@ function App() {
     setMetaContent('meta[name="twitter:description"]', description)
 
     const canonicalPath = window.location.pathname.replace(/\/+$/, '') || '/'
-    const canonicalUrl = `https://fihrist.world${canonicalPath}`
+    const canonicalUrl = absoluteUrl(canonicalPath)
     const canonical = document.querySelector('link[rel="canonical"]')
     if (canonical) canonical.setAttribute('href', canonicalUrl)
     setMetaContent('meta[property="og:url"]', canonicalUrl)
+    setMetaContent('meta[property="og:locale"]', locale === 'ar' ? 'ar_EG' : 'en_US')
+    // Keep every link on the page inside the current language.
+    localizeHtmlLinks(document.getElementById('root'), locale)
   }, [locale, theme, page])
 
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
   const PageComponent = pageComponents[page]
-  const content = useMemo(() => page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
+  const content = useMemo(() => {
+    if (page === 'solutions') return <SolutionsIndex locale={locale}/>
+    if (page.startsWith('solution:')) return <SolutionPage slug={page.slice('solution:'.length)} locale={locale}/>
+    return page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>
+  }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
 
 function ChannelChips({ locale }) {
   return <div className="channel-chips"><span>{tx(c('القنوات','Channels'), locale)}</span>{['WhatsApp','Messenger','Instagram','Email','Web chat'].map((n) => <b key={n}><i/>{n}</b>)}</div>

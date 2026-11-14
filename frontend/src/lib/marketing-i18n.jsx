@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { routeForPath } from '@/lib/public-seo-routes.mjs';
 
 /**
  * Constant Frame i18n
@@ -174,6 +175,10 @@ const LanguageContext = createContext(null);
 export function LanguageProvider({ children }) {
   const [locale, setLocale] = useState(() => {
     if (typeof window === 'undefined') return 'ar';
+    // English marketing pages live under /en: the URL wins over any saved
+    // preference, so the <html lang> always matches the address.
+    const publicRoute = routeForPath(window.location.pathname);
+    if (publicRoute) return publicRoute.locale;
     return window.localStorage.getItem(STORAGE_KEY) || 'ar';
   });
 

@@ -1,9 +1,44 @@
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
+import { APP_PATH_PREFIXES } from './src/lib/public-seo-routes.mjs'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+
+
+/**
+ * `vite preview` falls back to index.html for every unknown URL, which hides
+ * the prerendered pages and the real 404 that Vercel serves in production.
+ * This plugin makes preview behave like production: prerendered folders are
+ * served as-is, SPA screens fall back to index.html, anything else is a 404.
+ * It only runs for `vite preview`; the build and the deployed site never use it.
+ */
+function productionLikeRouting() {
+  return {
+    name: 'production-like-routing',
+    configurePreviewServer(server) {
+      const dist = path.resolve(dirname, 'dist');
+      const appPrefix = new RegExp(`^/(${APP_PATH_PREFIXES.join('|')})(/|$)`);
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url || '/').split('?')[0];
+        if (!['GET', 'HEAD'].includes(req.method || 'GET') || url.startsWith('/api/') || url.startsWith('/auth/')) return next();
+        if (path.extname(url) || url.endsWith('/')) return next();
+        const prerendered = path.join(dist, url, 'index.html');
+        if (fs.existsSync(prerendered)) {
+          res.setHeader('content-type', 'text/html; charset=utf-8');
+          res.end(fs.readFileSync(prerendered));
+          return;
+        }
+        if (appPrefix.test(url)) return next();
+        res.statusCode = 404;
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.end(fs.readFileSync(path.join(dist, '404.html')));
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   // Vite does NOT populate process.env from .env files while evaluating this
@@ -31,7 +66,7 @@ export default defineConfig(({ mode }) => {
   // الفرونت إند الجديد (بدون Base44) — alias @ على src، وفي التطوير
   // طلبات /api و /auth بتتوجه للـbackend المحلي على :8000 عشان مفيش CORS.
   return {
-    plugins: [react()],
+    plugins: [react(), productionLikeRouting()],
     define: {
       'import.meta.env.VITE_CASHIER_PREVIEW': JSON.stringify(cashierPreview || autoPreview ? '1' : ''),
     },
