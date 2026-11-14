@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.core.currency import storage_refusal
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.identity.dialects import dialect_refusal
 from app.modules.identity.models import Tenant
 from app.modules.identity.services._common import _record_audit
 
@@ -135,6 +136,49 @@ class TenantSettingsService:
             tenant.id,
             before={"timezone": previous},
             after={"timezone": zone or None},
+        )
+        await session.flush()
+        return tenant
+
+    @staticmethod
+    async def set_dialect(
+        session,
+        tenant_id: uuid.UUID,
+        dialect: str | None,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> Tenant:
+        """Declare the Arabic dialect the owner's assistant answers in.
+
+        The list is closed (``identity.dialects.CHOICES``): anything else is refused (400) rather
+        than stored, and empty clears the choice back to the currency's dialect. The change is
+        audited through the same lineage as currency and timezone."""
+        # the list is exact: "gulf " is not "gulf", so the text is compared as given, never trimmed
+        candidate = dialect or ""
+        refusal = dialect_refusal(candidate)
+        if refusal is not None:
+            raise ValidationError(refusal)
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+        previous = tenant.dialect
+        wanted = candidate or None
+        if previous == wanted:
+            return tenant
+
+        tenant.dialect = wanted
+        await _record_audit(
+            session,
+            tenant.id,
+            actor_user_id,
+            "tenant.dialect_changed",
+            "tenant",
+            tenant.id,
+            before={"dialect": previous},
+            after={"dialect": wanted},
         )
         await session.flush()
         return tenant

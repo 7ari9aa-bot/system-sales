@@ -43,3 +43,37 @@ def test_whitespace_persona_is_treated_as_absent():
 def test_base_and_persona_are_both_stripped():
     agent = _agent(system_prompt="  قواعد  ", persona_prompt="  شخصية  ")
     assert AgentRunner._compose_system_content(agent) == "قواعد\n\nشخصية"
+
+
+# ---- the style directive: a fixed line from the server, after the base and the persona ----------
+
+
+def test_no_directive_leaves_the_composition_byte_for_byte_as_it_was():
+    # every agent that never passes one (the customer agent, all of them today) is unchanged
+    for persona in (None, "", "   ", "شخصية"):
+        agent = _agent(persona_prompt=persona)
+        assert AgentRunner._compose_system_content(
+            agent, None, style_directive=None
+        ) == AgentRunner._compose_system_content(agent)
+        assert AgentRunner._compose_system_content(
+            agent, None, style_directive="  "
+        ) == AgentRunner._compose_system_content(agent)
+
+
+def test_the_directive_rides_last_after_base_and_persona():
+    agent = _agent(persona_prompt="اسمك سارة.")
+    composed = AgentRunner._compose_system_content(agent, None, style_directive="رد بالمصري.")
+    assert composed == "القواعد الأساسية: ممنوع البيع.\n\nاسمك سارة.\n\nرد بالمصري."
+    assert composed.index("القواعد") < composed.index("سارة") < composed.index("بالمصري")
+
+
+def test_the_directive_works_with_no_persona():
+    composed = AgentRunner._compose_system_content(_agent(), None, style_directive="رد بالمصري.")
+    assert composed == "القواعد الأساسية: ممنوع البيع.\n\nرد بالمصري."
+
+
+def test_the_directive_is_stripped_and_does_not_replace_an_override():
+    composed = AgentRunner._compose_system_content(
+        _agent(persona_prompt="شخصية"), "قواعد بديلة", style_directive="  أسلوب  "
+    )
+    assert composed == "قواعد بديلة\n\nشخصية\n\nأسلوب"

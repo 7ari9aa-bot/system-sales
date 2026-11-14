@@ -8,6 +8,7 @@ import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/Se
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { AUTO, dialectBody, dialectOptions, isDirty, selectionFrom, sourceKey } from "./dialectSetting";
 
 function activeTenantId(user) {
   try {
@@ -30,6 +31,44 @@ export default function ProfileSettings() {
   const [savingRegion, setSavingRegion] = React.useState(false);
   const [regionError, setRegionError] = React.useState("");
   const [regionNotice, setRegionNotice] = React.useState("");
+  // The assistant's dialect is its own setting with its own save, never part of the regional save:
+  // changing the country must not silently rewrite how the assistant talks.
+  const [dialectInfo, setDialectInfo] = React.useState(null);
+  const [dialectChoice, setDialectChoice] = React.useState(AUTO);
+  const [savingDialect, setSavingDialect] = React.useState(false);
+  const [dialectError, setDialectError] = React.useState("");
+  const [dialectNotice, setDialectNotice] = React.useState("");
+
+  React.useEffect(() => {
+    if (!tenantId) return;
+    let alive = true;
+    api(`/tenants/${tenantId}/dialect`).then((info) => {
+      if (!alive) return;
+      setDialectInfo(info);
+      setDialectChoice(selectionFrom(info));
+    }).catch((error) => {
+      if (alive) setDialectError(error?.message || t("dialect.loadFailed"));
+    });
+    return () => { alive = false; };
+  }, [tenantId, t]);
+
+  async function saveDialect() {
+    if (!tenantId || !dialectInfo) return;
+    setSavingDialect(true);
+    setDialectError("");
+    setDialectNotice("");
+    try {
+      // Confirm only after the server answers, and show what IT says is now in use.
+      const saved = await api(`/tenants/${tenantId}/dialect`, { method: "PUT", body: dialectBody(dialectChoice, dialectInfo.choices) });
+      setDialectInfo(saved);
+      setDialectChoice(selectionFrom(saved));
+      setDialectNotice(t("dialect.saved"));
+    } catch (error) {
+      setDialectError(error?.message || t("dialect.saveFailed"));
+    } finally {
+      setSavingDialect(false);
+    }
+  }
 
   React.useEffect(() => {
     if (!tenantId) return;
@@ -136,6 +175,27 @@ export default function ProfileSettings() {
           {(regionError || regionNotice) && <div role={regionError ? "alert" : "status"} className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${regionError ? "bg-destructive/10 text-destructive" : "bg-success/10 text-foreground"}`}>{regionError || regionNotice}</div>}
           <div className="mt-4 flex justify-end">
             <Button type="button" onClick={saveRegionalSettings} disabled={!tenantId || savingRegion} className="gap-1.5"><Save className="h-4 w-4" />{savingRegion ? "…" : t("businessProfile.save")}</Button>
+          </div>
+        </SettingCard>
+
+        <SettingCard title={t("dialect.title")} desc={t("dialect.desc")}>
+          <div className="pt-2">
+            <SettingRow label={t("dialect.label")} desc={dialectInfo ? `${t("dialect.using")}: ${t(`dialect.name.${dialectInfo.effective}`)} (${t(sourceKey(dialectInfo))})` : undefined} last>
+              <Select value={dialectChoice} onValueChange={setDialectChoice} disabled={!dialectInfo}>
+                <SelectTrigger className="w-[220px]" data-testid="dialect-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {dialectOptions(dialectInfo).map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.value === AUTO ? t("dialect.auto") : t(`dialect.name.${option.value}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </div>
+          {(dialectError || dialectNotice) && <div role={dialectError ? "alert" : "status"} data-testid="dialect-message" className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${dialectError ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-700"}`}>{dialectError || dialectNotice}</div>}
+          <div className="mt-4 flex justify-end">
+            <Button type="button" data-testid="dialect-save" onClick={saveDialect} disabled={!isDirty(dialectChoice, dialectInfo) || savingDialect} className="gap-1.5"><Save className="h-4 w-4" />{savingDialect ? "…" : t("businessProfile.save")}</Button>
           </div>
         </SettingCard>
       </div>

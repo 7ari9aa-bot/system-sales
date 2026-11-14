@@ -66,6 +66,26 @@ class TenantTimezoneRequest(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
 
 
+class TenantDialectRequest(BaseModel):
+    #: Empty (or null) clears the choice, putting the shop back on its currency's dialect. The list
+    #: itself is closed and checked by the service; the bound here only stops an absurd payload.
+    dialect: str | None = Field(default=None, max_length=32)
+
+
+def _dialect_out(tenant) -> dict:
+    """What the owner stored, what the assistant will actually use, and where that came from."""
+    from app.modules.identity import dialects
+
+    effective, source = dialects.resolve(tenant.dialect, tenant.currency)
+    return {
+        "tenant_id": str(tenant.id),
+        "dialect": tenant.dialect,
+        "effective": effective,
+        "source": source,
+        "choices": list(dialects.CHOICES),
+    }
+
+
 def _lifecycle_out(tenant) -> TenantLifecycleOut:
     policy = service.TenantLifecycleService.policy_for(tenant.lifecycle_state)
     return TenantLifecycleOut(
@@ -307,6 +327,37 @@ async def get_tenant_timezone(
         raise PermissionDeniedError("tenant mismatch")
     tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
     return {"tenant_id": str(tenant.id), "timezone": tenant.timezone}
+
+
+@tenants_router.put("/{tenant_id}/dialect")
+async def set_tenant_dialect(
+    tenant_id: uuid.UUID,
+    body: TenantDialectRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """The Arabic dialect the shop owner's assistant answers in.
+
+    The sibling of ``PUT /tenants/{id}/timezone``: a closed list, a value off it is refused (400),
+    empty clears the choice, and the change is audited. The answer says what the assistant will use
+    now, so a screen need not re-derive it from the currency."""
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantSettingsService.set_dialect(
+        ctx.session, tenant_id, body.dialect, actor_user_id=ctx.user.id
+    )
+    return _dialect_out(tenant)
+
+
+@tenants_router.get("/{tenant_id}/dialect")
+async def get_tenant_dialect(
+    tenant_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    """Which dialect the owner chose (``null`` if none), and the one the assistant will use."""
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
+    return _dialect_out(tenant)
 
 
 @tenants_router.post("/{tenant_id}/offboarding/export")

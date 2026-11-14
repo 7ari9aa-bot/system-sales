@@ -218,10 +218,15 @@ async def test_the_si_agent_runs_the_prompt_stored_on_its_row(db, tenant_ctx, mo
     assert seen, "the model was never called"
     system_message = seen[0][0]
     assert system_message["role"] == "system"
-    assert system_message["content"] == "analyze", (
+    # The row governs: the message is the stored prompt, followed by the shop's fixed dialect
+    # directive and nothing else. (An override here would make the stored prompt inert.)
+    from app.modules.ai.agents.sales_intelligence import dialect
+
+    assert system_message["content"] == "analyze\n\n" + dialect.directive_for_shop(None, "EGP"), (
         "the row must govern: an override here makes the stored prompt, every "
         "merchant edit, and any prompt rollout inert for this agent"
     )
+    assert system_message["content"].startswith(agent.system_prompt)
 
 
 async def test_no_tool_results_still_answers_safely(db, tenant_ctx, monkeypatch):

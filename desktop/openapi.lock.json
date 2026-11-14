@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 453,
-    "sha256": "033ebbd2e875c217fad060a211b2c97a09a7194639a41dab97fa303660d09c5d",
+    "operations": 455,
+    "sha256": "8d540dfb0d3ef0e5cee58234b9bd354710a69a983942521e4558e15b7a392909",
     "typed_operations": 293
   },
   "spec": {
@@ -17877,6 +17877,24 @@
             "health"
           ],
           "title": "TenantDetailOut",
+          "type": "object"
+        },
+        "TenantDialectRequest": {
+          "properties": {
+            "dialect": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dialect"
+            }
+          },
+          "title": "TenantDialectRequest",
           "type": "object"
         },
         "TenantHealthOut": {
@@ -66305,6 +66323,226 @@
             }
           },
           "summary": "Set Tenant Currency",
+          "tags": [
+            "tenants"
+          ]
+        }
+      },
+      "/api/v1/tenants/{tenant_id}/dialect": {
+        "get": {
+          "description": "Which dialect the owner chose (``null`` if none), and the one the assistant will use.",
+          "operationId": "get_tenant_dialect_api_v1_tenants__tenant_id__dialect_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Tenant Dialect",
+          "tags": [
+            "tenants"
+          ]
+        },
+        "put": {
+          "description": "The Arabic dialect the shop owner's assistant answers in.\n\nThe sibling of ``PUT /tenants/{id}/timezone``: a closed list, a value off it is refused (400),\nempty clears the choice, and the change is audited. The answer says what the assistant will use\nnow, so a screen need not re-derive it from the currency.",
+          "operationId": "set_tenant_dialect_api_v1_tenants__tenant_id__dialect_put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDialectRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Tenant Dialect",
           "tags": [
             "tenants"
           ]

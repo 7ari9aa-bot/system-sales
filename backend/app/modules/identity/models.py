@@ -82,6 +82,11 @@ class Tenant(TimestampMixin, Base):
     # (TenantSettingsService.set_timezone); the DB check bounds the SHAPE only,
     # because resolvability needs tzdata, which lives in Python, not here.
     timezone: Mapped[str | None] = mapped_column(String(64))
+    # The Arabic dialect the owner's assistant answers in. NULL is an answer, not a gap: the owner
+    # never chose, so the assistant derives one from `currency` at read time. A closed list,
+    # enforced by the database (tenants_dialect_listed) and mirrored by
+    # identity.dialects.CHOICES.
+    dialect: Mapped[str | None] = mapped_column(String(16))
 
 
 class User(TimestampMixin, Base):

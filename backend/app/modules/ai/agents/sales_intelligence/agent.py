@@ -323,6 +323,22 @@ async def _owner_notes_for_prompt(
         return ""
 
 
+def _style_directive_for(
+    stored: str | None, currency: str | None, tenant_id: uuid.UUID
+) -> str | None:
+    """The shop's dialect directive, or ``None`` when it cannot be worked out.
+
+    Style is a convenience, never a dependency: any failure reads as "no directive" so the owner
+    still gets an answer, in the model's default voice."""
+    from app.modules.ai.agents.sales_intelligence import dialect
+
+    try:
+        return dialect.directive_for_shop(stored, currency)
+    except Exception:  # noqa: BLE001 - a style problem must never cost the owner an answer
+        logger.warning("si_dialect.directive_failed tenant=%s", tenant_id, exc_info=True)
+        return None
+
+
 async def run_sales_analysis(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -354,11 +370,14 @@ async def run_sales_analysis(
     merchant_tz = str(await resolve_report_timezone(session, tenant_id))
     tenant_row = (
         await session.execute(
-            sa_text("SELECT COALESCE(currency, 'EGP') FROM tenants WHERE id = :tid"),
+            sa_text("SELECT COALESCE(currency, 'EGP'), dialect FROM tenants WHERE id = :tid"),
             {"tid": str(tenant_id)},
         )
     ).first()
     merchant_currency = tenant_row[0] if tenant_row else "EGP"
+    style_directive = _style_directive_for(
+        tenant_row[1] if tenant_row else None, merchant_currency, tenant_id
+    )
 
     profile = await load_store_metric_profile(session, tenant_id)
     owner_notes = await _owner_notes_for_prompt(session, tenant_id, user_id)
@@ -395,6 +414,9 @@ async def run_sales_analysis(
             # message the model is told is data), never in the system prompt and never as
             # system-owned facts.
             knowledge_context=owner_notes or None,
+            # The dialect is trusted wording the server picked from a closed list, so it goes in the
+            # system prompt; the notes above are free text and never do.
+            style_directive=style_directive,
         )
     except Exception:
         # A started event with no counterpart reads as "stuck forever" to

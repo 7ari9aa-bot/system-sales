@@ -289,6 +289,9 @@ class AgentRunner:
         # tools with no ``requires`` are shown (fails closed, see ``tools_visible_to``). The
         # customer agent never sets it and so never sees a gated tool; the owner chat does.
         actor_permissions: set[str] | frozenset[str] | None = None,
+        # A fixed style line chosen by the server from a closed list (never shop-typed text), added
+        # after the persona. ``None`` (every caller but the owner assistant) changes nothing.
+        style_directive: str | None = None,
     ) -> AgentRunResult:
         agent = await self._load_agent(session, tenant_id, agent_id)
         # Fail BEFORE the first paid model call when the kind has no definition:
@@ -469,6 +472,7 @@ class AgentRunner:
                 context_lines=context_lines,
                 history=history,
                 vision_state=vision_state,
+                style_directive=style_directive,
             )
         except Exception as exc:
             run.status = "failed"
@@ -910,8 +914,10 @@ class AgentRunner:
         return DEFAULT_SYSTEM_PROMPT
 
     @staticmethod
-    def _compose_system_content(agent: Agent, override: str | None = None) -> str:
-        """Base rules first, store persona last.
+    def _compose_system_content(
+        agent: Agent, override: str | None = None, *, style_directive: str | None = None
+    ) -> str:
+        """Base rules first, store persona next, a fixed style directive last.
 
         ``system_prompt`` carries the canonical instructions and prohibitions;
         ``persona_prompt`` is the merchant-owned voice (agent name, tone, store
@@ -922,9 +928,12 @@ class AgentRunner:
         """
         base = AgentRunner._resolve_system_prompt(agent, override).strip()
         persona = (getattr(agent, "persona_prompt", None) or "").strip()
-        if persona:
-            return f"{base}\n\n{persona}"
-        return base
+        composed = f"{base}\n\n{persona}" if persona else base
+        # ``style_directive`` is wording the SERVER chose from a closed list (the owner assistant's
+        # dialect), never text a shop typed. It rides last so it colours the reply without diluting
+        # the rules, and an agent that passes none is composed exactly as before.
+        directive = (style_directive or "").strip()
+        return f"{composed}\n\n{directive}" if directive else composed
 
     async def _loop(
         self,
@@ -943,6 +952,7 @@ class AgentRunner:
         context_lines: str | None = None,
         history: list[dict[str, str]] | None = None,
         vision_state: dict | None = None,
+        style_directive: str | None = None,
     ) -> AgentRunResult:
         # §41 input side: what the model is ABOUT to be shown is judged before
         # it is shown. The output chain cannot cover this — it only ever sees
@@ -965,7 +975,9 @@ class AgentRunner:
         messages: list[dict] = [
             {
                 "role": "system",
-                "content": self._compose_system_content(agent, system_prompt),
+                "content": self._compose_system_content(
+                    agent, system_prompt, style_directive=style_directive
+                ),
             }
         ]
         # §132: knowledge context is injected as a SEPARATE user message,
