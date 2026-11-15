@@ -446,6 +446,50 @@ async def _si_why(
     raise ValidationError(f"focus must be one of: {', '.join(_WHY_FOCUSES)} (got {focus!r})")
 
 
+_ACTIVITY_VIEWS = ("customers", "channels", "comments")
+# Each read keeps the default and the ceiling it always had: comments are public text, so they stay
+# capped lower than the customer list. A shared `limit` must not widen either one.
+_ACTIVITY_LIMITS = {"customers": (10, 50), "comments": (5, 20)}
+
+
+class SIActivityArgs(BaseModel):
+    """What the store's audience is doing. ``view`` says which part of it."""
+
+    view: Literal["customers", "channels", "comments"]
+    days: int = Field(default=30, ge=1, le=90)
+    # only for customers (default 10, up to 50) and comments (default 5, up to 20)
+    limit: int | None = Field(default=None, ge=1, le=50)
+
+
+async def _si_activity(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    view: str,
+    days: int = 30,
+    limit: int | None = None,
+    context: dict | None = None,
+) -> dict:
+    """A thin router: each view runs the same tested read it always did.
+
+    The three tools it replaces were three more choices for the model on every question. Nothing
+    is recomputed here, so every guarantee of the originals (including the screening of injected
+    comment text) is the originals' own. ``limit`` keeps each read's own default and ceiling.
+    """
+    if view not in _ACTIVITY_VIEWS:
+        raise ValidationError(f"view must be one of: {', '.join(_ACTIVITY_VIEWS)} (got {view!r})")
+    if view == "channels":
+        return await _si_channel_activity(session, tenant_id, days=days)
+    default, ceiling = _ACTIVITY_LIMITS[view]
+    if limit is None:
+        limit = default
+    elif limit > ceiling:
+        raise ValidationError(f"limit for {view} can be at most {ceiling} (got {limit})")
+    if view == "customers":
+        return await _si_customer_activity(session, tenant_id, days=days, limit=limit)
+    return await _si_social_comments(session, tenant_id, days=days, limit=limit)
+
+
 class SIStatusArgs(BaseModel):
     pass
 
@@ -1694,7 +1738,7 @@ async def _si_channel_activity(
         "summary": {"entries": channels},
         "limitations": [
             "message-level analysis covers direct conversations; public post "
-            "comments are read through si_social_comments"
+            "comments are read with si_activity (view=comments)"
         ],
         "facts": facts,
     }
@@ -1850,9 +1894,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_why",
     "si_data_status",
     "si_top_products",
-    "si_customer_activity",
-    "si_channel_activity",
-    "si_social_comments",
+    "si_activity",
     "si_stock_status",
     "si_expenses_summary",
     "si_profit_summary",
@@ -2029,34 +2071,23 @@ def register_si_tools() -> None:
             requires="customers:read",
         ),
         ToolSpec(
-            name="si_customer_activity",
+            name="si_activity",
             description=(
-                "The customers who contacted the store in the window (via any "
-                "channel or the customer agent), with conversation and message "
-                "counts."
+                "What the store's audience is doing over the last N days. Pick view: "
+                "customers = who contacted the store, with conversation and message counts "
+                "(use for 'who is talking to us, who messaged most'); "
+                "channels = interaction volume per connected platform such as whatsapp, "
+                "instagram, messenger, telegram or webchat (use for 'which channel brings "
+                "the most conversations'); "
+                "comments = what the public says on the store's social posts: volume per "
+                "platform, top posts and the latest comments (use for 'what are people "
+                "commenting'). "
+                "Pass days (1 to 90, default 30). limit is only for customers (default 10, "
+                "at most 50) and comments (default 5, at most 20). "
+                "Sales and orders are not here: use si_metric for those."
             ),
-            args_schema=SICustomerActivityArgs,
-            handler=_si_customer_activity,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_channel_activity",
-            description=(
-                "Interaction volume per connected platform (whatsapp, "
-                "instagram, messenger, telegram, webchat) in the window."
-            ),
-            args_schema=SIChannelActivityArgs,
-            handler=_si_channel_activity,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_social_comments",
-            description=(
-                "What the public says on the store's social posts: comment "
-                "volume per platform, top posts, and the latest comments."
-            ),
-            args_schema=SISocialCommentsArgs,
-            handler=_si_social_comments,
+            args_schema=SIActivityArgs,
+            handler=_si_activity,
             tags=["sales-intelligence"],
         ),
     ]

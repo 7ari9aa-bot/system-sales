@@ -96,13 +96,11 @@ _REGISTRY: dict[str, RiskLevel] = {
     # Sales Intelligence tools (read-only analytics; §14 read-only agent)
     "si_metric": RiskLevel.LOW,
     "si_why": RiskLevel.LOW,
+    "si_activity": RiskLevel.LOW,
     "si_data_status": RiskLevel.LOW,
     # Read-only merchant-facing reads (sales detail, contact activity,
     # platform interactions, public comments) — no mutation surface.
     "si_top_products": RiskLevel.LOW,
-    "si_customer_activity": RiskLevel.LOW,
-    "si_channel_activity": RiskLevel.LOW,
-    "si_social_comments": RiskLevel.LOW,
     # Owner assistant reads (stock, and the money reads that follow). Read-only by contract:
     # tests/test_si_tools_are_read_only.py scans every si_* tool for a write.
     "si_stock_status": RiskLevel.LOW,

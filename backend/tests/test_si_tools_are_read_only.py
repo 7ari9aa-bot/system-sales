@@ -63,8 +63,12 @@ def _source_of(name: str) -> str:
     return src + "\n" + "\n".join(extra)
 
 
-def test_there_are_si_tools_to_scan():
-    assert len(_si_tools()) >= 14
+def test_every_tool_the_agent_can_call_is_scanned():
+    """The scan must cover exactly the tools the agent is allowed to call. A fixed minimum count
+    went stale with every merge; this fails instead if a tool is added or dropped without the scan
+    seeing it, and if the list the scan walks is ever empty."""
+    assert _si_tools(), "nothing to scan: every read-only check below would pass on an empty list"
+    assert _si_tools() == sorted(si.SI_TOOLS)
 
 
 @pytest.mark.parametrize("name", _si_tools())

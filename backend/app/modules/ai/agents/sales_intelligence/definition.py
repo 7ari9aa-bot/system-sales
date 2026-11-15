@@ -72,18 +72,8 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
-            name="si_customer_activity",
-            description="Customers who contacted the store, with conversation volume",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_channel_activity",
-            description="Interaction volume per connected platform",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_social_comments",
-            description="Public comments on the store's social posts",
+            name="si_activity",
+            description="Who contacted the store, volume per channel, public social comments",
             required=False,
         ),
     ],
