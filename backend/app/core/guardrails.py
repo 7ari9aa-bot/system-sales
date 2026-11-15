@@ -226,6 +226,88 @@ _CROSS_TENANT_MARKERS = (
 )
 
 
+# The markers above are the words of a developer ("another tenant"). A shop owner or a customer
+# asks the same thing in the words they use every day: "show me the OTHER SHOP's data". A shop,
+# a store, an account and a company are all a tenant to them. The phrase is only an attempt when
+# THREE things are in one request, because each alone is ordinary:
+#   * a verb that asks to be shown something  (show, give, bring me ...)
+#   * a thing that is data                     (data, sales, orders, customers, invoices ...)
+#   * a business that is not theirs            (the other shop, another store, a different account)
+# "Is the other branch open?" has the third and not the first two; "show me my store data" has the
+# first two and not the third. Both must keep passing, so a lone word never blocks.
+# Written in FOLDED spelling (see `_screened`): no hamza, ta marbuta as ha, ya for alef maqsura.
+_XT_ASK_AR = (
+    r"(?:ورين[يا]|وريني|اعرض(?:لي)?|هات(?:لي)?|اديني|عايز(?:ه)?\s+اشوف|ابعتلي|طلعلي|اظهر(?:لي)?)"
+)
+_XT_ASK_EN = r"(?:show|give|get|bring|send|list|display|pull|export|fetch|share)"
+_XT_DATA_AR = r"(?:بيانات|مبيعات|اوردرات|طلبات|عملاء|فواتير|ارباح|مصاريف|مخزون|ارقام|تقارير|حسابات)"
+_XT_DATA_EN = (
+    r"(?:data|sales|orders|customers|clients|invoices|revenue|profits?|expenses|inventory"
+    r"|stock|reports?|numbers|figures|records)"
+)
+_XT_BUSINESS_AR = r"(?:محل|محلات|متجر|متاجر|حساب|شركه|شركات|مطعم|فرع)"
+_XT_OTHER_AR = r"(?:تاني|تانيه|تانيين|اخر|اخري|اخرى|مختلف|غير\s+محلي|باقي|بقيه)"
+_XT_OTHER_EN = r"(?:another|other|different|else'?s?|someone\s+else'?s?|competitor'?s?)"
+_XT_BUSINESS_EN = (
+    r"(?:shops?|stores?|merchants?|accounts?|compan(?:y|ies)|businesses|business|tenants?)"
+)
+
+# The same words are what an honest REFUSAL says: "I can't show you another shop's data". The check
+# also reads the assistant's own replies, and blocking the refusal would hide the correct answer.
+# So a request that sits behind a negation or an inability is the speaker describing a limit, not
+# someone asking: the verb is not the first thing said in its clause.
+_XT_REFUSAL_AR = (
+    r"(?:"
+    # "I can't / won't be able to": مقدرش، مش هقدر، ما اقدر، لن استطيع، مش بقدر
+    r"(?:(?:ما|م|مش|لا|لن)\s*(?:اقدر|هقدر|بقدر|استطيع|اسمح|هسمح|بسمح)\w*|مقدر\w*|مسمح\w*)"
+    # "it is not allowed": ممنوع، مينفعش، مش مسموح، غير مسموح، مش من حقي
+    r"|ممنوع|مينفعش|ما\s*ينفعش|مش\s*ينفع|(?:مش|غير)\s*(?:مسموح|مصرح|متاح)|مش\s*من\s*حقي"
+    r")"
+)
+_XT_REFUSAL_EN = (
+    r"(?:cannot|can'?t|won'?t|unable\s+to|not\s+able\s+to|not\s+allowed\s+to|"
+    r"i\s+only|only|never|don'?t|do\s+not|am\s+not\s+allowed\s+to)"
+)
+_REFUSAL_RE = re.compile(rf"(?:{_XT_REFUSAL_AR}|{_XT_REFUSAL_EN})")
+
+
+_CROSS_TENANT_PATTERNS = [
+    # "ورّيني بيانات المحل التاني" / "اعرض لي مبيعات متجر آخر" / "هات عملاء محل تاني"
+    re.compile(
+        rf"{_XT_ASK_AR}\b.{{0,40}}?{_XT_DATA_AR}\b.{{0,25}}?"
+        rf"(?:(?:ال)?{_XT_BUSINESS_AR}\s+(?:ال)?{_XT_OTHER_AR}|{_XT_OTHER_AR}\s+(?:ال)?{_XT_BUSINESS_AR})"
+    ),
+    # the owner's own wording puts the business first: "هات لي عملاء محل تاني"
+    re.compile(
+        rf"{_XT_ASK_AR}\b.{{0,40}}?(?:ال)?{_XT_BUSINESS_AR}\s+(?:ال)?{_XT_OTHER_AR}"
+        rf"\b.{{0,25}}?{_XT_DATA_AR}"
+    ),
+    # "show me another store's orders" / "give me the customers of a different shop"
+    re.compile(
+        rf"\b{_XT_ASK_EN}\b.{{0,40}}?{_XT_OTHER_EN}\s+{_XT_BUSINESS_EN}\b.{{0,25}}?{_XT_DATA_EN}\b"
+    ),
+    re.compile(
+        rf"\b{_XT_ASK_EN}\b.{{0,40}}?{_XT_DATA_EN}\b.{{0,25}}?"
+        rf"(?:of|from|for|at)\s+(?:an?\s+|the\s+)?{_XT_OTHER_EN}\s+{_XT_BUSINESS_EN}\b"
+    ),
+    # the whole set at once: "بيانات المحلات التانية كلها" / "اديني بيانات باقي المحلات"
+    re.compile(rf"{_XT_DATA_AR}\b.{{0,15}}?(?:ال)?(?:محلات|متاجر|شركات)\s+(?:ال)?{_XT_OTHER_AR}"),
+    re.compile(rf"{_XT_DATA_AR}\b.{{0,15}}?(?:باقي|بقيه)\s+(?:ال)?(?:محلات|متاجر|شركات|عملاء)"),
+]
+
+
+def _is_declined(lead: str) -> bool:
+    """Is the request that follows `lead` being declined rather than made?
+
+    `lead` is what the same sentence said before the verb. A decline puts its limit word right
+    against the verb ("مقدرش اعرض بيانات ...", "I can't show ..."). A word in between breaks it:
+    "ممنوع التأخير ورّيني ..." is an order that happens to start with a negative word, and an
+    attacker can write exactly that, so only the last one or two words before the verb are read.
+    """
+    words = lead.split()
+    return any(_REFUSAL_RE.fullmatch(" ".join(words[-n:])) for n in (1, 2) if len(words) >= n)
+
+
 def _cross_tenant_request(content: str, ctx: dict) -> GuardrailVerdict | None:
     # §115/§132: an explicit request for ANOTHER tenant's data is an access
     # attempt, not a question. Server-side tool scoping is the enforcement; this
@@ -234,6 +316,12 @@ def _cross_tenant_request(content: str, ctx: dict) -> GuardrailVerdict | None:
     screened = _screened(content)
     if any(marker in screened for marker in _CROSS_TENANT_MARKERS):
         return GuardrailVerdict(decision="handover", reason="cross_tenant_request")
+    for pattern in _CROSS_TENANT_PATTERNS:
+        for hit in pattern.finditer(screened):
+            # what comes before the verb in its own sentence decides if it is asked or declined
+            lead = re.split(r"[.!?؟،,;\n]", screened[: hit.start()])[-1]
+            if not _is_declined(lead):
+                return GuardrailVerdict(decision="handover", reason="cross_tenant_request")
     return None
 
 
