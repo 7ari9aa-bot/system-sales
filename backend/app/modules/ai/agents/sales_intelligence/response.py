@@ -211,6 +211,15 @@ def _strip_period_dates(
                 re.IGNORECASE,
             )
             out = pattern.sub(" ", out)
+    # The same day written as digits, "15-11" or "15/11" (day first, the way an Egyptian owner
+    # writes it). Both numbers must be a measured PERIOD boundary's day and month, and nothing
+    # numeric may touch it: "15-11-2025" has another year, "11-15" is the wrong order, "115-11"
+    # and "15-112" are other numbers. Only the digits are removed, never a neighbour.
+    for _year, month, day in yearless or ():
+        numeric = re.compile(
+            rf"(?<![0-9])(?<![0-9][-/.])0?{day:d}\s*[-/]\s*0?{month:d}(?![0-9])(?!\s*[-/.]\s*[0-9])"
+        )
+        out = numeric.sub(" ", out)
     # People write a measured period as "from 1 November to 14 November". Accept day + month with
     # no year only when it is a measured PERIOD boundary, and only when no other year follows it
     # (so "1 November 2025" is never read as the boundary of 2026).

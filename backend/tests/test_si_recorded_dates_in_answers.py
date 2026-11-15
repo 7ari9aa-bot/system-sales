@@ -299,3 +299,44 @@ def test_a_start_boundary_never_gets_a_day_subtracted():
     days = period_dates_from_evidence({"facts": REAL_UTC})
     assert (2026, 10, 31) not in days
     assert {(2026, 11, 1), (2026, 11, 14), (2026, 11, 15)} <= days
+
+
+# --- a day written as digits, day first: "15-11", "14/11" (found on the live assistant) --------
+# The model wrote "today (Sunday 15-11)", "the closest closed day 14-11" and "the last order 17-09".
+# The tools and the words were right and the gate refused all of it, because it only knew a month
+# written as a name and ISO dates.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "النهارده (الأحد 15-11) لسه ما خلصش، وأقرب يوم مقفول 14-11 وفيه 0 أوردر.",
+        "من 1/11 لـ 14/11 صفر.",
+        "من 01-11 لـ 14-11 صفر.",
+        "أقرب يوم مقفول 14 / 11 وفيه صفر.",
+    ],
+)
+def test_a_measured_day_written_as_day_dash_month_is_allowed(text):
+    assert _check(text, facts=REAL_UTC) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "أقرب يوم 13-11 وفيه 0.",
+        "أقرب يوم 11-14 وفيه 0.",
+        "بتاريخ 15-11-2025 كان 0.",
+        "بتاريخ 15-11-26 كان 0.",
+        "في 115-11 كان 0.",
+        "في 15-112 كان 0.",
+        "في 14-11 كان 7 أوردرات.",
+        "بين 14-11 و 12-10 كان 0.",
+    ],
+)
+def test_a_numeric_day_that_is_not_a_measured_boundary_is_still_refused(text):
+    assert _check(text, facts=REAL_UTC) != []
+
+
+def test_a_numeric_day_does_not_unlock_its_digits_elsewhere():
+    # 14 is also the window length ("14d"), so it is a legal number on its own; 11 and 13 are not.
+    assert _check("في 14-11 كان 11 أوردر.", facts=REAL_UTC) != []
+    assert _check("في 14-11 كان 13 أوردر.", facts=REAL_UTC) != []
+    assert _check("كان 14 أوردر.", facts=REAL_UTC) == []
