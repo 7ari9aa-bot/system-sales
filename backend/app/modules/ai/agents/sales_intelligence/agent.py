@@ -40,6 +40,7 @@ from app.modules.ai.agents.sales_intelligence import (
 # form keeps it alive under any lint sweep.
 from app.modules.ai.agents.sales_intelligence.coverage import (
     regenerate_on_coverage_gap,
+    regenerate_on_rejected_answer,
 )
 from app.modules.ai.agents.sales_intelligence.plain_words import plain_words
 from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E402
@@ -396,6 +397,37 @@ def _style_directive_for(
         return None
 
 
+async def _book_regen_usage(session, tenant_id, agent_id, result, regen_tokens) -> None:
+    """Book the tokens of a second model call against the run and the monthly cap.
+
+    The provider billed the call whether or not its text survived the gates. The runner already
+    finalized the run row AND wrote its ai_usage record before returning (this stage runs AFTER
+    run()), so folding into the in-memory result alone would mutate an object nobody re-persists:
+    the cap reads SUM(ai_usage.cost) and the gateway writes only an audit ModelCall row. The delta
+    is booked durably, in this transaction (deep self-review round 3, CRITICAL).
+    """
+    from app.modules.ai.budget import estimate_cost
+    from app.modules.ai.models import AgentRun as _AgentRun
+    from app.modules.ai.usage import record_usage
+
+    result.tokens_in += regen_tokens[0]
+    result.tokens_out += regen_tokens[1]
+    if result.run_id is not None:
+        run_row = await session.get(_AgentRun, result.run_id)
+        if run_row is not None:
+            run_row.tokens_in += regen_tokens[0]
+            run_row.tokens_out += regen_tokens[1]
+            run_row.cost = (run_row.cost or 0) + estimate_cost(*regen_tokens)
+    await record_usage(
+        session,
+        tenant_id,
+        agent_id=agent_id,
+        tokens_in=regen_tokens[0],
+        tokens_out=regen_tokens[1],
+        cost=estimate_cost(*regen_tokens),
+    )
+
+
 async def run_sales_analysis(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -562,35 +594,7 @@ async def run_sales_analysis(
     if replacement is not None:
         result.content = replacement
     if regen_tokens is not None:
-        # The provider billed the corrective call whether or not it survived
-        # the gates. The runner already finalized the run row AND wrote its
-        # ai_usage record before returning (this stage runs AFTER run()),
-        # so folding into the in-memory result alone would mutate an object
-        # nobody re-persists — the §42 cap reads SUM(ai_usage.cost), and the
-        # gateway writes only an audit ModelCall row. Compensate durably:
-        # bump the run row in THIS transaction and book the delta against
-        # the cap (deep self-review round 3, CRITICAL).
-        from app.modules.ai.budget import estimate_cost
-        from app.modules.ai.usage import record_usage
-
-        result.tokens_in += regen_tokens[0]
-        result.tokens_out += regen_tokens[1]
-        if result.run_id is not None:
-            from app.modules.ai.models import AgentRun as _AgentRun
-
-            run_row = await session.get(_AgentRun, result.run_id)
-            if run_row is not None:
-                run_row.tokens_in += regen_tokens[0]
-                run_row.tokens_out += regen_tokens[1]
-                run_row.cost = (run_row.cost or 0) + estimate_cost(*regen_tokens)
-        await record_usage(
-            session,
-            tenant_id,
-            agent_id=agent_id,
-            tokens_in=regen_tokens[0],
-            tokens_out=regen_tokens[1],
-            cost=estimate_cost(*regen_tokens),
-        )
+        await _book_regen_usage(session, tenant_id, agent_id, result, regen_tokens)
     if coverage_note is not None:
         await _record_run_output(session, result.run_id, "coverage_regen", coverage_note)
 
@@ -606,12 +610,35 @@ async def run_sales_analysis(
             yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
             recorded_dates=recorded_days_from_evidence(evidence),
         )
+        rewritten: str | None = None
         if problems:
             logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
+            # one rewrite by the model before any fixed sentence is shown
+            rewritten, rewrite_tokens = await regenerate_on_rejected_answer(
+                session,
+                tenant_id,
+                agent_id=agent_id,
+                run_id=result.run_id,
+                history=history,
+                draft=result.content,
+                problems=problems,
+                evidence=evidence,
+                allowed_numbers=allowed,
+                findings=findings,
+                tool_calls_made=result.tool_calls_made,
+                question=question,
+                style_directive=style_directive,
+            )
+            if rewrite_tokens is not None:
+                await _book_regen_usage(session, tenant_id, agent_id, result, rewrite_tokens)
+        if problems and rewritten is None:
             outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
             answer = plain_words(safe_response(findings, {}))
             guardrail_reason = "si_response_invalid"
             safe_resp = True
+        elif rewritten is not None:
+            outcome = Outcome.ANSWERED
+            answer = plain_words(rewritten)
         else:
             outcome = Outcome.ANSWERED
             # numbers are already proven above; only the words are touched here

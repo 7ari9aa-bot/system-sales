@@ -206,6 +206,135 @@ def build_corrective_instruction(gaps: list[str]) -> str:
     )
 
 
+_FREE_NUMBER_PREFIX = "free number in answer: "
+
+
+def free_numbers_in(problems: list[str]) -> list[str]:
+    """The free numbers named by the gate's problems, in order, each once.
+
+    Only these can be fixed by writing the answer again: a number the tools never produced is
+    either dropped or replaced by one they did. Any other problem is a contract about the
+    findings, which the model cannot change by rewording.
+    """
+    seen: list[str] = []
+    for problem in problems:
+        if problem.startswith(_FREE_NUMBER_PREFIX):
+            number = problem.removeprefix(_FREE_NUMBER_PREFIX).strip()
+            if number and number not in seen:
+                seen.append(number)
+    return seen
+
+
+def build_rejection_instruction(numbers: list[str]) -> str:
+    """The instruction for writing again an answer the number gate rejected.
+
+    Names the numbers that were not measured so the model removes them, and says nothing else
+    about format or wording: the answer is still the model's own, in the shop's own voice.
+    """
+    listed = "، ".join(numbers)
+    return (
+        f"إجابتك السابقة فيها أرقام ما طلعتش من نتيجة أي أداة: {listed}. "
+        "أعد كتابة الإجابة كاملة وشيل الأرقام دي أو استبدلها برقم طالع من الأدلة اللي فوق بالظبط. "
+        "متحسبش رقم جديد ومتقرّبش رقم من دماغك، ولو الرقم ضروري ومش موجود في الأدلة قول إنه "
+        "مش متاح."
+    )
+
+
+async def regenerate_on_rejected_answer(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    agent_id: uuid.UUID,
+    run_id: uuid.UUID | None,
+    history: list[dict[str, str]] | None,
+    draft: str,
+    problems: list[str],
+    evidence: dict,
+    allowed_numbers: set[str],
+    findings: list[Finding],
+    tool_calls_made: list[dict],
+    question: str,
+    style_directive: str | None = None,
+) -> tuple[str | None, tuple[int, int] | None]:
+    """At most ONE rewrite of an answer the number gate rejected, instead of a stock reply.
+
+    A rejected answer used to be replaced by a fixed sentence ("no clear result, we need a longer
+    period"), which is a prepared reply and says the data is thin when only one number was loose.
+    The model is shown the same evidence and the numbers that failed, and writes the answer again
+    in the shop's voice. It re-enters through the same gates as a first draft (guardrail, free
+    numbers, coverage); failing any of them returns ``None`` and the caller falls back unchanged.
+
+    Returns ``(text_or_None, (tokens_in, tokens_out) or None)``: the tokens are what the provider
+    billed, which the caller must fold into the run's usage whether or not the text survived.
+    """
+    numbers = free_numbers_in(problems)
+    if not numbers or not draft.strip():
+        return None, None
+
+    from app.modules.ai.gateway import AIGateway
+    from app.modules.ai.guardrails import analytics_guardrail
+    from app.modules.ai.models import Agent
+    from app.modules.ai.runtime import AgentRunner
+
+    agent = await session.get(Agent, agent_id)
+    if agent is None:
+        logger.warning("si.reject_regen_no_agent run=%s agent=%s", run_id, agent_id)
+        return None, None
+
+    messages: list[dict[str, str]] = [
+        {
+            "role": "system",
+            "content": AgentRunner._compose_system_content(agent, style_directive=style_directive),
+        }
+    ]
+    messages.extend(history or [])
+    messages.append({"role": "assistant", "content": draft})
+    evidence_text = build_evidence_message(evidence)
+    instruction = build_rejection_instruction(numbers)
+    messages.append(
+        {
+            "role": "user",
+            "content": f"{evidence_text}\n\n{instruction}" if evidence_text else instruction,
+        }
+    )
+    try:
+        chat = await AIGateway().chat(
+            session,
+            tenant_id,
+            alias=AgentRunner._alias_for(agent),
+            messages=messages,
+            tools=None,  # the rewrite reuses the gathered evidence only
+            temperature=float(agent.temperature),
+            max_tokens=agent.max_output_tokens,
+            agent_id=agent_id,
+            run_id=run_id,
+        )
+    except Exception:  # containment: a failed rewrite keeps the existing fallback
+        logger.warning("si.reject_regen_failed run=%s", run_id, exc_info=True)
+        return None, None
+
+    tokens = (chat.tokens_in, chat.tokens_out)
+    candidate = chat.content
+    if not candidate or not candidate.strip():
+        return None, tokens
+    verdict = analytics_guardrail().evaluate(candidate, {"tool_results": tool_calls_made})
+    if verdict.decision != "allow":
+        logger.warning("si.reject_regen_blocked run=%s reason=%s", run_id, verdict.reason)
+        return None, tokens
+    if validate_answer(
+        candidate,
+        allowed_numbers,
+        findings,
+        period_dates=period_dates_from_evidence(evidence),
+        yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
+        recorded_dates=recorded_days_from_evidence(evidence),
+    ):
+        return None, tokens
+    if coverage_gaps(question, candidate, evidence):
+        return None, tokens
+    return candidate, tokens
+
+
 async def regenerate_on_coverage_gap(
     session: AsyncSession,
     tenant_id: uuid.UUID,
