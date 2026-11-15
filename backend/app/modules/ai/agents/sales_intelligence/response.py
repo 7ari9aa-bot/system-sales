@@ -207,7 +207,7 @@ def _strip_period_dates(
     A date is matched as a unit (day, month, year together), so naming a real boundary never
     unlocks its digits elsewhere: "13 October 2026" is legal, a lone "13" still is not.
     """
-    if not dates:
+    if not dates and not recorded:
         return folded
 
     def _iso(match: re.Match[str]) -> str:
@@ -261,6 +261,18 @@ def _strip_period_dates(
         for name in _MONTH_NAMES[month]:
             pattern = re.compile(
                 rf"(?<![0-9]){day:d}\s+(?:من\s+)?(?:شهر\s+)?{re.escape(name)}(?![\w])(?!\s*,?\s*[0-9])",
+                re.IGNORECASE,
+            )
+            out = pattern.sub(" ", out)
+    # A whole month with its year and no day, "September 2026": the way an owner names a month in
+    # "which month was best". It is legal only when that exact month and year holds a measured day
+    # (a period boundary or a day the shop recorded), so a month with no data, another year, or a
+    # year on its own ("in 2026") stays refused. It runs last, so a full date has already gone.
+    months = {(y, m) for y, m, _d in (dates | (yearless or set()) | (recorded or set()))}
+    for year, month in sorted(months):
+        for name in _MONTH_NAMES[month]:
+            pattern = re.compile(
+                rf"(?<![0-9\w])(?:[وبلف]|ال)?(?:شهر\s+)?{re.escape(name)}\s*,?\s*{year:d}(?![0-9])",
                 re.IGNORECASE,
             )
             out = pattern.sub(" ", out)
