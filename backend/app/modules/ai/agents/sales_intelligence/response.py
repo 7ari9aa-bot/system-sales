@@ -157,6 +157,22 @@ def _strip_period_dates(
         key = (int(match[1]), int(match[2]), int(match[3]))
         return " " if key in dates else match[0]
 
+    # A range that shares its month and year: "from 1 to 14 November 2026". Both ends must be
+    # measured period boundaries of that same month and year, and any year written must be theirs.
+    # It goes first so the lone "1" is never left behind for the single-date form to miss.
+    bounds = sorted(yearless or ())
+    for year, month, first in bounds:
+        for year2, month2, last in bounds:
+            if (year, month) != (year2, month2) or first >= last:
+                continue
+            for name in _MONTH_NAMES[month]:
+                pattern = re.compile(
+                    rf"(?<![0-9]){first:d}\s*(?:من|لـ?|إلى|الى|لحد|حتى|حتي|to|until|-|–)\s*"
+                    rf"{last:d}\s+(?:من\s+)?(?:شهر\s+)?{re.escape(name)}(?![\w])"
+                    rf"(?:\s*,?\s*{year}(?![0-9]))?(?!\s*,?\s*[0-9])",
+                    re.IGNORECASE,
+                )
+                folded = pattern.sub(" ", folded)
     out = _ISO_DATE_IN_TEXT.sub(_iso, folded)
     for year, month, day in dates:
         for name in _MONTH_NAMES[month]:

@@ -149,3 +149,87 @@ def test_a_summary_that_is_itself_a_row_is_not_a_recorded_day():
 )
 def test_the_year_less_form_matches_a_whole_day_and_month_with_no_other_year(text):
     assert _check(text) != []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "الشهر ده (من 1 لـ 14 نوفمبر 2026) المبيعات 0.",  # worded exactly as a live model wrote it
+        "من 1 لـ14 نوفمبر 2026 المبيعات 0.",
+        "من 1 إلى 14 نوفمبر 2026 المبيعات 0.",
+        "من 1 لحد 14 نوفمبر المبيعات 0.",
+        "من 1 - 14 نوفمبر 2026 المبيعات 0.",
+        "المبيعات 0 خلال 1-14 نوفمبر.",
+        "From 1 to 14 November 2026 the sales were 0.",
+        "من ١ لـ ١٤ نوفمبر ٢٠٢٦ المبيعات ٠.",
+    ],
+)
+def test_a_measured_range_may_share_one_month_and_year(text):
+    assert _check(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "من 2 لـ 14 نوفمبر 2026 المبيعات 0.",  # 2 is not a boundary
+        "من 1 لـ 15 نوفمبر 2026 المبيعات 0.",  # 15 is not a boundary
+        "من 1 لـ 14 نوفمبر 2025 المبيعات 0.",  # another year
+        "من 1 لـ 14 ديسمبر 2026 المبيعات 0.",  # another month
+        "من 1 لـ 14 نوفمبر 2026 المبيعات 0 وعدد العملاء 23.",  # a free number beside it
+        "من 1 لـ 17 سبتمبر 2026 المبيعات 0.",  # 1 is a boundary only of November
+        "عندي 1 لـ 14 عميل في نوفمبر.",  # numbers that are not a date range
+    ],
+)
+def test_a_range_naming_anything_unmeasured_is_still_refused(text):
+    assert _check(text, summaries=[STATUS]) != []
+
+
+def test_a_range_whose_ends_belong_to_different_months_is_refused():
+    facts = [
+        {
+            **PERIOD[0],
+            "period_start": "2026-11-01T00:00:00+02:00",
+            "period_end": "2026-10-14T23:59:59+02:00",
+        }
+    ]
+    assert _check("من 1 لـ 14 نوفمبر 2026 المبيعات 0.", facts=facts) != []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "المبيعات 0 يوم 1 14 نوفمبر 2026.",  # no connector, two loose numbers
+        "من 21 لـ 14 نوفمبر 2026 المبيعات 0.",  # 21 only ends in a 1
+        "من 11 لـ 14 نوفمبر 2026 المبيعات 0.",
+    ],
+)
+def test_a_range_must_run_forward_between_two_boundaries_joined_by_a_connector(text):
+    assert _check(text) != []
+
+
+def test_a_backwards_range_between_boundaries_that_are_not_counts_is_refused():
+    facts = [
+        {
+            **PERIOD[0],
+            "window": "30d",
+            "period_start": "2026-11-05T00:00:00+02:00",
+            "period_end": "2026-11-20T23:59:59+02:00",
+        }
+    ]
+    assert _check("من 5 لـ 20 نوفمبر 2026 المبيعات 0.", facts=facts) == []
+    assert _check("من 20 لـ 5 نوفمبر 2026 المبيعات 0.", facts=facts) != []
+
+
+@pytest.mark.parametrize(
+    "text", ["من 21 لـ 20 نوفمبر 2026 المبيعات 0.", "من 11 لـ 20 نوفمبر 2026 المبيعات 0."]
+)
+def test_a_digit_in_front_of_a_range_start_is_not_hidden(text):
+    facts = [
+        {
+            **PERIOD[0],
+            "window": "30d",
+            "period_start": "2026-11-01T00:00:00+02:00",
+            "period_end": "2026-11-20T23:59:59+02:00",
+        }
+    ]
+    assert _check(text, facts=facts) != []
