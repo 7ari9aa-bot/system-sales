@@ -119,6 +119,20 @@ def _previous_day(day: tuple[int, int, int]) -> tuple[int, int, int] | None:
     return (prior.year, prior.month, prior.day)
 
 
+def recorded_days_from_evidence(evidence: dict) -> set[tuple[int, int, int]]:
+    """The days the shop recorded something (the server's own read), as (year, month, day).
+
+    Kept apart from the period boundaries on purpose: a recorded day may be written without its
+    year ("the last order was on 17 September"), but it never starts or ends a RANGE, so "from 1
+    to 17 September" stays refused unless both ends are measured period boundaries."""
+    found: set[tuple[int, int, int]] = set()
+    for value in evidence.get("recorded_days") or []:
+        match = _ISO_DATE_IN_TEXT.match(value.strip()) if isinstance(value, str) else None
+        if match:
+            found.add((int(match[1]), int(match[2]), int(match[3])))
+    return found
+
+
 def period_dates_from_evidence(
     evidence: dict, *, boundaries_only: bool = False
 ) -> set[tuple[int, int, int]]:
@@ -186,6 +200,7 @@ def _strip_period_dates(
     folded: str,
     dates: set[tuple[int, int, int]],
     yearless: set[tuple[int, int, int]] | None = None,
+    recorded: set[tuple[int, int, int]] | None = None,
 ) -> str:
     """Remove whole dates that equal a measured period boundary; leave everything else.
 
@@ -234,7 +249,7 @@ def _strip_period_dates(
     # writes it). Both numbers must be a measured PERIOD boundary's day and month, and nothing
     # numeric may touch it: "15-11-2025" has another year, "11-15" is the wrong order, "115-11"
     # and "15-112" are other numbers. Only the digits are removed, never a neighbour.
-    for _year, month, day in yearless or ():
+    for _year, month, day in sorted((yearless or set()) | (recorded or set())):
         numeric = re.compile(
             rf"(?<![0-9])(?<![0-9][-/.])0?{day:d}\s*[-/]\s*0?{month:d}(?![0-9])(?!\s*[-/.]\s*[0-9])"
         )
@@ -242,7 +257,7 @@ def _strip_period_dates(
     # People write a measured period as "from 1 November to 14 November". Accept day + month with
     # no year only when it is a measured PERIOD boundary, and only when no other year follows it
     # (so "1 November 2025" is never read as the boundary of 2026).
-    for _year, month, day in yearless or ():
+    for _year, month, day in sorted((yearless or set()) | (recorded or set())):
         for name in _MONTH_NAMES[month]:
             pattern = re.compile(
                 rf"(?<![0-9]){day:d}\s+(?:من\s+)?(?:شهر\s+)?{re.escape(name)}(?![\w])(?!\s*,?\s*[0-9])",
@@ -259,6 +274,7 @@ def validate_answer(
     *,
     period_dates: set[tuple[int, int, int]] | None = None,
     yearless_dates: set[tuple[int, int, int]] | None = None,
+    recorded_dates: set[tuple[int, int, int]] | None = None,
 ) -> list[str]:
     """§10.3 v1 — the deterministic gates on the model's answer.
 
@@ -269,7 +285,10 @@ def validate_answer(
     """
     problems: list[str] = []
     folded = _strip_period_dates(
-        text.translate(_ARABIC_INDIC), period_dates or set(), yearless_dates or set()
+        text.translate(_ARABIC_INDIC),
+        period_dates or set(),
+        yearless_dates or set(),
+        recorded_dates or set(),
     )
     numeric_allowed = _numeric_forms(allowed_numbers)
 

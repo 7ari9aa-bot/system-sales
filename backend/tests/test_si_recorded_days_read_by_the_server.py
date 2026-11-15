@@ -17,6 +17,7 @@ from app.modules.ai.agents.sales_intelligence import tools as si_tools
 from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     period_dates_from_evidence,
+    recorded_days_from_evidence,
     validate_answer,
 )
 
@@ -43,6 +44,7 @@ def _check(text, *, days=DAYS, summaries=None):
         [],
         period_dates=period_dates_from_evidence(ev),
         yearless_dates=period_dates_from_evidence(ev, boundaries_only=True),
+        recorded_dates=recorded_days_from_evidence(ev),
     )
 
 
@@ -74,8 +76,6 @@ def test_a_day_the_shop_recorded_may_be_named_without_the_model_asking(text):
         "آخر أوردر 9/17/2026.",
         "آخر أوردر 117/9/2026.",
         "آخر أوردر 17/9/20267.",
-        "آخر أوردر 17/9.",
-        "آخر أوردر 17 سبتمبر.",
     ],
 )
 def test_a_day_that_was_not_recorded_or_is_written_loosely_is_refused(text):
@@ -101,10 +101,11 @@ def test_a_recorded_day_makes_no_number_legal():
     assert with_days == without
 
 
-def test_a_recorded_day_is_not_a_year_less_period_boundary():
+def test_a_recorded_day_is_not_a_period_boundary():
+    # it never joins the year-less PERIOD set, which is what builds the "from 1 to 14" ranges
     days = period_dates_from_evidence({"facts": FACTS, "recorded_days": DAYS}, boundaries_only=True)
     assert (2026, 9, 17) not in days
-    assert _check("آخر أوردر 17 سبتمبر.") != []
+    assert (2026, 9, 17) in recorded_days_from_evidence({"recorded_days": DAYS})
 
 
 class _Session:
@@ -178,3 +179,96 @@ def test_the_run_reads_the_days_once_and_only_after_the_model_finished():
     body = text[text.index("async def run_sales_analysis(") :]
     assert body.count("_recorded_days(") == 1
     assert body.index("runner.run(") < body.index("_recorded_days(") < body.index("build_findings(")
+
+
+# --- the way an owner really says it: "the last order was on 17 September", no year -------------
+# Found live: the model wrote the day without its year in most answers and the gate refused it,
+# because the year-less form was allowed for period boundaries only. A day the shop really
+# recorded is just as measured, so it may be written that way, but never as the end of a range.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر أوردر مسجّل تاريخه 17 سبتمبر، وبعده مفيش حاجة.",
+        "أول أوردر 10 سبتمبر وآخر واحد 17 سبتمبر.",
+        "آخر أوردر 17/9.",
+        "آخر أوردر 17-09.",
+        "The last order was on 17 September.",
+    ],
+)
+def test_a_recorded_day_may_be_written_without_its_year(text):
+    assert _check(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر أوردر 18 سبتمبر.",
+        "آخر أوردر 17 أكتوبر.",
+        "آخر أوردر 17 سبتمبر 2025.",
+        "آخر أوردر 17 سبتمبر 5 مرات.",
+        "آخر أوردر 117 سبتمبر.",
+        "آخر أوردر 17/9/25.",
+        "آخر أوردر 9/17.",
+        "آخر أوردر 17 سبتمبر و3 أوردرات.",
+        "آخر أوردر 17 سبتمبر،2026.",
+    ],
+)
+def test_a_year_less_day_that_is_not_recorded_or_has_anything_numeric_next_to_it_is_refused(text):
+    assert _check(text) != []
+
+
+def test_a_recorded_day_never_ends_a_range():
+    # 10 and 17 September are both recorded, but they are not the two ends of a measured period
+    assert _check("من 10 لـ 17 سبتمبر كان فيه أوردرات.") != []
+    assert _check("من 10 سبتمبر لحد 17 سبتمبر كان فيه أوردرات.") == []
+
+
+def test_the_year_less_form_without_recorded_days_is_still_refused():
+    assert _check("آخر أوردر 17 سبتمبر.", days=None) != []
+    assert _check("آخر أوردر 17 سبتمبر.", days=[]) != []
+
+
+def test_recorded_days_are_read_only_from_their_own_key():
+    ev = {"facts": FACTS, "summaries": [{"recorded_days": ["2026-09-17"]}], "other": "2026-09-17"}
+    assert recorded_days_from_evidence(ev) == set()
+    assert recorded_days_from_evidence({"recorded_days": ["2026-09-17", None, 5, "x"]}) == {
+        (2026, 9, 17)
+    }
+
+
+# --- the wiring: the tests above call the gate directly, the live path is two call sites ---
+# Dropping the argument at either of them left every test green while the real assistant refused
+# the same answers again, so the call sites themselves are checked.
+def _validate_calls(module):
+    import ast
+    import pathlib
+
+    tree = ast.parse(pathlib.Path(module.__file__).read_text(encoding="utf-8"))
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", getattr(node.func, "attr", "")) == "validate_answer"
+    ]
+
+
+@pytest.mark.parametrize(
+    "module_name", ["agent", "coverage"], ids=["the answer gate", "the regenerated-answer gate"]
+)
+def test_every_real_gate_call_hands_over_the_recorded_days(module_name):
+    import importlib
+
+    module = importlib.import_module(f"app.modules.ai.agents.sales_intelligence.{module_name}")
+    calls = _validate_calls(module)
+    assert calls, "this module no longer validates an answer: update this test"
+    for call in calls:
+        keywords = {kw.arg: kw.value for kw in call.keywords}
+        assert "recorded_dates" in keywords, "the real gate would refuse a recorded day again"
+        text = ast_unparse(keywords["recorded_dates"])
+        assert "recorded_days_from_evidence(evidence)" in text
+
+
+def ast_unparse(node):
+    import ast
+
+    return ast.unparse(node)

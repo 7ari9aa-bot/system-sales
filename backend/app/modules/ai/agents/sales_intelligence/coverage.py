@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.ai.agents.sales_intelligence.response import (
     period_dates_from_evidence,
+    recorded_days_from_evidence,
     validate_answer,
 )
 from app.modules.analytics.contracts import Finding
@@ -316,6 +317,7 @@ async def regenerate_on_coverage_gap(
         findings,
         period_dates=period_dates_from_evidence(evidence),
         yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
+        recorded_dates=recorded_days_from_evidence(evidence),
     ):
         return None, note, regen_tokens
     if coverage_gaps(question, candidate, evidence):
