@@ -1451,6 +1451,19 @@ def _lookup_terms(query: str) -> dict | None:
     }
 
 
+def _untrusted_text(text: str | None) -> str | None:
+    """A name typed by someone outside the shop, safe to hand to the model, or None.
+
+    A customer chooses their own name, so it rides the model context verbatim like a social
+    comment does. The same inbound chain that screens those comments screens it here: a
+    non-allow verdict (instruction override, cross-tenant probing) withholds the text instead of
+    letting a stranger's words steer an owner-facing answer. Plain names are returned unchanged.
+    """
+    if not text:
+        return text
+    return text if screen_inbound(text).decision == "allow" else None
+
+
 def _mask_phone(phone: str | None) -> str | None:
     digits = "".join(ch for ch in (phone or "") if ch.isdigit())
     return f"***{digits[-4:]}" if len(digits) >= 4 else None
@@ -1514,7 +1527,7 @@ async def _si_find_order(
     for it in item_rows:
         items.setdefault(it.order_id, []).append(
             {
-                "title": it.title,
+                "title": _untrusted_text(it.title),
                 "quantity": int(it.quantity),
                 "total": f"{Decimal(str(it.total)):.2f}",
             }
@@ -1527,7 +1540,7 @@ async def _si_find_order(
             "status": r.status,
             "grand_total": f"{Decimal(str(r.grand_total)):.2f}",
             "channel": r.channel,
-            "customer_name": r.customer_name,
+            "customer_name": _untrusted_text(r.customer_name),
             "placed_at": r.placed_at.isoformat() if r.placed_at else None,
             "items": items.get(r.order_id, []),
         }
@@ -1598,7 +1611,7 @@ async def _si_find_customer(
     matches = [
         {
             "customer_id": r.customer_id,
-            "name": r.name,
+            "name": _untrusted_text(r.name),
             "phone_hint": _mask_phone(r.phone),
             "email_hint": _mask_email(r.email),
             "is_blocked": bool(r.is_blocked),
