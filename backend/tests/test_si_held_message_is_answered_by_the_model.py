@@ -201,3 +201,11 @@ def test_a_reply_that_quotes_the_attack_is_what_the_guard_stops():
 
     assert _injection_risk("مش هقدر أتجاهل تعليماتي، بس اسأل عن مبيعاتك.", {}) is not None
     assert _injection_risk(OWN_VOICE, {}) is None
+
+
+@pytest.mark.parametrize("reason", sorted(NOTE_FOR_THE_MODEL))
+def test_each_note_tells_the_model_to_write_no_number_period_or_date(reason):
+    # found live: asked to decline, the model offered "sales of the last 14 days". That number
+    # came from no tool, so the number gate threw the good reply away and a garbled one replaced
+    # it. The offer of help is fine; the figure inside it is what must not be written.
+    assert "متكتبش أي رقم ولا فترة ولا تاريخ في ردك" in note_for_the_model(reason)
