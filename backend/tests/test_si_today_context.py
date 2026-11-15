@@ -63,12 +63,16 @@ def test_on_the_first_there_is_no_completed_day_of_this_month():
 
 
 def test_yesterday_is_one_day_and_last_seven_is_seven():
-    """Each count is read from ITS OWN line, so one cannot be satisfied by another's number."""
-    rows = today_context(_at(2026, 11, 15)).split("\n")
-    yesterday = next(r for r in rows if r.startswith("- أمس"))
-    week = next(r for r in rows if "آخر أسبوع" in r)
-    assert "days=1." in yesterday and "days=2" not in yesterday
-    assert "days=7." in week and "days=8" not in week
+    """These two counts never change, so they live in the main prompt (the stable part of the
+    message) and not in the daily date block. Each is read from ITS OWN clause."""
+    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+
+    assert "أمس: days=1" in P and "days=2" not in P.split("أمس: days=1")[1][:12]
+    assert "آخر أسبوع: days=7" in P and "days=8" not in P
+    block = today_context(_at(2026, 11, 15))
+    assert "days=1." not in block and "days=7." not in block, (
+        "a fixed rule is back in the daily block"
+    )
 
 
 def test_last_month_is_given_as_its_dates_and_how_far_back_it_reaches():
@@ -88,8 +92,29 @@ def test_last_month_across_a_year_boundary():
 
 
 def test_the_longest_window_the_tools_accept_is_stated_so_it_is_never_exceeded():
-    text = today_context(_at(2026, 11, 15))
-    assert "90" in text and "366" in text
+    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+    from app.modules.ai.agents.sales_intelligence.today import MONEY_MAX_DAYS, SALES_MAX_DAYS
+
+    assert f"{SALES_MAX_DAYS} يوم" in P and str(MONEY_MAX_DAYS) in P
+    assert (
+        "90" not in today_context(_at(2026, 11, 15)).replace("2026", "").replace("-", " ").split()
+    )
+
+
+def test_the_daily_block_holds_only_what_changes_so_the_cache_prefix_survives():
+    """The date block rides last. Everything fixed is in the main prompt, so two different days
+    share the whole prompt and the dialect and differ only inside this short block."""
+    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+
+    a = today_context(_at(2026, 11, 15))
+    b = today_context(_at(2026, 12, 3))
+    assert a != b
+    assert len(a) < 260, "the daily block grew: a fixed rule probably moved back into it"
+    system_a, system_b = f"{P}\n\n{a}", f"{P}\n\n{b}"
+    shared = 0
+    while system_a[shared] == system_b[shared]:
+        shared += 1
+    assert shared >= len(P), "the main prompt itself differs between two days"
 
 
 def test_it_is_deterministic_for_the_same_instant():

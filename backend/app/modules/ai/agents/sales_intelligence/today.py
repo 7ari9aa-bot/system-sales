@@ -15,7 +15,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# The ceilings the tools enforce: the sales reads stop at 90 days, the money reads at 366.
+# The ceilings the tools enforce: the sales reads stop at 90 days, the money reads at 366. They are
+# stated in the main prompt (they never change), so this block carries only what changes daily.
 SALES_MAX_DAYS = 90
 MONEY_MAX_DAYS = 366
 
@@ -51,26 +52,19 @@ def today_context(now: datetime, zone: ZoneInfo | None = None) -> str:
     last_month_back = (today - first_last).days
 
     rows = [
-        f"النهارده عند صاحب المحل: {today.isoformat()} ({_DAYS_AR[today.weekday()]}).",
-        f"أمس: {yesterday.isoformat()}. اليوم ده لسه ما خلصش فمش بيدخل في أي فترة.",
-        "حوّل لـ days كده:",
-        "- أمس: days=1.",
-        "- آخر أسبوع أو آخر 7 أيام: days=7.",
+        f"النهارده عند صاحب المحل: {today.isoformat()} ({_DAYS_AR[today.weekday()]}). "
+        f"أمس: {yesterday.isoformat()}."
     ]
     if this_month_days >= 1:
-        rows.append(f"- هذا الشهر (من {first_this.isoformat()} لحد أمس): days={this_month_days}.")
+        rows.append(f"هذا الشهر (من {first_this.isoformat()} لحد أمس): days={this_month_days}.")
     else:
         rows.append(
-            "- هذا الشهر: لسه ما فيش يوم مكتمل فيه (النهارده أول يوم)، فقول كده بدل ما تستخدم "
+            "هذا الشهر: لسه ما فيش يوم مكتمل فيه (النهارده أول يوم)، فقول كده بدل ما تستخدم "
             "آخر 30 يوم على إنها الشهر ده."
         )
     rows.append(
-        f"- الشهر اللي فات ({first_last.isoformat()} لحد {last_month_end.isoformat()}): "
+        f"الشهر اللي فات ({first_last.isoformat()} لحد {last_month_end.isoformat()}): "
         f"days={last_month_back} (بيشمل كمان أيام من هذا الشهر، فقول الفترة الفعلية)."
-    )
-    rows.append(
-        f"- الحد الأقصى: {SALES_MAX_DAYS} يوم للمبيعات والعملاء والتوصيل، {MONEY_MAX_DAYS} "
-        f"للمصاريف والأرباح. لو الفترة أطول قول كده بدل ما تقصّها من غير ما تقول."
     )
     return "\n".join(rows)
 

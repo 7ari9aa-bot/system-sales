@@ -767,11 +767,17 @@ class AgentRunner:
     ) -> list[AgentTool]:
         rows = (
             await session.execute(
-                select(AgentTool).where(
+                select(AgentTool)
+                .where(
                     AgentTool.tenant_id == tenant_id,
                     AgentTool.agent_id == agent_id,
                     AgentTool.is_active.is_(True),
                 )
+                # The tool list is sent to the model before the messages, and the provider caches
+                # that beginning only while it is byte-identical. An unordered read returns rows
+                # in storage order, which changes after any update to them, so the same agent
+                # sent its tools in a different order and lost the cache. Name order is stable.
+                .order_by(AgentTool.name)
             )
         ).scalars()
         tools = list(rows.all())
