@@ -156,6 +156,11 @@ def period_dates_from_evidence(
 
     for bucket in _EVIDENCE_BUCKETS:
         _walk(evidence.get(bucket))
+    # The days the shop recorded something, read once by the server for every answer (a plain list
+    # of dates, no counts), so naming the last order never depends on the model having asked.
+    if not boundaries_only:
+        for day in evidence.get("recorded_days") or []:
+            _add(day)
     # The data-status tool reports the first and last day each source was recorded. Those are
     # measured days too ("the last order was on 17 September"). Read ONLY from its own summary
     # shape, so a `first`/`last` key anywhere else never becomes a legal date.
@@ -218,6 +223,13 @@ def _strip_period_dates(
                 re.IGNORECASE,
             )
             out = pattern.sub(" ", out)
+    # A whole day written as digits with its year, "17/9/2026" or "17-09-2026" (day first). Day,
+    # month and year must all be a measured day, and no number may touch it.
+    for year, month, day in dates:
+        full = re.compile(
+            rf"(?<![0-9])(?<![0-9][-/.])0?{day:d}\s*[-/]\s*0?{month:d}\s*[-/]\s*{year:d}(?![0-9])"
+        )
+        out = full.sub(" ", out)
     # The same day written as digits, "15-11" or "15/11" (day first, the way an Egyptian owner
     # writes it). Both numbers must be a measured PERIOD boundary's day and month, and nothing
     # numeric may touch it: "15-11-2025" has another year, "11-15" is the wrong order, "115-11"

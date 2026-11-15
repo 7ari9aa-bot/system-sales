@@ -234,6 +234,30 @@ def _rebuild_evidence(tool_calls_made: list[dict]) -> dict[str, list[dict]]:
     }
 
 
+async def _recorded_days(session: AsyncSession, tenant_id: uuid.UUID) -> list[str]:
+    """The first and last day each of the shop's sources was recorded, as dates only.
+
+    An answer often says when the last order was ("the last order was on 17 September"), and the
+    model writes it whether or not it called the data-status tool this turn, so the date was
+    refused as unmeasured and the owner got a generic text instead of a correct answer. The server
+    reads it itself, the same read-only query the tool runs, and hands the gate DATES ONLY: no
+    counts, so no number becomes legal. A failure returns nothing and the answer is judged as
+    before.
+    """
+    from app.modules.ai.agents.sales_intelligence.tools import _si_data_status
+
+    try:
+        result = await _si_data_status(session, tenant_id)
+    except Exception:  # noqa: BLE001 — containment: the answer is still judged without it
+        logger.warning("si.recorded_days_unread tenant=%s", tenant_id, exc_info=True)
+        return []
+    days: list[str] = []
+    for row in (result.get("summary") or {}).get("sources") or []:
+        if isinstance(row, dict):
+            days.extend(v for v in (row.get("first"), row.get("last")) if isinstance(v, str))
+    return sorted(set(days))
+
+
 def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
     """MetricFact payloads from every OK si_* tool result."""
     return _rebuild_evidence(tool_calls_made)["facts"]
@@ -477,6 +501,7 @@ async def run_sales_analysis(
 
     run_id = result.run_id
     evidence = _rebuild_evidence(result.tool_calls_made)
+    evidence["recorded_days"] = await _recorded_days(session, tenant_id)
     payloads = evidence["facts"]
     facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
 
