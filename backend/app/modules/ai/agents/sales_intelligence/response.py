@@ -98,6 +98,27 @@ _EVIDENCE_BUCKETS = ("facts", "comparisons", "dimensions", "drivers", "summaries
 _ISO_DATE_IN_TEXT = re.compile(r"(?<![0-9])(\d{4})-(\d{2})-(\d{2})(?:[T ][0-9:.+Zz-]*)?(?![0-9])")
 
 
+_MIDNIGHT = re.compile(r"[T ]00:00(?::00(?:\.0+)?)?(?:[+-]00:?00|Z|z)?$")
+
+
+def _is_midnight(value: object) -> bool:
+    """True when a period boundary is exactly midnight, or a bare date: an exclusive end."""
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    return bool(_MIDNIGHT.search(text)) or bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", text))
+
+
+def _previous_day(day: tuple[int, int, int]) -> tuple[int, int, int] | None:
+    from datetime import date, timedelta
+
+    try:
+        prior = date(*day) - timedelta(days=1)
+    except ValueError:
+        return None
+    return (prior.year, prior.month, prior.day)
+
+
 def period_dates_from_evidence(
     evidence: dict, *, boundaries_only: bool = False
 ) -> set[tuple[int, int, int]]:
@@ -108,16 +129,25 @@ def period_dates_from_evidence(
     """
     found: set[tuple[int, int, int]] = set()
 
-    def _add(value: object) -> None:
+    def _add(value: object, *, is_end: bool = False) -> None:
         match = _ISO_DATE_IN_TEXT.match(value.strip()) if isinstance(value, str) else None
         if match:
-            found.add((int(match[1]), int(match[2]), int(match[3])))
+            day = (int(match[1]), int(match[2]), int(match[3]))
+            found.add(day)
+            if is_end and _is_midnight(value):
+                # The tools measure the half-open window [start, end): a period ending at
+                # midnight stops BEFORE that day. "The last 14 days" is 1 to 15 November
+                # 00:00, and the owner is told "1 to 14 November". The last day actually
+                # covered is the one before the exclusive end, so it is a measured boundary.
+                previous = _previous_day(day)
+                if previous is not None:
+                    found.add(previous)
 
     def _walk(obj: object) -> None:
         if isinstance(obj, dict):
             for key, value in obj.items():
                 if key in _PERIOD_KEYS and isinstance(value, str):
-                    _add(value)
+                    _add(value, is_end=key == "period_end")
                 else:
                     _walk(value)
         elif isinstance(obj, (list, tuple)):

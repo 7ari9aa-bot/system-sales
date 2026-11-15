@@ -233,3 +233,69 @@ def test_a_digit_in_front_of_a_range_start_is_not_hidden(text):
         }
     ]
     assert _check(text, facts=facts) != []
+
+
+# --- the period END the tools really return is exclusive (found on the live assistant) ---------
+# The tools measure [start, end): "the last 14 days" is 1 November 00:00 up to 15 November 00:00,
+# and the owner is told "1 to 14 November". The older fixtures above end at 23:59:59, which is not
+# what the tools emit, so they never caught the gate refusing the day the window really ends on.
+REAL_UTC = [
+    {
+        "id": "f1",
+        "metric": "expenses_total",
+        "value": "0",
+        "window": "14d",
+        "period_start": "2026-11-01T00:00:00+00:00",
+        "period_end": "2026-11-15T00:00:00+00:00",
+    }
+]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "الشهر ده (من 1 لـ 14 نوفمبر): صفر.",
+        "من 1 لـ 14 نوفمبر 2026 المصاريف صفر.",
+        "من 1 نوفمبر لحد 14 نوفمبر المصاريف صفر.",
+        "من 1 لـ 15 نوفمبر المصاريف صفر.",
+    ],
+)
+def test_the_last_day_before_an_exclusive_midnight_end_is_a_measured_boundary(text):
+    assert _check(text, facts=REAL_UTC) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "من 1 لـ 13 نوفمبر المصاريف صفر.",
+        "من 1 لـ 16 نوفمبر المصاريف صفر.",
+        "المصاريف صفر في آخر 90 يوم.",
+    ],
+)
+def test_days_the_window_did_not_end_on_are_still_refused(text):
+    assert _check(text, facts=REAL_UTC) != []
+
+
+def test_an_end_that_carries_a_time_is_inclusive_so_the_day_before_is_not_added():
+    fact = {**REAL_UTC[0], "period_end": "2026-11-15T23:59:59+00:00"}
+    assert _check("من 1 لـ 14 نوفمبر المصاريف صفر.", facts=[fact]) != []
+
+
+def test_a_bare_date_end_is_exclusive_too():
+    fact = {**REAL_UTC[0], "period_end": "2026-11-15"}
+    assert _check("من 1 لـ 14 نوفمبر المصاريف صفر.", facts=[fact]) == []
+
+
+def test_the_previous_day_crosses_a_month_and_a_year():
+    fact = {
+        **REAL_UTC[0],
+        "period_start": "2026-12-01T00:00:00+00:00",
+        "period_end": "2027-01-01T00:00:00+00:00",
+    }
+    assert (2026, 12, 31) in period_dates_from_evidence({"facts": [fact]})
+
+
+def test_a_start_boundary_never_gets_a_day_subtracted():
+    days = period_dates_from_evidence({"facts": REAL_UTC})
+    assert (2026, 10, 31) not in days
+    assert {(2026, 11, 1), (2026, 11, 14), (2026, 11, 15)} <= days

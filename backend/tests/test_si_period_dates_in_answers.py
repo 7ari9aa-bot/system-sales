@@ -165,4 +165,7 @@ def test_the_day_and_the_month_must_both_match():
     # 13 September is a real boundary of the prior period; 13 November is not.
     assert _check("من 13 سبتمبر 2026 بلغ 59.") == []
     assert _check("من 13 نوفمبر 2026 بلغ 59.") != []
-    assert _check("من 12 أكتوبر 2026 بلغ 59.") != []
+    # The prior period ends at 13 October 00:00, exclusive, so 12 October is the last day it
+    # covered and is a measured boundary. The day before THAT was never a boundary.
+    assert _check("من 12 أكتوبر 2026 بلغ 59.") == []
+    assert _check("من 11 أكتوبر 2026 بلغ 59.") != []
