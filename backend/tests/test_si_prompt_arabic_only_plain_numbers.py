@@ -52,9 +52,11 @@ def test_the_migration_sits_on_the_current_head() -> None:
     assert module.down_revision == "fe2026111216"
 
 
-def test_the_text_it_writes_is_exactly_what_the_code_gives_a_new_shop() -> None:
-    """A shop created tomorrow and a shop moved today must hold the same instructions."""
-    assert _load()._NEW == SI_SYSTEM_PROMPT
+def test_the_text_it_writes_is_what_the_next_migration_then_replaces() -> None:
+    """The chain is unbroken: what this one wrote is exactly what the next one looks for. The code
+    itself is held to the newest migration's text, not to this one."""
+    nxt = VERSIONS / "fe2026111218_si_prompt_external_text_is_data.py"
+    assert _load()._NEW == _load(nxt)._OLD
 
 
 def test_the_text_it_replaces_is_exactly_what_the_previous_migration_put_in_production() -> None:
@@ -220,5 +222,6 @@ def test_no_other_rule_was_dropped_to_make_room() -> None:
         assert kept in SI_SYSTEM_PROMPT, f"{kept!r} was lost while shortening"
 
 
-def test_it_still_fits_the_size_bound_without_raising_it() -> None:
-    assert len(SI_SYSTEM_PROMPT) < 1900
+def test_it_still_fits_the_size_bound() -> None:
+    # the bound was 1900 when this migration was written; fe2026111218 raised it to 2100 on purpose
+    assert len(SI_SYSTEM_PROMPT) < 2100

@@ -88,6 +88,6 @@ def test_nothing_in_it_is_a_canned_reply():
 
 def test_it_does_not_grow_without_a_reason():
     """Every added line costs tokens on every turn. A bound makes growth a decision."""
-    assert len(P) < 1900, (
+    assert len(P) < 2100, (
         f"the prompt is {len(P)} characters; shorten it or raise the bound on purpose"
     )

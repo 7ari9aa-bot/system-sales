@@ -94,7 +94,7 @@ def test_the_prompt_stays_small_because_every_word_is_paid_for_on_every_message(
     # raised on purpose from 1400 by fe2026111215: the assistant now covers the whole shop, reads a
     # period from the date and tells three kinds of "no data" apart. Every line was measured and the
     # duplicated rules were removed (about +280 tokens a turn). Growing past this is a decision.
-    assert len(SI_SYSTEM_PROMPT) < 1900
+    assert len(SI_SYSTEM_PROMPT) < 2100
 
 
 @pytest.fixture
