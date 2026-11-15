@@ -23,7 +23,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 PATH = VERSIONS / "fe2026111216_si_prompt_one_idea_per_paragraph.py"
@@ -52,9 +51,10 @@ def test_the_migration_sits_on_the_current_head() -> None:
     assert module.down_revision == "fe2026111215"
 
 
-def test_the_text_it_writes_is_exactly_what_the_code_gives_a_new_shop() -> None:
-    """A shop created tomorrow and a shop moved today must hold the same instructions."""
-    assert _load()._NEW == SI_SYSTEM_PROMPT
+def test_the_text_it_writes_is_what_the_next_migration_then_replaces() -> None:
+    """The chain is unbroken: what this one put in production is what the next one expects."""
+    nxt = VERSIONS / "fe2026111217_si_prompt_arabic_only_plain_numbers.py"
+    assert _load()._NEW == _load(nxt)._OLD
 
 
 def test_the_text_it_replaces_is_exactly_what_the_previous_migration_put_in_production() -> None:
