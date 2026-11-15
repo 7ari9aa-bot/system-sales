@@ -8,8 +8,8 @@ from fastapi import APIRouter, Request
 from sqlalchemy import select
 
 from app.core.errors import PayloadTooLargeError, StorageUnavailableError
-from app.core.storage import FetchedMedia, get_storage
 from app.core.mfa import is_mfa_enabled
+from app.core.storage import FetchedMedia, get_storage
 from app.modules.identity import avatar, schemas, service
 from app.modules.identity.deps import TenantCtxDep
 from app.modules.identity.models import Role, TenantUser, User
