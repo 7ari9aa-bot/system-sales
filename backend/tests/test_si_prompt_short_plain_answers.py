@@ -50,8 +50,9 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
     module = _load()
     assert module.revision == "fe2026111210"
     assert module.down_revision == "fe2026111209"
-    # the text it writes IS the text the code provisions for new shops
-    assert module._NEW == SI_SYSTEM_PROMPT
+    # the text it writes was the code text when it shipped; fe2026111215 moved the code text on, so
+    # this one is frozen (a migration must not change when prompts.py does)
+    assert module._NEW != SI_SYSTEM_PROMPT
     # and the text it replaces is exactly what fe2026111208 put in production
     assert module._OLD == _load(PREVIOUS)._NEW
     assert module._OLD != module._NEW
@@ -90,7 +91,10 @@ def test_the_prompt_answers_in_the_owners_own_language() -> None:
 
 
 def test_the_prompt_stays_small_because_every_word_is_paid_for_on_every_message() -> None:
-    assert len(SI_SYSTEM_PROMPT) < 1400
+    # raised on purpose from 1400 by fe2026111215: the assistant now covers the whole shop, reads a
+    # period from the date and tells three kinds of "no data" apart. Every line was measured and the
+    # duplicated rules were removed (about +280 tokens a turn). Growing past this is a decision.
+    assert len(SI_SYSTEM_PROMPT) < 1900
 
 
 @pytest.fixture

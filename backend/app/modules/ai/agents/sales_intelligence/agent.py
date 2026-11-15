@@ -324,6 +324,36 @@ async def _owner_notes_for_prompt(
         return ""
 
 
+def _shop_now(zone):
+    """The current instant in the shop's zone. A seam so a test can pin the clock."""
+    from app.modules.ai.agents.sales_intelligence.today import now_in
+
+    return now_in(zone)
+
+
+def _system_directive_for(
+    stored: str | None, currency: str | None, tenant_id: uuid.UUID, merchant_tz: str
+) -> str | None:
+    """What rides last in the system message: the shop's dialect, then what day it is.
+
+    Both are conveniences, never dependencies: each is built on its own, and a failure in one reads
+    as "that part is absent" so the owner still gets an answer (and never loses the other part)."""
+    from zoneinfo import ZoneInfo
+
+    from app.modules.ai.agents.sales_intelligence.today import today_context
+
+    parts: list[str] = []
+    dialect_part = _style_directive_for(stored, currency, tenant_id)
+    if dialect_part:
+        parts.append(dialect_part)
+    try:
+        zone = ZoneInfo(merchant_tz)
+        parts.append(today_context(_shop_now(zone), zone))
+    except Exception:  # noqa: BLE001 - a date problem must never cost the owner an answer
+        logger.warning("si_today.context_failed tenant=%s", tenant_id, exc_info=True)
+    return "\n\n".join(parts) if parts else None
+
+
 def _style_directive_for(
     stored: str | None, currency: str | None, tenant_id: uuid.UUID
 ) -> str | None:
@@ -376,8 +406,8 @@ async def run_sales_analysis(
         )
     ).first()
     merchant_currency = tenant_row[0] if tenant_row else "EGP"
-    style_directive = _style_directive_for(
-        tenant_row[1] if tenant_row else None, merchant_currency, tenant_id
+    style_directive = _system_directive_for(
+        tenant_row[1] if tenant_row else None, merchant_currency, tenant_id, merchant_tz
     )
 
     # Attach any tool the agent row does not have yet. Only the old /ai/sales route used to do
@@ -500,6 +530,7 @@ async def run_sales_analysis(
         allowed_numbers=allowed,
         findings=findings,
         tool_calls_made=result.tool_calls_made,
+        style_directive=style_directive,
     )
     if replacement is not None:
         result.content = replacement

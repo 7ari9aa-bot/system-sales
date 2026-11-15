@@ -218,8 +218,14 @@ async def regenerate_on_coverage_gap(
     allowed_numbers: set[str],
     findings: list[Finding],
     tool_calls_made: list[dict],
+    style_directive: str | None = None,
 ) -> tuple[str | None, dict | None, tuple[int, int] | None]:
     """At most ONE corrective regeneration when the first draft misses coverage.
+
+    ``style_directive`` is the same trailing text the first draft was written with (the shop's
+    dialect and today's date). Without it the second draft was composed from the bare rules, so it
+    came back in a different voice and unaware of the date, on exactly the answers already going
+    wrong. It is composed by the runner's own function, so the two can never drift apart.
 
     Returns ``(replacement_content, note, regen_tokens)``:
 
@@ -258,7 +264,10 @@ async def regenerate_on_coverage_gap(
         return None, note, None
 
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": AgentRunner._resolve_system_prompt(agent)}
+        {
+            "role": "system",
+            "content": AgentRunner._compose_system_content(agent, style_directive=style_directive),
+        }
     ]
     messages.extend(history or [])
     messages.append({"role": "assistant", "content": draft})

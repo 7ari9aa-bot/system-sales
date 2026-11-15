@@ -104,7 +104,9 @@ async def test_the_directive_comes_after_the_rules_and_the_persona(db, tenant_ct
     system = _system(seen[0])
     directive = dialect.directive_for("egyptian")
     assert system.index("analyze") < system.index("اسمك نور.") < system.index(directive)
-    assert system.endswith(directive)
+    # the dialect is the last of the SHOP's voice; only today's date block may follow it
+    tail = system[system.index(directive) + len(directive) :]
+    assert tail.startswith("\n\nالنهارده عند صاحب المحل: ")
 
 
 async def test_the_customer_agent_never_gets_a_dialect_directive(db, tenant_ctx, monkeypatch):

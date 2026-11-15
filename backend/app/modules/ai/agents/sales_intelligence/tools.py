@@ -539,21 +539,68 @@ class SIStatusArgs(BaseModel):
     pass
 
 
+# What the shop has recorded, source by source. Counts and dates only, NEVER an amount: this tool
+# has no permission requirement, so it must not carry money to someone without ``finance:read``.
+# Each row is (source, table, date column, extra filter). A deleted row is not "recorded".
+_DATA_SOURCES = (
+    ("orders", "orders", "placed_at", "deleted_at IS NULL"),
+    ("shipments", "shipments", "COALESCE(shipped_at, created_at)", "TRUE"),
+    ("expenses", "expenses", "expense_date", "status = 'posted'"),
+    ("inventory", "product_variants", "created_at", "TRUE"),
+    ("purchases", "purchase_orders", "order_date", "TRUE"),
+    ("customers", "customers", "created_at", "deleted_at IS NULL"),
+    ("conversations", "conversations", "created_at", "deleted_at IS NULL"),
+)
+
+
 async def _si_data_status(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     *,
     context: dict | None = None,
 ) -> dict:
-    from app.modules.analytics.capabilities import get_data_status
+    """What THIS shop has recorded: per source, whether anything exists and its first and last day.
 
-    result = get_data_status()
+    It used to return one fixed text for every shop, so an empty answer could never be told apart
+    from a gap in the shop's own records. Every source is always listed (an empty one says so), so
+    the model can state WHICH thing is missing instead of a vague "no data".
+    """
+    sources = []
+    for name, table, date_col, extra in _DATA_SOURCES:
+        row = (
+            await session.execute(
+                # the names come from the fixed tuple above, never from the model or the owner
+                _sql(
+                    f"SELECT COUNT(*) AS n, MIN({date_col}) AS first, "
+                    f"MAX({date_col}) AS last "
+                    f"FROM {table} WHERE tenant_id = :tenant_id AND {extra}"
+                ),
+                {"tenant_id": str(tenant_id)},
+            )
+        ).one()
+        count = int(row.n or 0)
+        sources.append(
+            {
+                "source": name,
+                "recorded": count > 0,
+                "count": count,
+                "first": _iso_day(row.first) if count else None,
+                "last": _iso_day(row.last) if count else None,
+            }
+        )
     return {
-        "capability": result.capability,
-        "status": result.status,
-        "summary": result.summary,
-        "warnings": result.data_quality.warnings,
+        "capability": "get_data_status",
+        "status": "ok",
+        "summary": {"sources": sources},
+        "warnings": [],
     }
+
+
+def _iso_day(value) -> str | None:
+    """A date or datetime as ``YYYY-MM-DD``: a day is all the model needs to see."""
+    if value is None:
+        return None
+    return value.date().isoformat() if hasattr(value, "date") else value.isoformat()
 
 
 class SITopProductsArgs(BaseModel):
@@ -2020,7 +2067,16 @@ def register_si_tools() -> None:
         ),
         ToolSpec(
             name="si_data_status",
-            description="Data freshness/maturity status for the store.",
+            description=(
+                "What the shop has recorded: for orders, shipments, expenses, stock items, "
+                "purchases, customers and conversations, whether anything exists, how many, "
+                "and the first and last date. No amounts, no arguments. "
+                "Call it when an answer comes back empty or surprising, or when the owner "
+                "asks what data you have, so you can say exactly which part is empty (the "
+                "shop never recorded it) instead of a vague 'no data'. "
+                "An empty source means nothing was recorded in the system, not that the "
+                "number is zero."
+            ),
             args_schema=SIStatusArgs,
             handler=_si_data_status,
             tags=["sales-intelligence"],
