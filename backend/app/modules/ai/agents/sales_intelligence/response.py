@@ -161,12 +161,19 @@ def period_dates_from_evidence(
     # shape, so a `first`/`last` key anywhere else never becomes a legal date.
     for summary in [] if boundaries_only else evidence.get("summaries") or []:
         sources = summary.get("sources") if isinstance(summary, dict) else None
-        if not isinstance(sources, list):
-            continue
-        for row in sources:
-            if isinstance(row, dict) and isinstance(row.get("source"), str):
-                _add(row.get("first"))
-                _add(row.get("last"))
+        if isinstance(sources, list):
+            for row in sources:
+                if isinstance(row, dict) and isinstance(row.get("source"), str):
+                    _add(row.get("first"))
+                    _add(row.get("last"))
+        # The customer-activity tool reports when each customer last wrote, read from the
+        # messages themselves ("the last contact was on 19 September"). Only a row that names a
+        # customer, inside that tool's own `entries` list, counts: the key anywhere else does not.
+        entries = summary.get("entries") if isinstance(summary, dict) else None
+        if isinstance(entries, list):
+            for row in entries:
+                if isinstance(row, dict) and isinstance(row.get("customer_id"), str):
+                    _add(row.get("last_message_at"))
     return found
 
 

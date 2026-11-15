@@ -340,3 +340,72 @@ def test_a_numeric_day_does_not_unlock_its_digits_elsewhere():
     assert _check("في 14-11 كان 11 أوردر.", facts=REAL_UTC) != []
     assert _check("في 14-11 كان 13 أوردر.", facts=REAL_UTC) != []
     assert _check("كان 14 أوردر.", facts=REAL_UTC) == []
+
+
+# --- the day each customer last wrote (the customer-activity tool; found on the live assistant) ---
+ACTIVITY = {
+    "entries": [
+        {
+            "name": "سارة إبراهيم",
+            "customer_id": "7daa75ab-4d10-4e6e-80ea-33ac81052873",
+            "conversations": 1,
+            "last_message_at": "2026-09-18T15:38:08.425167+00:00",
+            "inbound_messages": 1,
+        },
+        {
+            "name": "أحمد محمود",
+            "customer_id": "fe2adf55-1a38-4aac-84bd-b0120cf7a619",
+            "conversations": 1,
+            "last_message_at": "2026-09-19T21:27:09.903996+00:00",
+            "inbound_messages": 1,
+        },
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر تواصل كان يوم 2026-09-19.",
+        "سارة كلمتنا آخر مرة يوم 18 سبتمبر 2026.",
+        "أحمد آخر رسالة منه 19 سبتمبر 2026.",
+    ],
+)
+def test_the_day_a_customer_last_wrote_may_be_named(text):
+    assert _check(text, facts=REAL_UTC, summaries=[ACTIVITY]) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر تواصل كان يوم 2026-09-20.",
+        "آخر تواصل كان يوم 20 سبتمبر 2026.",
+        "آخر تواصل كان يوم 19 سبتمبر.",
+    ],
+)
+def test_a_customer_day_that_was_not_reported_is_refused(text):
+    # the year-less form is for period boundaries only, like first/last of the data status
+    assert _check(text, facts=REAL_UTC, summaries=[ACTIVITY]) != []
+
+
+def test_without_the_tool_result_the_customer_day_is_refused():
+    assert _check("آخر تواصل كان يوم 2026-09-19.", facts=REAL_UTC) != []
+
+
+def test_a_last_message_key_outside_a_customer_row_is_not_a_date():
+    loose = {"entries": [{"name": "x", "last_message_at": "2026-09-19T21:27:09+00:00"}]}
+    assert _check("آخر تواصل كان يوم 2026-09-19.", facts=REAL_UTC, summaries=[loose]) != []
+    elsewhere = {"other": {"customer_id": "c1", "last_message_at": "2026-09-19T00:00:00+00:00"}}
+    assert _check("آخر تواصل كان يوم 2026-09-19.", facts=REAL_UTC, summaries=[elsewhere]) != []
+
+
+def test_a_customer_day_does_not_unlock_its_digits_elsewhere():
+    assert _check("يوم 2026-09-19 كلمنا 19 عميل.", facts=REAL_UTC, summaries=[ACTIVITY]) != []
+    assert _check("آخر تواصل 2026-09-19 و 2026 عميل.", facts=REAL_UTC, summaries=[ACTIVITY]) != []
+
+
+def test_a_customer_last_message_adds_no_date_to_the_period_boundaries():
+    days = period_dates_from_evidence(
+        {"facts": REAL_UTC, "summaries": [ACTIVITY]}, boundaries_only=True
+    )
+    assert (2026, 9, 19) not in days
