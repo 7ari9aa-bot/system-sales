@@ -28,7 +28,8 @@ from app.modules.identity.router import tenants_router, users_router
 from app.modules.identity.service import TenantSettingsService, UserService
 
 NAME_PATH = "/tenants/{tenant_id}/name"
-PROFILE_PATH = "/users/me"
+PROFILE_PATH = "/users/me"  # as the router declares it, for the permission check
+PROFILE_URL = f"/api/v1{PROFILE_PATH}"  # as a client must ask for it
 
 
 def _permission_codes(routes, path: str, method: str) -> set[str]:
@@ -254,7 +255,7 @@ async def test_the_profile_route_answers_with_the_whole_account(
         ctx_user_id=tenant_ctx.user.id,
         perms=set(),
     ) as client:
-        response = await client.patch(PROFILE_PATH, json={"full_name": "  Rana Adel "})
+        response = await client.patch(PROFILE_URL, json={"full_name": "  Rana Adel "})
         assert response.status_code == 200, response.text
         body: dict[str, Any] = response.json()
         # the whole account, so the screen renders what the server holds
@@ -263,14 +264,14 @@ async def test_the_profile_route_answers_with_the_whole_account(
         assert body["id"] == str(tenant_ctx.user.id)
         assert [t["id"] for t in body["tenants"]] == [str(tenant_ctx.tenant_id)]
 
-        read_back = await client.get(PROFILE_PATH)
+        read_back = await client.get(PROFILE_URL)
         assert read_back.status_code == 200, read_back.text
         assert read_back.json()["full_name"] == "Rana Adel"
 
-        blank = await client.patch(PROFILE_PATH, json={"full_name": "  "})
+        blank = await client.patch(PROFILE_URL, json={"full_name": "  "})
         assert blank.status_code == 400, blank.text
 
-        empty = await client.patch(PROFILE_PATH, json={"full_name": ""})
+        empty = await client.patch(PROFILE_URL, json={"full_name": ""})
         assert empty.status_code == 422, empty.text
 
     assert await _user_name(db, tenant_ctx.user.id) == "Rana Adel"
@@ -295,7 +296,7 @@ async def test_the_profile_route_never_touches_another_account(
         perms=set(),
     ) as client:
         response = await client.patch(
-            PROFILE_PATH,
+            PROFILE_URL,
             json={"full_name": "Rana", "id": str(other.id), "email": "evil@test.local"},
         )
         assert response.status_code == 200, response.text
