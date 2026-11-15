@@ -576,6 +576,7 @@ async def run_sales_analysis(
             allowed,
             findings,
             period_dates=period_dates_from_evidence(evidence),
+            yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
         )
         if problems:
             logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)

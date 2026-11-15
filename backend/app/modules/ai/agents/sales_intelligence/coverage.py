@@ -315,6 +315,7 @@ async def regenerate_on_coverage_gap(
         allowed_numbers,
         findings,
         period_dates=period_dates_from_evidence(evidence),
+        yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
     ):
         return None, note, regen_tokens
     if coverage_gaps(question, candidate, evidence):

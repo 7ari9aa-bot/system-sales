@@ -98,7 +98,9 @@ _EVIDENCE_BUCKETS = ("facts", "comparisons", "dimensions", "drivers", "summaries
 _ISO_DATE_IN_TEXT = re.compile(r"(?<![0-9])(\d{4})-(\d{2})-(\d{2})(?:[T ][0-9:.+Zz-]*)?(?![0-9])")
 
 
-def period_dates_from_evidence(evidence: dict) -> set[tuple[int, int, int]]:
+def period_dates_from_evidence(
+    evidence: dict, *, boundaries_only: bool = False
+) -> set[tuple[int, int, int]]:
     """The calendar days the tools measured: every ``period_start``/``period_end`` they returned.
 
     Only these keys count. A date the model invents, or one a tool merely mentioned, is not a
@@ -106,13 +108,16 @@ def period_dates_from_evidence(evidence: dict) -> set[tuple[int, int, int]]:
     """
     found: set[tuple[int, int, int]] = set()
 
+    def _add(value: object) -> None:
+        match = _ISO_DATE_IN_TEXT.match(value.strip()) if isinstance(value, str) else None
+        if match:
+            found.add((int(match[1]), int(match[2]), int(match[3])))
+
     def _walk(obj: object) -> None:
         if isinstance(obj, dict):
             for key, value in obj.items():
                 if key in _PERIOD_KEYS and isinstance(value, str):
-                    match = _ISO_DATE_IN_TEXT.match(value.strip())
-                    if match:
-                        found.add((int(match[1]), int(match[2]), int(match[3])))
+                    _add(value)
                 else:
                     _walk(value)
         elif isinstance(obj, (list, tuple)):
@@ -121,10 +126,25 @@ def period_dates_from_evidence(evidence: dict) -> set[tuple[int, int, int]]:
 
     for bucket in _EVIDENCE_BUCKETS:
         _walk(evidence.get(bucket))
+    # The data-status tool reports the first and last day each source was recorded. Those are
+    # measured days too ("the last order was on 17 September"). Read ONLY from its own summary
+    # shape, so a `first`/`last` key anywhere else never becomes a legal date.
+    for summary in [] if boundaries_only else evidence.get("summaries") or []:
+        sources = summary.get("sources") if isinstance(summary, dict) else None
+        if not isinstance(sources, list):
+            continue
+        for row in sources:
+            if isinstance(row, dict) and isinstance(row.get("source"), str):
+                _add(row.get("first"))
+                _add(row.get("last"))
     return found
 
 
-def _strip_period_dates(folded: str, dates: set[tuple[int, int, int]]) -> str:
+def _strip_period_dates(
+    folded: str,
+    dates: set[tuple[int, int, int]],
+    yearless: set[tuple[int, int, int]] | None = None,
+) -> str:
     """Remove whole dates that equal a measured period boundary; leave everything else.
 
     A date is matched as a unit (day, month, year together), so naming a real boundary never
@@ -145,6 +165,16 @@ def _strip_period_dates(folded: str, dates: set[tuple[int, int, int]]) -> str:
                 re.IGNORECASE,
             )
             out = pattern.sub(" ", out)
+    # People write a measured period as "from 1 November to 14 November". Accept day + month with
+    # no year only when it is a measured PERIOD boundary, and only when no other year follows it
+    # (so "1 November 2025" is never read as the boundary of 2026).
+    for _year, month, day in yearless or ():
+        for name in _MONTH_NAMES[month]:
+            pattern = re.compile(
+                rf"(?<![0-9]){day:d}\s+(?:من\s+)?(?:شهر\s+)?{re.escape(name)}(?![\w])(?!\s*,?\s*[0-9])",
+                re.IGNORECASE,
+            )
+            out = pattern.sub(" ", out)
     return out
 
 
@@ -154,6 +184,7 @@ def validate_answer(
     findings: list[Finding],
     *,
     period_dates: set[tuple[int, int, int]] | None = None,
+    yearless_dates: set[tuple[int, int, int]] | None = None,
 ) -> list[str]:
     """§10.3 v1 — the deterministic gates on the model's answer.
 
@@ -163,7 +194,9 @@ def validate_answer(
     Also executes `validate_response` on the synthesized AnswerDraft.
     """
     problems: list[str] = []
-    folded = _strip_period_dates(text.translate(_ARABIC_INDIC), period_dates or set())
+    folded = _strip_period_dates(
+        text.translate(_ARABIC_INDIC), period_dates or set(), yearless_dates or set()
+    )
     numeric_allowed = _numeric_forms(allowed_numbers)
 
     def _is_free(numeral: str) -> bool:
