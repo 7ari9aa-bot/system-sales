@@ -2085,7 +2085,8 @@ def register_si_tools() -> None:
             name="si_top_products",
             description=(
                 "Best-selling variants in the window: units, revenue, and the "
-                "size/color options buyers chose."
+                "size/color options buyers chose (use for 'what sells most, which size "
+                "or color'). For one metric's total use si_metric."
             ),
             args_schema=SITopProductsArgs,
             handler=_si_top_products,
@@ -2096,7 +2097,8 @@ def register_si_tools() -> None:
             description=(
                 "What is left in the shop: variants out of stock, running low "
                 "(at or under the shop's own reorder level), sitting unsold for "
-                "stagnant_days, and not tracked at all. Read-only."
+                "stagnant_days, and not tracked at all (use for 'what is left, what "
+                "should I reorder'). Read-only."
             ),
             args_schema=SIStockStatusArgs,
             handler=_si_stock_status,
@@ -2127,7 +2129,8 @@ def register_si_tools() -> None:
             name="si_purchasing_summary",
             description=(
                 "What the shop bought in the window, orders waiting to arrive, and how "
-                "much it owes each supplier. Read-only."
+                "much it owes each supplier (use for 'what did I buy, what do I owe'). "
+                "Read-only."
             ),
             args_schema=SIPurchasingArgs,
             handler=_si_purchasing_summary,
@@ -2138,7 +2141,8 @@ def register_si_tools() -> None:
             name="si_cashier_summary",
             description=(
                 "What the cashier sold and refunded in the window: totals, net, per "
-                "cashier, busiest hours and open shifts. Read-only."
+                "cashier, busiest hours and open shifts (use for in-shop point-of-sale "
+                "questions only; for online order totals use si_metric). Read-only."
             ),
             args_schema=SICashierArgs,
             handler=_si_cashier_summary,
@@ -2149,7 +2153,8 @@ def register_si_tools() -> None:
             name="si_find_order",
             description=(
                 "Find an order by number, customer name or phone: status, total, items, "
-                "channel and date. Read-only; never returns an address."
+                "channel and date (use to look up ONE order the owner names; for totals "
+                "or counts of orders use si_metric). Read-only; never returns an address."
             ),
             args_schema=SIFindOrderArgs,
             handler=_si_find_order,
@@ -2160,7 +2165,9 @@ def register_si_tools() -> None:
             name="si_find_customer",
             description=(
                 "Find a customer by name, phone or email: order count, total spent and "
-                "last purchase. Phone and email come back masked. Read-only."
+                "last purchase (use to look up ONE customer the owner names; for who "
+                "buys or returns use si_why with focus customers). Phone and email come "
+                "back masked. Read-only."
             ),
             args_schema=SIFindCustomerArgs,
             handler=_si_find_customer,
