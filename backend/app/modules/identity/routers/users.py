@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.errors import PayloadTooLargeError, StorageUnavailableError
 from app.core.storage import FetchedMedia, get_storage
+from app.core.mfa import is_mfa_enabled
 from app.modules.identity import avatar, schemas, service
 from app.modules.identity.deps import TenantCtxDep
 from app.modules.identity.models import Role, TenantUser, User
@@ -16,21 +17,40 @@ from app.modules.identity.models import Role, TenantUser, User
 users_router = APIRouter(prefix="/users", tags=["users"])
 
 
-@users_router.get("/me", response_model=schemas.CurrentUser)
-async def my_profile(ctx: TenantCtxDep):
-    full = await service.UserService.get(ctx.session, ctx.user.id)
-    tenants = await service.TenantService.list_for_user(ctx.session, ctx.user.id)
+async def _current_user(session, user_id) -> schemas.CurrentUser:
+    """The signed-in account as every screen sees it (profile, sidebar, avatar)."""
+    full = await service.UserService.get(session, user_id)
+    tenants = await service.TenantService.list_for_user(session, user_id)
     return schemas.CurrentUser(
         id=full.id,
         email=full.email,
         full_name=full.full_name,
         is_platform_admin=full.is_platform_admin,
         avatar_url=avatar.read_url(full.avatar_url),
+        mfa_enabled=await is_mfa_enabled(session, user_id=user_id),
         tenants=[
             schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
             for t, role in tenants
         ],
     )
+
+
+@users_router.get("/me", response_model=schemas.CurrentUser)
+async def my_profile(ctx: TenantCtxDep):
+    return await _current_user(ctx.session, ctx.user.id)
+
+
+@users_router.patch("/me", response_model=schemas.CurrentUser)
+async def update_my_profile(body: schemas.ProfileUpdate, ctx: TenantCtxDep):
+    """Rewrite the caller's own display name — the one personal fact the API owns.
+
+    It answers with the WHOLE account rather than the changed field, so the
+    screen renders what the server now holds instead of echoing the input back
+    to itself. Nothing here can touch another user: the id comes from the
+    verified token, never from the body.
+    """
+    await service.UserService.update_profile(ctx.session, ctx.user.id, full_name=body.full_name)
+    return await _current_user(ctx.session, ctx.user.id)
 
 
 @users_router.put("/me/avatar")

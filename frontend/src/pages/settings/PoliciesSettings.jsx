@@ -21,8 +21,9 @@ export default function PoliciesSettings() {
       .then((res) => {
         if (!alive) return;
         setMaxChars(res.max_chars || 1500);
+        const items = Array.isArray(res?.items) ? res.items : [];
         setRows(
-          res.items.map((p) => ({
+          items.map((p) => ({
             key: p.key,
             title: p.title,
             saved: p.content,

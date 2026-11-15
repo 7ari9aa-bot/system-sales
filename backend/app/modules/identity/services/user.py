@@ -9,7 +9,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.core.errors import NotFoundError, PermissionDeniedError
+from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.core.security import decode_token
 from app.modules.identity.models import User
 
@@ -33,9 +33,23 @@ class UserService:
 
     @staticmethod
     async def update_profile(session, user_id: uuid.UUID, *, full_name: str | None = None) -> User:
+        """Rewrite the account's own display name.
+
+        The name is shown to colleagues, on the POS receipt header and beside
+        every audit row this person writes, so the stored value is the cleaned
+        one: surrounding and repeated whitespace collapses to single spaces and
+        a name that is only whitespace is refused (400) rather than saved as an
+        invisible identity. ``None`` means "leave it alone", which is what keeps
+        this usable as a partial update.
+        """
         user = await UserService.get(session, user_id)
         if full_name is not None:
-            user.full_name = full_name
+            cleaned = " ".join(full_name.split())
+            if not cleaned:
+                raise ValidationError("a profile name cannot be empty")
+            if cleaned != user.full_name:
+                user.full_name = cleaned
+                await session.flush()
         return user
 
     @staticmethod

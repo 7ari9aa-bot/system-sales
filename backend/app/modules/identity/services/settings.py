@@ -18,6 +18,10 @@ from app.modules.identity.dialects import dialect_refusal
 from app.modules.identity.models import Tenant
 from app.modules.identity.services._common import _record_audit
 
+#: ``tenants.name`` is ``VARCHAR(255)``; bound it here so an over-long rename is a
+#: 400 that explains itself instead of a 500 from the column.
+_NAME_MAX_LEN = 255
+
 #: ``tenants.timezone`` is ``VARCHAR(64)`` with a shape CHECK (migration
 #: e3b7d2a9c4f1). Bound the same way here, so an owner gets a 400 that explains
 #: itself rather than a 500 from the constraint.
@@ -49,7 +53,53 @@ def timezone_refusal(value: str | None) -> str | None:
 
 
 class TenantSettingsService:
-    """§47 — the commercial settings of a tenant: currency and timezone."""
+    """§47 — the commercial settings of a tenant: name, currency and timezone."""
+
+    @staticmethod
+    async def set_name(
+        session,
+        tenant_id: uuid.UUID,
+        name: str,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> Tenant:
+        """Rename the workspace: the shop's own name, not a person's.
+
+        The name is printed on receipts and stamped into every audit row the
+        shop writes, so it is stored cleaned — surrounding and repeated
+        whitespace collapses — and a name that is only whitespace is refused
+        (400) rather than becoming an unnamed shop. Renaming is a LABEL change:
+        nothing keys off the name (the slug does), so reports, orders and stock
+        keep pointing at the same rows after a rename.
+        """
+        cleaned = " ".join((name or "").split())
+        if not cleaned:
+            raise ValidationError("a workspace name cannot be empty")
+        if len(cleaned) > _NAME_MAX_LEN:
+            raise ValidationError(f"a workspace name must be at most {_NAME_MAX_LEN} characters")
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+        previous = tenant.name
+        if previous == cleaned:
+            return tenant
+
+        tenant.name = cleaned
+        await _record_audit(
+            session,
+            tenant.id,
+            actor_user_id,
+            "tenant.name_changed",
+            "tenant",
+            tenant.id,
+            before={"name": previous},
+            after={"name": cleaned},
+        )
+        await session.flush()
+        return tenant
 
     @staticmethod
     async def set_currency(

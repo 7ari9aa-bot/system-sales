@@ -2,22 +2,16 @@ import React from "react";
 import { AlertTriangle, Archive, Download } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { getTokens, api } from "@/lib/api";
-import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
+import { api } from "@/lib/api";
+import { activeTenantId } from "@/lib/activeTenant";
+import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
 import { Badge } from "@/components/dashboard/ui";
 
-function activeTenantId(user) {
-  try {
-    const payload = getTokens()?.access_token?.split(".")[1];
-    const normalized = payload?.replace(/-/g, "+").replace(/_/g, "/");
-    const tokenTenant = normalized ? JSON.parse(window.atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))).tenant_id : null;
-    return tokenTenant || (user?.tenants?.length === 1 ? user.tenants[0].id : null);
-  } catch {
-    return user?.tenants?.length === 1 ? user.tenants[0].id : null;
-  }
-}
-
-export default function DangerZoneSettings() {
+// Named for what it actually does. It was "Danger zone" while holding no destructive control at
+// all: a lifecycle badge and a download that the server only serves DURING the offboarding window.
+// Two cards now, each one honest — Backup & export says when the file exists, and Workspace
+// lifecycle says who starts the end and what it schedules.
+export default function DataSettings() {
   const t = useT();
   const { lang } = useI18n();
   const { user } = useAuth();
@@ -28,8 +22,11 @@ export default function DangerZoneSettings() {
   const [exporting, setExporting] = React.useState(false);
   const [error, setError] = React.useState("");
 
+  const offboarding = lifecycle?.lifecycle_state === "offboarding";
+  const canExport = offboarding && Boolean(tenantId);
+
   const downloadExport = async () => {
-    if (!tenantId || lifecycle?.lifecycle_state !== "offboarding" || exporting) return;
+    if (!canExport || exporting) return;
     setError("");
     setExporting(true);
     try {
@@ -65,53 +62,58 @@ export default function DangerZoneSettings() {
   }, [tenantId, isAr]);
 
   return (
-    <SettingsShell title={t("settings.dangerZone")} subtitle={t("settings.dangerZone.desc")}>
+    <SettingsShell title={t("data.title")} subtitle={t("data.desc")}>
       {error && <div role="alert" className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
-      <SettingCard>
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-start gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Archive className="h-4 w-4" /></span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SettingCard title={t("data.export")} desc={t("data.export.desc")}>
+          <div className="flex items-start gap-3 pt-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Download className="h-4 w-4" /></span>
             <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-medium">{isAr ? "حالة مساحة العمل" : "Workspace lifecycle"}</div>
-              <div className="mt-1"><Badge tone={lifecycle?.lifecycle_state === "active" || lifecycle?.lifecycle_state === "trial" ? "success" : "warning"}>{loading ? "…" : lifecycle?.lifecycle_state || "—"}</Badge></div>
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
-                {isAr
-                  ? "تظل مساحة العمل قابلة للتصدير خلال فترة الاحتفاظ بعد بدء الإنهاء. بعد انتهاء المهلة تُحذف بياناتها نهائيًا."
-                  : "The workspace can be exported during its retention period after offboarding begins. Its data is permanently deleted when that period ends."}
-              </p>
-              {lifecycle?.deletion_scheduled_at && (
-                <p className="mt-2 text-[11.5px] text-muted-foreground">
-                  {isAr ? "موعد الحذف المجدول: " : "Scheduled deletion: "}
-                  <time dateTime={lifecycle.deletion_scheduled_at}>{new Date(lifecycle.deletion_scheduled_at).toLocaleString(isAr ? "ar-EG" : "en-US")}</time>
-                </p>
+              <p className="text-[12px] leading-relaxed text-muted-foreground">{t("data.export.contents")}</p>
+              <button
+                type="button"
+                disabled={loading || exporting || !canExport}
+                onClick={downloadExport}
+                data-testid="data-export"
+                title={!canExport && !loading ? t("data.export.onlyOffboarding") : undefined}
+                className="mt-3 h-8 shrink-0 rounded-lg border border-border px-3 text-[12.5px] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exporting ? t("data.export.downloading") : t("data.export.download")}
+              </button>
+              {!loading && !canExport && (
+                <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground" data-testid="data-export-reason">{t("data.export.onlyOffboarding")}</p>
               )}
             </div>
           </div>
-        </div>
+        </SettingCard>
 
-        <div className="mt-3 rounded-lg border border-border p-4">
-          <div className="flex items-start gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Download className="h-4 w-4" /></span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-medium">{t("danger.export")}</div>
-              <div className="mt-1 text-[12px] text-muted-foreground">{isAr ? "يتضمن التصدير بيانات مساحة العمل وسجلاتها، مع استبعاد أسرار التكامل. ملفات الوسائط نفسها تظل في التخزين." : "The export includes workspace records and history, with integration secrets removed. Binary media files remain in object storage."}</div>
-            </div>
-            <button
-              type="button"
-              disabled={loading || exporting || lifecycle?.lifecycle_state !== "offboarding"}
-              onClick={downloadExport}
-              className="h-8 shrink-0 rounded-lg border border-border px-3 text-[12.5px] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {exporting ? (isAr ? "جارٍ التصدير..." : "Exporting...") : t("danger.export")}
-            </button>
+        <SettingCard title={t("data.lifecycle")} desc={t("data.lifecycle.desc")}>
+          <div className="pt-2">
+            <SettingRow label={t("data.state")}>
+              <span data-testid="workspace-state">
+                <Badge tone={lifecycle?.lifecycle_state === "active" || lifecycle?.lifecycle_state === "trial" ? "success" : "warning"}>
+                  {loading ? "…" : lifecycle?.lifecycle_state || "—"}
+                </Badge>
+              </span>
+            </SettingRow>
+            <SettingRow label={t("data.deletionDate")} last>
+              <span className="text-[13px] font-medium tabular-nums">
+                {lifecycle?.deletion_scheduled_at
+                  ? <time dateTime={lifecycle.deletion_scheduled_at}>{new Date(lifecycle.deletion_scheduled_at).toLocaleString(isAr ? "ar-EG" : "en-US")}</time>
+                  : "—"}
+              </span>
+            </SettingRow>
           </div>
-        </div>
-
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[11.5px] leading-relaxed text-warning">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{isAr ? "يبدأ الإنهاء من إعدادات الحساب/الدعم. بعد بدء المهلة، نزّل نسخة البيانات قبل موعد الحذف النهائي." : "Offboarding is started through account support. Download an export before the scheduled permanent deletion."}</span>
-        </div>
-      </SettingCard>
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[11.5px] leading-relaxed text-warning">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{t("data.lifecycle.note")}</span>
+          </div>
+          <div className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-muted-foreground">
+            <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{t("data.lifecycle.retention")}</span>
+          </div>
+        </SettingCard>
+      </div>
     </SettingsShell>
   );
 }

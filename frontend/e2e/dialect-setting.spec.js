@@ -6,7 +6,7 @@ const CHOICES = ["egyptian", "gulf", "levantine", "maghrebi", "msa"];
 const SOURCE_FOR = { EGP: "egyptian", SAR: "gulf" };
 const json = (route, data, status = 200) => route.fulfill({ status, json: data });
 
-async function setup(page, { stored = null, currency = "EGP", lang = "en", failPut = null, failGet = false, hold = false, rewrite = null } = {}) {
+async function setup(page, { stored = null, currency = "EGP", lang = "en", failPut = null, failGet = false, hold = false, rewrite = null } = {}, path = "/settings/ai") {
   const state = { dialect: stored, puts: [], currencyPuts: 0, release: () => {} };
   const gate = new Promise((resolve) => { state.release = resolve; });
   const info = () => {
@@ -43,9 +43,15 @@ async function setup(page, { stored = null, currency = "EGP", lang = "en", failP
       }
       return failGet ? json(route, { detail: "boom" }, 500) : json(route, info());
     }
+    // the dialect card now lives on the AI screen, so the rest of that screen has to answer like
+    // the server does (lists, not objects) — otherwise the page falls over before the card is drawn
+    if (path === "/api/v1/ai/agents" || path === "/api/v1/ai/agent-kinds") return json(route, []);
+    if (path === "/api/v1/ai/approvals") return json(route, { items: [], truncated: false });
+    if (path === "/api/v1/ai/usage/summary") return json(route, { totals: { tokens_in: 0, tokens_out: 0, cost_usd: 0 } });
+    if (path === "/api/v1/analytics/dashboard") return json(route, {});
     return json(route, {});
   });
-  await page.goto("/settings");
+  await page.goto(path);
   return state;
 }
 
@@ -114,7 +120,9 @@ test("if the setting cannot be loaded, the screen cannot write over it", async (
 });
 
 test("saving the regional settings never touches the assistant's dialect", async ({ page }) => {
-  const state = await setup(page, { stored: "msa", currency: "EGP" });
+  // they used to share a page; they no longer do, and this still has to hold: the regional save
+  // writes currency and timezone only, so changing the shop's country cannot rewrite the dialect.
+  const state = await setup(page, { stored: "msa", currency: "EGP" }, "/settings/workspace");
   const regional = card(page, "Regional settings");
   await regional.getByRole("button", { name: "Save changes" }).click();
   // wait for the WHOLE regional save to finish (its own confirmation), not just its first request:
@@ -123,6 +131,9 @@ test("saving the regional settings never touches the assistant's dialect", async
   expect(state.currencyPuts).toBe(1);
   // ...and it wrote no dialect, so changing the country cannot rewrite how the assistant talks
   expect(state.puts).toEqual([]);
+
+  // the dialect itself is untouched and still reads back as the simple standard it was
+  await page.goto("/settings/ai");
   await expect(page.getByTestId("dialect-select")).toContainText("Simple Modern Standard");
 });
 

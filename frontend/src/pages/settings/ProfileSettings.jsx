@@ -1,213 +1,187 @@
 import React from "react";
-import { Save } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Camera, Loader2, Save, ShieldCheck, Store, Trash2 } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { api, getTokens } from "@/lib/api";
-import { useRegional, formatCurrency, formatDate } from "@/lib/regional";
+import { api } from "@/lib/api";
+import { activeTenant } from "@/lib/activeTenant";
+import useAvatarUpload from "@/hooks/useAvatarUpload";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { AUTO, dialectBody, dialectOptions, isDirty, selectionFrom, sourceKey } from "./dialectSetting";
+import { Input } from "@/components/ui/input";
 
-function activeTenantId(user) {
-  try {
-    const payload = getTokens()?.access_token?.split(".")[1];
-    const normalized = payload?.replace(/-/g, "+").replace(/_/g, "/");
-    const tokenTenant = normalized ? JSON.parse(window.atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))).tenant_id : null;
-    return tokenTenant || (user?.tenants?.length === 1 ? user.tenants[0].id : null);
-  } catch {
-    return user?.tenants?.length === 1 ? user.tenants[0].id : null;
-  }
-}
-
+/** The person: their picture, their name, their address, and the way out to their account.
+ *
+ * This page answers "who am I" and nothing else. The shop's name, its country, its currency and
+ * the assistant's dialect used to sit here as well, which made a personal page the place where
+ * business settings were edited. They now live where they belong (Workspace settings, AI) and are
+ * linked from the Account card below.
+ */
 export default function ProfileSettings() {
   const t = useT();
   const { lang } = useI18n();
-  const { user } = useAuth();
-  const { countryCode, setCountryCode, country, countries } = useRegional();
-  const tenantId = activeTenantId(user);
-  const tenant = user?.tenants?.find((item) => item.id === tenantId);
-  const [savingRegion, setSavingRegion] = React.useState(false);
-  const [regionError, setRegionError] = React.useState("");
-  const [regionNotice, setRegionNotice] = React.useState("");
-  // The assistant's dialect is its own setting with its own save, never part of the regional save:
-  // changing the country must not silently rewrite how the assistant talks.
-  const [dialectInfo, setDialectInfo] = React.useState(null);
-  const [dialectChoice, setDialectChoice] = React.useState(AUTO);
-  const [savingDialect, setSavingDialect] = React.useState(false);
-  const [dialectError, setDialectError] = React.useState("");
-  const [dialectNotice, setDialectNotice] = React.useState("");
+  const { user, refreshUser } = useAuth();
+  const tenant = activeTenant(user);
+  const avatar = useAvatarUpload();
 
+  const [name, setName] = React.useState(user?.full_name || "");
+  const [savingName, setSavingName] = React.useState(false);
+  const [nameError, setNameError] = React.useState("");
+  const [nameNotice, setNameNotice] = React.useState("");
+
+  // A refreshed account (another tab, an avatar change) is the truth; only overwrite the field
+  // when the owner is not mid-edit, so their typing is never yanked away.
+  const storedName = user?.full_name || "";
   React.useEffect(() => {
-    if (!tenantId) return;
-    let alive = true;
-    api(`/tenants/${tenantId}/dialect`).then((info) => {
-      if (!alive) return;
-      setDialectInfo(info);
-      setDialectChoice(selectionFrom(info));
-    }).catch((error) => {
-      if (alive) setDialectError(error?.message || t("dialect.loadFailed"));
-    });
-    return () => { alive = false; };
-  }, [tenantId, t]);
+    setName((current) => (current === "" ? storedName : current));
+  }, [storedName]);
 
-  async function saveDialect() {
-    if (!tenantId || !dialectInfo) return;
-    setSavingDialect(true);
-    setDialectError("");
-    setDialectNotice("");
+  const nameChanged = name.trim() !== "" && name.trim() !== storedName.trim();
+
+  async function saveName(event) {
+    event.preventDefault();
+    if (!nameChanged || savingName) return;
+    setSavingName(true);
+    setNameError("");
+    setNameNotice("");
     try {
-      // Confirm only after the server answers, and show what IT says is now in use.
-      const saved = await api(`/tenants/${tenantId}/dialect`, { method: "PUT", body: dialectBody(dialectChoice, dialectInfo.choices) });
-      setDialectInfo(saved);
-      setDialectChoice(selectionFrom(saved));
-      setDialectNotice(t("dialect.saved"));
-    } catch (error) {
-      setDialectError(error?.message || t("dialect.saveFailed"));
+      const updated = await api("/users/me", { method: "PATCH", body: { full_name: name } });
+      // render what the server stored (it collapses whitespace), then refresh the shell so the
+      // sidebar, account menu and header show the same name
+      setName(updated?.full_name || name.trim());
+      await refreshUser();
+      setNameNotice(t("profile.name.saved"));
+    } catch (failure) {
+      setNameError(failure?.message || t("profile.name.failed"));
     } finally {
-      setSavingDialect(false);
+      setSavingName(false);
     }
   }
 
-  React.useEffect(() => {
-    if (!tenantId) return;
-    let alive = true;
-    Promise.all([
-      api(`/tenants/${tenantId}/currency`),
-      api(`/tenants/${tenantId}/timezone`),
-    ]).then(([currency, timezone]) => {
-      if (!alive) return;
-      const match = Object.values(countries).find((item) =>
-        item.currency === currency?.currency && (!timezone?.timezone || item.timezone === timezone.timezone),
-      );
-      if (match) setCountryCode(match.code);
-    }).catch((error) => {
-      if (alive) setRegionError(error?.message || (lang === "ar" ? "تعذر تحميل الإعدادات الإقليمية" : "Could not load regional settings"));
-    });
-    return () => { alive = false; };
-  }, [tenantId, countries, setCountryCode, lang]);
-
-  async function saveRegionalSettings() {
-    if (!tenantId) return;
-    setSavingRegion(true);
-    setRegionError("");
-    setRegionNotice("");
-    try {
-      await api(`/tenants/${tenantId}/currency`, { method: "PUT", body: { currency: country.currency } });
-      await api(`/tenants/${tenantId}/timezone`, { method: "PUT", body: { timezone: country.timezone } });
-      setRegionNotice(lang === "ar" ? "تم حفظ العملة والمنطقة الزمنية لمساحة العمل." : "Workspace currency and time zone were saved.");
-    } catch (error) {
-      setRegionError(error?.message || (lang === "ar" ? "تعذر حفظ الإعدادات الإقليمية" : "Could not save regional settings"));
-    } finally {
-      setSavingRegion(false);
-    }
-  }
   return (
     <SettingsShell title={t("settings.nav.profile")} subtitle={t("settings.profile.desc")}>
       <div className="space-y-5">
-        <SettingCard title={t("profile.personal")} desc={t("profile.personal.desc")}>
-          <div className="flex items-center gap-4 pt-2 pb-4">
+        <SettingCard title={t("profile.identity")} desc={t("profile.identity.desc")}>
+          <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-center">
             <AccountAvatar user={user} size="lg" />
-            <div className="min-w-0">
-              <div className="text-[14px] font-medium truncate">{user?.full_name || "—"}</div>
-              <div className="text-[12px] text-muted-foreground truncate">{user?.email || "—"}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5"
+                disabled={avatar.busy}
+                onClick={avatar.pick}
+              >
+                {avatar.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                {t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}
+              </Button>
+              {user?.avatar_url && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-1.5 text-destructive hover:text-destructive"
+                  disabled={avatar.busy}
+                  onClick={() => void avatar.remove()}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("account.avatar.remove")}
+                </Button>
+              )}
+              <input
+                ref={avatar.inputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                aria-label={t("account.avatar.pick")}
+                onChange={avatar.upload}
+              />
             </div>
           </div>
-          <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
-            <ReadOnlyField label={t("profile.fullName")} value={user?.full_name} />
-            <ReadOnlyField label={t("profile.email")} value={user?.email} />
-          </div>
-          <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-            {lang === "ar"
-              ? "تعديل الاسم والبريد الإلكتروني غير متاح في عقد الـAPI الحالي. البيانات هنا مقروءة من حسابك المسجل."
-              : "Name and email editing are not available in the current API contract. These values are read from your signed-in account."}
-          </p>
+          {(avatar.error || avatar.notice) && (
+            <p
+              role={avatar.error ? "alert" : "status"}
+              className={`mt-2 text-[12px] ${avatar.error ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {avatar.error || avatar.notice}
+            </p>
+          )}
+
+          <form className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2" onSubmit={saveName}>
+            <label className="block">
+              <span className="text-[11.5px] text-muted-foreground">{t("profile.fullName")}</span>
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={255}
+                autoComplete="name"
+                className="mt-1"
+                data-testid="profile-name"
+              />
+            </label>
+            <div className="block">
+              <span className="text-[11.5px] text-muted-foreground">{t("profile.email")}</span>
+              <div className="mt-1 rounded-md border border-border bg-surface px-3 py-2 text-[13px] font-medium break-all" dir="ltr">
+                {user?.email || "—"}
+              </div>
+            </div>
+            <div className="sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11.5px] leading-relaxed text-muted-foreground max-w-md">
+                {t("profile.email.locked")}
+              </p>
+              <Button
+                type="submit"
+                disabled={!nameChanged || savingName}
+                className="gap-1.5 shrink-0"
+                data-testid="profile-name-save"
+              >
+                <Save className="h-4 w-4" />
+                {savingName ? "…" : t("businessProfile.save")}
+              </Button>
+            </div>
+          </form>
+          {(nameError || nameNotice) && (
+            <div
+              role={nameError ? "alert" : "status"}
+              data-testid="profile-name-message"
+              className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${nameError ? "bg-destructive/10 text-destructive" : "bg-success/10 text-foreground"}`}
+            >
+              {nameError || nameNotice}
+            </div>
+          )}
         </SettingCard>
 
-        <SettingCard title={lang === "ar" ? "مساحة العمل" : "Workspace"}>
-          <div className="pt-2">
-            <SettingRow label={lang === "ar" ? "مساحة العمل" : "Workspace"}>
-              <span className="text-[13px] font-medium">{tenant?.name || "—"}</span>
+        <SettingCard title={t("profile.account")}>
+          <div className="pt-1">
+            <SettingRow label={t("workspace.name")} desc={tenant?.name || "—"}>
+              <Link
+                to="/settings/workspace"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:gap-2 transition-all"
+              >
+                <Store className="h-4 w-4" />
+                {t("profile.link.workspace")}
+              </Link>
             </SettingRow>
-            <SettingRow label={lang === "ar" ? "الدور" : "Role"} last>
+            <SettingRow label={t("workspace.role")}>
               <span className="text-[13px] font-medium">{tenant?.role_code || "—"}</span>
+            </SettingRow>
+            <SettingRow label={t("settings.nav.security")} desc={t("profile.link.security.desc")} last>
+              <Link
+                to="/settings/security"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:gap-2 transition-all"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {t("profile.link.security")}
+              </Link>
             </SettingRow>
           </div>
           <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
             {lang === "ar"
-              ? "تفاصيل النشاط التجاري مثل العنوان والهاتف لا يعيدها الـAPI الحالي؛ أزلت القيم التجريبية من النموذج."
-              : "The current API does not return business details such as address or phone; sample values have been removed."}
+              ? "لهجة المساعد بقت في صفحة الذكاء الاصطناعي، واسم المحل والعملة والتوقيت في صفحة مساحة العمل."
+              : "The assistant's dialect now lives on the AI page; the shop's name, currency and time zone live on Workspace settings."}
           </p>
-        </SettingCard>
-
-        <SettingCard title={t("settings.regional")} desc={t("settings.regional.desc")}>
-          <div className="pt-2">
-            <SettingRow label={t("regional.country")}>
-              <Select value={countryCode} onValueChange={setCountryCode}>
-                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.values(countries).map((item) => (
-                    <SelectItem key={item.code} value={item.code}>{lang === "ar" ? item.nameAr : item.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingRow>
-            <SettingRow label={t("regional.currency")} desc={`${country.currency} — ${lang === "ar" ? country.currencyNameAr : country.currencyName}`}>
-              <span className="text-[13px] font-medium tabular-nums bdi">{country.currency}</span>
-            </SettingRow>
-            <SettingRow label={t("regional.timezone")} desc={country.timezone}>
-              <span className="text-[13px] text-muted-foreground">{country.timezone}</span>
-            </SettingRow>
-            <SettingRow label={t("regional.numberFormat")}>
-              <span className="text-[13px] text-muted-foreground tabular-nums bdi">{new Intl.NumberFormat(country.dateLocale).format(124820)}</span>
-            </SettingRow>
-            <SettingRow label={t("regional.dateFormat")}>
-              <span className="text-[13px] text-muted-foreground">{formatDate(new Date())}</span>
-            </SettingRow>
-            <SettingRow label={t("regional.preview")} last>
-              <span className="text-[14px] font-semibold tabular-nums bdi">{formatCurrency(124820)}</span>
-            </SettingRow>
-          </div>
-          <div className="mt-4 border-t border-border pt-3">
-            <p className="text-[11.5px] leading-relaxed text-muted-foreground">{t("regional.note")}</p>
-          </div>
-          {(regionError || regionNotice) && <div role={regionError ? "alert" : "status"} className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${regionError ? "bg-destructive/10 text-destructive" : "bg-success/10 text-foreground"}`}>{regionError || regionNotice}</div>}
-          <div className="mt-4 flex justify-end">
-            <Button type="button" onClick={saveRegionalSettings} disabled={!tenantId || savingRegion} className="gap-1.5"><Save className="h-4 w-4" />{savingRegion ? "…" : t("businessProfile.save")}</Button>
-          </div>
-        </SettingCard>
-
-        <SettingCard title={t("dialect.title")} desc={t("dialect.desc")}>
-          <div className="pt-2">
-            <SettingRow label={t("dialect.label")} desc={dialectInfo ? `${t("dialect.using")}: ${t(`dialect.name.${dialectInfo.effective}`)} (${t(sourceKey(dialectInfo))})` : undefined} last>
-              <Select value={dialectChoice} onValueChange={setDialectChoice} disabled={!dialectInfo}>
-                <SelectTrigger className="w-[220px]" data-testid="dialect-select"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {dialectOptions(dialectInfo).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.value === AUTO ? t("dialect.auto") : t(`dialect.name.${option.value}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingRow>
-          </div>
-          {(dialectError || dialectNotice) && <div role={dialectError ? "alert" : "status"} data-testid="dialect-message" className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${dialectError ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-700"}`}>{dialectError || dialectNotice}</div>}
-          <div className="mt-4 flex justify-end">
-            <Button type="button" data-testid="dialect-save" onClick={saveDialect} disabled={!isDirty(dialectChoice, dialectInfo) || savingDialect} className="gap-1.5"><Save className="h-4 w-4" />{savingDialect ? "…" : t("businessProfile.save")}</Button>
-          </div>
         </SettingCard>
       </div>
     </SettingsShell>
-  );
-}
-
-function ReadOnlyField({ label, value }) {
-  return (
-    <div className="rounded-lg border border-border px-3 py-2.5">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-[13px] font-medium break-all">{value || "—"}</div>
-    </div>
   );
 }

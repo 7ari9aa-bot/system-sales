@@ -15,7 +15,8 @@ const DASHBOARD_ROUTES = [
   "/dashboard", "/inbox", "/customers", "/orders", "/products",
   "/inventory", "/marketing", "/marketing/audience", "/marketing/automation",
   "/ai", "/analytics", "/usage", "/website", "/sales-assistant",
-  "/settings", "/settings/channels", "/settings/billing",
+  "/settings", "/settings/workspace", "/settings/ai", "/settings/channels", "/settings/billing",
+  "/settings/pos", "/settings/policies",
   "/settings/members", "/settings/security", "/settings/danger",
 ];
 

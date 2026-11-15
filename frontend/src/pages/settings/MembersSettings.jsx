@@ -2,32 +2,35 @@ import React from "react";
 import { UserPlus, Copy, X } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { getTokens, api } from "@/lib/api";
+import { api } from "@/lib/api";
+import { activeTenantId } from "@/lib/activeTenant";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/dashboard/ui";
 
-function tenantIdFromAccessToken() {
-  try {
-    const payload = getTokens()?.access_token?.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(window.atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))).tenant_id || null;
-  } catch {
-    return null;
-  }
-}
-
 const ROLE_TONE = { owner: "primary", manager: "warning", staff: "muted" };
+
+const initials = (member) =>
+  (member?.full_name || member?.email || "?")
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
 export default function MembersSettings() {
   const t = useT();
   const { lang } = useI18n();
   const { user } = useAuth();
   const isAr = lang === "ar";
-  const tenantId = tenantIdFromAccessToken() || (user?.tenants?.length === 1 ? user.tenants[0].id : null);
-  const tenant = user?.tenants?.find((item) => item.id === tenantId) || null;
+  const tenantId = activeTenantId(user);
+  // Who is in the workspace comes from GET /users (the same roster the cashier's grant picker
+  // reads); what is still on its way comes from /invitations. The page shows both because
+  // "who has access" is one question, and it used to answer half of it while claiming the API
+  // could not answer the other half at all.
+  const [members, setMembers] = React.useState(null);
   const [invitations, setInvitations] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -38,19 +41,22 @@ export default function MembersSettings() {
   const [error, setError] = React.useState("");
   const [createdInvite, setCreatedInvite] = React.useState(null);
 
-  const loadInvitations = React.useCallback(async () => {
+  const load = React.useCallback(async () => {
     try {
-      const rows = await api("/invitations");
-      setInvitations(Array.isArray(rows) ? rows : []);
+      const [roster, invites] = await Promise.all([api("/users"), api("/invitations")]);
+      setMembers(Array.isArray(roster) ? roster : []);
+      setInvitations(Array.isArray(invites) ? invites : []);
       setError("");
     } catch (err) {
-      setError(err?.message || (isAr ? "تعذر تحميل الدعوات" : "Could not load invitations"));
+      setMembers(null);
+      setInvitations(null);
+      setError(err?.message || (isAr ? "تعذر تحميل الأعضاء" : "Could not load members"));
     } finally {
       setLoading(false);
     }
   }, [isAr]);
 
-  React.useEffect(() => { void loadInvitations(); }, [loadInvitations]);
+  React.useEffect(() => { void load(); }, [load]);
 
   async function invite(event) {
     event.preventDefault();
@@ -70,7 +76,7 @@ export default function MembersSettings() {
       setEmail("");
       setRoleCode("staff");
       setFormOpen(false);
-      await loadInvitations();
+      await load();
     } catch (err) {
       setError(err?.message || (isAr ? "تعذر إرسال الدعوة" : "Could not create the invitation"));
     } finally {
@@ -87,7 +93,7 @@ export default function MembersSettings() {
     setError("");
     try {
       await api(`/invitations/${invitation.id}`, { method: "DELETE" });
-      await loadInvitations();
+      await load();
     } catch (err) {
       setError(err?.message || (isAr ? "تعذر إلغاء الدعوة" : "Could not revoke the invitation"));
     } finally {
@@ -103,7 +109,7 @@ export default function MembersSettings() {
     }
   }
 
-  const currentRole = tenant?.role_code || "—";
+  const rows = members || [];
   const pendingInvitations = (invitations || []).filter((item) => item.status === "pending");
 
   return (
@@ -111,7 +117,7 @@ export default function MembersSettings() {
       title={t("settings.members")}
       subtitle={t("settings.members.desc")}
       actions={
-        <Button type="button" onClick={() => { setCreatedInvite(null); setFormOpen((open) => !open); }} className="gap-1.5">
+        <Button type="button" onClick={() => { setCreatedInvite(null); setFormOpen((open) => !open); }} className="gap-1.5" data-testid="members-invite">
           <UserPlus className="h-4 w-4" /> {t("members.invite")}
         </Button>
       }
@@ -150,20 +156,9 @@ export default function MembersSettings() {
         </SettingCard>
       )}
 
-      <SettingCard>
-        <div className="mb-3 flex items-center gap-3 rounded-lg bg-surface/60 px-3 py-3">
-          <span className="h-9 w-9 rounded-full bg-accent/15 text-accent grid place-items-center text-[11px] font-semibold">
-            {(user?.full_name || user?.email || "?").split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium truncate">{user?.full_name || "—"}</div>
-            <div className="text-[11.5px] text-muted-foreground truncate">{user?.email || "—"}</div>
-          </div>
-          <Badge tone={ROLE_TONE[currentRole] || "muted"}>{currentRole === "—" ? currentRole : t(`members.role.${currentRole}`)}</Badge>
-        </div>
-
+      <SettingCard title={t("members.whoHasAccess")} desc={t("members.whoHasAccess.desc")}>
         <div className="overflow-x-auto -mx-5 px-5">
-          <table className="w-full text-left">
+          <table className="w-full text-left" data-testid="members-table">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
                 <th className="py-2.5 font-medium">{t("members.name")}</th>
@@ -174,32 +169,61 @@ export default function MembersSettings() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{isAr ? "جارٍ تحميل الدعوات…" : "Loading invitations…"}</td></tr>
-              ) : invitations == null && error ? (
+                <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{isAr ? "جارٍ تحميل الأعضاء…" : "Loading members…"}</td></tr>
+              ) : members == null ? (
                 <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">
-                  <span>{isAr ? "تعذر تحميل الدعوات." : "Invitations could not be loaded."}</span>
-                  <Button type="button" variant="outline" onClick={() => void loadInvitations()} className="ml-3">{isAr ? "إعادة المحاولة" : "Retry"}</Button>
+                  <span>{isAr ? "تعذر تحميل الأعضاء." : "Members could not be loaded."}</span>
+                  <Button type="button" variant="outline" onClick={() => void load()} className="ml-3">{t("common.retry", "Retry")}</Button>
                 </td></tr>
-              ) : pendingInvitations.length === 0 ? (
-                <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{isAr ? "لا توجد دعوات معلّقة." : "No pending invitations."}</td></tr>
-              ) : pendingInvitations.map((invitation) => (
-                <tr key={invitation.id} className="border-b border-border last:border-0">
-                  <td className="py-3"><div className="text-[13px] font-medium truncate">{invitation.email}</div></td>
-                  <td className="py-3 hidden sm:table-cell"><Badge tone={ROLE_TONE[invitation.role_code] || "muted"}>{invitation.role_code ? t(`members.role.${invitation.role_code}`) : "—"}</Badge></td>
-                  <td className="py-3"><span className="text-[12.5px] text-muted-foreground">{invitation.status}</span></td>
-                  <td className="py-3 text-right">
-                    <button type="button" aria-label={isAr ? `إلغاء دعوة ${invitation.email}` : `Revoke invitation for ${invitation.email}`} disabled={revoking === invitation.id} onClick={() => revoke(invitation)} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              ) : (
+                <>
+                  {rows.map((member) => {
+                    const isMe = member.id === user?.id;
+                    return (
+                      <tr key={member.id} className="border-b border-border" data-testid="member-row">
+                        <td className="py-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="h-7 w-7 shrink-0 rounded-full bg-accent/15 text-accent grid place-items-center text-[10.5px] font-semibold">{initials(member)}</span>
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-medium truncate">
+                                {member.full_name || member.email}
+                                {isMe && <span className="ms-2 text-[11px] font-normal text-muted-foreground">{t("members.you")}</span>}
+                              </div>
+                              <div className="text-[11.5px] text-muted-foreground truncate">{member.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 hidden sm:table-cell">
+                          <Badge tone={ROLE_TONE[member.role_code] || "muted"}>{member.role_code ? t(`members.role.${member.role_code}`) : "—"}</Badge>
+                        </td>
+                        <td className="py-3"><span className="text-[12.5px] text-muted-foreground">{t("members.active")}</span></td>
+                        <td className="py-3"></td>
+                      </tr>
+                    );
+                  })}
+                  {pendingInvitations.map((invitation) => (
+                    <tr key={invitation.id} className="border-b border-border last:border-0" data-testid="invitation-row">
+                      <td className="py-3">
+                        <div className="text-[13px] font-medium truncate">{invitation.email}</div>
+                        <div className="text-[11.5px] text-muted-foreground">{t("members.invitedNotJoined")}</div>
+                      </td>
+                      <td className="py-3 hidden sm:table-cell"><Badge tone={ROLE_TONE[invitation.role_code] || "muted"}>{invitation.role_code ? t(`members.role.${invitation.role_code}`) : "—"}</Badge></td>
+                      <td className="py-3"><Badge tone="warning">{t("members.pending")}</Badge></td>
+                      <td className="py-3 text-right">
+                        <button type="button" aria-label={isAr ? `إلغاء دعوة ${invitation.email}` : `Revoke invitation for ${invitation.email}`} disabled={revoking === invitation.id} onClick={() => revoke(invitation)} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && pendingInvitations.length === 0 && (
+                    <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{isAr ? "لا يوجد أعضاء ولا دعوات معلّقة." : "No members and no pending invitations."}</td></tr>
+                  )}
+                </>
+              )}
             </tbody>
           </table>
         </div>
-        <p className="mt-3 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-          {isAr ? "الواجهة الحالية تعرض حسابك والدعوات المعلّقة فقط؛ لا يوفر الـAPI الحالي قائمة بأعضاء مساحة العمل كاملة." : "This screen shows your account and pending invitations. The current API does not expose the full workspace member roster."}
-        </p>
       </SettingCard>
     </SettingsShell>
   );

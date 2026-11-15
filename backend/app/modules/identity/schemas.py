@@ -113,7 +113,25 @@ class CurrentUser(BaseModel):
     is_platform_admin: bool
     # A short-lived read URL for the account's own picture, or None.
     avatar_url: str | None = None
+    # Whether two-step verification is CONFIRMED and therefore challenges logins.
+    # The security screen used to apologise that it could not read this; it is one
+    # flag on the row the account already loads, so it is answered with the account.
+    mfa_enabled: bool = False
     tenants: list[CurrentTenant] = []
+
+
+class ProfileUpdate(BaseModel):
+    """The parts of an account its owner may rewrite about themselves.
+
+    Deliberately narrow: the full name is the one personal fact the API owns.
+    Email is not here — changing it is a verified-identity operation (prove the
+    inbox, then move the login), not a field edit, and the address is the key
+    invitations bind to. The workspace name is not here either: it belongs to
+    the shop (``PUT /tenants/{id}/name``), not to the person.
+    """
+
+    # Trimmed and collapsed by the service; the bound only stops an absurd payload.
+    full_name: str = Field(min_length=1, max_length=255)
 
 
 class InviteRequest(BaseModel):

@@ -23,6 +23,13 @@ import useApprovals from "@/hooks/useApprovals";
 import { formatCurrency } from "@/lib/regional";
 import { useI18n, useT } from "@/lib/i18n";
 import { api, apiCached, invalidateCache, peekCache } from "@/lib/api";
+import DialectCard from "@/components/settings/DialectCard";
+
+// A list, or nothing. The screen renders "loading"/"empty" from null; it must never hold a
+// shape it cannot iterate, or one odd response blanks a page the owner can still use.
+function listOrNull(value) {
+  return Array.isArray(value) ? value : null;
+}
 
 function Stat({ icon: Icon, label, value, tone }) {
   const toneClass = {
@@ -54,8 +61,10 @@ export default function AI() {
   const live = useSalesStats();
   const usage = useUsageSummary();
   const approvals = useApprovals();
-  const [agents, setAgents] = React.useState(() => peekCache(AGENTS_PATH) || null);
-  const [agentKinds, setAgentKinds] = React.useState(() => peekCache(AGENT_KINDS_PATH) || null);
+  // a cached value is only usable if it is a list: anything else would crash the whole page
+  // (agents.filter / .length) instead of just showing "could not load"
+  const [agents, setAgents] = React.useState(() => listOrNull(peekCache(AGENTS_PATH)));
+  const [agentKinds, setAgentKinds] = React.useState(() => listOrNull(peekCache(AGENT_KINDS_PATH)));
   const [agentError, setAgentError] = React.useState("");
   const [approvalError, setApprovalError] = React.useState("");
   const [resolvedApprovals, setResolvedApprovals] = React.useState(() => new Set());
@@ -104,7 +113,7 @@ export default function AI() {
   }, [isAr]);
 
   const pendingItems = (approvals?.items ?? []).filter((item) => !resolvedApprovals.has(item.id));
-  const activeCount = agents == null ? null : agents.filter((agent) => agent.is_active).length;
+  const activeCount = Array.isArray(agents) ? agents.filter((agent) => agent.is_active).length : null;
   const pendingCount = approvals == null || approvals.error ? null : pendingItems.length;
   const tokens = usage?.totals ? (usage.totals.tokens_in ?? 0) + (usage.totals.tokens_out ?? 0) : null;
   const cost = usage?.totals?.cost ?? null;
@@ -170,7 +179,7 @@ export default function AI() {
   }
 
   // Set of kinds already provisioned for this tenant
-  const provisionedKinds = new Set((agents || []).map((a) => a.kind));
+  const provisionedKinds = new Set((Array.isArray(agents) ? agents : []).map((a) => a.kind));
 
   return (
     <div>
@@ -236,7 +245,7 @@ export default function AI() {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            {(agentKinds || []).map((kindDef) => {
+            {(Array.isArray(agentKinds) ? agentKinds : []).map((kindDef) => {
               const isProvisioned = provisionedKinds.has(kindDef.kind);
               const isBusy = provisioningKind === kindDef.kind;
 
@@ -330,7 +339,7 @@ export default function AI() {
                   isAr ? "جارٍ تحميل الوكلاء…" : "Loading agents…"
                 )}
               </div>
-            ) : agents.length === 0 ? (
+            ) : Array.isArray(agents) && agents.length === 0 ? (
               <div className="py-8 text-center text-[13px] text-muted-foreground">
                 {isAr ? "لا توجد وكلاء بعد. افتح كتالوج الوكلاء لتجهيز الوكلاء المطلوبين." : "No agents yet. Open the Agent Catalog to provision."}
               </div>
@@ -415,6 +424,10 @@ export default function AI() {
             )}
           </div>
         </SectionCard>
+      </div>
+
+      <div className="mt-5">
+        <DialectCard />
       </div>
 
       <div className="mt-5">

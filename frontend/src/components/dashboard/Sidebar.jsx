@@ -20,13 +20,12 @@ import { navGroups } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
-import { avatarErrorKey, isAcceptedImage } from "@/lib/avatarUpload";
 import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import Logo from "@/components/dashboard/Logo";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import useSalesStats from "@/hooks/useSalesStats";
+import useAvatarUpload from "@/hooks/useAvatarUpload";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,12 +42,10 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
   const t = useT();
   const { lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const [loggingOut, setLoggingOut] = React.useState(false);
-  const [avatarBusy, setAvatarBusy] = React.useState(false);
-  const [avatarError, setAvatarError] = React.useState("");
-  const [avatarNotice, setAvatarNotice] = React.useState("");
-  const avatarInput = React.useRef(null);
+  // the picture is the same write the profile page makes, so it is the same code
+  const avatar = useAvatarUpload();
 
   // Shortcut Ctrl+, to open Settings
   React.useEffect(() => {
@@ -81,44 +78,6 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
       navigate("/login", { replace: true });
     } finally {
       setLoggingOut(false);
-    }
-  }
-
-  async function uploadAvatar(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || avatarBusy) return;
-    if (!isAcceptedImage(file)) {
-      setAvatarError(t("avatar.notImage"));
-      return;
-    }
-    setAvatarBusy(true);
-    setAvatarError("");
-    setAvatarNotice("");
-    try {
-      await api("/users/me/avatar", { method: "PUT", rawBody: file, contentType: file.type });
-      await refreshUser();
-      setAvatarNotice(t("avatar.saved"));
-    } catch (error) {
-      setAvatarError(t(avatarErrorKey(error)));
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  async function removeAvatar() {
-    if (avatarBusy) return;
-    setAvatarBusy(true);
-    setAvatarError("");
-    setAvatarNotice("");
-    try {
-      await api("/users/me/avatar", { method: "DELETE" });
-      await refreshUser();
-      setAvatarNotice(t("avatar.removed"));
-    } catch (error) {
-      setAvatarError(t(avatarErrorKey(error)));
-    } finally {
-      setAvatarBusy(false);
     }
   }
 
@@ -310,19 +269,19 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               {/* Profile picture — an action, so it is a menu item */}
               <DropdownMenuSeparator className="my-2" />
               <DropdownMenuItem
-                disabled={avatarBusy}
-                onSelect={(event) => { event.preventDefault(); avatarInput.current?.click(); }}
+                disabled={avatar.busy}
+                onSelect={(event) => { event.preventDefault(); avatar.pick(); }}
                 className="gap-2.5 text-[13px]"
               >
-                {avatarBusy
+                {avatar.busy
                   ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
                   : <Camera className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                 <span>{t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}</span>
               </DropdownMenuItem>
               {user?.avatar_url && (
                 <DropdownMenuItem
-                  disabled={avatarBusy}
-                  onSelect={(event) => { event.preventDefault(); void removeAvatar(); }}
+                  disabled={avatar.busy}
+                  onSelect={(event) => { event.preventDefault(); void avatar.remove(); }}
                   className="gap-2.5 text-[13px]"
                 >
                   <span className="h-4 w-4" aria-hidden="true" />
@@ -330,15 +289,15 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                 </DropdownMenuItem>
               )}
               <input
-                ref={avatarInput}
+                ref={avatar.inputRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 aria-label={t("account.avatar.pick")}
                 className="sr-only"
-                onChange={uploadAvatar}
+                onChange={avatar.upload}
               />
-              {avatarError && <p role="alert" className="mt-1.5 px-2 text-[11.5px] text-destructive">{avatarError}</p>}
-              {avatarNotice && <p role="status" className="mt-1.5 px-2 text-[11.5px] text-muted-foreground">{avatarNotice}</p>}
+              {avatar.error && <p role="alert" className="mt-1.5 px-2 text-[11.5px] text-destructive">{avatar.error}</p>}
+              {avatar.notice && <p role="status" className="mt-1.5 px-2 text-[11.5px] text-muted-foreground">{avatar.notice}</p>}
 
               <DropdownMenuSeparator className="my-1.5" />
 

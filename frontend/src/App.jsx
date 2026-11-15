@@ -38,13 +38,14 @@ const Usage = lazy(() => import('@/pages/Usage'));
 const Websites = lazy(() => import('@/pages/Websites'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
+const WorkspaceSettings = lazy(() => import('@/pages/settings/WorkspaceSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
 const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
 const PosSettings = lazy(() => import('@/pages/settings/PosSettings'));
 const PoliciesSettings = lazy(() => import('@/pages/settings/PoliciesSettings'));
 const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'));
 const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
-const DangerZoneSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
+const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
 
 /** الموقع العام (الماركتنج) — عام للزوار، بدون مصادقة.
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
@@ -110,6 +111,7 @@ const DashboardRoutes = () => (
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>
           <Route path="/settings" element={<ProfileSettings />} />
+          <Route path="/settings/workspace" element={<WorkspaceSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
           <Route path="/settings/ai" element={<AI />} />
           <Route path="/settings/usage" element={<Usage />} />
@@ -118,7 +120,7 @@ const DashboardRoutes = () => (
           <Route path="/settings/billing" element={<BillingSettings />} />
           <Route path="/settings/members" element={<MembersSettings />} />
           <Route path="/settings/security" element={<SecuritySettings />} />
-          <Route path="/settings/danger" element={<DangerZoneSettings />} />
+          <Route path="/settings/danger" element={<DataSettings />} />
         </Route>
       </Route>
     </Route>

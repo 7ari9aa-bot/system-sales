@@ -56,6 +56,12 @@ class TenantLifecycleOut(BaseModel):
     policy: TenantCapabilityPolicyOut
 
 
+class TenantNameRequest(BaseModel):
+    #: The shop's own name. Cleaned by the service (whitespace collapses, an
+    #: all-whitespace name is refused); the bound only stops an absurd payload.
+    name: str = Field(min_length=1, max_length=255)
+
+
 class TenantCurrencyRequest(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
 
@@ -246,6 +252,27 @@ async def get_tenant_lifecycle(
         raise PermissionDeniedError("tenant mismatch")
     tenant = await service.TenantLifecycleService.get(ctx.session, tenant_id)
     return _lifecycle_out(tenant)
+
+
+@tenants_router.put("/{tenant_id}/name")
+async def set_tenant_name(
+    tenant_id: uuid.UUID,
+    body: TenantNameRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Rename the workspace — the shop, not the person.
+
+    The person's own name lives on ``PATCH /users/me``: the two are different
+    facts owned by different things, which is why they are not one route. A
+    rename is a label change (the slug is what keys off the shop), audited with
+    before and after like the currency and timezone settings beside it.
+    """
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    tenant = await service.TenantSettingsService.set_name(
+        ctx.session, tenant_id, body.name, actor_user_id=ctx.user.id
+    )
+    return {"tenant_id": str(tenant.id), "name": tenant.name}
 
 
 @tenants_router.put("/{tenant_id}/currency")

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge, Store,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -19,17 +19,44 @@ import {
 
 // Settings is an exceptional full-screen workspace: the dashboard shell is
 // replaced by this dedicated sidebar + content area.
-const NAV = [
-  { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
-  { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
-  { to: "/settings/ai", icon: Sparkles, labelKey: "settings.nav.ai" },
-  { to: "/settings/usage", icon: Gauge, labelKey: "settings.nav.usage" },
-  { to: "/settings/billing", icon: Wallet, labelKey: "settings.nav.billing" },
-  { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
-  { to: "/settings/policies", icon: ScrollText, labelKey: "settings.nav.policies" },
-  { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
-  { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
-  { to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" },
+//
+// Grouped by WHO or WHAT the setting belongs to, so a page can be found by intent rather than by
+// remembering which screen used to hold it: the person (Account), the shop (Business), the
+// assistant (AI), money (Billing), and the irreversible (Data). Workspace sits under Business now
+// that the shop's name, country and currency have a page of their own.
+const NAV_GROUPS = [
+  {
+    key: "settings.group.personal",
+    items: [
+      { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
+      { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
+      { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
+    ],
+  },
+  {
+    key: "settings.group.business",
+    items: [
+      { to: "/settings/workspace", icon: Store, labelKey: "settings.nav.workspace" },
+      { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
+      { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
+      { to: "/settings/policies", icon: ScrollText, labelKey: "settings.nav.policies" },
+    ],
+  },
+  {
+    key: "settings.group.ai",
+    items: [{ to: "/settings/ai", icon: Sparkles, labelKey: "settings.nav.ai" }],
+  },
+  {
+    key: "settings.group.billing",
+    items: [
+      { to: "/settings/billing", icon: Wallet, labelKey: "settings.nav.billing" },
+      { to: "/settings/usage", icon: Gauge, labelKey: "settings.nav.usage" },
+    ],
+  },
+  {
+    key: "settings.group.data",
+    items: [{ to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" }],
+  },
 ];
 
 export default function SettingsLayout() {
@@ -81,27 +108,36 @@ export default function SettingsLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-0.5">
-          {NAV.map((item) => {
-            const active = item.end ? pathname === item.to : pathname.startsWith(item.to);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "group flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <Icon className={cn("h-[17px] w-[17px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
-                <span className="flex-1 min-w-0 truncate">{t(item.labelKey)}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-3">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.key}>
+              <div className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t(group.key)}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = item.end ? pathname === item.to : pathname.startsWith(item.to);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        "group flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors",
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <Icon className={cn("h-[17px] w-[17px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                      <span className="flex-1 min-w-0 truncate">{t(item.labelKey)}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-sidebar-border p-3">

@@ -1,89 +1,82 @@
 import React from "react";
+import { Link } from "react-router-dom";
+import { Gauge } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { apiCached, peekCache } from "@/lib/api";
-import { formatCurrency, formatDate } from "@/lib/regional";
+import { formatDate } from "@/lib/regional";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
-import { Sparkles } from "lucide-react";
+import { Badge } from "@/components/dashboard/ui";
 
+// Money only. This page and /settings/usage used to load the SAME two endpoints and read the same
+// numbers back in different layouts, so a merchant could not tell which one was the real bill.
+// Consumption (tokens, spend, per-day chart) lives on Usage and is linked to, not copied: one fact,
+// one screen, and a link that says where it lives.
 export default function BillingSettings() {
   const t = useT();
   const { lang } = useI18n();
   const isAr = lang === "ar";
   const [subscription, setSubscription] = React.useState(() => peekCache("/billing/subscription"));
-  const [usage, setUsage] = React.useState(() => peekCache("/ai/usage/summary"));
-  const [loading, setLoading] = React.useState(!subscription || !usage);
-  const [subscriptionError, setSubscriptionError] = React.useState("");
-  const [usageError, setUsageError] = React.useState("");
+  const [loading, setLoading] = React.useState(!subscription);
+  const [error, setError] = React.useState("");
   const [attempt, setAttempt] = React.useState(0);
 
   React.useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.allSettled([
-      apiCached("/billing/subscription"),
-      apiCached("/ai/usage/summary"),
-    ])
-      .then(([subscriptionResult, usageResult]) => {
+    apiCached("/billing/subscription")
+      .then((result) => {
         if (!alive) return;
-        if (subscriptionResult.status === "fulfilled") {
-          setSubscription(subscriptionResult.value);
-          setSubscriptionError("");
-        } else setSubscriptionError(subscriptionResult.reason?.message || (isAr ? "تعذر تحميل الاشتراك" : "Could not load subscription"));
-        if (usageResult.status === "fulfilled") {
-          setUsage(usageResult.value);
-          setUsageError("");
-        } else setUsageError(usageResult.reason?.message || (isAr ? "تعذر تحميل بيانات الاستخدام" : "Could not load usage data"));
+        setSubscription(result);
+        setError("");
       })
+      .catch((err) => alive && setError(err?.message || (isAr ? "تعذر تحميل الاشتراك" : "Could not load subscription")))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [isAr, attempt]);
 
-  const totals = usage?.totals;
-  const tokenCount = totals ? (Number(totals.tokens_in) || 0) + (Number(totals.tokens_out) || 0) : null;
   const endDate = subscription?.current_period_end ? formatDate(subscription.current_period_end) : null;
+  const status = subscription?.status;
 
   return (
     <SettingsShell title={t("settings.nav.billing")} subtitle={t("settings.billing.desc")}>
-      {(subscriptionError || usageError) && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-        <span>{[subscriptionError, usageError].filter(Boolean).join(" · ")}</span>
+      {error && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+        <span>{error}</span>
         <button type="button" onClick={() => setAttempt((current) => current + 1)} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
       </div>}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <SettingCard title={isAr ? "الاشتراك" : "Subscription"}>
+        <SettingCard title={t("billing.plan")} desc={t("billing.plan.desc")}>
           <div className="pt-2">
-            <SettingRow label={isAr ? "الحالة" : "Status"}>
-              <span className="text-[13px] font-medium capitalize">{loading ? "…" : subscription?.status || (isAr ? "لا يوجد اشتراك" : "No subscription")}</span>
+            <SettingRow label={t("billing.status")}>
+              <span data-testid="subscription-status">
+                {loading
+                  ? "…"
+                  : status
+                    ? <Badge tone={status === "active" ? "success" : status === "trialing" ? "warning" : "muted"}>{t(`billing.status.${status}`, status)}</Badge>
+                    : <span className="text-[13px] font-medium text-muted-foreground">{t("billing.noSubscription")}</span>}
+              </span>
             </SettingRow>
-            <SettingRow label={subscription?.status === "trialing" ? t("billing.endDate") : t("billing.renewDate")} last>
+            <SettingRow label={status === "trialing" ? t("billing.endDate") : t("billing.renewDate")} last>
               <span className="text-[13px] font-medium tabular-nums">{loading ? "…" : endDate || "—"}</span>
             </SettingRow>
           </div>
           <p className="mt-2 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-            {isAr
-              ? "تفاصيل الخطة والفواتير ووسائل الدفع غير متاحة من الـAPI الحالي. الحالة والتاريخ يعكسان بيانات الاشتراك الفعلية فقط."
-              : "Plan details, invoices, and payment methods are not exposed by the current API. The status and date above are the available subscription data."}
+            {t("billing.noInvoices")}
           </p>
         </SettingCard>
 
-        <SettingCard title={t("billing.tokenUsage")}>
-          <div className="pt-2 space-y-4">
-            <div className="flex items-center gap-3.5">
-              <span className="h-11 w-11 rounded-xl bg-accent/10 text-accent grid place-items-center"><Sparkles className="h-5 w-5" /></span>
-              <div className="min-w-0">
-                <div className="font-display text-[20px] font-semibold tabular-nums leading-none" dir="ltr">{loading ? "…" : tokenCount == null ? "—" : tokenCount.toLocaleString()}</div>
-                <div className="text-[12px] text-muted-foreground mt-1">{t("ai.stat.tokens")} · {usage?.days ? `${usage.days} ${isAr ? "يومًا" : "days"}` : t("ai.usage.thisCycle")}</div>
-              </div>
+        <SettingCard title={t("billing.usage")} desc={t("billing.usage.desc")}>
+          <div className="flex items-start gap-3 pt-2">
+            <span className="h-10 w-10 shrink-0 rounded-lg bg-accent/10 text-accent grid place-items-center"><Gauge className="h-5 w-5" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] leading-relaxed text-muted-foreground">{t("billing.usage.moved")}</p>
+              <Link
+                to="/settings/usage"
+                className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[12.5px] font-medium hover:bg-surface"
+                data-testid="billing-usage-link"
+              >
+                <Gauge className="h-3.5 w-3.5" /> {t("settings.nav.usage")}
+              </Link>
             </div>
-            <div className="flex items-center gap-3.5">
-              <span className="h-11 min-w-11 px-2 rounded-xl bg-warning/15 text-warning grid place-items-center font-display text-[13px] font-bold">{totals?.cost == null ? "—" : formatCurrency(Number(totals.cost), false, "USD")}</span>
-              <div className="min-w-0">
-                <div className="font-display text-[15px] font-semibold leading-none">{t("ai.usage.spend")}</div>
-                <div className="text-[12px] text-muted-foreground mt-1">{t("ai.usage.thisCycle")}</div>
-              </div>
-            </div>
-            <p className="text-[11.5px] text-muted-foreground leading-relaxed pt-2 border-t border-border">
-              {isAr ? "الاستهلاك والتكلفة إجماليات حقيقية للفترة التي يعيدها الخادم؛ لا توجد حدود استهلاك منشورة حاليًا." : "Usage and cost are actual totals for the period returned by the server; no usage limits are currently exposed."}
-            </p>
           </div>
         </SettingCard>
       </div>
