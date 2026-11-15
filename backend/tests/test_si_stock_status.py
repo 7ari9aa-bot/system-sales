@@ -347,3 +347,81 @@ async def test_the_stock_query_filters_by_tenant_on_every_table_it_reads(db, ten
     # explicit bind is the belt that stays if that join ever changes.
     assert "v.tenant_id = :tenant_id" in _STOCK_SQL
     assert "oi.tenant_id = :tenant_id" in _STOCK_SQL
+
+
+def _fact_values(result: dict, metric: str) -> list:
+    return [
+        f["value"] if isinstance(f, dict) else f.value
+        for f in result["facts"]
+        if (f["metric"] if isinstance(f, dict) else f.metric) == metric
+    ]
+
+
+async def test_total_units_cover_every_tracked_variant_not_only_the_ones_shown(db, tenant_ctx):
+    """ "How much stock do I have" is answered from a measured total. Without it the model adds the
+    rows itself, and the number gate rightly refuses a sum no tool produced."""
+    t = tenant_ctx.tenant_id
+    wh = await _warehouse(db, t)
+    for i in range(5):
+        await _stock(db, t, wh, await _variant(db, t, f"Item {i}"), on_hand=40, reserved=i)
+    result = await _run(db, t, limit=2)
+    assert len(result["summary"]["items"]) == 2  # only two rows are listed...
+    assert result["summary"]["total_units"] == {
+        "on_hand": 200,
+        "available": 190,
+    }  # ...all five count
+
+
+async def test_total_available_is_summed_per_warehouse_so_an_oversold_one_adds_nothing(
+    db, tenant_ctx
+):
+    t = tenant_ctx.tenant_id
+    w1, w2 = await _warehouse(db, t, "W1"), await _warehouse(db, t, "W2")
+    v = await _variant(db, t, "Hat")
+    await _stock(db, t, w1, v, on_hand=2, reserved=5)
+    await _stock(db, t, w2, v, on_hand=4, reserved=0)
+    assert (await _run(db, t))["summary"]["total_units"] == {"on_hand": 6, "available": 4}
+
+
+async def test_an_untracked_variant_adds_nothing_to_the_total(db, tenant_ctx):
+    t = tenant_ctx.tenant_id
+    wh = await _warehouse(db, t)
+    await _stock(db, t, wh, await _variant(db, t, "Tracked"), on_hand=7)
+    await _variant(db, t, "Untracked")
+    assert (await _run(db, t))["summary"]["total_units"] == {"on_hand": 7, "available": 7}
+
+
+async def test_an_empty_shop_has_a_measured_zero_total(db, tenant_ctx):
+    t = tenant_ctx.tenant_id
+    await _warehouse(db, t)
+    assert (await _run(db, t))["summary"]["total_units"] == {"on_hand": 0, "available": 0}
+
+
+async def test_the_totals_reach_the_number_gate_as_measured_facts(db, tenant_ctx):
+    t = tenant_ctx.tenant_id
+    wh = await _warehouse(db, t)
+    await _stock(db, t, wh, await _variant(db, t, "Shirt"), on_hand=40, reserved=2)
+    await _stock(db, t, wh, await _variant(db, t, "Pants"), on_hand=40, reserved=1)
+    result = await _run(db, t)
+    assert _fact_values(result, "stock_total_on_hand") == ["80"]
+    assert _fact_values(result, "stock_total_available") == ["77"]
+
+
+async def test_the_gate_accepts_the_total_the_tool_measured_and_still_refuses_a_made_up_one(
+    db, tenant_ctx
+):
+    """The real failure: "how much stock do I have" was refused because 200 and 195 (the sums)
+    were numbers no tool had produced. Now the tool measures them; an invented one is refused."""
+    from app.modules.ai.agents.sales_intelligence.response import (
+        allowed_numbers_from_facts,
+        validate_answer,
+    )
+
+    t = tenant_ctx.tenant_id
+    wh = await _warehouse(db, t)
+    for i, reserved in enumerate((2, 1, 0, 1, 1)):
+        await _stock(db, t, wh, await _variant(db, t, f"Item {i}"), on_hand=40, reserved=reserved)
+    result = await _run(db, t)
+    allowed = allowed_numbers_from_facts(result["facts"], [])
+    assert validate_answer("عندك 200 قطعة، المتاح منها 195.", allowed, []) == []
+    assert validate_answer("عندك 250 قطعة.", allowed, []) == ["free number in answer: 250"]

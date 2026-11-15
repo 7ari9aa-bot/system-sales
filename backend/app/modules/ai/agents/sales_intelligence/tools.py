@@ -787,6 +787,13 @@ async def _si_stock_status(
         "stagnant": len(stagnant),
         "not_tracked": len(not_tracked),
     }
+    # Units across EVERY tracked variant, not just the ones shown: "how much stock do I have" must
+    # be a measured figure, or the model adds the rows up itself and the number gate (rightly)
+    # refuses a total no tool produced.
+    totals = {
+        "on_hand": sum(i["on_hand"] for i in items),
+        "available": sum(i["available"] for i in items),
+    }
     shown_low, shown_out = low[:limit], out[:limit]
     shown_stagnant, shown_untracked = stagnant[:limit], not_tracked[:limit]
     shown_items = sorted(items, key=lambda x: x["available"])[:limit]
@@ -816,6 +823,8 @@ async def _si_stock_status(
             ("stock_out_variants", counts["out_of_stock"], "count", {}),
             ("stock_stagnant_variants", counts["stagnant"], "count", {}),
             ("stock_untracked_variants", counts["not_tracked"], "count", {}),
+            ("stock_total_on_hand", totals["on_hand"], "count", {}),
+            ("stock_total_available", totals["available"], "count", {}),
             *(
                 (
                     "stock_available",
@@ -832,6 +841,7 @@ async def _si_stock_status(
         "status": "ok",
         "summary": {
             "counts": counts,
+            "total_units": totals,
             "items": shown_items,
             "low_stock": shown_low,
             "out_of_stock": shown_out,
