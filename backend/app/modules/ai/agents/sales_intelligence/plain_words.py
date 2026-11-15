@@ -59,6 +59,22 @@ def _generic(name: str) -> str:
     return name.replace("_", " ")
 
 
+def _drop_unclosed_bold(text: str) -> str:
+    """Remove a ``**`` that opens bold and never closes, line by line.
+
+    The model sometimes writes ``**سبتمبر 2026 هو أحسن شهر`` and forgets the closing pair, so the
+    owner reads two stray stars. A line with an even number of pairs is well formed markdown and is
+    left alone; only the last unmatched pair is removed, the words stay exactly as written.
+    """
+    lines = []
+    for line in text.split("\n"):
+        if line.count("**") % 2:
+            at = line.rfind("**")
+            line = line[:at] + line[at + 2 :]
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def plain_words(text: str | None) -> str:
     """The answer with every internal identifier replaced by a shop word."""
     if text is None or text == "":
@@ -76,6 +92,7 @@ def plain_words(text: str | None) -> str:
     out = _TICKS.sub("", out)
     out = _SNAKE.sub(lambda m: KNOWN.get(m.group(0), _generic(m.group(0))), out)
     out = _WORD.sub(lambda m: KNOWN[m.group(0)], out)
+    out = _drop_unclosed_bold(out)
     out = re.sub(r"[ \t]{2,}", " ", out)
     out = re.sub(r"[ \t]+([،,.؟!:])", r"\1", out)
     return _unmask(out, keep)
