@@ -335,7 +335,7 @@ function ProfilesAndRegistersTab() {
                             <button
                               type="button"
                               onClick={() => setEditing(isEditing ? null : p.id)}
-                              className="h-8 px-3 rounded-lg border border-border text-[12.5px]"
+                              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {isEditing ? t("posSettings.cancel", "Cancel") : t("posSettings.edit", "Edit")}
                             </button>

@@ -56,7 +56,7 @@ export default function Usage() {
       </div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <SectionCard title={t("ai.usage.title")}>
+        <SectionCard title={t("ai.usage.title")} className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
           {usageError && <div role="alert" className="mb-3 text-[12px] text-destructive">{usageError}</div>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex items-center gap-3 rounded-xl border border-border p-4">
@@ -73,7 +73,7 @@ export default function Usage() {
           </div>
         </SectionCard>
 
-        <SectionCard title={isAr ? "الاستهلاك اليومي" : "Daily usage"}>
+        <SectionCard title={isAr ? "الاستهلاك اليومي" : "Daily usage"} className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
           {usageError ? (
             <div className="py-5 text-center text-[12.5px] text-muted-foreground">{isAr ? "تعذر عرض سجل الأيام." : "Daily history is unavailable."}</div>
           ) : loading && days.length === 0 ? (

@@ -674,7 +674,7 @@ export default function ChannelsSettings() {
                             type="button"
                             onClick={() => verifyConnection(channel)}
                             disabled={saving || Boolean(verifyingId)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {verifyingId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                             {isAr ? "اختبار" : "Verify"}
@@ -686,7 +686,7 @@ export default function ChannelsSettings() {
                           <button
                             type="button"
                             onClick={() => copyValue(channel.webhookUrl || channel.publicKey, channel.id)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12px] font-medium text-foreground hover:bg-surface"
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Copy className="h-3.5 w-3.5" />
                             {copiedTarget === channel.id
@@ -703,7 +703,7 @@ export default function ChannelsSettings() {
                             type="button"
                             onClick={() => disconnectConnection(channel)}
                             disabled={saving}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-destructive/30 px-2.5 text-[12px] font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-destructive/40 bg-card px-3 text-[12.5px] font-semibold text-destructive shadow-sm transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-50"
                             title={isAr ? "فك الارتباط" : "Disconnect"}
                           >
                             <Unplug className="h-3.5 w-3.5" />
@@ -763,7 +763,7 @@ export default function ChannelsSettings() {
                               dir="ltr"
                               className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-[12px]"
                             />
-                            <button type="button" onClick={() => copyValue(values.public_key || editing.publicKey, "webchat-form")} disabled={!values.public_key && !editing.publicKey} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-[12px] hover:bg-background disabled:opacity-50">
+                            <button type="button" onClick={() => copyValue(values.public_key || editing.publicKey, "webchat-form")} disabled={!values.public_key && !editing.publicKey} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
                               <Copy className="h-3.5 w-3.5" />{copiedTarget === "webchat-form" ? (isAr ? "تم النسخ" : "Copied") : (isAr ? "نسخ" : "Copy")}
                             </button>
                           </div>
@@ -799,7 +799,7 @@ export default function ChannelsSettings() {
                       {formError && <p role="alert" className="text-[12px] text-destructive sm:col-span-2">{formError}</p>}
 
                       <div className="flex justify-end gap-2 sm:col-span-2">
-                        <button type="button" onClick={closeConnection} disabled={saving} className="h-8 rounded-lg border border-border px-3 text-[12px] hover:bg-background disabled:opacity-50">
+                        <button type="button" onClick={closeConnection} disabled={saving} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
                           {isAr ? "إلغاء" : "Cancel"}
                         </button>
                         <button type="submit" disabled={saving} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground disabled:opacity-60">

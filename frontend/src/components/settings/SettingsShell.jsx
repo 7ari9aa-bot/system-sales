@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n";
 export default function SettingsShell({ title, subtitle, children, actions }) {
   const { lang } = useI18n();
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="w-full space-y-5 animate-fade-in">
       <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3", lang === "ar" && "sm:flex-row-reverse")}>
         <div className={cn("min-w-0", lang === "ar" && "text-right")}>
           <h1 className="font-display text-[22px] font-semibold tracking-tight">{title}</h1>
@@ -18,16 +18,19 @@ export default function SettingsShell({ title, subtitle, children, actions }) {
   );
 }
 
+// A section, not a box: a heading, a hairline under it, and the content on the page itself.
+// The bordered white card read as a panel floating on a panel; settings pages are long forms and
+// lists, and they read better when the content simply sits on the page.
 export function SettingCard({ title, desc, children, className }) {
   return (
-    <section className={cn("rounded-xl bg-card border border-border", className)}>
+    <section className={cn("min-w-0", className)}>
       {(title || desc) && (
-        <div className="px-5 pt-4 pb-1">
+        <div className="border-b border-border pb-2.5">
           {title && <h2 className="font-display text-[15px] font-semibold">{title}</h2>}
           {desc && <p className="text-[12.5px] text-muted-foreground mt-0.5">{desc}</p>}
         </div>
       )}
-      <div className="px-5 pb-4">{children}</div>
+      <div className="pt-3">{children}</div>
     </section>
   );
 }

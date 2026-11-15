@@ -41,11 +41,11 @@ export function Delta({ value, className }) {
 
 }
 
-export function SectionCard({ title, action, actionTo, children, className, bodyClassName }) {
+export function SectionCard({ title, action, actionTo, children, className, bodyClassName, headerClassName }) {
   return (
     <section className={cn("min-w-0 rounded-2xl bg-card border border-border", className)}>
       {(title || action) &&
-      <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
+      <div className={cn("flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5", headerClassName)}>
           {title && <h2 className="font-display text-[15px] font-semibold whitespace-nowrap truncate">{title}</h2>}
           {action && actionTo &&
         <Link

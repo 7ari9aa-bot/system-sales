@@ -319,7 +319,7 @@ export default function AI() {
 
       {/* Main sections */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <SectionCard title={t("ai.agents.title")} className="lg:col-span-2" bodyClassName="pt-1">
+        <SectionCard title={t("ai.agents.title")} className="lg:col-span-2 rounded-none border-0 bg-transparent" bodyClassName="pt-1 px-0" headerClassName="px-0 pt-0">
           {agentError && (
             <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
               {agentError}
@@ -382,7 +382,7 @@ export default function AI() {
           </div>
         </SectionCard>
 
-        <SectionCard title={t("ai.approvals.title")} action={t("common.viewAll")} actionTo="/inbox">
+        <SectionCard title={t("ai.approvals.title")} action={t("common.viewAll")} actionTo="/inbox" className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-4">
             <div className="flex items-center gap-2 text-warning font-medium text-[13px]">
               <ShieldCheck className="h-4 w-4" />

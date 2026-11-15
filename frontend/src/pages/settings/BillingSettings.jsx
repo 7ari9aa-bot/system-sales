@@ -71,7 +71,7 @@ export default function BillingSettings() {
               <p className="text-[12px] leading-relaxed text-muted-foreground">{t("billing.usage.moved")}</p>
               <Link
                 to="/settings/usage"
-                className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[12.5px] font-medium hover:bg-surface"
+                className="mt-2 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid="billing-usage-link"
               >
                 <Gauge className="h-3.5 w-3.5" /> {t("settings.nav.usage")}

@@ -76,7 +76,7 @@ export default function DataSettings() {
                 onClick={downloadExport}
                 data-testid="data-export"
                 title={!canExport && !loading ? t("data.export.onlyOffboarding") : undefined}
-                className="mt-3 h-8 shrink-0 rounded-lg border border-border px-3 text-[12.5px] disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-3 shrink-0 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {exporting ? t("data.export.downloading") : t("data.export.download")}
               </button>

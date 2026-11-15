@@ -157,7 +157,7 @@ export default function MembersSettings() {
       )}
 
       <SettingCard title={t("members.whoHasAccess")} desc={t("members.whoHasAccess.desc")}>
-        <div className="overflow-x-auto -mx-5 px-5">
+        <div className="overflow-x-auto">
           <table className="w-full text-left" data-testid="members-table">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
