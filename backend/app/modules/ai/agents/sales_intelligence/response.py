@@ -267,6 +267,33 @@ def _strip_period_dates(
     return out
 
 
+_LIST_MARKER = re.compile(r"^([ \t]*)([1-9])([.)])[ \t]+(?=\S)", re.MULTILINE)
+
+
+def _strip_list_markers(text: str) -> str:
+    """Drop the 1. 2. 3. that number a list, so the gate does not read them as measured numbers.
+
+    A marker is only a position, never a measurement, so it must not need a tool to vouch for it.
+    The rule is narrow on purpose: a marker is one digit 1-9 at the start of a line followed by a
+    dot or a bracket and a space, and a run of them must start at 1 and count up by one with no
+    gap. A line that merely starts with a number (a list that began at 3, or a lone "5 ") is left
+    as it is, so a real figure can never be hidden by looking like a bullet. A line of ordinary
+    text ends a list, so a second list in the same answer starts again from 1.
+    """
+    out: list[str] = []
+    expected = 1
+    for line in text.split("\n"):
+        m = _LIST_MARKER.match(line)
+        if m and int(m.group(2)) == expected:
+            out.append(line[: m.start(2)] + line[m.end() :])
+            expected += 1
+            continue
+        if line.strip():
+            expected = 1
+        out.append(line)
+    return "\n".join(out)
+
+
 def validate_answer(
     text: str,
     allowed_numbers: set[str],
@@ -290,6 +317,7 @@ def validate_answer(
         yearless_dates or set(),
         recorded_dates or set(),
     )
+    folded = _strip_list_markers(folded)
     numeric_allowed = _numeric_forms(allowed_numbers)
 
     def _is_free(numeral: str) -> bool:
