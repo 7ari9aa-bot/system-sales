@@ -381,6 +381,69 @@ def _numeral_allowed(numeral: str, allowed: set[str], numeric_allowed: list[Deci
     return any(value == candidate for candidate in numeric_allowed)
 
 
+# The analytics layer words its confidence reasons and comparison labels for engineers. The safe
+# summary shows them to a shop owner, so each known one is turned into plain Arabic here. A reason
+# this table does not know is left out rather than shown in English: a missing reason is a smaller
+# harm than a screen of technical words. The numbers inside a reason are kept (they are measured).
+_CONFIDENCE_WORD = {"HIGH": "عالية", "MEDIUM": "متوسطة", "LOW": "ضعيفة"}
+
+_REASON_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"^sample below minimum \((\d+) < (\d+)\)$"),
+        "العينة صغيرة ({0} من أصل {1} المطلوبة)",
+    ),
+    (re.compile(r"^period PARTIALLY_MATURE$"), "الفترة لسه مكتملة جزئياً"),
+    (re.compile(r"^period IMMATURE$"), "الفترة لسه ما اكتملتش"),
+    (re.compile(r"^temporal association is not causation$"), "التزامن مش معناه إن ده سبب ده"),
+    (re.compile(r"^hypotheses are never HIGH$"), "ده افتراض مش حقيقة مؤكدة"),
+    (re.compile(r"^relies on reconstructed history$"), "بيعتمد على بيانات اتعاد بناؤها"),
+    (re.compile(r"^data STALE.*$"), "البيانات مش محدّثة"),
+)
+
+_COMPARISON_LABEL = re.compile(
+    r"^(?P<metric>[\w ]+?): last (?P<now>\d+)d vs prior (?P<before>\d+)d$"
+)
+
+
+def _plain_reason(reason: str) -> str | None:
+    """A confidence reason in plain Arabic, or None when it is not one we know."""
+    text = reason.strip()
+    for pattern, wording in _REASON_PATTERNS:
+        match = pattern.match(text)
+        if match:
+            return wording.format(*match.groups())
+    return None
+
+
+def _days_word(days: int) -> str:
+    """The day count the way it is said in Arabic: يوم، يومين، 3 أيام .. 10 أيام، 11 يوم."""
+    if days == 1:
+        return "يوم"
+    if days == 2:
+        return "يومين"
+    return f"{days} أيام" if 3 <= days <= 10 else f"{days} يوم"
+
+
+def _plain_statement(statement: str) -> str:
+    """A finding's statement, with an engineer's comparison label put into Arabic.
+
+    "orders_placed: last 30d vs prior 30d: القيمة زاد بمقدار 5.0%" becomes
+    "orders_placed: آخر 30 يوم مقارنة بـ30 يوم قبلها: القيمة زادت بمقدار 5.0%". The metric name is
+    left for plain_words to turn into the shop word. A statement in any other shape is untouched."""
+    head, sep, tail = statement.partition(": القيمة ")
+    match = _COMPARISON_LABEL.match(head.strip()) if sep else None
+    if not match:
+        return statement
+    now, before = int(match["now"]), int(match["before"])
+    tail = re.sub(r"^زاد\b", "زادت", tail)
+    tail = re.sub(r"^انخفض\b", "انخفضت", tail)
+    if now == before:
+        span = f"آخر {_days_word(now)} مقارنة بنفس المدة اللي قبلها"
+    else:
+        span = f"آخر {_days_word(now)} مقابل {_days_word(before)} قبلها"
+    return f"{match['metric']}: {span}: القيمة {tail}"
+
+
 def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
     """§10.4 — fully deterministic: top findings by materiality, rendered
     from evidence with fixed localized strings. No model call involved."""
@@ -391,13 +454,14 @@ def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
         )
     lines = [_SAFE_HEADER]
     for index, finding in enumerate(findings, start=1):
-        lines.append(f"{index}. {finding.statement}")
+        lines.append(f"{index}. {_plain_statement(finding.statement)}")
         if finding.confidence != "HIGH":
-            lines.append(
-                f"   (الثقة: {finding.confidence} — "
-                + "؛ ".join(finding.confidence_reasons[:2])
-                + ")"
-            )
+            reasons = [r for r in map(_plain_reason, finding.confidence_reasons) if r][:2]
+            word = _CONFIDENCE_WORD.get(finding.confidence)
+            if word and reasons:
+                lines.append(f"   (الثقة {word}: " + "؛ ".join(reasons) + ")")
+            elif word:
+                lines.append(f"   (الثقة {word})")
     lines.append("ملاحظة: ده ملخص آمن من النتايج المحسوبة — اسأل سؤال أدق للتحليل الكامل.")
     _ = store_facts
     return "\n".join(lines)
