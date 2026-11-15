@@ -444,6 +444,27 @@ def _plain_statement(statement: str) -> str:
     return f"{match['metric']}: {span}: القيمة {tail}"
 
 
+# The runner stops a message BEFORE the model sees it when it tries to override the instructions
+# or reach another shop's data (a shared guardrail, built for the customer agent). Nothing was
+# looked up, so "no clear result, we need a longer period" would tell the owner the data is thin
+# when the question was simply refused. This is a security notice, not an analysis answer: the
+# model never ran.
+REFUSED_BEFORE_THE_MODEL: dict[str, str] = {
+    "injection_risk": (
+        "الطلب ده مش هقدر أنفّذه: فيه محاولة لتغيير تعليماتي أو كشفها. "
+        "اسألني عن مبيعاتك أو مخزونك وأنا معاك."
+    ),
+    "cross_tenant_request": (
+        "الطلب ده مش هقدر أنفّذه: بيطلب بيانات محل تاني. أنا شغال على بيانات محلك بس."
+    ),
+}
+
+
+def refused_before_the_model(reason: str | None) -> str | None:
+    """The plain-Arabic notice for a message stopped before the model, else None."""
+    return REFUSED_BEFORE_THE_MODEL.get(reason) if reason else None
+
+
 def safe_response(findings: list[Finding], store_facts: dict[str, str]) -> str:
     """§10.4 — fully deterministic: top findings by materiality, rendered
     from evidence with fixed localized strings. No model call involved."""

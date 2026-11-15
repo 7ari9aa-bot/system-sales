@@ -49,6 +49,7 @@ from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     period_dates_from_evidence,
     recorded_days_from_evidence,
+    refused_before_the_model,
     safe_response,
     validate_answer,
 )
@@ -617,8 +618,11 @@ async def run_sales_analysis(
             answer = plain_words(result.content)
     else:
         outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
-        answer = plain_words(safe_response(findings, {}))
         guardrail_reason = result.guardrail_reason
+        # a message stopped before the model is told so, not called "no clear result"
+        answer = refused_before_the_model(guardrail_reason) or plain_words(
+            safe_response(findings, {})
+        )
 
     saved_evidence_id = None
     model_name = getattr(result, "model", None) or "fast"
