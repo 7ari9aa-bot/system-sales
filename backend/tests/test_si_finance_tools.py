@@ -383,13 +383,13 @@ async def test_one_shop_never_sees_another_shops_money(db, tenant_ctx):
 # ----------------------------- wiring -------------------------------------------------------
 
 
-def test_both_tools_are_registered_gated_low_risk_and_allowed():
+def test_the_money_tool_is_registered_gated_low_risk_and_allowed():
     import app.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
     from app.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    for name in ("si_expenses_summary", "si_profit_summary"):
+    for name in ("si_finance",):
         spec = TOOLS[name]
         assert spec.requires == "finance:read", f"{name} must need finance:read"
         assert spec.risk_level == "LOW"

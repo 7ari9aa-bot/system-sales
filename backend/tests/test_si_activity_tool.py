@@ -309,6 +309,8 @@ def test_no_registered_description_points_at_a_removed_tool():
             "si_analyze_seasonality",
             "si_analyze_customers",
             "si_analyze_fulfillment",
+            "si_expenses_summary",
+            "si_profit_summary",
         ):
             assert gone not in text, f"{name} tells the model to use removed tool {gone}"
 

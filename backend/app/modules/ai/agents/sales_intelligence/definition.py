@@ -42,13 +42,8 @@ _DEFINITION = AgentDefinition(
             required=False,
         ),
         AgentCapability(
-            name="si_expenses_summary",
-            description="What the shop spent: total, by category and method",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_profit_summary",
-            description="Revenue, cost, expenses and profit, only when costs are known",
+            name="si_finance",
+            description="What the shop spent and what it earned after costs and expenses",
             required=False,
         ),
         AgentCapability(

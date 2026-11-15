@@ -490,6 +490,51 @@ async def _si_activity(
     return await _si_social_comments(session, tenant_id, days=days, limit=limit)
 
 
+_FINANCE_REPORTS = ("expenses", "profit")
+# The expenses read keeps the default and ceiling it always had; profit has no list to cap.
+_EXPENSES_LIMIT = (8, 25)
+
+
+class SIFinanceArgs(BaseModel):
+    """The shop's own money. ``report`` says which side of it."""
+
+    report: Literal["expenses", "profit"]
+    # a year, not 90 like the sales reads: the originals allowed it and owners ask "this year"
+    days: int = Field(default=30, ge=1, le=366)
+    # only for expenses (default 8, at most 25): how many of the biggest items to list
+    limit: int | None = Field(default=None, ge=1, le=25)
+
+
+async def _si_finance(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    report: str,
+    days: int = 30,
+    limit: int | None = None,
+    context: dict | None = None,
+) -> dict:
+    """A thin router: each report runs the same tested read it always did.
+
+    The two tools it replaces were two more choices for the model on every question. Nothing is
+    recomputed here, so every guarantee of the originals (profit is shown only when every sold
+    line's cost is known, only posted expenses count, tenant scoping) is the originals' own. The
+    permission is not decided here: the registered tool requires ``finance:read``, as both did.
+    """
+    if report not in _FINANCE_REPORTS:
+        raise ValidationError(
+            f"report must be one of: {', '.join(_FINANCE_REPORTS)} (got {report!r})"
+        )
+    if report == "profit":
+        return await _si_profit_summary(session, tenant_id, days=days)
+    default, ceiling = _EXPENSES_LIMIT
+    if limit is None:
+        limit = default
+    elif limit > ceiling:
+        raise ValidationError(f"limit for expenses can be at most {ceiling} (got {limit})")
+    return await _si_expenses_summary(session, tenant_id, days=days, limit=limit)
+
+
 class SIStatusArgs(BaseModel):
     pass
 
@@ -1896,8 +1941,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_top_products",
     "si_activity",
     "si_stock_status",
-    "si_expenses_summary",
-    "si_profit_summary",
+    "si_finance",
     "si_purchasing_summary",
     "si_cashier_summary",
     "si_find_order",
@@ -2004,25 +2048,22 @@ def register_si_tools() -> None:
             requires="inventory:read",
         ),
         ToolSpec(
-            name="si_expenses_summary",
+            name="si_finance",
             description=(
-                "What the shop spent in the window: total, by category, by payment "
-                "method and the biggest expenses. Posted expenses only. Read-only."
+                "The shop's own money over the last N days. Pick report: "
+                "expenses = what the shop spent: the total, by category, by payment method "
+                "and the biggest items; posted expenses only (use for 'how much did I spend, "
+                "on what'); "
+                "profit = what the shop earned after the cost of what it sold and after "
+                "expenses; profit is given only when the cost of every sold item is known, "
+                "otherwise the answer says how much is uncosted and shows no profit figure "
+                "(use for 'how much did I make, am I profitable'). "
+                "Pass days (1 to 366, default 30). limit is only for expenses (default 8, at "
+                "most 25). Sales revenue itself is not here: use si_metric for that. "
+                "Read-only."
             ),
-            args_schema=SIExpensesArgs,
-            handler=_si_expenses_summary,
-            tags=["sales-intelligence"],
-            requires="finance:read",
-        ),
-        ToolSpec(
-            name="si_profit_summary",
-            description=(
-                "Revenue, cost of goods, expenses and profit for delivered orders. "
-                "Profit is shown only when every sold item has a recorded cost; "
-                "otherwise it reports how much revenue is uncosted. Read-only."
-            ),
-            args_schema=SIProfitArgs,
-            handler=_si_profit_summary,
+            args_schema=SIFinanceArgs,
+            handler=_si_finance,
             tags=["sales-intelligence"],
             requires="finance:read",
         ),

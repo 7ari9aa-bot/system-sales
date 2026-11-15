@@ -149,8 +149,7 @@ async def test_an_employee_without_finance_access_is_never_shown_the_money_tools
     shown = await _offered(db, tenant_ctx, monkeypatch, set())
 
     assert "si_metric" in shown
-    for money in ("si_profit_summary", "si_expenses_summary"):
-        assert money not in shown, f"{money} reached an asker without finance:read"
+    assert "si_finance" not in shown, "the money tool reached an asker without finance:read"
     assert "si_stock_status" not in shown  # needs inventory:read
     assert "si_find_customer" not in shown  # needs customers:read
 
@@ -158,5 +157,5 @@ async def test_an_employee_without_finance_access_is_never_shown_the_money_tools
 async def test_an_asker_with_the_permission_is_shown_the_tool(db, tenant_ctx, monkeypatch):
     shown = await _offered(db, tenant_ctx, monkeypatch, {"finance:read", "inventory:read"})
 
-    assert {"si_profit_summary", "si_expenses_summary", "si_stock_status"} <= shown
+    assert {"si_finance", "si_stock_status"} <= shown
     assert "si_find_customer" not in shown  # not granted

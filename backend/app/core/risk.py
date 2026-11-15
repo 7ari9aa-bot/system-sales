@@ -97,6 +97,7 @@ _REGISTRY: dict[str, RiskLevel] = {
     "si_metric": RiskLevel.LOW,
     "si_why": RiskLevel.LOW,
     "si_activity": RiskLevel.LOW,
+    "si_finance": RiskLevel.LOW,
     "si_data_status": RiskLevel.LOW,
     # Read-only merchant-facing reads (sales detail, contact activity,
     # platform interactions, public comments) — no mutation surface.
@@ -104,8 +105,6 @@ _REGISTRY: dict[str, RiskLevel] = {
     # Owner assistant reads (stock, and the money reads that follow). Read-only by contract:
     # tests/test_si_tools_are_read_only.py scans every si_* tool for a write.
     "si_stock_status": RiskLevel.LOW,
-    "si_expenses_summary": RiskLevel.LOW,
-    "si_profit_summary": RiskLevel.LOW,
     "si_purchasing_summary": RiskLevel.LOW,
     "si_cashier_summary": RiskLevel.LOW,
     "si_find_order": RiskLevel.LOW,
