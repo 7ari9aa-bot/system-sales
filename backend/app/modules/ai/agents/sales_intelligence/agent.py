@@ -31,13 +31,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.agents.sales_intelligence import (
-    tools as _si_tools,  # noqa: F401 — registers the SI tools at import
-)
-
 # Re-export: the provisioning single-source test imports the canonical prompt
 # FROM this module (the agent module is the prompt's public face) — the alias
 # form keeps it alive under any lint sweep.
+from app.core.guardrails import screen_inbound as _screen_inbound
+from app.modules.ai.agents.sales_intelligence import (
+    tools as _si_tools,  # noqa: F401 — registers the SI tools at import
+)
 from app.modules.ai.agents.sales_intelligence.coverage import (
     regenerate_on_coverage_gap,
     regenerate_on_rejected_answer,
@@ -48,9 +48,10 @@ from app.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E40
 )
 from app.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
+    fallback_if_the_model_fails,
+    note_for_the_model,
     period_dates_from_evidence,
     recorded_days_from_evidence,
-    refused_before_the_model,
     safe_response,
     validate_answer,
 )
@@ -489,13 +490,21 @@ async def run_sales_analysis(
         run_id=None,
         payload={"question": question, "currency": merchant_currency},
     )
+    # A message the shared guard would stop (it tries to change or read the assistant's own
+    # instructions, or asks for another shop's data) must still be ANSWERED BY THE MODEL, in the
+    # shop's voice: a fixed sentence is a prepared reply. The model must not read the hostile text
+    # itself, so it is given a note about what happened instead of what was typed. The runner
+    # screens whatever it is handed, and the note is written to pass that screen.
+    held = _screen_inbound(question)
+    note = note_for_the_model(held.reason) if held.decision != "allow" else None
+    message_for_the_model = note or question
     result = None
     try:
         result = await runner.run(
             session,
             tenant_id,
             agent_id=agent_id,
-            user_message=question,
+            user_message=message_for_the_model,
             # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
             # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
             # call ignore whatever the tenant's Agent actually holds: merchant edits
@@ -645,9 +654,13 @@ async def run_sales_analysis(
             answer = plain_words(result.content)
     else:
         outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
-        guardrail_reason = result.guardrail_reason
-        # a message stopped before the model is told so, not called "no clear result"
-        answer = refused_before_the_model(guardrail_reason) or plain_words(
+        # why the owner's message was held decides the floor; why the model then failed (an empty
+        # reply is itself reported as a reason) does not
+        guardrail_reason = (held.reason if note else None) or result.guardrail_reason
+        # The model answered a held message in its own words (the branch above). Reaching here
+        # means it could not: the call failed, came back empty, or its reply was stopped. Only
+        # then is the owner shown the plain floor, never "no clear result, we need more time".
+        answer = fallback_if_the_model_fails(guardrail_reason) or plain_words(
             safe_response(findings, {})
         )
 
