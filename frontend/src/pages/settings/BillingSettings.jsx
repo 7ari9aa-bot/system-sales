@@ -43,7 +43,7 @@ export default function BillingSettings() {
         <span>{error}</span>
         <button type="button" onClick={() => setAttempt((current) => current + 1)} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
       </div>}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("billing.plan")} desc={t("billing.plan.desc")}>
           <div className="pt-2">
             <SettingRow label={t("billing.status")}>

@@ -64,7 +64,7 @@ export default function DataSettings() {
   return (
     <SettingsShell title={t("data.title")} subtitle={t("data.desc")}>
       {error && <div role="alert" className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("data.export")} desc={t("data.export.desc")}>
           <div className="flex items-start gap-3 pt-2">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Download className="h-4 w-4" /></span>

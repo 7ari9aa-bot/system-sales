@@ -119,7 +119,7 @@ export default function SecuritySettings() {
 
   return (
     <SettingsShell title={t("settings.security")} subtitle={t("settings.security.desc")}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("security.twoStep")} desc={t("security.twoStep.desc")}>
           <SettingRow label={t("security.status")} last>
             <span data-testid="mfa-status">

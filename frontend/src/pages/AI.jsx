@@ -211,7 +211,7 @@ export default function AI() {
       )}
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
         <Stat icon={Repeat} label={t("ai.stat.conversations")} value={live?.openConversations == null ? "—" : live.openConversations.toLocaleString()} tone="accent" />
         <Stat icon={Sparkles} label={t("ai.stat.tokens")} value={tokens == null ? "—" : tokens.toLocaleString()} tone="primary" />
         <Stat icon={ShieldCheck} label={t("ai.stat.pendingApprovals")} value={pendingCount == null ? "—" : `${pendingCount.toLocaleString()}${approvals?.truncated ? "+" : ""}`} tone="warning" />
@@ -318,14 +318,14 @@ export default function AI() {
       )}
 
       {/* Main sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-5">
         <SectionCard title={t("ai.agents.title")} className="lg:col-span-2 rounded-none border-0 bg-transparent" bodyClassName="pt-1 px-0" headerClassName="px-0 pt-0">
           {agentError && (
             <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
               {agentError}
             </div>
           )}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {agents === null ? (
               <div className="py-8 text-center text-[13px] text-muted-foreground">
                 {agentError ? (
@@ -345,7 +345,7 @@ export default function AI() {
               </div>
             ) : (
               agents.map((agent) => (
-                <div key={agent.id} className="flex items-center gap-3.5 p-3.5 rounded-xl border border-border hover:bg-surface/50 transition-colors">
+                <div key={agent.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:bg-surface/50 transition-colors">
                   <span className="h-10 w-10 shrink-0 rounded-xl bg-accent/10 text-accent grid place-items-center">
                     <Sparkles className="h-5 w-5" />
                   </span>

@@ -76,7 +76,7 @@ export default function PoliciesSettings() {
           {error}
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {rows.map((row) => {
             const trimmed = row.draft.trim();
             const over = trimmed.length > maxChars;

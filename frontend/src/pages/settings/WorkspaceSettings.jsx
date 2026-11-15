@@ -111,7 +111,7 @@ export default function WorkspaceSettings() {
 
   return (
     <SettingsShell title={t("settings.nav.workspace")} subtitle={t("settings.workspace.desc")}>
-      <div className="space-y-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("settings.nav.workspace")} desc={t("workspace.name.desc")}>
           <form className="pt-2" onSubmit={saveName}>
             <label className="block">

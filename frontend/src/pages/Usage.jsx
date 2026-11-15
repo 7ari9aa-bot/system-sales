@@ -39,7 +39,7 @@ export default function Usage() {
   const largestDay = Math.max(1, ...days.map((day) => Number(day.tokens_in || 0) + Number(day.tokens_out || 0)));
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       <PageHeader
         title={t("usage.title")}
         subtitle={t("usage.subtitle")}
@@ -55,7 +55,7 @@ export default function Usage() {
         <button type="button" onClick={() => setAttempt((current) => current + 1)} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
       </div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SectionCard title={t("ai.usage.title")} className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
           {usageError && <div role="alert" className="mb-3 text-[12px] text-destructive">{usageError}</div>}
           <div className="grid gap-4 sm:grid-cols-2">

@@ -190,7 +190,7 @@ export default function SettingsLayout() {
           </button>
           <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", lang === "ar" && "ml-auto text-right")}>{t("settings.title")}</h1>
         </header>
-        <main className="w-full px-4 sm:px-6 lg:px-8 py-5">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <Outlet />
         </main>
       </div>

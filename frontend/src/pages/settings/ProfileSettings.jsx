@@ -61,7 +61,7 @@ export default function ProfileSettings() {
 
   return (
     <SettingsShell title={t("settings.nav.profile")} subtitle={t("settings.profile.desc")}>
-      <div className="space-y-5">
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("profile.identity")} desc={t("profile.identity.desc")}>
           <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-center">
             <AccountAvatar user={user} size="lg" />

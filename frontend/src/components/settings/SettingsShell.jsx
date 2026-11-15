@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n";
 export default function SettingsShell({ title, subtitle, children, actions }) {
   const { lang } = useI18n();
   return (
-    <div className="w-full space-y-5 animate-fade-in">
+    <div className="w-full space-y-4 animate-fade-in">
       <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3", lang === "ar" && "sm:flex-row-reverse")}>
         <div className={cn("min-w-0", lang === "ar" && "text-right")}>
           <h1 className="font-display text-[22px] font-semibold tracking-tight">{title}</h1>
@@ -25,21 +25,21 @@ export function SettingCard({ title, desc, children, className }) {
   return (
     <section className={cn("min-w-0", className)}>
       {(title || desc) && (
-        <div className="border-b border-border pb-2.5">
-          {title && <h2 className="font-display text-[15px] font-semibold">{title}</h2>}
+        <div className="border-b border-border pb-2">
+          {title && <h2 className="font-display text-[14px] font-semibold leading-5">{title}</h2>}
           {desc && <p className="text-[12.5px] text-muted-foreground mt-0.5">{desc}</p>}
         </div>
       )}
-      <div className="pt-3">{children}</div>
+      <div className="pt-1.5">{children}</div>
     </section>
   );
 }
 
 export function SettingRow({ label, desc, children, last }) {
   return (
-    <div className={cn("flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3.5", !last && "border-b border-border")}>
+    <div className={cn("flex flex-col sm:flex-row sm:items-center sm:justify-between gap-x-6 gap-y-1 py-2.5", !last && "border-b border-border")}>
       <div className="min-w-0">
-        <div className="text-[13.5px] font-medium">{label}</div>
+        <div className="text-[13px] font-medium leading-5">{label}</div>
         {desc && <div className="text-[12px] text-muted-foreground mt-0.5">{desc}</div>}
       </div>
       <div className="shrink-0">{children}</div>
