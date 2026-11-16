@@ -249,6 +249,7 @@ export default {
   "kpi.metric.customers_contacted": "عملاء تواصلوا",
   "kpi.metric.customer_total_spent": "إجمالي إنفاق العميل",
   "kpi.metric.customers_who_ordered": "عملاء اشتروا في الفترة",
+  "kpi.metric.days_since_last_order": "أيام من آخر أوردر",
   "kpi.metric.total_owed": "المبلغ المستحق",
   "kpi.metric.conversations_total": "عدد المحادثات",
   "kpi.metric.inbound_messages_total": "رسائل واردة",

@@ -249,6 +249,7 @@ export default {
   "kpi.metric.customers_contacted": "Customers who got in touch",
   "kpi.metric.customer_total_spent": "Customer total spend",
   "kpi.metric.customers_who_ordered": "Customers who ordered",
+  "kpi.metric.days_since_last_order": "Days since the last order",
   "kpi.metric.total_owed": "Amount owed",
   "kpi.metric.conversations_total": "Conversations",
   "kpi.metric.inbound_messages_total": "Incoming messages",
