@@ -453,6 +453,7 @@ async def _si_metric(
     if mode in _MODES_WITH_A_METRIC and not (metric_name or "").strip():
         raise ValidationError(f"mode={mode} needs metric_name: the metric to look at")
     names = _metric_names(metric_name) if mode in _MODES_WITH_A_METRIC else []
+    names = _with_the_core_sales_metrics(names, mode, channel=channel)
     if len(names) > 1:
         return await _several_metrics(
             session,
@@ -481,6 +482,27 @@ async def _si_metric(
 
 
 _MAX_METRICS_PER_CALL = 6
+
+# The three figures almost every sales question circles (measured on 3 days of live runs: 53, 48 and
+# 31 single-metric calls, in the same window, often in the same answer). Asking for any one of them
+# in `value` or `compare` returns all three for that window in the same call: the extra reads cost
+# about 0.2 s of SQL each, a model round to ask for them costs 6 to 10 s. They are all sales
+# figures, so no permission is crossed, and each is the same tested read.
+_CORE_SALES_METRICS = ("orders_placed", "delivered_revenue", "collected_revenue")
+_BUNDLED_MODES = ("value", "compare")
+
+
+def _with_the_core_sales_metrics(
+    names: list[str], mode: str, *, channel: str | None = None
+) -> list[str]:
+    """The requested names, plus the other core sales metrics when one of them was asked for.
+
+    Not when a channel filter is set: payments cannot be filtered by channel, so adding
+    collected_revenue to "WhatsApp sales" would fail a question that works today."""
+    if channel or mode not in _BUNDLED_MODES or not any(n in _CORE_SALES_METRICS for n in names):
+        return names
+    return names + [m for m in _CORE_SALES_METRICS if m not in names]
+
 
 _MERGED_LISTS = ("facts", "comparisons", "dimensions", "drivers")
 
@@ -2455,7 +2477,7 @@ def register_si_tools() -> None:
             name="si_metric",
             description=(
                 "Numbers about the store's sales and activity (use for 'how much, how many, "
-                "up or down, why, who, what do I have'). Pick mode: "
+                "up or down, why, who'). Pick mode: "
                 "value = one metric's number for the last N days ('how much / how many'); "
                 "compare = this window against the one before ('up or down'); "
                 "split = one metric divided by dimension, channel by default (others only where "
@@ -2474,9 +2496,9 @@ def register_si_tools() -> None:
                 "last date, no amounts. Every other mode already returns this as data_recorded, "
                 "so call status only when the owner asks what data you have. An empty source "
                 "means nothing was recorded in the system, not that the number is zero. "
-                "metric_name (value, compare, split, explain only): several metrics go in ONE "
-                "call, comma separated. "
-                "days 1 to 90, default 30. "
+                "metric_name (value, compare, split, explain only): several in ONE call, comma "
+                "separated; orders_placed, delivered_revenue, collected_revenue come together. "
+                "days 1-90, default 30. "
                 f"Metrics: {metrics}."
             ),
             args_schema=SIMetricArgs,
@@ -2489,18 +2511,18 @@ def register_si_tools() -> None:
                 "Look inside the shop's own records (use for 'what sells, what is left, what "
                 "did the cashier sell, find this order or customer'). Pick view: "
                 "products = best sellers with units, revenue and the sizes and colors chosen "
-                "(days up to 90, limit up to 20); "
+                "(days max 90, limit max 20); "
                 "stock = what is out, running low, sitting unsold or not tracked "
-                "(stagnant_days, limit up to 25); "
+                "(stagnant_days, limit max 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
-                "shifts (days up to 366, limit up to 25; online order totals are in "
+                "shifts (days max 366, limit max 25; online order totals are in "
                 "si_metric); "
-                "order = ONE order by number, customer name or phone, needs query (limit up to "
+                "order = ONE order by number, customer name or phone, needs query (limit max "
                 "10); "
-                "customer = ONE customer by name, phone or email, needs query (phone and email "
-                "come back masked); "
+                "customer = ONE customer by name, phone or email, needs query (phone, email "
+                "masked); "
                 "top_customers = who spent the most, biggest first, with orders and spend "
-                "(days up to 366, limit up to 20). "
+                "(days max 366, limit max 20). "
                 "For order and customer the query must be one the owner typed or an earlier "
                 "result showed: never guess one, never try letters or digits to see what comes "
                 "back. 'Best customer' is top_customers: si_metric mode=activity "
@@ -2523,8 +2545,8 @@ def register_si_tools() -> None:
                 "no profit figure and says how much is uncosted; "
                 "purchasing = what the shop bought, orders waiting to arrive and what it owes "
                 "each supplier. "
-                "days 1 to 366, default 30. limit: expenses and purchasing only "
-                "(default 8, at most 25). Sales revenue is not here: use si_metric. Read-only."
+                "days 1-366, default 30. limit: expenses and purchasing only "
+                "(default 8, max 25). Sales revenue is not here: use si_metric. Read-only."
             ),
             args_schema=SIFinanceArgs,
             handler=_si_finance,

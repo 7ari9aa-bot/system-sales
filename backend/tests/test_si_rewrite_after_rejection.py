@@ -253,3 +253,27 @@ async def test_the_rewrite_call_carries_the_allowed_figures(monkeypatch):
     sent = calls[0]["messages"][-1]["content"]
     assert "الأرقام المسموحة بالظبط: 3، 90، 1112.98" in sent
     assert "30" in sent.split("الأرقام المسموحة")[0]
+
+
+def test_the_instruction_says_to_delete_the_sentence_not_to_reword_it():
+    """Measured live: a 52 s, 2,574 token rewrite whose reasoning spent its time deciding whether
+    dates, product codes and a year were allowed, because it was told to replace the figure and to
+    write no other number. Removing the sentence leaves nothing to deliberate."""
+    from app.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
+
+    text = build_rejection_instruction(["17", "30"], ["0", "5", "200"])
+    assert "امسح من الإجابة أي جملة فيها الأرقام دي" in text
+    assert "17، 30" in text
+    # the blanket ban on every other number is what made the model doubt dates and codes
+    assert "متكتبش أي رقم" not in text
+    # the allowed list is still stated once, so a figure the evidence holds is never doubted
+    assert "الأرقام المسموحة بالظبط: 0، 5، 200" in text
+    # a rewrite is read as written: no apology, no mention that it is a rewrite
+    assert "متبدأش بتمام أو تصحيح" in text.replace("بـ", "")
+
+
+def test_the_instruction_passes_the_shared_inbound_guard():
+    from app.core.guardrails import screen_inbound
+    from app.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
+
+    assert screen_inbound(build_rejection_instruction(["17"], ["0", "5"])).decision == "allow"

@@ -271,15 +271,12 @@ def build_rejection_instruction(numbers: list[str], allowed: list[str] | None = 
     # Measured live (62 s and 4,323 tokens for a short rewrite): the model re-derived every figure
     # in its answer, doubting even ones the evidence holds, because it was told only what was
     # wrong and never what is allowed. The allowed figures are stated once, as a closed list.
-    permitted = (
-        f"الأرقام المسموحة بالظبط: {'، '.join(allowed)}. غير كده متكتبش أي رقم. " if allowed else ""
-    )
+    permitted = f"الأرقام المسموحة بالظبط: {'، '.join(allowed)}. " if allowed else ""
     return (
         f"إجابتك السابقة فيها أرقام ما طلعتش من نتيجة أي أداة: {listed}. {permitted}"
-        "أعد كتابة الإجابة كاملة وشيل الأرقام دي أو استبدلها برقم طالع من الأدلة اللي فوق بالظبط. "
-        "متحسبش رقم جديد ومتقرّبش رقم من دماغك، ولو الرقم ضروري ومش موجود في الأدلة قول إنه "
-        "مش متاح. اكتب الإجابة نفسها بس: صاحب المحل هيقرأ اللي هتكتبه زي ما هو، فمتبدأش بـ"
-        "تمام أو تصحيح ومتذكرش إنك بتعيد الكتابة."
+        "أعد كتابة الإجابة كاملة وامسح من الإجابة أي جملة فيها الأرقام دي، بدل ما تحاول تعيد "
+        "صياغتها. متحسبش رقم جديد ومتقرّبش رقم من دماغك. اكتب الإجابة نفسها بس: صاحب المحل "
+        "هيقرأ اللي هتكتبه زي ما هو، فمتبدأش بتمام أو تصحيح ومتذكرش إنك بتعيد الكتابة."
     )
 
 

@@ -108,12 +108,20 @@ async def _orders(db, tenant_id, *, n, days_ago, total, tag):
 
 async def test_value_mode_matches_the_old_get_metric(db, tenant_ctx):
     await _orders(db, tenant_ctx.tenant_id, n=4, days_ago=3, total="50.00", tag="a")
+    # a metric outside the core sales three is exactly the old read, nothing added
     new = await T._si_metric(
+        db, tenant_ctx.tenant_id, mode="value", metric_name="refund_amount", days=30
+    )
+    old = await T._si_get_metric(db, tenant_ctx.tenant_id, metric_name="refund_amount", days=30)
+    assert _same(new, old)
+    # a core one is the old read PLUS its two siblings, and its own facts are unchanged inside
+    core = await T._si_metric(
         db, tenant_ctx.tenant_id, mode="value", metric_name="orders_placed", days=30
     )
-    old = await T._si_get_metric(db, tenant_ctx.tenant_id, metric_name="orders_placed", days=30)
-    assert _same(new, old)
-    assert new["facts"], "a populated window must report at least one fact"
+    mine = await T._si_get_metric(db, tenant_ctx.tenant_id, metric_name="orders_placed", days=30)
+    own = [f for f in core["facts"] if f["metric"] == "orders_placed"]
+    assert [f["value"] for f in own] == [f["value"] for f in mine["facts"]]
+    assert core["facts"], "a populated window must report at least one fact"
 
 
 async def test_compare_mode_matches_the_old_compare_periods(db, tenant_ctx):
@@ -125,8 +133,10 @@ async def test_compare_mode_matches_the_old_compare_periods(db, tenant_ctx):
     old = await T._si_compare_periods(
         db, tenant_ctx.tenant_id, metric_name="orders_placed", days=30
     )
-    assert _same(new, old)
-    assert Decimal(new["comparisons"][0]["delta"]) == Decimal("3")
+    # the orders comparison inside the bundle is the old comparison, delta included
+    mine = [c for c in new["comparisons"] if c["label"].startswith("orders_placed")]
+    assert [c["delta"] for c in mine] == [c["delta"] for c in old["comparisons"]]
+    assert Decimal(mine[0]["delta"]) == Decimal("3")
 
 
 async def test_split_mode_matches_the_old_breakdown_and_passes_the_dimension(db, tenant_ctx):
