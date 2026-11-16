@@ -1,7 +1,7 @@
 """import_sessions and import_rows: the durable state of a merchant's data import.
 
 Revision ID: fe2026111221
-Revises: fe2026111220
+Revises: fe2026111621
 Create Date: 2026-11-16 18:40:00.000000
 
 The old CSV import ran every row inside one request and kept nothing: no file, no mapping, no
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "fe2026111221"
-down_revision: str | None = "fe2026111220"
+down_revision: str | None = "fe2026111621"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -106,6 +106,9 @@ def upgrade() -> None:
         sa.Column("raw", postgresql.JSONB(), nullable=False),
         sa.Column("status", sa.String(15), server_default="pending", nullable=False),
         sa.Column("errors", postgresql.JSONB(), server_default="[]", nullable=False),
+        # the validator's verdict: {"action": "create|update|skip", "values": {...}}. Stored so the
+        # run applies exactly what the preview showed, not what a newer parser would make of `raw`.
+        sa.Column("parsed", postgresql.JSONB()),
         sa.Column("applied_ref", postgresql.JSONB()),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False

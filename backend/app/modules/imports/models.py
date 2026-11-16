@@ -95,6 +95,8 @@ class ImportRow(TenantMixin, TimestampMixin, IdMixin, Base):
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     # list of {"field": str | None, "code": str, "message": str}
     errors: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    # the validator's verdict: {"action": "create|update|skip", "values": {...}}
+    parsed: Mapped[dict | None] = mapped_column(JSONB)
     # what the row became: {"product_id": ..., "variant_id": ..., "action": "created|updated"}
     applied_ref: Mapped[dict | None] = mapped_column(JSONB)
 

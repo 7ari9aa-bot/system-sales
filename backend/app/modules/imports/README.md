@@ -20,6 +20,12 @@ fields, previews what would change, and a background job applies it in resumable
   SKUs, barcodes, warehouses, opening stock already recorded), one query per kind of key in
   chunks of 500. Raw SQL on purpose: a read-model, so this module imports no other module's
   tables (`test_module_boundaries`). `tests/test_imports_lookup.py` runs it on a real database.
+- `verdicts.py`: stores a validator verdict on its row (`parsed`: action and clean values, money as
+  strings) and reads it back, so the run applies what the preview showed, not a re-parse of `raw`.
+- `apply.py`: applies one batch (at most 500 rows) of `valid` rows through `Ports`, sheet by sheet
+  (products, variants, opening stock). Each row runs in its own savepoint: a refusal or a database
+  error fails that row alone. It imports no other module; `app/workers/import_runner.py` supplies
+  the real catalog and inventory calls.
 - `mapping.py`: suggests which column is which field. A suggestion is shown, never applied
   silently.
 
@@ -40,4 +46,14 @@ fields, previews what would change, and a background job applies it in resumable
 ## Status
 
 Done: tables, reader, column matching, cell parsing, row validation and the database lookup.
-Still to come: the `import.run` job handler, the HTTP API and the screen (spec: Artifacts, "مركز استيراد البيانات").
+Also done: the `import.run` job handler (`app/workers/import_runner.py`). Still to come: the HTTP API and the screen (spec: Artifacts, "مركز استيراد البيانات").
+
+## How a run works
+
+The job runner commits only when a handler returns, so one handler looping over 100,000 rows would
+be one transaction holding locks for the whole file and losing all of it on a crash. So each
+`import.run` job applies at most 500 rows, then queues the next job for the same session (the job
+points at its session through `correlation_id`; `jobs` has no payload column). A crash loses one
+batch, the retry finds the same rows still `valid`, and a twin worker skips the locked rows
+(`FOR UPDATE SKIP LOCKED`). Category and brand names, images and customers are not applied yet.
+A stock row of 0 records nothing: the ledger refuses a movement of 0.

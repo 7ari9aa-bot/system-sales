@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 458,
-    "sha256": "5bf24e3451d1ff73d4fcb03b8a87680b1f2c01c8d4d5a7d8c852254df9fb7194",
+    "sha256": "3f29bfdec6acfd25b3950eb71a15998e1baf1c73f88d0f807c74b41a4ee629f1",
     "typed_operations": 295
   },
   "spec": {
@@ -42197,7 +42197,7 @@
               "schema": {
                 "anyOf": [
                   {
-                    "pattern": "^(?:adjustment|damage|purchase|reservation|reservation_release|return|return_reversal|sale|supplier_return|supplier_return_reversal|transfer_in|transfer_out)$",
+                    "pattern": "^(?:adjustment|damage|opening_stock|purchase|reservation|reservation_release|return|return_reversal|sale|supplier_return|supplier_return_reversal|transfer_in|transfer_out)$",
                     "type": "string"
                   },
                   {
