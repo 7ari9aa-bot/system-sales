@@ -31,7 +31,7 @@ from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.imports import lookup
 from app.modules.imports.apply import BATCH_LIMIT
 from app.modules.imports.fields import SHEET_FIELDS, SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
-from app.modules.imports.mapping import missing_required, suggest_mapping
+from app.modules.imports.mapping import ignored_columns, missing_required, suggest_mapping
 from app.modules.imports.models import ImportRow, ImportSession
 from app.modules.imports.reader import SheetData, read_workbook
 from app.modules.imports.validation import (
@@ -163,6 +163,7 @@ def describe(imp: ImportSession) -> dict[str, Any]:
             "rows": (imp.stats or {}).get("rows", {}).get(sheet, 0),
             "mapping": mapping,
             "missing_required": missing_required(sheet, mapping),
+            "ignored_columns": ignored_columns(sheet, mapping),
             "fields": [
                 {
                     "key": f.key,

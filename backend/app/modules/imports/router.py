@@ -26,6 +26,7 @@ from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.imports import service
 from app.modules.imports.models import ImportSession
 from app.modules.imports.reader import MAX_FILE_BYTES
+from app.modules.imports.template import build_template
 from app.workers.import_runner import enqueue_import
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -81,6 +82,16 @@ async def _audit(ctx: TenantContext, action: str, imp: ImportSession, **after: o
         resource_type="import_session",
         resource_id=str(imp.id),
         after={"file_name": imp.file_name, "status": imp.status, **after},
+    )
+
+
+@router.get("/template.xlsx")
+async def template(_ctx: Ctx):
+    """A starter workbook (Products, Variants, Opening Stock) whose headers match automatically."""
+    return Response(
+        content=build_template(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="fihrist-import-template.xlsx"'},
     )
 
 

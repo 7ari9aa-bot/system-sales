@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, UploadCloud } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
-import { importFileProblem } from "@/cashier/api/importCenter";
+import { downloadTemplate, importFileProblem } from "@/cashier/api/importCenter";
 import { cn } from "@/cashier/lib/utils";
 
 /** Step 1: pick a file. The first thing the merchant sees, so it also says what the file may hold. */
@@ -10,6 +10,20 @@ export default function UploadStep({ busy, error, onFile }) {
   const input = useRef(null);
   const [over, setOver] = useState(false);
   const [local, setLocal] = useState("");
+  const [fetching, setFetching] = useState(false);
+  const [templateError, setTemplateError] = useState("");
+
+  async function getTemplate() {
+    setFetching(true);
+    setTemplateError("");
+    try {
+      await downloadTemplate();
+    } catch {
+      setTemplateError("تعذّر تنزيل القالب. حاول مرة أخرى.");
+    } finally {
+      setFetching(false);
+    }
+  }
 
   function take(file) {
     const problem = importFileProblem(file);
@@ -76,6 +90,14 @@ export default function UploadStep({ busy, error, onFile }) {
           </Button>
         </span>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#7A766C]">
+        <Button type="button" variant="outline" size="sm" onClick={getTemplate} disabled={busy || fetching}>
+          {fetching ? <Loader2 className="me-1 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="me-1 h-4 w-4" aria-hidden="true" />}
+          تنزيل قالب Excel جاهز
+        </Button>
+        <span>أوراق المنتجات والأصناف ورصيد أول المدة بعناوين تُربط تلقائيًا. الأعمدة المطلوبة بلون مختلف.</span>
+      </div>
+      {templateError && <p role="alert" className="mt-2 text-[12px] text-red-700">{templateError}</p>}
     </SectionCard>
   );
 }

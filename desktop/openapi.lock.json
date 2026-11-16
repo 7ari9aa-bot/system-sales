@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 467,
-    "sha256": "090463b24d73215742157c45c6c52a665ff48b7302bc4bf93a6871c923a6a208",
+    "operations": 468,
+    "sha256": "4c2995b15a16b35e6bac03c97ed16d2110c25a06d947a97a6236f5abe56da511",
     "typed_operations": 295
   },
   "spec": {
@@ -42019,6 +42019,102 @@
             }
           },
           "summary": "Validate",
+          "tags": [
+            "imports"
+          ]
+        }
+      },
+      "/api/v1/imports/template.xlsx": {
+        "get": {
+          "description": "A starter workbook (Products, Variants, Opening Stock) whose headers match automatically.",
+          "operationId": "template_api_v1_imports_template_xlsx_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Template",
           "tags": [
             "imports"
           ]

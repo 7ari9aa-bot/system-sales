@@ -14,9 +14,11 @@ import {
   canStart,
   canValidate,
   downloadErrorReport,
+  downloadTemplate,
   errorText,
   getImportPreview,
   importErrorText,
+  ignoredColumnsOf,
   importFileProblem,
   isFinished,
   mappingRows,
@@ -133,6 +135,45 @@ describe("downloadErrorReport", () => {
   it("throws with the status when the server refuses", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 });
     await expect(downloadErrorReport("abc")).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("downloadTemplate", () => {
+  it("fetches the starter workbook with the cookie and saves it as an xlsx", async () => {
+    fetchMock.mockResolvedValue({ ok: true, blob: async () => new Blob(["x"]) });
+    const link = { click: vi.fn(), remove: vi.fn() };
+    vi.stubGlobal("document", { createElement: vi.fn(() => link), body: { appendChild: vi.fn() } });
+    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:2"), revokeObjectURL: vi.fn() });
+    try {
+      await downloadTemplate();
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/imports\/template\.xlsx$/);
+      expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: "include" });
+      expect(link).toMatchObject({ href: "blob:2", download: "fihrist-import-template.xlsx" });
+      expect(link.click).toHaveBeenCalledOnce();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:2");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("throws with the status when the server refuses", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 });
+    await expect(downloadTemplate()).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("ignoredColumnsOf", () => {
+  it("separates stock typed on the wrong sheet from columns that are just unused", () => {
+    const sheet = {
+      ignored_columns: [
+        { column: "الكمية", reason: "stock_on_wrong_sheet" },
+        { column: "ملاحظات", reason: "unmatched" },
+      ],
+    };
+    expect(ignoredColumnsOf(sheet)).toEqual({ stock: ["الكمية"], other: ["ملاحظات"] });
+  });
+  it("is empty when the server sent nothing", () => {
+    expect(ignoredColumnsOf({})).toEqual({ stock: [], other: [] });
+    expect(ignoredColumnsOf(undefined)).toEqual({ stock: [], other: [] });
   });
 });
 

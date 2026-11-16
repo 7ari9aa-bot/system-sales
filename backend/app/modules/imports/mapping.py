@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from app.modules.imports.fields import SHEET_FIELDS, FieldSpec
+from app.modules.imports.fields import SHEET_FIELDS, SHEET_STOCK, FieldSpec
 
 _ARABIC_DIACRITICS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
 _NON_WORD = re.compile(r"[^0-9a-z\u0600-\u06FF]+")
@@ -69,3 +69,26 @@ def missing_required(sheet: str, mapping: dict[str, str | None]) -> list[str]:
     """Required field keys no column is mapped to."""
     chosen = {v for v in mapping.values() if v}
     return [f.key for f in SHEET_FIELDS.get(sheet, ()) if f.required and f.key not in chosen]
+
+
+# Fields that belong to the Opening Stock sheet. A merchant who puts "الكمية" on the Variants
+# sheet expects stock to be loaded; the column is unmapped there, so it would be dropped
+# without a word. Saying so is the whole point.
+_STOCK_ONLY = {"quantity", "warehouse"}
+
+
+def ignored_columns(sheet: str, mapping: dict[str, str | None]) -> list[dict[str, str]]:
+    """Columns the import will not read, each with a reason the merchant can act on.
+
+    ``stock_on_wrong_sheet`` is the one that costs money: the quantity is silently not loaded.
+    """
+    stock_index = _index(SHEET_FIELDS.get(SHEET_STOCK, ()))
+    out: list[dict[str, str]] = []
+    for header, key in mapping.items():
+        if key is not None:
+            continue
+        reason = "unmatched"
+        if sheet != SHEET_STOCK and stock_index.get(normalize_header(header)) in _STOCK_ONLY:
+            reason = "stock_on_wrong_sheet"
+        out.append({"column": header, "reason": reason})
+    return out
