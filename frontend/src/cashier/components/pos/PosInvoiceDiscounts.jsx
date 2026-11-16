@@ -24,6 +24,7 @@ export default function PosInvoiceDiscounts({
           <Input
             id="invoice-discount-pct"
             type="number"
+            inputMode="decimal"
             min={0}
             max={maxDiscount}
             value={pct}
@@ -40,6 +41,7 @@ export default function PosInvoiceDiscounts({
           <Input
             id="invoice-discount-amount"
             type="number"
+            inputMode="decimal"
             min={0}
             value={amount}
             disabled={disabled}

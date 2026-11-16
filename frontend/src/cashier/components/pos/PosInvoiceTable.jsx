@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
+import { committedQty, shownQty, typedQty } from "@/cashier/api/qtyDraft";
 import { fmtInt, fmtNumber } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 
@@ -17,6 +18,14 @@ const QTY_BTN = "h-6 w-6 shrink-0 text-muted-foreground hover:bg-accent hover:te
 
 // خانة الكمية: الكتابة المباشرة هي الأساس، والأزرار مساعدة سريعة.
 function QtyCell({ line, onQty, onQtyStep, onActivate, overStock }) {
+  // What the cashier is typing. null = not typing, show the line's real quantity. The clamp (at least 1,
+  // at most the stock) is applied once, on leaving the box or Enter, never per keystroke.
+  const [draft, setDraft] = useState(null);
+  const commit = () => {
+    if (draft === null) return;
+    onQty(line.lineId, committedQty(draft, line.qty, line.stock));
+    setDraft(null);
+  };
   return (
     <div className="flex items-center justify-center gap-0.5">
       <Button
@@ -30,11 +39,23 @@ function QtyCell({ line, onQty, onQtyStep, onActivate, overStock }) {
         <Minus className="h-3 w-3" />
       </Button>
       <input
-        type="number"
-        min={1}
-        value={line.qty}
-        onFocus={() => onActivate(line.lineId)}
-        onChange={(e) => onQty(line.lineId, e.target.value)}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        value={shownQty(draft, line.qty)}
+        onFocus={(e) => {
+          onActivate(line.lineId);
+          e.target.select();
+        }}
+        onChange={(e) => setDraft(typedQty(e.target.value))}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
         className={cn(
           "num h-7 w-10 rounded-md border border-input bg-background text-center text-[14px] font-bold outline-none focus:border-ring focus:ring-1 focus:ring-ring",
           NO_SPINNER,
@@ -182,6 +203,9 @@ export default function PosInvoiceTable({
                           }}
                           placeholder="امسح أو اكتب الباركود"
                           autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
                           className="num h-8 w-full rounded-md border border-input bg-background px-1 text-center text-[14px] font-semibold outline-none focus:ring-1 focus:ring-ring"
                           aria-label="باركود المنتج"
                         />
