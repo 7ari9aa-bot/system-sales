@@ -210,6 +210,23 @@ def build_corrective_instruction(gaps: list[str]) -> str:
 _FREE_NUMBER_PREFIX = "free number in answer: "
 
 
+def _turn_so_far(
+    history: list[dict[str, str]] | None, question: str, draft: str
+) -> list[dict[str, str]]:
+    """The conversation a rewrite continues: earlier turns, THE QUESTION, then the first draft.
+
+    ``history`` ends before the current question (it is the thread up to the turn being answered),
+    so without the question the model was handed a draft with nothing asked before it. Measured on
+    the live shop: it then spent 66 s and 4,728 tokens reasoning about what the owner might have
+    asked ("What original question? Not given.") before rewriting a two-line answer.
+    """
+    turn = list(history or [])
+    if question and question.strip():
+        turn.append({"role": "user", "content": question})
+    turn.append({"role": "assistant", "content": draft})
+    return turn
+
+
 def free_numbers_in(problems: list[str]) -> list[str]:
     """The free numbers named by the gate's problems, in order, each once.
 
@@ -289,8 +306,7 @@ async def regenerate_on_rejected_answer(
             "content": AgentRunner._compose_system_content(agent, style_directive=style_directive),
         }
     ]
-    messages.extend(history or [])
-    messages.append({"role": "assistant", "content": draft})
+    messages.extend(_turn_so_far(history, question, draft))
     evidence_text = build_evidence_message(evidence)
     instruction = build_rejection_instruction(numbers)
     messages.append(
@@ -402,8 +418,7 @@ async def regenerate_on_coverage_gap(
             "content": AgentRunner._compose_system_content(agent, style_directive=style_directive),
         }
     ]
-    messages.extend(history or [])
-    messages.append({"role": "assistant", "content": draft})
+    messages.extend(_turn_so_far(history, question, draft))
     evidence_text = build_evidence_message(evidence)
     instruction = build_corrective_instruction(gaps)
     # One user turn, evidence first: the correction stays the last turn and the model reads

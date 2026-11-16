@@ -573,3 +573,81 @@ async def test_the_report_reads_only_what_the_caller_may_see(db, tenant_ctx):
         svc._is_tenant_owner = original
     assert [s["question"] for s in mine["slowest"]] == ["سؤالي"]
     assert sorted(s["question"] for s in everyone["slowest"]) == ["سؤال غيري", "سؤالي"]
+
+
+# ── a rewrite is told what was asked ──────────────────────────────────────────────────────────────
+
+
+async def test_both_rewrites_send_the_question_between_the_history_and_the_draft(monkeypatch):
+    """Found by this trace on the live shop: the rewrite got the history and its draft but not the
+    question, and spent 66 s and 4,728 tokens guessing what the owner had asked."""
+    import uuid
+    from types import SimpleNamespace
+
+    from app.modules.ai.agents.sales_intelligence import coverage
+    from app.modules.ai.providers import ChatCompletionResult
+
+    agent = SimpleNamespace(
+        id=uuid.uuid4(),
+        kind="sales_intelligence",
+        model="fast",
+        system_prompt="analyze",
+        temperature=0.2,
+        max_output_tokens=200,
+    )
+
+    class _Session:
+        async def get(self, model, obj_id):
+            return agent
+
+    sent: list[list[dict]] = []
+
+    async def fake_chat(self, session, tenant_id, *, alias, messages, tools=None, **kwargs):
+        sent.append(messages)
+        return ChatCompletionResult(
+            content="المبيعات قيمة الطلبات الموضوعة: 5",
+            tool_calls=[],
+            tokens_in=1,
+            tokens_out=1,
+            raw_model="m",
+        )
+
+    monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    history = [
+        {"role": "user", "content": "سؤال قديم"},
+        {"role": "assistant", "content": "رد قديم"},
+    ]
+    question = "كام مبيعات وكام طلبات؟"
+    common = dict(
+        agent_id=agent.id,
+        run_id=None,
+        history=history,
+        draft="عدد الطلبات: 5",
+        evidence={"facts": [{"metric": "orders_placed", "value": 5}]},
+        allowed_numbers={"5"},
+        findings=[],
+        tool_calls_made=[],
+        question=question,
+    )
+    await coverage.regenerate_on_coverage_gap(_Session(), uuid.uuid4(), **common)
+    await coverage.regenerate_on_rejected_answer(
+        _Session(), uuid.uuid4(), problems=[f"{coverage._FREE_NUMBER_PREFIX}17"], **common
+    )
+    assert len(sent) == 2
+    for messages in sent:
+        body = [(m["role"], m["content"]) for m in messages[1:-1]]
+        assert body == [
+            ("user", "سؤال قديم"),
+            ("assistant", "رد قديم"),
+            ("user", question),
+            ("assistant", "عدد الطلبات: 5"),
+        ]
+        # the question appears exactly once, and history is not changed in place
+        assert sum(m["content"] == question for m in messages) == 1
+    assert len(history) == 2
+
+
+def test_an_empty_question_adds_no_empty_turn():
+    from app.modules.ai.agents.sales_intelligence.coverage import _turn_so_far
+
+    assert _turn_so_far(None, "  ", "d") == [{"role": "assistant", "content": "d"}]

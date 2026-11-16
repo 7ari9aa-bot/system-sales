@@ -375,7 +375,9 @@ async def test_coverage_gap_triggers_exactly_one_corrective_regen(db, tenant_ctx
     regen = calls[2]
     assert regen["tools"] is None, "the correction must reuse gathered evidence only"
     roles = [m["role"] for m in regen["messages"]]
-    assert roles == ["system", "assistant", "user"]
+    # the question comes before the draft: without it the model had to guess what was asked
+    # (measured live: 66 s and 4,728 tokens on a two-line rewrite)
+    assert roles == ["system", "user", "assistant", "user"]
     instruction = regen["messages"][-1]["content"]
     assert "المبيعات" in instruction, "the instruction names the uncovered dimension"
     assert "ممنوع" in instruction, "the instruction forbids inventing numbers"
