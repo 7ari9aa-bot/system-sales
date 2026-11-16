@@ -39,12 +39,14 @@ function Stat({ icon: Icon, label, value, tone }) {
     muted: "bg-surface text-muted-foreground",
   }[tone];
   return (
-    <div className="rounded-2xl bg-card border border-border p-4">
-      <span className={`h-9 w-9 rounded-lg grid place-items-center ${toneClass}`}>
-        <Icon className="h-[18px] w-[18px]" />
-      </span>
-      <div className="mt-3 font-display text-[22px] font-semibold tabular-nums leading-none">{value}</div>
-      <div className="text-[12px] text-muted-foreground mt-1 leading-tight line-clamp-2 min-h-[2rem]">{label}</div>
+    <div className="border-t border-border pt-2.5">
+      <div className="flex items-center gap-2">
+        <span className={`h-6 w-6 rounded-md grid place-items-center ${toneClass}`}>
+          <Icon className="h-[14px] w-[14px]" />
+        </span>
+        <div className="font-display text-[20px] font-semibold tabular-nums leading-none">{value}</div>
+      </div>
+      <div className="text-[12px] text-muted-foreground mt-1.5 leading-tight line-clamp-2">{label}</div>
     </div>
   );
 }
@@ -211,7 +213,7 @@ export default function AI() {
       )}
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-3 mb-4">
         <Stat icon={Repeat} label={t("ai.stat.conversations")} value={live?.openConversations == null ? "—" : live.openConversations.toLocaleString()} tone="accent" />
         <Stat icon={Sparkles} label={t("ai.stat.tokens")} value={tokens == null ? "—" : tokens.toLocaleString()} tone="primary" />
         <Stat icon={ShieldCheck} label={t("ai.stat.pendingApprovals")} value={pendingCount == null ? "—" : `${pendingCount.toLocaleString()}${approvals?.truncated ? "+" : ""}`} tone="warning" />
@@ -222,7 +224,7 @@ export default function AI() {
 
       {/* Agent Catalog Drawer / Modal */}
       {showCatalog && (
-        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm transition-all">
+        <div className="mb-6 border-t border-border pt-3">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-[16px] font-bold flex items-center gap-2">
@@ -244,7 +246,7 @@ export default function AI() {
             </button>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-x-8">
             {(Array.isArray(agentKinds) ? agentKinds : []).map((kindDef) => {
               const isProvisioned = provisionedKinds.has(kindDef.kind);
               const isBusy = provisioningKind === kindDef.kind;
@@ -252,7 +254,7 @@ export default function AI() {
               return (
                 <div
                   key={kindDef.kind}
-                  className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between hover:border-primary/40 transition-colors"
+                  className="flex flex-col justify-between border-b border-border py-3"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-2">
@@ -325,7 +327,7 @@ export default function AI() {
               {agentError}
             </div>
           )}
-          <div className="space-y-2">
+          <div>
             {agents === null ? (
               <div className="py-8 text-center text-[13px] text-muted-foreground">
                 {agentError ? (
@@ -345,7 +347,7 @@ export default function AI() {
               </div>
             ) : (
               agents.map((agent) => (
-                <div key={agent.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:bg-surface/50 transition-colors">
+                <div key={agent.id} className="flex items-center gap-3 border-b border-border py-2.5">
                   <span className="h-10 w-10 shrink-0 rounded-xl bg-accent/10 text-accent grid place-items-center">
                     <Sparkles className="h-5 w-5" />
                   </span>
@@ -383,7 +385,7 @@ export default function AI() {
         </SectionCard>
 
         <SectionCard title={t("ai.approvals.title")} action={t("common.viewAll")} actionTo="/inbox" className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
-          <div className="rounded-xl border border-warning/30 bg-warning/10 p-4">
+          <div>
             <div className="flex items-center gap-2 text-warning font-medium text-[13px]">
               <ShieldCheck className="h-4 w-4" />
               {t("ai.approvals.waiting", { n: pendingCount == null ? "—" : approvals?.truncated ? `${pendingCount}+` : pendingCount })}
@@ -403,11 +405,11 @@ export default function AI() {
             ) : (
               <div className="mt-3 space-y-2">
                 {pendingItems.slice(0, 5).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-warning/20 bg-background/70 p-2.5">
+                  <div key={item.id} className="border-b border-border py-2.5">
                     <div className="text-[12px] font-medium truncate">{item.action}</div>
                     <div className="text-[10.5px] text-muted-foreground mt-0.5">{item.risk_level} · {item.entity_type}</div>
                     {item.payload && Object.keys(item.payload).length > 0 && (
-                      <div className="mt-1.5 p-1.5 rounded bg-surface/80 border border-border/50 text-[10.5px] font-mono text-muted-foreground break-all max-h-20 overflow-y-auto">
+                      <div className="mt-1.5 text-[10.5px] font-mono text-muted-foreground break-all max-h-20 overflow-y-auto">
                         {JSON.stringify(item.payload, null, 1).replace(/[{}\"]/g, '').trim()}
                       </div>
                     )}
@@ -431,7 +433,7 @@ export default function AI() {
       </div>
 
       <div className="mt-5">
-        <SectionCard title={t("ai.usage.title")} bodyClassName="pt-3">
+        <SectionCard title={t("ai.usage.title")} className="rounded-none border-0 bg-transparent" bodyClassName="px-0 pt-3" headerClassName="px-0 pt-0">
           <div className="grid sm:grid-cols-2 gap-5">
             <div className="flex items-center gap-3.5">
               <span className="h-11 w-11 rounded-xl bg-accent/10 text-accent grid place-items-center text-[13px] font-bold tabular-nums" dir="ltr">{tokens == null ? "—" : tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K` : tokens}</span>

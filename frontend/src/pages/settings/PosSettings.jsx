@@ -201,12 +201,12 @@ function ProfilesAndRegistersTab() {
   return (
     <SettingsShell>
       {error && (
-        <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">
+        <div role="alert" className="mb-3 text-[13px] text-destructive">
           {error}
         </div>
       )}
       {notice && (
-        <div role="status" className="mb-4 rounded-xl border border-success/30 bg-success/10 px-4 py-2.5 text-[13px] text-success">
+        <div role="status" className="mb-3 text-[13px] text-success">
           {notice}
         </div>
       )}
@@ -229,7 +229,7 @@ function ProfilesAndRegistersTab() {
               {profiles.map((p) => {
                 const isEditing = editing === p.id;
                 return (
-                  <div key={p.id} className="rounded-xl border border-border p-3 space-y-2">
+                  <div key={p.id} className="space-y-2 border-b border-border py-3">
                     {isEditing ? (
                       <div className="space-y-2">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -352,7 +352,7 @@ function ProfilesAndRegistersTab() {
                             </li>
                           )}
                           {(p._grantees || []).map((g) => (
-                            <li key={g.user_id} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11.5px]">
+                            <li key={g.user_id} className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-1 text-[11.5px]">
                               {g.full_name || g.user_id.slice(0, 8)}
                               <button
                                 type="button"
@@ -407,7 +407,7 @@ function ProfilesAndRegistersTab() {
                 {t("posSettings.newProfile", "New profile")}
               </button>
             ) : (
-              <div className="mt-3 rounded-xl border border-primary/40 p-3 space-y-2">
+              <div className="mt-3 space-y-2 border-t border-border pt-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     value={profileForm.name}
@@ -497,7 +497,7 @@ function ProfilesAndRegistersTab() {
             </li>
           )}
           {registers.map((r) => (
-            <li key={r.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-[13px]">
+            <li key={r.id} className="flex items-center justify-between border-b border-border py-2 text-[13px]">
               <span>
                 {r.name} <span className="text-muted-foreground" dir="ltr">({r.code})</span>
               </span>
@@ -576,7 +576,7 @@ export default function PosSettings() {
   return (
     <div className="cashier-root" dir="rtl">
       <Tabs defaultValue="shop" className="w-full">
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-border bg-card p-1.5">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-border bg-transparent p-0">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (

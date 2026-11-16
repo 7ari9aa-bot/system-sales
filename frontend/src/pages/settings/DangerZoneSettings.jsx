@@ -63,11 +63,11 @@ export default function DataSettings() {
 
   return (
     <SettingsShell title={t("data.title")} subtitle={t("data.desc")}>
-      {error && <div role="alert" className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div role="alert" className="mb-3 text-[12px] text-destructive">{error}</div>}
       <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
         <SettingCard title={t("data.export")} desc={t("data.export.desc")}>
           <div className="flex items-start gap-3 pt-2">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"><Download className="h-4 w-4" /></span>
+            <span className="grid h-9 w-9 shrink-0 place-items-center text-muted-foreground"><Download className="h-4 w-4" /></span>
             <div className="min-w-0 flex-1">
               <p className="text-[12px] leading-relaxed text-muted-foreground">{t("data.export.contents")}</p>
               <button
@@ -104,7 +104,7 @@ export default function DataSettings() {
               </span>
             </SettingRow>
           </div>
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[11.5px] leading-relaxed text-warning">
+          <div className="mt-4 flex items-start gap-2 text-[11.5px] leading-relaxed text-warning">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{t("data.lifecycle.note")}</span>
           </div>

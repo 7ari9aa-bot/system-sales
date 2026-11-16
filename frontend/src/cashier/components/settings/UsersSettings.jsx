@@ -13,7 +13,7 @@ export default function UsersSettings() {
   const { data: users = [], isPending, isError, refetch } = useTenantUsers();
 
   return (
-    <SectionCard title="المستخدمون والصلاحيات" description="حسابات محلك وأدوارها. تُدار الإضافة والتعديل من إعدادات حساب Sales OS.">
+    <SectionCard flat title="المستخدمون والصلاحيات" description="حسابات محلك وأدوارها. تُدار الإضافة والتعديل من إعدادات حساب Sales OS.">
       {isError ? (
         <div role="alert" className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           <span>تعذّر تحميل المستخدمين.</span>

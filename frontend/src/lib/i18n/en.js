@@ -390,6 +390,9 @@ export default {
   "settings.title": "Settings",
   "settings.subtitle": "Configure how Sales OS behaves for your business and team.",
   "settings.search": "Search settings…",
+  "settings.group.account": "My account",
+  "settings.group.store": "Store",
+  "settings.group.operations": "Operations",
   "settings.group.personal": "Personal",
   "settings.group.business": "Business",
   "settings.group.workspace": "Workspace",
@@ -399,7 +402,7 @@ export default {
   "settings.group.integrations": "Integrations",
   "settings.group.security": "Security",
   "settings.group.data": "Data & Privacy",
-  "settings.group.billing": "Billing & Plan",
+  "settings.group.billing": "Plan & data",
 
   "settings.profile": "Profile",
   "settings.profile.desc": "Your name, email and personal details.",

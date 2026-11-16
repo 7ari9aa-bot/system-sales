@@ -33,7 +33,7 @@ export default function BackupTab() {
 
   return (
     <div className="space-y-4">
-      <SectionCard
+      <SectionCard flat
         title="تصدير بيانات المحل"
         description="ملف واحد بكل ما في النظام الآن: المنتجات والمخزون والموردون والتوريد والمصروفات والورديات. للاحتفاظ بنسخة من سجلاتك."
         action={
@@ -64,7 +64,7 @@ export default function BackupTab() {
               وصل إلى الحد الأقصى للتصدير وقد توجد سجلات أقدم لم تدخل الملف: {last.truncated.map((t) => `${t.label} (${fmtInt(t.cap)})`).join("، ")}. لا تعتمد عليه كنسخة كاملة.
             </div>
           ) : null}
-          <SectionCard title="محتوى الملف">
+          <SectionCard flat title="محتوى الملف">
             <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
               {last.counts.map((c) => (
                 <li key={c.key} className="flex justify-between rounded-md border border-border px-3 py-1.5">

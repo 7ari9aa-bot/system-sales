@@ -14,7 +14,7 @@ export default function ShopProfileForm() {
   const shop = shopFromUser(user);
 
   return (
-    <SectionCard title="بيانات المحل" description="الاسم المسجَّل للحساب. بقية البيانات تُضاف عند توفر حفظها في الخادم">
+    <SectionCard flat title="بيانات المحل" description="الاسم المسجَّل للحساب. بقية البيانات تُضاف عند توفر حفظها في الخادم">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Label className="mb-1.5 block text-xs text-muted-foreground">اسم المحل</Label>

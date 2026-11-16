@@ -193,7 +193,7 @@ export default function DepositPolicySettings() {
   return (
     <div role="region" aria-label={t("deposit.title")}>
       <SettingCard title={t("deposit.title")} desc={t("deposit.desc")}>
-        <p className="my-4 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <p className="my-4 text-sm text-muted-foreground">
           {t("deposit.notice")}
         </p>
         {loading ? (
@@ -209,7 +209,7 @@ export default function DepositPolicySettings() {
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="rounded-lg border border-border p-3 text-sm space-y-1">
+            <div className="space-y-1 border-b border-border py-3 text-sm">
               <p className="font-medium">{active ? t("deposit.activeVersion", { version: active.version }) : t("deposit.unconfigured")}</p>
               {active ? (
                 <p className="break-words text-muted-foreground" dir="auto">
@@ -219,7 +219,7 @@ export default function DepositPolicySettings() {
               ) : <p className="text-muted-foreground">{t("deposit.emptyHelp")}</p>}
             </div>
             {mismatch && (
-              <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p role="alert" className="text-sm text-amber-600">
                 {t("deposit.currencyMismatch", { from: active.currency, to: currency })}
               </p>
             )}

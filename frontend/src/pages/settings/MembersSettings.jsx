@@ -122,10 +122,10 @@ export default function MembersSettings() {
         </Button>
       }
     >
-      {error && <div role="alert" className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div role="alert" className="mb-3 text-[12px] text-destructive">{error}</div>}
 
       {createdInvite && (
-        <div className="mb-4 rounded-xl border border-success/30 bg-success/5 p-4">
+        <div className="mb-4 border-b border-border pb-4">
           <div className="text-[13px] font-semibold">{isAr ? `تم إنشاء دعوة لـ ${createdInvite.email}` : `Invitation created for ${createdInvite.email}`}</div>
           <p className="mt-1 text-[12px] text-muted-foreground">{isAr ? "انسخ رابط الدعوة وأرسله للعضو. سيظهر التوكن الكامل مرة واحدة فقط." : "Copy and send this invite link. The full invitation token is shown only once."}</p>
           <div className="mt-3 flex flex-col sm:flex-row gap-2">

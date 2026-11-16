@@ -617,8 +617,8 @@ export default function ChannelsSettings() {
       <SettingCard>
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
         {formError && !editingId && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{formError}</div>}
-        {notice && <div role="status" className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] text-primary">{notice}</div>}
-        {metaConnecting && <div role="status" aria-live="polite" className="mb-3 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] leading-relaxed text-primary">
+        {notice && <div role="status" className="mb-3 text-[12px] text-primary">{notice}</div>}
+        {metaConnecting && <div role="status" aria-live="polite" className="mb-3 flex items-start gap-2 text-[12px] leading-relaxed text-primary">
           <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
           <span>{isAr
             ? `جارٍ فتح نافذة ربط ${t(`channel.${metaConnecting}`)}. أكمل خطوات تسجيل الدخول فيها بعد ظهورها؛ ستظهر هنا نتيجة الربط.`
@@ -749,7 +749,7 @@ export default function ChannelsSettings() {
 
                   {/* Manual credential form (Telegram, Webchat) */}
                   {editingId === channel.id && fields && (
-                    <form onSubmit={saveConnection} className="mt-3 grid gap-3 rounded-xl border border-border bg-surface/60 p-3.5 sm:grid-cols-2" style={{ direction: isAr ? "rtl" : "ltr" }}>
+                    <form onSubmit={saveConnection} className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2" style={{ direction: isAr ? "rtl" : "ltr" }}>
                       {channel.id === "webchat" ? (
                         <div className="sm:col-span-2">
                           <label htmlFor="webchat-public-key" className="mb-1.5 block text-[12px] font-medium text-foreground">

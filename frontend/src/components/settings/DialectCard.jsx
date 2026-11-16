@@ -67,7 +67,7 @@ export default function DialectCard() {
   }
 
   return (
-    <SectionCard title={t("dialect.title")} bodyClassName="pt-2">
+    <SectionCard title={t("dialect.title")} className="rounded-none border-0 bg-transparent" bodyClassName="px-0 pt-2" headerClassName="px-0 pt-0">
       <p className="text-[12.5px] leading-relaxed text-muted-foreground">{t("dialect.desc")}</p>
       <div className="mt-2 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

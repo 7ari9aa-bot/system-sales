@@ -146,7 +146,7 @@ export default function SecuritySettings() {
 
           {mode === "confirm" && secret && (
             <div className="mt-4 space-y-3 border-t border-border pt-4">
-              <div className="rounded-lg border border-border bg-surface/50 p-3 text-[12px]">
+              <div className="text-[12px]">
                 <div className="font-medium">{isAr ? "أضف المفتاح إلى تطبيق المصادقة" : "Add this key to your authenticator app"}</div>
                 <div className="mt-2 break-all font-mono text-[12px]" dir="ltr">{secret.secret}</div>
                 <a className="mt-2 inline-block break-all text-primary underline" href={secret.otpauth_url}>{isAr ? "فتح رابط إعداد تطبيق المصادقة" : "Open authenticator setup link"}</a>
@@ -169,7 +169,7 @@ export default function SecuritySettings() {
               {backupCodes.length > 0 ? (
                 <>
                   <div className="mb-2 text-[12px] font-medium">{isAr ? "رموز الاسترداد" : "Recovery codes"}</div>
-                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-surface/50 p-3 font-mono text-[12px]" dir="ltr">
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[12px]" dir="ltr">
                     {backupCodes.map((backupCode) => <span key={backupCode}>{backupCode}</span>)}
                   </div>
                 </>

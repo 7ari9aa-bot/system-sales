@@ -1,8 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Camera, Loader2, Save, ShieldCheck, Store, Trash2 } from "lucide-react";
+import { Camera, Loader2, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
+import { useTheme } from "@/lib/themeContext";
 import { api } from "@/lib/api";
 import { activeTenant } from "@/lib/activeTenant";
 import useAvatarUpload from "@/hooks/useAvatarUpload";
@@ -18,9 +19,31 @@ import { Input } from "@/components/ui/input";
  * business settings were edited. They now live where they belong (Workspace settings, AI) and are
  * linked from the Account card below.
  */
+function Choice({ options, value, onChange, label, testid }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border border-border p-0.5" data-testid={testid}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={`h-8 rounded px-3 text-[13px] font-medium transition-colors ${
+            value === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ProfileSettings() {
   const t = useT();
-  const { lang } = useI18n();
+  const { lang, setLang } = useI18n();
+  const { theme, setTheme } = useTheme();
   const { user, refreshUser } = useAuth();
   const tenant = activeTenant(user);
   const avatar = useAvatarUpload();
@@ -149,16 +172,32 @@ export default function ProfileSettings() {
         <SettingRow label={t("profile.email")} desc={t("profile.email.locked")}>
           <span className="text-[13px] font-medium" dir="ltr">{user?.email || "—"}</span>
         </SettingRow>
-        <SettingRow label={t("workspace.name")} desc={tenant?.name || "—"}>
-          <Link
-            to="/settings/workspace"
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
-          >
-            <Store className="h-4 w-4" />
-            {t("profile.link.workspace")}
-          </Link>
+        <SettingRow label={t("appearance.language")}>
+          <Choice
+            label={t("appearance.language")}
+            testid="profile-language"
+            value={lang}
+            onChange={setLang}
+            options={[
+              { value: "ar", label: t("appearance.language.ar") },
+              { value: "en", label: t("appearance.language.en") },
+            ]}
+          />
         </SettingRow>
-        <SettingRow label={t("workspace.role")}>
+        <SettingRow label={t("appearance.theme")}>
+          <Choice
+            label={t("appearance.theme")}
+            testid="profile-theme"
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { value: "system", label: t("appearance.theme.system") },
+              { value: "light", label: t("appearance.theme.light") },
+              { value: "dark", label: t("appearance.theme.dark") },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow label={t("workspace.role")} desc={tenant?.name || undefined}>
           <span className="text-[13px] font-medium">{roleLabel}</span>
         </SettingRow>
         <SettingRow label={t("settings.nav.security")} desc={t("profile.link.security.desc")} last>

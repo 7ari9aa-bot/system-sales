@@ -39,7 +39,7 @@ export default function BillingSettings() {
 
   return (
     <SettingsShell title={t("settings.nav.billing")} subtitle={t("settings.billing.desc")}>
-      {error && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+      {error && <div role="alert" className="mb-3 flex items-center justify-between gap-3 text-[12px] text-destructive">
         <span>{error}</span>
         <button type="button" onClick={() => setAttempt((current) => current + 1)} disabled={loading} className="shrink-0 underline disabled:opacity-60">{t("common.retry", "Retry")}</button>
       </div>}

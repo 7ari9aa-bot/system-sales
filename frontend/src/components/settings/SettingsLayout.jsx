@@ -20,42 +20,40 @@ import {
 // Settings is an exceptional full-screen workspace: the dashboard shell is
 // replaced by this dedicated sidebar + content area.
 //
-// Grouped by WHO or WHAT the setting belongs to, so a page can be found by intent rather than by
-// remembering which screen used to hold it: the person (Account), the shop (Business), the
-// assistant (AI), money (Billing), and the irreversible (Data). Workspace sits under Business now
-// that the shop's name, country and currency have a page of their own.
+// Two kinds of settings, kept apart: the PERSON signed in (My account) and the SHOP every member
+// works on (Store, Operations, Billing & data). A cashier changes their own password; only an
+// owner changes the shop's name, team or plan.
 const NAV_GROUPS = [
   {
-    key: "settings.group.personal",
+    key: "settings.group.account",
     items: [
       { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
       { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
-      { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
     ],
   },
   {
-    key: "settings.group.business",
+    key: "settings.group.store",
     items: [
       { to: "/settings/workspace", icon: Store, labelKey: "settings.nav.workspace" },
-      { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
-      { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
+      { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
       { to: "/settings/policies", icon: ScrollText, labelKey: "settings.nav.policies" },
     ],
   },
   {
-    key: "settings.group.ai",
-    items: [{ to: "/settings/ai", icon: Sparkles, labelKey: "settings.nav.ai" }],
+    key: "settings.group.operations",
+    items: [
+      { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
+      { to: "/settings/ai", icon: Sparkles, labelKey: "settings.nav.ai" },
+      { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
+    ],
   },
   {
     key: "settings.group.billing",
     items: [
       { to: "/settings/billing", icon: Wallet, labelKey: "settings.nav.billing" },
       { to: "/settings/usage", icon: Gauge, labelKey: "settings.nav.usage" },
+      { to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" },
     ],
-  },
-  {
-    key: "settings.group.data",
-    items: [{ to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" }],
   },
 ];
 

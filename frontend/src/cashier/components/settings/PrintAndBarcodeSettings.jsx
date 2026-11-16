@@ -7,7 +7,7 @@ import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 // مقاس الملصق وإظهار السعر والمحل يُختاران وقت الطباعة من نافذة معاينة الملصقات.
 export default function PrintAndBarcodeSettings() {
   return (
-    <SectionCard
+    <SectionCard flat
       title="الفاتورة والباركود"
       description="شكل الفاتورة المطبوعة، مقاس الورق، وإعدادات توليد الباركود على الملصقات"
     >

@@ -85,10 +85,16 @@ test("the profile is the person: picture, name and email, and nothing about the 
   await expect(page.getByTestId("dialect-select")).toHaveCount(0);
   await expect(page.locator('select, [role="combobox"]')).toHaveCount(0);
 
-  // ...but the page points at where they went
-  await expect(page.getByRole("link", { name: "Workspace settings" })).toBeVisible();
-  await page.getByRole("link", { name: "Workspace settings" }).click();
-  await expect(page).toHaveURL(/\/settings\/workspace$/);
+  // the shop's name is not a personal setting either: no row, no link to it from here
+  await expect(page.getByRole("link", { name: "Workspace settings" })).toHaveCount(0);
+
+  // the person's own preferences live here: interface language and theme
+  await expect(page.getByTestId("profile-language")).toBeVisible();
+  await expect(page.getByTestId("profile-theme")).toBeVisible();
+  await page.getByTestId("profile-theme").getByRole("radio", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.getByTestId("profile-language").getByRole("radio", { name: "Arabic" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "الملف الشخصي" })).toBeVisible();
 });
 
 test("a renamed profile saves once, and the page shows what the server stored", async ({ page }) => {
@@ -155,11 +161,11 @@ test("the settings sidebar is grouped by who each setting belongs to", async ({ 
   await setup(page);
   await page.goto("/settings");
 
-  await expect(sidebar(page).getByText("Personal", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Business", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("AI & Automation", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Billing & Plan", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Data & Privacy", { exact: true })).toBeVisible();
+  // two kinds of settings: the person (My account) and the shop (Store, Operations, Plan & data)
+  await expect(sidebar(page).getByText("My account", { exact: true })).toBeVisible();
+  await expect(sidebar(page).getByText("Store", { exact: true })).toBeVisible();
+  await expect(sidebar(page).getByText("Operations", { exact: true })).toBeVisible();
+  await expect(sidebar(page).getByText("Plan & data", { exact: true })).toBeVisible();
 
   // every page is reachable from exactly one group
   await sidebar(page).getByRole("link", { name: "Workspace", exact: true }).click();
@@ -173,7 +179,7 @@ test("Arabic: the profile and the workspace speak Arabic", async ({ page }) => {
 
   await expect(page.getByRole("heading", { level: 1, name: "الملف الشخصي" })).toBeVisible();
   await expect(page.getByRole("button", { name: "إضافة صورة شخصية" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "إعدادات مساحة العمل" })).toBeVisible();
+  await expect(page.getByTestId("profile-language")).toBeVisible();
 
   await page.goto("/settings/workspace");
   await expect(page.getByRole("heading", { level: 1, name: "مساحة العمل" })).toBeVisible();

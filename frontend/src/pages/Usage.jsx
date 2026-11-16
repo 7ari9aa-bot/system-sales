@@ -59,11 +59,11 @@ export default function Usage() {
         <SectionCard title={t("ai.usage.title")} className="rounded-none border-0 bg-transparent" bodyClassName="px-0" headerClassName="px-0 pt-0">
           {usageError && <div role="alert" className="mb-3 text-[12px] text-destructive">{usageError}</div>}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex items-center gap-3 rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3 py-1">
               <span className="h-10 w-10 rounded-lg bg-accent/10 text-accent grid place-items-center"><Sparkles className="h-5 w-5" /></span>
               <div><div className="text-[11.5px] text-muted-foreground">{t("ai.stat.tokens")}</div><div className="mt-1 text-[20px] font-semibold tabular-nums" dir="ltr">{loading ? "…" : tokens == null ? "—" : tokens.toLocaleString()}</div></div>
             </div>
-            <div className="flex items-center gap-3 rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3 py-1">
               <span className="h-10 min-w-10 rounded-lg bg-warning/10 text-warning grid place-items-center px-1 text-[11px] font-semibold">{totals?.cost == null ? "—" : formatCurrency(Number(totals.cost), true, "USD")}</span>
               <div><div className="text-[11.5px] text-muted-foreground">{t("ai.usage.spend")}</div><div className="mt-1 text-[20px] font-semibold tabular-nums">{totals?.cost == null ? "—" : formatCurrency(Number(totals.cost), false, "USD")}</div></div>
             </div>

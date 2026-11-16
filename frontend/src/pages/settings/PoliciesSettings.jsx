@@ -72,7 +72,7 @@ export default function PoliciesSettings() {
           <Loader2 className="h-4 w-4 animate-spin" /> {t("policies.loading")}
         </div>
       ) : error ? (
-        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-[13px]">
+        <div role="alert" className="text-destructive text-[13px]">
           {error}
         </div>
       ) : (

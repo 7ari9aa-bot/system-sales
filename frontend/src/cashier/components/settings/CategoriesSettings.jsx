@@ -31,7 +31,7 @@ export default function CategoriesSettings() {
   }
 
   return (
-    <SectionCard title="فئات المنتجات" description="الفئات التي تظهر عند إضافة منتج أو تعديله. تُحفظ الإضافة فورًا.">
+    <SectionCard flat title="فئات المنتجات" description="الفئات التي تظهر عند إضافة منتج أو تعديله. تُحفظ الإضافة فورًا.">
       {isError ? (
         <div role="alert" className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           <span>تعذّر تحميل الفئات.</span>

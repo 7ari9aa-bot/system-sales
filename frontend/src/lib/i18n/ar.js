@@ -390,6 +390,9 @@ export default {
   "settings.title": "الإعدادات",
   "settings.subtitle": "اضبط سلوك سيلز أوس لأعمالك وفريقك.",
   "settings.search": "ابحث في الإعدادات…",
+  "settings.group.account": "حسابي",
+  "settings.group.store": "المتجر",
+  "settings.group.operations": "التشغيل",
   "settings.group.personal": "شخصي",
   "settings.group.business": "الأعمال",
   "settings.group.workspace": "مساحة العمل",
@@ -399,7 +402,7 @@ export default {
   "settings.group.integrations": "التكاملات",
   "settings.group.security": "الأمان",
   "settings.group.data": "البيانات والخصوصية",
-  "settings.group.billing": "الباقة والفوترة",
+  "settings.group.billing": "الباقة والبيانات",
 
   "settings.profile": "الملف الشخصي",
   "settings.profile.desc": "اسمك وبريدك وتفاصيلك الشخصية.",
