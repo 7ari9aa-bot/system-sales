@@ -337,11 +337,11 @@ async def test_delete_then_get_is_404():
     assert fetched.status_code == 404
 
 
-async def test_retry_conflicts_on_completed_turn():
+async def test_retry_conflicts_on_completed_turn(monkeypatch):
     thread = _thread()
     answered = SimpleNamespace(sequence_no=2, role="assistant", status="completed")
     session = _FakeSession([_FakeResult(thread), _FakeResult(answered)])
-    _patch_analysis(pytest.MonkeyPatch(), explode=True)
+    _patch_analysis(monkeypatch, explode=True)
     async with _client(_app(session)) as client:
         res = await client.post(
             f"/api/v1/ai/sales-chat/threads/{thread.id}/messages/{uuid.uuid4()}/retry"
