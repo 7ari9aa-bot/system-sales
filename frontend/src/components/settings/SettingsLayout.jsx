@@ -88,6 +88,7 @@ export default function SettingsLayout() {
       )}
 
       <aside
+        dir="ltr"
         className={cn(
           "fixed z-40 inset-y-0 left-0 w-[264px] bg-sidebar border-r border-sidebar-border flex flex-col transition-transform duration-300",
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
@@ -179,7 +180,7 @@ export default function SettingsLayout() {
         </div>
       </aside>
 
-      <div className="lg:pl-[264px] min-w-0">
+      <div className="lg:pl-[264px] min-w-0" dir={lang === "ar" ? "rtl" : "ltr"} data-settings-content>
         <header className="sticky top-0 z-20 h-16 bg-background/80 backdrop-blur-md border-b border-border flex items-center gap-3 px-4 sm:px-6">
           <button
             className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-surface text-muted-foreground"
@@ -188,7 +189,7 @@ export default function SettingsLayout() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", lang === "ar" && "ml-auto text-right")}>{t("settings.title")}</h1>
+          <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", "min-w-0")}>{t("settings.title")}</h1>
         </header>
         <main className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <Outlet />

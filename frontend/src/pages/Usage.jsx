@@ -88,7 +88,7 @@ export default function Usage() {
                   <div key={day.date} className="grid grid-cols-[90px_1fr_auto] items-center gap-3">
                     <span className="text-[11.5px] text-muted-foreground tabular-nums">{formatDate(day.date, { month: "short", day: "numeric" })}</span>
                     <div className="h-2 overflow-hidden rounded-full bg-surface"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, (dayTokens / largestDay) * 100)}%` }} /></div>
-                    <span className="min-w-[92px] text-right text-[11.5px] tabular-nums">{dayTokens.toLocaleString()} · {formatCurrency(Number(day.cost || 0), true, "USD")}</span>
+                    <span className="min-w-[92px] text-end text-[11.5px] tabular-nums">{dayTokens.toLocaleString()} · {formatCurrency(Number(day.cost || 0), true, "USD")}</span>
                   </div>
                 );
               })}

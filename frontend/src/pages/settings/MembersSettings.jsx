@@ -130,7 +130,7 @@ export default function MembersSettings() {
           <p className="mt-1 text-[12px] text-muted-foreground">{isAr ? "انسخ رابط الدعوة وأرسله للعضو. سيظهر التوكن الكامل مرة واحدة فقط." : "Copy and send this invite link. The full invitation token is shown only once."}</p>
           <div className="mt-3 flex flex-col sm:flex-row gap-2">
             <Input aria-label={isAr ? "رابط الدعوة" : "Invitation link"} readOnly value={createdInvite.inviteUrl} className="text-xs" />
-            <Button type="button" variant="outline" onClick={copyInvite} className="shrink-0"><Copy className="mr-1.5 h-4 w-4" />{isAr ? "نسخ الرابط" : "Copy link"}</Button>
+            <Button type="button" variant="outline" onClick={copyInvite} className="shrink-0"><Copy className="me-1.5 h-4 w-4" />{isAr ? "نسخ الرابط" : "Copy link"}</Button>
             <Button type="button" variant="ghost" aria-label={isAr ? "إخفاء الرابط" : "Dismiss invite link"} onClick={() => setCreatedInvite(null)}><X className="h-4 w-4" /></Button>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function MembersSettings() {
 
       <SettingCard title={t("members.whoHasAccess")} desc={t("members.whoHasAccess.desc")}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left" data-testid="members-table">
+          <table className="w-full text-start" data-testid="members-table">
             <thead>
               <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
                 <th className="py-2.5 font-medium">{t("members.name")}</th>
@@ -209,7 +209,7 @@ export default function MembersSettings() {
                       </td>
                       <td className="py-3 hidden sm:table-cell"><Badge tone={ROLE_TONE[invitation.role_code] || "muted"}>{invitation.role_code ? t(`members.role.${invitation.role_code}`) : "—"}</Badge></td>
                       <td className="py-3"><Badge tone="warning">{t("members.pending")}</Badge></td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 text-end">
                         <button type="button" aria-label={isAr ? `إلغاء دعوة ${invitation.email}` : `Revoke invitation for ${invitation.email}`} disabled={revoking === invitation.id} onClick={() => revoke(invitation)} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50">
                           <X className="h-4 w-4" />
                         </button>

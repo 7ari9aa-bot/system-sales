@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { activeTenant } from "@/lib/activeTenant";
 import useAvatarUpload from "@/hooks/useAvatarUpload";
-import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
+import SettingsShell, { SettingRow } from "@/components/settings/SettingsShell";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,128 +59,117 @@ export default function ProfileSettings() {
     }
   }
 
+  const roleLabel = tenant?.role_code || "—";
+
   return (
     <SettingsShell title={t("settings.nav.profile")} subtitle={t("settings.profile.desc")}>
-      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 xl:grid-cols-2">
-        <SettingCard title={t("profile.identity")} desc={t("profile.identity.desc")}>
-          <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-center">
-            <AccountAvatar user={user} size="lg" />
-            <div className="flex flex-wrap items-center gap-2">
+      {/* No boxes: one open page. The person on top, then plain rows separated by hairlines. */}
+      <div className="max-w-3xl">
+        <div className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-center">
+          <AccountAvatar user={user} size="lg" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[17px] font-semibold leading-6">{user?.full_name || "—"}</div>
+            <div className="truncate text-[13px] text-muted-foreground">{tenant?.name || "—"}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              disabled={avatar.busy}
+              onClick={avatar.pick}
+            >
+              {avatar.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              {t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}
+            </Button>
+            {user?.avatar_url && (
               <Button
                 type="button"
-                variant="outline"
-                className="gap-1.5"
+                variant="ghost"
+                className="gap-1.5 text-destructive hover:text-destructive"
                 disabled={avatar.busy}
-                onClick={avatar.pick}
+                onClick={() => void avatar.remove()}
               >
-                {avatar.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                {t(user?.avatar_url ? "account.avatar.change" : "account.avatar.add")}
+                <Trash2 className="h-4 w-4" />
+                {t("account.avatar.remove")}
               </Button>
-              {user?.avatar_url && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="gap-1.5 text-destructive hover:text-destructive"
-                  disabled={avatar.busy}
-                  onClick={() => void avatar.remove()}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  {t("account.avatar.remove")}
-                </Button>
-              )}
-              <input
-                ref={avatar.inputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                aria-label={t("account.avatar.pick")}
-                onChange={avatar.upload}
-              />
-            </div>
+            )}
+            <input
+              ref={avatar.inputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              aria-label={t("account.avatar.pick")}
+              onChange={avatar.upload}
+            />
           </div>
-          {(avatar.error || avatar.notice) && (
-            <p
-              role={avatar.error ? "alert" : "status"}
-              className={`mt-2 text-[12px] ${avatar.error ? "text-destructive" : "text-muted-foreground"}`}
-            >
-              {avatar.error || avatar.notice}
-            </p>
-          )}
+        </div>
+        {(avatar.error || avatar.notice) && (
+          <p
+            role={avatar.error ? "alert" : "status"}
+            className={`-mt-2 mb-3 text-[12px] ${avatar.error ? "text-destructive" : "text-muted-foreground"}`}
+          >
+            {avatar.error || avatar.notice}
+          </p>
+        )}
 
-          <form className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2" onSubmit={saveName}>
-            <label className="block">
-              <span className="text-[11.5px] text-muted-foreground">{t("profile.fullName")}</span>
+        <form onSubmit={saveName} className="border-t border-border">
+          <SettingRow label={t("profile.fullName")} stretch>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
               <Input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 maxLength={255}
                 autoComplete="name"
-                className="mt-1"
+                aria-label={t("profile.fullName")}
+                className="min-w-0 flex-1 sm:w-64 sm:flex-none"
                 data-testid="profile-name"
               />
-            </label>
-            <div className="block">
-              <span className="text-[11.5px] text-muted-foreground">{t("profile.email")}</span>
-              <div className="mt-1 rounded-md border border-border bg-surface px-3 py-2 text-[13px] font-medium break-all" dir="ltr">
-                {user?.email || "—"}
-              </div>
-            </div>
-            <div className="sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11.5px] leading-relaxed text-muted-foreground max-w-md">
-                {t("profile.email.locked")}
-              </p>
               <Button
                 type="submit"
                 disabled={!nameChanged || savingName}
-                className="gap-1.5 shrink-0"
+                className="gap-1.5"
                 data-testid="profile-name-save"
               >
-                <Save className="h-4 w-4" />
-                {savingName ? "…" : t("businessProfile.save")}
+                {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {savingName ? "" : t("businessProfile.save")}
               </Button>
             </div>
-          </form>
+          </SettingRow>
           {(nameError || nameNotice) && (
             <div
               role={nameError ? "alert" : "status"}
               data-testid="profile-name-message"
-              className={`mt-3 rounded-lg px-3 py-2 text-[12px] ${nameError ? "bg-destructive/10 text-destructive" : "bg-success/10 text-foreground"}`}
+              className={`border-b border-border py-2 text-[12.5px] ${nameError ? "text-destructive" : "text-success"}`}
             >
               {nameError || nameNotice}
             </div>
           )}
-        </SettingCard>
-
-        <SettingCard title={t("profile.account")}>
-          <div className="pt-1">
-            <SettingRow label={t("workspace.name")} desc={tenant?.name || "—"}>
-              <Link
-                to="/settings/workspace"
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:gap-2 transition-all"
-              >
-                <Store className="h-4 w-4" />
-                {t("profile.link.workspace")}
-              </Link>
-            </SettingRow>
-            <SettingRow label={t("workspace.role")}>
-              <span className="text-[13px] font-medium">{tenant?.role_code || "—"}</span>
-            </SettingRow>
-            <SettingRow label={t("settings.nav.security")} desc={t("profile.link.security.desc")} last>
-              <Link
-                to="/settings/security"
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:gap-2 transition-all"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                {t("profile.link.security")}
-              </Link>
-            </SettingRow>
-          </div>
-          <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
-            {lang === "ar"
-              ? "لهجة المساعد بقت في صفحة الذكاء الاصطناعي، واسم المحل والعملة والتوقيت في صفحة مساحة العمل."
-              : "The assistant's dialect now lives on the AI page; the shop's name, currency and time zone live on Workspace settings."}
-          </p>
-        </SettingCard>
+        </form>
+        <SettingRow label={t("profile.email")} desc={t("profile.email.locked")}>
+          <span className="text-[13px] font-medium" dir="ltr">{user?.email || "—"}</span>
+        </SettingRow>
+        <SettingRow label={t("workspace.name")} desc={tenant?.name || "—"}>
+          <Link
+            to="/settings/workspace"
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+          >
+            <Store className="h-4 w-4" />
+            {t("profile.link.workspace")}
+          </Link>
+        </SettingRow>
+        <SettingRow label={t("workspace.role")}>
+          <span className="text-[13px] font-medium">{roleLabel}</span>
+        </SettingRow>
+        <SettingRow label={t("settings.nav.security")} desc={t("profile.link.security.desc")} last>
+          <Link
+            to="/settings/security"
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {t("profile.link.security")}
+          </Link>
+        </SettingRow>
       </div>
     </SettingsShell>
   );

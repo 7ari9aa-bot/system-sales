@@ -1,13 +1,11 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { useI18n } from "@/lib/i18n";
 
 export default function SettingsShell({ title, subtitle, children, actions }) {
-  const { lang } = useI18n();
   return (
     <div className="w-full space-y-4 animate-fade-in">
-      <div className={cn("flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3", lang === "ar" && "sm:flex-row-reverse")}>
-        <div className={cn("min-w-0", lang === "ar" && "text-right")}>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="font-display text-[22px] font-semibold tracking-tight">{title}</h1>
           {subtitle && <p className="text-[13px] text-muted-foreground mt-1 max-w-xl">{subtitle}</p>}
         </div>
@@ -35,14 +33,14 @@ export function SettingCard({ title, desc, children, className }) {
   );
 }
 
-export function SettingRow({ label, desc, children, last }) {
+export function SettingRow({ label, desc, children, last, stretch }) {
   return (
     <div className={cn("flex flex-col sm:flex-row sm:items-center sm:justify-between gap-x-6 gap-y-1 py-2.5", !last && "border-b border-border")}>
       <div className="min-w-0">
         <div className="text-[13px] font-medium leading-5">{label}</div>
         {desc && <div className="text-[12px] text-muted-foreground mt-0.5">{desc}</div>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className={cn(stretch ? "min-w-0 max-sm:w-full" : "shrink-0")}>{children}</div>
     </div>
   );
 }
