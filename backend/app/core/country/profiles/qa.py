@@ -33,4 +33,9 @@ QA = CountrySpec(
         }
     ),
     launch_status="waitlist",
+    legal_urls={
+        "terms": "/qa/ar/terms",
+        "privacy": "/qa/ar/privacy",
+        "contact_sales": "/qa/ar/contact-sales",
+    },
 )

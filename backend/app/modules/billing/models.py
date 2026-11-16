@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -72,6 +74,33 @@ class PlanPrice(IdMixin, TimestampMixin, Base):
         UniqueConstraint(
             "plan_id", "country_code", "interval", name="uq_plan_prices_plan_country_interval"
         ),
+    )
+
+
+class TaxRate(IdMixin, TimestampMixin, Base):
+    """Country-specific tax rate with effective date bounds — not tenant-scoped.
+
+    Tax rates evolve over time (e.g. rate changes, grace periods, or eventual
+    VAT introduction). Storing them with an `effective_from` date ensures
+    invoices freeze the rate valid at issuance time rather than relying on a
+    static hardcoded value.
+    """
+
+    __tablename__ = "tax_rates"
+
+    country_code: Mapped[str] = mapped_column(String(2), index=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(5, 4))
+    effective_from: Mapped[date] = mapped_column(Date)
+    effective_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    label_ar: Mapped[str] = mapped_column(String(63), server_default="ضريبة القيمة المضافة")
+    label_en: Mapped[str] = mapped_column(String(63), server_default="VAT")
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "country_code", "effective_from", name="uq_tax_rates_country_effective_from"
+        ),
+        CheckConstraint("rate >= 0 AND rate <= 1", name="ck_tax_rates_rate_bounds"),
     )
 
 
@@ -175,6 +204,7 @@ class Invoice(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
     subtotal: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
     tax: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    tax_rate_applied: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     total: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
     currency: Mapped[str] = mapped_column(String(3), server_default="EGP")
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

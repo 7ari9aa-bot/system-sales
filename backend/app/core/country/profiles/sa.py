@@ -35,4 +35,9 @@ SA = CountrySpec(
         }
     ),
     launch_status="live",
+    legal_urls={
+        "terms": "/sa/ar/terms",
+        "privacy": "/sa/ar/privacy",
+        "contact_sales": "/sa/ar/contact-sales",
+    },
 )

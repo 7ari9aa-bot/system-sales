@@ -42,10 +42,15 @@ def is_valid_country(code: str | None) -> bool:
     return code.strip().upper() in REGISTRY
 
 
-def country_has_capability(code: str | None, capability: str) -> bool:
-    """Check if a country supports a specific capability."""
+def country_has_capability(
+    code: str | None,
+    capability: str,
+    *,
+    plan_features: dict | None = None,
+) -> bool:
+    """Check if a country supports a capability, optionally verified against plan features."""
     country = get_country(code)
-    return country.has_capability(capability) if country else False
+    return country.has_capability(capability, plan_features=plan_features) if country else False
 
 
 def country_refusal(code: str | None) -> str | None:

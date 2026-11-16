@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 460,
-    "sha256": "e54108dc7b287b15eafb956430eb0fe8ac7613f88cea167f9f9dbaeb296b9755",
+    "sha256": "665b4df5c4cd1c9a871b1894cd3ece29bff9910b794a88f09c068028e6d4ddb6",
     "typed_operations": 297
   },
   "spec": {
@@ -14161,6 +14161,14 @@
             "launch_status": {
               "title": "Launch Status",
               "type": "string"
+            },
+            "legal_urls": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "title": "Legal Urls",
+              "type": "object"
             },
             "name_ar": {
               "title": "Name Ar",

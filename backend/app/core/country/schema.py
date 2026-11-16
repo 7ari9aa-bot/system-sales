@@ -38,10 +38,24 @@ class CountrySpec:
     tax_inclusive_display: bool  # False = prices are quoted pre-tax
     capabilities: frozenset[str] = field(default_factory=frozenset)
     launch_status: LaunchStatus = "live"
+    legal_urls: dict[str, str] = field(default_factory=dict)
 
-    def has_capability(self, capability: str) -> bool:
-        """Check if this market supports a specific feature/gateway/carrier."""
-        return capability in self.capabilities
+    def has_capability(self, capability: str, *, plan_features: dict | None = None) -> bool:
+        """Check if this market supports a feature/gateway, optionally gated by plan."""
+        if capability not in self.capabilities:
+            return False
+        if plan_features is None:
+            return True
+        if plan_features.get("custom") is True:
+            return True
+        if capability in plan_features:
+            return bool(plan_features[capability])
+        allowed = plan_features.get("capabilities") or plan_features.get("allowed_capabilities")
+        if allowed is not None:
+            if isinstance(allowed, (list, tuple, set, frozenset)):
+                return capability in allowed or "*" in allowed
+            return bool(allowed)
+        return True
 
     def to_public_dict(self) -> dict:
         """Serialize for the public marketing API and client consumers."""
@@ -64,4 +78,5 @@ class CountrySpec:
             "tax_inclusive_display": self.tax_inclusive_display,
             "capabilities": sorted(self.capabilities),
             "launch_status": self.launch_status,
+            "legal_urls": dict(self.legal_urls),
         }

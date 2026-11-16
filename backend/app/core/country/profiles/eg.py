@@ -34,4 +34,9 @@ EG = CountrySpec(
         }
     ),
     launch_status="live",
+    legal_urls={
+        "terms": "/eg/ar/terms",
+        "privacy": "/eg/ar/privacy",
+        "contact_sales": "/eg/ar/contact-sales",
+    },
 )

@@ -44,6 +44,7 @@ NO_TENANT_TABLES = {
     "idempotency_keys",
     "plans",
     "plan_prices",
+    "tax_rates",
     "refresh_tokens",  # user-scoped, not tenant-scoped
     # NOTE: `scheduled_jobs` and `webhook_events` used to be listed here as
     # "system plumbing". Production disagreed — both are FORCE RLS with a
@@ -253,6 +254,7 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE INSERT, UPDATE, DELETE ON public.role_permissions FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.plans FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.plan_prices FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.tax_rates FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.alembic_version FROM sales_app",
     "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
     "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM sales_app",
@@ -345,6 +347,16 @@ REFERENCE_PLANE_READ_POLICIES: tuple[str, ...] = (
         "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
         "AND tablename = 'plan_prices' AND policyname = 'sales_app_read') "
         "THEN CREATE POLICY sales_app_read ON public.plan_prices "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'tax_rates') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'tax_rates' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.tax_rates "
         "FOR SELECT TO sales_app USING (true); "
         "END IF; END $$;"
     ),
@@ -598,6 +610,32 @@ async def seed(conn: asyncpg.Connection) -> None:
                 curr,
                 cprice,
             )
+
+    # Seed statutory country tax rates with effective dates
+    tax_rates_data = [
+        ("EG", 0.1400, "2016-09-08", None, "ضريبة القيمة المضافة", "VAT", True),
+        ("SA", 0.0500, "2018-01-01", "2020-06-30", "ضريبة القيمة المضافة", "VAT", False),
+        ("SA", 0.1500, "2020-07-01", None, "ضريبة القيمة المضافة", "VAT", True),
+        ("AE", 0.0500, "2018-01-01", None, "ضريبة القيمة المضافة", "VAT", True),
+    ]
+    for ccode, rate, eff_from, eff_until, lbl_ar, lbl_en, active in tax_rates_data:
+        await conn.execute(
+            """
+            INSERT INTO tax_rates (
+                id, country_code, rate, effective_from, effective_until,
+                label_ar, label_en, is_active
+            )
+            VALUES (gen_random_uuid(), $1, $2, $3::date, $4::date, $5, $6, $7)
+            ON CONFLICT (country_code, effective_from) DO NOTHING
+            """,
+            ccode,
+            rate,
+            eff_from,
+            eff_until,
+            lbl_ar,
+            lbl_en,
+            active,
+        )
 
     counts = await conn.fetchrow(
         """

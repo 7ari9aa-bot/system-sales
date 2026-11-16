@@ -30,6 +30,7 @@ from ._common import (
     _validate_period,
 )
 from .subscriptions import BillingService
+from .tax import calculate_tax_amount, resolve_applicable_tax_rate
 
 
 class BillingSnapshotService:
@@ -236,14 +237,32 @@ class BillingSnapshotService:
         money = _quantize_money(usage.ai_cost)
         invoice_currency = PLATFORM_BILLING_CURRENCY
 
+        # Resolve tenant country code to determine statutory tax rate
+        tenant_country: str | None = None
+        try:
+            res = await session.execute(
+                text("SELECT country_code FROM tenants WHERE id = :t"),
+                {"t": tenant_id},
+            )
+            tenant_country = res.scalar_one_or_none()
+        except Exception:
+            pass
+
+        tax_rate_applied = await resolve_applicable_tax_rate(
+            session, tenant_country, as_of_date=period_end
+        )
+        tax_amount = calculate_tax_amount(money, tax_rate_applied)
+        total_amount = money + tax_amount
+
         invoice = Invoice(
             tenant_id=tenant_id,
             subscription_id=subscription.id if subscription is not None else None,
             number=BillingSnapshotService._invoice_number(period_start),
             status="open",
             subtotal=money,
-            tax=Decimal("0.00"),
-            total=money,
+            tax=tax_amount,
+            tax_rate_applied=tax_rate_applied,
+            total=total_amount,
             currency=invoice_currency,
             issued_at=datetime.now(UTC),
             period_start=period_start,

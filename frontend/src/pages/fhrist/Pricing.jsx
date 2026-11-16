@@ -3,6 +3,7 @@ import { Target, Check, ShieldCheck, CreditCard } from 'lucide-react';
 import { c, tx, DetailHero, Button } from '@/components/fihrist/Shared';
 import { useCountry } from '@/lib/CountryContext';
 import { WaitlistLanding } from '@/components/fihrist/WaitlistLanding';
+import { resolveFaq, resolveContent } from '@/content/resolver';
 
 export default function Pricing({ locale: propLocale }) {
   const { country, market, locale: ctxLocale, isWaitlist, formatPrice } = useCountry();
@@ -39,6 +40,9 @@ export default function Pricing({ locale: propLocale }) {
     return <WaitlistLanding />;
   }
 
+  // Ratio for offline currency fallback (e.g. 1500 EGP ~ 120 SAR)
+  const priceRatio = market.currency === 'EGP' ? 1.0 : 0.08;
+
   // Default plans if API is loading or offline
   const plans = marketData?.plans || [
     {
@@ -56,7 +60,7 @@ export default function Pricing({ locale: propLocale }) {
       prices: [
         {
           interval: 'month',
-          price: country === 'eg' ? 1500 : 129,
+          price: Math.round(1500 * priceRatio),
           currency: market.currency,
         },
       ],
@@ -71,7 +75,7 @@ export default function Pricing({ locale: propLocale }) {
       prices: [
         {
           interval: 'month',
-          price: country === 'eg' ? 3500 : 299,
+          price: Math.round(3500 * priceRatio),
           currency: market.currency,
         },
       ],
@@ -81,6 +85,9 @@ export default function Pricing({ locale: propLocale }) {
       },
     },
   ];
+
+  const faqs = resolveFaq(country, locale);
+  const legalNotice = resolveContent(country, locale, 'legal')?.consumerNotice;
 
   return (
     <>
@@ -222,6 +229,32 @@ export default function Pricing({ locale: propLocale }) {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Country-Aware FAQ Section */}
+          {faqs.length > 0 && (
+            <div className="mt-20">
+              <div className="text-center mb-10">
+                <h3 className="text-2xl font-bold text-foreground">
+                  {isAr ? `الأسئلة الشائعة حول باقات ${market.nameAr}` : `Frequently Asked Questions in ${market.nameEn}`}
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                {faqs.map((faq) => (
+                  <div key={faq.id} className="p-6 rounded-2xl border border-border bg-card/60">
+                    <h4 className="font-semibold text-foreground mb-2">{faq.q}</h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Statutory Legal & Consumer Notice for Market */}
+          {legalNotice && (
+            <div className="mt-12 text-center text-xs text-muted-foreground max-w-2xl mx-auto">
+              <p>{legalNotice}</p>
             </div>
           )}
         </div>

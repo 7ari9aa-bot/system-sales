@@ -91,6 +91,42 @@ def test_country_capabilities():
     assert not country_has_capability("EG", "mada_payments")
 
 
+def test_country_has_capability_with_plan_gating():
+    # 1. Capability not in country at all -> always False
+    assert not country_has_capability("EG", "mada_payments", plan_features={"mada_payments": True})
+
+    # 2. Capability in country, no plan features -> True
+    assert country_has_capability("SA", "mada_payments")
+
+    # 3. Capability in country, explicitly disabled on plan -> False
+    assert not country_has_capability("SA", "mada_payments", plan_features={"mada_payments": False})
+
+    # 4. Capability in country, explicitly enabled on plan -> True
+    assert country_has_capability("SA", "mada_payments", plan_features={"mada_payments": True})
+
+    # 5. Whitelist list of capabilities on plan
+    starter_plan = {"capabilities": ["whatsapp", "basic_reporting"]}
+    pro_plan = {"capabilities": ["whatsapp", "mada_payments", "advanced_reporting"]}
+    assert not country_has_capability("SA", "mada_payments", plan_features=starter_plan)
+    assert country_has_capability("SA", "mada_payments", plan_features=pro_plan)
+
+    # 6. Enterprise / custom plan with wildcard or custom: True
+    enterprise_plan = {"custom": True}
+    assert country_has_capability("SA", "mada_payments", plan_features=enterprise_plan)
+
+
+def test_country_legal_urls():
+    eg = get_country("EG")
+    assert eg is not None
+    assert "terms" in eg.legal_urls
+    assert "privacy" in eg.legal_urls
+    assert "/eg/ar/terms" in eg.legal_urls["terms"]
+
+    pub = eg.to_public_dict()
+    assert "legal_urls" in pub
+    assert pub["legal_urls"]["terms"] == eg.legal_urls["terms"]
+
+
 def test_list_countries_filter_hidden():
     live_and_waitlist = list_countries(include_hidden=False)
     assert len(live_and_waitlist) == 4

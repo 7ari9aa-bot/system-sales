@@ -33,4 +33,9 @@ AE = CountrySpec(
         }
     ),
     launch_status="waitlist",
+    legal_urls={
+        "terms": "/ae/ar/terms",
+        "privacy": "/ae/ar/privacy",
+        "contact_sales": "/ae/ar/contact-sales",
+    },
 )

@@ -74,6 +74,7 @@ class PublicMarketOut(BaseModel):
     payment_methods: list[PaymentMethodInfo]
     shipping_carriers: list[ShippingCarrierInfo]
     support: SupportInfo
+    legal_urls: dict[str, str] = {}
 
 
 _VERIFIED_PAYMENT_METHODS: dict[str, list[dict[str, str]]] = {
@@ -187,6 +188,17 @@ async def get_public_market(
             for code_p, name_p, pr, feats in fallback_catalog
         ]
 
+    # Resolve database-driven effective tax rate if available
+    tax_standard_rate = spec.tax_standard_rate
+    try:
+        from app.modules.billing.services.tax import get_effective_tax_rate
+
+        db_tax = await get_effective_tax_rate(session, code)
+        if db_tax is not None:
+            tax_standard_rate = float(db_tax.rate)
+    except Exception:
+        pass
+
     return PublicMarketOut(
         code=spec.code,
         name_ar=spec.name_ar,
@@ -200,7 +212,7 @@ async def get_public_market(
         phone_code=f"+{spec.phone_code}",
         default_dialect=spec.default_dialect,
         tax_regime=spec.tax_regime,
-        tax_standard_rate=spec.tax_standard_rate,
+        tax_standard_rate=tax_standard_rate,
         tax_authority_name_ar=spec.tax_authority_name_ar,
         tax_authority_name_en=spec.tax_authority_name_en,
         tax_inclusive_display=spec.tax_inclusive_display,
@@ -217,4 +229,5 @@ async def get_public_market(
             terms_url=f"/{code.lower()}/ar/terms",
             privacy_url=f"/{code.lower()}/ar/privacy",
         ),
+        legal_urls=dict(spec.legal_urls),
     )
