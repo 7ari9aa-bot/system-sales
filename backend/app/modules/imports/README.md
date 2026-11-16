@@ -12,6 +12,10 @@ fields, previews what would change, and a background job applies it in resumable
   the template, so they cannot drift.
 - `reader.py`: reads xlsx/csv safely (size, row, column and zip-bomb limits; macros refused;
   formulas never evaluated; UTF-8 and Windows-Arabic CSV).
+- `normalize.py`: turns a cell into a clean value or a precise error code (prices like
+  `1.250,50` and `١٢٥٫٥`, Excel scientific-notation barcodes refused, invisible characters).
+- `validation.py`: judges every row before anything is written, including duplicates inside the
+  file and against what the shop already holds. Pure: the caller passes in `Existing`.
 - `mapping.py`: suggests which column is which field. A suggestion is shown, never applied
   silently.
 
@@ -30,6 +34,6 @@ fields, previews what would change, and a background job applies it in resumable
 
 ## Status
 
-Foundation only: tables, reader and column matching. Validation, the `import.run` job handler,
-the HTTP API and the screen come in the following changes (spec: Artifacts, "مركز استيراد
-البيانات").
+Done: tables, reader, column matching, cell parsing and row validation. Still to come: the
+DB lookup that fills `Existing`, the `import.run` job handler,
+the HTTP API and the screen (spec: Artifacts, "مركز استيراد البيانات").
