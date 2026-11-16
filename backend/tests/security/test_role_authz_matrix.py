@@ -252,6 +252,22 @@ _PRIVILEGED_ROUTES: list[tuple[str, str, str, str | None, dict]] = [
         "settings:write",
         {},
     ),
+    # Reads of the shop's money, team and plan. They shipped on tenancy alone, so a cashier could
+    # read the ledger and the roster by calling the API directly even though the UI and the
+    # assistant hide them. ``finance:read`` is owner-only in the seed; the roster is a settings
+    # read.
+    # (``/billing/subscription`` stays open on purpose: a suspended workspace must see its bill.)
+    ("financial_accounts", "GET", "/api/v1/financial/accounts", "finance:read", {}),
+    ("financial_transactions", "GET", "/api/v1/financial/transactions", "finance:read", {}),
+    (
+        "financial_transaction_entries",
+        "GET",
+        f"/api/v1/financial/transactions/{uuid.uuid4()}/entries",
+        "finance:read",
+        {},
+    ),
+    ("financial_trial_balance", "GET", "/api/v1/financial/trial-balance", "finance:read", {}),
+    ("list_team_members", "GET", "/api/v1/users", "settings:read", {}),
     (
         "delete_segment",
         "DELETE",

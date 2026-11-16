@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 
 from app.core.errors import PayloadTooLargeError, StorageUnavailableError
 from app.core.mfa import is_mfa_enabled
 from app.core.storage import FetchedMedia, get_storage
 from app.modules.identity import avatar, schemas, service
-from app.modules.identity.deps import TenantCtxDep
+from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.identity.models import Role, TenantUser, User
 
 users_router = APIRouter(prefix="/users", tags=["users"])
@@ -95,8 +96,13 @@ async def clear_my_avatar(ctx: TenantCtxDep):
     return {"avatar_url": None}
 
 
+# The roster carries every teammate's email and role, so reading it is a settings read: the owner
+# and manager have it, a cashier does not (the cashier's shift screen already copes with that).
+SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
+
+
 @users_router.get("")
-async def list_tenant_members(ctx: TenantCtxDep):
+async def list_tenant_members(ctx: SettingsReadCtx):
     """The tenant's members — the POS profile-grant picker's source.
 
     Read-only and tenant-scoped: only the members of the caller's own

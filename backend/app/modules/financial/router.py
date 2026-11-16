@@ -17,11 +17,15 @@ from app.modules.financial.models import (
     FinancialTransaction,
 )
 from app.modules.financial.service import FinancialService
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import TenantContext, require_permission
 
 router = APIRouter(prefix="/financial", tags=["financial"])
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+# The ledger and trial balance are the shop's money. The seed grants ``finance:read`` to the owner
+# only (the assistant already hides these numbers from everyone else); the REST reads must hold the
+# same line, or a cashier could read directly what the assistant refuses to tell them.
+FinanceReadCtx = Annotated[TenantContext, Depends(require_permission("finance:read"))]
 
 PageLimit = Annotated[int, Query(ge=1, le=schemas.PAGE_LIMIT_MAX)]
 PageOffset = Annotated[int, Query(ge=0)]
@@ -81,7 +85,7 @@ def _tx_dict(tx: FinancialTransaction) -> dict:
 
 
 @router.get("/accounts", response_model=schemas.AccountListOut)
-async def list_accounts(ctx: TenantCtxDep):
+async def list_accounts(ctx: FinanceReadCtx):
     """List chart of accounts for the tenant."""
     rows = (
         (
@@ -150,7 +154,7 @@ async def post_transaction(ctx: WriteCtx, body: schemas.TransactionCreate):
 
 @router.get("/transactions", response_model=schemas.TransactionListOut)
 async def list_transactions(
-    ctx: TenantCtxDep,
+    ctx: FinanceReadCtx,
     reference_type: Annotated[str | None, Query(max_length=64)] = None,
     limit: PageLimit = schemas.PAGE_LIMIT_DEFAULT,
     offset: PageOffset = 0,
@@ -194,7 +198,7 @@ async def list_transactions(
 @router.get("/transactions/{transaction_id}/entries", response_model=list[schemas.EntryOut])
 async def list_transaction_entries(
     transaction_id: uuid.UUID,
-    ctx: TenantCtxDep,
+    ctx: FinanceReadCtx,
 ):
     """List debits and credits for a specific transaction."""
     rows = (
@@ -226,6 +230,6 @@ async def list_transaction_entries(
 
 
 @router.get("/trial-balance", response_model=schemas.TrialBalanceOut)
-async def get_trial_balance(ctx: TenantCtxDep):
+async def get_trial_balance(ctx: FinanceReadCtx):
     """Retrieve full trial balance proving ledger debits equal credits."""
     return await FinancialService.get_trial_balance(ctx.session, ctx.tenant_id)
