@@ -1,13 +1,14 @@
 // Single source of truth for every public, indexable URL.
 //
-// `PUBLIC_SEO_ROUTES` keeps its original shape (Arabic, unprefixed paths) so
-// existing callers keep working. English lives under `/en/...` and every
-// route is generated here, so sitemap, hreflang, prerender, the SPA router
-// and the Vercel rewrite allow-list can never drift apart.
+// Structured by Country and Language: `/{country}/{lang}/...`
+// Supports multiple markets (EG, SA, AE, QA).
+// `LIVE_COUNTRY_SLUGS` receive full localized pages.
+// `WAITLIST_COUNTRY_SLUGS` receive dedicated waitlist landing pages.
+// Root `/` is the country and language selector.
 
 export const SITE_ORIGIN = 'https://fihrist.world';
 
-// Pages that already exist in the app.
+// Core public pages
 const CORE_KEYS = [
   ['/', 'home'],
   ['/product', 'product'],
@@ -23,7 +24,7 @@ const CORE_KEYS = [
   ['/support', 'support'],
 ];
 
-// Keyword landing pages (Arabic + English copy lives in solutions-content.js).
+// Keyword landing pages
 export const SOLUTION_SLUGS = [
   'whatsapp-sales-system',
   'inventory-management-system',
@@ -34,8 +35,7 @@ export const SOLUTION_SLUGS = [
   'order-management-system',
 ];
 
-// Blog articles. Copy lives in blog-content.js; the slug list lives here so the
-// sitemap, hreflang, prerender and the Vercel allow-list stay in sync.
+// Blog articles
 export const BLOG_SLUGS = [
   'how-to-sell-on-whatsapp-organized',
   'inventory-tracking-for-small-stores',
@@ -52,12 +52,23 @@ export const BLOG_SLUGS = [
 export const LOCALES = ['ar', 'en'];
 export const DEFAULT_LOCALE = 'ar';
 
-const withLocale = (path, locale) => {
-  if (locale === 'ar') return path;
-  return path === '/' ? '/en' : `/en${path}`;
+export const COUNTRY_SLUGS = ['eg', 'sa', 'ae', 'qa'];
+export const LIVE_COUNTRY_SLUGS = ['eg', 'sa'];
+export const WAITLIST_COUNTRY_SLUGS = ['ae', 'qa'];
+export const DEFAULT_COUNTRY = 'eg';
+
+export const HREFLANG_CODES = {
+  'eg:ar': 'ar-EG',
+  'eg:en': 'en-EG',
+  'sa:ar': 'ar-SA',
+  'sa:en': 'en-SA',
+  'ae:ar': 'ar-AE',
+  'ae:en': 'en-AE',
+  'qa:ar': 'ar-QA',
+  'qa:en': 'en-QA',
 };
 
-/** Arabic route list, unchanged shape: [{ path, key }]. */
+/** Base Arabic route catalog: [{ path, key }]. */
 export const PUBLIC_SEO_ROUTES = [
   ...CORE_KEYS.map(([path, key]) => ({ path, key })),
   ...SOLUTION_SLUGS.map((slug) => ({ path: `/solutions/${slug}`, key: `solution:${slug}` })),
@@ -66,37 +77,172 @@ export const PUBLIC_SEO_ROUTES = [
   ...BLOG_SLUGS.map((slug) => ({ path: `/blog/${slug}`, key: `post:${slug}` })),
 ];
 
-/** Every route in every locale: [{ path, key, locale, arPath, enPath }]. */
-export const ALL_LOCALIZED_ROUTES = PUBLIC_SEO_ROUTES.flatMap((route) =>
-  LOCALES.map((locale) => ({
-    key: route.key,
-    locale,
-    path: withLocale(route.path, locale),
-    arPath: withLocale(route.path, 'ar'),
-    enPath: withLocale(route.path, 'en'),
-  })),
-);
-
 export const absoluteUrl = (path) => `${SITE_ORIGIN}${path === '/' ? '/' : path}`;
 
-/** Normalise a pathname and report its locale + base (Arabic) path. */
+export function buildLocalizedRoute(country, locale, basePath) {
+  const cleanBase = basePath === '/' ? '' : basePath;
+  return `/${country}/${locale}${cleanBase}`;
+}
+
+/**
+ * Generate every indexable route across all live countries and locales,
+ * plus waitlist landing pages and the root selector.
+ */
+function generateAllLocalizedRoutes() {
+  const routes = [];
+
+  // Root country/language selector
+  routes.push({
+    key: 'selector',
+    country: null,
+    locale: 'ar',
+    path: '/',
+    basePath: '/',
+    arPath: '/',
+    enPath: '/',
+    isSelector: true,
+  });
+
+  // Live countries: full catalog of pages
+  for (const country of LIVE_COUNTRY_SLUGS) {
+    for (const locale of LOCALES) {
+      for (const r of PUBLIC_SEO_ROUTES) {
+        const path = buildLocalizedRoute(country, locale, r.path);
+        routes.push({
+          key: r.key,
+          country,
+          locale,
+          basePath: r.path,
+          path,
+          arPath: buildLocalizedRoute(country, 'ar', r.path),
+          enPath: buildLocalizedRoute(country, 'en', r.path),
+          isLive: true,
+          isWaitlist: false,
+        });
+      }
+    }
+  }
+
+  // Waitlist countries: dedicated waitlist landing page
+  for (const country of WAITLIST_COUNTRY_SLUGS) {
+    for (const locale of LOCALES) {
+      const path = `/${country}/${locale}`;
+      routes.push({
+        key: `waitlist:${country}`,
+        country,
+        locale,
+        basePath: '/',
+        path,
+        arPath: `/${country}/ar`,
+        enPath: `/${country}/en`,
+        isLive: false,
+        isWaitlist: true,
+      });
+    }
+  }
+
+  return routes;
+}
+
+export const ALL_LOCALIZED_ROUTES = generateAllLocalizedRoutes();
+
+/**
+ * Normalise a pathname and extract its country, locale, and base route.
+ */
 export function resolveLocalizedPath(pathname) {
   const clean = pathname.replace(/\/+$/, '') || '/';
-  if (clean === '/en') return { locale: 'en', basePath: '/' };
-  if (clean.startsWith('/en/')) return { locale: 'en', basePath: clean.slice(3) };
-  return { locale: 'ar', basePath: clean };
+  if (clean === '/') {
+    return {
+      country: null,
+      locale: 'ar',
+      basePath: '/',
+      isSelector: true,
+      isLive: false,
+      isWaitlist: false,
+      isUnknown: false,
+    };
+  }
+
+  const segments = clean.split('/').filter(Boolean); // ['eg', 'ar', 'pricing']
+  const first = segments[0]?.toLowerCase();
+  const second = segments[1]?.toLowerCase();
+
+  // Pattern: /{country}/{locale}/...
+  if (COUNTRY_SLUGS.includes(first)) {
+    const country = first;
+    const isWaitlist = WAITLIST_COUNTRY_SLUGS.includes(country);
+    const locale = LOCALES.includes(second) ? second : 'ar';
+    const rest = segments.slice(2).join('/');
+    const basePath = rest ? `/${rest}` : '/';
+
+    return {
+      country,
+      locale,
+      basePath,
+      isSelector: false,
+      isLive: !isWaitlist,
+      isWaitlist,
+      isUnknown: false,
+    };
+  }
+
+  // Unknown country prefix (e.g. /fr/ar/pricing) -> 404
+  if (segments.length >= 2 && LOCALES.includes(second)) {
+    return {
+      country: first,
+      locale: second,
+      basePath: `/${segments.slice(2).join('/')}`,
+      isSelector: false,
+      isLive: false,
+      isWaitlist: false,
+      isUnknown: true,
+    };
+  }
+
+  // Legacy route backwards compatibility (/pricing or /en/pricing)
+  if (clean === '/en' || clean.startsWith('/en/')) {
+    const basePath = clean === '/en' ? '/' : clean.slice(3);
+    return {
+      country: DEFAULT_COUNTRY,
+      locale: 'en',
+      basePath,
+      isSelector: false,
+      isLive: true,
+      isWaitlist: false,
+      isUnknown: false,
+      isLegacy: true,
+    };
+  }
+
+  return {
+    country: DEFAULT_COUNTRY,
+    locale: 'ar',
+    basePath: clean,
+    isSelector: false,
+    isLive: true,
+    isWaitlist: false,
+    isUnknown: false,
+    isLegacy: true,
+  };
 }
 
 export function routeForPath(pathname) {
-  const { locale, basePath } = resolveLocalizedPath(pathname);
-  const route = PUBLIC_SEO_ROUTES.find((r) => r.path === basePath);
-  return route ? { ...route, locale } : null;
+  const resolved = resolveLocalizedPath(pathname);
+  if (resolved.isSelector) {
+    return { key: 'selector', ...resolved };
+  }
+  if (resolved.isWaitlist) {
+    return { key: `waitlist:${resolved.country}`, ...resolved };
+  }
+  if (resolved.isUnknown) {
+    return null;
+  }
+  const route = PUBLIC_SEO_ROUTES.find((r) => r.path === resolved.basePath);
+  return route ? { ...route, ...resolved } : null;
 }
 
-/** Paths the SPA may serve (used by robots meta fallback + Vercel allow-list). */
 export const PUBLIC_PATHS = ALL_LOCALIZED_ROUTES.map((r) => r.path);
 
-/** First-segment prefixes of authenticated / auth screens served by the SPA. */
 export const APP_PATH_PREFIXES = [
   'dashboard', 'inbox', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
   'sales-assistant', 'marketing', 'ai', 'analytics', 'owner', 'usage', 'website', 'settings',

@@ -22,6 +22,7 @@ import re
 from collections.abc import Iterable
 from typing import NamedTuple
 
+from app.core.country import get_country, list_countries
 from app.core.errors import ValidationError
 
 # 20 = Egypt, this system's default market (GAP M12 names it explicitly).
@@ -63,6 +64,23 @@ def _e164(digits: str, raw: str) -> str:
     return f"+{digits}"
 
 
+def _resolve_market(hint: str) -> tuple[str, tuple[int, ...], str]:
+    """Returns (calling_code, allowed_national_lengths, trunk_prefix) for a market."""
+    cleaned = (hint or "").strip().upper()
+    # 1. Look up by ISO code (EG, SA, AE, QA...)
+    country = get_country(cleaned)
+    if country is not None:
+        return country.phone_code, country.phone_national_lengths, country.phone_trunk_prefix
+
+    # 2. Look up by calling code (20, 966, 971, 974...)
+    for c in list_countries(include_hidden=True):
+        if c.phone_code == cleaned:
+            return c.phone_code, c.phone_national_lengths, c.phone_trunk_prefix
+
+    # Fallback to legacy default (Egypt)
+    return cleaned or DEFAULT_COUNTRY_CODE, _EG_NATIONAL_LENGTHS, _TRUNK_PREFIX
+
+
 def normalize_phone(
     raw: str | None, *, default_country_code: str = DEFAULT_COUNTRY_CODE
 ) -> str | None:
@@ -70,6 +88,8 @@ def normalize_phone(
 
     ``None``/blank normalizes to ``None`` (no contact given); an unparseable
     value raises instead of returning a string that only looks canonical.
+    ``default_country_code`` accepts an ISO alpha-2 code ("EG", "SA", "AE", "QA")
+    or a numeric calling code ("20", "966", "971", "974").
     """
     if raw is None:
         return None
@@ -91,26 +111,45 @@ def normalize_phone(
     if not value.isdigit():
         raise ContactNormalizationError(f"phone '{raw}' is not a dialable number")
 
-    if value.startswith(_TRUNK_PREFIX):
-        national = _digits(value[1:], raw)
-        return _eg_national(national, raw, default_country_code)
+    calling_code, allowed_lengths, trunk_prefix = _resolve_market(default_country_code)
+
+    if trunk_prefix and value.startswith(trunk_prefix):
+        national = _digits(value[len(trunk_prefix) :], raw)
+        return _market_national(national, raw, calling_code, allowed_lengths, trunk_prefix)
 
     # No trunk prefix: either '<CC><national>' or the bare national number of
-    # the default market. Both are decided against that one country code only.
-    if value.startswith(default_country_code):
-        national = value[len(default_country_code) :]
+    # the default market.
+    if value.startswith(calling_code):
+        national = value[len(calling_code) :]
         if national:
-            return _eg_national(national, raw, default_country_code)
-    return _eg_national(value, raw, default_country_code)
+            return _market_national(national, raw, calling_code, allowed_lengths, trunk_prefix)
+    return _market_national(value, raw, calling_code, allowed_lengths, trunk_prefix)
 
 
-def _eg_national(national: str, raw: str, default_country_code: str) -> str:
-    if not national.startswith(_TRUNK_PREFIX) and len(national) in _EG_NATIONAL_LENGTHS:
-        return _e164(f"{default_country_code}{national}", raw)
+def _market_national(
+    national: str,
+    raw: str,
+    calling_code: str,
+    allowed_lengths: tuple[int, ...],
+    trunk_prefix: str,
+) -> str:
+    if trunk_prefix and national.startswith(trunk_prefix):
+        raise ContactNormalizationError(
+            f"phone '{raw}' cannot be canonicalized without a country hint; "
+            "send it in international (+…) form"
+        )
+    if len(national) in allowed_lengths:
+        return _e164(f"{calling_code}{national}", raw)
     raise ContactNormalizationError(
         f"phone '{raw}' cannot be canonicalized without a country hint; "
         "send it in international (+…) form"
     )
+
+
+def _eg_national(national: str, raw: str, default_country_code: str) -> str:
+    """Legacy helper preserved for backward compatibility."""
+    calling_code, allowed_lengths, trunk = _resolve_market(default_country_code)
+    return _market_national(national, raw, calling_code, allowed_lengths, trunk)
 
 
 def normalize_email(raw: str | None) -> str | None:

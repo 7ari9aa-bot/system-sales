@@ -22,6 +22,8 @@ import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
 import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
 import BlogPost, { BlogIndex } from '@/pages/fhrist/Blog'
 import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
+import { MarketSelectorLanding, MarketHeaderSelector } from '@/components/fihrist/CountrySelector'
+import { WaitlistLanding } from '@/components/fihrist/WaitlistLanding'
 import { localizePath, localizeHtmlLinks } from '@/lib/locale-paths'
 import { routeForPath, resolveLocalizedPath, absoluteUrl } from '@/lib/public-seo-routes.mjs'
 
@@ -54,6 +56,9 @@ export const pageMeta = {
   terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
   'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
   support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
+  selector: c('FIHRIST | اختر دولتك ولغتك - نظام المبيعات للمتاجر', 'FIHRIST | Select Country & Language - Sales OS for Stores'),
+  'waitlist:ae': c('FIHRIST الإمارات | قريباً نظام تشغيل المبيعات للمتاجر', 'FIHRIST UAE | Sales Operating System Coming Soon'),
+  'waitlist:qa': c('FIHRIST قطر | قريباً نظام تشغيل المبيعات للمتاجر', 'FIHRIST Qatar | Sales Operating System Coming Soon'),
 }
 
 export const pageDescription = {
@@ -69,6 +74,9 @@ export const pageDescription = {
   terms: c('راجع شروط استخدام FIHRIST لإدارة حسابات الفريق ومحادثات العملاء والطلبات ومتابعة المبيعات.', 'Review the terms for using FIHRIST to manage team accounts, customer conversations, orders, and sales follow-up.'),
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
   support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
+  selector: c('اختر دولتك للوصول إلى منصة FIHRIST للاطلاع على الميزات والأسعار المخصصة لسوقك في الشرق الأوسط.', 'Choose your country to access the FIHRIST platform with tailored features and pricing for your market.'),
+  'waitlist:ae': c('منصة FIHRIST قادمة قريباً إلى دولة الإمارات العربية المتحدة. سجّل في قائمة الانتظار للحصول على وصول مبكر.', 'FIHRIST platform is coming soon to the UAE. Join the waitlist for exclusive early access.'),
+  'waitlist:qa': c('منصة FIHRIST قادمة قريباً إلى دولة قطر. سجّل في قائمة الانتظار لتكون أول من ينضم للمنصة.', 'FIHRIST platform is coming soon to Qatar. Join the waitlist for exclusive early access.'),
 }
 
 const solutionMeta = (key, kind) => {
@@ -171,7 +179,7 @@ function Header({ locale, setLocale, theme, toggleTheme }) {
   const [commandOpen, setCommandOpen] = useState(false)
   useEffect(() => { const onScroll = () => setScrolled(window.scrollY > 8); onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); setAuthed(Boolean(getTokens())); return () => window.removeEventListener('scroll', onScroll) }, [])
   useEffect(() => { const onKey = (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandOpen(true) } if (event.key === 'Escape') setCommandOpen(false) }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [])
-  return <><header className={`site-header ${scrolled ? 'is-scrolled' : ''}`}><div className="container header-inner"><Logo/><nav id="site-primary-navigation" className={open ? 'nav open' : 'nav'} aria-label={locale === 'ar' ? 'التنقل الرئيسي' : 'Primary navigation'}>{navItems.map(item => <a key={item.href} href={item.href}>{tx(item.label, locale)}</a>)}<a href="/contact-sales">{tx(c('تواصل معنا','Contact sales'), locale)}</a><div className="mobile-nav-actions">{authed ? <a href="/dashboard">{tx(c('فتح التطبيق','Open app'), locale)}</a> : <><a href="/login">{tx(c('تسجيل الدخول','Sign in'), locale)}</a><a href="/register">{tx(c('ابدأ الآن','Start now'), locale)}</a></>}</div></nav><div className="header-actions"><button className="theme-switch" onClick={toggleTheme} aria-label={locale === 'ar' ? 'تبديل الوضع' : 'Toggle theme'} title={locale === 'ar' ? 'تبديل الوضع' : 'Toggle theme'} data-testid="button-toggle-theme"><ThemeIcon theme={theme}/></button><button className="lang-switch" onClick={() => setLocale(locale === 'ar' ? 'en' : 'ar')} aria-label={locale === 'ar' ? 'تغيير اللغة' : 'Switch language'} data-testid="button-toggle-language"><Globe2 size={15}/><span>{locale === 'ar' ? 'EN' : 'عربي'}</span></button>{authed ? <Button href="/dashboard" kind="primary">{tx(c('فتح التطبيق','Open app'), locale)}</Button> : <><a className="login-link" href="/login">{tx(c('تسجيل الدخول','Sign in'), locale)}</a><Button href="/register" kind="primary">{tx(c('ابدأ الآن','Start now'), locale)}</Button></>}<button className="menu-button" onClick={() => setOpen(!open)} aria-label={open ? (locale === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (locale === 'ar' ? 'فتح القائمة' : 'Open menu')} aria-expanded={open} aria-controls="site-primary-navigation" data-testid="button-toggle-menu">{open ? <X/> : <Menu/>}</button></div></div></header>{commandOpen && <CommandPalette locale={locale} onClose={() => setCommandOpen(false)}/>}</>
+  return <><header className={`site-header ${scrolled ? 'is-scrolled' : ''}`}><div className="container header-inner"><Logo/><nav id="site-primary-navigation" className={open ? 'nav open' : 'nav'} aria-label={locale === 'ar' ? 'التنقل الرئيسي' : 'Primary navigation'}>{navItems.map(item => <a key={item.href} href={item.href}>{tx(item.label, locale)}</a>)}<a href="/contact-sales">{tx(c('تواصل معنا','Contact sales'), locale)}</a><div className="mobile-nav-actions">{authed ? <a href="/dashboard">{tx(c('فتح التطبيق','Open app'), locale)}</a> : <><a href="/login">{tx(c('تسجيل الدخول','Sign in'), locale)}</a><a href="/register">{tx(c('ابدأ الآن','Start now'), locale)}</a></>}</div></nav><div className="header-actions"><MarketHeaderSelector /><button className="theme-switch" onClick={toggleTheme} aria-label={locale === 'ar' ? 'تبديل الوضع' : 'Toggle theme'} title={locale === 'ar' ? 'تبديل الوضع' : 'Toggle theme'} data-testid="button-toggle-theme"><ThemeIcon theme={theme}/></button><button className="lang-switch" onClick={() => setLocale(locale === 'ar' ? 'en' : 'ar')} aria-label={locale === 'ar' ? 'تغيير اللغة' : 'Switch language'} data-testid="button-toggle-language"><Globe2 size={15}/><span>{locale === 'ar' ? 'EN' : 'عربي'}</span></button>{authed ? <Button href="/dashboard" kind="primary">{tx(c('فتح التطبيق','Open app'), locale)}</Button> : <><a className="login-link" href="/login">{tx(c('تسجيل الدخول','Sign in'), locale)}</a><Button href="/register" kind="primary">{tx(c('ابدأ الآن','Start now'), locale)}</Button></>}<button className="menu-button" onClick={() => setOpen(!open)} aria-label={open ? (locale === 'ar' ? 'إغلاق القائمة' : 'Close menu') : (locale === 'ar' ? 'فتح القائمة' : 'Open menu')} aria-expanded={open} aria-controls="site-primary-navigation" data-testid="button-toggle-menu">{open ? <X/> : <Menu/>}</button></div></div></header>{commandOpen && <CommandPalette locale={locale} onClose={() => setCommandOpen(false)}/>}</>
 }
 
 function Workflow({ locale, compact = false }) {
@@ -259,6 +267,8 @@ function App() {
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => {
+    if (page === 'selector') return <MarketSelectorLanding />
+    if (page.startsWith('waitlist:')) return <WaitlistLanding />
     if (page === 'blog') return <BlogIndex locale={locale}/>
     if (page.startsWith('post:')) return <BlogPost slug={page.slice('post:'.length)} locale={locale}/>
     if (page === 'solutions') return <SolutionsIndex locale={locale}/>

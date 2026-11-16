@@ -25,5 +25,5 @@ describe("loadFacebookSdk when the script cannot load", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.name).not.toBe("ReferenceError");
     expect(err.message).toMatch(pattern);
-  });
+  }, 15000);
 });

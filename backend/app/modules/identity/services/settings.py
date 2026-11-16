@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import sqlalchemy as sa
 from sqlalchemy import select
 
+from app.core.country import country_refusal, get_country
 from app.core.currency import storage_refusal
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.identity.dialects import dialect_refusal
@@ -229,6 +230,82 @@ class TenantSettingsService:
             tenant.id,
             before={"dialect": previous},
             after={"dialect": wanted},
+        )
+        await session.flush()
+        return tenant
+
+    @staticmethod
+    async def set_country(
+        session,
+        tenant_id: uuid.UUID,
+        country_code: str,
+        *,
+        actor_user_id: uuid.UUID | None = None,
+        sync_defaults: bool = True,
+    ) -> Tenant:
+        """Set the workspace country/market (ISO 3166-1 alpha-2, e.g. 'EG', 'SA').
+
+        Validates against app.core.country.SUPPORTED_COUNTRIES.
+        If sync_defaults is True and the tenant has not traded orders in another currency,
+        currency, timezone and dialect are automatically aligned to the new market.
+        """
+        candidate = (country_code or "").strip().upper()
+        refusal = country_refusal(candidate)
+        if refusal is not None:
+            raise ValidationError(refusal)
+
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+        ).scalar_one_or_none()
+        if tenant is None:
+            raise NotFoundError("tenant not found")
+
+        previous = tenant.country_code
+        if previous == candidate:
+            return tenant
+
+        country = get_country(candidate)
+        before_audit = {"country_code": previous}
+        after_audit = {"country_code": candidate}
+
+        tenant.country_code = candidate
+
+        if sync_defaults and country:
+            # Check if trading history blocks currency change
+            if tenant.currency != country.currency:
+                traded = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT 1 FROM orders "
+                            "WHERE tenant_id = :tid AND currency <> :code LIMIT 1"
+                        ),
+                        {"tid": tenant_id, "code": country.currency},
+                    )
+                ).first()
+                if traded is None:
+                    before_audit["currency"] = tenant.currency
+                    after_audit["currency"] = country.currency
+                    tenant.currency = country.currency
+
+            if country.default_timezone:
+                before_audit["timezone"] = tenant.timezone
+                after_audit["timezone"] = country.default_timezone
+                tenant.timezone = country.default_timezone
+
+            if country.default_dialect:
+                before_audit["dialect"] = tenant.dialect
+                after_audit["dialect"] = country.default_dialect
+                tenant.dialect = country.default_dialect
+
+        await _record_audit(
+            session,
+            tenant.id,
+            actor_user_id,
+            "tenant.country_changed",
+            "tenant",
+            tenant.id,
+            before=before_audit,
+            after=after_audit,
         )
         await session.flush()
         return tenant

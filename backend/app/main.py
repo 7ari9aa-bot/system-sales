@@ -51,6 +51,7 @@ from app.modules.ai.router import router as ai_router
 from app.modules.analytics.router import router as analytics_module_router
 from app.modules.authority.router import router as authority_router
 from app.modules.automation.router import router as automation_router
+from app.modules.billing.markets import router as public_markets_router
 from app.modules.billing.router import (
     billing_router,
     webhooks_router,
@@ -488,6 +489,7 @@ def create_app() -> FastAPI:
         sites_platform_router,
         channel_status_router,
         public_telemetry_router,
+        public_markets_router,
         segments_router,
         automation_router,
         analytics_module_router,
@@ -509,6 +511,7 @@ def create_app() -> FastAPI:
     # Prometheus scraper has no tenant JWT to present, and the route carries its
     # own admission (internal service token wherever SECURE_ENVIRONMENT is on).
     app.include_router(metrics_router)
+    app.include_router(public_markets_router)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

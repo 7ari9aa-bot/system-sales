@@ -53,6 +53,28 @@ class Plan(IdMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("code", name="uq_plans_code"),)
 
 
+class PlanPrice(IdMixin, TimestampMixin, Base):
+    """Country-specific price catalog for plans — not tenant-scoped."""
+
+    __tablename__ = "plan_prices"
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("plans.id", ondelete="CASCADE"), index=True
+    )
+    country_code: Mapped[str] = mapped_column(String(2), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    price: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    # interval: month | year
+    interval: Mapped[str] = mapped_column(String(15), default="month", server_default="month")
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "plan_id", "country_code", "interval", name="uq_plan_prices_plan_country_interval"
+        ),
+    )
+
+
 class Subscription(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     __tablename__ = "subscriptions"
 

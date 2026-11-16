@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import {
   ALL_LOCALIZED_ROUTES,
+  LIVE_COUNTRY_SLUGS,
   PUBLIC_PATHS,
   PUBLIC_SEO_ROUTES,
   SITE_ORIGIN,
@@ -50,21 +51,28 @@ function replaceRoot(html, markup) {
 }
 
 function hreflangTags(route) {
-  const ar = absoluteUrl(route.arPath);
-  const en = absoluteUrl(route.enPath);
-  // A clean Markdown twin exists for articles and solutions; every page points
-  // AI assistants at llms.txt, the machine-readable site summary.
-  const hasMarkdown = route.key.startsWith('post:') || route.key.startsWith('solution:');
+  const hasMarkdown = route.key?.startsWith('post:') || route.key?.startsWith('solution:');
   const aiLinks = [
     ...(hasMarkdown ? [`<link rel="alternate" type="text/markdown" href="${escapeAttribute(absoluteUrl(`${route.path}.md`))}" />`] : []),
     `<link rel="alternate" type="text/plain" href="${escapeAttribute(absoluteUrl(route.locale === 'en' ? '/llms-full.txt' : '/llms-full-ar.txt'))}" title="llms-full" />`,
   ];
-  return [
-    `<link rel="alternate" hreflang="ar" href="${escapeAttribute(ar)}" />`,
-    `<link rel="alternate" hreflang="en" href="${escapeAttribute(en)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${escapeAttribute(ar)}" />`,
-    ...aiLinks,
-  ].join('\n    ');
+
+  if (route.isSelector) {
+    return [
+      `<link rel="alternate" hreflang="x-default" href="${escapeAttribute(absoluteUrl('/'))}" />`,
+      ...aiLinks,
+    ].join('\n    ');
+  }
+
+  const cleanBase = route.basePath === '/' ? '' : (route.basePath || '');
+  const tags = [];
+  for (const c of LIVE_COUNTRY_SLUGS) {
+    tags.push(`<link rel="alternate" hreflang="ar-${c.toUpperCase()}" href="${escapeAttribute(absoluteUrl(`/${c}/ar${cleanBase}`))}" />`);
+    tags.push(`<link rel="alternate" hreflang="en-${c.toUpperCase()}" href="${escapeAttribute(absoluteUrl(`/${c}/en${cleanBase}`))}" />`);
+  }
+  tags.push(`<link rel="alternate" hreflang="x-default" href="${escapeAttribute(absoluteUrl('/'))}" />`);
+
+  return [...tags, ...aiLinks].join('\n    ');
 }
 
 function updateDocument(template, route, markup, title, description, schemas, publicPaths) {
@@ -127,7 +135,7 @@ async function main() {
       assert.match(markup, /<h1\b/, `Prerendered page has no H1: ${route.path}`);
       const heading = markup.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? '';
       assert.ok(heading, `Could not extract H1 for ${route.path}`);
-      renderedHeadings.add(heading);
+      renderedHeadings.add(`${route.country || 'root'}:${route.locale}:${heading}`);
 
       const schemas = buildSchemas(route, title, description, markup);
       const html = updateDocument(template, route, markup, title, description, schemas, PUBLIC_PATHS);
@@ -159,10 +167,10 @@ async function main() {
     await writeFile(path.join(distRoot, 'llms-full-ar.txt'), buildLlmsFull('ar'));
     // A clean Markdown twin of every article and solution (e.g. /blog/<slug>.md).
     for (const route of ALL_LOCALIZED_ROUTES) {
+      const kind = route.key?.startsWith('post:') ? postMarkdown : route.key?.startsWith('solution:') ? solutionMarkdown : null;
+      if (!kind) continue;
       const base = route.arPath;
       const slug = base.split('/').pop();
-      const kind = route.key.startsWith('post:') ? postMarkdown : route.key.startsWith('solution:') ? solutionMarkdown : null;
-      if (!kind) continue;
       const file = path.join(distRoot, `${route.path.slice(1)}.md`);
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, kind(slug, route.locale));

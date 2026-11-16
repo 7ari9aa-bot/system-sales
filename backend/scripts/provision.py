@@ -43,6 +43,7 @@ NO_TENANT_TABLES = {
     "outbox_events",
     "idempotency_keys",
     "plans",
+    "plan_prices",
     "refresh_tokens",  # user-scoped, not tenant-scoped
     # NOTE: `scheduled_jobs` and `webhook_events` used to be listed here as
     # "system plumbing". Production disagreed — both are FORCE RLS with a
@@ -251,6 +252,7 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE INSERT, UPDATE, DELETE ON public.roles FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.role_permissions FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.plans FROM sales_app",
+    "REVOKE INSERT, UPDATE, DELETE ON public.plan_prices FROM sales_app",
     "REVOKE INSERT, UPDATE, DELETE ON public.alembic_version FROM sales_app",
     "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
     "REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES FROM sales_app",
@@ -333,6 +335,16 @@ REFERENCE_PLANE_READ_POLICIES: tuple[str, ...] = (
         "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
         "AND tablename = 'plans' AND policyname = 'sales_app_read') "
         "THEN CREATE POLICY sales_app_read ON public.plans "
+        "FOR SELECT TO sales_app USING (true); "
+        "END IF; END $$;"
+    ),
+    (
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name = 'plan_prices') "
+        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
+        "AND tablename = 'plan_prices' AND policyname = 'sales_app_read') "
+        "THEN CREATE POLICY sales_app_read ON public.plan_prices "
         "FOR SELECT TO sales_app USING (true); "
         "END IF; END $$;"
     ),
@@ -551,15 +563,40 @@ async def seed(conn: asyncpg.Connection) -> None:
     for code, name, price, features in PLANS:
         row = await conn.fetchrow("SELECT id FROM plans WHERE code = $1", code)
         if row is None:
-            await conn.execute(
+            plan_id = await conn.fetchval(
                 """
                 INSERT INTO plans (id, code, name, price, currency, features)
                 VALUES (gen_random_uuid(), $1, $2, $3, 'EGP', $4::jsonb)
+                RETURNING id
                 """,
                 code,
                 name,
                 price,
                 json.dumps(features),
+            )
+        else:
+            plan_id = row["id"]
+
+        # Seed country-specific plan prices for the primary markets
+        market_prices = [
+            ("EG", "EGP", price),
+            ("SA", "SAR", round(price * 0.08, 2) if price else 0),
+            ("AE", "AED", round(price * 0.08, 2) if price else 0),
+            ("QA", "QAR", round(price * 0.08, 2) if price else 0),
+        ]
+        for country_code, curr, cprice in market_prices:
+            await conn.execute(
+                """
+                INSERT INTO plan_prices (
+                    id, plan_id, country_code, currency, price, interval, is_active
+                )
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, 'month', true)
+                ON CONFLICT (plan_id, country_code, interval) DO NOTHING
+                """,
+                plan_id,
+                country_code,
+                curr,
+                cprice,
             )
 
     counts = await conn.fetchrow(

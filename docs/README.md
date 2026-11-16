@@ -37,6 +37,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | Customer commerce (deposits, orders, payments) | [COMMERCE_FIT_REPORT.md](COMMERCE_FIT_REPORT.md) — Phase 0: what the commerce spec asks for vs what the code already owns, the real gaps, and the blocking decisions. |
 | Customer AI agent | [design/](design/) (core design, M1 handoff, red team) |
 | Desktop app | [DESKTOP_ARCH_REVIEW.md](DESKTOP_ARCH_REVIEW.md), and `desktop/docs/` in the repo root |
+| Inventory & Supply Chain | [INVENTORY_PROGRAM.md](INVENTORY_PROGRAM.md) |
 
 ## 4. Operations and platform
 

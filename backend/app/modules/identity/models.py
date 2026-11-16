@@ -87,6 +87,9 @@ class Tenant(TimestampMixin, Base):
     # enforced by the database (tenants_dialect_listed) and mirrored by
     # identity.dialects.CHOICES.
     dialect: Mapped[str | None] = mapped_column(String(16))
+    # Market / country ISO code (EG, SA, AE, QA). Server default 'EG' ensures 100% backward
+    # compatibility with zero downtime for all existing tenants.
+    country_code: Mapped[str] = mapped_column(String(2), default="EG", server_default="EG")
 
 
 class User(TimestampMixin, Base):

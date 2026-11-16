@@ -11,6 +11,7 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { ThemeProvider } from '@/lib/themeContext';
 import { I18nProvider } from '@/lib/i18n';
 import { RegionalProvider } from '@/lib/regional';
+import { CountryProvider } from '@/lib/CountryContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import VisitorTracker from '@/components/VisitorTracker';
 import { ALL_LOCALIZED_ROUTES } from '@/lib/public-seo-routes.mjs';
@@ -51,12 +52,27 @@ const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
 const MarketingRoutes = () => (
   <LanguageProvider>
-    <Routes>
-      {ALL_LOCALIZED_ROUTES.map(({ path }) => (
-        <Route key={path} path={path} element={<Fihrist />} />
-      ))}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <CountryProvider>
+      <Routes>
+        {ALL_LOCALIZED_ROUTES.map(({ path }) => (
+          <Route key={path} path={path} element={<Fihrist />} />
+        ))}
+        {/* Support legacy unprefixed paths gracefully mapping to default market */}
+        <Route path="/product" element={<Fihrist />} />
+        <Route path="/conversations" element={<Fihrist />} />
+        <Route path="/assistant" element={<Fihrist />} />
+        <Route path="/automation" element={<Fihrist />} />
+        <Route path="/pricing" element={<Fihrist />} />
+        <Route path="/security" element={<Fihrist />} />
+        <Route path="/privacy" element={<Fihrist />} />
+        <Route path="/terms" element={<Fihrist />} />
+        <Route path="/contact-sales" element={<Fihrist />} />
+        <Route path="/support" element={<Fihrist />} />
+        <Route path="/solutions/*" element={<Fihrist />} />
+        <Route path="/blog/*" element={<Fihrist />} />
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </CountryProvider>
   </LanguageProvider>
 );
 
