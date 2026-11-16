@@ -174,16 +174,89 @@ _VARIANT_PRODUCT = text(
 )
 
 
-async def _attach_image(
-    session: AsyncSession, tenant_id: uuid.UUID, sku: str, url: str
-) -> uuid.UUID:
-    """Download one picture, keep it in our own storage, and attach it to the SKU's product.
+def _sniff(data: bytes) -> str | None:
+    """The picture type the BYTES say they are, whatever a header or a file name claims."""
+    return next((kind for kind, check in _IMAGE_SIGNATURES.items() if check(data)), None)
 
-    The link is fetched by ``storage.fetch``, which refuses non-public hosts on every redirect
-    hop and caps the size, so a merchant cannot point the worker at our own network. The bytes
-    are then checked against the picture's signature (the same rule as an upload by hand), so a
-    page that merely ends in ``.jpg`` is refused. The stored copy is what the catalog shows: the
-    merchant's link may be gone next month.
+
+# The archive is read back from storage once per batch, not once per picture: 25 rows of one batch
+# would otherwise download the same (up to 200 MB) file 25 times. Keyed by storage key, emptied at
+# the start of every batch, so a worker never holds an archive between two jobs.
+_archive_cache: dict[str, bytes] = {}
+
+
+async def _archive_bytes(storage, key: str) -> bytes:
+    from app.modules.imports import imagezip
+
+    if key not in _archive_cache:
+        _archive_cache.clear()
+        fetched = await storage.read_object(key, max_bytes=imagezip.MAX_ZIP_BYTES)
+        _archive_cache[key] = fetched.data
+    return _archive_cache[key]
+
+
+async def _picture_bytes(
+    session: AsyncSession,
+    storage,
+    session_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    picture: str,
+    source: str,
+) -> bytes:
+    """The picture's bytes: downloaded from a link, or read out of the merchant's archive."""
+    from app.core.errors import ValidationError
+    from app.modules.imports import imagezip
+
+    if source == "zip":
+        key = (
+            await session.execute(
+                text("SELECT file_key FROM import_sessions WHERE tenant_id = :t AND id = :s"),
+                {"t": tenant_id, "s": session_id},
+            )
+        ).scalar_one_or_none()
+        if not key:
+            raise ApplyError("no_archive", "the pictures archive is no longer available")
+        try:
+            archive = await _archive_bytes(storage, key)
+            entry = imagezip.catalog_of(archive).find(picture)
+            if entry is None:
+                raise ApplyError("not_in_archive", f"'{picture}' is not in the pictures archive")
+            return imagezip.read_entry(archive, entry)
+        except ApplyError:
+            raise
+        except ValidationError as exc:
+            raise ApplyError(
+                "image_unreadable", "the picture could not be read from the archive"
+            ) from exc
+        except Exception as exc:  # storage read failed: a fixed sentence, the detail to the log
+            logger.warning("import.archive_read_failed error=%s", type(exc).__name__)
+            raise ApplyError(
+                "storage_unavailable", "the archive could not be read; try again later"
+            ) from exc
+    try:
+        return (await storage.fetch(picture, max_bytes=MAX_IMAGE_BYTES)).data
+    except DomainError as exc:
+        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
+    except Exception as exc:  # network, TLS, timeout: a fixed sentence, the detail goes to the log
+        logger.warning("import.image_fetch_failed error=%s", type(exc).__name__)
+        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
+
+
+async def _attach_image(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    sku: str,
+    picture: str,
+    source: str,
+    session_id: uuid.UUID,
+) -> uuid.UUID:
+    """Get one picture (a link or a file in the archive), keep it in our storage, attach it.
+
+    A link is fetched by ``storage.fetch``, which refuses non-public hosts on every redirect hop
+    and caps the size, so a merchant cannot point the worker at our own network. Whatever the
+    source, the bytes are then checked against the picture's SIGNATURE (never a file name or a
+    server's content type), so a page that merely ends in ``.jpg`` is refused. The stored copy is
+    what the catalog shows: the merchant's link may be gone next month.
     """
     import hashlib
 
@@ -197,27 +270,16 @@ async def _attach_image(
     if found is None:
         raise ApplyError("unknown_sku", f"no variant with SKU '{sku}'")
     variant_id, product_id = found
-    try:
-        fetched = await storage.fetch(url, max_bytes=MAX_IMAGE_BYTES)
-    except DomainError as exc:
-        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
-    except Exception as exc:  # network, TLS, timeout: a fixed sentence, the detail goes to the log
-        logger.warning("import.image_fetch_failed error=%s", type(exc).__name__)
-        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
+    data = await _picture_bytes(session, storage, session_id, tenant_id, picture, source)
 
-    kind = (fetched.content_type or "").split(";", 1)[0].strip().lower()
-    check = _IMAGE_SIGNATURES.get(kind)
-    if check is None:
-        raise ApplyError("not_an_image", "the link is not a JPEG, PNG, GIF, WebP or BMP picture")
-    if not fetched.data or not check(fetched.data):
-        raise ApplyError("not_an_image", "the file at the link is not a real picture")
+    kind = _sniff(data) if data else None
+    if kind is None:
+        raise ApplyError("not_an_image", "the file is not a JPEG, PNG, GIF, WebP or BMP picture")
 
-    media = FetchedMedia(
-        data=fetched.data,
-        content_type=kind,
-        checksum=hashlib.sha256(fetched.data).hexdigest(),
+    media = FetchedMedia(data=data, content_type=kind, checksum=hashlib.sha256(data).hexdigest())
+    stored = await storage.store(
+        media, prefix=f"product-images/{tenant_id}", original_url=picture if source == "url" else ""
     )
-    stored = await storage.store(media, prefix=f"product-images/{tenant_id}", original_url=url)
     if not stored.durable or not stored.storage_key:
         raise ApplyError("storage_unavailable", "the picture could not be saved; try again later")
     try:
@@ -306,8 +368,27 @@ async def run_batch(session: AsyncSession, job: Job, *, limit: int = BATCH_LIMIT
         imp.status = "completed"
     imp.stats = totals
     await session.flush()
+    if imp.status == "completed" and imp.file_key:
+        await _drop_archive(session, imp)
     logger.info("import.run session=%s %s", session_id, batch.as_dict())
     return {"session_id": str(session_id), **batch.as_dict()}
+
+
+async def _drop_archive(session: AsyncSession, imp: ImportSession) -> None:
+    """The kept pictures archive is only needed while the import runs; remove it at the end.
+
+    A failed delete never fails the import (the pictures are already in). ``drop_image_archive``
+    clears the key before it deletes, so nothing ever points at a file that may be gone, and a
+    leftover object is the storage retention sweep's to collect.
+    """
+    from app.core.storage import get_storage
+    from app.modules.imports import service
+
+    _archive_cache.clear()
+    try:
+        await service.drop_image_archive(session, imp, storage=get_storage())
+    except Exception as exc:
+        logger.warning("import.archive_cleanup_failed error=%s", type(exc).__name__)
 
 
 @register_job_handler(JOB_KIND)

@@ -157,6 +157,31 @@ def parse_image_url(raw: object) -> str:
     return text
 
 
+def is_link(text: str) -> bool:
+    """True when the cell is meant as a link (so it is judged as one), not as a file name."""
+    return text.strip().lower().startswith(("http://", "https://"))
+
+
+def parse_image_file_name(raw: object) -> str:
+    """A picture's file name as the merchant typed it: no folders, a picture extension.
+
+    A path is refused rather than trimmed: ``photos/a.jpg`` and ``a.jpg`` are the same picture to
+    a person, but a cell that carries ``../`` is never something to quietly repair.
+    """
+    text = clean_text(raw)
+    if not text:
+        raise CellError("required", "image is required")
+    if len(text) > 255:
+        raise CellError("too_long", "image file name is longer than 255 characters")
+    if "/" in text or "\\" in text or ".." in text.split("."):
+        raise CellError("bad_file_name", "write the file name only, without a folder")
+    if not text.lower().endswith(_IMAGE_EXTENSIONS):
+        raise CellError(
+            "bad_file_name", "image file name must end in .jpg, .png, .gif, .webp or .bmp"
+        )
+    return text
+
+
 def looks_like_image_path(url: str) -> bool:
     """True when the link's path ends in a picture extension (informational, never a gate)."""
     return urlsplit(url).path.lower().endswith(_IMAGE_EXTENSIONS)

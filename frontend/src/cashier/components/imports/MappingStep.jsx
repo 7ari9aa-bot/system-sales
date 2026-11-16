@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
+import ImageArchiveCard from "@/cashier/components/imports/ImageArchiveCard";
 import { SHEET_LABEL, canValidate, ignoredColumnsOf, mappingRows } from "@/cashier/api/importCenter";
 
 const IGNORE = "__ignore__";
@@ -65,7 +66,7 @@ function SheetMapping({ name, sheet, onChange }) {
 }
 
 /** Step 2: which column is which. Nothing here is saved until the merchant moves on. */
-export default function MappingStep({ session, draft, policy, busy, error, ignored, onChange, onPolicy, onNext }) {
+export default function MappingStep({ session, draft, policy, busy, error, ignored, onChange, onPolicy, onNext, onArchive, archiveBusy = false, archiveError = "" }) {
   const view = { ...session, sheets: Object.fromEntries(Object.entries(session.sheets).map(([k, s]) => [k, { ...s, mapping: draft[k] ?? s.mapping }])) };
   return (
     <div className="flex flex-col gap-4">
@@ -78,6 +79,7 @@ export default function MappingStep({ session, draft, policy, busy, error, ignor
       {Object.entries(view.sheets).map(([name, sheet]) => (
         <SheetMapping key={name} name={name} sheet={sheet} onChange={onChange} />
       ))}
+      {session.sheets?.Images && onArchive && <ImageArchiveCard session={session} busy={busy || archiveBusy} error={archiveError} onFile={onArchive} />}
       <SectionCard title="لو المنتج موجود عندك بالفعل" description="يُحدَّد الموجود بالـ SKU أو معرّف المنتج">
         <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="التعامل مع الموجود">
           {DUPLICATE_CHOICES.map((c) => (

@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from app.modules.imports import imagezip
 from app.modules.imports import normalize as n
 from app.modules.imports.fields import (
     SHEET_IMAGES,
@@ -300,6 +301,29 @@ def validate_stock(
 MAX_IMAGES_PER_SKU = 10  # a gallery, not a dump: a typo that repeats a row must not add 500
 
 
+def _in_archive(
+    verdict: RowVerdict, archive: imagezip.Catalog | None, name: str
+) -> imagezip.Entry | None:
+    """The archive entry a file name points at, or the reason there is none (added to the row)."""
+    if archive is None:
+        verdict.errors.append(
+            RowError("file_name", "no_archive", "upload the pictures .zip to use file names")
+        )
+        return None
+    key = imagezip.lookup_key(name)
+    if key in archive.ambiguous:
+        verdict.errors.append(
+            RowError("file_name", "ambiguous_name", f"two different pictures are named '{name}'")
+        )
+        return None
+    entry = archive.find(name)
+    if entry is None:
+        verdict.errors.append(
+            RowError("file_name", "not_in_archive", f"'{name}' is not in the pictures archive")
+        )
+    return entry
+
+
 def validate_images(
     rows: list[tuple[int, dict[str, str]]],
     mapping: dict[str, str | None],
@@ -307,9 +331,11 @@ def validate_images(
     skus_in_file: set[str],
     known_skus: set[str],
     already_attached: set[tuple[str, str]],
+    archive: imagezip.Catalog | None = None,
 ) -> list[RowVerdict]:
-    """A picture for a SKU: the SKU must exist (or be created by this file), the link must be a
-    well-formed http(s) one, and the same (SKU, link) is attached once.
+    """A picture for a SKU: the SKU must exist (or be created by this file), the picture must be
+    a well-formed http(s) link or a file name found in the merchant's archive, and the same
+    (SKU, picture) is attached once.
 
     ``already_attached`` holds (sku, link) pairs the shop already has, so a re-run of the same
     file is a skip instead of a second copy of every photo.
@@ -322,7 +348,15 @@ def validate_images(
         sku = _try(
             v, "sku", n.parse_code, _get(row, mapping, "sku"), field="sku", max_len=n.SKU_MAX
         )
-        url = _try(v, "file_name", n.parse_image_url, _get(row, mapping, "file_name"))
+        cell = _get(row, mapping, "file_name")
+        source = "url" if n.is_link(cell) else "zip"
+        url = _try(
+            v, "file_name", n.parse_image_url if source == "url" else n.parse_image_file_name, cell
+        )
+        if source == "zip" and url is not None:
+            hit = _in_archive(v, archive, url)
+            if hit is None:
+                url = None
         if sku is None:
             v.errors.append(RowError("sku", "required", "sku is required"))
         elif sku not in skus_in_file and sku not in known_skus:
@@ -349,7 +383,7 @@ def validate_images(
                         )
                     )
         if v.ok:
-            v.values = {"sku": sku, "url": url}
+            v.values = {"sku": sku, "url": url, "source": source}
             v.action = "skip" if (sku, url) in already_attached else "create"
         verdicts.append(v)
     return verdicts

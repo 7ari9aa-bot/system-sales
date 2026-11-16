@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import sqlalchemy as sa
 
@@ -72,7 +74,7 @@ def _verdicts(rows, *, known=("TEE-1",), in_file=(), attached=()):
 def test_a_good_row_is_valid_and_carries_clean_values():
     (v,) = _verdicts([{"SKU": "TEE-1", "Image": "https://x.io/a.jpg"}])
     assert v.ok and v.action == "create"
-    assert v.values == {"sku": "TEE-1", "url": "https://x.io/a.jpg"}
+    assert v.values == {"sku": "TEE-1", "url": "https://x.io/a.jpg", "source": "url"}
 
 
 def test_an_unknown_sku_is_refused_unless_the_same_file_creates_it():
@@ -103,9 +105,9 @@ def test_a_gallery_is_capped_per_sku():
     assert {e.code for v in verdicts for e in v.errors} == {"too_many_images"}
 
 
-def test_a_blank_sku_and_a_bad_link_are_both_reported_on_the_same_row():
+def test_a_blank_sku_and_a_bad_picture_are_both_reported_on_the_same_row():
     (v,) = _verdicts([{"SKU": "", "Image": "nope"}])
-    assert {e.code for e in v.errors} == {"required", "not_a_link"}
+    assert {e.code for e in v.errors} == {"required", "bad_file_name"}
 
 
 def test_the_header_names_a_merchant_would_use_are_matched_in_both_languages():
@@ -134,6 +136,7 @@ class FakeStorage:
         self.stored: list[str] = []
         self.deleted: list[str] = []
         self.fetched: list[str] = []
+        self.objects: dict[str, bytes] = {}
 
     async def fetch(self, url: str, *, max_bytes=None) -> FetchedMedia:
         self.fetched.append(url)
@@ -142,9 +145,14 @@ class FakeStorage:
         data, kind = self.files[url]
         return FetchedMedia(data=data, content_type=kind, checksum="x")
 
+    async def read_object(self, key: str, *, max_bytes=None) -> FetchedMedia:
+        data = self.objects[key]
+        return FetchedMedia(data=data, content_type="application/zip", checksum="x")
+
     async def store(self, media: FetchedMedia, *, prefix="media", original_url=None):
         key = f"{prefix}/{len(self.stored)}.bin"
         self.stored.append(key)
+        self.objects[key] = media.data
         return StoredMedia(
             url="",
             content_type=media.content_type,
@@ -223,7 +231,6 @@ async def test_a_dead_link_fails_its_row_and_the_others_still_apply(db, tenant_c
     ("data", "kind"),
     [
         (b"<html>not a picture</html>", "image/jpeg"),  # a page that only claims to be a JPEG
-        (PNG, "text/html"),  # a picture served as a page
         (b"<svg onload=alert(1)>", "image/svg+xml"),  # scripts live in SVG
     ],
 )
@@ -295,9 +302,30 @@ async def test_an_unknown_sku_raised_at_apply_time_is_a_row_error(db, tenant_ctx
     t = tenant_ctx.tenant_id
     monkeypatch.setattr("app.core.storage.get_storage", lambda: FakeStorage({}))
     with pytest.raises(ApplyError) as err:
-        await import_runner._attach_image(db, t, "GONE-1", "https://x.io/a.png")
+        await import_runner._attach_image(
+            db, t, "GONE-1", "https://x.io/a.png", "url", uuid.uuid4()
+        )
     assert err.value.code == "unknown_sku"
 
 
 def test_a_products_only_file_still_reads_when_an_images_sheet_is_present():
     assert SHEET_PRODUCTS in SHEET_ORDER and SHEET_IMAGES in SHEET_ORDER
+
+
+async def test_the_picture_is_judged_by_its_bytes_not_by_what_the_server_said(
+    db, tenant_ctx, monkeypatch
+):
+    """A real PNG behind a wrong Content-Type is a picture; the reverse is not."""
+    t = tenant_ctx.tenant_id
+    await _shop_with_sku(db, t)
+    storage = FakeStorage({"https://x.io/a": (PNG, "text/html")})
+    monkeypatch.setattr("app.core.storage.get_storage", lambda: storage)
+    s = await _session(db, t)
+    db.add_all(_images(s, ["https://x.io/a"]))
+    await db.flush()
+
+    result = await run_batch(db, await _job(db, t, s))
+
+    assert (result["applied"], result["failed"]) == (1, 0)
+    stored_type = (await db.execute(sa.text("select count(*) from product_images"))).scalar_one()
+    assert stored_type == 1

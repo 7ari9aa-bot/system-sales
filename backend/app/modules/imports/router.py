@@ -131,6 +131,27 @@ async def get_session(session_id: uuid.UUID, ctx: Ctx):
     return {**_out(imp), **service.describe(imp)}
 
 
+@router.post("/sessions/{session_id}/images.zip", status_code=201)
+async def upload_images(session_id: uuid.UUID, request: Request, ctx: Ctx):
+    """The pictures archive is the body. File names in the Images sheet are looked up in it."""
+    from app.core.storage import get_storage
+    from app.modules.imports import imagezip
+
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > imagezip.MAX_ZIP_BYTES:
+        raise PayloadTooLargeError()
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > imagezip.MAX_ZIP_BYTES:
+            raise PayloadTooLargeError()
+    imp = await service.attach_image_archive(
+        ctx.session, ctx.tenant_id, session_id, data=bytes(data), storage=get_storage()
+    )
+    await _audit(ctx, "import.images_archive", imp, size=len(data))
+    return {**_out(imp), **service.describe(imp)}
+
+
 @router.put("/sessions/{session_id}/mapping")
 async def set_mapping(session_id: uuid.UUID, body: MappingRequest, ctx: Ctx):
     imp = await service.set_mapping(
@@ -141,7 +162,13 @@ async def set_mapping(session_id: uuid.UUID, body: MappingRequest, ctx: Ctx):
 
 @router.post("/sessions/{session_id}/validate")
 async def validate(session_id: uuid.UUID, ctx: Ctx):
-    return _out(await service.validate_session(ctx.session, ctx.tenant_id, session_id))
+    from app.core.storage import get_storage
+
+    return _out(
+        await service.validate_session(
+            ctx.session, ctx.tenant_id, session_id, storage=get_storage()
+        )
+    )
 
 
 @router.get("/sessions/{session_id}/preview")
@@ -162,7 +189,10 @@ async def start(session_id: uuid.UUID, ctx: Ctx):
 
 @router.post("/sessions/{session_id}/cancel")
 async def cancel(session_id: uuid.UUID, ctx: Ctx):
+    from app.core.storage import get_storage
+
     imp = await service.cancel(ctx.session, ctx.tenant_id, session_id)
+    await service.drop_image_archive(ctx.session, imp, storage=get_storage())
     await _audit(ctx, "import.cancel", imp)
     return _out(imp)
 

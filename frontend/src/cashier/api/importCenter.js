@@ -9,6 +9,8 @@
 import { api, apiUrl, fetchWithTimeout } from "@/lib/api";
 
 export const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
+/** The pictures archive may be much bigger than a workbook: it carries the photos (server cap 200 MB). */
+export const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".xlsx", ".csv"];
 const REFUSED_EXTENSIONS = [".xls", ".xlsm", ".xlsb"];
 
@@ -52,6 +54,11 @@ const ERROR_TEXT = {
   image_unreachable: "تعذّر تنزيل الصورة من الرابط (الرابط لا يعمل أو غير متاح للعامة)",
   not_an_image: "الرابط لا يشير إلى صورة حقيقية (JPEG أو PNG أو GIF أو WebP أو BMP)",
   storage_unavailable: "تعذّر حفظ الصورة الآن. أعد المحاولة لاحقًا",
+  bad_file_name: "اكتب اسم ملف الصورة فقط (مثل tee-red.jpg) بدون مجلد، وبامتداد jpg أو png أو gif أو webp أو bmp",
+  no_archive: "ارفع ملف الصور (zip) أولًا لاستخدام أسماء الملفات",
+  not_in_archive: "اسم الملف غير موجود داخل ملف الصور المرفوع",
+  ambiguous_name: "صورتان مختلفتان بنفس الاسم داخل ملف الصور. غيّر اسم إحداهما",
+  image_unreadable: "تعذّرت قراءة الصورة من ملف الصور (قد يكون الملف تالفًا)",
   unknown_product: "المنتج غير موجود في الملف أو في المتجر",
   unknown_warehouse: "المخزن غير موجود",
   opening_stock_already_set: "رصيد أول المدة مسجّل لهذا الصنف من قبل",
@@ -65,6 +72,31 @@ const ERROR_TEXT = {
   bad_status: "الحالة غير معروفة",
   scientific_notation: "الباركود تحوّل إلى صيغة علمية (مثل 6.22E+12). اجعل العمود نصًّا في Excel ثم أعد الحفظ",
 };
+
+/** What the server reported about the kept archive, shaped for the card that shows it. */
+export function archiveSummary(stats) {
+  const a = stats?.image_archive;
+  if (!a) return null;
+  return {
+    files: a.files ?? 0,
+    megabytes: Math.max(0.1, Math.round(((a.bytes ?? 0) / (1024 * 1024)) * 10) / 10),
+    refused: Object.entries(a.refused ?? {}).map(([name, reason]) => ({ name, reason })),
+    ambiguous: a.ambiguous ?? [],
+  };
+}
+
+/** Why an entry in the archive was left out, in words for the merchant. */
+const REFUSED_TEXT = {
+  "not a picture file name": "ليس ملف صورة",
+  "picture is larger than 10 MB": "حجمه أكبر من 10 ميجابايت",
+  "compression ratio is not that of a picture": "ملف مضغوط بشكل غير طبيعي",
+  encrypted: "ملف محمي بكلمة مرور",
+  "symbolic link": "اختصار وليس ملفًا حقيقيًا",
+  "absolute path": "مسار غير آمن",
+  "path leaves the archive": "مسار غير آمن",
+  "control characters in the name": "اسم الملف يحتوي رموزًا غير مقبولة",
+};
+export const refusedText = (reason) => REFUSED_TEXT[reason] ?? "غير مقبول";
 
 export const errorText = (code) => ERROR_TEXT[code] ?? "قيمة غير صالحة";
 
@@ -102,6 +134,27 @@ export const uploadImportFile = (file) => {
     body: file,
     rawBody: true,
     contentType: file.type || "application/octet-stream",
+  });
+};
+
+/** null when the archive can be sent, otherwise the reason (Arabic, shown to the merchant). */
+export function archiveFileProblem(file) {
+  if (!file) return "اختر ملفًا أولًا";
+  if (!String(file.name ?? "").toLowerCase().endsWith(".zip")) return "ملف الصور يجب أن يكون بصيغة .zip";
+  if (!(file.size > 0)) return "الملف فارغ";
+  if (file.size > MAX_ARCHIVE_BYTES) return "حجم ملف الصور أكبر من 200 ميجابايت";
+  return null;
+}
+
+/** The pictures archive for a session: the raw zip is the body, like the workbook is. */
+export const uploadImageArchive = (id, file) => {
+  const problem = archiveFileProblem(file);
+  if (problem) return Promise.reject(new Error(problem));
+  return api(`${base(id)}/images.zip`, {
+    method: "POST",
+    body: file,
+    rawBody: true,
+    contentType: "application/zip",
   });
 };
 

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 468,
-    "sha256": "4c2995b15a16b35e6bac03c97ed16d2110c25a06d947a97a6236f5abe56da511",
+    "operations": 469,
+    "sha256": "6953343312337d38c181a4e454fba5b12447de9d3403c445b597cd0bbb258e53",
     "typed_operations": 295
   },
   "spec": {
@@ -41577,6 +41577,112 @@
             }
           },
           "summary": "Error Report",
+          "tags": [
+            "imports"
+          ]
+        }
+      },
+      "/api/v1/imports/sessions/{session_id}/images.zip": {
+        "post": {
+          "description": "The pictures archive is the body. File names in the Images sheet are looked up in it.",
+          "operationId": "upload_images_api_v1_imports_sessions__session_id__images_zip_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Images",
           "tags": [
             "imports"
           ]

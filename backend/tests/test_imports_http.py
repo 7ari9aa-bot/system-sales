@@ -88,6 +88,7 @@ async def test_every_route_needs_both_permissions(api, granted):
         ("POST", "/api/v1/imports/sessions?filename=a.xlsx"),
         ("GET", "/api/v1/imports/sessions"),
         ("GET", f"/api/v1/imports/sessions/{some_id}"),
+        ("POST", f"/api/v1/imports/sessions/{some_id}/images.zip"),
         ("PUT", f"/api/v1/imports/sessions/{some_id}/mapping"),
         ("POST", f"/api/v1/imports/sessions/{some_id}/validate"),
         ("GET", f"/api/v1/imports/sessions/{some_id}/preview"),
