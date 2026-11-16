@@ -11,6 +11,7 @@ const Page3 = lazy(() => import("./routes/_authed/expenses.jsx"));
 const Page4 = lazy(() => import("./routes/_authed/inventory.index.jsx"));
 const Page5 = lazy(() => import("./routes/_authed/inventory.movements.jsx"));
 const Page6 = lazy(() => import("./routes/_authed/inventory.stocktake.jsx"));
+const PageImport = lazy(() => import("./routes/_authed/inventory.import.jsx"));
 const Page7 = lazy(() => import("./routes/_authed/labels.jsx"));
 const Page8 = lazy(() => import("./routes/_authed/pos.jsx"));
 const Page9 = lazy(() => import("./routes/_authed/products.$productId.edit.jsx"));
@@ -57,6 +58,7 @@ export default function CashierApp() {
         <Route path="inventory" element={<Page4 />} />
         <Route path="inventory/movements" element={<Page5 />} />
         <Route path="inventory/stocktake" element={<Page6 />} />
+        <Route path="inventory/import" element={<PageImport />} />
         <Route path="labels" element={<Page7 />} />
         <Route path="pos" element={<Page8 />} />
         <Route path="products/:productId/edit" element={<Page9 />} />

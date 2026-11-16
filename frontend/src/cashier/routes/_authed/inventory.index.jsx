@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { ClipboardList, Download, History, Printer, Search } from "lucide-react";
+import { ClipboardList, Download, History, Printer, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import { Input } from "@/cashier/components/ui/input";
@@ -74,6 +74,12 @@ export default function InventoryPage() {
           >
             <Download />
             تصدير Excel
+          </Button>
+          <Button asChild variant="outline" className={BTN}>
+            <Link to="/cashier/inventory/import">
+              <Upload />
+              استيراد من ملف
+            </Link>
           </Button>
           <Button asChild variant="outline" className={BTN}>
             <Link to="/cashier/inventory/movements">
