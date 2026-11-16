@@ -11,6 +11,7 @@ can rebuild evidence without re-querying.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -25,6 +26,8 @@ from app.core.guardrails import screen_inbound
 from app.modules.ai.chat.progress import with_progress
 from app.modules.ai.tools import ToolSpec, register_tool
 from app.modules.analytics.contracts import AnalysisPeriod
+
+logger = logging.getLogger(__name__)
 
 
 async def _shop_timezone(session: AsyncSession, tenant_id: uuid.UUID):
@@ -2162,6 +2165,75 @@ def _explain_unsupported(handler):
     return wrapped
 
 
+# What each source of the data-status summary needs the asker to hold. A source the asker may not
+# read is left out entirely (not shown as "empty"): "no expenses recorded" would itself tell a
+# member of staff that expenses exist or not. An unknown asker holds nothing, so nothing is added.
+_RECORDED_SOURCE_PERMISSION = {
+    "orders": "orders:read",
+    "shipments": "orders:read",
+    "inventory": "inventory:read",
+    "customers": "customers:read",
+    "expenses": "finance:read",
+    "purchases": "purchasing:read",
+}
+
+
+def _recorded_summary(status_result: dict) -> list[dict]:
+    """The sources of a data-status result the asker is allowed to see, as short rows."""
+    from app.modules.ai.agents.sales_intelligence.permissions import held
+
+    allowed = held()
+    rows: list[dict] = []
+    for row in (status_result.get("summary") or {}).get("sources") or []:
+        if not isinstance(row, dict):
+            continue
+        needed = _RECORDED_SOURCE_PERMISSION.get(row.get("source"))
+        if needed is None or needed not in allowed:
+            continue
+        rows.append(
+            {
+                "source": row["source"],
+                "recorded": bool(row.get("recorded")),
+                "first": row.get("first"),
+                "last": row.get("last"),
+            }
+        )
+    return rows
+
+
+def _with_data_recorded(handler):
+    """Hand the model what the shop has recorded together with every answer it reads.
+
+    The model asked for the data status in 79% of the questions (23 of 29), each time a full model
+    round of its own (about 5 seconds and 3.7 thousand tokens) to read 250 tokens. It is attached
+    to the result instead, under its OWN key: the number gate reads facts and the summary of a
+    result, never this key, so no figure becomes legal because of it. The key carries no counts,
+    only whether a source exists and its first and last day. Any failure leaves the result as it
+    was. The status read itself (mode=status) is returned untouched.
+    """
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapped(*args, **kwargs):
+        result = await handler(*args, **kwargs)
+        if (
+            not isinstance(result, dict)
+            or result.get("capability") == "get_data_status"
+            or kwargs.get("mode") == "status"
+        ):
+            return result
+        try:
+            session, tenant_id = args[0], args[1]
+            rows = _recorded_summary(await _si_data_status(session, tenant_id))
+        except Exception:  # noqa: BLE001 - containment: the answer does not depend on this
+            logger.warning("si.data_recorded_unread", exc_info=True)
+            return result
+        return {**result, "data_recorded": rows} if rows else result
+
+    wrapped.attaches_data_recorded = True  # type: ignore[attr-defined]
+    return wrapped
+
+
 NO_FIGURES_NOTE = (
     "nothing was measured here, so no number, period or date can be quoted: say in plain words "
     "that there is nothing recorded yet, and do not write any figure, any 'last N days' or any date"
@@ -2224,9 +2296,9 @@ def register_si_tools() -> None:
                 "20); "
                 "status = what the shop has recorded at all (orders, shipments, expenses, stock, "
                 "purchases, customers, conversations): whether it exists, how many, first and "
-                "last date, no amounts. Call it when an answer comes back empty or surprising, "
-                "or when the owner asks what data you have. An empty source means nothing was "
-                "recorded in the system, not that the number is zero. "
+                "last date, no amounts. Every other mode already returns this as data_recorded, "
+                "so call status only when the owner asks what data you have. An empty source "
+                "means nothing was recorded in the system, not that the number is zero. "
                 "metric_name is needed for value, compare, split and explain only. "
                 "days is 1 to 90, default 30. "
                 f"Metrics: {metrics}."
@@ -2281,9 +2353,10 @@ def register_si_tools() -> None:
 
     for spec in specs:
         if get_tool(spec.name) is None:
-            spec.handler = with_progress(
-                spec.name, _say_it_without_figures(_explain_unsupported(spec.handler))
-            )
+            handler = _say_it_without_figures(_explain_unsupported(spec.handler))
+            if spec.name == "si_metric":
+                handler = _with_data_recorded(handler)
+            spec.handler = with_progress(spec.name, handler)
             register_tool(spec)
 
 

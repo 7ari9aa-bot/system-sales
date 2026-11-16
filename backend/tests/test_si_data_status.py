@@ -202,8 +202,9 @@ def test_the_description_says_when_to_call_it_and_how_to_read_an_empty_source():
     T.register_si_tools()
     text = get_tool("si_metric").description
     for sentence in (
-        "Call it when an answer comes back empty or surprising",
-        "or when the owner asks what data you have",
+        # every other mode already returns the summary as data_recorded (see
+        # test_si_data_recorded_attached), so it is asked for only when the owner wants to know
+        "so call status only when the owner asks what data you have",
         "An empty source means nothing was recorded in the system, not that the number is zero.",
     ):
         assert sentence in text, f"the description lost: {sentence!r}"
