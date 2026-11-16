@@ -20,55 +20,22 @@ _DEFINITION = AgentDefinition(
     capabilities=[
         AgentCapability(
             name="si_metric",
-            description="One metric: value, comparison, split by a dimension, or definition",
+            description=(
+                "Sales numbers: one metric's value, comparison or split; why revenue moved; "
+                "who contacted the shop; what the shop recorded"
+            ),
             required=True,
         ),
         AgentCapability(
-            name="si_why",
-            description="Why revenue moved, weekday mix, new vs returning customers, carriers",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_data_status", description="Store data freshness and maturity", required=False
-        ),
-        AgentCapability(
-            name="si_top_products",
-            description="Best-selling variants with units, revenue, sizes and colors",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_stock_status",
-            description="Stock left: out, running low, unsold, and not tracked",
+            name="si_shop",
+            description=(
+                "The shop's records: best sellers, stock, the cashier, one order, one customer"
+            ),
             required=False,
         ),
         AgentCapability(
             name="si_finance",
-            description="What the shop spent and what it earned after costs and expenses",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_purchasing_summary",
-            description="What the shop bought and what it owes its suppliers",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_cashier_summary",
-            description="What the cashier sold and refunded, per cashier and hour, and open shifts",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_find_order",
-            description="Find an order by number, customer name or phone",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_find_customer",
-            description="Find a customer by name, phone or email with their spend and orders",
-            required=False,
-        ),
-        AgentCapability(
-            name="si_activity",
-            description="Who contacted the store, volume per channel, public social comments",
+            description="What the shop spent, earned after costs, bought and owes its suppliers",
             required=False,
         ),
     ],

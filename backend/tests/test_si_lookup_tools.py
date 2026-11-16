@@ -390,12 +390,15 @@ def test_both_tools_are_registered_read_only_and_gated():
     from app.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    for name, perm in (("si_find_order", "orders:read"), ("si_find_customer", "customers:read")):
-        spec = TOOLS[name]
-        assert spec.requires == perm, name
-        assert spec.risk_level == "LOW", name
-        assert name in known_actions()
-        assert AgentRegistry.is_tool_authorized("sales_intelligence", name)
+    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+
+    spec = TOOLS["si_shop"]
+    assert spec.risk_level == "LOW"
+    assert "si_shop" in known_actions()
+    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_shop")
+    # each lookup is gated by its OWN permission, checked when the read runs
+    assert _SHOP_VIEWS["order"][0] == "orders:read"
+    assert _SHOP_VIEWS["customer"][0] == "customers:read"
 
 
 def test_every_lookup_query_is_tenant_scoped_and_skips_deleted_rows():

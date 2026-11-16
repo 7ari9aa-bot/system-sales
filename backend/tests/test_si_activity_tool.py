@@ -48,33 +48,29 @@ def _window_includes_today(monkeypatch):
 
 
 def test_the_three_old_tools_are_replaced_by_one():
-    assert "si_activity" in T.SI_TOOLS
+    assert "si_metric" in T.SI_TOOLS
+    assert "si_activity" not in T.SI_TOOLS, "the activity reads are a mode of the metric tool now"
     for name in OLD:
-        assert name not in T.SI_TOOLS, f"{name} must not be offered next to si_activity"
+        assert name not in T.SI_TOOLS, f"{name} must not be offered"
 
 
-def test_si_activity_is_registered_with_no_permission_and_low_risk():
+def test_the_activity_reads_need_no_permission_and_are_low_risk():
     T.register_si_tools()
-    spec = get_tool("si_activity")
+    spec = get_tool("si_metric")
     assert spec is not None
     assert spec.requires is None  # the three it replaces required nothing
     assert spec.risk_level == "LOW"
 
 
-def test_the_description_says_what_each_view_is_for():
+def test_the_description_says_what_each_activity_view_is_for():
     T.register_si_tools()
-    text = get_tool("si_activity").description
+    text = get_tool("si_metric").description
+    assert "activity = " in text
     for view in VIEWS:
-        assert f"{view} = " in text, f"the model is never told what view={view} is for"
-    for meaning in (
-        "who contacted the store",
-        "volume per connected platform",
-        "what the public says",
-    ):
+        assert f"{view} (" in text, f"the model is never told what view={view} is for"
+    for meaning in ("who messaged", "volume per platform", "public comments"):
         assert meaning in text, f"the description lost: {meaning!r}"
-    assert "limit" in text and "days" in text
-    # sales and orders live elsewhere, and the model is told so
-    assert "si_metric" in text
+    assert "limit up to 50" in text and "limit up to 20" in text
 
 
 def test_args_schema_rejects_an_unknown_view_and_keeps_the_old_bounds():
@@ -268,8 +264,8 @@ async def test_an_injected_comment_body_is_still_withheld_through_the_merged_too
     T.register_si_tools()
 
     # through the REGISTERED tool, exactly as the runner calls it
-    result = await get_tool("si_activity").handler(
-        db, tenant_ctx.tenant_id, view="comments", days=30, limit=5
+    result = await get_tool("si_metric").handler(
+        db, tenant_ctx.tenant_id, mode="activity", view="comments", days=30, limit=5
     )
 
     by_body = {e["author_name"]: e["body"] for e in result["summary"]["recent"]}

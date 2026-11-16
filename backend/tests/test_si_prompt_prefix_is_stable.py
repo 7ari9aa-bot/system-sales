@@ -18,7 +18,7 @@ from app.modules.ai.models import Agent, AgentTool
 from app.modules.ai.runtime import AgentRunner
 from tests.test_si_today_context import _at
 
-NAMES = ["si_why", "si_metric", "si_stock_status", "si_data_status", "si_finance", "si_activity"]
+NAMES = ["si_shop", "si_metric", "si_finance"]
 
 
 async def _agent(db, tenant_id, order):
@@ -57,7 +57,7 @@ async def test_a_tool_row_written_again_does_not_change_the_order(db, tenant_ctx
     migration touches the tools. The order the model is sent must not follow it."""
     agent = await _agent(db, tenant_ctx.tenant_id, NAMES)
     before = await _loaded(db, tenant_ctx.tenant_id, agent.id)
-    for name in ("si_metric", "si_why"):
+    for name in ("si_metric", "si_shop"):
         await db.execute(
             delete(AgentTool).where(AgentTool.agent_id == agent.id, AgentTool.name == name)
         )

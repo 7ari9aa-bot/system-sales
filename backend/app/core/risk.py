@@ -98,6 +98,7 @@ _REGISTRY: dict[str, RiskLevel] = {
     "si_why": RiskLevel.LOW,
     "si_activity": RiskLevel.LOW,
     "si_finance": RiskLevel.LOW,
+    "si_shop": RiskLevel.LOW,
     "si_data_status": RiskLevel.LOW,
     # Read-only merchant-facing reads (sales detail, contact activity,
     # platform interactions, public comments) — no mutation surface.

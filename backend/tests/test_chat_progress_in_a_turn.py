@@ -108,7 +108,7 @@ def _ctx(tenant_ctx):
     class _C:
         tenant_id = tenant_ctx.tenant_id
         user = tenant_ctx.user
-        permission_codes = {"analytics:read", "finance:read", "inventory:read"}
+        permission_codes = {"analytics:read", "finance:read", "inventory:read", "orders:read"}
 
     return _C()
 
@@ -164,11 +164,11 @@ async def test_two_tools_show_two_steps_in_the_order_they_started(
     _script(
         monkeypatch,
         ("si_metric", {"mode": "value", "metric_name": "orders_placed", "days": 30}),
-        ("si_stock_status", {}),
+        ("si_shop", {"view": "stock"}),
     )
     from app.modules.ai.tools import TOOLS
 
-    for name in ("si_metric", "si_stock_status"):
+    for name in ("si_metric", "si_shop"):
         TOOLS.pop(name, None)
     si_tools.register_si_tools()
 

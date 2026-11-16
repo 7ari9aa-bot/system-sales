@@ -64,9 +64,9 @@ def test_the_description_names_every_mode_and_when_to_use_it():
     assert "never to fetch a number" in text
     # each mode says what it MEANS and when to pick it, not just its name
     for meaning in (
-        "the number for the last N days",
-        "this window against the one before it",
-        "divided by a dimension",
+        "one metric's number for the last N days",
+        "this window against the one before",
+        "one metric divided by dimension",
         "what the metric means and how it is counted",
     ):
         assert meaning in text, f"the description lost: {meaning!r}"

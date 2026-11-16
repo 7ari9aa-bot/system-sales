@@ -73,8 +73,35 @@ def test_every_expected_tool_is_a_real_tool_and_every_required_arg_exists():
             spec = get_tool(name)
             assert spec is not None, f"{c.q!r} expects {name}, which is not a tool"
             props = spec.args_schema.model_json_schema()["properties"]
-            for k in c.args:
+            fields = spec.args_schema.model_fields
+            for k, v in c.args.items():
                 assert k in props, f"{c.q!r} requires {k}, which {name} does not take"
+                # the value must be one the tool really accepts, or the case can never pass
+                spec.args_schema.model_validate({**_minimum(name), k: v})
+                assert fields[k] is not None
+
+
+def _minimum(tool: str) -> dict:
+    """The smallest argument set the tool's own schema accepts, so one value can be checked."""
+    return {
+        "si_metric": {"mode": "status"},
+        "si_shop": {"view": "stock"},
+        "si_finance": {"report": "expenses"},
+    }[tool]
+
+
+def test_every_read_each_tool_can_run_has_at_least_one_question_in_the_eval():
+    """A read no question exercises is a read nobody measured the model's choice for."""
+    from typing import get_args
+
+    from app.modules.ai.agents.sales_intelligence import tools as T
+    from app.modules.ai.tools import get_tool
+
+    T.register_si_tools()
+    for tool, parameter in (("si_metric", "mode"), ("si_shop", "view"), ("si_finance", "report")):
+        values = set(get_args(get_tool(tool).args_schema.model_fields[parameter].annotation))
+        covered = {c.args[parameter] for c in ev.CASES if tool in c.ok and parameter in c.args}
+        assert values <= covered, f"{tool} {parameter}: no question for {sorted(values - covered)}"
 
 
 def test_a_model_that_picks_right_scores_full(monkeypatch):

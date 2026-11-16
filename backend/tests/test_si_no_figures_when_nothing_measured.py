@@ -10,6 +10,7 @@ import uuid
 
 from app.modules.ai.agents.sales_intelligence import tools as si
 from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.modules.ai.agents.sales_intelligence.permissions import asking_with
 from app.modules.ai.agents.sales_intelligence.tools import (
     NO_FIGURES_NOTE,
     _say_it_without_figures,
@@ -81,17 +82,18 @@ def test_the_note_forbids_figures_periods_and_dates():
 
 async def test_the_real_cashier_tool_for_a_shop_with_no_register_carries_it(db, tenant_ctx):
     """The wiring: through the registered tool, as the model reaches it (the production case)."""
-    TOOLS.pop("si_cashier_summary", None)
+    TOOLS.pop("si_shop", None)
     si.register_si_tools()
-    handler = TOOLS["si_cashier_summary"].handler
-    out = await handler(db, tenant_ctx.tenant_id, days=30)
+    handler = TOOLS["si_shop"].handler
+    with asking_with({"orders:read"}):
+        out = await handler(db, tenant_ctx.tenant_id, view="cashier", days=30)
     assert out["status"] == "no_data"
     assert NO_FIGURES_NOTE in out["limitations"]
     assert "no cashier register is set up yet, so there are no till sales" in out["limitations"]
 
 
 async def test_every_registered_tool_is_wrapped():
-    TOOLS.pop("si_cashier_summary", None)
+    TOOLS.pop("si_shop", None)
     si.register_si_tools()
     names = [n for n in TOOLS if n.startswith("si_")]
     assert names
@@ -123,10 +125,10 @@ PLAIN_ANSWER = "الكاشير لسه ما اتجهّزش عندك، فمفيش 
 async def _round(db, tenant_ctx, monkeypatch):
     """The model asks for the till, then answers. It writes the figures draft unless the tool
     result it was handed tells it there is nothing to quote, exactly the production failure."""
-    TOOLS.pop("si_cashier_summary", None)
+    TOOLS.pop("si_shop", None)
     si.register_si_tools()
     agent = await _seed(db, tenant_ctx.tenant_id)
-    db.add(AgentTool(tenant_id=tenant_ctx.tenant_id, agent_id=agent.id, name="si_cashier_summary"))
+    db.add(AgentTool(tenant_id=tenant_ctx.tenant_id, agent_id=agent.id, name="si_shop"))
     await db.flush()
 
     seen: list[list[dict]] = []
@@ -138,7 +140,9 @@ async def _round(db, tenant_ctx, monkeypatch):
                 content=None,
                 tool_calls=[
                     ToolCallRequest(
-                        id="c1", name="si_cashier_summary", arguments={"days": 30, "limit": 15}
+                        id="c1",
+                        name="si_shop",
+                        arguments={"view": "cashier", "days": 30, "limit": 15},
                     )
                 ],
                 tokens_in=1,
@@ -172,3 +176,39 @@ async def test_the_model_is_handed_the_note_and_answers_in_one_pass(db, tenant_c
     assert result.guardrail_reason is None
     # tool round + the answer: no third call to rewrite a rejected draft (it cost 36 s)
     assert len(seen) == 2
+
+
+async def test_an_asker_without_the_permission_gets_a_refusal_not_the_records(db, tenant_ctx):
+    """The tool covers several reads, so it checks the permission of the read it was asked for.
+
+    Whole path, as the runner calls it: the permissions travel in a context variable around the
+    run, and with none held the cashier read refuses in words the model can relay.
+    """
+    import pytest
+
+    from app.core.errors import ValidationError
+
+    TOOLS.pop("si_shop", None)
+    si.register_si_tools()
+    handler = TOOLS["si_shop"].handler
+    with asking_with({"analytics:read"}), pytest.raises(ValidationError, match="not allowed"):
+        await handler(db, tenant_ctx.tenant_id, view="cashier", days=30)
+    # unknown asker: fails closed, never open
+    with asking_with(None), pytest.raises(ValidationError, match="not allowed"):
+        await handler(db, tenant_ctx.tenant_id, view="stock")
+    with pytest.raises(ValidationError, match="not allowed"):  # no block at all
+        await handler(db, tenant_ctx.tenant_id, view="customer", query="x")
+
+
+async def test_a_measured_zero_through_the_metric_tool_is_not_told_to_hide_its_figures(
+    db, tenant_ctx
+):
+    """The warning is for a read that measured NOTHING. A shop that really sold zero in a window it
+    measured has a figure to state, and must not be told to leave the number and period out."""
+    TOOLS.pop("si_metric", None)
+    si.register_si_tools()
+    with asking_with(set()):
+        out = await TOOLS["si_metric"].handler(
+            db, tenant_ctx.tenant_id, mode="value", metric_name="orders_placed", days=30
+        )
+    assert NO_FIGURES_NOTE not in (out.get("limitations") or []), out.get("status")

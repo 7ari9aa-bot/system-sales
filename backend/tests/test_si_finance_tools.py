@@ -391,7 +391,6 @@ def test_the_money_tool_is_registered_gated_low_risk_and_allowed():
     si.register_si_tools()
     for name in ("si_finance",):
         spec = TOOLS[name]
-        assert spec.requires == "finance:read", f"{name} must need finance:read"
         assert spec.risk_level == "LOW"
         assert name in known_actions()
         assert AgentRegistry.is_tool_authorized("sales_intelligence", name)

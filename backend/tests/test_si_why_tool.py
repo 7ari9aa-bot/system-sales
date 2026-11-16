@@ -42,15 +42,16 @@ def _same(new, old) -> bool:
     return new == old
 
 
-def test_the_four_old_tools_are_replaced_by_one():
-    assert "si_why" in T.SI_TOOLS
+def test_the_four_old_tools_are_replaced_by_the_metric_tool():
+    assert "si_metric" in T.SI_TOOLS
+    assert "si_why" not in T.SI_TOOLS, "the why reads are a mode of the metric tool now"
     for name in OLD:
-        assert name not in T.SI_TOOLS, f"{name} must not be offered next to si_why"
+        assert name not in T.SI_TOOLS, f"{name} must not be offered"
 
 
-def test_si_why_is_registered_with_no_permission_and_low_risk():
+def test_the_why_reads_need_no_permission_and_are_low_risk():
     T.register_si_tools()
-    spec = get_tool("si_why")
+    spec = get_tool("si_metric")
     assert spec is not None
     # the four it replaces had no requirement; the merge must not add or drop one
     assert spec.requires is None
@@ -59,21 +60,19 @@ def test_si_why_is_registered_with_no_permission_and_low_risk():
 
 def test_the_description_says_what_each_focus_is_for():
     T.register_si_tools()
-    text = get_tool("si_why").description
+    text = get_tool("si_metric").description
     for focus in FOCUSES:
-        assert f"{focus} = " in text, f"the model is never told what focus={focus} is for"
+        assert f"{focus} (" in text, f"the model is never told what focus={focus} is for"
     assert "days" in text and "minimum_volume" in text
     # each focus says what it MEANS and when to pick it, not just its name
     for meaning in (
-        "WHY revenue moved",
-        "more or fewer orders versus a bigger or smaller basket",
-        "weekday mix",
-        "new versus returning customers",
-        "delivery and rejection rate per carrier",
+        "why revenue moved",
+        "more orders or a bigger basket",
+        "which weekdays are strong",
+        "new versus returning",
+        "delivery and rejection per carrier",
     ):
         assert meaning in text, f"the description lost: {meaning!r}"
-    # a question about ONE metric belongs to the other tool, and the model is told so
-    assert "si_metric" in text
 
 
 def test_args_schema_rejects_an_unknown_focus_and_keeps_the_old_defaults():

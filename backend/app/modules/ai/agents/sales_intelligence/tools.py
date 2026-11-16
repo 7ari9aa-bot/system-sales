@@ -378,17 +378,29 @@ async def _si_explain_metric(
     }
 
 
-_METRIC_MODES = ("value", "compare", "split", "explain")
+# The first four answer about ONE named metric. why / activity / status are about the store as a
+# whole, so they take no metric_name; each reads exactly what the tool of that name always read.
+_METRIC_MODES = ("value", "compare", "split", "explain", "why", "activity", "status")
+_MODES_WITH_A_METRIC = ("value", "compare", "split", "explain")
 
 
 class SIMetricArgs(BaseModel):
     """One question about one store metric. ``mode`` says which kind of answer is wanted."""
 
-    mode: Literal["value", "compare", "split", "explain"]
-    metric_name: str
+    mode: Literal["value", "compare", "split", "explain", "why", "activity", "status"]
+    # needed for value, compare, split and explain; not used by why, activity and status
+    metric_name: str | None = None
     days: int = Field(default=30, ge=1, le=90)
     dimension: str = "channel"
     channel: str | None = None
+    # why only: drivers, seasonality, customers or fulfillment
+    focus: Literal["drivers", "seasonality", "customers", "fulfillment"] | None = None
+    # activity only: customers, channels or comments
+    view: Literal["customers", "channels", "comments"] | None = None
+    # activity only (customers up to 50, comments up to 20); why/fulfillment: carriers with fewer
+    # shipments than minimum_volume are left out
+    limit: int | None = Field(default=None, ge=1, le=50)
+    minimum_volume: int = Field(default=10, ge=1, le=100)
 
 
 async def _si_metric(
@@ -396,18 +408,38 @@ async def _si_metric(
     tenant_id: uuid.UUID,
     *,
     mode: str,
-    metric_name: str,
+    metric_name: str | None = None,
     days: int = 30,
     dimension: str = "channel",
     channel: str | None = None,
+    focus: str | None = None,
+    view: str | None = None,
+    limit: int | None = None,
+    minimum_volume: int = 10,
     context: dict | None = None,
 ) -> dict:
     """A thin router: each mode runs the same tested computation it always did.
 
-    The four tools it replaces were four choices the model weighed on every question. Nothing
-    is recomputed here, so every guarantee of the originals (the numbers come from evidence,
+    The tools it replaces were choices the model weighed on every question. Nothing is
+    recomputed here, so every guarantee of the originals (the numbers come from evidence,
     the metric name is checked against the registry) is the originals' own.
     """
+    if mode == "status":
+        return await _si_data_status(session, tenant_id)
+    if mode == "why":
+        if not focus:
+            raise ValidationError(
+                "mode=why needs focus: drivers, seasonality, customers or fulfillment"
+            )
+        return await _si_why(
+            session, tenant_id, focus=focus, days=days, minimum_volume=minimum_volume
+        )
+    if mode == "activity":
+        if not view:
+            raise ValidationError("mode=activity needs view: customers, channels or comments")
+        return await _si_activity(session, tenant_id, view=view, days=days, limit=limit)
+    if mode in _MODES_WITH_A_METRIC and not (metric_name or "").strip():
+        raise ValidationError(f"mode={mode} needs metric_name: the metric to look at")
     if mode == "value":
         return await _si_get_metric(
             session, tenant_id, metric_name=metric_name, days=days, channel=channel
@@ -506,18 +538,18 @@ async def _si_activity(
     return await _si_social_comments(session, tenant_id, days=days, limit=limit)
 
 
-_FINANCE_REPORTS = ("expenses", "profit")
-# The expenses read keeps the default and ceiling it always had; profit has no list to cap.
+_FINANCE_REPORTS = ("expenses", "profit", "purchasing")
+# Expenses and purchasing keep the default and ceiling they always had; profit has no list to cap.
 _EXPENSES_LIMIT = (8, 25)
 
 
 class SIFinanceArgs(BaseModel):
     """The shop's own money. ``report`` says which side of it."""
 
-    report: Literal["expenses", "profit"]
+    report: Literal["expenses", "profit", "purchasing"]
     # a year, not 90 like the sales reads: the originals allowed it and owners ask "this year"
     days: int = Field(default=30, ge=1, le=366)
-    # only for expenses (default 8, at most 25): how many of the biggest items to list
+    # only for expenses and purchasing (default 8, at most 25): how many items to list
     limit: int | None = Field(default=None, ge=1, le=25)
 
 
@@ -535,8 +567,13 @@ async def _si_finance(
     The two tools it replaces were two more choices for the model on every question. Nothing is
     recomputed here, so every guarantee of the originals (profit is shown only when every sold
     line's cost is known, only posted expenses count, tenant scoping) is the originals' own. The
-    permission is not decided here: the registered tool requires ``finance:read``, as both did.
+    permission is decided HERE, per report, because the three reads need two different ones
+    (money reports ``finance:read``, purchases ``purchasing:read``) and a tool can be registered
+    with only one. With no permission known it refuses.
     """
+    from app.modules.ai.agents.sales_intelligence.permissions import require
+
+    require("purchasing:read" if report == "purchasing" else "finance:read", what=f"the {report}")
     if report not in _FINANCE_REPORTS:
         raise ValidationError(
             f"report must be one of: {', '.join(_FINANCE_REPORTS)} (got {report!r})"
@@ -547,8 +584,77 @@ async def _si_finance(
     if limit is None:
         limit = default
     elif limit > ceiling:
-        raise ValidationError(f"limit for expenses can be at most {ceiling} (got {limit})")
+        raise ValidationError(f"limit for {report} can be at most {ceiling} (got {limit})")
+    if report == "purchasing":
+        return await _si_purchasing_summary(session, tenant_id, days=days, limit=limit)
     return await _si_expenses_summary(session, tenant_id, days=days, limit=limit)
+
+
+# Each read the shop tool can run: (the permission THAT read needs, default limit, highest limit,
+# highest days or None when the read has no window). The ceilings are the originals' own, so folding
+# five tools into one widens nothing.
+_SHOP_VIEWS: dict[str, tuple[str, int, int, int | None]] = {
+    "products": ("orders:read", 5, 20, 90),
+    "stock": ("inventory:read", 10, 25, None),
+    "cashier": ("orders:read", 8, 25, 366),
+    "order": ("orders:read", 5, 10, None),
+    "customer": ("customers:read", 5, 10, None),
+}
+_SHOP_NEEDS_QUERY = ("order", "customer")
+
+
+class SIShopArgs(BaseModel):
+    """One read of the shop's own records. ``view`` says which."""
+
+    view: Literal["products", "stock", "cashier", "order", "customer"]
+    # products and cashier only: the window (products up to 90, cashier up to 366)
+    days: int = Field(default=30, ge=1, le=366)
+    # the biggest items to list; each view keeps its own default and ceiling
+    limit: int | None = Field(default=None, ge=1, le=25)
+    # order and customer only: the name, number or phone to look for
+    query: str | None = Field(default=None, max_length=120)
+    # stock only: an item that has not sold for this many days counts as stagnant
+    stagnant_days: int = Field(default=30, ge=7, le=365)
+
+
+async def _si_shop(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    view: str,
+    days: int = 30,
+    limit: int | None = None,
+    query: str | None = None,
+    stagnant_days: int = 30,
+    context: dict | None = None,
+) -> dict:
+    """A thin router over the five reads it replaces; each runs exactly as it always did.
+
+    Nothing is recomputed here. What it adds is the check the runner could not do for a tool that
+    covers several reads: the asker must hold the permission of the read asked for, not just of the
+    tool, so folding them together never lets an asker read what one of them was closed to.
+    """
+    from app.modules.ai.agents.sales_intelligence.permissions import require
+
+    if view not in _SHOP_VIEWS:
+        raise ValidationError(f"view must be one of: {', '.join(_SHOP_VIEWS)} (got {view!r})")
+    needs, default, ceiling, max_days = _SHOP_VIEWS[view]
+    require(needs, what=f"the shop's {view} records")
+    if limit is None:
+        limit = default
+    elif limit > ceiling:
+        raise ValidationError(f"limit for {view} can be at most {ceiling} (got {limit})")
+    if max_days is not None and days > max_days:
+        raise ValidationError(f"days for {view} can be at most {max_days} (got {days})")
+    if view in _SHOP_NEEDS_QUERY:
+        if not (query or "").strip():
+            raise ValidationError(f"view={view} needs a query: the name, number or phone to find")
+        finder = _si_find_order if view == "order" else _si_find_customer
+        return await finder(session, tenant_id, query=query, limit=limit)
+    if view == "stock":
+        return await _si_stock_status(session, tenant_id, limit=limit, stagnant_days=stagnant_days)
+    reader = _si_top_products if view == "products" else _si_cashier_summary
+    return await reader(session, tenant_id, days=days, limit=limit)
 
 
 class SIStatusArgs(BaseModel):
@@ -2022,16 +2128,8 @@ async def _si_social_comments(
 #: read this tuple instead of re-listing them.
 SI_TOOLS: tuple[str, ...] = (
     "si_metric",
-    "si_why",
-    "si_data_status",
-    "si_top_products",
-    "si_activity",
-    "si_stock_status",
+    "si_shop",
     "si_finance",
-    "si_purchasing_summary",
-    "si_cashier_summary",
-    "si_find_order",
-    "si_find_customer",
 )
 
 
@@ -2102,37 +2200,28 @@ def register_si_tools() -> None:
     metrics = ", ".join(sorted(computable_metric_names()))
     specs = [
         ToolSpec(
-            name="si_why",
-            description=(
-                "Analyse the store as a whole over the last N days. Pick focus: "
-                "drivers = WHY revenue moved, split exactly into more or fewer orders versus "
-                "a bigger or smaller basket (use for 'why did sales go up or down'); "
-                "seasonality = whether the weekday mix explains the change, with the daily "
-                "revenue shape (use for 'which days are strong, is it just the weekend'); "
-                "customers = new versus returning customers (use for 'who is buying, are "
-                "they coming back'); "
-                "fulfillment = delivery and rejection rate per carrier (use for 'which "
-                "carrier is failing, why are orders returned'). "
-                "Pass days (1 to 90, default 30). minimum_volume (default 10) is only for "
-                "fulfillment: a carrier with fewer shipments than that is left out. "
-                "To get one metric's number, comparison or split use si_metric instead."
-            ),
-            args_schema=SIWhyArgs,
-            handler=_si_why,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
             name="si_metric",
             description=(
-                "Answer a question about ONE store metric. Pick mode: "
-                "value = the number for the last N days (use for 'how much / how many'); "
-                "compare = this window against the one before it (use for 'up or down / vs "
-                "last month'); "
-                "split = the number divided by a dimension such as channel (use for 'which "
-                "channel / where from'); "
-                "explain = what the metric means and how it is counted (use only when the "
-                "owner asks what a word means, never to fetch a number). "
-                "Pass days (1 to 90, default 30). dimension is only for mode=split. "
+                "Numbers about the store's sales and activity (use for 'how much, how many, "
+                "up or down, why, who, what do I have'). Pick mode: "
+                "value = one metric's number for the last N days ('how much / how many'); "
+                "compare = this window against the one before ('up or down'); "
+                "split = one metric divided by dimension, such as channel ('which channel'); "
+                "explain = what the metric means and how it is counted, never to fetch a number; "
+                "why = the store as a whole, needs focus: drivers (why revenue moved: more "
+                "orders or a bigger basket), seasonality (which weekdays are strong), customers "
+                "(new versus returning), fulfillment (delivery and rejection per carrier; "
+                "minimum_volume leaves out small carriers); "
+                "activity = who the audience is, needs view: customers (who messaged, limit up "
+                "to 50), channels (volume per platform), comments (public comments, limit up to "
+                "20); "
+                "status = what the shop has recorded at all (orders, shipments, expenses, stock, "
+                "purchases, customers, conversations): whether it exists, how many, first and "
+                "last date, no amounts. Call it when an answer comes back empty or surprising, "
+                "or when the owner asks what data you have. An empty source means nothing was "
+                "recorded in the system, not that the number is zero. "
+                "metric_name is needed for value, compare, split and explain only. "
+                "days is 1 to 90, default 30. "
                 f"Metrics: {metrics}."
             ),
             args_schema=SIMetricArgs,
@@ -2140,132 +2229,44 @@ def register_si_tools() -> None:
             tags=["sales-intelligence"],
         ),
         ToolSpec(
-            name="si_data_status",
+            name="si_shop",
             description=(
-                "What the shop has recorded: for orders, shipments, expenses, stock items, "
-                "purchases, customers and conversations, whether anything exists, how many, "
-                "and the first and last date. No amounts, no arguments. "
-                "Call it when an answer comes back empty or surprising, or when the owner "
-                "asks what data you have, so you can say exactly which part is empty (the "
-                "shop never recorded it) instead of a vague 'no data'. "
-                "An empty source means nothing was recorded in the system, not that the "
-                "number is zero."
+                "Look inside the shop's own records (use for 'what sells, what is left, what "
+                "did the cashier sell, find this order or customer'). Pick view: "
+                "products = best sellers with units, revenue and the sizes and colors chosen "
+                "(days up to 90, limit up to 20); "
+                "stock = what is out, running low, sitting unsold or not tracked "
+                "(stagnant_days, limit up to 25); "
+                "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
+                "shifts (days up to 366, limit up to 25; online order totals are in "
+                "si_metric); "
+                "order = ONE order by number, customer name or phone, needs query (limit up to "
+                "10); "
+                "customer = ONE customer by name, phone or email, needs query (phone and email "
+                "come back masked). "
+                "Read-only."
             ),
-            args_schema=SIStatusArgs,
-            handler=_si_data_status,
+            args_schema=SIShopArgs,
+            handler=_si_shop,
             tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_top_products",
-            description=(
-                "Best-selling variants in the window: units, revenue, and the "
-                "size/color options buyers chose (use for 'what sells most, which size "
-                "or color'). For one metric's total use si_metric."
-            ),
-            args_schema=SITopProductsArgs,
-            handler=_si_top_products,
-            tags=["sales-intelligence"],
-        ),
-        ToolSpec(
-            name="si_stock_status",
-            description=(
-                "What is left in the shop: variants out of stock, running low "
-                "(at or under the shop's own reorder level), sitting unsold for "
-                "stagnant_days, and not tracked at all (use for 'what is left, what "
-                "should I reorder'). Read-only."
-            ),
-            args_schema=SIStockStatusArgs,
-            handler=_si_stock_status,
-            tags=["sales-intelligence"],
-            requires="inventory:read",
         ),
         ToolSpec(
             name="si_finance",
             description=(
-                "The shop's own money over the last N days. Pick report: "
-                "expenses = what the shop spent: the total, by category, by payment method "
-                "and the biggest items; posted expenses only (use for 'how much did I spend, "
-                "on what'); "
+                "The shop's own money over the last N days (use for 'what did I spend, what "
+                "did I earn, what did I buy, what do I owe'). Pick report: "
+                "expenses = what the shop spent, by category, by payment method, and the "
+                "biggest items (posted only); "
                 "profit = what the shop earned after the cost of what it sold and after "
-                "expenses; profit is given only when the cost of every sold item is known, "
-                "otherwise the answer says how much is uncosted and shows no profit figure "
-                "(use for 'how much did I make, am I profitable'). "
-                "Pass days (1 to 366, default 30). limit is only for expenses (default 8, at "
-                "most 25). Sales revenue itself is not here: use si_metric for that. "
-                "Read-only."
+                "expenses, only when the cost of every sold item is known, otherwise it shows "
+                "no profit figure and says how much is uncosted; "
+                "purchasing = what the shop bought, orders waiting to arrive and what it owes "
+                "each supplier. "
+                "days is 1 to 366, default 30. limit is for expenses and purchasing only "
+                "(default 8, at most 25). Sales revenue is not here: use si_metric. Read-only."
             ),
             args_schema=SIFinanceArgs,
             handler=_si_finance,
-            tags=["sales-intelligence"],
-            requires="finance:read",
-        ),
-        ToolSpec(
-            name="si_purchasing_summary",
-            description=(
-                "What the shop bought in the window, orders waiting to arrive, and how "
-                "much it owes each supplier (use for 'what did I buy, what do I owe'). "
-                "Read-only."
-            ),
-            args_schema=SIPurchasingArgs,
-            handler=_si_purchasing_summary,
-            tags=["sales-intelligence"],
-            requires="purchasing:read",
-        ),
-        ToolSpec(
-            name="si_cashier_summary",
-            description=(
-                "What the cashier sold and refunded in the window: totals, net, per "
-                "cashier, busiest hours and open shifts (use for in-shop point-of-sale "
-                "questions only; for online order totals use si_metric). Read-only."
-            ),
-            args_schema=SICashierArgs,
-            handler=_si_cashier_summary,
-            tags=["sales-intelligence"],
-            requires="orders:read",
-        ),
-        ToolSpec(
-            name="si_find_order",
-            description=(
-                "Find an order by number, customer name or phone: status, total, items, "
-                "channel and date (use to look up ONE order the owner names; for totals "
-                "or counts of orders use si_metric). Read-only; never returns an address."
-            ),
-            args_schema=SIFindOrderArgs,
-            handler=_si_find_order,
-            tags=["sales-intelligence"],
-            requires="orders:read",
-        ),
-        ToolSpec(
-            name="si_find_customer",
-            description=(
-                "Find a customer by name, phone or email: order count, total spent and "
-                "last purchase (use to look up ONE customer the owner names; for who "
-                "buys or returns use si_why with focus customers). Phone and email come "
-                "back masked. Read-only."
-            ),
-            args_schema=SIFindCustomerArgs,
-            handler=_si_find_customer,
-            tags=["sales-intelligence"],
-            requires="customers:read",
-        ),
-        ToolSpec(
-            name="si_activity",
-            description=(
-                "What the store's audience is doing over the last N days. Pick view: "
-                "customers = who contacted the store, with conversation and message counts "
-                "(use for 'who is talking to us, who messaged most'); "
-                "channels = interaction volume per connected platform such as whatsapp, "
-                "instagram, messenger, telegram or webchat (use for 'which channel brings "
-                "the most conversations'); "
-                "comments = what the public says on the store's social posts: volume per "
-                "platform, top posts and the latest comments (use for 'what are people "
-                "commenting'). "
-                "Pass days (1 to 90, default 30). limit is only for customers (default 10, "
-                "at most 50) and comments (default 5, at most 20). "
-                "Sales and orders are not here: use si_metric for those."
-            ),
-            args_schema=SIActivityArgs,
-            handler=_si_activity,
             tags=["sales-intelligence"],
         ),
     ]

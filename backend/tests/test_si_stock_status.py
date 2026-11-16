@@ -280,15 +280,16 @@ def test_it_is_registered_and_gated_by_the_inventory_permission():
     import app.modules.ai.agents.sales_intelligence.tools as tools
 
     tools.register_si_tools()
-    spec = get_tool("si_stock_status")
-    assert spec is not None
-    assert spec.requires == "inventory:read"
+    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+
+    assert get_tool("si_shop") is not None
+    assert _SHOP_VIEWS["stock"][0] == "inventory:read"
 
 
 def test_the_agent_kind_allows_the_tool():
     from app.modules.ai.core.registry import AgentRegistry
 
-    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_stock_status")
+    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_shop")
 
 
 async def _sell(db, tenant_id, variant, *, days_ago, status="fulfilled", deleted=False):

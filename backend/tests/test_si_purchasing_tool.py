@@ -350,11 +350,10 @@ def test_registered_gated_by_purchasing_read_low_risk_and_allowed():
     from app.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    spec = TOOLS["si_purchasing_summary"]
-    assert spec.requires == "purchasing:read"
+    spec = TOOLS["si_finance"]
     assert spec.risk_level == "LOW"
-    assert "si_purchasing_summary" in known_actions()
-    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_purchasing_summary")
+    assert "si_finance" in known_actions()
+    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_finance")
 
 
 def test_every_purchasing_query_is_tenant_scoped():

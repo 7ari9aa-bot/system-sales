@@ -48,12 +48,14 @@ def test_registry_registration_and_queries() -> None:
     for transacting in ("create_order", "add_task", "add_tag"):
         assert AgentRegistry.is_tool_authorized("customer", transacting) is False
     # Customer agent must NEVER be authorized for sales intelligence tools
-    assert AgentRegistry.is_tool_authorized("customer", "si_why") is False
+    for owner_tool in ("si_metric", "si_shop", "si_finance"):
+        assert AgentRegistry.is_tool_authorized("customer", owner_tool) is False, owner_tool
     assert AgentRegistry.is_tool_authorized("customer", "unknown_tool_xyz") is False
 
     # Sales Intelligence authorization checks
     assert AgentRegistry.get("sales_intelligence") is not None
-    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_why") is True
+    for owner_tool in ("si_metric", "si_shop", "si_finance"):
+        assert AgentRegistry.is_tool_authorized("sales_intelligence", owner_tool) is True
     assert AgentRegistry.is_tool_authorized("sales_intelligence", "create_order") is False
 
 

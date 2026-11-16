@@ -14,18 +14,46 @@ import uuid
 
 import pytest
 
+from app.modules.ai.agents.sales_intelligence import tools as si_tools
 from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 from app.modules.ai.chat import progress as progress_module
-from app.modules.ai.chat.progress import STEP_TEXT, TOOL_STEP, note_step, step_for_tool
+from app.modules.ai.chat.progress import STEP_TEXT, TOOL_STEP_BY, note_step, step_for_tool
 from app.modules.ai.models import AIChatMessage, AIChatThread
 from tests.test_si_agent import _seed
 
 LATIN = re.compile(r"[A-Za-z_]{2,}")
 
 
+def _values_of(tool: str, parameter: str) -> set[str]:
+    """The values the REAL argument schema accepts, so a new one cannot be forgotten here."""
+    from typing import get_args
+
+    from app.modules.ai.tools import get_tool
+
+    si_tools.register_si_tools()
+    field = get_tool(tool).args_schema.model_fields[parameter]
+    return {v for v in get_args(field.annotation) if isinstance(v, str)}
+
+
 def test_every_owner_tool_has_a_step_and_no_step_names_a_tool_that_does_not_exist():
-    assert set(TOOL_STEP) == set(SI_TOOLS)
-    assert set(TOOL_STEP.values()) == set(STEP_TEXT)
+    assert set(TOOL_STEP_BY) == set(SI_TOOLS)
+    used = {step for _, steps in TOOL_STEP_BY.values() for step in steps.values()}
+    assert used <= set(STEP_TEXT)
+    assert set(STEP_TEXT) <= used, "a written step no tool ever shows"
+
+
+def test_every_read_a_tool_can_run_has_its_own_step():
+    for tool, (parameter, steps) in TOOL_STEP_BY.items():
+        assert set(steps) == _values_of(tool, parameter), (tool, parameter)
+
+
+def test_the_step_follows_the_read_not_just_the_tool():
+    # one tool, several reads: a shop lookup must not announce "reading your sales"
+    assert step_for_tool("si_shop", {"view": "stock"}) == "stock"
+    assert step_for_tool("si_shop", {"view": "customer"}) == "customers"
+    assert step_for_tool("si_metric", {"mode": "why"}) == "why"
+    assert step_for_tool("si_metric", {"mode": "status"}) == "status"
+    assert step_for_tool("si_finance", {"report": "purchasing"}) == "purchasing"
 
 
 def test_there_is_no_writing_step_because_nothing_marks_the_last_model_call():
@@ -43,7 +71,11 @@ def test_the_wording_is_plain_arabic_with_no_internal_word():
 def test_a_tool_with_no_wording_shows_no_step_rather_than_a_wrong_one():
     assert step_for_tool("not_a_tool") is None
     assert step_for_tool(None) is None
-    assert step_for_tool("si_metric") == "sales"
+    assert step_for_tool("si_metric", {"mode": "value"}) == "sales"
+    # a read the table does not know, or no read at all, announces nothing
+    assert step_for_tool("si_metric", {"mode": "made_up"}) is None
+    assert step_for_tool("si_metric", {}) is None
+    assert step_for_tool("si_metric") is None
 
 
 async def _generating_row(db, tenant_ctx, status="generating") -> AIChatMessage:

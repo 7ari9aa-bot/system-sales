@@ -148,14 +148,14 @@ async def test_the_old_static_text_is_gone(db, tenant_ctx):
 async def test_it_still_works_through_the_registered_tool(db, tenant_ctx):
     await _two_periods(db, tenant_ctx.tenant_id)
     T.register_si_tools()
-    out = await get_tool("si_data_status").handler(db, tenant_ctx.tenant_id)
+    out = await get_tool("si_metric").handler(db, tenant_ctx.tenant_id, mode="status")
     assert _by_source(out)["orders"]["recorded"] is True
-    assert get_tool("si_data_status").requires is None
+    assert get_tool("si_metric").requires is None  # it needs no permission, as before
 
 
 def test_the_description_tells_the_model_when_to_use_it_and_what_it_does_not_hold():
     T.register_si_tools()
-    text = get_tool("si_data_status").description.lower()
+    text = get_tool("si_metric").description.lower()
     for meaning in (
         "what the shop has recorded",
         "whether",
@@ -164,7 +164,7 @@ def test_the_description_tells_the_model_when_to_use_it_and_what_it_does_not_hol
     ):
         assert meaning in text, f"the description lost: {meaning!r}"
     # the empty-answer rule is what stops "no data" from meaning three different things
-    assert "empty" in text and "never recorded" in text
+    assert "empty" in text and "nothing was recorded" in text
     assert "data freshness/maturity" not in text, "the old claim is still there"
 
 
@@ -200,7 +200,7 @@ async def test_a_voided_expense_does_not_count_as_recorded(db, tenant_ctx):
 
 def test_the_description_says_when_to_call_it_and_how_to_read_an_empty_source():
     T.register_si_tools()
-    text = get_tool("si_data_status").description
+    text = get_tool("si_metric").description
     for sentence in (
         "Call it when an answer comes back empty or surprising",
         "or when the owner asks what data you have",

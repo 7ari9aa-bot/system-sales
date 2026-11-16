@@ -464,11 +464,14 @@ def test_registered_with_the_same_permission_the_till_reports_use():
     from app.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    spec = TOOLS["si_cashier_summary"]
-    assert spec.requires == "orders:read"
+    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+
+    spec = TOOLS["si_shop"]
+    # the permission is the READ's: the till is read with the same permission the till reports use
+    assert _SHOP_VIEWS["cashier"][0] == "orders:read"
     assert spec.risk_level == "LOW"
-    assert "si_cashier_summary" in known_actions()
-    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_cashier_summary")
+    assert "si_shop" in known_actions()
+    assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_shop")
 
 
 def test_every_cashier_query_is_tenant_scoped():

@@ -14,7 +14,8 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool, tools_visible_to
+from app.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.modules.ai.tools import get_tool
 from tests.test_si_finance_tools import (
     _category,
     _delivered_sale,
@@ -46,26 +47,28 @@ def test_the_two_old_tools_are_replaced_by_one():
         assert name not in T.SI_TOOLS, f"{name} must not be offered next to si_finance"
 
 
-def test_si_finance_requires_finance_read_and_is_low_risk():
+@pytest.fixture(autouse=True)
+def _the_owner_is_asking():
+    """The computations below run as the shop owner would. WHO may read WHAT is proven in
+    ``test_si_permissions_per_read`` (every read, every asker), so it is not repeated here."""
+    with asking_with({"finance:read", "purchasing:read"}):
+        yield
+
+
+def test_si_finance_is_low_risk_and_its_reads_are_gated_when_they_run():
     T.register_si_tools()
     spec = get_tool("si_finance")
     assert spec is not None
-    assert spec.requires == "finance:read", "the shop's money must stay behind finance:read"
     assert spec.risk_level == "LOW"
 
 
-def test_an_asker_without_finance_read_is_never_shown_it():
+async def test_an_asker_without_finance_read_cannot_read_the_money(db, tenant_ctx):
     T.register_si_tools()
-    tool = get_tool("si_finance")
-    for held in (
-        set(),
-        {"orders:read"},
-        {"inventory:read", "customers:read"},
-        None,
-        "finance:read",
-    ):
-        assert tool not in tools_visible_to([tool], held), f"shown to an asker holding {held!r}"
-    assert tool in tools_visible_to([tool], {"finance:read"})
+    for held in (set(), {"orders:read"}, {"inventory:read", "customers:read"}, None):
+        with asking_with(held), pytest.raises(ValidationError, match="not allowed"):
+            await T._si_finance(db, tenant_ctx.tenant_id, report="expenses")
+        with asking_with(held), pytest.raises(ValidationError, match="not allowed"):
+            await T._si_finance(db, tenant_ctx.tenant_id, report="profit")
 
 
 def test_the_description_says_what_each_report_is_for():

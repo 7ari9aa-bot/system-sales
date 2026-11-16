@@ -36,6 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # form keeps it alive under any lint sweep.
 from app.core.guardrails import screen_inbound as _screen_inbound
 from app.modules.ai.agents.sales_intelligence import (
+    permissions as _permissions,
+)
+from app.modules.ai.agents.sales_intelligence import (
     tools as _si_tools,  # noqa: F401 — registers the SI tools at import
 )
 from app.modules.ai.agents.sales_intelligence.coverage import (
@@ -500,28 +503,32 @@ async def run_sales_analysis(
     message_for_the_model = note or question
     result = None
     try:
-        result = await runner.run(
-            session,
-            tenant_id,
-            agent_id=agent_id,
-            user_message=message_for_the_model,
-            # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
-            # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
-            # call ignore whatever the tenant's Agent actually holds: merchant edits
-            # and any prompt rollout were inert for the whole Sales Intelligence
-            # agent. The row is provisioned from the definition, and
-            # `_resolve_system_prompt` falls back to that definition when the row is
-            # empty, so the configured prompt still always reaches the model.
-            history=history,
-            actor_permissions=actor_permissions,
-            # The owner's notes are free text, so they travel as UNTRUSTED context (a separate user
-            # message the model is told is data), never in the system prompt and never as
-            # system-owned facts.
-            knowledge_context=owner_notes or None,
-            # The dialect is trusted wording the server picked from a closed list, so it goes in the
-            # system prompt; the notes above are free text and never do.
-            style_directive=style_directive,
-        )
+        # A tool that covers several reads checks the permission of the read it was asked for, and
+        # the shared runner does not hand it the asker's permissions, so they travel in a context
+        # variable around the run. With none known the tool can only refuse (it fails closed).
+        with _permissions.asking_with(actor_permissions):
+            result = await runner.run(
+                session,
+                tenant_id,
+                agent_id=agent_id,
+                user_message=message_for_the_model,
+                # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
+                # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
+                # call ignore whatever the tenant's Agent actually holds: merchant edits
+                # and any prompt rollout were inert for the whole Sales Intelligence
+                # agent. The row is provisioned from the definition, and
+                # `_resolve_system_prompt` falls back to that definition when the row is
+                # empty, so the configured prompt still always reaches the model.
+                history=history,
+                actor_permissions=actor_permissions,
+                # The owner's notes are free text, so they travel as UNTRUSTED context (a separate
+                # user message the model is told is data), never in the system prompt and never
+                # as system-owned facts.
+                knowledge_context=owner_notes or None,
+                # The dialect is trusted wording the server picked from a closed list, so it goes
+                # in the system prompt; the notes above are free text and never do.
+                style_directive=style_directive,
+            )
     except Exception:
         # A started event with no counterpart reads as "stuck forever" to
         # anything pairing them. Best-effort: a poisoned transaction (the

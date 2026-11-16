@@ -52,26 +52,47 @@ STEP_TEXT: dict[str, str] = {
     "status": "بتأكد من حالة البيانات",
 }
 
-# The owner assistant's tools, by the step each one is. A tool not listed shows no step: better
+# The owner assistant's tools, by the step each one is. One tool now covers several reads, so the
+# step comes from the parameter that picks the read; a value not listed shows no step: better
 # silent than a wrong sentence.
-TOOL_STEP: dict[str, str] = {
-    "si_metric": "sales",
-    "si_top_products": "sales",
-    "si_stock_status": "stock",
-    "si_finance": "finance",
-    "si_purchasing_summary": "purchasing",
-    "si_cashier_summary": "cashier",
-    "si_find_order": "orders",
-    "si_find_customer": "customers",
-    "si_activity": "activity",
-    "si_why": "why",
-    "si_data_status": "status",
+TOOL_STEP_BY: dict[str, tuple[str, dict[str, str]]] = {
+    "si_metric": (
+        "mode",
+        {
+            "value": "sales",
+            "compare": "sales",
+            "split": "sales",
+            "explain": "sales",
+            "why": "why",
+            "activity": "activity",
+            "status": "status",
+        },
+    ),
+    "si_shop": (
+        "view",
+        {
+            "products": "sales",
+            "stock": "stock",
+            "cashier": "cashier",
+            "order": "orders",
+            "customer": "customers",
+        },
+    ),
+    "si_finance": (
+        "report",
+        {"expenses": "finance", "profit": "finance", "purchasing": "purchasing"},
+    ),
 }
 
 
-def step_for_tool(tool_name: str | None) -> str | None:
-    """The step key for a tool, or None when the tool has no owner-facing wording."""
-    return TOOL_STEP.get(tool_name) if tool_name else None
+def step_for_tool(tool_name: str | None, arguments: dict | None = None) -> str | None:
+    """The step key for a tool call, or None when it has no owner-facing wording."""
+    picked = TOOL_STEP_BY.get(tool_name) if tool_name else None
+    if picked is None:
+        return None
+    key, steps = picked
+    value = (arguments or {}).get(key)
+    return steps.get(value) if isinstance(value, str) else None
 
 
 async def note_step(tenant_id: uuid.UUID, message_id: uuid.UUID, step: str) -> None:
@@ -135,12 +156,13 @@ def with_progress(tool_name: str, handler):
     The wrapper keeps the handler's own signature (``functools.wraps``), because the runner reads
     it to decide what to pass in. The step is written BEFORE the handler so the owner sees what is
     being read while it is being read, and a handler that raises still leaves its step, which is
-    true: the assistant did start looking.
+    true: the assistant did start looking. The step is chosen from the arguments the handler was
+    really called with, so a tool that covers several reads names the one it is running.
     """
-    step = step_for_tool(tool_name)
 
     @functools.wraps(handler)
     async def wrapped(*args, **kwargs):
+        step = step_for_tool(tool_name, kwargs)
         if step is not None:
             await announce(step)
         return await handler(*args, **kwargs)

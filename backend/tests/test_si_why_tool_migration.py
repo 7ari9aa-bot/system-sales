@@ -64,7 +64,8 @@ def test_the_old_names_match_what_the_code_no_longer_offers() -> None:
     from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 
     assert not set(OLD) & set(SI_TOOLS)
-    assert "si_why" in SI_TOOLS
+    assert "si_why" not in SI_TOOLS  # a later merge folded it into si_metric
+    assert "si_metric" in SI_TOOLS
 
 
 @pytest.fixture
