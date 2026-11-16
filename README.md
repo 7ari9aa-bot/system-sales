@@ -31,7 +31,7 @@ Backend modules (`backend/app/modules/`): `identity`, `authority`, `privacy`,
 `customers`, `conversations`, `realtime`, `notifications`, `catalog`, `inventory`,
 `purchasing`, `orders`, `pos` (cashier), `expenses`, `imports` (merchant data import), `financial`, `billing`, `marketing`,
 `segments`, `analytics`, `automation`, `decisions`, `effects`, `evidence`, `activity`,
-`operations`, `website`, `platform`, and `ai` (agents, tools, model configs).
+`operations`, `website`, `platform`, `einvoice`, and `ai` (agents, tools, model configs).
 Imports between modules are ratcheted by `tests/test_module_boundaries.py`.
 
 ## Golden rules (short version)
