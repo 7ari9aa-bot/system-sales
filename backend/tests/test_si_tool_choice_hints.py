@@ -81,7 +81,7 @@ def test_the_shop_tool_never_invites_a_guessed_lookup():
     assert "never guess one" in text
     assert "never try letters or digits to see what comes back" in text
     assert "an earlier result showed" in text
-    # no tool ranks customers by spend; pointing at the one that lists who messaged would answer
-    # a different question, so the description says what is missing
-    assert "no ranking of customers by spend" in text
+    # "best customer" goes to the read that ranks by spend, and the description says the activity
+    # view answers a different question (who messaged), so the two are never mixed up
+    assert "'Best customer' is top_customers" in text
     assert "who MESSAGED the shop, not who bought" in text

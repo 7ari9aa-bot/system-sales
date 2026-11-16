@@ -57,10 +57,17 @@ CASES: tuple[Case, ...] = (
     Case("الكاشير باع كام النهارده؟", ("si_shop",), {"view": "cashier"}),
     Case("فين الأوردر رقم 1042؟", ("si_shop",), {"view": "order"}),
     Case("مين أحمد محمود وكام اشترى؟", ("si_shop",), {"view": "customer"}),
+    Case("مين أحسن عميل عندي؟", ("si_shop",), {"view": "top_customers"}),
     Case("مين بيكلمنا أكتر على واتساب؟", ("si_metric",), {"mode": "activity", "view": "customers"}),
     Case("الناس بتقول إيه على بوستاتنا؟", ("si_metric",), {"mode": "activity", "view": "comments"}),
     Case("عندي إيه بيانات في السيستم؟", ("si_metric",), {"mode": "status"}),
     # the look-alike traps the descriptions were written for
+    Case(
+        "مين أكتر عميل صرف عندي الشهر ده؟",
+        ("si_shop",),
+        {"view": "top_customers"},
+        "who spent, not who messaged (activity) and not one named customer",
+    ),
     Case(
         "كام أوردر جالي النهارده؟",
         ("si_metric",),

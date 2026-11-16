@@ -607,6 +607,7 @@ _SHOP_VIEWS: dict[str, tuple[str, int, int, int | None]] = {
     "cashier": ("orders:read", 8, 25, 366),
     "order": ("orders:read", 5, 10, None),
     "customer": ("customers:read", 5, 10, None),
+    "top_customers": ("customers:read", 5, 20, 366),
 }
 _SHOP_NEEDS_QUERY = ("order", "customer")
 
@@ -614,7 +615,7 @@ _SHOP_NEEDS_QUERY = ("order", "customer")
 class SIShopArgs(BaseModel):
     """One read of the shop's own records. ``view`` says which."""
 
-    view: Literal["products", "stock", "cashier", "order", "customer"]
+    view: Literal["products", "stock", "cashier", "order", "customer", "top_customers"]
     # products and cashier only: the window (products up to 90, cashier up to 366)
     days: int = Field(default=30, ge=1, le=366)
     # the biggest items to list; each view keeps its own default and ceiling
@@ -661,6 +662,8 @@ async def _si_shop(
         return await finder(session, tenant_id, query=query, limit=limit)
     if view == "stock":
         return await _si_stock_status(session, tenant_id, limit=limit, stagnant_days=stagnant_days)
+    if view == "top_customers":
+        return await _si_top_customers(session, tenant_id, days=days, limit=limit)
     reader = _si_top_products if view == "products" else _si_cashier_summary
     return await reader(session, tenant_id, days=days, limit=limit)
 
@@ -1775,6 +1778,82 @@ async def _si_find_customer(
     }
 
 
+#: Customers ranked by what they spent in a window. Spend counts what _FIND_CUSTOMER_SQL counts (an
+#: order that was not cancelled or deleted, whatever its payment state) so the same customer shows
+#: the same number whichever way the owner asks. A merged-away customer row is left out, as there.
+_TOP_CUSTOMERS_SQL = (
+    "SELECT c.id::text AS customer_id, COALESCE(c.name, '') AS name, "
+    "COUNT(*) AS order_count, SUM(o.grand_total) AS spent, "
+    "MAX(COALESCE(o.placed_at, o.created_at)) AS last_order_at "
+    "FROM orders o JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id "
+    "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL AND o.status <> 'cancelled' "
+    "AND c.deleted_at IS NULL AND c.merged_into_customer_id IS NULL "
+    "AND COALESCE(o.placed_at, o.created_at) >= :start "
+    "AND COALESCE(o.placed_at, o.created_at) < :end "
+    "GROUP BY c.id, c.name ORDER BY spent DESC, order_count DESC, c.name LIMIT :limit"
+)
+
+
+async def _si_top_customers(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    days: int = 30,
+    limit: int = 5,
+    context: dict | None = None,
+) -> dict:
+    """Who spent the most in the window, biggest first. Read-only; no phone, no email, no address.
+
+    This is who BOUGHT. Who merely messaged the shop is the activity view, a different question."""
+    current = await _resolve_window(session, tenant_id, days)
+    rows = (
+        await session.execute(
+            _sql(_TOP_CUSTOMERS_SQL),
+            {
+                "tenant_id": str(tenant_id),
+                "start": current.start,
+                "end": current.end,
+                "limit": limit,
+            },
+        )
+    ).all()
+    if not rows:
+        return {
+            "capability": "top_customers",
+            "status": "no_match",
+            "summary": {"entries": []},
+            "limitations": ["no customer placed an order in this window"],
+            "facts": [],
+        }
+    entries = [
+        {
+            "customer_id": r.customer_id,
+            "name": _untrusted_text(r.name),
+            "order_count": int(r.order_count),
+            "total_spent": f"{Decimal(str(r.spent)):.2f}",
+            "last_order_at": r.last_order_at.isoformat() if r.last_order_at else None,
+        }
+        for r in rows
+    ]
+    numbers = []
+    for r in rows:
+        numbers.append(
+            ("customer_total_spent", Decimal(str(r.spent)), "money", {"c": r.customer_id})
+        )
+        numbers.append(("customer_order_count", int(r.order_count), "count", {"c": r.customer_id}))
+    return {
+        "capability": "top_customers",
+        "status": "ok",
+        "summary": {"entries": entries},
+        "limitations": [
+            "ranked by what each customer spent in this window, on every order that was not "
+            "cancelled or deleted, whatever its payment state",
+            f"showing at most {limit} customers",
+        ],
+        "facts": _typed_facts(_evidence_store(), current, "top_customers", numbers),
+    }
+
+
 class SICustomerActivityArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     limit: int = Field(default=10, ge=1, le=50)
@@ -2284,8 +2363,8 @@ def register_si_tools() -> None:
                 "value = one metric's number for the last N days ('how much / how many'); "
                 "compare = this window against the one before ('up or down'); "
                 "split = one metric divided by dimension, channel by default (others only where "
-                "the metric allows; it cannot rank customers: use si_shop view=customer for "
-                "one); "
+                "the metric allows; it cannot rank customers: use si_shop view=top_customers "
+                "to rank them, view=customer for one); "
                 "explain = what the metric means and how it is counted, never to fetch a number; "
                 "why = the store as a whole, needs focus: drivers (why revenue moved: more "
                 "orders or a bigger basket), seasonality (which weekdays are strong), customers "
@@ -2322,12 +2401,13 @@ def register_si_tools() -> None:
                 "order = ONE order by number, customer name or phone, needs query (limit up to "
                 "10); "
                 "customer = ONE customer by name, phone or email, needs query (phone and email "
-                "come back masked). "
-                "For order and customer the query must be a name, number or phone the owner "
-                "typed or an earlier result showed: never guess one, and never try letters or "
-                "digits to see what comes back. There is no ranking of customers by spend: "
-                "si_metric mode=activity view=customers lists who MESSAGED the shop, not who "
-                "bought, so say that instead of searching. "
+                "come back masked); "
+                "top_customers = who spent the most, biggest first, with orders and spend "
+                "(days up to 366, limit up to 20). "
+                "For order and customer the query must be one the owner typed or an earlier "
+                "result showed: never guess one, never try letters or digits to see what comes "
+                "back. 'Best customer' is top_customers: si_metric mode=activity "
+                "view=customers lists who MESSAGED the shop, not who bought. "
                 "Read-only."
             ),
             args_schema=SIShopArgs,

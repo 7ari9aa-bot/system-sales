@@ -51,6 +51,7 @@ def test_the_step_follows_the_read_not_just_the_tool():
     # one tool, several reads: a shop lookup must not announce "reading your sales"
     assert step_for_tool("si_shop", {"view": "stock"}) == "stock"
     assert step_for_tool("si_shop", {"view": "customer"}) == "customers"
+    assert step_for_tool("si_shop", {"view": "top_customers"}) == "customers"
     assert step_for_tool("si_metric", {"mode": "why"}) == "why"
     assert step_for_tool("si_metric", {"mode": "status"}) == "status"
     assert step_for_tool("si_finance", {"report": "purchasing"}) == "purchasing"

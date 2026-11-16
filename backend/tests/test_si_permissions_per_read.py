@@ -28,6 +28,7 @@ READS = [
     ("si_shop", "view", "cashier", {}, "orders:read"),
     ("si_shop", "view", "order", {"query": "1001"}, "orders:read"),
     ("si_shop", "view", "customer", {"query": "ahmed"}, "customers:read"),
+    ("si_shop", "view", "top_customers", {}, "customers:read"),
 ]
 EVERY_CODE = {"finance:read", "purchasing:read", "orders:read", "inventory:read", "customers:read"}
 

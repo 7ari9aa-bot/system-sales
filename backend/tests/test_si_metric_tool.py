@@ -79,7 +79,9 @@ def test_the_description_does_not_send_a_customer_ranking_through_split():
     T.register_si_tools()
     text = get_tool("si_metric").description
     assert "cannot rank customers" in text
-    assert "si_shop view=customer" in text
+    # ranking goes to the read that ranks by spend; one customer goes to the lookup
+    assert "si_shop view=top_customers" in text
+    assert "view=customer for one" in text
     # the old wording ("who the audience is") told the owner nothing about what it fetches
     assert "who the audience is" not in text
     assert "who contacted the shop" in text
