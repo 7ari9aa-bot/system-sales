@@ -6,13 +6,12 @@ renamed or moved here, the screen breaks without any Python test failing: this f
 
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import select
 
+from app.modules.inventory.models import Warehouse
 from app.modules.platform.models import Job
 from app.workers.import_runner import run_batch
-from tests.test_imports_http import BOTH, XLSX, _xlsx, api  # noqa: F401  (api is a fixture)
-from app.modules.inventory.models import Warehouse
+from tests.test_imports_http import BOTH, XLSX, _xlsx, api  # noqa: F401, F811  (api is a fixture)
 
 ARABIC = _xlsx(
     {
@@ -44,7 +43,7 @@ async def _flow(client, db, tenant_id):
     return up.json()
 
 
-async def test_upload_has_every_key_the_mapping_step_reads(api, db, tenant_ctx):
+async def test_upload_has_every_key_the_mapping_step_reads(api, db, tenant_ctx):  # noqa: F811
     async with api(BOTH) as client:
         s = await _flow(client, db, tenant_ctx.tenant_id)
     assert {"id", "status", "file_name", "options", "stats", "sheets"} <= s.keys()
@@ -61,13 +60,16 @@ async def test_upload_has_every_key_the_mapping_step_reads(api, db, tenant_ctx):
     assert s["stats"]["ignored_sheets"] == []
 
 
-async def test_validate_then_preview_have_the_counters_the_review_step_reads(api, db, tenant_ctx):
+async def test_validate_then_preview_have_the_counters_the_review_step_reads(api, db, tenant_ctx):  # noqa: F811
     async with api(BOTH) as client:
         s = await _flow(client, db, tenant_ctx.tenant_id)
         base = f"/api/v1/imports/sessions/{s['id']}"
         mapped = await client.put(
             f"{base}/mapping",
-            json={"mapping": {k: v["mapping"] for k, v in s["sheets"].items()}, "options": {"duplicate_policy": "skip"}},
+            json={
+                "mapping": {k: v["mapping"] for k, v in s["sheets"].items()},
+                "options": {"duplicate_policy": "skip"},
+            },
         )
         assert mapped.status_code == 200 and mapped.json()["status"] == "mapped"
         assert "sheets" in mapped.json()  # the mapping step re-renders from this answer
@@ -78,7 +80,9 @@ async def test_validate_then_preview_have_the_counters_the_review_step_reads(api
         p = (await client.get(f"{base}/preview")).json()
     sheets = p["stats"]["sheets"]
     for name in ("Products", "Variants"):
-        assert {"total", "valid", "invalid", "create", "update", "skip", "error_codes"} <= sheets[name].keys()
+        assert {"total", "valid", "invalid", "create", "update", "skip", "error_codes"} <= sheets[
+            name
+        ].keys()
     assert sheets["Products"]["invalid"] == 1 and sheets["Products"]["valid"] == 2
     assert sheets["Variants"]["valid"] == 3
     err = p["sample_errors"][0]
@@ -86,15 +90,19 @@ async def test_validate_then_preview_have_the_counters_the_review_step_reads(api
     assert {"code", "field"} <= err["errors"][0].keys()
 
 
-async def test_a_running_import_reports_the_counters_the_run_step_reads(api, db, tenant_ctx):
+async def test_a_running_import_reports_the_counters_the_run_step_reads(api, db, tenant_ctx):  # noqa: F811
     async with api(BOTH) as client:
         s = await _flow(client, db, tenant_ctx.tenant_id)
         base = f"/api/v1/imports/sessions/{s['id']}"
-        await client.put(f"{base}/mapping", json={"mapping": {k: v["mapping"] for k, v in s["sheets"].items()}})
+        await client.put(
+            f"{base}/mapping", json={"mapping": {k: v["mapping"] for k, v in s["sheets"].items()}}
+        )
         await client.post(f"{base}/validate")
         started = (await client.post(f"{base}/start")).json()
         assert started["status"] == "running" and started["stats"]["to_apply"] == 5
-        assert "remaining" not in started["stats"]  # before the first batch: the screen falls back to to_apply
+        assert (
+            "remaining" not in started["stats"]
+        )  # before the first batch: the screen falls back to to_apply
 
         job = (await db.execute(select(Job).where(Job.id == started["job_id"]))).scalar_one()
         await run_batch(db, job, limit=2)
