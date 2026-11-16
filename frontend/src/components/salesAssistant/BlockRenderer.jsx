@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
-import { metricLabel, unitLabel, windowLabel } from "./kpiWords";
+import { metricLabel, noticeText, unitLabel, windowLabel } from "./kpiWords";
 
 const METRIC_ICONS = [
   ["revenue", Banknote],
@@ -163,7 +163,7 @@ export default function BlockRenderer({ blocks }) {
                 ) : (
                   <Info className="h-4 w-4 shrink-0 mt-0.5" />
                 )}
-                <span className="min-w-0 break-words">{b.message}</span>
+                <span className="min-w-0 break-words">{noticeText(b.message, t) || b.message}</span>
               </div>
             );
           case "refs":

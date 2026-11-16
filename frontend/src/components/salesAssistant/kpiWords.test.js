@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import ar from "@/lib/i18n/ar.js";
 import en from "@/lib/i18n/en.js";
-import { metricLabel, unitLabel, windowLabel } from "./kpiWords";
+import { readFileSync } from "node:fs";
+import { KNOWN_METRICS, metricLabel, noticeText, unitLabel, windowLabel } from "./kpiWords";
 
 const tr = (dict) => (key, vars) => {
   let s = dict[key] ?? key;
@@ -71,5 +72,63 @@ describe("windowLabel", () => {
     expect(windowLabel("2026-11-01..2026-11-15", tAr)).toBe("2026-11-01..2026-11-15");
     expect(windowLabel("", tAr)).toBe("");
     expect(windowLabel(null, tAr)).toBe("");
+  });
+});
+
+describe("every metric the server can send has a plain word", () => {
+  // The server's own list, read from the file that builds the cards. A new metric added there
+  // without a word here fails this test, instead of showing the owner an internal name.
+  const SERVER = readFileSync("../backend/app/modules/ai/agents/sales_intelligence/tools.py", "utf8");
+  const sent = [...SERVER.matchAll(/^\s+\("([a-z_]+)", [^\n]*"(?:money|count)", \{\}\),?$/gm)].map((m) => m[1]);
+  it("finds the metrics in the server file (guards the guard)", () => {
+    expect(sent.length).toBeGreaterThan(20);
+    expect(sent).toContain("pos_sales_total");
+  });
+  it("has a real Arabic and English word for each, never the English fallback", () => {
+    for (const m of new Set(sent)) {
+      expect(KNOWN_METRICS, m).toContain(m);
+      expect(metricLabel(m, tAr), m).toMatch(/[\u0600-\u06FF]/);
+      expect(metricLabel(m, tEn), m).not.toMatch(/_|^kpi\./);
+    }
+  });
+});
+
+describe("noticeText", () => {
+  it("turns the technical line from production into a plain sentence", () => {
+    const t = noticeText("safe response: si_response_invalid", tAr);
+    expect(t).not.toMatch(/si_response|safe response/);
+    expect(t).toMatch(/[\u0600-\u06FF]/);
+  });
+  it("covers every reason the server can send, in both languages", () => {
+    for (const r of ["si_response_invalid", "unsourced_claim", "unverified_commercial_claim", "injection_risk", "cross_tenant_request", "handover", "unknown_agent_kind"]) {
+      for (const t of [tAr, tEn]) expect(noticeText(`safe response: ${r}`, t), r).not.toMatch(/_|^notice\./);
+    }
+    for (const q of ["partial", "immature", "stale", "insufficient", "conflicting"]) {
+      for (const t of [tAr, tEn]) expect(noticeText(`data quality: ${q}`, t), q).not.toMatch(/_|^notice\./);
+    }
+  });
+  it("every known reason gets its OWN sentence, not the general one for unknown reasons", () => {
+    const generalSafe = noticeText("safe response: nothing_known", tAr);
+    for (const r of ["si_response_invalid", "unsourced_claim", "unverified_commercial_claim", "injection_risk", "cross_tenant_request", "handover", "unknown_agent_kind"]) {
+      expect(noticeText(`safe response: ${r}`, tAr), r).not.toBe(generalSafe);
+      expect(noticeText(`safe response: ${r}`, tEn), r).not.toBe(noticeText("safe response: nothing_known", tEn));
+    }
+    const generalQ = noticeText("data quality: nothing_known", tAr);
+    for (const q of ["partial", "immature", "stale", "insufficient", "conflicting"]) {
+      expect(noticeText(`data quality: ${q}`, tAr), q).not.toBe(generalQ);
+      expect(noticeText(`data quality: ${q}`, tEn), q).not.toBe(noticeText("data quality: nothing_known", tEn));
+    }
+  });
+  it("reads the line whatever its letter case", () => {
+    expect(noticeText("Safe Response: SI_RESPONSE_INVALID", tAr)).toBe(noticeText("safe response: si_response_invalid", tAr));
+    expect(noticeText("Data Quality: PARTIAL", tAr)).toBe(noticeText("data quality: partial", tAr));
+  });
+  it("never shows an unknown reason raw", () => {
+    expect(noticeText("safe response: brand_new_reason", tAr)).not.toMatch(/brand_new_reason/);
+    expect(noticeText("data quality: weird_state", tEn)).not.toMatch(/weird_state/);
+  });
+  it("leaves an ordinary notice as it is, and copes with empty input", () => {
+    expect(noticeText("الفترة قصيرة", tAr)).toBe("الفترة قصيرة");
+    for (const bad of ["", "  ", null, undefined, 4]) expect(noticeText(bad, tAr)).toBe("");
   });
 });

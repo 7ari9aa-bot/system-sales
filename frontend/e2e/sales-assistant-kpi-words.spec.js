@@ -46,3 +46,17 @@ test("a metric the page has no word for is never shown as an identifier", async 
   expect(text).not.toContain("brand_new_metric");
   expect(text).toContain("brand new metric");
 });
+
+test("the answer from production: till cards and the held-back line read in plain words", async ({ page }) => {
+  const notice = { type: "notice", severity: "warning", message: "safe response: si_response_invalid" };
+  await open(page, "ar", [
+    card("pos_sales_total", "29d"), card("pos_invoice_count", "29d", "count"),
+    card("pos_returns_total", "29d"), card("pos_net_sales", "29d"), notice,
+  ]);
+  const text = await chat(page).innerText();
+  for (const word of ["مبيعات الكاشير", "فواتير الكاشير", "مرتجعات الكاشير", "صافي مبيعات الكاشير"]) expect(text).toContain(word);
+  for (const leak of ["pos.", "pos_", "sales total", "invoice count", "safe response", "si_response_invalid"]) {
+    expect(text, `leaked "${leak}"`).not.toContain(leak);
+  }
+  expect(text).toContain("مقدرتش أتأكد من أرقام الرد");
+});

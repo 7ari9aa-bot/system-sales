@@ -123,6 +123,21 @@ def _computable_metric(name: str) -> None:
         )
 
 
+def _window_days(start: datetime, end: datetime) -> int:
+    """The length of a measured window in calendar days, the way the owner counts them.
+
+    A window that ends at midnight is a whole number of days. The till runs up to NOW, so its
+    window ends part-way through today: 18 Oct to 16 Nov 02:00 is thirty days the owner can name
+    ("the last 30 days", today included), not twenty-nine. Counting only the full 24-hour spans
+    called it 29, and the number gate then refused the model for saying the thirty it was right
+    about. A partial last day therefore counts as a day."""
+    span = end - start
+    if span.total_seconds() <= 0:
+        return 0
+    whole, rest = divmod(span.total_seconds(), 86400)
+    return int(whole) + (1 if rest else 0)
+
+
 def _fact_payload(fact) -> dict:
     """P1-20: transfers complete provenance metadata through fact payload."""
     return {
@@ -133,7 +148,7 @@ def _fact_payload(fact) -> dict:
         # The window length is itself a measurement the answer may state
         # ("آخر 30 يوم") — without it the model cannot name the period it
         # queried without tripping the free-number gate.
-        "window": f"{max((fact.period.end - fact.period.start).days, 0)}d",
+        "window": f"{_window_days(fact.period.start, fact.period.end)}d",
         # P1-12: the split a fact belongs to is part of its meaning. Without
         # the filters, "shipments_total = 2" does not say whose two shipments
         # it is, and the model can attribute a bucket to the wrong carrier.
