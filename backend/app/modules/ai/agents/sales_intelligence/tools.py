@@ -2323,6 +2323,11 @@ def register_si_tools() -> None:
                 "10); "
                 "customer = ONE customer by name, phone or email, needs query (phone and email "
                 "come back masked). "
+                "For order and customer the query must be a name, number or phone the owner "
+                "typed or an earlier result showed: never guess one, and never try letters or "
+                "digits to see what comes back. There is no ranking of customers by spend: "
+                "si_metric mode=activity view=customers lists who MESSAGED the shop, not who "
+                "bought, so say that instead of searching. "
                 "Read-only."
             ),
             args_schema=SIShopArgs,

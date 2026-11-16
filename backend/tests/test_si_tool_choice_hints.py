@@ -70,3 +70,18 @@ def test_the_hints_stay_short_because_every_tool_is_paid_for_on_every_message() 
     )
     # 7962 with eleven tools, 4988 with three; growing past this is a decision, not drift
     assert chars < 5600, f"the tool descriptions and schemas grew to {chars} characters"
+
+
+def test_the_shop_tool_never_invites_a_guessed_lookup():
+    """Seen live: after a customer list the model searched orders for "أ" and "01" (a 70 s answer).
+    The order and customer reads need a query the owner gave or a result showed; ranking customers
+    is another tool's job, and the description says so."""
+    T.register_si_tools()
+    text = get_tool("si_shop").description
+    assert "never guess one" in text
+    assert "never try letters or digits to see what comes back" in text
+    assert "an earlier result showed" in text
+    # no tool ranks customers by spend; pointing at the one that lists who messaged would answer
+    # a different question, so the description says what is missing
+    assert "no ranking of customers by spend" in text
+    assert "who MESSAGED the shop, not who bought" in text
