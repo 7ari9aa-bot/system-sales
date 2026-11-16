@@ -101,3 +101,29 @@ test("a question that runs no tool shows only the dots, with no invented step", 
   await page.waitForTimeout(3500);
   await expect(page.getByTestId("assistant-step")).toHaveCount(0);
 });
+
+// The bug seen on the live shop: an answer that took 29 s was cut by the page at 20 s, which then
+// said "your message was not sent" while the server had finished and saved the answer. The text
+// came back to the box, inviting a second send of the same question. The list is left WITHOUT the
+// answer until the held send itself returns, so only the send's own deadline can be what is tested.
+test("an answer slower than the ordinary 20 s limit is waited for, not reported as unsent", async ({ page }) => {
+  test.setTimeout(80_000);
+  await page.setViewportSize({ width: 1366, height: 800 });
+  const api = await mockAssistantDay(page, { lang: "ar", sendDelayMs: 25_000 });
+  await page.goto("/sales-assistant");
+  await page.waitForLoadState("networkidle");
+  await page.getByText(threads[0].title, { exact: true }).first().click();
+  await expect(page.getByText("سؤال رقم 30 عن المبيعات")).toBeVisible({ timeout: 8000 });
+  await ask(page);
+  api.state.custom = [openRow(["بقرا مبيعاتك"]), userRow, ...base()];
+  // 22 s in: past the old 20 s limit, and the server is still working
+  await page.waitForTimeout(22_000);
+  await expect(page.getByTestId("assistant-send-error")).toHaveCount(0);
+  await expect(page.getByTestId("assistant-pending")).toBeVisible();
+  // the held send now returns (it was held for 25 s in all) and the finished answer is in the list
+  api.state.custom = [doneRow, userRow, ...base()];
+  await expect(page.getByText("الإيراد المسلَّم ارتفع عن الشهر اللي فات.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("assistant-send-error")).toHaveCount(0);
+  await expect(box(page)).toHaveValue("");
+  expect(api.sent.length).toBe(1);
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANSWER_TIMEOUT_MS,
   generatingRow,
   sentQuestionIsAnswered,
   pollInterval,
@@ -145,5 +146,15 @@ describe("sentQuestionIsAnswered", () => {
     expect(sentQuestionIsAnswered([q(1), a(2, "completed")], null)).toBe(false);
     expect(sentQuestionIsAnswered([], "x")).toBe(false);
     expect(sentQuestionIsAnswered(undefined, "x")).toBe(false);
+  });
+});
+
+describe("ANSWER_TIMEOUT_MS", () => {
+  it("outlasts the slowest answer measured on the live shop (73 s) with room to spare", () => {
+    expect(ANSWER_TIMEOUT_MS).toBeGreaterThanOrEqual(100_000);
+  });
+  it("is well above the 20 s every ordinary request gets", async () => {
+    const { REQUEST_TIMEOUT_MS } = await import("@/lib/api");
+    expect(ANSWER_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS * 3);
   });
 });

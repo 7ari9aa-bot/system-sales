@@ -13,6 +13,7 @@ import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
 import MessageList from "@/components/salesAssistant/MessageList";
 import ThreadListPanel from "@/components/salesAssistant/ThreadListPanel";
 import {
+  ANSWER_TIMEOUT_MS,
   sentQuestionIsAnswered,
   pollInterval,
   questionAlreadyListed,
@@ -91,6 +92,7 @@ export default function SalesAssistant() {
       api(`/ai/sales-chat/threads/${id}/messages`, {
         method: "POST",
         body: { content, idempotency_key },
+        timeoutMs: ANSWER_TIMEOUT_MS,
       }),
     onSuccess: (_data, vars) => {
       setOutgoing(null);

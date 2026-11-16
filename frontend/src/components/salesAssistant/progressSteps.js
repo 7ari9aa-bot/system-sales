@@ -87,3 +87,11 @@ export function sentQuestionIsAnswered(messages, sentText) {
       (m.status === "completed" || m.status === "failed"),
   );
 }
+
+/** How long the page waits for the answer to one question before it gives up.
+ *
+ *  Every other request has 20 seconds. This one waits for a language model that uses tools, and
+ *  the answers measured on the live shop took 5 to 40 seconds (one slower scenario 73). With the
+ *  ordinary 20 the page cut the request at 20 seconds and told the owner "not sent" although the
+ *  server finished and saved the answer, and handing the text back invited sending it twice. */
+export const ANSWER_TIMEOUT_MS = 120_000;
