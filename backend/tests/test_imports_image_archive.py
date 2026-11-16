@@ -364,3 +364,20 @@ async def test_the_workbook_route_keeps_its_own_smaller_limit(api):
             "/api/v1/imports/sessions?filename=a.xlsx", content=b"x" * (MAX_IMPORT_UPLOAD_BYTES + 1)
         )
     assert got.status_code == 413
+
+
+async def test_checking_the_file_keeps_what_the_archive_card_shows(db, tenant_ctx):
+    """The card reads ``stats.image_archive``. Checking the file rewrote ``stats`` and dropped it."""
+    t = tenant_ctx.tenant_id
+    await _shop_with_sku(db, t)
+    storage = FakeStorage({})
+    s = await _checked_session(db, t, [("TEE-1", "a.jpg")])
+    await service.attach_image_archive(
+        db, t, s.id, data=_zip({"a.jpg": JPEG, "run.exe": b"MZ"}), storage=storage
+    )
+
+    await service.validate_session(db, t, s.id, storage=storage)
+
+    kept = (await db.get(ImportSession, s.id)).stats["image_archive"]
+    assert kept["files"] == 1
+    assert kept["refused"] == {"run.exe": "not a picture file name"}

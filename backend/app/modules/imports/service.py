@@ -56,6 +56,8 @@ DEFAULT_OPTIONS = {"duplicate_policy": "create_only", "blank_policy": "keep"}
 # Sheets this phase understands. Anything else in the workbook is reported, not guessed at.
 KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 _EDITABLE = ("uploaded", "analyzed", "mapped", "validated")
+# What survives a re-check or a re-map: facts about the FILE, not results of checking it.
+_KEPT_STATS = ("rows", "ignored_sheets", "image_archive")
 
 _STORE_VERDICTS = text(
     """
@@ -222,11 +224,7 @@ async def set_mapping(
     imp.options = new_options
     # Any change makes an earlier check stale: the merchant must check again before starting.
     imp.status = "mapped"
-    imp.stats = {
-        k: v
-        for k, v in (imp.stats or {}).items()
-        if k in ("rows", "ignored_sheets", "image_archive")
-    }
+    imp.stats = {k: v for k, v in (imp.stats or {}).items() if k in _KEPT_STATS}
     await session.execute(
         update(ImportRow)
         .where(ImportRow.session_id == imp.id)
@@ -360,7 +358,7 @@ async def validate_session(
                 chunk.append({"n": v.row_number, **fields})
             await session.execute(_STORE_VERDICTS, {"sid": imp.id, "sheet": sheet, "rows": chunk})
     imp.stats = {
-        **{k: v for k, v in (imp.stats or {}).items() if k in ("rows", "ignored_sheets")},
+        **{k: v for k, v in (imp.stats or {}).items() if k in _KEPT_STATS},
         "sheets": {s: summarize(v) for s, v in verdicts.items()},
         "by_status": {s: dict(c) for s, c in by_sheet_status.items()},
     }
