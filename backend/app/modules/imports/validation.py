@@ -15,7 +15,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from app.modules.imports import normalize as n
-from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.modules.imports.fields import (
+    SHEET_IMAGES,
+    SHEET_PRODUCTS,
+    SHEET_STOCK,
+    SHEET_VARIANTS,
+)
 from app.modules.imports.normalize import CellError
 
 DUPLICATE_POLICIES = ("create_only", "update", "skip")
@@ -292,6 +297,64 @@ def validate_stock(
     return verdicts
 
 
+MAX_IMAGES_PER_SKU = 10  # a gallery, not a dump: a typo that repeats a row must not add 500
+
+
+def validate_images(
+    rows: list[tuple[int, dict[str, str]]],
+    mapping: dict[str, str | None],
+    *,
+    skus_in_file: set[str],
+    known_skus: set[str],
+    already_attached: set[tuple[str, str]],
+) -> list[RowVerdict]:
+    """A picture for a SKU: the SKU must exist (or be created by this file), the link must be a
+    well-formed http(s) one, and the same (SKU, link) is attached once.
+
+    ``already_attached`` holds (sku, link) pairs the shop already has, so a re-run of the same
+    file is a skip instead of a second copy of every photo.
+    """
+    verdicts: list[RowVerdict] = []
+    seen: dict[tuple[str, str], int] = {}
+    per_sku: dict[str, int] = {}
+    for number, row in rows:
+        v = RowVerdict(SHEET_IMAGES, number)
+        sku = _try(
+            v, "sku", n.parse_code, _get(row, mapping, "sku"), field="sku", max_len=n.SKU_MAX
+        )
+        url = _try(v, "file_name", n.parse_image_url, _get(row, mapping, "file_name"))
+        if sku is None:
+            v.errors.append(RowError("sku", "required", "sku is required"))
+        elif sku not in skus_in_file and sku not in known_skus:
+            v.errors.append(RowError("sku", "unknown_sku", f"no variant with SKU '{sku}'"))
+        if sku is not None and url is not None:
+            key = (sku, url)
+            if key in seen:
+                v.errors.append(
+                    RowError(
+                        "file_name",
+                        "duplicate_in_file",
+                        f"same SKU and image as row {seen[key]}",
+                    )
+                )
+            else:
+                seen[key] = number
+                per_sku[sku] = per_sku.get(sku, 0) + 1
+                if per_sku[sku] > MAX_IMAGES_PER_SKU:
+                    v.errors.append(
+                        RowError(
+                            "sku",
+                            "too_many_images",
+                            f"more than {MAX_IMAGES_PER_SKU} images for this SKU",
+                        )
+                    )
+        if v.ok:
+            v.values = {"sku": sku, "url": url}
+            v.action = "skip" if (sku, url) in already_attached else "create"
+        verdicts.append(v)
+    return verdicts
+
+
 def summarize(verdicts: list[RowVerdict]) -> dict[str, object]:
     """Counters for the preview: how many rows would do what, and which errors dominate."""
     actions: dict[str, int] = defaultdict(int)
@@ -321,6 +384,7 @@ __all__ = [
     "RowError",
     "RowVerdict",
     "summarize",
+    "validate_images",
     "validate_products",
     "validate_stock",
     "validate_variants",

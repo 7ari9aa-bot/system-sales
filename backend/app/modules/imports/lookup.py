@@ -53,6 +53,16 @@ _BARCODE_OWNERS = text(
 
 _WAREHOUSES = text("SELECT code FROM warehouses WHERE tenant_id = :t AND is_active")
 
+# A picture is attached to a PRODUCT (optionally bound to one variant). The SKU in an import row
+# names a variant, so the pair we compare is (that variant's SKU, link): a gallery entry bound to
+# the variant, or a product-level one on the variant's product. Either means "already there".
+_IMAGES_ATTACHED = text(
+    "SELECT DISTINCT v.sku, i.url FROM product_images i "
+    "JOIN product_variants v ON v.tenant_id = i.tenant_id "
+    "AND (i.variant_id = v.id OR (i.variant_id IS NULL AND i.product_id = v.product_id)) "
+    "WHERE i.tenant_id = :t AND v.sku IN :keys"
+).bindparams(bindparam("keys", expanding=True))
+
 _OPENING_DONE = text(
     "SELECT DISTINCT v.sku, w.code FROM inventory_movements m "
     "JOIN product_variants v ON v.id = m.variant_id JOIN warehouses w ON w.id = m.warehouse_id "
@@ -117,6 +127,17 @@ async def known_variant_skus(
         rows = await session.execute(_KNOWN_SKUS, {"t": tenant_id, "keys": batch})
         found.update(rows.scalars())
     return found
+
+
+async def load_attached_images(
+    session: AsyncSession, tenant_id: uuid.UUID, skus: Iterable[str]
+) -> set[tuple[str, str]]:
+    """(sku, link) pairs the shop already has, so re-running a file does not duplicate photos."""
+    done: set[tuple[str, str]] = set()
+    for batch in _chunks(sorted(set(skus))):
+        rows = await session.execute(_IMAGES_ATTACHED, {"t": tenant_id, "keys": batch})
+        done.update((sku, url) for sku, url in rows.all() if sku and url)
+    return done
 
 
 def default_warehouse(existing: Existing, chosen: str | None) -> str | None:

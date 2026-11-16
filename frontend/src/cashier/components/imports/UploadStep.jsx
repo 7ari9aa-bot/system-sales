@@ -60,7 +60,7 @@ export default function UploadStep({ busy, error, onFile }) {
         {busy ? <Loader2 className="h-8 w-8 animate-spin text-[#E8761A]" aria-hidden="true" /> : <UploadCloud className="h-8 w-8 text-[#E8761A]" aria-hidden="true" />}
         <p className="font-heading text-[14px] font-semibold">{busy ? "جارٍ رفع الملف وقراءته…" : "اسحب الملف هنا أو اضغط للاختيار"}</p>
         <p className="max-w-md text-[12px] leading-relaxed text-muted-foreground">
-          الملف يمكن أن يحتوي على ورقة <b>المنتجات</b> وورقة <b>الأصناف</b> (اللون والمقاس) وورقة <b>رصيد أول المدة</b>. ملف CSV يُقرأ كقائمة منتجات.
+          الملف يمكن أن يحتوي على ورقة <b>المنتجات</b> وورقة <b>الأصناف</b> (اللون والمقاس) وورقة <b>رصيد أول المدة</b> وورقة <b>Images</b> (روابط صور المنتجات، تُنزَّل وتُحفظ في متجرك). ملف CSV يُقرأ كقائمة منتجات.
         </p>
         <input
           ref={input}
@@ -95,7 +95,7 @@ export default function UploadStep({ busy, error, onFile }) {
           {fetching ? <Loader2 className="me-1 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="me-1 h-4 w-4" aria-hidden="true" />}
           تنزيل قالب Excel جاهز
         </Button>
-        <span>أوراق المنتجات والأصناف ورصيد أول المدة بعناوين تُربط تلقائيًا. الأعمدة المطلوبة بلون مختلف.</span>
+        <span>أوراق المنتجات والأصناف ورصيد أول المدة والصور بعناوين تُربط تلقائيًا. الأعمدة المطلوبة بلون مختلف.</span>
       </div>
       {templateError && <p role="alert" className="mt-2 text-[12px] text-red-700">{templateError}</p>}
     </SectionCard>

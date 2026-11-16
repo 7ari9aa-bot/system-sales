@@ -3,8 +3,8 @@
 Built from ``fields.py``, the same table the column matcher reads, so a merchant who fills the
 template in gets every column matched automatically and the two can never drift apart.
 
-The Images sheet is left out on purpose: nothing validates or applies it yet, and a template
-must not promise a sheet the import would then silently ignore.
+The Images sheet takes links (http/https), one picture per row. A link is downloaded when the
+import runs and the copy is kept in the shop's own storage.
 """
 
 from __future__ import annotations
@@ -18,13 +18,14 @@ from openpyxl.utils import get_column_letter
 
 from app.modules.imports.fields import (
     SHEET_FIELDS,
+    SHEET_IMAGES,
     SHEET_PRODUCTS,
     SHEET_STOCK,
     SHEET_VARIANTS,
     FieldSpec,
 )
 
-TEMPLATE_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK)
+TEMPLATE_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 
 # One believable value per column, shown as a comment on the header and NEVER as a data row: a
 # sample row would be imported as a real product the moment a merchant uploads the file as is.
@@ -49,6 +50,7 @@ _EXAMPLES: dict[str, dict[str, str]] = {
         "cost": "90",
     },
     SHEET_STOCK: {"sku": "TEE-RED-M", "barcode": "", "warehouse": "", "quantity": "25"},
+    SHEET_IMAGES: {"sku": "TEE-RED-M", "file_name": "https://example.com/photos/tee-red.jpg"},
 }
 
 _HEADER_FILL = PatternFill("solid", start_color="1F2937")

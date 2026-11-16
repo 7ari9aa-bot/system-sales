@@ -36,6 +36,7 @@ export const SHEET_LABEL = {
   Products: "المنتجات",
   Variants: "الأصناف (اللون والمقاس)",
   "Opening Stock": "رصيد أول المدة",
+  Images: "صور المنتجات (روابط)",
 };
 
 /** What each validation code means to a merchant. Unknown codes fall back to a generic line. */
@@ -46,6 +47,11 @@ const ERROR_TEXT = {
   barcode_taken: "الباركود مستخدم لصنف آخر",
   sku_belongs_to_other_product: "هذا الـ SKU يخص منتجًا آخر",
   unknown_sku: "لا يوجد صنف بهذا الـ SKU",
+  not_a_link: "الصورة يجب أن تكون رابطًا كاملًا يبدأ بـ http أو https",
+  too_many_images: "عدد صور هذا الـ SKU أكبر من الحد المسموح (10)",
+  image_unreachable: "تعذّر تنزيل الصورة من الرابط (الرابط لا يعمل أو غير متاح للعامة)",
+  not_an_image: "الرابط لا يشير إلى صورة حقيقية (JPEG أو PNG أو GIF أو WebP أو BMP)",
+  storage_unavailable: "تعذّر حفظ الصورة الآن. أعد المحاولة لاحقًا",
   unknown_product: "المنتج غير موجود في الملف أو في المتجر",
   unknown_warehouse: "المخزن غير موجود",
   opening_stock_already_set: "رصيد أول المدة مسجّل لهذا الصنف من قبل",
@@ -128,7 +134,7 @@ export async function downloadErrorReport(id) {
 }
 
 /**
- * The starter workbook (Products, Variants, Opening Stock). Its headers are the ones the column
+ * The starter workbook (Products, Variants, Opening Stock, Images). Its headers are the ones the column
  * matcher already knows, so a merchant who fills it in sees every column mapped on the next step.
  * Fetched with the session cookie for the same reason as the error report.
  */

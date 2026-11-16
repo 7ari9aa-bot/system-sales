@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlsplit
 
 # Arabic-Indic, Persian digits and the Arabic decimal/thousands separators fold to ASCII.
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬", "01234567890123456789.,")
@@ -126,6 +127,39 @@ def parse_code(raw: object, *, field: str, max_len: int) -> str | None:
     if len(text) > max_len:
         raise CellError("too_long", f"{field} is longer than {max_len} characters")
     return text
+
+
+IMAGE_URL_MAX = 2000
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+
+
+def parse_image_url(raw: object) -> str:
+    """A link to one picture: http(s) only, no credentials, no spaces, a sane length.
+
+    This only checks the SHAPE of the text. Whether the host is a public one is decided when the
+    picture is fetched (``app.core.net_guard`` runs on every hop), because a name can resolve
+    differently later and a check made here would be stale by then. A link without an image
+    extension is allowed (CDNs often serve ``/image?id=5``): the downloaded bytes are checked by
+    their signature instead.
+    """
+    text = clean_text(raw)
+    if not text:
+        raise CellError("required", "image is required")
+    if len(text) > IMAGE_URL_MAX:
+        raise CellError("too_long", f"image link is longer than {IMAGE_URL_MAX} characters")
+    parts = urlsplit(text)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise CellError("not_a_link", "image must be a full http(s) link")
+    if parts.username or parts.password:
+        raise CellError("not_a_link", "image link must not carry a user name or password")
+    if re.search(r"\s", text):
+        raise CellError("has_spaces", "image link contains spaces")
+    return text
+
+
+def looks_like_image_path(url: str) -> bool:
+    """True when the link's path ends in a picture extension (informational, never a gate)."""
+    return urlsplit(url).path.lower().endswith(_IMAGE_EXTENSIONS)
 
 
 def parse_title(raw: object, *, field: str = "title") -> str:

@@ -9,6 +9,7 @@ vi.mock("@/lib/api", async () => {
 
 import {
   MAX_IMPORT_BYTES,
+  SHEET_LABEL,
   assignField,
   cancelImport,
   canStart,
@@ -158,6 +159,15 @@ describe("downloadTemplate", () => {
   it("throws with the status when the server refuses", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 });
     await expect(downloadTemplate()).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("image import wording", () => {
+  it("names the Images sheet and explains every code the server can return for a picture", () => {
+    expect(SHEET_LABEL.Images).toBeTruthy();
+    for (const code of ["not_a_link", "too_many_images", "image_unreachable", "not_an_image", "storage_unavailable"]) {
+      expect(errorText(code), code).not.toBe("قيمة غير صالحة");
+    }
   });
 });
 
