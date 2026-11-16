@@ -12,6 +12,7 @@ can rebuild evidence without re-querying.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -391,7 +392,10 @@ class SIMetricArgs(BaseModel):
     """One question about one store metric. ``mode`` says which kind of answer is wanted."""
 
     mode: Literal["value", "compare", "split", "explain", "why", "activity", "status"]
-    # needed for value, compare, split and explain; not used by why, activity and status
+    # needed for value, compare, split and explain; not used by why, activity and status. SEVERAL
+    # metrics may be named in one call, comma separated (at most _MAX_METRICS_PER_CALL): one call is
+    # one model round, and the live traces showed the slow answers were the same read repeated
+    # once per metric, five to eight rounds of 6 to 10 s each.
     metric_name: str | None = None
     days: int = Field(default=30, ge=1, le=90)
     dimension: str = "channel"
@@ -448,6 +452,19 @@ async def _si_metric(
         return await _si_activity(session, tenant_id, view=view, days=days, limit=limit)
     if mode in _MODES_WITH_A_METRIC and not (metric_name or "").strip():
         raise ValidationError(f"mode={mode} needs metric_name: the metric to look at")
+    names = _metric_names(metric_name) if mode in _MODES_WITH_A_METRIC else []
+    if len(names) > 1:
+        return await _several_metrics(
+            session,
+            tenant_id,
+            names,
+            mode=mode,
+            days=days,
+            dimension=dimension,
+            channel=channel,
+        )
+    if names:
+        metric_name = names[0]
     if mode == "value":
         return await _si_get_metric(
             session, tenant_id, metric_name=metric_name, days=days, channel=channel
@@ -461,6 +478,76 @@ async def _si_metric(
     if mode == "explain":
         return await _si_explain_metric(session, tenant_id, metric_name=metric_name)
     raise ValidationError(f"mode must be one of: {', '.join(_METRIC_MODES)} (got {mode!r})")
+
+
+_MAX_METRICS_PER_CALL = 6
+
+_MERGED_LISTS = ("facts", "comparisons", "dimensions", "drivers")
+
+
+def _metric_names(raw: str | None) -> list[str]:
+    """The metrics named in one call, in order, each once. A comma, an Arabic comma or a
+    semicolon separates them; nothing else is guessed, so a name is never split apart."""
+    seen: list[str] = []
+    for part in re.split(r"[,،;]", raw or ""):
+        name = part.strip()
+        if name and name not in seen:
+            seen.append(name)
+    if len(seen) > _MAX_METRICS_PER_CALL:
+        raise ValidationError(
+            f"at most {_MAX_METRICS_PER_CALL} metrics in one call (got {len(seen)}): "
+            "ask for the rest in a second call"
+        )
+    return seen
+
+
+async def _several_metrics(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    names: list[str],
+    *,
+    mode: str,
+    days: int,
+    dimension: str,
+    channel: str | None,
+) -> dict:
+    """One call, one model round, for several metrics: the SAME tested read runs once per name.
+
+    Nothing is recomputed or loosened. Each name is checked against the registry by its own read
+    and fails closed exactly as it would alone; one bad name fails the whole call with that
+    read's own message, so no partial answer reaches the model dressed as a complete one. The
+    evidence lists are concatenated (the number gate reads them as it always did) and each
+    metric's own summary is kept under its name."""
+    reads = {
+        "value": lambda m: _si_get_metric(
+            session, tenant_id, metric_name=m, days=days, channel=channel
+        ),
+        "compare": lambda m: _si_compare_periods(session, tenant_id, metric_name=m, days=days),
+        "split": lambda m: _si_breakdown(
+            session, tenant_id, metric_name=m, dimension=dimension, days=days
+        ),
+        "explain": lambda m: _si_explain_metric(session, tenant_id, metric_name=m),
+    }
+    run = reads[mode]
+    results = [await run(name) for name in names]
+    merged: dict = {
+        "capability": f"{mode}_several",
+        "status": "ok" if all(r.get("status") == "ok" for r in results) else "partial",
+        "summary": {
+            "metrics": [
+                {"metric": n, "summary": r.get("summary")}
+                for n, r in zip(names, results, strict=True)
+            ]
+        },
+    }
+    for key in _MERGED_LISTS:
+        rows = [row for r in results for row in (r.get(key) or [])]
+        if rows:
+            merged[key] = rows
+    limitations = [lim for r in results for lim in (r.get("limitations") or [])]
+    if limitations:
+        merged["limitations"] = list(dict.fromkeys(limitations))
+    return merged
 
 
 _WHY_FOCUSES = ("drivers", "seasonality", "customers", "fulfillment")
@@ -2387,8 +2474,9 @@ def register_si_tools() -> None:
                 "last date, no amounts. Every other mode already returns this as data_recorded, "
                 "so call status only when the owner asks what data you have. An empty source "
                 "means nothing was recorded in the system, not that the number is zero. "
-                "metric_name is needed for value, compare, split and explain only. "
-                "days is 1 to 90, default 30. "
+                "metric_name (value, compare, split, explain only): several metrics go in ONE "
+                "call, comma separated. "
+                "days 1 to 90, default 30. "
                 f"Metrics: {metrics}."
             ),
             args_schema=SIMetricArgs,
@@ -2435,7 +2523,7 @@ def register_si_tools() -> None:
                 "no profit figure and says how much is uncosted; "
                 "purchasing = what the shop bought, orders waiting to arrive and what it owes "
                 "each supplier. "
-                "days is 1 to 366, default 30. limit is for expenses and purchasing only "
+                "days 1 to 366, default 30. limit: expenses and purchasing only "
                 "(default 8, at most 25). Sales revenue is not here: use si_metric. Read-only."
             ),
             args_schema=SIFinanceArgs,
