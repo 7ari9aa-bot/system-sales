@@ -28,6 +28,10 @@ import signal
 # module owns (pos_daily_sales.location_id -> locations) explodes at first
 # use with NoReferencedTableError. The registry is the single complete-import.
 import app.core.model_registry  # noqa: F401
+
+# Registers the ``import.run`` job handler. Only the API router used to import this module, so the
+# worker process had no handler for it and every merchant import sat queued forever.
+import app.workers.import_runner  # noqa: F401
 from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
 from app.core.redis import close_redis, get_redis

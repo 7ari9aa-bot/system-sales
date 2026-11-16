@@ -15,6 +15,7 @@ from app.modules.decisions import models as decisions  # noqa: F401
 from app.modules.evidence import models as evidence  # noqa: F401
 from app.modules.expenses import models as expenses  # noqa: F401
 from app.modules.identity import models as identity  # noqa: F401
+from app.modules.imports import models as imports  # noqa: F401
 from app.modules.inventory import models as inventory  # noqa: F401
 from app.modules.marketing import models as marketing  # noqa: F401
 from app.modules.operations import models as operations  # noqa: F401

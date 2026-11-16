@@ -214,7 +214,15 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # the alternative, rewriting an existing orders -> inventory import as SQL to make room, would
 # touch the returns and reservation paths that move money. Pay-back, when someone is already in
 # those paths: convert one of the repeated InventoryService aliases in orders/service.py.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 234
+# 234 -> 235 on 2026-11-16, ONE deliberate edge: imports -> identity.deps (TenantContext and
+# require_permission), in imports/router.py. The Import Center routes are gated on BOTH
+# products:write and stock:write, and that gate is identity's RBAC class; every other module's
+# router takes it from the same place (customers/routers/_deps.py, catalog, platform). Copying
+# the check would fork the rule that decides who may change the catalog and stock. The edge adds
+# no cycle (imports reads identity, nothing in identity reads imports) and the module's other
+# files add NO cross-module import: the shop-state lookup is raw SQL (imports/lookup.py) and
+# the ledger write goes through the worker, outside this counter's scan.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 235
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
