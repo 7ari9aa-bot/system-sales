@@ -168,6 +168,21 @@ PORTS = Ports(
 )
 
 
+async def enqueue_import(
+    session: AsyncSession, tenant_id: uuid.UUID, session_id: uuid.UUID, user_id: uuid.UUID | None
+) -> Job:
+    """Queue the first ``import.run`` job for a session (the route hands this to ``start``)."""
+    from app.modules.platform.services.jobs import JobService
+
+    return await JobService.create(
+        session,
+        tenant_id,
+        kind=JOB_KIND,
+        actor_user_id=user_id,
+        correlation_id=str(session_id),
+    )
+
+
 async def run_batch(session: AsyncSession, job: Job, *, limit: int = BATCH_LIMIT) -> dict:
     """One batch for the session this job points at; queue the next job if rows remain."""
     from app.modules.platform.services.jobs import JobService

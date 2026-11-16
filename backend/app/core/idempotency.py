@@ -123,6 +123,9 @@ IDEMPOTENT_PATHS: tuple[str, ...] = (
     "/api/v1/pos",
     # A double tap on Save must not book the expense (and its drawer pay-out) twice.
     "/api/v1/expenses",
+    # A lost response on the upload used to be retried into a SECOND session holding every row of
+    # the file again; starting twice is already refused by the session state.
+    "/api/v1/imports/sessions",
     # Receiving stock, paying a supplier and deciding a return each move stock and/or cash exactly
     # once.
     "/api/v1/purchase-orders",

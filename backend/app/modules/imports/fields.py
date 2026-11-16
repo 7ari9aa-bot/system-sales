@@ -26,12 +26,14 @@ SHEET_STOCK = "Opening Stock"
 SHEET_IMAGES = "Images"
 
 PRODUCT_FIELDS: tuple[FieldSpec, ...] = (
+    # Optional here: a one-sheet file of names and prices is what most shops have, and the
+    # validator derives the handle from the name (and refuses two names that collapse to one).
+    # On the Variants sheet it stays required: a variant has to say which product it belongs to.
     FieldSpec(
         "product_ref",
         "معرّف المنتج",
         "Product ref",
         ("productref", "productid", "handle", "slug", "parentsku", "معرفالمنتج", "كودالمنتج"),
-        required=True,
     ),
     FieldSpec(
         "title",

@@ -102,6 +102,9 @@ MAX_BODY_BYTES = 1_048_576  # 1 MiB
 # Product images are sent as raw binary, so this is also the exact file limit.
 MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
 _PRODUCT_IMAGE_UPLOAD_PATH = re.compile(r"^/products/[0-9a-fA-F-]{36}/images/upload$")
+# A merchant's catalog workbook: the raw file is the body. Same figure as the reader's ceiling.
+MAX_IMPORT_UPLOAD_BYTES = 20 * 1024 * 1024
+_IMPORT_UPLOAD_PATH = re.compile(r"^/imports/sessions$")
 
 # A path segment that looks like an id (uuid or integer) is collapsed so the
 # endpoint tier keys a route shape, not one key per row.
@@ -402,6 +405,8 @@ class BodySizeLimitMiddleware:
         max_bytes = self.max_bytes
         if scope.get("method") == "POST" and _PRODUCT_IMAGE_UPLOAD_PATH.fullmatch(route_path):
             max_bytes = MAX_PRODUCT_IMAGE_UPLOAD_BYTES
+        elif scope.get("method") == "POST" and _IMPORT_UPLOAD_PATH.fullmatch(route_path):
+            max_bytes = MAX_IMPORT_UPLOAD_BYTES
 
         declared = _header(scope, b"content-length")
         if declared is not None:

@@ -81,6 +81,7 @@ from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
 from app.modules.identity.router import users_router as identity_users_router
 from app.modules.identity.routers.google import router as google_auth_router
+from app.modules.imports.router import router as imports_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.marketing.router import (
     analytics_router,
@@ -498,6 +499,7 @@ def create_app() -> FastAPI:
         pos_router,
         activity_router,
         expenses_router,
+        imports_router,
         purchasing_router,
     ):
         api_v1.include_router(router)
