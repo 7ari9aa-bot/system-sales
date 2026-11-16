@@ -53,9 +53,11 @@ PHYSICAL_REASONS = {
     # Written only by the purchasing service (goods going back to / refused by a supplier).
     "supplier_return",
     "supplier_return_reversal",
+    # Written only by the data import: the starting position the day a shop moves to Fihrist.
+    "opening_stock",
 }
 # ...and a person cannot type these into POST /inventory/movements: no document would back them.
-SERVICE_ONLY_REASONS = {"supplier_return", "supplier_return_reversal"}
+SERVICE_ONLY_REASONS = {"supplier_return", "supplier_return_reversal", "opening_stock"}
 AVAILABILITY_REASONS = {"reservation", "reservation_release"}
 
 

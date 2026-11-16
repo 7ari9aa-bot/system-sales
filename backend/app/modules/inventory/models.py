@@ -93,7 +93,7 @@ class InventoryMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
     # and by the request model — free text here made the ledger unreadable.
     # allowed: purchase | sale | return | return_reversal | transfer_in |
     # transfer_out | adjustment | damage | supplier_return | supplier_return_reversal |
-    # reservation | reservation_release
+    # opening_stock | reservation | reservation_release
     reason: Mapped[str] = mapped_column(String(63))
     reference_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
     # polymorphic reference (e.g. order/transfer/reservation id) —

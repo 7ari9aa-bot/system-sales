@@ -221,3 +221,53 @@ async def test_wrong_tenant_variant_raises(db: AsyncSession, tenant_ctx):
             reason="purchase",
         )
     await db.flush()
+
+
+async def test_opening_stock_is_a_ledger_row_of_its_own_and_not_a_purchase(
+    db: AsyncSession, tenant_ctx
+):
+    """The data import records the starting position under `opening_stock`.
+
+    It must land in the ledger as itself: filed under `purchase` it would feed cost of goods,
+    and filed under `adjustment` it would vanish into a report of corrections.
+    """
+    from sqlalchemy import select
+
+    from app.modules.inventory.models import InventoryMovement
+
+    tenant_id = tenant_ctx.tenant_id
+    wh = await _warehouse(db, tenant_id)
+    variant = await _stocked_variant(db, tenant_id, wh.id, qty=0)
+    session_id = uuid.uuid4()
+
+    movement = await InventoryService.move(
+        db,
+        tenant_id,
+        variant.id,
+        wh.id,
+        direction="in",
+        quantity=7,
+        reason="opening_stock",
+        reference_type="import_session",
+        reference_id=session_id,
+    )
+
+    assert (movement.reason, movement.direction, movement.balance_after) == (
+        "opening_stock",
+        "in",
+        7,
+    )
+    balance = await InventoryService.get_balance(db, tenant_id, variant.id, wh.id)
+    assert balance.on_hand == 7
+    rows = (
+        (
+            await db.execute(
+                select(InventoryMovement).where(InventoryMovement.variant_id == variant.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(r.reason, r.reference_type, r.reference_id) for r in rows] == [
+        ("opening_stock", "import_session", session_id)
+    ]

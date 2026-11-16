@@ -39,12 +39,18 @@ PHYSICAL_MOVEMENT_REASONS: frozenset[str] = frozenset(
         # The supplier REFUSED those goods and they went back on the shelf. Not `return_reversal`:
         # that one undoes a CUSTOMER return, and a report filtering on it must not mix the two.
         "supplier_return_reversal",
+        # The quantity a merchant already had on the shelf the day they moved to Fihrist. Written
+        # only by the data import (reference_type='import_session'), once per variant and
+        # warehouse. Not `adjustment`: a report of corrections must not swallow the starting
+        # position, and not `purchase`: nothing was bought, so it must never feed cost of goods.
+        "opening_stock",
     }
 )
 #: Reasons only a domain service may write. A person typing one into POST /inventory/movements
-#: would fake goods leaving to a supplier that no document claims.
+#: would fake goods leaving to a supplier that no document claims, or a starting position that
+#: no import recorded.
 SERVICE_ONLY_MOVEMENT_REASONS: frozenset[str] = frozenset(
-    {"supplier_return", "supplier_return_reversal"}
+    {"supplier_return", "supplier_return_reversal", "opening_stock"}
 )
 AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset({"reservation", "reservation_release"})
 MOVEMENT_REASONS: frozenset[str] = PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS
