@@ -2466,6 +2466,22 @@ def _say_it_without_figures(handler):
     return wrapped
 
 
+def _split_table() -> str:
+    """Each metric with the breakdowns it allows, read from the registry the call validates against.
+
+    Nine of the fifteen tool errors seen in three days were one mistake: asking for a breakdown the
+    metric does not have. Typing the table here would let it rot, so it is generated.
+    """
+    registry, names, _ = _metric_registry()
+    reg = registry() if callable(registry) else registry
+    parts = []
+    for name in sorted(names()):
+        dims = list(getattr(reg[name], "dimensions_allowed", None) or [])
+        if dims:
+            parts.append(f"{name}({'/'.join(dims)})")
+    return ", ".join(parts)
+
+
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
     _, computable_metric_names, _ = _metric_registry()
@@ -2480,14 +2496,14 @@ def register_si_tools() -> None:
                 "up or down, why, who'). Pick mode: "
                 "value = one metric's number for the last N days ('how much / how many'); "
                 "compare = this window against the one before ('up or down'); "
-                "split = one metric divided by dimension, channel by default (others only where "
-                "the metric allows; it cannot rank customers: use si_shop view=top_customers "
-                "to rank them, view=customer for one); "
+                f"split = one metric divided by dimension, only: {_split_table()}; never month, "
+                "week, day or customer: it cannot rank customers (si_shop view=top_customers "
+                "ranks them, view=customer for one); "
                 "explain = what the metric means and how it is counted, never to fetch a number; "
                 "why = the store as a whole, needs focus: drivers (why revenue moved: more "
                 "orders or a bigger basket), seasonality (which weekdays are strong), customers "
-                "(new versus returning), fulfillment (delivery and rejection per carrier; "
-                "minimum_volume leaves out small carriers); "
+                "(new versus returning), fulfillment (delivery and rejection per carrier, "
+                "minimum_volume); "
                 "activity = who contacted the shop, needs view: customers (who messaged, limit up "
                 "to 50), channels (volume per platform), comments (public comments, limit up to "
                 "20); "
@@ -2510,18 +2526,17 @@ def register_si_tools() -> None:
             description=(
                 "Look inside the shop's own records (use for 'what sells, what is left, what "
                 "did the cashier sell, find this order or customer'). Pick view: "
-                "products = best sellers with units, revenue and the sizes and colors chosen "
+                "products = best sellers with units, revenue and the options chosen "
                 "(days max 90, limit max 20); "
-                "stock = what is out, running low, sitting unsold or not tracked "
+                "stock = what is out, running low or unsold "
                 "(stagnant_days, limit max 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
                 "shifts (days max 366, limit max 25; online order totals are in "
                 "si_metric); "
-                "order = ONE order by number, customer name or phone, needs query (limit max "
-                "10); "
+                "order = ONE order by number, customer name or phone, needs query; "
                 "customer = ONE customer by name, phone or email, needs query (phone, email "
                 "masked); "
-                "top_customers = who spent the most, biggest first, with orders and spend "
+                "top_customers = who spent the most, with orders and spend "
                 "(days max 366, limit max 20). "
                 "For order and customer the query must be one the owner typed or an earlier "
                 "result showed: never guess one, never try letters or digits to see what comes "
@@ -2538,13 +2553,11 @@ def register_si_tools() -> None:
             description=(
                 "The shop's own money over the last N days (use for 'what did I spend, what "
                 "did I earn, what did I buy, what do I owe'). Pick report: "
-                "expenses = what the shop spent, by category, by payment method, and the "
-                "biggest items (posted only); "
+                "expenses = what the shop spent, by category, by payment method; "
                 "profit = what the shop earned after the cost of what it sold and after "
                 "expenses, only when the cost of every sold item is known, otherwise it shows "
                 "no profit figure and says how much is uncosted; "
-                "purchasing = what the shop bought, orders waiting to arrive and what it owes "
-                "each supplier. "
+                "purchasing = what it bought and what it owes each supplier. "
                 "days 1-366, default 30. limit: expenses and purchasing only "
                 "(default 8, max 25). Sales revenue is not here: use si_metric. Read-only."
             ),
