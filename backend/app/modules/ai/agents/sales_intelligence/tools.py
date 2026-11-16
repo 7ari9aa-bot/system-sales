@@ -1890,16 +1890,25 @@ async def _si_find_customer(
 #: Customers ranked by what they spent in a window. Spend counts what _FIND_CUSTOMER_SQL counts (an
 #: order that was not cancelled or deleted, whatever its payment state) so the same customer shows
 #: the same number whichever way the owner asks. A merged-away customer row is left out, as there.
-_TOP_CUSTOMERS_SQL = (
-    "SELECT c.id::text AS customer_id, COALESCE(c.name, '') AS name, "
-    "COUNT(*) AS order_count, SUM(o.grand_total) AS spent, "
-    "MAX(COALESCE(o.placed_at, o.created_at)) AS last_order_at "
+_TOP_CUSTOMERS_FROM = (
     "FROM orders o JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id "
     "WHERE o.tenant_id = :tenant_id AND o.deleted_at IS NULL AND o.status <> 'cancelled' "
     "AND c.deleted_at IS NULL AND c.merged_into_customer_id IS NULL "
     "AND COALESCE(o.placed_at, o.created_at) >= :start "
     "AND COALESCE(o.placed_at, o.created_at) < :end "
-    "GROUP BY c.id, c.name ORDER BY spent DESC, order_count DESC, c.name LIMIT :limit"
+)
+_TOP_CUSTOMERS_SQL = (
+    "SELECT c.id::text AS customer_id, COALESCE(c.name, '') AS name, "
+    "COUNT(*) AS order_count, SUM(o.grand_total) AS spent, "
+    "MAX(COALESCE(o.placed_at, o.created_at)) AS last_order_at "
+    + _TOP_CUSTOMERS_FROM
+    + "GROUP BY c.id, c.name ORDER BY spent DESC, order_count DESC, c.name LIMIT :limit"
+)
+# The same customers the ranking draws from, before the page size cuts the list: "these are all of
+# your customers" is only sayable from this number, never from how many rows came back.
+_TOP_CUSTOMERS_TOTAL_SQL = (
+    "SELECT COUNT(DISTINCT c.id) AS customers, "
+    "MAX(COALESCE(o.placed_at, o.created_at)) AS last_order_at " + _TOP_CUSTOMERS_FROM
 )
 
 
@@ -1926,6 +1935,12 @@ async def _si_top_customers(
             },
         )
     ).all()
+    total = (
+        await session.execute(
+            _sql(_TOP_CUSTOMERS_TOTAL_SQL),
+            {"tenant_id": str(tenant_id), "start": current.start, "end": current.end},
+        )
+    ).one()
     if not rows:
         # "nobody ordered in the last 30 days" is a measurement, not an absence of one: the window
         # was read and came back empty. Recorded as a zero over that window so the answer may say
@@ -1953,7 +1968,15 @@ async def _si_top_customers(
         }
         for r in rows
     ]
-    numbers = []
+    # Counted by the database, not by len(entries): the list is cut to ``limit``, and "all your
+    # customers" said from a page size is a guess. The days since the last order are measured
+    # against the end of the window the tool itself resolved, so the owner's "58 days ago" is a
+    # fact and not the model's own subtraction.
+    numbers = [("customers_who_ordered", int(total.customers), "count", {})]
+    if total.last_order_at is not None:
+        numbers.append(
+            ("days_since_last_order", _window_days(total.last_order_at, current.end), "count", {})
+        )
     for r in rows:
         numbers.append(
             ("customer_total_spent", Decimal(str(r.spent)), "money", {"c": r.customer_id})
@@ -2437,6 +2460,37 @@ NO_FIGURES_NOTE = (
 )
 
 
+MEASURED_FIGURES_NOTE = (
+    "write only the numbers listed in facts: do not work out a sum, a difference, a share, a "
+    "count of days or of a month, or 'all of them' yourself, because a figure that is not in "
+    "facts is refused and the answer is written again"
+)
+
+
+def _only_measured_figures(handler):
+    """When a tool measured something, tell the model to quote only what it measured.
+
+    The number gate refused 14 answers in 2.5 hours and 10 of them were a small number the model
+    added itself: how many days October has, a total it added up, how many days ago the last order
+    was, "these are all your customers" from a page size. The gate was right each time, and each
+    refusal cost a rewrite of 30 to 35 s. The note rides with the data, where the model reads it
+    while it writes. A result with nothing measured has its own, stronger note and is left alone."""
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapped(*args, **kwargs):
+        result = await handler(*args, **kwargs)
+        if isinstance(result, dict) and result.get("facts"):
+            limits = list(result.get("limitations") or [])
+            if MEASURED_FIGURES_NOTE not in limits:
+                limits.append(MEASURED_FIGURES_NOTE)
+            result = {**result, "limitations": limits}
+        return result
+
+    wrapped.only_measured_figures = True  # type: ignore[attr-defined]
+    return wrapped
+
+
 def _say_it_without_figures(handler):
     """When a tool measured nothing, tell the model it has no figure to quote.
 
@@ -2574,7 +2628,9 @@ def register_si_tools() -> None:
 
     for spec in specs:
         if get_tool(spec.name) is None:
-            handler = _say_it_without_figures(_explain_unsupported(spec.handler))
+            handler = _only_measured_figures(
+                _say_it_without_figures(_explain_unsupported(spec.handler))
+            )
             if spec.name == "si_metric":
                 handler = _with_data_recorded(handler)
             spec.handler = with_progress(spec.name, handler)

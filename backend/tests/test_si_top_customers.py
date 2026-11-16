@@ -252,3 +252,68 @@ def test_the_ranking_query_is_tenant_scoped_in_the_sql_itself():
 
     assert "o.tenant_id = :tenant_id" in _TOP_CUSTOMERS_SQL
     assert "c.tenant_id = o.tenant_id" in _TOP_CUSTOMERS_SQL
+
+
+def _fact(r, metric):
+    return [f for f in r["facts"] if f["metric"] == metric]
+
+
+async def test_the_count_of_all_customers_who_ordered_is_a_measured_fact_not_the_page_size(
+    db, tenant_ctx
+):
+    """Seen live: the answer said "these are all your customers (3 only)". The tool returned the top
+    three of a limit of five, so "all" was a guess the number gate rightly refused, and the rewrite
+    that followed cost 35 s. The total is now measured, over the same window and the same
+    definition, whatever ``limit`` cut the list to."""
+    t = tenant_ctx.tenant_id
+    for i in range(4):
+        c = await _customer(db, t, f"Buyer {i}")
+        await _order(db, t, c, total=10 + i)
+    r = await _si_top_customers(db, t, days=30, limit=2)
+    assert len(r["summary"]["entries"]) == 2
+    total = _fact(r, "customers_who_ordered")
+    assert [f["value"] for f in total] == ["4"]
+    assert total[0]["unit"] == "count"
+    assert total[0]["window"] == "30d"
+
+
+async def test_the_total_uses_the_same_definition_of_a_customer_as_the_ranking(db, tenant_ctx):
+    t = tenant_ctx.tenant_id
+    counted = await _customer(db, t, "Counted")
+    await _order(db, t, counted, total=30)
+    cancelled_only = await _customer(db, t, "Cancelled Only")
+    await _order(db, t, cancelled_only, total=99, status="cancelled")
+    deleted = await _customer(db, t, "Deleted", deleted_at=NOW)
+    await _order(db, t, deleted, total=77)
+    merged = await _customer(db, t, "Merged", merged_into_customer_id=counted.id)
+    await _order(db, t, merged, total=55)
+    old = await _customer(db, t, "Old")
+    await _order(db, t, old, total=44, days_ago=200)
+    r = await _si_top_customers(db, t, days=30, limit=10)
+    assert _names(r) == ["Counted"]
+    assert [f["value"] for f in _fact(r, "customers_who_ordered")] == ["1"]
+
+
+async def test_one_customer_with_many_orders_is_one_customer_in_the_total(db, tenant_ctx):
+    t = tenant_ctx.tenant_id
+    c = await _customer(db, t, "Regular")
+    for _ in range(6):
+        await _order(db, t, c, total=5)
+    r = await _si_top_customers(db, t, days=30, limit=5)
+    assert [f["value"] for f in _fact(r, "customers_who_ordered")] == ["1"]
+
+
+async def test_an_empty_window_still_reports_zero_customers_who_ordered(db, tenant_ctx):
+    r = await _si_top_customers(db, tenant_ctx.tenant_id, days=30, limit=5)
+    assert [f["value"] for f in _fact(r, "customers_who_ordered")] == ["0"]
+
+
+async def test_the_days_since_the_last_order_is_a_measured_fact(db, tenant_ctx):
+    """ "Last order 58 days ago" was a number the model counted on its own and the gate refused."""
+    t = tenant_ctx.tenant_id
+    c = await _customer(db, t, "Quiet")
+    await _order(db, t, c, total=10, days_ago=12)
+    r = await _si_top_customers(db, t, days=90, limit=5)
+    since = _fact(r, "days_since_last_order")
+    assert [f["value"] for f in since] == ["12"]
+    assert since[0]["unit"] == "count"
