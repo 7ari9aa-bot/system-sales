@@ -409,3 +409,65 @@ def test_a_customer_last_message_adds_no_date_to_the_period_boundaries():
         {"facts": REAL_UTC, "summaries": [ACTIVITY]}, boundaries_only=True
     )
     assert (2026, 9, 19) not in days
+
+
+# --- the day a CHANNEL last had a message (activity view=channels; found on the live assistant) ---
+CHANNELS = {
+    "entries": [
+        {
+            "channel": "whatsapp",
+            "inbound": 2,
+            "outbound": 4,
+            "customers": 2,
+            "conversations": 2,
+            "last_message_at": "2026-09-19T21:27:09.903996+00:00",
+        }
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر رسالة على واتساب كانت يوم 2026-09-19.",
+        "آخر رسالة على واتساب 19 سبتمبر 2026.",
+    ],
+)
+def test_the_day_a_channel_last_had_a_message_may_be_named(text):
+    """Measured live: a correct, template-free answer was refused for "19 September 2026" because
+    only a row with a customer_id counted, and the channel row has none. The refusal cost a rewrite
+    of 39 s on top of the 36 s the answer took."""
+    assert _check(text, facts=REAL_UTC, summaries=[CHANNELS]) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "آخر رسالة على واتساب كانت يوم 2026-09-20.",
+        "آخر رسالة على واتساب كانت يوم 20 سبتمبر 2026.",
+        "آخر رسالة على واتساب كانت يوم 19 سبتمبر.",
+    ],
+)
+def test_a_channel_day_that_was_not_reported_is_refused(text):
+    assert _check(text, facts=REAL_UTC, summaries=[CHANNELS]) != []
+
+
+def test_a_row_with_neither_a_channel_nor_a_customer_is_still_not_a_date():
+    nameless = {"entries": [{"inbound": 2, "last_message_at": "2026-09-19T21:27:09+00:00"}]}
+    assert _check("آخر رسالة يوم 2026-09-19.", facts=REAL_UTC, summaries=[nameless]) != []
+    # a channel key that is not text (a nested object) does not make a row a channel row
+    odd = {"entries": [{"channel": {"x": 1}, "last_message_at": "2026-09-19T21:27:09+00:00"}]}
+    assert _check("آخر رسالة يوم 2026-09-19.", facts=REAL_UTC, summaries=[odd]) != []
+    outside = {"other": {"channel": "whatsapp", "last_message_at": "2026-09-19T00:00:00+00:00"}}
+    assert _check("آخر رسالة يوم 2026-09-19.", facts=REAL_UTC, summaries=[outside]) != []
+
+
+def test_a_channel_day_does_not_unlock_its_digits_elsewhere():
+    assert _check("يوم 2026-09-19 جالنا 19 رسالة.", facts=REAL_UTC, summaries=[CHANNELS]) != []
+
+
+def test_a_channel_last_message_adds_no_date_to_the_period_boundaries():
+    days = period_dates_from_evidence(
+        {"facts": REAL_UTC, "summaries": [CHANNELS]}, boundaries_only=True
+    )
+    assert (2026, 9, 19) not in days

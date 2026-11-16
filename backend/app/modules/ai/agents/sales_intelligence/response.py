@@ -185,13 +185,16 @@ def period_dates_from_evidence(
                 if isinstance(row, dict) and isinstance(row.get("source"), str):
                     _add(row.get("first"))
                     _add(row.get("last"))
-        # The customer-activity tool reports when each customer last wrote, read from the
-        # messages themselves ("the last contact was on 19 September"). Only a row that names a
-        # customer, inside that tool's own `entries` list, counts: the key anywhere else does not.
+        # The customer-activity tool reports when each customer, or each channel, last wrote, read
+        # from the messages themselves ("the last contact was on 19 September"). Only a row that
+        # names a customer or a channel (text, not an object), inside that tool's own `entries`
+        # list, counts: the key anywhere else does not.
         entries = summary.get("entries") if isinstance(summary, dict) else None
         if isinstance(entries, list):
             for row in entries:
-                if isinstance(row, dict) and isinstance(row.get("customer_id"), str):
+                if isinstance(row, dict) and (
+                    isinstance(row.get("customer_id"), str) or isinstance(row.get("channel"), str)
+                ):
                     _add(row.get("last_message_at"))
     return found
 
