@@ -64,7 +64,7 @@ export default function ProfileSettings() {
   return (
     <SettingsShell title={t("settings.nav.profile")} subtitle={t("settings.profile.desc")}>
       {/* No boxes: one open page. The person on top, then plain rows separated by hairlines. */}
-      <div className="max-w-3xl">
+      <div className="w-full">
         <div className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-center">
           <AccountAvatar user={user} size="lg" />
           <div className="min-w-0 flex-1">
@@ -122,7 +122,7 @@ export default function ProfileSettings() {
                 maxLength={255}
                 autoComplete="name"
                 aria-label={t("profile.fullName")}
-                className="min-w-0 flex-1 sm:w-64 sm:flex-none"
+                className="min-w-0 flex-1 sm:w-80 sm:flex-none"
                 data-testid="profile-name"
               />
               <Button
