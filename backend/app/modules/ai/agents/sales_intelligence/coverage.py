@@ -27,6 +27,7 @@ from app.modules.ai.agents.sales_intelligence.response import (
     recorded_days_from_evidence,
     validate_answer,
 )
+from app.modules.ai.chat import trace as chat_trace
 from app.modules.analytics.contracts import Finding
 
 logger = logging.getLogger(__name__)
@@ -299,17 +300,18 @@ async def regenerate_on_rejected_answer(
         }
     )
     try:
-        chat = await AIGateway().chat(
-            session,
-            tenant_id,
-            alias=AgentRunner._alias_for(agent),
-            messages=messages,
-            tools=None,  # the rewrite reuses the gathered evidence only
-            temperature=float(agent.temperature),
-            max_tokens=agent.max_output_tokens,
-            agent_id=agent_id,
-            run_id=run_id,
-        )
+        with chat_trace.purpose("rewrite"):
+            chat = await AIGateway().chat(
+                session,
+                tenant_id,
+                alias=AgentRunner._alias_for(agent),
+                messages=messages,
+                tools=None,  # the rewrite reuses the gathered evidence only
+                temperature=float(agent.temperature),
+                max_tokens=agent.max_output_tokens,
+                agent_id=agent_id,
+                run_id=run_id,
+            )
     except Exception:  # containment: a failed rewrite keeps the existing fallback
         logger.warning("si.reject_regen_failed run=%s", run_id, exc_info=True)
         return None, None
@@ -413,17 +415,18 @@ async def regenerate_on_coverage_gap(
         }
     )
     try:
-        chat = await AIGateway().chat(
-            session,
-            tenant_id,
-            alias=AgentRunner._alias_for(agent),
-            messages=messages,
-            tools=None,  # the correction reuses the gathered evidence only
-            temperature=float(agent.temperature),
-            max_tokens=agent.max_output_tokens,
-            agent_id=agent_id,
-            run_id=run_id,
-        )
+        with chat_trace.purpose("fill_gap"):
+            chat = await AIGateway().chat(
+                session,
+                tenant_id,
+                alias=AgentRunner._alias_for(agent),
+                messages=messages,
+                tools=None,  # the correction reuses the gathered evidence only
+                temperature=float(agent.temperature),
+                max_tokens=agent.max_output_tokens,
+                agent_id=agent_id,
+                run_id=run_id,
+            )
     except Exception:  # containment — a failed regen keeps the original draft
         logger.warning("si.coverage_regen_failed run=%s", run_id, exc_info=True)
         return None, note, None

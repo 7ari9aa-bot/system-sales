@@ -283,6 +283,11 @@ class AIGateway:
         status = "ok"
         result: ChatCompletionResult | None = None
         config: dict | None = None
+        # The owner's assistant times each model call onto the answer being written (a no-op
+        # anywhere else). Imported here: the chat package imports this module.
+        from app.modules.ai.chat import trace as chat_trace
+
+        trace_id = await chat_trace.start("model", tools_offered=len(tools or []))
         try:
             config = await resolve_model_config(session, tenant_id, alias)
 
@@ -386,6 +391,20 @@ class AIGateway:
             latency_ms = int((time.perf_counter() - started) * 1000)
             tokens_in = result.tokens_in if result else 0
             tokens_out = result.tokens_out if result else 0
+            if trace_id is not None:
+                thinking, cut = chat_trace.clip_reasoning(result.reasoning if result else None)
+                await chat_trace.end(
+                    trace_id,
+                    "model",
+                    latency_ms,
+                    ok=status == "ok",
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    tools_called=[c.name for c in (result.tool_calls if result else [])],
+                    answered=bool(result and result.content),
+                    reasoning=thinking,
+                    reasoning_cut=cut,
+                )
             session.add(
                 ModelCall(
                     tenant_id=tenant_id,

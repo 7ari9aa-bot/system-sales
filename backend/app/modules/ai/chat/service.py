@@ -218,3 +218,45 @@ async def get_assistant_reply_for(session, ctx, thread, *, user_seq: int):
             )
         )
     ).scalar_one_or_none()
+
+
+async def timing_report(session, ctx, *, days: int = 7):
+    """Where the assistant's time went over the last ``days``, for the answers this caller may see.
+
+    Same scope as the thread list: the shop owner sees every thread, anyone else only their own.
+    Each answer is paired with the question right before it in its thread.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import and_
+    from sqlalchemy.orm import aliased
+
+    from app.modules.ai.chat.trace import report
+
+    since = datetime.now(UTC) - timedelta(days=max(1, min(days, 90)))
+    question = aliased(AIChatMessage)
+    stmt = (
+        select(question.content, AIChatMessage.trace)
+        .join(AIChatThread, AIChatThread.id == AIChatMessage.thread_id)
+        .outerjoin(
+            question,
+            and_(
+                question.thread_id == AIChatMessage.thread_id,
+                question.sequence_no == AIChatMessage.sequence_no - 1,
+                question.role == "user",
+            ),
+        )
+        .where(
+            AIChatMessage.tenant_id == ctx.tenant_id,
+            AIChatMessage.role == "assistant",
+            AIChatMessage.status == "completed",
+            AIChatMessage.created_at >= since,
+            AIChatThread.status != "deleted",
+        )
+        .order_by(AIChatMessage.created_at.desc())
+        .limit(500)
+    )
+    if not _is_tenant_owner(ctx):
+        stmt = stmt.where(AIChatThread.created_by_user_id == ctx.user.id)
+    rows = (await session.execute(stmt)).all()
+    return {"days": max(1, min(days, 90)), **report([(q, t) for q, t in rows])}

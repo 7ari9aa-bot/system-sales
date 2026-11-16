@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   Brain,
+  Gauge,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,6 +20,7 @@ import {
 import Logo from "@/components/dashboard/Logo";
 import Composer from "@/components/salesAssistant/Composer";
 import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
+import TimingPanel from "@/components/salesAssistant/TimingPanel";
 import MessageList from "@/components/salesAssistant/MessageList";
 import ThreadListPanel from "@/components/salesAssistant/ThreadListPanel";
 import {
@@ -115,7 +117,17 @@ export default function SalesAssistant() {
   const [includeArchived, setIncludeArchived] = React.useState(false);
   const [drafts, setDrafts] = React.useState({});
   const [panelOpen, setPanelOpen] = React.useState(false);
-  const [memoryOpen, setMemoryOpen] = React.useState(false);
+  const [memoryOpen, setMemoryOpenRaw] = React.useState(false);
+  const [timingOpen, setTimingOpenRaw] = React.useState(false);
+  // one side panel at a time
+  const setMemoryOpen = (v) => {
+    setMemoryOpenRaw(v);
+    if (v === true || typeof v === "function") setTimingOpenRaw(false);
+  };
+  const setTimingOpen = (v) => {
+    setTimingOpenRaw(v);
+    if (v === true || typeof v === "function") setMemoryOpenRaw(false);
+  };
   const scrollRef = React.useRef(null);
 
   const threadsQuery = useQuery({
@@ -277,6 +289,16 @@ export default function SalesAssistant() {
         >
           <Brain className="h-4 w-4" />
           {t("memory.open")}
+        </button>
+        <button
+          type="button"
+          data-testid="timing-open"
+          onClick={() => setTimingOpen((v) => !v)}
+          aria-pressed={timingOpen}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-surface hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground"
+        >
+          <Gauge className="h-4 w-4" />
+          {t("salesAssistant.timing.open")}
         </button>
       </div>
 
@@ -470,6 +492,18 @@ export default function SalesAssistant() {
             />
             <div className="fixed inset-y-0 end-0 z-50 flex w-[92%] max-w-[380px] p-2 animate-fade-in lg:static lg:z-auto lg:flex lg:h-full lg:w-[340px] lg:max-w-none lg:shrink-0 lg:p-0">
               <MemoryPanel onClose={() => setMemoryOpen(false)} />
+            </div>
+          </>
+        )}
+        {timingOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[2px] lg:hidden"
+              onClick={() => setTimingOpen(false)}
+              aria-hidden
+            />
+            <div className="fixed inset-y-0 end-0 z-50 flex w-[92%] max-w-[380px] p-2 animate-fade-in lg:static lg:z-auto lg:flex lg:h-full lg:w-[340px] lg:max-w-none lg:shrink-0 lg:p-0">
+              <TimingPanel onClose={() => setTimingOpen(false)} />
             </div>
           </>
         )}

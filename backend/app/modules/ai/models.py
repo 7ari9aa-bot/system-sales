@@ -842,6 +842,9 @@ class AIChatMessage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     # ("reading your sales", "writing the reply"). Written while the row is `generating`; NULL
     # means no step was written. See chat/progress.py.
     progress: Mapped[list | None] = mapped_column(JSONB)
+    # Where this answer's time went and what the model thought, measured while it was written:
+    # append-only start/end events plus one summary. NULL = not traced. See chat/trace.py.
+    trace: Mapped[list | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint(

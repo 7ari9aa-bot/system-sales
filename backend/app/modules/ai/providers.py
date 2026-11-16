@@ -82,6 +82,9 @@ class ChatCompletionResult:
     # Gemini 3.x: must be echoed back on the assistant tool-call message,
     # otherwise the next turn fails with 400 (missing thought_signature).
     thought_signature: str | None = None
+    # What the model thought before answering, when the endpoint returns it. Kept APART from
+    # ``content`` so it is never shown as the answer; the owner's assistant shows it on request.
+    reasoning: str | None = None
 
 
 _THINK_BLOCK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
@@ -97,7 +100,8 @@ def _answer_text(content: object) -> str | None:
     returned. Thinking is dropped, and a reply that was only thinking (or was cut off inside
     a <think> block) is ``None``, the same as no reply, so the caller's existing "no answer"
     handling applies instead of a half-thought being shown as an answer. Separate reasoning
-    fields (``reasoning``, ``reasoning_content``) are never read.
+    fields (``reasoning``, ``reasoning_content``) are never part of the answer; ``_reasoning_text``
+    reads them into their own field.
     """
     if content is None:
         return None
@@ -114,6 +118,34 @@ def _answer_text(content: object) -> str | None:
         return None
     text = text.strip()
     return text or None
+
+
+_THINK_INNER = re.compile(r"<think(?:ing)?>(.*?)(?:</think(?:ing)?>|$)", re.DOTALL | re.IGNORECASE)
+
+
+def _reasoning_text(message: dict) -> str | None:
+    """The model's thinking for this reply, whichever shape the endpoint used, or None.
+
+    A separate field (``reasoning`` from gateways, ``reasoning_content`` from DashScope and
+    DeepSeek, or ``reasoning_details`` parts) or, failing that, <think> blocks inline in the
+    content. Only read for display: it never changes the answer.
+    """
+    for key in ("reasoning", "reasoning_content"):
+        value = message.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    details = message.get("reasoning_details")
+    if isinstance(details, list):
+        joined = "".join(
+            str(part.get("text") or "") for part in details if isinstance(part, dict)
+        ).strip()
+        if joined:
+            return joined
+    content = message.get("content")
+    if isinstance(content, str) and _THINK_OPEN.search(content):
+        inner = "\n".join(m.strip() for m in _THINK_INNER.findall(content) if m.strip())
+        return inner or None
+    return None
 
 
 def _auth_headers(api_key: str) -> dict[str, str]:
@@ -208,6 +240,7 @@ class AIProvider:
                 tokens_out=int(usage.get("completion_tokens") or 0),
                 raw_model=str(body.get("model") or model),
                 thought_signature=google_extra.get("thought_signature"),
+                reasoning=_reasoning_text(message),
             )
         except ExternalProviderError:
             raise

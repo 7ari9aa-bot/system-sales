@@ -9,6 +9,8 @@ import { Check, Copy, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/dashboard/ui";
 import Logo from "@/components/dashboard/Logo";
 import BlockRenderer from "@/components/salesAssistant/BlockRenderer";
+import TracePanel from "@/components/salesAssistant/TracePanel";
+import { traceSteps } from "@/components/salesAssistant/traceView";
 import { generatingRow, stepsOf, withoutUnfinished } from "@/components/salesAssistant/progressSteps";
 import { useFormatters } from "@/lib/dates";
 import { useT } from "@/lib/i18n";
@@ -41,12 +43,16 @@ function CopyButton({ text }) {
  *  records what the assistant has really started, each line is listed above the dots; the newest
  *  one is the one in progress and the earlier ones are done. Nothing here is invented: a line
  *  appears only when the server wrote it. */
-function Thinking({ steps = [] }) {
+function Thinking({ steps = [], trace = null }) {
   const t = useT();
   const lastIndex = steps.length - 1;
+  // with a measured timeline, it replaces the plain lines: each step with its seconds, and each
+  // finished round opens to what the model thought
+  const timed = traceSteps(trace).length > 0;
   return (
     <div data-testid="assistant-pending" className="space-y-1.5 py-1">
-      {steps.length > 0 && (
+      {timed && <TracePanel trace={trace} live />}
+      {!timed && steps.length > 0 && (
         <ul data-testid="assistant-steps" className="space-y-1">
           {steps.map((line, i) => (
             <li
@@ -86,7 +92,8 @@ export default function MessageList({ messages, outgoing, pending, onRetry }) {
   const { ago } = useFormatters();
   // The answer the server is still writing is drawn ONCE, by the wait indicator, with the steps the
   // server has recorded for it. Left in the list as well it would show the same answer twice.
-  const steps = stepsOf(generatingRow(messages));
+  const live = generatingRow(messages);
+  const steps = stepsOf(live);
   // The API lists newest first (it pages backwards). A chat reads oldest to newest, so the order is
   // fixed here by the turn number, whatever order the list arrives in.
   const items = [...withoutUnfinished(messages)].sort(
@@ -96,7 +103,7 @@ export default function MessageList({ messages, outgoing, pending, onRetry }) {
     items.push({ id: "outgoing", role: "user", status: "completed", content: outgoing });
   }
   if (pending) {
-    items.push({ id: "pending", role: "assistant", status: "generating", content: "", steps });
+    items.push({ id: "pending", role: "assistant", status: "generating", content: "", steps, trace: live?.trace ?? null });
   }
   return (
     <div data-testid="assistant-column" className="space-y-6">
@@ -125,7 +132,7 @@ export default function MessageList({ messages, outgoing, pending, onRetry }) {
                 {isUser ? (
                   <p className="text-[13.5px] leading-6 whitespace-pre-wrap break-words">{m.content}</p>
                 ) : isGenerating ? (
-                  <Thinking steps={m.steps ?? []} />
+                  <Thinking steps={m.steps ?? []} trace={m.trace ?? null} />
                 ) : isFailed ? (
                   <div className="space-y-2.5">
                     <Badge tone="destructive">{m.error_code || "run_failed"}</Badge>
@@ -142,6 +149,7 @@ export default function MessageList({ messages, outgoing, pending, onRetry }) {
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    <TracePanel trace={m.trace} />
                     <Markdown
                       components={{
                         p: ({ children }) => <p className="text-[13.5px] leading-7">{children}</p>,

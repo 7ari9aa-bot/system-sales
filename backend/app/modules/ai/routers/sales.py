@@ -30,6 +30,7 @@ from app.modules.ai.chat.schemas import (
 from app.modules.ai.chat.schemas import (
     MessageSendRequest as SalesChatMessageSendRequest,
 )
+from app.modules.ai.chat.schemas import SalesChatTimingOut
 from app.modules.ai.chat.schemas import (
     ThreadCreateRequest as SalesChatThreadCreateRequest,
 )
@@ -189,6 +190,14 @@ async def list_sales_chat_threads(
         limit=limit,
         before=before,
     )
+
+
+@router.get("/sales-chat/timing", response_model=SalesChatTimingOut)
+async def sales_chat_timing(
+    ctx: AnalyticsCtx, days: Annotated[int, Query(ge=1, le=90)] = 7
+) -> SalesChatTimingOut:
+    """Where the assistant's answers spent their time, and the causes of the slow ones."""
+    return SalesChatTimingOut(**await chat_service.timing_report(ctx.session, ctx, days=days))
 
 
 @router.get("/sales-chat/threads/{thread_id}", response_model=SalesChatThreadOut)

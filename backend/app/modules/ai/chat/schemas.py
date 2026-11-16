@@ -96,9 +96,41 @@ class MessageOut(BaseModel):
     error_code: str | None
     # what the assistant has really started on this answer, while it is still `generating`
     progress: list[str] | None = None
+    # measured timing and the model's thinking for this answer (chat/trace.py)
+    trace: list[dict] | None = None
     created_at: datetime
 
 
 class MessageSendRequest(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     idempotency_key: str | None = Field(default=None, max_length=64)
+
+
+class SalesChatTimingCause(BaseModel):
+    code: str
+    text: str
+    answers: int
+
+
+class SalesChatSlowAnswer(BaseModel):
+    question: str
+    total_ms: int
+    model_ms: int
+    rounds: int
+    reasons: list[str]
+
+
+class SalesChatTimingOut(BaseModel):
+    """Where the assistant's time went over a window, measured per answer (chat/trace.py)."""
+
+    days: int
+    answers: int
+    untraced: int
+    median_total_ms: int
+    avg_total_ms: int
+    avg_model_ms: int
+    avg_tools_ms: int
+    avg_other_ms: int
+    avg_rounds: float
+    causes: list[SalesChatTimingCause]
+    slowest: list[SalesChatSlowAnswer]

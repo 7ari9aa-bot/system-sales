@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 457,
-    "sha256": "000894abe7ad7ed23962411a58252b477a7aa049d84b6883e2dd9cd30225475d",
-    "typed_operations": 294
+    "operations": 458,
+    "sha256": "5bf24e3451d1ff73d4fcb03b8a87680b1f2c01c8d4d5a7d8c852254df9fb7194",
+    "typed_operations": 295
   },
   "spec": {
     "components": {
@@ -11381,6 +11381,21 @@
               "format": "uuid",
               "title": "Thread Id",
               "type": "string"
+            },
+            "trace": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trace"
             }
           },
           "required": [
@@ -15506,6 +15521,135 @@
             "items"
           ],
           "title": "SLOMeasurementList",
+          "type": "object"
+        },
+        "SalesChatSlowAnswer": {
+          "properties": {
+            "model_ms": {
+              "title": "Model Ms",
+              "type": "integer"
+            },
+            "question": {
+              "title": "Question",
+              "type": "string"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Reasons",
+              "type": "array"
+            },
+            "rounds": {
+              "title": "Rounds",
+              "type": "integer"
+            },
+            "total_ms": {
+              "title": "Total Ms",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "question",
+            "total_ms",
+            "model_ms",
+            "rounds",
+            "reasons"
+          ],
+          "title": "SalesChatSlowAnswer",
+          "type": "object"
+        },
+        "SalesChatTimingCause": {
+          "properties": {
+            "answers": {
+              "title": "Answers",
+              "type": "integer"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "text",
+            "answers"
+          ],
+          "title": "SalesChatTimingCause",
+          "type": "object"
+        },
+        "SalesChatTimingOut": {
+          "description": "Where the assistant's time went over a window, measured per answer (chat/trace.py).",
+          "properties": {
+            "answers": {
+              "title": "Answers",
+              "type": "integer"
+            },
+            "avg_model_ms": {
+              "title": "Avg Model Ms",
+              "type": "integer"
+            },
+            "avg_other_ms": {
+              "title": "Avg Other Ms",
+              "type": "integer"
+            },
+            "avg_rounds": {
+              "title": "Avg Rounds",
+              "type": "number"
+            },
+            "avg_tools_ms": {
+              "title": "Avg Tools Ms",
+              "type": "integer"
+            },
+            "avg_total_ms": {
+              "title": "Avg Total Ms",
+              "type": "integer"
+            },
+            "causes": {
+              "items": {
+                "$ref": "#/components/schemas/SalesChatTimingCause"
+              },
+              "title": "Causes",
+              "type": "array"
+            },
+            "days": {
+              "title": "Days",
+              "type": "integer"
+            },
+            "median_total_ms": {
+              "title": "Median Total Ms",
+              "type": "integer"
+            },
+            "slowest": {
+              "items": {
+                "$ref": "#/components/schemas/SalesChatSlowAnswer"
+              },
+              "title": "Slowest",
+              "type": "array"
+            },
+            "untraced": {
+              "title": "Untraced",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "days",
+            "answers",
+            "untraced",
+            "median_total_ms",
+            "avg_total_ms",
+            "avg_model_ms",
+            "avg_tools_ms",
+            "avg_other_ms",
+            "avg_rounds",
+            "causes",
+            "slowest"
+          ],
+          "title": "SalesChatTimingOut",
           "type": "object"
         },
         "SavedViewCreate": {
@@ -26526,6 +26670,116 @@
             }
           },
           "summary": "Retry Sales Chat Message",
+          "tags": [
+            "ai"
+          ]
+        }
+      },
+      "/api/v1/ai/sales-chat/timing": {
+        "get": {
+          "description": "Where the assistant's answers spent their time, and the causes of the slow ones.",
+          "operationId": "sales_chat_timing_api_v1_ai_sales_chat_timing_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "days",
+              "required": false,
+              "schema": {
+                "default": 7,
+                "maximum": 90,
+                "minimum": 1,
+                "title": "Days",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SalesChatTimingOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Sales Chat Timing",
           "tags": [
             "ai"
           ]

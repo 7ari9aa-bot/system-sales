@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import time
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -30,6 +31,7 @@ from sqlalchemy import text
 
 from app.core import db as core_db
 from app.core.db import bind_tenant
+from app.modules.ai.chat import trace as chat_trace
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +168,23 @@ def with_progress(tool_name: str, handler):
         step = step_for_tool(tool_name, kwargs)
         if step is not None:
             await announce(step)
-        return await handler(*args, **kwargs)
+        # timed onto the answer too (chat/trace.py): which read, with which arguments, how long
+        args_seen = {
+            k: v
+            for k, v in kwargs.items()
+            if isinstance(v, str | int | float | bool) and k != "tenant_id"
+        }
+        trace_id = await chat_trace.start(
+            "tool", tool=tool_name, step=STEP_TEXT.get(step or ""), args=args_seen
+        )
+        began = time.perf_counter()
+        ok = False
+        try:
+            out = await handler(*args, **kwargs)
+            ok = True
+            return out
+        finally:
+            await chat_trace.end(trace_id, "tool", int((time.perf_counter() - began) * 1000), ok=ok)
 
     wrapped.announces_progress = True  # type: ignore[attr-defined]
     return wrapped

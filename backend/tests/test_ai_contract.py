@@ -206,14 +206,15 @@ def test_the_openapi_document_publishes_no_open_object_for_ai() -> None:
     )
 
 
-def test_the_ai_surface_has_54_routes_to_cover() -> None:
+def test_the_ai_surface_has_55_routes_to_cover() -> None:
     """Keeps the gate honest: a walk over an empty route list passes anything.
 
     45 before the owner-memory screen; it added six (list, add, switch, edit, delete one, delete
-    all), and the habit suggestions three more (list, accept, dismiss). They are covered by the
-    typed-body and no-open-object checks above, not exempted.
+    all), and the habit suggestions three more (list, accept, dismiss). The reply-speed report
+    (GET /ai/sales-chat/timing) made it 55. They are covered by the typed-body and
+    no-open-object checks above, not exempted.
     """
-    assert len(_routes()) == 54, f"expected 54 AI routes, found {len(_routes())}"
+    assert len(_routes()) == 55, f"expected 55 AI routes, found {len(_routes())}"
 
 
 def test_persisted_sales_analysis_publishes_its_evidence_and_findings() -> None:
