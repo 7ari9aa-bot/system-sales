@@ -243,15 +243,39 @@ def free_numbers_in(problems: list[str]) -> list[str]:
     return seen
 
 
-def build_rejection_instruction(numbers: list[str]) -> str:
+# A closed list is only worth sending while it is short: past this it costs more tokens than the
+# re-derivation it saves, and the model starts treating it as a menu to fill.
+_ALLOWED_LIST_MAX = 24
+
+
+def _allowed_for_the_prompt(allowed: set[str]) -> list[str] | None:
+    """The figures the answer may use, ordered and capped, or None when the list is not useful.
+
+    Only plain numerals: a digit run that is part of an id or a timestamp is provenance, not
+    something an owner is told. An empty or oversized set sends nothing, so the instruction is
+    exactly what it was before."""
+    shown = sorted(
+        {a for a in allowed if a and len(a) <= 12 and a.replace(".", "", 1).isdigit()},
+        key=lambda a: (len(a), a),
+    )
+    return shown if 0 < len(shown) <= _ALLOWED_LIST_MAX else None
+
+
+def build_rejection_instruction(numbers: list[str], allowed: list[str] | None = None) -> str:
     """The instruction for writing again an answer the number gate rejected.
 
     Names the numbers that were not measured so the model removes them, and says nothing else
     about format or wording: the answer is still the model's own, in the shop's own voice.
     """
     listed = "، ".join(numbers)
+    # Measured live (62 s and 4,323 tokens for a short rewrite): the model re-derived every figure
+    # in its answer, doubting even ones the evidence holds, because it was told only what was
+    # wrong and never what is allowed. The allowed figures are stated once, as a closed list.
+    permitted = (
+        f"الأرقام المسموحة بالظبط: {'، '.join(allowed)}. غير كده متكتبش أي رقم. " if allowed else ""
+    )
     return (
-        f"إجابتك السابقة فيها أرقام ما طلعتش من نتيجة أي أداة: {listed}. "
+        f"إجابتك السابقة فيها أرقام ما طلعتش من نتيجة أي أداة: {listed}. {permitted}"
         "أعد كتابة الإجابة كاملة وشيل الأرقام دي أو استبدلها برقم طالع من الأدلة اللي فوق بالظبط. "
         "متحسبش رقم جديد ومتقرّبش رقم من دماغك، ولو الرقم ضروري ومش موجود في الأدلة قول إنه "
         "مش متاح. اكتب الإجابة نفسها بس: صاحب المحل هيقرأ اللي هتكتبه زي ما هو، فمتبدأش بـ"
@@ -308,7 +332,7 @@ async def regenerate_on_rejected_answer(
     ]
     messages.extend(_turn_so_far(history, question, draft))
     evidence_text = build_evidence_message(evidence)
-    instruction = build_rejection_instruction(numbers)
+    instruction = build_rejection_instruction(numbers, _allowed_for_the_prompt(allowed_numbers))
     messages.append(
         {
             "role": "user",

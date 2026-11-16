@@ -191,3 +191,65 @@ async def test_a_rejection_that_is_not_about_a_number_is_not_rewritten(db, tenan
     _, result = await _ask(db, tenant_ctx)
     assert len(calls) == 1
     assert STOCK in result.answer
+
+
+def test_the_instruction_lists_the_figures_the_answer_may_use():
+    text = build_rejection_instruction(["30"], ["3", "1112.98", "90"])
+    assert "الأرقام المسموحة بالظبط: 3، 1112.98، 90" in text
+    assert text.index("المسموحة") < text.index("أعد كتابة")
+
+
+def test_without_a_useful_list_the_instruction_is_exactly_what_it_was():
+    plain = build_rejection_instruction(["30"])
+    assert build_rejection_instruction(["30"], None) == plain
+    assert "المسموحة" not in plain
+
+
+def test_only_short_plain_numerals_reach_the_prompt_and_a_huge_set_sends_none():
+    from app.modules.ai.agents.sales_intelligence.coverage import _allowed_for_the_prompt
+
+    got = _allowed_for_the_prompt({"1112.98", "3", "90", "fec5f9c9", "20261116161313", ""})
+    assert got == ["3", "90", "1112.98"]
+    assert _allowed_for_the_prompt({str(n) for n in range(100, 140)}) is None
+    assert _allowed_for_the_prompt(set()) is None
+
+
+async def test_the_rewrite_call_carries_the_allowed_figures(monkeypatch):
+    """Through the real rewrite function: the figures the gate allows reach the model's prompt."""
+    import uuid
+    from types import SimpleNamespace
+
+    from app.modules.ai.agents.sales_intelligence import coverage
+
+    agent = SimpleNamespace(
+        id=uuid.uuid4(),
+        kind="sales_intelligence",
+        model="fast",
+        system_prompt="analyze",
+        temperature=0.2,
+        max_output_tokens=200,
+    )
+
+    class _Session:
+        async def get(self, model, obj_id):
+            return agent
+
+    calls = _model(monkeypatch, ["المبيعات 3 أوردرات"])
+    await coverage.regenerate_on_rejected_answer(
+        _Session(),
+        uuid.uuid4(),
+        agent_id=agent.id,
+        run_id=None,
+        history=[],
+        draft="آخر 30 يوم 3 أوردرات",
+        problems=[f"{coverage._FREE_NUMBER_PREFIX}30"],
+        evidence={"facts": [{"metric": "orders_placed", "value": "3"}]},
+        allowed_numbers={"3", "1112.98", "90"},
+        findings=[],
+        tool_calls_made=[],
+        question="اداء المبيعات",
+    )
+    assert len(calls) == 1
+    sent = calls[0]["messages"][-1]["content"]
+    assert "الأرقام المسموحة بالظبط: 3، 90، 1112.98" in sent
+    assert "30" in sent.split("الأرقام المسموحة")[0]
