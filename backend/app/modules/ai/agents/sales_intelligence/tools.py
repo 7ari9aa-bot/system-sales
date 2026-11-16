@@ -2059,6 +2059,41 @@ def _explain_unsupported(handler):
     return wrapped
 
 
+NO_FIGURES_NOTE = (
+    "nothing was measured here, so no number, period or date can be quoted: say in plain words "
+    "that there is nothing recorded yet, and do not write any figure, any 'last N days' or any date"
+)
+
+
+def _say_it_without_figures(handler):
+    """When a tool measured nothing, tell the model it has no figure to quote.
+
+    A tool with no data returns no facts, so the number gate has nothing to allow and refuses
+    EVERY figure in the answer. The model, not knowing that, wrote "the last 30 days (17 Oct to
+    15 Nov)" about an empty till; the gate refused it and the owner waited through a second model
+    call (36 seconds) for a rewrite. The honest answer needs no figure ("the till has no sales
+    recorded yet"), so the model is told so up front. A result that has facts is not touched.
+    """
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapped(*args, **kwargs):
+        result = await handler(*args, **kwargs)
+        if (
+            isinstance(result, dict)
+            and result.get("status") == "no_data"
+            and not result.get("facts")
+        ):
+            limits = list(result.get("limitations") or [])
+            if NO_FIGURES_NOTE not in limits:
+                limits.append(NO_FIGURES_NOTE)
+            result = {**result, "limitations": limits}
+        return result
+
+    wrapped.says_it_without_figures = True  # type: ignore[attr-defined]
+    return wrapped
+
+
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
     _, computable_metric_names, _ = _metric_registry()
@@ -2238,7 +2273,9 @@ def register_si_tools() -> None:
 
     for spec in specs:
         if get_tool(spec.name) is None:
-            spec.handler = with_progress(spec.name, _explain_unsupported(spec.handler))
+            spec.handler = with_progress(
+                spec.name, _say_it_without_figures(_explain_unsupported(spec.handler))
+            )
             register_tool(spec)
 
 
