@@ -2467,18 +2467,22 @@ def _say_it_without_figures(handler):
 
 
 def _split_table() -> str:
-    """Each metric with the breakdowns it allows, read from the registry the call validates against.
+    """Each metric with the breakdown a call can actually run, read from the code that runs it.
 
-    Nine of the fifteen tool errors seen in three days were one mistake: asking for a breakdown the
-    metric does not have. Typing the table here would let it rot, so it is generated.
+    The registry declares breakdowns that no statement compiles (shipped_orders by carrier), and a
+    call for one fails with "has no carrier breakdown path" after the description invited it. So
+    the table lists a breakdown only when the registry allows it AND the compiler has it. Nothing
+    is typed here, so a statement added to the compiler appears in the description by itself.
     """
+    from app.modules.analytics import compiler
+
     registry, names, _ = _metric_registry()
     reg = registry() if callable(registry) else registry
     parts = []
     for name in sorted(names()):
-        dims = list(getattr(reg[name], "dimensions_allowed", None) or [])
-        if dims:
-            parts.append(f"{name}({'/'.join(dims)})")
+        statement = compiler._BREAKDOWN_STATEMENTS.get(name)
+        if statement and statement[1] in (getattr(reg[name], "dimensions_allowed", None) or []):
+            parts.append(f"{name}({statement[1]})")
     return ", ".join(parts)
 
 

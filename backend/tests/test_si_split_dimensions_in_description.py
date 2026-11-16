@@ -21,9 +21,19 @@ def _description() -> str:
 
 
 def _allowed() -> dict[str, list[str]]:
+    """What a breakdown call can actually run: declared by the registry AND compiled."""
+    from app.modules.analytics import compiler as C
+
     registry, names, _ = T._metric_registry()
     reg = registry() if callable(registry) else registry
-    return {n: list(reg[n].dimensions_allowed) for n in sorted(names())}
+    out: dict[str, list[str]] = {}
+    for n in sorted(names()):
+        if n not in C._BREAKDOWN_STATEMENTS:
+            continue
+        compiled = C._BREAKDOWN_STATEMENTS[n][1]
+        if compiled in reg[n].dimensions_allowed:
+            out[n] = [compiled]
+    return out
 
 
 def test_every_metric_is_listed_with_exactly_the_breakdowns_the_registry_allows():
@@ -33,11 +43,15 @@ def test_every_metric_is_listed_with_exactly_the_breakdowns_the_registry_allows(
         assert expected in text, f"{name} is not described as {expected}"
 
 
-def test_a_breakdown_the_registry_does_not_allow_is_never_attached_to_a_metric():
+def test_a_breakdown_that_is_declared_but_cannot_run_is_never_offered():
+    """Seen live: shipped_orders by carrier is declared in the registry, but nothing compiles it, so
+    the call failed with "has no carrier breakdown path" after the description had invited it."""
     text = _description()
-    assert "collected_revenue(channel" not in text
-    assert "orders_placed(carrier" not in text
-    assert "orders_placed(customer" not in text
+    split = text.split("split =")[1].split("explain =")[0]
+    for dead in ("collected_revenue", "shipped_orders", "refund_amount"):
+        assert dead not in split, f"{dead} has no runnable breakdown but is listed"
+    for dead in ("(carrier", "product", "governorate", "method", "reason"):
+        assert dead not in split.split("never month")[0]
 
 
 @pytest.mark.parametrize("never", ["month", "customer", "week", "day"])
@@ -47,12 +61,14 @@ def test_a_breakdown_nobody_supports_is_named_as_unavailable_not_left_to_a_faile
 
 
 def test_the_listing_follows_the_registry_not_a_typed_copy(monkeypatch):
-    registry, names, _ = T._metric_registry()
+    from app.modules.analytics import compiler as C
+
+    monkeypatch.setitem(C._BREAKDOWN_STATEMENTS, "orders_placed", ("select 1", "zzz_dim"))
+    registry, _, _ = T._metric_registry()
     reg = registry() if callable(registry) else registry
-    first = sorted(names())[0]
-    monkeypatch.setattr(reg[first], "dimensions_allowed", ["zzz_new_dimension"], raising=False)
-    # a spec built after the registry changed carries the change
-    assert f"{first}(zzz_new_dimension)" in T._split_table()
+    monkeypatch.setattr(reg["orders_placed"], "dimensions_allowed", ["zzz_dim"], raising=False)
+    # a spec built after the change carries it: nothing is typed in the description
+    assert "orders_placed(zzz_dim)" in T._split_table()
 
 
 def test_the_listing_stays_inside_the_size_bound():
@@ -70,3 +86,11 @@ def test_the_listing_stays_inside_the_size_bound():
 def test_the_metrics_are_separated_so_one_cannot_run_into_the_next():
     table = T._split_table()
     assert len(table.split(", ")) == len(_allowed())
+
+
+def test_a_compiled_breakdown_the_registry_does_not_allow_is_not_offered(monkeypatch):
+    """The compiler refuses a dimension the registry does not declare, so offering it would fail."""
+    from app.modules.analytics import compiler as C
+
+    monkeypatch.setitem(C._BREAKDOWN_STATEMENTS, "orders_placed", ("select 1", "zzz_undeclared"))
+    assert "zzz_undeclared" not in T._split_table()
