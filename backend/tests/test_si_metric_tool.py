@@ -73,6 +73,18 @@ def test_the_description_names_every_mode_and_when_to_use_it():
     assert "days" in text and "dimension" in text
 
 
+def test_the_description_does_not_send_a_customer_ranking_through_split():
+    """Seen live: "who is my best customer" went to split by customer, which no metric allows, and
+    cost a full model round. The text must say where that question goes."""
+    T.register_si_tools()
+    text = get_tool("si_metric").description
+    assert "cannot rank customers" in text
+    assert "si_shop view=customer" in text
+    # the old wording ("who the audience is") told the owner nothing about what it fetches
+    assert "who the audience is" not in text
+    assert "who contacted the shop" in text
+
+
 async def _orders(db, tenant_id, *, n, days_ago, total, tag):
     c = Customer(tenant_id=tenant_id, name=f"c-{tag}")
     db.add(c)
@@ -207,3 +219,60 @@ def test_the_comparison_helper_still_catches_a_real_difference():
     assert not _same(base, {"facts": [{"value": "5", "computed_at": "t1"}]})
     assert not _same(base, {"facts": []})
     assert not _same(base, {"facts": [{"value": "4", "computed_at": "t1", "extra": 1}]})
+
+
+# --- a parameter that belongs to another mode must not cost the model a round ---------------------
+# Seen live: "مصاريف الشهر ده" sent mode=status with focus="expenses". The schema refused the whole
+# call (focus is only drivers/seasonality/customers/fulfillment), so the model spent a full round
+# (4-6 s, ~3.7k tokens) on an error and then made the call again. A parameter the chosen mode does
+# not use is harmless; one the mode DOES use must still be exact.
+
+
+def test_schema_accepts_a_focus_or_view_from_another_mode():
+    a = T.SIMetricArgs(mode="status", focus="expenses")
+    assert a.mode == "status" and a.focus == "expenses"
+    b = T.SIMetricArgs(mode="value", metric_name="orders_placed", view="products")
+    assert b.view == "products"
+
+
+@pytest.mark.asyncio
+async def test_an_unused_focus_does_not_change_what_status_returns(db, tenant_ctx):
+    clean = await T._si_metric(db, tenant_ctx.tenant_id, mode="status")
+    extra = await T._si_metric(db, tenant_ctx.tenant_id, mode="status", focus="expenses")
+    assert _same(extra, clean)
+
+
+@pytest.mark.asyncio
+async def test_an_unused_view_does_not_change_what_value_returns(db, tenant_ctx):
+    clean = await T._si_metric(db, tenant_ctx.tenant_id, mode="value", metric_name="orders_placed")
+    extra = await T._si_metric(
+        db, tenant_ctx.tenant_id, mode="value", metric_name="orders_placed", view="stock"
+    )
+    assert _same(extra, clean)
+
+
+@pytest.mark.asyncio
+async def test_why_still_refuses_a_wrong_focus_and_names_the_valid_ones(db, tenant_ctx):
+    with pytest.raises(ValidationError) as exc:
+        await T._si_metric(db, tenant_ctx.tenant_id, mode="why", focus="expenses")
+    for focus in ("drivers", "seasonality", "customers", "fulfillment"):
+        assert focus in str(exc.value)
+    with pytest.raises(ValidationError):
+        await T._si_metric(db, tenant_ctx.tenant_id, mode="why")
+
+
+@pytest.mark.asyncio
+async def test_activity_still_refuses_a_wrong_view_and_names_the_valid_ones(db, tenant_ctx):
+    with pytest.raises(ValidationError) as exc:
+        await T._si_metric(db, tenant_ctx.tenant_id, mode="activity", view="orders")
+    for view in ("customers", "channels", "comments"):
+        assert view in str(exc.value)
+    with pytest.raises(ValidationError):
+        await T._si_metric(db, tenant_ctx.tenant_id, mode="activity")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("focus", ["drivers", "seasonality", "customers", "fulfillment"])
+async def test_every_valid_focus_still_runs(db, tenant_ctx, focus):
+    out = await T._si_metric(db, tenant_ctx.tenant_id, mode="why", focus=focus)
+    assert isinstance(out, dict)

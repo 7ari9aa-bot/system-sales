@@ -393,10 +393,13 @@ class SIMetricArgs(BaseModel):
     days: int = Field(default=30, ge=1, le=90)
     dimension: str = "channel"
     channel: str | None = None
-    # why only: drivers, seasonality, customers or fulfillment
-    focus: Literal["drivers", "seasonality", "customers", "fulfillment"] | None = None
-    # activity only: customers, channels or comments
-    view: Literal["customers", "channels", "comments"] | None = None
+    # why only: drivers, seasonality, customers or fulfillment. A plain string on purpose: the model
+    # sometimes sends it with a mode that does not use it (focus="expenses" with mode=status), and
+    # refusing the whole call at the schema costs a full model round for nothing. The read that
+    # needs it still checks it, with a message that names the allowed values.
+    focus: str | None = None
+    # activity only: customers, channels or comments (checked by the read, same reasoning)
+    view: str | None = None
     # activity only (customers up to 50, comments up to 20); why/fulfillment: carriers with fewer
     # shipments than minimum_volume are left out
     limit: int | None = Field(default=None, ge=1, le=50)
@@ -427,16 +430,18 @@ async def _si_metric(
     if mode == "status":
         return await _si_data_status(session, tenant_id)
     if mode == "why":
-        if not focus:
+        if focus not in _WHY_FOCUSES:
             raise ValidationError(
-                "mode=why needs focus: drivers, seasonality, customers or fulfillment"
+                f"mode=why needs focus: {', '.join(_WHY_FOCUSES)} (got {focus!r})"
             )
         return await _si_why(
             session, tenant_id, focus=focus, days=days, minimum_volume=minimum_volume
         )
     if mode == "activity":
-        if not view:
-            raise ValidationError("mode=activity needs view: customers, channels or comments")
+        if view not in _ACTIVITY_VIEWS:
+            raise ValidationError(
+                f"mode=activity needs view: {', '.join(_ACTIVITY_VIEWS)} (got {view!r})"
+            )
         return await _si_activity(session, tenant_id, view=view, days=days, limit=limit)
     if mode in _MODES_WITH_A_METRIC and not (metric_name or "").strip():
         raise ValidationError(f"mode={mode} needs metric_name: the metric to look at")
@@ -2206,13 +2211,15 @@ def register_si_tools() -> None:
                 "up or down, why, who, what do I have'). Pick mode: "
                 "value = one metric's number for the last N days ('how much / how many'); "
                 "compare = this window against the one before ('up or down'); "
-                "split = one metric divided by dimension, such as channel ('which channel'); "
+                "split = one metric divided by dimension, channel by default (others only where "
+                "the metric allows; it cannot rank customers: use si_shop view=customer for "
+                "one); "
                 "explain = what the metric means and how it is counted, never to fetch a number; "
                 "why = the store as a whole, needs focus: drivers (why revenue moved: more "
                 "orders or a bigger basket), seasonality (which weekdays are strong), customers "
                 "(new versus returning), fulfillment (delivery and rejection per carrier; "
                 "minimum_volume leaves out small carriers); "
-                "activity = who the audience is, needs view: customers (who messaged, limit up "
+                "activity = who contacted the shop, needs view: customers (who messaged, limit up "
                 "to 50), channels (volume per platform), comments (public comments, limit up to "
                 "20); "
                 "status = what the shop has recorded at all (orders, shipments, expenses, stock, "
