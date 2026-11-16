@@ -230,6 +230,7 @@ export default {
   "salesAssistant.retry": "Retry",
   "salesAssistant.copy": "Copy",
   "salesAssistant.copied": "Copied",
+  "salesAssistant.composing": "Putting the reply together",
   "salesAssistant.send": "Send",
   "salesAssistant.composerPlaceholder": "Type your sales question…",
   "salesAssistant.refAnalysis": "Saved analysis",

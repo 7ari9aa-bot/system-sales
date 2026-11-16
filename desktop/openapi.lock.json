@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 457,
-    "sha256": "6a90a7d04a99779d6a9d34e2de97024f7dc7f16cbd2736035acd898aca7a3826",
+    "sha256": "000894abe7ad7ed23962411a58252b477a7aa049d84b6883e2dd9cd30225475d",
     "typed_operations": 294
   },
   "spec": {
@@ -11298,6 +11298,20 @@
               "format": "uuid",
               "title": "Id",
               "type": "string"
+            },
+            "progress": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress"
             },
             "role": {
               "title": "Role",

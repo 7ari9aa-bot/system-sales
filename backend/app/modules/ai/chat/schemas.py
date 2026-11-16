@@ -94,6 +94,8 @@ class MessageOut(BaseModel):
     run_id: uuid.UUID | None
     analysis_id: uuid.UUID | None
     error_code: str | None
+    # what the assistant has really started on this answer, while it is still `generating`
+    progress: list[str] | None = None
     created_at: datetime
 
 

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.core.guardrails import screen_inbound
+from app.modules.ai.chat.progress import with_progress
 from app.modules.ai.tools import ToolSpec, register_tool
 from app.modules.analytics.contracts import AnalysisPeriod
 
@@ -2222,7 +2223,7 @@ def register_si_tools() -> None:
 
     for spec in specs:
         if get_tool(spec.name) is None:
-            spec.handler = _explain_unsupported(spec.handler)
+            spec.handler = with_progress(spec.name, _explain_unsupported(spec.handler))
             register_tool(spec)
 
 

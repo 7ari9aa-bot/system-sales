@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.core import db as core_db
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError
+from app.modules.ai.chat.progress import announcing_to
 from app.modules.ai.chat.titles import fallback_title, model_title
 from app.modules.ai.models import AIChatMessage
 
@@ -370,19 +371,22 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
     try:
         from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
 
-        result = await run_sales_analysis(
-            session,
-            ctx.tenant_id,
-            agent_id=thread.agent_id,
-            question=user_row.content,
-            history=history,
-            # WHO is asking, as the permissions they hold, so a tool that needs more than
-            # ``analytics:read`` is never offered to someone without it. Absent = unknown asker,
-            # which the runner reads as "ungated tools only", never as "everything".
-            actor_permissions=getattr(ctx, "permission_codes", None),
-            # WHOSE notes to show. The asker's own, from the session, never a client-supplied id.
-            user_id=getattr(getattr(ctx, "user", None), "id", None),
-        )
+        # While the question runs, each tool that starts writes its step on THIS answer's row (on
+        # its own session, see chat/progress.py), so the page can show what is really happening.
+        with announcing_to(ctx.tenant_id, assistant_id):
+            result = await run_sales_analysis(
+                session,
+                ctx.tenant_id,
+                agent_id=thread.agent_id,
+                question=user_row.content,
+                history=history,
+                # WHO is asking, as the permissions they hold, so a tool that needs more than
+                # ``analytics:read`` is never offered to someone without it. Absent = unknown
+                # asker, which the runner reads as "ungated tools only", never as "everything".
+                actor_permissions=getattr(ctx, "permission_codes", None),
+                # WHOSE notes to show. The asker's own, from the session, never a client id.
+                user_id=getattr(getattr(ctx, "user", None), "id", None),
+            )
     except Exception as exc:  # noqa: BLE001 — the row must land `failed`
         await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc

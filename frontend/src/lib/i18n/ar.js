@@ -230,6 +230,7 @@ export default {
   "salesAssistant.retry": "إعادة المحاولة",
   "salesAssistant.copy": "نسخ",
   "salesAssistant.copied": "اتنسخ",
+  "salesAssistant.composing": "بجهّز الرد",
   "salesAssistant.send": "إرسال",
   "salesAssistant.composerPlaceholder": "اكتب سؤالك عن المبيعات…",
   "salesAssistant.refAnalysis": "تحليل محفوظ",

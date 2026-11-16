@@ -12,6 +12,11 @@ import Composer from "@/components/salesAssistant/Composer";
 import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
 import MessageList from "@/components/salesAssistant/MessageList";
 import ThreadListPanel from "@/components/salesAssistant/ThreadListPanel";
+import {
+  sentQuestionIsAnswered,
+  pollInterval,
+  questionAlreadyListed,
+} from "@/components/salesAssistant/progressSteps";
 import { api } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n";
 
@@ -63,12 +68,6 @@ export default function SalesAssistant() {
     },
   });
 
-  const messagesQuery = useQuery({
-    queryKey: messagesKey(activeId),
-    enabled: !!activeId,
-    queryFn: () => api(`/ai/sales-chat/threads/${activeId}/messages?limit=100`),
-  });
-
   const invalidateThread = (id) => {
     queryClient.invalidateQueries({ queryKey: messagesKey(id), exact: true });
     queryClient.invalidateQueries({ queryKey: ["sales-chat", "threads"], exact: false });
@@ -104,6 +103,18 @@ export default function SalesAssistant() {
       setDrafts((d) => ({ ...d, [vars.id ?? "new"]: vars.content, ...(vars.fromNew ? { new: vars.content } : {}) }));
       invalidateThread(vars.id);
     },
+  });
+
+  // While a question is in flight the same list is re-read every 1.5 seconds, so the steps the
+  // server records ("reading your sales") reach the screen as they happen. It stops the moment the
+  // answer lands: the send settles, and `invalidateThread` fetches the finished list once. It reads
+  // the mutation's own pending state, so there is no copy of it that could lag a render behind.
+  const messagesQuery = useQuery({
+    queryKey: messagesKey(activeId),
+    enabled: !!activeId,
+    queryFn: () => api(`/ai/sales-chat/threads/${activeId}/messages?limit=100`),
+    refetchInterval: pollInterval(sendTurn.isPending),
+    refetchIntervalInBackground: false,
   });
 
   const updateThread = useMutation({
@@ -238,8 +249,14 @@ export default function SalesAssistant() {
         ) : (
           <MessageList
             messages={messages}
-            outgoing={outgoing && (outgoing.threadId ?? null) === (activeId ?? null) ? outgoing.content : null}
-            pending={sending || createThread.isPending}
+            outgoing={
+              outgoing &&
+              (outgoing.threadId ?? null) === (activeId ?? null) &&
+              !questionAlreadyListed(messages, outgoing.content)
+                ? outgoing.content
+                : null
+            }
+            pending={(sending || createThread.isPending) && !sentQuestionIsAnswered(messages, outgoing?.content)}
             onRetry={(m) => retryTurn.mutate({ threadId: activeId, messageId: m.id })}
           />
         )}

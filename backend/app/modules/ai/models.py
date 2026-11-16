@@ -838,6 +838,10 @@ class AIChatMessage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     analysis_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     idempotency_key: Mapped[str | None] = mapped_column(String(64))
     error_code: Mapped[str | None] = mapped_column(String(63))
+    # The short Arabic lines for what the assistant has really started on this answer, in order
+    # ("reading your sales", "writing the reply"). Written while the row is `generating`; NULL
+    # means no step was written. See chat/progress.py.
+    progress: Mapped[list | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint(
