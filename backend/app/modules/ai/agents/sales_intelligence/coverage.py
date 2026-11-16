@@ -62,7 +62,9 @@ _DIMENSIONS: tuple[_Dimension, ...] = (
     _Dimension(
         name="orders",
         label_ar="الطلبات",
-        terms=("طلب", "طلبات", "order"),
+        # "أوردر" and "اوردر" are what the shop's own voice says; the check missed them, took a
+        # sound answer for one that skipped orders, and paid a second model call (45 s) to redo it.
+        terms=("طلب", "طلبات", "order", "أوردر", "اوردر"),
         evidence_terms=("order",),
     ),
     _Dimension(
