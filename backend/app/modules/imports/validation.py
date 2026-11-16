@@ -43,7 +43,6 @@ class Existing:
     warehouse_codes: set[str] = field(default_factory=set)
     # (sku, warehouse code) pairs that already have an opening-stock movement
     opening_stock_done: set[tuple[str, str]] = field(default_factory=set)
-    tenant_has_default_warehouse: bool = True
 
 
 @dataclass(slots=True)

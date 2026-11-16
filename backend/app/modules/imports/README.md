@@ -16,6 +16,10 @@ fields, previews what would change, and a background job applies it in resumable
   `1.250,50` and `١٢٥٫٥`, Excel scientific-notation barcodes refused, invisible characters).
 - `validation.py`: judges every row before anything is written, including duplicates inside the
   file and against what the shop already holds. Pure: the caller passes in `Existing`.
+- `lookup.py`: reads what the shop already holds for the keys in the file (existing products,
+  SKUs, barcodes, warehouses, opening stock already recorded), one query per kind of key in
+  chunks of 500. Raw SQL on purpose: a read-model, so this module imports no other module's
+  tables (`test_module_boundaries`). `tests/test_imports_lookup.py` runs it on a real database.
 - `mapping.py`: suggests which column is which field. A suggestion is shown, never applied
   silently.
 
@@ -24,8 +28,9 @@ fields, previews what would change, and a background job applies it in resumable
 - The uploaded file is untrusted input. Limits are enforced while reading, not after.
 - Identity of a product or variant is SKU, then barcode, then a stable external ref. A name
   alone never decides that two rows are the same thing.
-- Opening stock goes through the inventory ledger (`InventoryService.move`), never by writing
-  a balance. A retried batch must not apply a row twice: skip rows already `applied`.
+- Opening stock goes through the inventory ledger (`InventoryService.move`, reason
+  `opening_stock`, a service-only reason the API refuses), never by writing a balance. The ledger
+  needs quantity > 0, so a stock row of 0 means "nothing to record", not a movement. A retried batch must not apply a row twice: skip rows already `applied`.
 - A blank cell on update keeps the existing value. Clearing is an explicit option.
 - Writes go through the catalog and inventory services, which own the rules, audit and events.
   Import them inside the function that needs them (lazy), so this module adds no module-scope
@@ -34,6 +39,5 @@ fields, previews what would change, and a background job applies it in resumable
 
 ## Status
 
-Done: tables, reader, column matching, cell parsing and row validation. Still to come: the
-DB lookup that fills `Existing`, the `import.run` job handler,
-the HTTP API and the screen (spec: Artifacts, "مركز استيراد البيانات").
+Done: tables, reader, column matching, cell parsing, row validation and the database lookup.
+Still to come: the `import.run` job handler, the HTTP API and the screen (spec: Artifacts, "مركز استيراد البيانات").
