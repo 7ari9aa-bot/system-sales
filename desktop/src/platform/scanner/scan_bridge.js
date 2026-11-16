@@ -35,21 +35,38 @@
   var SCAN_EVENT_NAME = 'fihrist:scan';
 
   /* Punctuation some symbologies carry (Code-128 alphanumerics, SKU dashes).
-   * Everything else a keyboard can produce (Shift, Backspace, F-keys, letters
+   * Everything else a keyboard can produce (Backspace, Tab, F-keys, letters
    * via IME…) decodes to null and RESETS the buffer: one non-barcode key is
-   * proof of a human hand, not a scanner. */
+   * proof of a human hand, not a scanner. Shift is the exception: a scanner
+   * holds it for a capital or a symbol, so it joins the burst (see push). */
   var PUNCTUATION = { Minus: '-', Period: '.', Comma: ',', Slash: '/' };
 
-  var CHARSET = /^[0-9A-Za-z./-]+$/;
+  /* The same physical keys with Shift held. A scanner sends a capital letter, `_`, `+` or `#` exactly
+   * as a keyboard would: Shift down, the key, Shift up. By `event.code` (layout-immune) these are
+   * the US-layout symbols a barcode is printed with, never a character typed in an Arabic layout. */
+  var SHIFTED = {
+    Minus: '_', Equal: '+', Digit3: '#', Digit1: '!', Digit2: '@', Digit4: '$', Digit5: '%',
+    Digit6: '^', Digit7: '&', Digit8: '*', Digit9: '(', Digit0: ')', Slash: '?', Period: '>',
+    Comma: '<'
+  };
+
+  var SHIFT_CODES = { ShiftLeft: true, ShiftRight: true };
+
+  var CHARSET = /^[0-9A-Za-z./_+#!@$%^&*()?<>,-]+$/;
 
   function decodeEventCode(event) {
     var code = event && typeof event.code === 'string' ? event.code : '';
-    // "KeyD" → "d". Length guard keeps "KeyDown"-style oddities out.
+    var shifted = !!(event && event.shiftKey === true);
+    // "KeyD" → "d" (or "D" with Shift held). Length guard keeps "KeyDown"-style oddities out.
     if (code.length === 4 && code.indexOf('Key') === 0) {
-      return code.charAt(3).toLowerCase();
+      var letter = code.charAt(3);
+      return shifted ? letter.toUpperCase() : letter.toLowerCase();
     }
-    // "Digit5" → "5".
+    // "Digit5" → "5"; with Shift held it is the symbol on that key ("Digit3" → "#").
     if (code.length === 6 && code.indexOf('Digit') === 0) {
+      if (shifted) {
+        return Object.prototype.hasOwnProperty.call(SHIFTED, code) ? SHIFTED[code] : null;
+      }
       return code.charAt(5);
     }
     // "Numpad5" → "5" (scanner numpad entry); NumpadEnter/Add/… fall through.
@@ -59,6 +76,9 @@
         return digit;
       }
       return null;
+    }
+    if (shifted && Object.prototype.hasOwnProperty.call(SHIFTED, code)) {
+      return SHIFTED[code];
     }
     return Object.prototype.hasOwnProperty.call(PUNCTUATION, code)
       ? PUNCTUATION[code]
@@ -123,6 +143,16 @@
         return { accepted: false, rejected: 'charset' };
       }
       return { accepted: true, value: value, durationMs: durationMs };
+    }
+
+    if (SHIFT_CODES[code] === true) {
+      // The scanner holds Shift for a capital or a symbol. It is not a character and not proof of a
+      // human: its TIMING still counts (a Shift pressed slowly resets above, at the gap check), so a
+      // person typing is still told apart by speed, which was always the real gate.
+      if (this.chars.length > 0) {
+        this.lastAt = now;
+      }
+      return { accepted: false };
     }
 
     var ch = decodeEventCode(event);

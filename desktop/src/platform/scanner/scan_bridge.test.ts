@@ -119,7 +119,7 @@ describe('ScannerBuffer', () => {
       buffer.push(key('Digit3', t))
       t += 20
     }
-    buffer.push(key('ShiftLeft', t)) // human noise
+    buffer.push(key('Backspace', t)) // human noise: a correction key a scanner never sends
     const final = buffer.push(key('Enter', t + 5))
     expect(final).toEqual({ accepted: false, rejected: 'too_short' })
   })
