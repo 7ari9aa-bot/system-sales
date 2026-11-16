@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
+import { metricLabel, unitLabel, windowLabel } from "./kpiWords";
 
 const METRIC_ICONS = [
   ["revenue", Banknote],
@@ -50,23 +51,24 @@ function metricIcon(metric) {
 }
 
 function KpiCard({ block }) {
+  const t = useT();
   const Icon = metricIcon(block.metric);
+  const unit = unitLabel(block.unit);
+  const windowText = windowLabel(block.window, t);
   return (
     <div className="rounded-2xl bg-card border border-border p-3.5 hover:border-primary/30 transition-colors">
       <div className="flex items-center justify-between gap-2">
         <span className="h-8 w-8 rounded-lg grid place-items-center bg-primary/10 text-primary">
           <Icon className="h-4 w-4" />
         </span>
-        {block.window ? <Badge tone="muted">{block.window}</Badge> : null}
+        {windowText ? <Badge tone="muted">{windowText}</Badge> : null}
       </div>
       <div className="mt-2.5 font-display text-[20px] font-semibold tabular-nums leading-none">
         {groupDigits(block.value)}
-        {block.unit ? (
-          <span className="text-[12px] font-medium text-muted-foreground"> {block.unit}</span>
-        ) : null}
+        {unit ? <span className="text-[12px] font-medium text-muted-foreground"> {unit}</span> : null}
       </div>
       <div className="mt-1.5 text-[11.5px] text-muted-foreground leading-tight truncate">
-        {block.label || block.metric}
+        {metricLabel(block.metric, t) || block.label}
       </div>
     </div>
   );
