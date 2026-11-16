@@ -34,6 +34,7 @@ const METRIC_KEYS = {
   customers_returning: "kpi.metric.customers_returning",
   customers_contacted: "kpi.metric.customers_contacted",
   customer_total_spent: "kpi.metric.customer_total_spent",
+  customers_who_ordered: "kpi.metric.customers_who_ordered",
   total_owed: "kpi.metric.total_owed",
   conversations_total: "kpi.metric.conversations_total",
   inbound_messages_total: "kpi.metric.inbound_messages_total",

@@ -1818,12 +1818,21 @@ async def _si_top_customers(
         )
     ).all()
     if not rows:
+        # "nobody ordered in the last 30 days" is a measurement, not an absence of one: the window
+        # was read and came back empty. Recorded as a zero over that window so the answer may say
+        # it. Without it the gate refused the true "30" (measured live: the rewrite that followed
+        # cost 35 to 66 s, and then the stock "no clear result" reply replaced a correct answer).
         return {
             "capability": "top_customers",
             "status": "no_match",
             "summary": {"entries": []},
             "limitations": ["no customer placed an order in this window"],
-            "facts": [],
+            "facts": _typed_facts(
+                _evidence_store(),
+                current,
+                "top_customers",
+                [("customers_who_ordered", 0, "count", {})],
+            ),
         }
     entries = [
         {

@@ -131,7 +131,30 @@ async def test_nobody_buying_says_so_instead_of_returning_an_empty_success(db, t
     r = await _si_top_customers(db, t, days=30, limit=5)
     assert r["status"] == "no_match"
     assert r["summary"]["entries"] == []
-    assert r["facts"] == []
+    # the empty window is a measurement: nobody ordered in these 30 days
+    assert [(f["metric"], f["value"], f["window"]) for f in r["facts"]] == [
+        ("customers_who_ordered", "0", "30d")
+    ]
+
+
+async def test_saying_nobody_ordered_in_the_window_passes_the_number_gate(db, tenant_ctx):
+    """Measured live: the model wrote "in the last 30 days no customer ordered", which was true,
+    the gate refused the 30 (an empty result had no facts), and after a 35 to 66 s rewrite the
+    owner got the stock "no clear result" reply instead of the right ranking."""
+    from app.modules.ai.agents.sales_intelligence.response import (
+        allowed_numbers_from_facts,
+        validate_answer,
+    )
+
+    t = tenant_ctx.tenant_id
+    await _order(db, t, await _customer(db, t, "Mona"), total=425, days_ago=60)
+    empty = await _si_top_customers(db, t, days=30, limit=5)
+    wide = await _si_top_customers(db, t, days=90, limit=5)
+    allowed = allowed_numbers_from_facts(empty["facts"] + wide["facts"])
+    answer = "أحسن عميل عندك Mona: صرفت 425.00 في أوردر واحد. في آخر 30 يوم مفيش أي عميل عمل أوردر."
+    assert validate_answer(answer, allowed, []) == []
+    # and a window nobody measured is still refused
+    assert validate_answer("في آخر 45 يوم مفيش أي عميل عمل أوردر.", allowed, []) != []
 
 
 async def test_a_customer_shows_the_same_spend_here_and_in_the_single_lookup(db, tenant_ctx):
