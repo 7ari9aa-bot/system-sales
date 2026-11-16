@@ -6,12 +6,29 @@
 
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Brain, MessageSquareText, PanelLeftClose, ShieldCheck, Sparkles, X } from "lucide-react";
+import {
+  BarChart3,
+  Brain,
+  MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from "lucide-react";
 import Logo from "@/components/dashboard/Logo";
 import Composer from "@/components/salesAssistant/Composer";
 import MemoryPanel from "@/components/salesAssistant/MemoryPanel";
 import MessageList from "@/components/salesAssistant/MessageList";
 import ThreadListPanel from "@/components/salesAssistant/ThreadListPanel";
+import {
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  readSaved,
+  widthFromDrag,
+  widthFromKey,
+  writeSaved,
+} from "@/components/salesAssistant/sidebarSize";
 import {
   ANSWER_TIMEOUT_MS,
   sentQuestionIsAnswered,
@@ -48,6 +65,49 @@ const EXAMPLE_ICONS = [BarChart3, Sparkles, MessageSquareText, Sparkles, BarChar
 export default function SalesAssistant() {
   const t = useT();
   const { lang } = useI18n();
+  // The side the list sits on follows the page's real layout direction (the product keeps it LTR
+  // in both languages), not the language, so the drag always matches what is on screen.
+  const dir = typeof document !== "undefined" && document.documentElement.dir === "rtl" ? "rtl" : "ltr";
+
+  // The chat list can be folded away and dragged wider or narrower (large screens). What the owner
+  // chose is kept in this browser, so it is the same the next time the page opens.
+  const [sidebar, setSidebar] = React.useState(() => readSaved(globalThis.localStorage));
+  const [dragging, setDragging] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const changeSidebar = (patch) =>
+    setSidebar((prev) => {
+      const next = { ...prev, ...patch };
+      writeSaved(globalThis.localStorage, next);
+      return next;
+    });
+  const onHandleDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return; // the main button only
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startX: e.clientX, startWidth: sidebar.width };
+    setDragging(true);
+  };
+  const onHandleMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setSidebar((prev) => ({ ...prev, width: widthFromDrag({ ...d, currentX: e.clientX, dir }) }));
+  };
+  const onHandleUp = (e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    setDragging(false);
+    setSidebar((prev) => {
+      writeSaved(globalThis.localStorage, prev);
+      return prev;
+    });
+  };
+  const onHandleKey = (e) => {
+    const w = widthFromKey({ width: sidebar.width, key: e.key, dir });
+    if (w === null) return;
+    e.preventDefault();
+    changeSidebar({ width: w });
+  };
   const isAr = lang === "ar";
   const queryClient = useQueryClient();
   const [activeId, setActiveId] = React.useState(null);
@@ -191,6 +251,21 @@ export default function SalesAssistant() {
         >
           {panelOpen ? <PanelLeftClose className="h-5 w-5" /> : <MessageSquareText className="h-5 w-5" />}
         </button>
+        <button
+          type="button"
+          data-testid="assistant-sidebar-toggle"
+          onClick={() => changeSidebar({ collapsed: !sidebar.collapsed })}
+          aria-label={sidebar.collapsed ? t("salesAssistant.sidebarShow") : t("salesAssistant.sidebarHide")}
+          aria-expanded={!sidebar.collapsed}
+          title={sidebar.collapsed ? t("salesAssistant.sidebarShow") : t("salesAssistant.sidebarHide")}
+          className="hidden h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-surface lg:grid"
+        >
+          {sidebar.collapsed ? (
+            <PanelLeftOpen className="h-5 w-5" />
+          ) : (
+            <PanelLeftClose className="h-5 w-5" />
+          )}
+        </button>
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
           {activeThread && activeThread.title ? activeThread.title : t("nav.salesAssistant")}
         </h1>
@@ -311,14 +386,53 @@ export default function SalesAssistant() {
   );
 
   return (
-    <div data-testid="assistant-workspace" className="flex h-full min-h-0 w-full overflow-hidden bg-background">
+    <div
+      data-testid="assistant-workspace"
+      className={`flex h-full min-h-0 w-full overflow-hidden bg-background ${dragging ? "select-none" : ""}`}
+    >
       {/* thread sidebar: fixed from lg up, a drawer over a backdrop below. It scrolls on its own. */}
-      <aside
-        data-testid="assistant-sidebar"
-        className="hidden h-full w-[280px] shrink-0 flex-col overflow-hidden border-e border-border bg-surface/60 lg:flex"
-      >
-        {sidebarBody}
-      </aside>
+      {!sidebar.collapsed && (
+        <aside
+          data-testid="assistant-sidebar"
+          style={{ width: sidebar.width }}
+          className="relative hidden h-full shrink-0 flex-col overflow-hidden border-e border-border bg-surface/60 lg:flex"
+        >
+          {sidebarBody}
+        </aside>
+      )}
+      {!sidebar.collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("salesAssistant.sidebarResize")}
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          aria-valuenow={sidebar.width}
+          tabIndex={0}
+          data-testid="assistant-sidebar-handle"
+          data-dragging={dragging ? "true" : "false"}
+          onKeyDown={onHandleKey}
+          onDoubleClick={() => changeSidebar({ width: 280 })}
+          className="group relative z-10 hidden w-0 shrink-0 lg:block"
+        >
+          {/* Zero width, so it takes no room from the list or the chat: the grab strip (6 px wide) is
+              laid over the list's edge. A thin line shows on hover or while dragging. */}
+          <span
+            data-testid="assistant-sidebar-grab"
+            className="absolute inset-y-0 -start-[3px] w-1.5 cursor-col-resize touch-none select-none"
+            onPointerDown={onHandleDown}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            onPointerCancel={onHandleUp}
+          >
+            <span
+              className={`pointer-events-none absolute inset-y-0 start-1/2 w-0.5 -translate-x-1/2 rounded-full transition-colors ${
+                dragging ? "bg-primary" : "bg-transparent group-hover:bg-primary/50 group-focus-visible:bg-primary"
+              }`}
+            />
+          </span>
+        </div>
+      )}
 
         {panelOpen && (
           <div className="fixed inset-0 z-50 flex lg:hidden">
