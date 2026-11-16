@@ -164,13 +164,24 @@ export function totalsOf(stats) {
 /** Whether "start" is allowed: the file was checked and at least one row can be applied. */
 export const canStart = (session) => session?.status === "validated" && totalsOf(session?.stats).valid > 0;
 
-/** Progress of a running import, 0-100. Rows still waiting come from the server. */
+/** Rows the run has dealt with so far (applied, skipped or failed), from the server's counters. */
+export const doneOf = (stats) => Number(stats?.applied ?? 0) + Number(stats?.skipped ?? 0) + Number(stats?.failed ?? 0);
+
+/**
+ * Rows still waiting. Before the first batch finishes the server has only said how many rows it
+ * will apply (`to_apply`), so that is the fallback; afterwards its own `remaining` is exact.
+ */
+export function remainingOf(stats) {
+  if (stats?.remaining != null) return Math.max(0, Number(stats.remaining));
+  return Math.max(0, Number(stats?.to_apply ?? 0) - doneOf(stats));
+}
+
+/** Progress of a running import, 0-100. */
 export function progressOf(stats) {
-  const applied = Number(stats?.applied ?? 0) + Number(stats?.skipped ?? 0) + Number(stats?.failed ?? 0);
-  const remaining = Number(stats?.remaining ?? 0);
-  const all = applied + remaining;
+  const done = doneOf(stats);
+  const all = done + remainingOf(stats);
   if (all <= 0) return 0;
-  return Math.min(100, Math.round((applied / all) * 100));
+  return Math.min(100, Math.round((done / all) * 100));
 }
 
 /** The most frequent problems first, as [{ code, text, count }]. */

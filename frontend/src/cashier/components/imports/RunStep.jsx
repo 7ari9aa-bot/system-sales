@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/cashier/components/ui/button";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
-import { STATUS_LABEL, progressOf, totalsOf } from "@/cashier/api/importCenter";
+import { STATUS_LABEL, progressOf, remainingOf, totalsOf } from "@/cashier/api/importCenter";
 import { fmtInt } from "@/cashier/lib/format";
 
 /** Step 4: the import is running, or it ended. The numbers are what the server has applied so far. */
@@ -30,7 +30,7 @@ export default function RunStep({ session, busy, error, onCancel, onDownload, on
               <div className="h-full bg-[#E8761A] transition-[width] duration-500" style={{ width: `${pct}%` }} />
             </div>
             <p className="mt-1.5 text-[12px] text-muted-foreground">
-              {pct}% · تمّ {fmtInt(s.applied ?? 0)} · متبقٍّ {fmtInt(s.remaining ?? totals.valid)}
+              {pct}% · تمّ {fmtInt(s.applied ?? 0)} · متبقٍّ {fmtInt(remainingOf(s))}
             </p>
           </div>
         )}

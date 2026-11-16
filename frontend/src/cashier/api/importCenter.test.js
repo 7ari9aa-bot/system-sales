@@ -21,6 +21,7 @@ import {
   isFinished,
   mappingRows,
   progressOf,
+  remainingOf,
   saveImportMapping,
   startImport,
   topProblems,
@@ -187,6 +188,14 @@ describe("totals, start and progress", () => {
     expect(progressOf({ applied: 10, remaining: 0 })).toBe(100);
     expect(progressOf({})).toBe(0);
     expect(progressOf(undefined)).toBe(0);
+  });
+  it("before the first batch finishes, the rows to apply stand in for what remains", () => {
+    expect(remainingOf({ to_apply: 1200 })).toBe(1200);
+    expect(progressOf({ to_apply: 1200 })).toBe(0);
+    expect(remainingOf({ to_apply: 1200, applied: 500, skipped: 0, failed: 0 })).toBe(700);
+    expect(remainingOf({ to_apply: 1200, applied: 500, remaining: 650 })).toBe(650);
+    expect(remainingOf({ to_apply: 10, applied: 20 })).toBe(0);
+    expect(remainingOf(undefined)).toBe(0);
   });
   it("lists the most common problems first", () => {
     const s = { sheets: { A: { error_codes: { required: 2, unknown_sku: 7 } }, B: { error_codes: { required: 3 } } } };
