@@ -435,7 +435,9 @@ async def _si_metric(
     the metric name is checked against the registry) is the originals' own.
     """
     if mode == "status":
-        return await _si_data_status(session, tenant_id)
+        return await _with_measured_record_counts(
+            session, tenant_id, await _si_data_status(session, tenant_id)
+        )
     if mode == "why":
         if focus not in _WHY_FOCUSES:
             raise ValidationError(
@@ -2396,6 +2398,34 @@ _RECORDED_SOURCE_PERMISSION = {
     "expenses": "finance:read",
     "purchases": "purchasing:read",
 }
+
+
+async def _with_measured_record_counts(
+    session: AsyncSession, tenant_id: uuid.UUID, status_result: dict
+) -> dict:
+    """Register how many records each readable source has as measured facts.
+
+    The status read always carried the counts, but in ``summary``, which the number gate does not
+    read, so a model that wrote "orders 3, customers 3, stock 5 items" about a true result was
+    refused and rewritten (50 to 73 s, four times in twenty-four answers). The gate stays strict:
+    a count the database produced is now a fact, a count from nowhere is still refused. A source
+    the asker may not read is left out entirely, never shown as zero. The read itself and its
+    summary are returned exactly as they were."""
+    rows = _recorded_summary(status_result)
+    if not rows:
+        return status_result
+    readable = {row["source"] for row in rows}
+    counts = {
+        row["source"]: int(row.get("count") or 0)
+        for row in (status_result.get("summary") or {}).get("sources") or []
+        if isinstance(row, dict) and row.get("source") in readable
+    }
+    period = await _resolve_window(session, tenant_id, 1)
+    numbers = [("records_recorded", n, "count", {"source": name}) for name, n in counts.items()]
+    return {
+        **status_result,
+        "facts": _typed_facts(_evidence_store(), period, "data_status", numbers),
+    }
 
 
 def _recorded_summary(status_result: dict) -> list[dict]:
