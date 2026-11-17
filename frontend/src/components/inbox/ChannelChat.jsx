@@ -26,6 +26,8 @@ import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPic
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
+import ImageViewer from "./whatsapp/ImageViewer";
+import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
 import { ChevronDownIcon, EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
@@ -70,6 +72,7 @@ export default function ChannelChat({
   const scrollRef = useRef(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [viewerId, setViewerId] = useState(null);
   const [lastSeenId, setLastSeenId] = useState(null);
   const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
@@ -132,6 +135,7 @@ export default function ChannelChat({
   useEffect(() => {
     setText("");
     setReplyingTo(null);
+    setViewerId(null);
     setSearchQuery("");
     setSearchOpen(false);
     setThemePickerOpen(false);
@@ -388,6 +392,7 @@ export default function ChannelChat({
                 conversation={conversation}
                 onReply={setReplyingTo}
                 onReact={onReact}
+                onOpenImage={setViewerId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -787,12 +792,15 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
+      {viewerId && isWhatsApp && (
+        <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
+      )}
     </div>
   );
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact }) {
+function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -820,7 +828,13 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
       media = (
         <div className="space-y-1.5">
           <div className="max-w-[280px] overflow-hidden rounded-lg">
-            <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
+            {isWhatsApp && onOpenImage && !m.deleted ? (
+              <button type="button" data-testid="open-image" onClick={() => onOpenImage(m.id)} aria-label={_lang === "ar" ? "فتح الصورة" : "Open photo"} className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
+                <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
+              </button>
+            ) : (
+              <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
+            )}
           </div>
           {m.text && !m.text.startsWith("blob:") && <div dir="auto">{m.text}</div>}
           <div className="flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">

@@ -168,3 +168,15 @@ export const CopyIcon = (p) => (
     <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
   </Svg>
 );
+
+export const CloseIcon = (p) => (
+  <Svg {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);
+
+export const DownloadIcon = (p) => (
+  <Svg {...p}>
+    <path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" />
+  </Svg>
+);
