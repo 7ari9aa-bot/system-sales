@@ -459,7 +459,7 @@ export default function ChannelChat({
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
                 <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
-                  <span className={cn("rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : "text-[#54656f]")}>
+                  <span className={cn("rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isTelegram && !isMessenger && !isInstagram && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]")}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>
@@ -1050,7 +1050,7 @@ function getMessageDayKey(iso) {
   return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-function formatWhatsAppDay(iso, lang, _t) {
+export function formatWhatsAppDay(iso, lang, _t) {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -1060,5 +1060,9 @@ function formatWhatsAppDay(iso, lang, _t) {
   const diff = (today.getTime() - target.getTime()) / 86400000;
   if (diff === 0) return lang === "ar" ? "اليوم" : "Today";
   if (diff === 1) return lang === "ar" ? "أمس" : "Yesterday";
-  return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "short", month: "short", day: "numeric" });
+  // WhatsApp Web: a weekday name for the last week, then a plain dd/mm/yyyy.
+  if (diff > 1 && diff < 7) return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "long" });
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${date.getFullYear()}`;
 }

@@ -50,3 +50,19 @@ describe("message bodies", () => {
     expect(r(<UnsupportedBody lang="ar" />)).toContain("غير مدعومة");
   });
 });
+
+
+describe("DocumentBody actions (as in the real app)", () => {
+  test("shows Open and Save as... under the card, and no round download button", () => {
+    const html = r(<DocumentBody src="https://x.test/a.pdf" label="a.pdf" lang="en" out />);
+    expect(html).toContain('data-testid="document-open"');
+    expect(html).toContain(">Open<");
+    expect(html).toContain(">Save as...<");
+    expect(html).toContain('download="a.pdf"');
+  });
+  test("shows no actions when the link has expired (no src)", () => {
+    const html = r(<DocumentBody label="a.pdf" lang="en" />);
+    expect(html).not.toContain("document-open");
+    expect(html).not.toContain("Save as");
+  });
+});

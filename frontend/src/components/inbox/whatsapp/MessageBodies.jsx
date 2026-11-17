@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { BlockedIcon, DownloadIcon, FileIcon, ListIcon, PinIcon, PlayIcon, UserIcon } from "./icons";
+import { BlockedIcon, FileIcon, ListIcon, PinIcon, PlayIcon, UserIcon } from "./icons";
 import { fileExtension, fileNameOf, parseContact, parseLocation } from "./messageKind";
 import { cn } from "@/lib/utils";
 
 const WORDS = {
-  ar: { location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
-  en: { location: "Location", contact: "Contact", document: "Document", download: "Download", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
+  ar: { location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", open: "فتح", saveAs: "حفظ باسم...", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
+  en: { location: "Location", contact: "Contact", document: "Document", download: "Download", open: "Open", saveAs: "Save as...", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
 };
 const t = (lang) => WORDS[lang] || WORDS.en;
 
@@ -65,17 +65,21 @@ export function DocumentBody({ src, label, lang, out }) {
   const w = t(lang);
   const name = label || fileNameOf(src, w.document);
   const ext = fileExtension(name);
+  // The real app: a card, then two plain text actions under it, split by a hairline.
   return (
-    <div data-testid="document" className={cn("flex w-64 max-w-full items-center gap-3 rounded-lg p-2", out ? "bg-[var(--wa-bubble-out-inner)]" : "bg-[var(--wa-bg-hover)]")}>
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7f66ff]/15 text-[#7f66ff]"><FileIcon size={22} /></span>
-      <span className="min-w-0 flex-1">
-        <span dir="auto" className="block truncate text-[13.5px] font-medium">{name}</span>
-        {ext && <span className="block text-[11.5px] text-[color:var(--wa-text-secondary)]">{ext}</span>}
-      </span>
+    <div data-testid="document" className="w-64 max-w-full">
+      <div className={cn("flex items-center gap-3 rounded-lg p-2.5", out ? "bg-[var(--wa-bubble-out-inner)]" : "bg-[var(--wa-bg-hover)]")}>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7f66ff]/15 text-[#7f66ff]"><FileIcon size={22} /></span>
+        <span className="min-w-0 flex-1">
+          <span dir="auto" className="block truncate text-[13.5px] font-medium">{name}</span>
+          {ext && <span className="block text-[11.5px] text-[color:var(--wa-text-secondary)]">{ext}</span>}
+        </span>
+      </div>
       {src && (
-        <a href={src} target="_blank" rel="noopener noreferrer" download data-testid="document-download" aria-label={`${w.download} ${name}`} title={w.download} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
-          <DownloadIcon size={20} />
-        </a>
+        <div className="mt-1 grid grid-cols-2 border-t border-[color:var(--wa-divider)] text-center text-[14px] font-medium text-[color:var(--wa-green-link)]">
+          <a href={src} target="_blank" rel="noopener noreferrer" data-testid="document-open" className="py-2 hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]">{w.open}</a>
+          <a href={src} download={name} target="_blank" rel="noopener noreferrer" data-testid="document-download" aria-label={`${w.download} ${name}`} className="py-2 hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]">{w.saveAs}</a>
+        </div>
       )}
     </div>
   );

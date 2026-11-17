@@ -23,6 +23,7 @@
   --wa-green: #00a884;
   --wa-green-text: #025144;     /* text on the light-green pill */
   --wa-pill-active: #d9fdd3;
+  --wa-green-link: #1b8755;     /* the text actions under a bubble (Open, Save as) */
   --wa-header: #008069;         /* preview screen bar */
   --wa-ticks-read: #53bdeb;
   --wa-danger: #ea0038;
@@ -54,6 +55,7 @@
   --wa-green: #00a884;
   --wa-green-text: #d9fdd3;
   --wa-pill-active: #0a332c;
+  --wa-green-link: #53d2a9;
   --wa-header: #202c33;
   --wa-ticks-read: #53bdeb;
   --wa-danger: #ff6b81;
