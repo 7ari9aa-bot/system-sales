@@ -29,6 +29,9 @@ from app.modules.conversations.gateway.base import (
 
 logger = logging.getLogger(__name__)
 
+# Stored as the body of a reaction row that withdraws the sender's earlier reaction.
+REACTION_REMOVED = "\u2205"
+
 
 class InstagramAdapter(ChannelAdapter):
     """Instagram messaging adapter via Meta Graph API.
@@ -79,9 +82,27 @@ class InstagramAdapter(ChannelAdapter):
             return None
 
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
-        # Meta delivery/read receipts arrive as messaging[0].delivery|read —
-        # inbound-only for now; the generic status path handles the rest.
-        return []
+        """Read receipts: ``messaging_seen`` names the last message the customer saw.
+
+        Instagram sends no per-message delivery receipt, only "seen up to this
+        message". The id is the provider message id of that last message.
+        """
+        out: list[StatusUpdate] = []
+        for entry in payload.get("entry", []) or []:
+            for event in entry.get("messaging", []) or []:
+                read = event.get("read")
+                if not isinstance(read, dict):
+                    continue
+                mid = read.get("mid")
+                if mid:
+                    out.append(
+                        StatusUpdate(
+                            channel_message_id=str(mid),
+                            status="read",
+                            timestamp=event.get("timestamp"),
+                        )
+                    )
+        return out
 
     def parse_comments(self, payload: dict) -> list[InboundComment]:
         """Instagram post comments arrive on field "comments" in the same
@@ -89,70 +110,129 @@ class InstagramAdapter(ChannelAdapter):
         return parse_meta_comment_changes(payload)
 
     def parse_inbound(self, payload: dict) -> list[InboundMessage]:
-        """Parse a Meta webhook payload into 0..1 canonical InboundMessages.
+        """Parse a Meta webhook payload into canonical InboundMessages.
 
-        Instagram webhooks: entry[0].messaging[0].message.text, sender.id, etc.
-        Always a list — the dispatcher and the WebhookWorker iterate it, so the
-        ``None`` this used to return on an empty envelope crashed the hot path
-        instead of yielding zero messages.
+        Handles every inbound shape the Instagram Messaging webhook documents:
+        text, image / video / audio / file, shared posts and reels, story
+        replies and mentions, stickers (a "like" heart), reactions, edits and
+        unsends. Echoes (messages the business sent from the Instagram app
+        itself) are skipped: they are not customer messages.
         """
-        entries = payload.get("entry", [])
-        if not entries:
-            return []
+        out: list[InboundMessage] = []
+        for entry in payload.get("entry", []) or []:
+            for event in entry.get("messaging", []) or []:
+                parsed = self._parse_event(event, payload)
+                if parsed is not None:
+                    out.append(parsed)
+        return out
 
-        messaging = entries[0].get("messaging", [])
-        if not messaging:
-            return []
+    def _parse_event(self, event: dict, payload: dict) -> InboundMessage | None:
+        sender = event.get("sender") or {}
+        recipient = event.get("recipient") or {}
 
-        event = messaging[0]
-        sender = event.get("sender", {})
-        recipient = event.get("recipient", {})
-        message = event.get("message", {})
+        reaction = event.get("reaction")
+        if isinstance(reaction, dict):
+            return self._parse_reaction(event, reaction, sender, recipient, payload)
 
-        if not message:
-            return []
-
-        # Handle different message types
-        text = message.get("text")
-        attachments = message.get("attachments", [])
-
-        content_type = "text"
-        media_url = None
-
-        if attachments:
-            att = attachments[0]
-            att_type = att.get("type", "text")
-            if att_type == "image":
-                content_type = "image"
-                media_url = att.get("payload", {}).get("url")
-            elif att_type == "audio":
-                content_type = "voice"
-                media_url = att.get("payload", {}).get("url")
-            elif att_type == "video":
-                content_type = "video"
-                media_url = att.get("payload", {}).get("url")
-            elif att_type == "file":
-                content_type = "file"
-                media_url = att.get("payload", {}).get("url")
-            elif text is None:
-                content_type = "unsupported"
+        message = event.get("message")
+        if not isinstance(message, dict) or not message:
+            return None
+        if message.get("is_echo"):
+            return None
 
         mid = message.get("mid")
+        text = message.get("text")
+        reply_to = (message.get("reply_to") or {}).get("mid")
+        body, media_url, media_type, content_type = text, None, None, "text"
+        extra: dict[str, Any] = {}
 
-        return [
-            InboundMessage(
-                channel="instagram",
-                channel_message_id=mid,
-                customer_ref=str(sender.get("id", "")),
-                customer_name=None,
-                body=text,
-                media_url=media_url,
-                media_type=content_type if media_url else None,
-                content_type=content_type,
-                conversation_ref=str(recipient.get("id", "")),
-                raw=payload,
+        if message.get("is_deleted"):
+            # An unsend: the row is kept, the body is cleared by the caller.
+            content_type = "deleted"
+            body = None
+        else:
+            attachments = message.get("attachments") or []
+            if attachments:
+                body, media_url, media_type, content_type, extra = self._parse_attachment(
+                    attachments[0], text, message
+                )
+            elif (message.get("reply_to") or {}).get("story"):
+                extra["story_reply"] = message["reply_to"]["story"]
+
+        if reply_to:
+            extra["reply_to_provider_id"] = reply_to
+        raw = payload if not extra else {**payload, "_ig": extra}
+
+        return InboundMessage(
+            channel="instagram",
+            channel_message_id=mid,
+            customer_ref=str(sender.get("id", "")),
+            customer_name=None,
+            body=body,
+            media_url=media_url,
+            media_type=media_type,
+            content_type=content_type,
+            reply_to_message_id=reply_to,
+            conversation_ref=str(recipient.get("id", "")),
+            raw=raw,
+        )
+
+    @staticmethod
+    def _parse_attachment(
+        att: dict, text: str | None, message: dict
+    ) -> tuple[str | None, str | None, str | None, str, dict[str, Any]]:
+        """-> (body, media_url, media_type, canonical content_type, extra)."""
+        att_type = att.get("type", "")
+        pl = att.get("payload") or {}
+        url = pl.get("url")
+        if att_type == "image":
+            # A sticker is an image whose payload carries a sticker id (the "like" heart).
+            if pl.get("sticker_id"):
+                return text, url, "image", "sticker", {"sticker_id": pl["sticker_id"]}
+            return text, url, "image", "image", {}
+        if att_type == "audio":
+            return text, url, "audio", "voice", {}
+        if att_type == "video":
+            return text, url, "video", "video", {}
+        if att_type == "file":
+            return text, url, "file", "file", {}
+        if att_type == "like_heart":
+            return "\u2764\ufe0f", None, None, "sticker", {}
+        if att_type in ("share", "ig_post", "ig_reel", "reel"):
+            return (
+                text or pl.get("title"),
+                url,
+                None,
+                "share",
+                {"share": {"url": url, "title": pl.get("title"), "kind": att_type}},
             )
-        ]
+        if att_type == "story_mention":
+            return text, url, None, "story_mention", {"story_mention": {"url": url}}
+        if att_type == "reel_reply" or att_type == "story_reply":
+            return text, url, None, "story_reply", {"story_reply": {"url": url}}
+        return text, None, None, ("text" if text else "unsupported"), {}
+
+    @staticmethod
+    def _parse_reaction(
+        event: dict, reaction: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        target = reaction.get("mid")
+        if not target:
+            return None
+        action = reaction.get("action")
+        emoji = (reaction.get("emoji") or "").strip()
+        if action == "unreact" or not emoji:
+            emoji = REACTION_REMOVED
+        return InboundMessage(
+            channel="instagram",
+            channel_message_id=None,
+            customer_ref=str(sender.get("id", "")),
+            body=emoji,
+            content_type="reaction",
+            reply_to_message_id=str(target),
+            conversation_ref=str(recipient.get("id", "")),
+            raw=payload,
+        )
 
     async def send(
         self,
