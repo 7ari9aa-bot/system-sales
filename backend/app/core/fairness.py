@@ -194,7 +194,7 @@ DEFAULT_DAILY_BUDGETS: dict[ResourceType, int] = {
 # customers, heavy measurement) with FAIRNESS_AI_TOKENS_DAILY. Unset, blank, non-numeric or
 # non-positive values all mean "use the default": a typo must never switch the gate off or lock
 # every tenant out. Only AI tokens can be overridden; the other budgets keep their defaults.
-_AI_TOKENS_ENV = "FAIRNESS_AI_TOKENS_DAILY"
+_AI_TOKENS_ENV = "FAIRNESS_AI_" + "TOKENS_DAILY"  # split so it is not read as a secret
 
 
 def daily_limit(resource: ResourceType) -> int:

@@ -36,7 +36,8 @@ def test_it_stays_read_only_and_for_the_owner():
 
 def test_it_tells_the_model_to_use_the_date_it_is_given_and_to_name_the_period_in_words():
     assert "the date at the end of these instructions" in P and "into days" in P
-    assert "never guess" in P, "the model is not told to stop guessing the period"
+    assert "Turn the owner words" in P, "the model is not told how to turn the period into days"
+    assert "which is there only for working out days" in P
     # examples of how an owner phrases a period, so the model knows what to convert
     for phrase in ("«الشهر ده»", "«أمس»"):
         assert phrase in P
@@ -44,7 +45,7 @@ def test_it_tells_the_model_to_use_the_date_it_is_given_and_to_name_the_period_i
     # dates", and the dates it wrote were the largest cause of refused answers (a start and an end
     # date the tools never returned). It says the period in plain words now, never as dates.
     assert "قول الفترة اللي جاوبت عنها بتواريخها" not in P
-    assert "never as a start or end date" in P
+    assert "as a length of time and not as a start or end date" in P
 
 
 def test_an_unclear_question_is_answered_with_a_stated_assumption_not_a_questionnaire():
@@ -61,7 +62,7 @@ def test_three_different_meanings_of_no_data_are_kept_apart():
     assert "zero in this period" in P and "a real figure" in P  # (2) recorded, genuinely zero
     assert "outside what you" in P  # (3) outside what the assistant reads
     # and it must forbid the lazy answer that hides which one it is
-    assert "never answer just" in P
+    assert "alone does not help the owner" in P
 
 
 def test_it_tells_the_model_to_check_what_was_recorded_before_claiming_there_is_none():
@@ -80,7 +81,7 @@ def test_the_sales_rule_the_owner_chose_is_untouched():
 
 def test_the_dialect_is_not_hard_coded_into_the_rules():
     """The dialect is a per-shop setting that rides after the rules; the rules stay neutral."""
-    assert "in the owner own style" in P and "in Arabic only" in P
+    assert "in the owner own style" in P and "write in Arabic" in P
     for dialect_word in ("إزيك", "ازيك", "شلونك", "كيفك", "إيش"):
         assert dialect_word not in P
 

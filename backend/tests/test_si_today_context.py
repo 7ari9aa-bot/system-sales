@@ -67,8 +67,8 @@ def test_yesterday_is_one_day_and_last_seven_is_seven():
     message) and not in the daily date block. Each is read from ITS OWN clause."""
     from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
 
-    assert "Yesterday: days=1" in P and "days=2" not in P.split("Yesterday: days=1")[1][:12]
-    assert "last week: days=7" in P and "days=8" not in P
+    assert "Yesterday is days=1" in P and "days=2" not in P.split("Yesterday is days=1")[1][:12]
+    assert "last week is days=7" in P and "days=8" not in P
     block = today_context(_at(2026, 11, 15))
     assert "days=1." not in block and "days=7." not in block, (
         "a fixed rule is back in the daily block"
