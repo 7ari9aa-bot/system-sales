@@ -12,6 +12,8 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
+from app.core.contact_norm import ContactNormalizationError, normalize_email, normalize_phone
+
 # Arabic-Indic, Persian digits and the Arabic decimal/thousands separators fold to ASCII.
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬", "01234567890123456789.,")
 # zero-width and bidi marks that arrive when text is copied from a chat or a web page
@@ -127,6 +129,66 @@ def parse_code(raw: object, *, field: str, max_len: int) -> str | None:
     if len(text) > max_len:
         raise CellError("too_long", f"{field} is longer than {max_len} characters")
     return text
+
+
+# Arabic-Indic and Persian digits, so a phone typed in an Arabic keyboard reads as a phone.
+_PHONE_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+EMAIL_MAX = 254
+TAGS_MAX = 20
+TAG_MAX = 60
+
+
+def parse_phone(raw: object) -> str | None:
+    """A canonical E.164 phone, or None when the cell is blank.
+
+    The shop's own rule decides what a valid number is (``normalize_phone``), so a row cannot
+    pass here and then be refused by the customers service. The one thing it does not know is
+    that a merchant types ``٠١٠١٢٣٤٥٦٧٨`` on an Arabic keyboard, so those digits are folded first.
+    Excel also drops the leading zero of a number typed into a General cell (``1012345678``); the
+    same rule reads that as the Egyptian number it is, so it is accepted, not guessed at.
+    """
+    text = clean_text(raw).translate(_PHONE_DIGITS)
+    if not text:
+        return None
+    if re.fullmatch(r"[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+", text):
+        raise CellError(
+            "scientific_notation",
+            f"phone looks like scientific notation ({text}); format the column as Text",
+        )
+    if re.fullmatch(r"[0-9]+\.0+", text):  # a number cell read back as 1012345678.0
+        text = text.split(".", 1)[0]
+    try:
+        return normalize_phone(text)
+    except ContactNormalizationError as exc:
+        raise CellError("bad_phone", f"phone '{text}' is not a dialable number") from exc
+
+
+def parse_email(raw: object) -> str | None:
+    text = clean_text(raw)
+    if not text:
+        return None
+    if len(text) > EMAIL_MAX:
+        raise CellError("too_long", f"email is longer than {EMAIL_MAX} characters")
+    try:
+        return normalize_email(text)
+    except ContactNormalizationError as exc:
+        raise CellError("bad_email", f"email '{text}' is not a valid address") from exc
+
+
+def parse_tags(raw: object) -> list[str]:
+    """``vip, جملة ; wholesale`` -> ['vip', 'جملة', 'wholesale'], once each, in order."""
+    out: list[str] = []
+    for part in re.split(r"[,،;؛\n]", clean_text(raw).replace("\u200f", "")):
+        tag = clean_text(part)
+        if not tag:
+            continue
+        if len(tag) > TAG_MAX:
+            raise CellError("too_long", f"a tag is longer than {TAG_MAX} characters")
+        if tag.casefold() not in {t.casefold() for t in out}:
+            out.append(tag)
+    if len(out) > TAGS_MAX:
+        raise CellError("too_many_tags", f"more than {TAGS_MAX} tags on one customer")
+    return out
 
 
 IMAGE_URL_MAX = 2000

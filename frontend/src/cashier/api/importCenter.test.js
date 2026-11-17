@@ -176,6 +176,21 @@ describe("image import wording", () => {
   });
 });
 
+describe("customer import wording", () => {
+  it("names the Customers sheet and explains every code the server can return for a customer", () => {
+    expect(SHEET_LABEL.Customers).toBe("العملاء");
+    for (const code of [
+      "no_contact", "bad_phone", "bad_email", "already_a_customer", "phone_of_deleted_customer", "too_many_tags",
+    ]) {
+      expect(errorText(code), code).not.toBe("قيمة غير صالحة");
+    }
+  });
+  it("does not blame a barcode when it is a phone number that Excel turned into 1E+9", () => {
+    // the same server code serves barcodes and phones, so the sentence must fit both
+    expect(errorText("scientific_notation")).not.toContain("الباركود");
+  });
+});
+
 describe("pictures archive", () => {
   const zip = (over = {}) => ({ name: "photos.zip", type: "application/zip", size: 5_000_000, ...over });
 

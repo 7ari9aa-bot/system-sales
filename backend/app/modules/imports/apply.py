@@ -25,7 +25,13 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.imports.fields import SHEET_IMAGES, SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
+    SHEET_IMAGES,
+    SHEET_PRODUCTS,
+    SHEET_STOCK,
+    SHEET_VARIANTS,
+)
 from app.modules.imports.models import ImportRow
 
 logger = logging.getLogger(__name__)
@@ -35,10 +41,11 @@ BATCH_LIMIT = 500  # standing ceiling: a batch never holds more rows than this
 # undo. So a batch of pictures is small: a crash orphans at most this many stored files, and the
 # transaction (and its row locks) stays short while the downloads run.
 IMAGE_BATCH_LIMIT = 25
-# Products before variants before stock: a variant needs its product, stock needs its variant.
+# Customers depend on nothing in the file, so they go first. Then products before variants before
+# stock: a variant needs its product, stock needs its variant.
 # Pictures go last: they are the slowest rows (each one is a download) and the least critical, so
 # a shop that runs out of time still has every product, price and quantity in place.
-SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
+SHEET_ORDER = (SHEET_CUSTOMERS, SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 OPENING_STOCK_REASON = "opening_stock"
 REFERENCE_TYPE = "import_session"
 
@@ -63,6 +70,11 @@ class Ports:
     # (sku, warehouse code, quantity, session id) -> variant_id, or None when 0 (nothing to record)
     record_opening_stock: Callable[
         [AsyncSession, uuid.UUID, str, str, Decimal, uuid.UUID], Awaitable[uuid.UUID | None]
+    ]
+    # (name, phone, email, source, tags) -> customer id. The customers service's own intake.
+    create_customer: Callable[
+        [AsyncSession, uuid.UUID, str, str | None, str | None, str, list[str]],
+        Awaitable[uuid.UUID],
     ]
     # (sku, picture, source 'url'|'zip', session id) -> image id. Gets the picture (downloads the
     # link, or reads the file out of the merchant's archive), stores it, attaches it.
@@ -210,6 +222,17 @@ async def _write(
             session, tenant_id, str(values["sku"]), str(values["warehouse"]), quantity, session_id
         )
         return {"variant_id": str(variant_id), "action": "created"}
+    if row.sheet == SHEET_CUSTOMERS:
+        customer_id = await ports.create_customer(
+            session,
+            tenant_id,
+            str(values["name"]),
+            values.get("phone") or None,
+            values.get("email") or None,
+            str(values.get("source") or "import"),
+            list(values.get("tags") or []),
+        )
+        return {"customer_id": str(customer_id), "action": "created"}
     if row.sheet == SHEET_IMAGES:
         image_id = await ports.attach_image(
             session,
