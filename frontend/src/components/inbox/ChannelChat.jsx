@@ -985,7 +985,7 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
   return (
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div
-        className={cn("max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%]", out ? "rounded-br-sm" : "rounded-bl-sm")}
+        className={cn("max-w-[82%] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%]", _isInstagram ? "rounded-[12px]" : cn("rounded-[18px]", out ? "rounded-br-sm" : "rounded-bl-sm"))}
         style={{ background: out ? th?.out || "#0084ff" : th?.in || "#f0f0f0", color: out ? th?.outText || "#fff" : th?.inText || "#111" }}
       >
         {isAudio ? (

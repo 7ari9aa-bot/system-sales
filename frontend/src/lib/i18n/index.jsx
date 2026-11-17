@@ -52,6 +52,9 @@ export function useI18n() {
   return ctx;
 }
 
+// The cashier components ask for `const { t } = useTranslation()`; it is the same hook as useI18n.
+export const useTranslation = useI18n;
+
 export function useT() {
   return useI18n().t;
 }
