@@ -55,3 +55,8 @@ export function useI18n() {
 export function useT() {
   return useI18n().t;
 }
+
+export function useTranslation() {
+  const { t, lang } = useI18n();
+  return { t, i18n: { language: lang }, lang };
+}
