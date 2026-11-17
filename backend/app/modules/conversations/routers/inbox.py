@@ -625,7 +625,13 @@ async def send_read_signal(
     await _ensure_channel_access(ctx, conversation)
     await _ensure_channel_send(ctx, conversation)
     result = await ReadSignalService.send(
-        ctx.session, ctx.tenant_id, conversation, typing=body.typing
+        ctx.session,
+        ctx.tenant_id,
+        conversation,
+        typing=body.typing,
+        load_channel_config=lambda: _channel_access.channel_credentials_config(
+            ctx.session, ctx.tenant_id, "whatsapp"
+        ),
     )
     return {"sent": result.sent, "skipped": result.skipped}
 

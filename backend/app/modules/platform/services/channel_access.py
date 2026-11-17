@@ -112,6 +112,33 @@ async def sendable_providers(
     return sendable
 
 
+async def channel_credentials_config(
+    session: AsyncSession, tenant_id: uuid.UUID, provider: str
+) -> dict | None:
+    """A connected channel's settings with its credentials decrypted, or None when not connected.
+
+    The one place another module asks "give me what I need to call this channel's provider", so
+    that module imports neither the Integration table nor the credentials service. Decryption is
+    audited exactly as everywhere else (IntegrationCredentialsService writes the row).
+    """
+    from app.modules.platform.services.secrets import IntegrationCredentialsService
+
+    integration = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == provider,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        return None
+    config = dict(integration.config or {})
+    config.update(await IntegrationCredentialsService.decrypt(session, integration))
+    return config
+
+
 async def channel_status(
     session: AsyncSession,
     tenant_id: uuid.UUID,

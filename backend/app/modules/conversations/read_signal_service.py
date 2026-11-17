@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -26,7 +27,6 @@ from app.modules.conversations.gateway.base import ProviderCredentials
 from app.modules.conversations.gateway.registry import get_adapter
 from app.modules.conversations.models import Message
 from app.modules.conversations.policy import MessagingPolicyService
-from app.modules.platform.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,15 @@ class ReadSignalService:
         conversation,
         *,
         typing: bool,
+        load_channel_config: Callable[[], Awaitable[dict | None]] | None = None,
     ) -> ReadSignalResult:
+        """``load_channel_config`` fetches the connected WhatsApp channel's ready-to-use settings
+        (the caller owns that lookup, it lives in platform); None, or a lookup that finds nothing,
+        means the shop has no WhatsApp connection.
+
+        It is a loader and not a value so the credentials are read, and the read audited, only
+        AFTER every check above that can stop the signal. A chat opened outside the 24h window
+        must not leave a "credentials read" row behind."""
         if conversation.channel != "whatsapp":
             return ReadSignalResult(False, "channel")
         if not MessagingPolicyService.evaluate(conversation).allowed:
@@ -94,25 +102,12 @@ class ReadSignalService:
         adapter = get_adapter("whatsapp")
         if adapter is None or not hasattr(adapter, "send_read_signal"):
             return ReadSignalResult(False, "unsupported")
-        integration = (
-            await session.execute(
-                select(Integration).where(
-                    Integration.tenant_id == tenant_id,
-                    Integration.provider == "whatsapp",
-                    Integration.kind == "channel",
-                )
-            )
-        ).scalar_one_or_none()
-        if integration is None:
+        channel_config = await load_channel_config() if load_channel_config else None
+        if channel_config is None:
             return ReadSignalResult(False, "not_connected")
-
-        from app.modules.platform.service import IntegrationCredentialsService
-
-        config = dict(integration.config or {})
-        config.update(await IntegrationCredentialsService.decrypt(session, integration))
         try:
             await adapter.send_read_signal(
-                ProviderCredentials(config=config), provider_id, typing=typing
+                ProviderCredentials(config=channel_config), provider_id, typing=typing
             )
         except Exception as exc:  # noqa: BLE001 - a courtesy signal never blocks the agent
             logger.warning(
