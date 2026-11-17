@@ -22,15 +22,20 @@ export const TIMEOUT_MESSAGE =
   "Sending took too long. It may have gone through: check the conversation before sending again.";
 
 /** @returns {Promise<{ok: true, sent: object|null} | {ok: false, error: string}>} */
-export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null } = {}) {
+export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null, mediaId = null } = {}) {
   const slot = `send:${conversationId}`;
-  // Which message is being answered is part of the intention: the same words as
-  // a reply to a different message must be a new send, not a replay.
-  const key = intents.take(slot, { text, replyToId });
+  // Which message is being answered, and which uploaded file goes with it, are
+  // part of the intention: the same words with a different file (or as a reply
+  // to a different message) must be a new send, not a replay.
+  const key = intents.take(slot, { text, replyToId, mediaId });
   try {
+    const body = {};
+    if (text) body.body = text;
+    if (replyToId) body.reply_to_message_id = replyToId;
+    if (mediaId) body.media_id = mediaId;
     const sent = await api(`/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: replyToId ? { body: text, reply_to_message_id: replyToId } : { body: text },
+      body,
       headers: { "Idempotency-Key": key },
     });
     intents.done(slot);
@@ -40,6 +45,36 @@ export async function sendReply(conversationId, text, { api = defaultApi, intent
     return {
       ok: false,
       error: e?.code === "timeout" ? TIMEOUT_MESSAGE : (e?.message || "Could not send the message."),
+    };
+  }
+}
+
+/**
+ * Upload a file the agent is about to send. The raw file is the body; its name
+ * travels percent-encoded so an Arabic name survives a header. Nothing reaches
+ * the customer from here: the returned `media_id` goes to sendReply.
+ *
+ * @returns {Promise<{ok: true, media: {media_id: string, kind: string, filename: string, size: number}} | {ok: false, error: string}>}
+ */
+export async function uploadMedia(conversationId, file, { api = defaultApi, asSticker = false, signal } = {}) {
+  try {
+    const media = await api(`/conversations/${conversationId}/media`, {
+      method: "POST",
+      body: file,
+      rawBody: true,
+      contentType: file.type || "application/octet-stream",
+      headers: {
+        "X-Filename": encodeURIComponent(file.name || "file"),
+        ...(asSticker ? { "X-As-Sticker": "true" } : {}),
+      },
+      signal,
+    });
+    return { ok: true, media };
+  } catch (e) {
+    if (e?.name === "AbortError") return { ok: false, error: "", aborted: true };
+    return {
+      ok: false,
+      error: e?.code === "timeout" ? "The upload took too long. Check your connection and try again." : (e?.message || "Could not upload the file."),
     };
   }
 }

@@ -25,7 +25,14 @@ export default defineConfig({
   // live API (the backend job sets E2E_LIVE_API=1); without a backend the
   // vite proxy errors would fail the whole suite.
   testIgnore: process.env.E2E_LIVE_API ? [] : ["**/deep-crawl.spec.js"],
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // A fake microphone, so the voice-note flow runs a real MediaRecorder in CI.
+  projects: [{
+    name: "chromium",
+    use: {
+      ...devices["Desktop Chrome"],
+      launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+    },
+  }],
   webServer: runAgainstLocalBuild
     ? {
         command: "npm run preview -- --host 127.0.0.1",

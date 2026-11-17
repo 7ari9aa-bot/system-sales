@@ -31,6 +31,10 @@ import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
+import AttachPreview from "./whatsapp/AttachPreview";
+import VoiceRecorder from "./whatsapp/VoiceRecorder";
+import { checkFile } from "./whatsapp/attachments";
+import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
@@ -75,6 +79,11 @@ export default function ChannelChat({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  // WhatsApp only: the file the agent picked (or the voice note just recorded),
+  // shown in a preview until Send uploads it and sends the message.
+  const [attachment, setAttachment] = useState(null); // { file, kind, asSticker, audioUrl? }
+  const [uploading, setUploading] = useState(false);
+  const [attachError, setAttachError] = useState("");
   const [customer360Record, setCustomer360Record] = useState(null);
   const [waCustomer, setWaCustomer] = useState(null);
 
@@ -171,6 +180,9 @@ export default function ChannelChat({
     setEmojiPickerOpen(false);
     setAttachmentMenuOpen(false);
     setIsRecordingVoice(false);
+    setAttachment(null);
+    setUploading(false);
+    setAttachError("");
   }, [conversation?.id]);
 
   useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
@@ -185,6 +197,33 @@ export default function ChannelChat({
       setEmojiPickerOpen(false);
       setAttachmentMenuOpen(false);
     }
+  }
+
+  // A file was picked: check it here so a wrong one is refused before any upload.
+  function pickFile(file, { asSticker = false } = {}) {
+    const checked = checkFile(file, { lang, asSticker });
+    if (!checked.ok) { setAttachError(checked.error); return; }
+    setAttachError("");
+    setAttachment({ file, kind: checked.kind, asSticker });
+  }
+
+  async function sendAttachment(caption) {
+    if (!attachment || uploading || !conversation) return;
+    setUploading(true);
+    setAttachError("");
+    const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker });
+    if (!up.ok) { setUploading(false); setAttachError(up.error); return; }
+    const sent = await onSend?.(conversation.id, caption, {
+      mediaId: up.media.media_id,
+      mediaKind: up.media.kind,
+      filename: up.media.filename,
+      previewFile: attachment.file,
+      replyTo: replyingTo || undefined,
+    });
+    setUploading(false);
+    if (sent === false) { setAttachError(lang === "ar" ? "تم رفع الملف لكن تعذّر إرساله. حاول مرة أخرى." : "The file was uploaded but could not be sent. Try again."); return; }
+    setAttachment(null);
+    setReplyingTo(null);
   }
 
   const loadOlderAtTop = useCallback(async (element) => {
@@ -530,12 +569,38 @@ export default function ChannelChat({
         }}
       />
 
+      {isWhatsApp && attachment && (
+        <AttachPreview
+          file={attachment.file}
+          kind={attachment.kind}
+          audioUrl={attachment.audioUrl}
+          busy={uploading}
+          error={attachError}
+          lang={lang}
+          onSend={(caption) => { void sendAttachment(caption); }}
+          onCancel={() => { if (attachment.audioUrl) URL.revokeObjectURL(attachment.audioUrl); setAttachment(null); setAttachError(""); }}
+        />
+      )}
+      {isWhatsApp && !attachment && attachError && (
+        <div role="alert" data-testid="attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#fde8ec] px-3 py-2 text-[13px] text-[#7a1230]">
+          <span className="flex-1">{attachError}</span>
+          <button type="button" onClick={() => setAttachError("")} aria-label={lang === "ar" ? "إغلاق" : "Dismiss"} className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">×</button>
+        </div>
+      )}
+
       {/* Input Bar */}
       <div
         className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
         style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
       >
-        {isRecordingVoice ? (
+        {isWhatsApp && isRecordingVoice ? (
+          <VoiceRecorder
+            lang={lang}
+            onCancel={() => setIsRecordingVoice(false)}
+            onError={(message) => setAttachError(message)}
+            onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false, audioUrl: URL.createObjectURL(file) }); }}
+          />
+        ) : isRecordingVoice ? (
           <ChannelVoiceRecorder
             isRecording={isRecordingVoice}
             onCancel={() => setIsRecordingVoice(false)}
@@ -555,9 +620,11 @@ export default function ChannelChat({
             replyingTo={replyingTo}
             customerName={conversation.customer}
             lastCustomerMessageAt={conversation.lastCustomerMessageAt}
-            sending={sending}
+            sending={sending || uploading}
             lang={lang}
             fontFamily={WHATSAPP_FONT}
+            onPickFile={pickFile}
+            onStartVoice={() => { setAttachError(""); setIsRecordingVoice(true); }}
           />
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
@@ -850,9 +917,10 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
     } else if (kind === "video" && mediaUrl) {
       media = withCaption(<VideoBody src={mediaUrl} caption={caption} lang={_lang} />);
     } else if (kind === "document") {
-      // A bare file name is the document's label; any other text is its caption.
-      const isName = looksLikeFileName(caption);
-      media = withCaption(<DocumentBody src={mediaUrl} label={isName ? caption : ""} lang={_lang} out={out} />, isName ? "" : caption);
+      // The server's file name wins; for older messages a bare file name in the
+      // text is the label and any other text is the caption.
+      const isName = !m.fileName && looksLikeFileName(caption);
+      media = withCaption(<DocumentBody src={mediaUrl} label={m.fileName || (isName ? caption : "")} lang={_lang} out={out} />, isName ? "" : caption);
     } else if (kind === "location") {
       media = withCaption(<LocationBody body={m.text} lang={_lang} />, "");
     } else if (kind === "contact") {

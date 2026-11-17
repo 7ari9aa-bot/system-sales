@@ -261,6 +261,8 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "body": None if m.deleted else m.body,
                 "media_url": None if m.deleted else media_urls.get(m.id, m.media_url),
                 "media_type": None if m.deleted else m.media_type,
+                # The name an agent's document was sent under (None for inbound media).
+                "filename": None if m.deleted else (m.provider_metadata or {}).get("filename"),
                 "content_type": m.content_type,
                 "status": m.status,
                 "edited": bool(m.edited),

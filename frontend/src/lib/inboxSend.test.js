@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createIntentKeys, fingerprint } from "./intentKeys";
-import { appendLocalMessage, sendReply, setMyReaction, TIMEOUT_MESSAGE } from "./inboxSend";
+import { appendLocalMessage, sendReply, setMyReaction, TIMEOUT_MESSAGE, uploadMedia } from "./inboxSend";
 
 const fresh = () => createIntentKeys("msg");
 const err = (props) => Object.assign(new Error(props.message ?? "boom"), props);
@@ -259,5 +259,74 @@ describe("setMyReaction", () => {
     const tried = setMyReaction(start, "whatsapp", "c1", "m1", "👍");
     const undone = setMyReaction(tried, "whatsapp", "c1", "m1", "", "👍");
     expect(undone.whatsapp[0].messages[0].reactions).toEqual(["😂"]);
+  });
+});
+
+describe("sending a file", () => {
+  const MEDIA = "9b2f3c1e-0000-4000-8000-000000000001";
+
+  it("posts the media id with the caption and no empty body", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "الفاتورة", { api, intents: fresh(), mediaId: MEDIA });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "الفاتورة", media_id: MEDIA });
+  });
+
+  it("sends a file with no caption without a body field", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "", { api, intents: fresh(), mediaId: MEDIA });
+    expect(api.mock.calls[0][1].body).toEqual({ media_id: MEDIA });
+  });
+
+  it("a text-only send is unchanged", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "hi", { api, intents: fresh() });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "hi" });
+  });
+
+  it("a different file is a NEW intention, the same file is a replay", async () => {
+    const intents = fresh();
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    await sendReply("c1", "x", { api, intents, mediaId: "A" });
+    await sendReply("c1", "x", { api, intents, mediaId: "A" });
+    await sendReply("c1", "x", { api, intents, mediaId: "B" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+});
+
+describe("uploadMedia", () => {
+  const f = Object.assign(new Blob(["%PDF-"], { type: "application/pdf" }), { name: "فاتورة مايو.pdf" });
+
+  it("sends the raw file with its type and an encoded name", async () => {
+    const api = vi.fn().mockResolvedValue({ media_id: "m", kind: "document", filename: "x.pdf", size: 5 });
+    const r = await uploadMedia("c1", f, { api });
+    expect(r).toEqual({ ok: true, media: { media_id: "m", kind: "document", filename: "x.pdf", size: 5 } });
+    const [path, opts] = api.mock.calls[0];
+    expect(path).toBe("/conversations/c1/media");
+    expect(opts).toMatchObject({ method: "POST", body: f, rawBody: true, contentType: "application/pdf" });
+    expect(decodeURIComponent(opts.headers["X-Filename"])).toBe("فاتورة مايو.pdf");
+    expect(opts.headers["X-As-Sticker"]).toBeUndefined();
+  });
+
+  it("marks a sticker", async () => {
+    const api = vi.fn().mockResolvedValue({});
+    await uploadMedia("c1", f, { api, asSticker: true });
+    expect(api.mock.calls[0][1].headers["X-As-Sticker"]).toBe("true");
+  });
+
+  it("reports the server's reason", async () => {
+    const api = vi.fn().mockRejectedValue(err({ message: "a image can be at most 5 MB on WhatsApp", status: 400 }));
+    expect(await uploadMedia("c1", f, { api })).toEqual({ ok: false, error: "a image can be at most 5 MB on WhatsApp" });
+  });
+
+  it("says so on a timeout", async () => {
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    expect((await uploadMedia("c1", f, { api })).error).toMatch(/too long/);
+  });
+
+  it("an abort is not an error to show", async () => {
+    const api = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { name: "AbortError" }));
+    expect(await uploadMedia("c1", f, { api })).toMatchObject({ ok: false, aborted: true, error: "" });
   });
 });

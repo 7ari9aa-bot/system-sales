@@ -54,7 +54,10 @@ function toMessage(message) {
   return {
     id: message.id,
     side: message.direction === "outbound" ? "out" : "in",
-    text: message.body || message.media_type || "",
+    // A file sent without a caption has no text; `media_type` is a code ("audio"),
+    // not something to show.
+    text: message.body || "",
+    fileName: message.filename || "",
     time: displayTime(message.created_at),
     createdAt: message.created_at,
     status: message.status,
@@ -592,18 +595,29 @@ export default function Inbox() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null });
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null });
       if (!result.ok) {
         setError(result.error);
         return false;
       }
       const sent = result.sent;
       const createdAt = sent?.created_at || new Date().toISOString();
+      // A file the agent just sent shows from the local copy (the server's link
+      // is signed and arrives with the next load), as its own kind of message.
+      const sentFile = opts.mediaId
+        ? {
+            mediaType: opts.mediaKind,
+            contentType: { image: "image", sticker: "image", audio: "voice", video: "video", document: "file" }[opts.mediaKind],
+            mediaUrl: opts.previewFile ? URL.createObjectURL(opts.previewFile) : undefined,
+            fileName: opts.filename,
+          }
+        : {};
       const localMessage = {
         id: sent?.id || `${conversationId}-${Date.now()}`,
         // No server id yet: this echo cannot be reacted to until the list reloads.
         unsaved: !sent?.id,
         side: "out",
+        ...sentFile,
         text,
         time: displayTime(createdAt),
         createdAt,
@@ -619,7 +633,7 @@ export default function Inbox() {
             }
           : null,
       };
-      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text));
+      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text || opts.filename || ""));
       return true;
     } finally {
       setSending(false);

@@ -327,3 +327,49 @@ async def test_a_closed_conversation_refuses_a_file(db, tenant_ctx, storage) -> 
     await db.flush()
     with pytest.raises(ConflictError):
         await send_message(cid, SendMessageRequest(media_id=att.id), ctx=ctx)
+
+
+# --- the message list tells the inbox what a sent file was called -------------
+
+
+def _row(**kw):
+    base = dict(
+        id=uuid.uuid4(),
+        direction="outbound",
+        body=None,
+        media_url=None,
+        media_type="document",
+        content_type="file",
+        status="sent",
+        edited=False,
+        deleted=False,
+        reply_to_message_id=None,
+        provider_metadata={"filename": "فاتورة مايو.pdf"},
+        created_at=datetime.now(UTC),
+        sender_type="agent",
+        provider_message_id=None,
+        provider_timestamp=None,
+    )
+    base.update(kw)
+    return MagicMock(**base)
+
+
+def test_the_list_returns_the_name_a_document_was_sent_under() -> None:
+    from app.modules.conversations.routers.inbox import _present_messages
+
+    [item] = _present_messages([_row()], {})
+    assert item["filename"] == "فاتورة مايو.pdf"
+
+
+def test_a_deleted_message_does_not_leak_its_file_name() -> None:
+    from app.modules.conversations.routers.inbox import _present_messages
+
+    [item] = _present_messages([_row(deleted=True)], {})
+    assert item["filename"] is None
+
+
+def test_a_message_with_no_metadata_has_no_file_name() -> None:
+    from app.modules.conversations.routers.inbox import _present_messages
+
+    [item] = _present_messages([_row(provider_metadata=None)], {})
+    assert item["filename"] is None
