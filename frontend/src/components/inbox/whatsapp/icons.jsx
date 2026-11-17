@@ -155,8 +155,9 @@ export const DoubleTickIcon = ({ size = 18, ...p }) => (
 export function WhatsAppChannelBadge({ size = 20, className, title }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : "true"} focusable="false" className={className}>
-      <path d="M12 2.5a9.4 9.4 0 0 0-8 14.3L2.7 21.3l4.6-1.2A9.4 9.4 0 1 0 12 2.5z" fill="currentColor" />
-      <path d="M9.2 7.6c.3-.3.8-.2 1 .1l.8 1.7c.1.3 0 .6-.2.8l-.5.5c.6 1.2 1.5 2.1 2.7 2.7l.5-.5c.2-.2.5-.3.8-.2l1.7.8c.3.2.4.7.1 1-.6.8-1.5 1.2-2.5 1-3-.7-5-2.7-5.7-5.7-.2-1 .2-1.9 1.3-2.2z" fill="#fff" />
+      <path d="M12 1.8a10.2 10.2 0 0 0-8.7 15.5L1.8 22.2l5-1.3A10.2 10.2 0 1 0 12 1.8z" fill="currentColor" />
+      {/* A bold handset: thick enough to stay legible at 20px. */}
+      <path d="M8.3 6.2c.5-.5 1.3-.3 1.6.3l1.1 2.3c.2.4.1.9-.2 1.2l-.8.8c.8 1.7 2 2.9 3.7 3.7l.8-.8c.3-.3.8-.4 1.2-.2l2.3 1.1c.6.3.8 1.1.3 1.6-1 1.2-2.4 1.8-3.9 1.4-4.1-1-6.7-3.6-7.7-7.7-.3-1.5.2-2.9 1.6-3.7z" fill="#fff" />
     </svg>
   );
 }
