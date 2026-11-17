@@ -394,6 +394,15 @@ async def run_chat_turn(session, ctx, thread) -> AIChatMessage:
             # the summary is written while the row is still generating, before it is completed
             await chat_trace.finish()
     except Exception as exc:  # noqa: BLE001 — the row must land `failed`
+        # The reason was swallowed into a bare 409, so a failure before any model call (or a
+        # provider refusal) left no trace anywhere. Log the exception type and text, never the
+        # question or any answer.
+        logger.exception(
+            "chat_turn.run_failed thread=%s assistant=%s kind=%s",
+            thread.id,
+            assistant_id,
+            type(exc).__name__,
+        )
         await _mark_turn_failed(session, ctx.tenant_id, thread, assistant_id)
         raise ConflictError("assistant turn failed; retry is available") from exc
 
