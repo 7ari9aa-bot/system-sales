@@ -26,6 +26,8 @@ import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPic
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
+import WhatsAppBubble from "./whatsapp/WhatsAppBubble";
+import MessageStatus from "./whatsapp/MessageStatus";
 
 export default function ChannelChat({
   channel,
@@ -724,7 +726,6 @@ export default function ChannelChat({
 // Subcomponent: Message Bubble
 function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
   const out = m.side === "out";
-  const showTail = !isApp && th?.tail;
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
   const isImage = m.mediaType === "image" || (mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(mediaUrl));
@@ -742,73 +743,38 @@ function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: 
       );
     }
 
-    return (
-      <div className={cn("flex", out ? "justify-end" : "justify-start")}>
-        <div
-          className={cn(
-            "relative max-w-[82%] rounded-lg px-3 py-2 text-[14px] leading-[1.4] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%] lg:max-w-[65%]",
-            showTail && (out ? "rounded-br-sm" : "rounded-bl-sm")
-          )}
-          style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
-        >
-          {showTail && (
-            <span
-              aria-hidden="true"
-              className={cn("absolute bottom-0 h-2.5 w-2", out ? "-right-[5px]" : "-left-[5px]")}
-              style={{
-                background: out ? th.out : th.in,
-                clipPath: out ? "polygon(0 0, 100% 100%, 0 100%)" : "polygon(100% 0, 100% 100%, 0 100%)",
-              }}
-            />
-          )}
-
-          {/* Voice Note Bubble */}
-          {isAudio ? (
-            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />
-          ) : isImage && mediaUrl ? (
-            <div className="space-y-1.5">
-              <div className="rounded-lg overflow-hidden max-w-[280px]">
-                <img src={mediaUrl} alt="attachment" className="w-full max-h-64 object-cover rounded-lg" />
-              </div>
-              {m.text && !m.text.startsWith("blob:") && (
-                <div className="text-[13px]">{m.text}</div>
-              )}
-              <div className="flex justify-end items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
-                <span>{m.time}</span>
-                {out && th.checkmarks && (
-                  m.status === "read" ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" /> : <Check className="h-3.5 w-3.5" />
-                )}
-              </div>
-            </div>
-          ) : isDocument && mediaUrl ? (
-            <div className="flex items-center gap-3 p-1">
-              <div className="h-10 w-10 rounded-lg bg-[#7f66ff]/20 text-[#7f66ff] grid place-items-center">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate">{m.text || "Document"}</div>
-                <div className="text-[11px] text-[#667781]">{m.time}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-              {m.text}{" "}
-              <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[11px] leading-none text-[#667781]" dir="ltr">
-                <span>{m.time}</span>
-                {out && th.checkmarks && (
-                  m.status === "read"
-                    ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-                    : m.status === "delivered"
-                      ? <CheckCheck className="h-3.5 w-3.5" />
-                      : <Check className="h-3.5 w-3.5" />
-                )}
-                {m.ai && <Sparkles className="h-3 w-3 text-amber-500" />}
-              </span>
-            </div>
-          )}
+    // Rich media keeps the existing players; the bubble frame, quote, deleted
+    // state, reactions and the delivery mark come from WhatsAppBubble.
+    let media = null;
+    if (isAudio) {
+      media = <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />;
+    } else if (isImage && mediaUrl) {
+      media = (
+        <div className="space-y-1.5">
+          <div className="max-w-[280px] overflow-hidden rounded-lg">
+            <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
+          </div>
+          {m.text && !m.text.startsWith("blob:") && <div dir="auto">{m.text}</div>}
+          <div className="flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
+            <span>{m.time}</span>
+            {out && <MessageStatus status={m.status} lang={_lang} />}
+          </div>
         </div>
-      </div>
-    );
+      );
+    } else if (isDocument && mediaUrl) {
+      media = (
+        <div className="flex items-center gap-3 p-1">
+          <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#7f66ff]/20 text-[#7f66ff]">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium">{m.text || "Document"}</div>
+            <div className="text-[11px] text-[#667781]">{m.time}</div>
+          </div>
+        </div>
+      );
+    }
+    return <WhatsAppBubble m={m} th={th} lang={_lang}>{media}</WhatsAppBubble>;
   }
 
   if (isTelegram) {
