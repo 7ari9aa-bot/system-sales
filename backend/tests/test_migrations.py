@@ -28,9 +28,10 @@ FACEBOOK_IDENTITY_MIGRATION = VERSIONS_DIR / "fe2026111722_facebook_page_identit
 TELEGRAM_LEGACY_PAUSE_MIGRATION = (
     VERSIONS_DIR / "a8f41c9d07e2_pause_unverified_telegram_channels.py"
 )
-CHANNEL_TENANT_ROUTING_MIGRATION = (
-    VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
-)
+# The LATEST migration that (re)defines resolve_channel_tenant. provision.py
+# re-runs the function after every upgrade, so it must match THIS one, not the
+# first one: comparing against an old revision let a stale copy drop Facebook.
+CHANNEL_TENANT_ROUTING_MIGRATION = VERSIONS_DIR / "fe2026101711_resolve_channel_tenant_facebook.py"
 
 
 class _RecordingOp:
@@ -250,6 +251,14 @@ def test_webhook_replay_index_is_unique() -> None:
     assert "unique=True" in match.group(1)
 
 
+def _resolver_sql_of_latest_migration() -> str:
+    """The SQL the latest resolver migration actually executes in upgrade()."""
+    module, captured = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
+    module.upgrade()
+    (sql,) = [s for s in captured if "FUNCTION public.resolve_channel_tenant" in s]
+    return sql
+
+
 def test_channel_tenant_resolver_is_security_definer() -> None:
     """Pre-tenant tenant resolution must not depend on the RLS GUC.
 
@@ -259,11 +268,9 @@ def test_channel_tenant_resolver_is_security_definer() -> None:
     (the mandatory hardening for SECURITY DEFINER functions).
     """
     pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
-    module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
-
-    sql = module._CHANNEL_TENANT_FN
+    sql = _resolver_sql_of_latest_migration()
     assert "SECURITY DEFINER" in sql
-    assert "SET search_path = public, pg_temp" in sql
+    assert re.search(r"SET search_path (=|TO) '?public'?, '?pg_temp'?", sql)
     # Only the tenant id may leave the function — never integrations.config.
     assert "SELECT i.tenant_id" in sql
     assert "credentials" not in sql
@@ -272,6 +279,9 @@ def test_channel_tenant_resolver_is_security_definer() -> None:
     assert "WHEN 'telegram' THEN i.config->>'public_key'" in sql
     assert "NOT EXISTS" in sql
     assert "ORDER BY i.created_at" not in sql
+    # Every connectable channel must route; a missing one is dropped silently.
+    for provider in ("whatsapp", "messenger", "instagram", "facebook", "telegram", "webchat"):
+        assert f"WHEN '{provider}'" in sql, provider
     pglast.parser.parse_sql(sql)
 
 
@@ -282,7 +292,15 @@ def _effective_sql(sql: str) -> str:
     must not diverge is the SQL that actually runs.
     """
     lines = [line for line in sql.splitlines() if not line.strip().startswith("--")]
-    return " ".join(" ".join(lines).split())
+    text = " ".join(" ".join(lines).split())
+    # Spelling only, same meaning: `SET search_path = a, b` vs `SET search_path TO 'a', 'b'`,
+    # the dollar-quote tag, and a trailing semicolon. The SQL that runs must still match.
+    text = re.sub(r"\$[A-Za-z_]*\$", "$$", text)
+    text = re.sub(r"SET search_path (=|TO) ", "SET search_path TO ", text)
+    text = text.replace("'public', 'pg_temp'", "public, pg_temp")
+    # whitespace around punctuation is layout, not SQL
+    text = re.sub(r"\s*([(),])\s*", r"\1", text)
+    return text.rstrip("; ")
 
 
 def test_resolver_sql_matches_between_migration_and_provision() -> None:
@@ -293,7 +311,7 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
     """
     import ast
 
-    module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
+    migration_sql = _resolver_sql_of_latest_migration()
     provision_source = (VERSIONS_DIR.parent.parent / "scripts" / "provision.py").read_text(
         encoding="utf-8"
     )
@@ -304,7 +322,7 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
                 if getattr(target, "id", None) == "CHANNEL_TENANT_FN_SQL":
                     provision_sql = ast.literal_eval(node.value)
     assert provision_sql is not None, "CHANNEL_TENANT_FN_SQL not found in provision.py"
-    assert _effective_sql(provision_sql) == _effective_sql(module._CHANNEL_TENANT_FN)
+    assert _effective_sql(provision_sql) == _effective_sql(migration_sql)
 
 
 def test_channel_identity_migration_parses_and_fails_closed_on_duplicates() -> None:
