@@ -16,7 +16,6 @@ import {
   Palette,
   Play,
   Pause,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
@@ -32,6 +31,8 @@ import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
+import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/regional";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
@@ -808,8 +809,6 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
-  const isImage = m.mediaType === "image" || (mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(mediaUrl));
-  const isDocument = m.mediaType === "document" || (mediaUrl && /\.(pdf|doc|docx|xlsx|txt)$/i.test(mediaUrl));
 
   if (isWhatsApp) {
     if (m.senderType === "system") {
@@ -823,42 +822,45 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
       );
     }
 
-    // Rich media keeps the existing players; the bubble frame, quote, deleted
-    // state, reactions and the delivery mark come from WhatsAppBubble.
+    // Each kind of message looks like it does in WhatsApp. The bubble frame,
+    // quote, deleted state, reactions and the delivery mark come from
+    // WhatsAppBubble; the voice player is the existing one.
+    const kind = messageKind(m);
+    const caption = displayBody(m);
+    const time = (
+      <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
+        <span>{m.time}</span>
+        {out && <MessageStatus status={m.status} lang={_lang} />}
+      </div>
+    );
+    const withCaption = (body, text = caption) => (
+      <div className="space-y-1.5">
+        {body}
+        {text && !text.startsWith("blob:") && <div dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{text}</div>}
+        {time}
+      </div>
+    );
     let media = null;
-    if (isAudio) {
+    if (kind === "voice") {
       media = <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />;
-    } else if (isImage && mediaUrl) {
-      media = (
-        <div className="space-y-1.5">
-          <div className="max-w-[280px] overflow-hidden rounded-lg">
-            {isWhatsApp && onOpenImage && !m.deleted ? (
-              <button type="button" data-testid="open-image" onClick={() => onOpenImage(m.id)} aria-label={_lang === "ar" ? "فتح الصورة" : "Open photo"} className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
-                <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
-              </button>
-            ) : (
-              <img src={mediaUrl} alt="attachment" className="max-h-64 w-full rounded-lg object-cover" />
-            )}
-          </div>
-          {m.text && !m.text.startsWith("blob:") && <div dir="auto">{m.text}</div>}
-          <div className="flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
-            <span>{m.time}</span>
-            {out && <MessageStatus status={m.status} lang={_lang} />}
-          </div>
-        </div>
-      );
-    } else if (isDocument && mediaUrl) {
-      media = (
-        <div className="flex items-center gap-3 p-1">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#7f66ff]/20 text-[#7f66ff]">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium">{m.text || "Document"}</div>
-            <div className="text-[11px] text-[#667781]">{m.time}</div>
-          </div>
-        </div>
-      );
+    } else if (kind === "image" && mediaUrl) {
+      media = withCaption(<PhotoBody src={mediaUrl} caption={caption} lang={_lang} onOpen={onOpenImage && !m.deleted ? () => onOpenImage(m.id) : undefined} />);
+    } else if (kind === "sticker" && mediaUrl) {
+      media = <div>{<StickerBody src={mediaUrl} lang={_lang} />}{time}</div>;
+    } else if (kind === "video" && mediaUrl) {
+      media = withCaption(<VideoBody src={mediaUrl} caption={caption} lang={_lang} />);
+    } else if (kind === "document") {
+      // A bare file name is the document's label; any other text is its caption.
+      const isName = looksLikeFileName(caption);
+      media = withCaption(<DocumentBody src={mediaUrl} label={isName ? caption : ""} lang={_lang} out={out} />, isName ? "" : caption);
+    } else if (kind === "location") {
+      media = withCaption(<LocationBody body={m.text} lang={_lang} />, "");
+    } else if (kind === "contact") {
+      media = withCaption(<ContactBody body={m.text} lang={_lang} />, "");
+    } else if (kind === "buttons" || kind === "list") {
+      media = withCaption(<ChoiceBody body={m.text} kind={kind} lang={_lang} />, "");
+    } else if (kind === "unsupported") {
+      media = withCaption(<UnsupportedBody lang={_lang} />, "");
     }
     return <WhatsAppBubble
         m={m}

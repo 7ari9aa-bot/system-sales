@@ -212,3 +212,18 @@ export const UnreadIcon = (p) => (
     <path d="M4 7l8 6 8-6" />
   </Svg>
 );
+
+export const PlayIcon = (p) => (
+  <Svg {...p}>
+    <path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const ListIcon = (p) => (
+  <Svg {...p}>
+    <path d="M8 6h12M8 12h12M8 18h12" />
+    <circle cx="4" cy="6" r=".8" fill="currentColor" />
+    <circle cx="4" cy="12" r=".8" fill="currentColor" />
+    <circle cx="4" cy="18" r=".8" fill="currentColor" />
+  </Svg>
+);
