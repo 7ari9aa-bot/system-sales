@@ -316,6 +316,11 @@ async def test_a_tenant_that_changed_state_after_being_listed_is_not_locked(
     moved: list[int] = []
 
     async def bind_after_the_tenant_moved(session, tid, **kwargs):
+        # The sweep visits EVERY expired trial in the database, and earlier tests leave some
+        # behind, so only this test's own tenant may be moved or counted.
+        if str(tid) != str(tenant_id):
+            await real_bind(session, tid, **kwargs)
+            return
         # Bind first: `tenants` is FORCE RLS, so an UPDATE with no bound tenant matches ZERO rows
         # without an error. The test used to lean on the tenant still being bound from `_tenant()`,
         # which holds in a short run but not behind thousands of earlier tests, and then it failed
