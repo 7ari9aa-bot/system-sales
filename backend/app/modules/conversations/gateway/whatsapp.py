@@ -314,19 +314,14 @@ class WhatsAppAdapter:
             }
         if message.media_url:
             media_type = message.meta.get("media_type", "image")
+            media_block: dict = {"link": message.media_url}
             if media_type == "document":
-                media_block = {
-                    "link": message.media_url,
-                    "filename": message.meta.get("filename", "file"),
-                }
-            else:
-                media_block = {"link": message.media_url}
-            return {
-                **base,
-                "type": media_type,
-                media_type: media_block,
-                "caption": message.body or "",
-            }
+                media_block["filename"] = message.meta.get("filename", "file")
+            # The Cloud API takes the caption INSIDE the media object, and only
+            # for images, videos and documents: audio and stickers reject one.
+            if message.body and media_type in ("image", "video", "document"):
+                media_block["caption"] = message.body
+            return {**base, "type": media_type, media_type: media_block}
         return {**base, "type": "text", "text": {"preview_url": True, "body": message.body or ""}}
 
 

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 470,
-    "sha256": "d2a89848977d69976f25442f77864f3c3d3a8f7bfeb2ce026023d5a636f6a992",
+    "operations": 471,
+    "sha256": "7884efb4278530e426b43597ce39547a5cc52fa4902d79e02125d06e488cfc22",
     "typed_operations": 295
   },
   "spec": {
@@ -16508,6 +16508,18 @@
                 }
               ],
               "title": "Body"
+            },
+            "media_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Id"
             },
             "reply_to_message_id": {
               "anyOf": [
@@ -33393,6 +33405,112 @@
             }
           },
           "summary": "Set List State",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/media": {
+        "post": {
+          "description": "Store a file an agent is about to send. The raw file is the request body.\n\nThe response carries a ``media_id``; the send request names it. Nothing\nreaches the customer from here.",
+          "operationId": "upload_media_api_v1_conversations__conversation_id__media_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Media",
           "tags": [
             "inbox"
           ]

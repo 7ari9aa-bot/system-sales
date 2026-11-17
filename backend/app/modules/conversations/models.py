@@ -304,6 +304,10 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     # the transcription is paid for and lost.
     transcript_text: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(String(15))
+    # Outbound only (NULL for inbound media): what the agent sent this file as
+    # (image | sticker | audio | video | document) and the name the customer sees.
+    kind: Mapped[str | None] = mapped_column(String(15))
+    filename: Mapped[str | None] = mapped_column(String(255))
 
     __table_args__ = (
         Index("ix_attachments_tenant_message", "tenant_id", "message_id"),

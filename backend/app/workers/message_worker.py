@@ -640,6 +640,24 @@ class MessageWorker(StreamWorker):
             message.status = "failed"
             message.error = "reaction target is not available"
             raise PermanentError("reaction target is not available")
+        media_url = message.media_url
+        media_meta: dict = {}
+        if media_url and media_url.startswith("s3://"):
+            # A file an agent uploaded: the row holds our object key (a signed
+            # link would expire), so a fresh link is made now for the provider
+            # to download from, and its kind and name are passed along.
+            from app.modules.conversations.outbound_media_service import OutboundMediaService
+
+            try:
+                media_url = OutboundMediaService.link_for_provider(media_url[len("s3://") :])
+            except Exception as exc:  # noqa: BLE001
+                message.status = "failed"
+                message.error = "the uploaded file could not be read from storage"
+                raise PermanentError("uploaded file unavailable") from exc
+            media_meta = {
+                "media_type": message.media_type or "document",
+                "filename": (message.provider_metadata or {}).get("filename") or "file",
+            }
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),
@@ -649,20 +667,23 @@ class MessageWorker(StreamWorker):
                 message_id=message.id,
                 customer_ref=identity.external_id,
                 body=message.body,
-                media_url=message.media_url,
+                media_url=media_url,
                 # §31: previously never passed, so an approved template could
                 # not actually be delivered even when one was required.
                 template_name=message.template_name,
                 template_vars=message.template_vars or {},
-                meta=(
-                    {
-                        "reaction_to_provider_id"
-                        if message.content_type == "reaction"
-                        else "reply_to_provider_id": reply_to_provider_id
-                    }
-                    if reply_to_provider_id
-                    else {}
-                ),
+                meta={
+                    **media_meta,
+                    **(
+                        {
+                            "reaction_to_provider_id"
+                            if message.content_type == "reaction"
+                            else "reply_to_provider_id": reply_to_provider_id
+                        }
+                        if reply_to_provider_id
+                        else {}
+                    ),
+                },
             ),
             set_channel_message_id=conversation.channel != "webchat",
         )

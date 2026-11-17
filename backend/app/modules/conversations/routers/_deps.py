@@ -47,6 +47,9 @@ class SendMessageRequest(BaseModel):
     # The message being replied to (our messages.id). Optional; checked against
     # the conversation in the route.
     reply_to_message_id: uuid.UUID | None = None
+    # An upload from POST /conversations/{id}/media. `body` then becomes its
+    # caption (images, videos and documents only).
+    media_id: uuid.UUID | None = None
 
 
 class ReactionRequest(BaseModel):
