@@ -46,7 +46,10 @@ describe("ChatHeader", () => {
   });
   test("every control is a named button; the back button only when there is somewhere to go", () => {
     const out = html({ onBack() {} });
-    for (const name of ["Back to chats", "Search messages", "Contact info", "More"]) expect(out).toContain(`aria-label="${name}"`);
+    for (const name of ["Back to chats", "Search messages", "More"]) expect(out).toContain(`aria-label="${name}"`);
+    // contact info opens from the name and avatar, like WhatsApp, not from a separate icon
+    expect(out).toContain('data-testid="header-identity"');
+    expect(out).not.toContain("header-info");
     expect(html()).not.toContain("header-back");
   });
   test("the search button reports whether search is open", () => {

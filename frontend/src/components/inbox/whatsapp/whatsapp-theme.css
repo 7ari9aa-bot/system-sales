@@ -16,6 +16,8 @@
   --wa-text-icon: #54656f;
   --wa-text-faint: #8696a0;
   --wa-divider: #d1d7db;
+  --wa-avatar-bg: #dfe5e7;      /* the default grey avatar */
+  --wa-avatar-fg: #ffffff;
   --wa-green: #00a884;
   --wa-green-text: #025144;     /* text on the light-green pill */
   --wa-pill-active: #d9fdd3;
@@ -43,6 +45,8 @@
   --wa-text-icon: #aebac1;
   --wa-text-faint: #8696a0;
   --wa-divider: #222d34;
+  --wa-avatar-bg: #6a7175;
+  --wa-avatar-fg: #cfd4d6;
   --wa-green: #00a884;
   --wa-green-text: #d9fdd3;
   --wa-pill-active: #0a332c;

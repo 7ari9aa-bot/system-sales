@@ -796,7 +796,7 @@ export default function Inbox() {
       >
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
+          isWhatsApp ? "rounded-none border-0 bg-[var(--wa-bg-panel)]" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
           (isWhatsApp || isMessenger) && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
           {isWhatsApp ? (

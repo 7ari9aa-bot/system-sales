@@ -55,3 +55,29 @@ test("with the channel connected, the list runs to the bottom of the screen", as
 });
 
 
+
+test("dark mode: nothing bright is painted anywhere in the inbox", async ({ page }) => {
+  await boot(page, "dark", { width: 1280, height: 780 });
+  const bright = await page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll("body *")) {
+      const b = el.getBoundingClientRect();
+      if (b.width < 6 || b.height < 6 || b.bottom < 0 || b.top > innerHeight) continue;
+      const c = getComputedStyle(el).backgroundColor.match(/[\d.]+/g)?.map(Number);
+      if (!c || (c[3] ?? 1) < 0.5) continue;
+      if (c[0] > 150 && c[1] > 150 && c[2] > 150) out.push(`${el.tagName}[${el.dataset.testid || ""}] rgb(${c[0]},${c[1]},${c[2]})`);
+    }
+    return out;
+  });
+  expect(bright).toEqual([]);
+});
+
+test("the WhatsApp avatar is the grey person disc, in both themes", async ({ page }) => {
+  for (const theme of ["light", "dark"]) {
+    await boot(page, theme, { width: 1280, height: 780 });
+    const want = theme === "light" ? "rgb(223, 229, 231)" : "rgb(106, 113, 117)";
+    const bg = await page.getByTestId("chat-header").locator("div,span").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    const list = await page.getByTestId("chat-row").first().locator("div").first().evaluate((el) => getComputedStyle(el.querySelector("[aria-hidden]") || el).backgroundColor);
+    expect([bg, list]).toContain(want);
+  }
+});
