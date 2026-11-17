@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.modules.conversations.routers._deps import (
     AssignRequest,
+    ListStateRequest,
     ReactionRequest,
     SendMessageRequest,
     _inbox_page,
@@ -69,6 +70,7 @@ router.routes.extend(_stream_router.routes)
 
 __all__ = [
     "AssignRequest",
+    "ListStateRequest",
     "ReactionRequest",
     "SendMessageRequest",
     "TemplateApproveRequest",

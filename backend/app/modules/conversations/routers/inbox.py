@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -14,6 +15,7 @@ from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.routers._deps import (
     AssignRequest,
+    ListStateRequest,
     ReactionRequest,
     SendMessageRequest,
     TenantContext,
@@ -100,6 +102,10 @@ async def list_conversations(
                     "unread_count",
                     "assignee_user_id",
                     "last_message_at",
+                    "pinned_at",
+                    "muted_until",
+                    "archived_at",
+                    "marked_unread",
                 )
             }
             for item in page
@@ -116,6 +122,7 @@ async def inbox_query(
     unassigned: bool = False,
     channel: str | None = None,
     customer_id: uuid.UUID | None = None,
+    archived: bool = False,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
@@ -137,6 +144,7 @@ async def inbox_query(
         channel=channel,
         channels=await _allowed_channels(ctx),
         customer_id=customer_id,
+        archived=archived,
         limit=limit + 1,
         before_at=before_at,
         before_id=before_id,
@@ -463,6 +471,49 @@ async def close(
         ctx.session, ctx.tenant_id, ctx.user.id, "conversation.closed", str(conversation_id)
     )
     return {"ok": True}
+
+
+_MUTE_FOR = {"8h": timedelta(hours=8), "1w": timedelta(weeks=1)}
+
+
+@router.post("/conversations/{conversation_id}/list-state")
+async def set_list_state(
+    conversation_id: uuid.UUID,
+    body: ListStateRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Pin, mute, archive or mark a conversation unread, for the whole store.
+
+    These are inbox-only flags. Nothing is sent to the channel provider.
+    """
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
+    muted_until: datetime | None | str = "keep"
+    if body.mute == "off":
+        muted_until = None
+    elif body.mute == "always":
+        muted_until = ConversationService.MUTE_ALWAYS
+    elif body.mute in _MUTE_FOR:
+        muted_until = datetime.now(UTC) + _MUTE_FOR[body.mute]
+    updated = await ConversationService.set_list_state(
+        ctx.session,
+        ctx.tenant_id,
+        conversation_id,
+        pinned=body.pinned,
+        archived=body.archived,
+        marked_unread=body.marked_unread,
+        muted_until=muted_until,
+    )
+    await ConversationService.audit(
+        ctx.session, ctx.tenant_id, ctx.user.id, "conversation.list_state", str(conversation_id)
+    )
+    return {
+        "id": str(updated.id),
+        "pinned_at": updated.pinned_at.isoformat() if updated.pinned_at else None,
+        "muted_until": updated.muted_until.isoformat() if updated.muted_until else None,
+        "archived_at": updated.archived_at.isoformat() if updated.archived_at else None,
+        "marked_unread": bool(updated.marked_unread),
+    }
 
 
 @router.post("/conversations/{conversation_id}/read")

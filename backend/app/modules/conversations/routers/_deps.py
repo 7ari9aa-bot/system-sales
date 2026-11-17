@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -52,6 +53,19 @@ class ReactionRequest(BaseModel):
     """An emoji reaction to one message. An empty emoji withdraws our reaction."""
 
     emoji: str = Field(default="", max_length=16)
+
+
+class ListStateRequest(BaseModel):
+    """Shared list flags for one conversation. Only the fields sent change.
+
+    ``mute`` is a duration: "8h" | "1w" | "always" | "off". Anything else is a
+    validation error, so the client can never write an arbitrary date.
+    """
+
+    pinned: bool | None = None
+    archived: bool | None = None
+    marked_unread: bool | None = None
+    mute: Literal["8h", "1w", "always", "off"] | None = None
 
 
 class AssignRequest(BaseModel):

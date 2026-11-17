@@ -591,6 +591,44 @@ class ConversationService:
         ).all()
         return {message_id: key for message_id, key in rows if message_id and key}
 
+    # Largest mute WhatsApp offers is "always"; we store it as a far-future date.
+    MUTE_ALWAYS = datetime(9999, 12, 31, tzinfo=UTC)
+
+    @staticmethod
+    async def set_list_state(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        pinned: bool | None = None,
+        muted_until: datetime | None | str = "keep",
+        archived: bool | None = None,
+        marked_unread: bool | None = None,
+    ) -> Conversation:
+        """Move a conversation's shared list flags. Only the named flags change.
+
+        Pinned and archived are exclusive, as in WhatsApp: archiving unpins, and
+        pinning an archived chat brings it back. Never touches the provider.
+        """
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        now = datetime.now(UTC)
+        if archived is True:
+            conversation.archived_at = now
+            conversation.pinned_at = None
+        elif archived is False:
+            conversation.archived_at = None
+        if pinned is True:
+            conversation.pinned_at = now
+            conversation.archived_at = None
+        elif pinned is False:
+            conversation.pinned_at = None
+        if muted_until != "keep":
+            conversation.muted_until = muted_until
+        if marked_unread is not None:
+            conversation.marked_unread = marked_unread
+        await session.flush()
+        return conversation
+
     @staticmethod
     async def mark_read(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
@@ -610,6 +648,7 @@ class ConversationService:
         # trigger SQLAlchemy's ORM autoflush and would otherwise observe the old
         # database value if the same request reads the inbox again.
         conversation.unread_count = 0
+        conversation.marked_unread = False
         await session.flush()
         return conversation
 

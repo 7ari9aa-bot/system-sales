@@ -97,6 +97,11 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Store-wide list state (shared by every staff member; never sent to the provider).
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    marked_unread: Mapped[bool] = mapped_column(default=False, server_default="false")
     # §143: tombstone — soft-delete columns (privacy deletion).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
