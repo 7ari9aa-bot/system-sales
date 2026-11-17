@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 471,
-    "sha256": "5c619e95484d534a11969bbba6de3e5808b30fa9a0c58789a36ac7b96b36b240",
+    "operations": 472,
+    "sha256": "3797ca2359d71d178b359b7db6b0b0b7e9ef3a2a9d5178c1f787cce0452a6c65",
     "typed_operations": 295
   },
   "spec": {
@@ -14230,6 +14230,18 @@
             }
           },
           "title": "ReactionRequest",
+          "type": "object"
+        },
+        "ReadSignalRequest": {
+          "description": "Opening a chat sends the read receipt; typing adds the \"typing…\" indicator.",
+          "properties": {
+            "typing": {
+              "default": false,
+              "title": "Typing",
+              "type": "boolean"
+            }
+          },
+          "title": "ReadSignalRequest",
           "type": "object"
         },
         "ReceiptEmailRequest": {
@@ -34033,6 +34045,122 @@
             }
           },
           "summary": "Mark Read",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/read-signal": {
+        "post": {
+          "description": "Show the customer the blue ticks (and, while we type, \"typing…\") on WhatsApp.\n\nThis is separate from ``/read``, which only clears OUR unread badge. It needs\nthe same rights as sending, because the customer sees it as the business acting.\nA failure is reported as ``sent: false`` and never raised: it is a courtesy.",
+          "operationId": "send_read_signal_api_v1_conversations__conversation_id__read_signal_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadSignalRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Send Read Signal",
           "tags": [
             "inbox"
           ]
