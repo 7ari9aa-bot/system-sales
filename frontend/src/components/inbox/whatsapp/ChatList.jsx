@@ -51,7 +51,7 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
           />
         </div>
         {!archiveView && (
-          <div role="tablist" aria-label={w.tabs} className="flex items-center gap-2 overflow-x-auto pb-2.5">
+          <div role="tablist" aria-label={w.tabs} className="flex flex-wrap items-center gap-2 pb-2.5">
             {tabs.map((id) => (
               <button
                 key={id}

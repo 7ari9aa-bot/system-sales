@@ -215,3 +215,20 @@ test("the contact panel is a flat side panel with the real number and reply wind
   expect(box.x + box.width).toBeLessThanOrEqual(1280);
   expect(box.x).toBeGreaterThanOrEqual(0);
 });
+
+// The strip around the input capsule is transparent (the chat wallpaper shows through),
+// and the filter pills never scroll sideways.
+test("the input strip is transparent and the filter pills have no scrollbar", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const strip = await page.getByTestId("composer-capsule").evaluate((el) => {
+    let n = el.parentElement; const out = [];
+    while (n && !n.matches('[data-testid="chat-view"], main')) { const s = getComputedStyle(n); out.push([s.backgroundColor, s.borderTopWidth]); n = n.parentElement; if (out.length > 4) break; }
+    return out.slice(0, 4);
+  });
+  for (const [bg, bw] of strip.slice(0, 3)) { expect(bg).toBe("rgba(0, 0, 0, 0)"); expect(bw).toBe("0px"); }
+  const tabs = await page.getByRole("tablist").first().evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
+  expect(tabs.sw).toBeLessThanOrEqual(tabs.cw);
+  expect(tabs.ox).not.toBe("auto");
+  expect(tabs.ox).not.toBe("scroll");
+});

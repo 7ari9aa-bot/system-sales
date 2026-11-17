@@ -605,8 +605,8 @@ export default function ChannelChat({
 
       {/* Input Bar */}
       <div
-        className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
-        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "var(--wa-bg-header)" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
+        className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-0 py-0", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
+        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "transparent" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: isWhatsApp ? "none" : "1px solid " + th.inputBorder }}
       >
         {isWhatsApp && isRecordingVoice ? (
           <VoiceRecorder
