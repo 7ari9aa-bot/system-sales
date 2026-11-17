@@ -6,4 +6,5 @@ export function cn(...inputs) {
 } 
 
 
-export const isIframe = window.self !== window.top;
+// Guarded so the module can be imported outside a browser (unit tests, SSR).
+export const isIframe = typeof window !== "undefined" && window.self !== window.top;

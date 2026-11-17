@@ -10,11 +10,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.consent import MARKETING_PURPOSE, evaluate_outbound_consent
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
 from app.modules.conversations.media import MediaService, MediaStorage
 from app.modules.conversations.models import (
@@ -475,6 +475,29 @@ class ConversationService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def quoted_targets(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, Message]:
+        """Messages a page of replies quotes, even when older than the page.
+
+        Scoped to the conversation (not just the tenant) so a forged reference
+        can never surface another customer's text.
+        """
+        if not message_ids:
+            return {}
+        found = await session.execute(
+            select(Message).where(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == conversation_id,
+                Message.id.in_(message_ids),
+            )
+        )
+        return {m.id: m for m in found.scalars()}
+
+    @staticmethod
     async def list_messages(
         session: AsyncSession,
         tenant_id: uuid.UUID,
@@ -568,6 +591,62 @@ class ConversationService:
         ).all()
         return {message_id: key for message_id, key in rows if message_id and key}
 
+    # Largest mute WhatsApp offers is "always"; we store it as a far-future date.
+    MUTE_ALWAYS = datetime(9999, 12, 31, tzinfo=UTC)
+    # WhatsApp allows three pinned chats; the store shares one pinned strip.
+    MAX_PINNED = 3
+
+    @staticmethod
+    async def set_list_state(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        *,
+        pinned: bool | None = None,
+        muted_until: datetime | None | str = "keep",
+        archived: bool | None = None,
+        marked_unread: bool | None = None,
+    ) -> Conversation:
+        """Move a conversation's shared list flags. Only the named flags change.
+
+        Pinned and archived are exclusive, as in WhatsApp: archiving unpins, and
+        pinning an archived chat brings it back. Never touches the provider.
+        """
+        conversation = await ConversationService.get(session, tenant_id, conversation_id)
+        now = datetime.now(UTC)
+        if archived is True:
+            conversation.archived_at = now
+            conversation.pinned_at = None
+        elif archived is False:
+            conversation.archived_at = None
+        if pinned is True:
+            if conversation.pinned_at is None:
+                held = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(Conversation)
+                        .where(
+                            Conversation.tenant_id == tenant_id,
+                            Conversation.pinned_at.is_not(None),
+                            Conversation.id != conversation_id,
+                        )
+                    )
+                ).scalar_one()
+                if held >= ConversationService.MAX_PINNED:
+                    raise ConflictError(
+                        f"at most {ConversationService.MAX_PINNED} conversations can be pinned"
+                    )
+            conversation.pinned_at = conversation.pinned_at or now
+            conversation.archived_at = None
+        elif pinned is False:
+            conversation.pinned_at = None
+        if muted_until != "keep":
+            conversation.muted_until = muted_until
+        if marked_unread is not None:
+            conversation.marked_unread = marked_unread
+        await session.flush()
+        return conversation
+
     @staticmethod
     async def mark_read(
         session: AsyncSession, tenant_id: uuid.UUID, conversation_id: uuid.UUID
@@ -587,6 +666,7 @@ class ConversationService:
         # trigger SQLAlchemy's ORM autoflush and would otherwise observe the old
         # database value if the same request reads the inbox again.
         conversation.unread_count = 0
+        conversation.marked_unread = False
         await session.flush()
         return conversation
 

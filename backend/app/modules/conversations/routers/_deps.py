@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +44,37 @@ class SendMessageRequest(BaseModel):
     template_name: str | None = Field(default=None, max_length=127)
     template_vars: dict | None = None
     template_language: str = Field(default="ar", max_length=15)
+    # The message being replied to (our messages.id). Optional; checked against
+    # the conversation in the route.
+    reply_to_message_id: uuid.UUID | None = None
+    # An upload from POST /conversations/{id}/media. `body` then becomes its
+    # caption (images, videos and documents only).
+    media_id: uuid.UUID | None = None
+
+
+class ReadSignalRequest(BaseModel):
+    """Opening a chat sends the read receipt; typing adds the "typing…" indicator."""
+
+    typing: bool = False
+
+
+class ReactionRequest(BaseModel):
+    """An emoji reaction to one message. An empty emoji withdraws our reaction."""
+
+    emoji: str = Field(default="", max_length=16)
+
+
+class ListStateRequest(BaseModel):
+    """Shared list flags for one conversation. Only the fields sent change.
+
+    ``mute`` is a duration: "8h" | "1w" | "always" | "off". Anything else is a
+    validation error, so the client can never write an arbitrary date.
+    """
+
+    pinned: bool | None = None
+    archived: bool | None = None
+    marked_unread: bool | None = None
+    mute: Literal["8h", "1w", "always", "off"] | None = None
 
 
 class AssignRequest(BaseModel):

@@ -1,0 +1,77 @@
+/* WhatsApp's own palette, light and dark. Every colour the WhatsApp inbox draws
+   comes from one of these, so the dark mode is one block instead of a rule per
+   component. Values are WhatsApp Web's. The brand greens and the red used for
+   errors keep their identity in both modes and only shift for contrast. */
+:root {
+  --wa-bg-chat: #f5f1eb;        /* the wallpaper behind messages */
+  --wa-bg-panel: #ffffff;       /* list, header, info panel */
+  --wa-bg-input: #f6f5f4;       /* search field, pills */
+  --wa-bg-header: #ffffff;      /* chat header and composer: white, like the real app */
+  --wa-header-rule: #e7e1d8;    /* the hairline under the chat header */
+  --wa-bg-hover: #f5f6f6;       /* hover and secondary surfaces */
+  --wa-bg-chip: #e9edef;        /* pressed pills, disabled fields */
+  --wa-bubble-out: #d9fdd3;
+  --wa-bubble-out-inner: #cfe9ca; /* a document card inside an outgoing bubble */
+  --wa-bubble-in: #ffffff;
+  --wa-text: #111b21;
+  --wa-text-secondary: #5b6b76; /* WhatsApp's #667781 is 4.29:1 on the hover grey; this clears 4.5:1 on every light surface */
+  --wa-text-icon: #54656f;
+  --wa-text-faint: #8696a0;
+  --wa-divider: #dedad4;
+  --wa-avatar-bg: #caecfa;      /* the default avatar disc, as in the real app */
+  --wa-avatar-fg: #54656f;
+  --wa-green: #00a884;
+  --wa-green-text: #025144;     /* text on the light-green pill */
+  --wa-pill-active: #d9fdd3;
+  --wa-green-link: #1b8755;     /* the text actions under a bubble (Open, Save as) */
+  --wa-header: #008069;         /* preview screen bar */
+  --wa-ticks-read: #53bdeb;
+  --wa-danger: #ea0038;
+  --wa-danger-bg: #fde8ec;
+  --wa-danger-text: #7a1230;
+  --wa-warn: #b45309;
+  --wa-warn-bg: #fff8e1;
+  --wa-overlay: rgba(11, 20, 26, 0.25);
+  --wa-wallpaper: url('/chat-wallpaper-doodle.svg');
+}
+:root.dark {
+  --wa-bg-chat: #0b141a;
+  --wa-bg-panel: #111b21;
+  --wa-bg-input: #202c33;
+  --wa-bg-header: #202c33;
+  --wa-header-rule: #222d34;
+  --wa-bg-hover: #182229;
+  --wa-bg-chip: #2a3942;
+  --wa-bubble-out: #005c4b;
+  --wa-bubble-out-inner: #025144;
+  --wa-bubble-in: #202c33;
+  --wa-text: #e9edef;
+  --wa-text-secondary: #8696a0;
+  --wa-text-icon: #aebac1;
+  --wa-text-faint: #8696a0;
+  --wa-divider: #222d34;
+  --wa-avatar-bg: #6a7175;
+  --wa-avatar-fg: #cfd4d6;
+  --wa-green: #00a884;
+  --wa-green-text: #d9fdd3;
+  --wa-pill-active: #0a332c;
+  --wa-green-link: #53d2a9;
+  --wa-header: #202c33;
+  --wa-ticks-read: #53bdeb;
+  --wa-danger: #ff6b81;
+  --wa-danger-bg: #3a1620;
+  --wa-danger-text: #ffb3c0;
+  --wa-warn: #f5a04a;
+  --wa-warn-bg: #3a2f12;
+  --wa-overlay: rgba(0, 0, 0, 0.6);
+  --wa-wallpaper: url('/chat-wallpaper-doodle-dark.svg');
+}
+
+/* Everything the WhatsApp inbox draws reads in WhatsApp's own type and ink, not the
+   app's (Plex Arabic and a warm brown). One class on each root, so the list, header,
+   info panel and bubbles can no longer drift apart. */
+.wa-scope {
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif;
+  color: var(--wa-text);
+}
+.wa-scope button, .wa-scope input, .wa-scope textarea { font-family: inherit; }

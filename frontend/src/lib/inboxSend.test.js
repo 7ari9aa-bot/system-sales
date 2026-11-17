@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createIntentKeys, fingerprint } from "./intentKeys";
-import { appendLocalMessage, sendReply, TIMEOUT_MESSAGE } from "./inboxSend";
+import { appendLocalMessage, sendReply, setMyReaction, TIMEOUT_MESSAGE, uploadMedia } from "./inboxSend";
 
 const fresh = () => createIntentKeys("msg");
 const err = (props) => Object.assign(new Error(props.message ?? "boom"), props);
@@ -165,5 +165,168 @@ describe("appendLocalMessage (channel switch during send)", () => {
 
   it("tolerates a channel with no loaded conversations", () => {
     expect(appendLocalMessage({}, "facebook", "c1", msg, "hi")).toEqual({ facebook: [] });
+  });
+});
+
+describe("sendReply quoting", () => {
+  const okApi = () => vi.fn().mockResolvedValue({ id: "m1" });
+
+  it("sends the quoted message id when replying", async () => {
+    const api = okApi();
+    await sendReply("c1", "تمام", { api, intents: fresh(), replyToId: "msg-9" });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "تمام", reply_to_message_id: "msg-9" });
+  });
+
+  it("leaves the body exactly as before when nothing is quoted", async () => {
+    const api = okApi();
+    await sendReply("c1", "تمام", { api, intents: fresh() });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "تمام" });
+  });
+
+  it("the same words in reply to a different message is a new send, not a replay", async () => {
+    const api = okApi();
+    const intents = fresh();
+    // Both attempts end without success, so the slot keeps its key.
+    api.mockRejectedValue(err({ code: "timeout" }));
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-2" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("a retry of the same quoted reply reuses its key", async () => {
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    const intents = fresh();
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).toBe(keys[1]);
+  });
+});
+
+describe("sendReaction", () => {
+  it("posts the emoji to the message's reaction route", async () => {
+    const api = vi.fn().mockResolvedValue({});
+    const { sendReaction } = await import("./inboxSend");
+    const r = await sendReaction("c1", "m1", "👍", { api });
+    expect(r).toEqual({ ok: true });
+    expect(api).toHaveBeenCalledWith("/conversations/c1/messages/m1/reaction", { method: "POST", body: { emoji: "👍" } });
+  });
+
+  it("reports the server's reason when it is refused", async () => {
+    const { sendReaction } = await import("./inboxSend");
+    const api = vi.fn().mockRejectedValue(err({ message: "this message cannot be reacted to" }));
+    expect(await sendReaction("c1", "m1", "👍", { api })).toEqual({ ok: false, error: "this message cannot be reacted to" });
+  });
+});
+
+describe("setMyReaction", () => {
+  const map = () => ({
+    whatsapp: [
+      { id: "c1", messages: [{ id: "m1", reactions: ["😂"], myReaction: "" }, { id: "m2", reactions: [] }] },
+      { id: "c2", messages: [{ id: "m1", reactions: [] }] },
+    ],
+    instagram: [{ id: "c1", messages: [{ id: "m1", reactions: [] }] }],
+  });
+
+  it("adds our reaction next to the customer's", () => {
+    const next = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    expect(next.whatsapp[0].messages[0]).toMatchObject({ reactions: ["😂", "👍"], myReaction: "👍" });
+  });
+
+  it("changing it replaces ours and keeps theirs", () => {
+    const once = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    const twice = setMyReaction(once, "whatsapp", "c1", "m1", "❤️", "👍");
+    expect(twice.whatsapp[0].messages[0].reactions).toEqual(["😂", "❤️"]);
+  });
+
+  it("withdrawing removes only ours", () => {
+    const once = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    const gone = setMyReaction(once, "whatsapp", "c1", "m1", "", "👍");
+    expect(gone.whatsapp[0].messages[0]).toMatchObject({ reactions: ["😂"], myReaction: "" });
+  });
+
+  it("touches nothing else: other messages, conversations or channels", () => {
+    const before = map();
+    const next = setMyReaction(before, "whatsapp", "c1", "m1", "👍");
+    expect(next.whatsapp[0].messages[1]).toBe(before.whatsapp[0].messages[1]);
+    expect(next.whatsapp[1]).toBe(before.whatsapp[1]);
+    expect(next.instagram).toBe(before.instagram);
+  });
+
+  it("putting back the previous value undoes a refused reaction", () => {
+    const start = map();
+    const tried = setMyReaction(start, "whatsapp", "c1", "m1", "👍");
+    const undone = setMyReaction(tried, "whatsapp", "c1", "m1", "", "👍");
+    expect(undone.whatsapp[0].messages[0].reactions).toEqual(["😂"]);
+  });
+});
+
+describe("sending a file", () => {
+  const MEDIA = "9b2f3c1e-0000-4000-8000-000000000001";
+
+  it("posts the media id with the caption and no empty body", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "الفاتورة", { api, intents: fresh(), mediaId: MEDIA });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "الفاتورة", media_id: MEDIA });
+  });
+
+  it("sends a file with no caption without a body field", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "", { api, intents: fresh(), mediaId: MEDIA });
+    expect(api.mock.calls[0][1].body).toEqual({ media_id: MEDIA });
+  });
+
+  it("a text-only send is unchanged", async () => {
+    const api = vi.fn().mockResolvedValue({ id: "m1" });
+    await sendReply("c1", "hi", { api, intents: fresh() });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "hi" });
+  });
+
+  it("a different file is a NEW intention, the same file is a replay", async () => {
+    const intents = fresh();
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    await sendReply("c1", "x", { api, intents, mediaId: "A" });
+    await sendReply("c1", "x", { api, intents, mediaId: "A" });
+    await sendReply("c1", "x", { api, intents, mediaId: "B" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+});
+
+describe("uploadMedia", () => {
+  const f = Object.assign(new Blob(["%PDF-"], { type: "application/pdf" }), { name: "فاتورة مايو.pdf" });
+
+  it("sends the raw file with its type and an encoded name", async () => {
+    const api = vi.fn().mockResolvedValue({ media_id: "m", kind: "document", filename: "x.pdf", size: 5 });
+    const r = await uploadMedia("c1", f, { api });
+    expect(r).toEqual({ ok: true, media: { media_id: "m", kind: "document", filename: "x.pdf", size: 5 } });
+    const [path, opts] = api.mock.calls[0];
+    expect(path).toBe("/conversations/c1/media");
+    expect(opts).toMatchObject({ method: "POST", body: f, rawBody: true, contentType: "application/pdf" });
+    expect(decodeURIComponent(opts.headers["X-Filename"])).toBe("فاتورة مايو.pdf");
+    expect(opts.headers["X-As-Sticker"]).toBeUndefined();
+  });
+
+  it("marks a sticker", async () => {
+    const api = vi.fn().mockResolvedValue({});
+    await uploadMedia("c1", f, { api, asSticker: true });
+    expect(api.mock.calls[0][1].headers["X-As-Sticker"]).toBe("true");
+  });
+
+  it("reports the server's reason", async () => {
+    const api = vi.fn().mockRejectedValue(err({ message: "a image can be at most 5 MB on WhatsApp", status: 400 }));
+    expect(await uploadMedia("c1", f, { api })).toEqual({ ok: false, error: "a image can be at most 5 MB on WhatsApp" });
+  });
+
+  it("says so on a timeout", async () => {
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    expect((await uploadMedia("c1", f, { api })).error).toMatch(/too long/);
+  });
+
+  it("an abort is not an error to show", async () => {
+    const api = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { name: "AbortError" }));
+    expect(await uploadMedia("c1", f, { api })).toMatchObject({ ok: false, aborted: true, error: "" });
   });
 });

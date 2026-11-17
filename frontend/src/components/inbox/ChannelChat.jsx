@@ -16,7 +16,6 @@ import {
   Palette,
   Play,
   Pause,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
@@ -26,6 +25,24 @@ import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPic
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
+import ImageViewer from "./whatsapp/ImageViewer";
+import { galleryOf } from "./whatsapp/mediaGallery";
+import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
+import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
+import ChatHeader from "./whatsapp/ChatHeader";
+import Composer from "./whatsapp/Composer";
+import AttachPreview from "./whatsapp/AttachPreview";
+import VoiceRecorder from "./whatsapp/VoiceRecorder";
+import { checkFile } from "./whatsapp/attachments";
+import { uploadMedia } from "@/lib/inboxSend";
+import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
+import { api } from "@/lib/api";
+import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
+import { formatCurrency } from "@/lib/regional";
+import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
+import { ChevronDownIcon } from "./whatsapp/icons";
+import MessageStatus from "./whatsapp/MessageStatus";
 
 export default function ChannelChat({
   channel,
@@ -46,6 +63,9 @@ export default function ChannelChat({
   pendingDecision = false,
   t,
   onSend,
+  onReact,
+  onListStateChange,
+  pinnedCount = 0,
   onApprove,
   onDecline,
 }) {
@@ -60,15 +80,57 @@ export default function ChannelChat({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  // WhatsApp only: the file the agent picked (or the voice note just recorded),
+  // shown in a preview until Send uploads it and sends the message.
+  const [attachment, setAttachment] = useState(null); // { file, kind, asSticker, audioUrl? }
+  const [uploading, setUploading] = useState(false);
+  const [attachError, setAttachError] = useState("");
   const [customer360Record, setCustomer360Record] = useState(null);
+  const [waCustomer, setWaCustomer] = useState(null);
+
+  // The real customer record (email, spend, purchase block) is read only while
+  // the WhatsApp contact panel is open, and never trusted past this chat.
+  const waCustomerId = conversation?.customerId || null;
+  useEffect(() => {
+    setWaCustomer(null);
+    if (!contactDrawerOpen || channel.id !== "whatsapp" || !waCustomerId) return undefined;
+    let alive = true;
+    api(`/customers/${waCustomerId}`).then((row) => { if (alive) setWaCustomer(row); }).catch(() => { if (alive) setWaCustomer(null); });
+    return () => { alive = false; };
+  }, [contactDrawerOpen, channel.id, waCustomerId]);
+
+  async function toggleBuyBlock(block) {
+    if (!waCustomerId) return;
+    try {
+      const saved = await api(`/customers/${waCustomerId}/${block ? "block" : "unblock"}`, { method: "POST" });
+      setWaCustomer((previous) => (previous ? { ...previous, is_blocked: Boolean(saved?.is_blocked) } : previous));
+    } catch { /* the panel keeps showing the real state */ }
+  }
 
   const scrollRef = useRef(null);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [viewerId, setViewerId] = useState(null);
+  const [lastSeenId, setLastSeenId] = useState(null);
   const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
 
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
+
+  // "typing…" on the customer's phone while an agent writes a WhatsApp reply. One
+  // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
+  // while there is text: it is a courtesy, so a failure is silent.
+  const typingSentAtRef = useRef(null);
+  useEffect(() => {
+    if (!isWhatsApp || !supportsReadSignal(conversation)) return;
+    if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
+    typingSentAtRef.current = Date.now();
+    api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});
+  }, [text, isWhatsApp, conversation?.id, conversation?.lastCustomerMessageAt]);
+  // A different chat starts its own 20s clock.
+  useEffect(() => { typingSentAtRef.current = null; }, [conversation?.id]);
   const isInstagram = channel.id === "instagram";
   const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";
@@ -77,10 +139,12 @@ export default function ChannelChat({
   const allMessages = conversation?.messages || [];
 
   const messageBackgroundStyle = isWhatsApp ? {
-    backgroundColor: "#efeae2",
-    backgroundImage: "linear-gradient(rgba(245,240,232,0.88), rgba(245,240,232,0.88)), url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
-    backgroundRepeat: "no-repeat, repeat",
-    backgroundSize: "100% 100%, 320px 570px",
+    // Our own doodle tile (light or dark by theme) on WhatsApp's wallpaper
+    // colour: nothing is fetched from Meta.
+    backgroundColor: "var(--wa-bg-chat)",
+    backgroundImage: "var(--wa-wallpaper)",
+    backgroundRepeat: "repeat",
+    backgroundSize: "240px 240px",
   } : isTelegram ? {
     backgroundColor: "#a9cf9a",
     backgroundImage: "url('/telegram-chat-wallpaper.png')",
@@ -104,14 +168,26 @@ export default function ChannelChat({
     if (preserve?.conversationId === conversation.id) {
       element.scrollTop = preserve.scrollTop + element.scrollHeight - preserve.scrollHeight;
       preserveScrollRef.current = null;
-    } else if (previous.conversationId !== conversation.id || previous.latestMessageId !== latestMessageId) {
+    } else if (previous.conversationId !== conversation.id) {
       element.scrollTop = element.scrollHeight;
+      setLastSeenId(null);
+    } else if (previous.latestMessageId !== latestMessageId) {
+      const newest = messages.at(-1);
+      // WhatsApp never yanks you away from history you are reading: a customer
+      // message that arrives while you are scrolled up waits behind the button.
+      if (isWhatsApp && newest?.side === "in" && isAwayFromBottom(element)) {
+        setLastSeenId((seen) => seen ?? previous.latestMessageId);
+      } else {
+        element.scrollTop = element.scrollHeight;
+      }
     }
     messageViewportRef.current = { conversationId: conversation.id, latestMessageId };
   }, [conversation?.id, conversation?.messages]);
 
   useEffect(() => {
     setText("");
+    setReplyingTo(null);
+    setViewerId(null);
     setSearchQuery("");
     setSearchOpen(false);
     setThemePickerOpen(false);
@@ -119,6 +195,9 @@ export default function ChannelChat({
     setEmojiPickerOpen(false);
     setAttachmentMenuOpen(false);
     setIsRecordingVoice(false);
+    setAttachment(null);
+    setUploading(false);
+    setAttachError("");
   }, [conversation?.id]);
 
   useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
@@ -126,12 +205,40 @@ export default function ChannelChat({
   async function submitMessage() {
     const body = text.trim();
     if (!body || sending || !conversation) return;
-    const sent = await onSend?.(conversation.id, body);
+    const sent = await onSend?.(conversation.id, body, replyingTo ? { replyTo: replyingTo } : undefined);
     if (sent !== false) {
       setText("");
+      setReplyingTo(null);
       setEmojiPickerOpen(false);
       setAttachmentMenuOpen(false);
     }
+  }
+
+  // A file was picked: check it here so a wrong one is refused before any upload.
+  function pickFile(file, { asSticker = false } = {}) {
+    const checked = checkFile(file, { lang, asSticker });
+    if (!checked.ok) { setAttachError(checked.error); return; }
+    setAttachError("");
+    setAttachment({ file, kind: checked.kind, asSticker });
+  }
+
+  async function sendAttachment(caption) {
+    if (!attachment || uploading || !conversation) return;
+    setUploading(true);
+    setAttachError("");
+    const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker });
+    if (!up.ok) { setUploading(false); setAttachError(up.error); return; }
+    const sent = await onSend?.(conversation.id, caption, {
+      mediaId: up.media.media_id,
+      mediaKind: up.media.kind,
+      filename: up.media.filename,
+      previewFile: attachment.file,
+      replyTo: replyingTo || undefined,
+    });
+    setUploading(false);
+    if (sent === false) { setAttachError(lang === "ar" ? "تم رفع الملف لكن تعذّر إرساله. حاول مرة أخرى." : "The file was uploaded but could not be sent. Try again."); return; }
+    setAttachment(null);
+    setReplyingTo(null);
   }
 
   const loadOlderAtTop = useCallback(async (element) => {
@@ -152,11 +259,14 @@ export default function ChannelChat({
       telegramScrollTimerRef.current = setTimeout(() => setTelegramMessagesScrolling(false), 800);
     }
     void loadOlderAtTop(event.currentTarget);
+    const away = isAwayFromBottom(event.currentTarget);
+    setAwayFromBottom(away);
+    if (!away) setLastSeenId(null);
   }, [isTelegram, loadOlderAtTop]);
 
   if (!conversation) {
     return (
-      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 bg-white" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
+      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0" : isInstagram ? "rounded-none border-0 bg-white" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
         <div>
           <div className="h-12 w-12 rounded-full bg-surface grid place-items-center mx-auto mb-3">
             <Sparkles className="h-5 w-5 text-muted-foreground" />
@@ -169,10 +279,23 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
+      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "wa-scope rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}
     >
-      {/* Header — Click opens authentic channel profile drawer */}
+      {isWhatsApp ? (
+        <ChatHeader
+          conversation={conversation}
+          lang={lang}
+          pinnedCount={pinnedCount}
+          searchOpen={searchOpen}
+          AvatarComponent={ConversationAvatar}
+          onBack={onBack}
+          onOpenInfo={() => setContactDrawerOpen(true)}
+          onToggleSearch={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
+          onChange={(body) => onListStateChange?.(conversation, body)}
+        />
+      ) : (
+      <>
       <div
         dir={isWhatsApp || isTelegram ? "ltr" : isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
         className={cn("relative flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
@@ -184,7 +307,7 @@ export default function ChannelChat({
             onClick={onBack}
             aria-label={t("inbox.backToChats", "Back to chats")}
             title={t("inbox.backToChats", "Back to chats")}
-            className={cn("-mx-1 grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 lg:hidden", isWhatsApp ? "text-[#54656f] focus-visible:ring-[#00a884]" : "text-[#65676b] focus-visible:ring-[#0084ff]")}
+            className={cn("-mx-1 grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 lg:hidden", isWhatsApp ? "text-[color:var(--wa-text-icon)] focus-visible:ring-[color:var(--wa-green)]" : "text-[#65676b] focus-visible:ring-[#0084ff]")}
           >
             {lang === "ar" ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
           </button>
@@ -203,17 +326,17 @@ export default function ChannelChat({
           ) : (
             <div
               className={cn("rounded-full grid place-items-center font-semibold shrink-0 shadow-xs", isWhatsApp ? "h-10 w-10 text-[12px]" : "h-9 w-9 text-[13px]")}
-              style={{ background: conversation.color, color: isWhatsApp ? "#54656f" : "#fff" }}
+              style={{ background: conversation.color, color: isWhatsApp ? "var(--wa-text-icon)" : "#fff" }}
             >
               {conversation.initials}
             </div>
           )}
           <div className="flex-1 min-w-0 text-start">
-            <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-semibold text-[#111b21]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>
+            <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-semibold text-[color:var(--wa-text)]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>
               {conversation.customer}
             </div>
             {!isMessenger && (
-              <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[#667781]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
+              <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
                 {isTelegram ? "bot" : channel.name}
               </div>
             )}
@@ -241,7 +364,7 @@ export default function ChannelChat({
             aria-label={t("inbox.searchMessages", "Search messages")}
             aria-expanded={searchOpen}
             onClick={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
-            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[#54656f] hover:bg-[#f5f6f6] focus-visible:ring-[#00a884]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : isMessenger ? "hover:bg-[#f0f2f5] focus-visible:ring-[#0084ff]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
+            className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2", isWhatsApp ? "text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:ring-[color:var(--wa-green)]" : isInstagram ? "text-[#262626] hover:bg-[#f5f5f5] focus-visible:ring-[#3797f0]" : isMessenger ? "hover:bg-[#f0f2f5] focus-visible:ring-[#0084ff]" : "text-[#707e8b] hover:bg-[#f2f5f7] focus-visible:ring-[#3390ec]")}
             style={isMessenger ? { color: messengerTheme.accent } : undefined}
           >
             <Search className="h-[18px] w-[18px]" />
@@ -257,6 +380,9 @@ export default function ChannelChat({
           <MoreVertical className="h-[18px] w-[18px]" />
         </button>
       </div>
+
+      </>
+      )}
 
       {/* Messenger Theme Dialog */}
       {isMessenger && themePickerOpen && (
@@ -287,8 +413,8 @@ export default function ChannelChat({
 
       {/* Search Messages in Chat */}
       {(isWhatsApp || isInstagram || isMessenger || isTelegram) && searchOpen && (
-        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-white px-3", isWhatsApp ? "border-[#d1d7db]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
-          <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[#667781]" : isInstagram ? "text-[#8e8e8e]" : isMessenger ? "text-[#65676b]" : "text-[#82919e]")} />
+        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-[var(--wa-bg-panel)] px-3", isWhatsApp ? "border-[color:var(--wa-divider)]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
+          <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[color:var(--wa-text-secondary)]" : isInstagram ? "text-[#8e8e8e]" : isMessenger ? "text-[#65676b]" : "text-[#82919e]")} />
           <input
             type="search"
             autoFocus
@@ -297,7 +423,7 @@ export default function ChannelChat({
             dir={lang === "ar" ? "rtl" : "ltr"}
             aria-label={t("inbox.searchMessages", "Search messages")}
             placeholder={t("inbox.searchMessages", "Search messages")}
-            className={cn("min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#8696a0]", isWhatsApp ? "text-[#111b21]" : "text-[#222]", lang === "ar" ? "text-right" : "text-left")}
+            className={cn("min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#8696a0]", isWhatsApp ? "text-[color:var(--wa-text)]" : "text-[#222]", lang === "ar" ? "text-right" : "text-left")}
           />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery("")} aria-label={t("common.clear", "Clear search")} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#667781] hover:bg-[#f0f2f5]">
@@ -347,7 +473,7 @@ export default function ChannelChat({
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
                 <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
-                  <span className={cn("rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : "text-[#54656f]")}>
+                  <span className={cn("rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isTelegram && !isMessenger && !isInstagram && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]")}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>
@@ -362,6 +488,9 @@ export default function ChannelChat({
                 lang={lang}
                 th={th}
                 conversation={conversation}
+                onReply={setReplyingTo}
+                onReact={onReact}
+                onOpenImage={setViewerId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -405,13 +534,36 @@ export default function ChannelChat({
           </div>
         )}
       </div>
+      {isWhatsApp && awayFromBottom && (
+        <div className="pointer-events-none relative z-20 h-0">
+          <button
+            type="button"
+            data-testid="jump-to-latest"
+            onClick={() => {
+              const el = scrollRef.current;
+              if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+              setLastSeenId(null);
+            }}
+            aria-label={lang === "ar" ? "الانتقال لآخر الرسائل" : "Jump to latest messages"}
+            title={lang === "ar" ? "الانتقال لآخر الرسائل" : "Jump to latest messages"}
+            className="pointer-events-auto absolute -top-14 end-4 grid h-10 w-10 place-items-center rounded-full bg-white text-[#54656f] shadow-[0_1px_4px_rgba(11,20,26,0.3)] transition-colors hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+          >
+            <ChevronDownIcon size={24} />
+            {unreadSince(conversation.messages, lastSeenId) > 0 && (
+              <span data-testid="jump-unread" className="absolute -top-2 start-1/2 grid h-5 min-w-5 -translate-x-1/2 place-items-center rounded-full bg-[#25d366] px-1 text-[11px] font-semibold leading-none text-white" dir="ltr">
+                {unreadSince(conversation.messages, lastSeenId)}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Attachment & Emoji Popovers above input */}
       <ChannelEmojiStickerPicker
         isOpen={emojiPickerOpen}
         onClose={() => setEmojiPickerOpen(false)}
         onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
-        onSelectSticker={(sticker) => {
+        onSelectSticker={isWhatsApp ? undefined : (sticker) => {
           void onSend?.(conversation.id, `🖼️ ${sticker.label}`, { mediaType: "image", mediaUrl: sticker.url });
         }}
         lang={lang}
@@ -419,7 +571,7 @@ export default function ChannelChat({
       />
 
       <ChannelAttachmentMenu
-        isOpen={attachmentMenuOpen}
+        isOpen={attachmentMenuOpen && !isWhatsApp}
         onClose={() => setAttachmentMenuOpen(false)}
         channelId={channel.id}
         lang={lang}
@@ -432,12 +584,38 @@ export default function ChannelChat({
         }}
       />
 
+      {isWhatsApp && attachment && (
+        <AttachPreview
+          file={attachment.file}
+          kind={attachment.kind}
+          audioUrl={attachment.audioUrl}
+          busy={uploading}
+          error={attachError}
+          lang={lang}
+          onSend={(caption) => { void sendAttachment(caption); }}
+          onCancel={() => { if (attachment.audioUrl) URL.revokeObjectURL(attachment.audioUrl); setAttachment(null); setAttachError(""); }}
+        />
+      )}
+      {isWhatsApp && !attachment && attachError && (
+        <div role="alert" data-testid="attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#fde8ec] px-3 py-2 text-[13px] text-[#7a1230]">
+          <span className="flex-1">{attachError}</span>
+          <button type="button" onClick={() => setAttachError("")} aria-label={lang === "ar" ? "إغلاق" : "Dismiss"} className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">×</button>
+        </div>
+      )}
+
       {/* Input Bar */}
       <div
         className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
-        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "#f0f2f5" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
+        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "var(--wa-bg-header)" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
       >
-        {isRecordingVoice ? (
+        {isWhatsApp && isRecordingVoice ? (
+          <VoiceRecorder
+            lang={lang}
+            onCancel={() => setIsRecordingVoice(false)}
+            onError={(message) => setAttachError(message)}
+            onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false, audioUrl: URL.createObjectURL(file) }); }}
+          />
+        ) : isRecordingVoice ? (
           <ChannelVoiceRecorder
             isRecording={isRecordingVoice}
             onCancel={() => setIsRecordingVoice(false)}
@@ -448,62 +626,21 @@ export default function ChannelChat({
             lang={lang}
           />
         ) : isWhatsApp ? (
-          <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
-            <button
-              type="button"
-              onClick={() => { setAttachmentMenuOpen((v) => !v); setEmojiPickerOpen(false); }}
-              aria-label={lang === "ar" ? "المرفقات" : "Attachments"}
-              title={lang === "ar" ? "المرفقات" : "Attachments"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-              style={{ color: "#54656f" }}
-            >
-              <Paperclip className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
-              aria-label={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
-              title={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-              style={{ color: "#54656f" }}
-            >
-              <Smile className="h-[21px] w-[21px]" />
-            </button>
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              dir={lang === "ar" ? "rtl" : "ltr"}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
-              placeholder={t("inbox.typeMessage")}
-              aria-label={t("inbox.typeMessage")}
-              disabled={sending}
-              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#111b21] focus:outline-none placeholder:text-[#8696a0]", lang === "ar" ? "text-right" : "text-left")}
-            />
-            {text.trim() ? (
-              <button
-                type="button"
-                onClick={() => { void submitMessage(); }}
-                disabled={sending}
-                aria-label={t("inbox.send")}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2 transition-transform hover:scale-105"
-                title={t("inbox.send")}
-                style={{ backgroundColor: "#00a884", color: "#fff" }}
-              >
-                <ArrowUpRight className="h-[18px] w-[18px]" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsRecordingVoice(true)}
-                aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
-                title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] hover:text-[#00a884] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-                style={{ color: "#54656f" }}
-              >
-                <Mic className="h-[21px] w-[21px]" />
-              </button>
-            )}
-          </div>
+          <Composer
+            value={text}
+            onChange={setText}
+            onSend={() => { void submitMessage(); }}
+            onToggleEmoji={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
+            onCancelReply={() => setReplyingTo(null)}
+            replyingTo={replyingTo}
+            customerName={conversation.customer}
+            lastCustomerMessageAt={conversation.lastCustomerMessageAt}
+            sending={sending || uploading}
+            lang={lang}
+            fontFamily={WHATSAPP_FONT}
+            onPickFile={pickFile}
+            onStartVoice={() => { setAttachError(""); setIsRecordingVoice(true); }}
+          />
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
             <button
@@ -693,7 +830,30 @@ export default function ChannelChat({
         )}
       </div>
 
-      {/* Authentic Contact Details Drawer */}
+      {/* Contact details: WhatsApp has its own panel built from real data only. */}
+      {isWhatsApp ? (
+        contactDrawerOpen && (
+          <ContactInfoPanel
+            conversation={conversation}
+            customer={waCustomer}
+            lang={lang}
+            formatMoney={formatCurrency}
+            onClose={() => setContactDrawerOpen(false)}
+            onChange={(body) => onListStateChange?.(conversation, body)}
+            onToggleBuyBlock={waCustomerId ? toggleBuyBlock : undefined}
+            onOpenImage={(id) => { setContactDrawerOpen(false); setViewerId(id); }}
+            onOpenCustomerProfile={() => {
+              setContactDrawerOpen(false);
+              setCustomer360Record({
+                id: waCustomerId || undefined,
+                name: conversation.customer,
+                phone: waCustomer?.phone || conversation.phone,
+                lifetime_value: waCustomer?.lifetime_value,
+              });
+            }}
+          />
+        )
+      ) : (
       <ChannelContactDrawer
         isOpen={contactDrawerOpen}
         onClose={() => setContactDrawerOpen(false)}
@@ -710,6 +870,8 @@ export default function ChannelChat({
         }}
       />
 
+      )}
+
       {/* Customer 360 Drawer when requested from Contact Info */}
       {customer360Record && (
         <CustomerDrawer
@@ -717,18 +879,18 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
+      {viewerId && isWhatsApp && (
+        <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
+      )}
     </div>
   );
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
+function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
-  const showTail = !isApp && th?.tail;
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
-  const isImage = m.mediaType === "image" || (mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(mediaUrl));
-  const isDocument = m.mediaType === "document" || (mediaUrl && /\.(pdf|doc|docx|xlsx|txt)$/i.test(mediaUrl));
 
   if (isWhatsApp) {
     if (m.senderType === "system") {
@@ -742,73 +904,56 @@ function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: 
       );
     }
 
-    return (
-      <div className={cn("flex", out ? "justify-end" : "justify-start")}>
-        <div
-          className={cn(
-            "relative max-w-[82%] rounded-lg px-3 py-2 text-[14px] leading-[1.4] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%] lg:max-w-[65%]",
-            showTail && (out ? "rounded-br-sm" : "rounded-bl-sm")
-          )}
-          style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText }}
-        >
-          {showTail && (
-            <span
-              aria-hidden="true"
-              className={cn("absolute bottom-0 h-2.5 w-2", out ? "-right-[5px]" : "-left-[5px]")}
-              style={{
-                background: out ? th.out : th.in,
-                clipPath: out ? "polygon(0 0, 100% 100%, 0 100%)" : "polygon(100% 0, 100% 100%, 0 100%)",
-              }}
-            />
-          )}
-
-          {/* Voice Note Bubble */}
-          {isAudio ? (
-            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />
-          ) : isImage && mediaUrl ? (
-            <div className="space-y-1.5">
-              <div className="rounded-lg overflow-hidden max-w-[280px]">
-                <img src={mediaUrl} alt="attachment" className="w-full max-h-64 object-cover rounded-lg" />
-              </div>
-              {m.text && !m.text.startsWith("blob:") && (
-                <div className="text-[13px]">{m.text}</div>
-              )}
-              <div className="flex justify-end items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
-                <span>{m.time}</span>
-                {out && th.checkmarks && (
-                  m.status === "read" ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" /> : <Check className="h-3.5 w-3.5" />
-                )}
-              </div>
-            </div>
-          ) : isDocument && mediaUrl ? (
-            <div className="flex items-center gap-3 p-1">
-              <div className="h-10 w-10 rounded-lg bg-[#7f66ff]/20 text-[#7f66ff] grid place-items-center">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium truncate">{m.text || "Document"}</div>
-                <div className="text-[11px] text-[#667781]">{m.time}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-              {m.text}{" "}
-              <span className="inline-flex items-center gap-0.5 whitespace-nowrap align-baseline text-[11px] leading-none text-[#667781]" dir="ltr">
-                <span>{m.time}</span>
-                {out && th.checkmarks && (
-                  m.status === "read"
-                    ? <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-                    : m.status === "delivered"
-                      ? <CheckCheck className="h-3.5 w-3.5" />
-                      : <Check className="h-3.5 w-3.5" />
-                )}
-                {m.ai && <Sparkles className="h-3 w-3 text-amber-500" />}
-              </span>
-            </div>
-          )}
-        </div>
+    // Each kind of message looks like it does in WhatsApp. The bubble frame,
+    // quote, deleted state, reactions and the delivery mark come from
+    // WhatsAppBubble; the voice player is the existing one.
+    const kind = messageKind(m);
+    const caption = displayBody(m);
+    const time = (
+      <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
+        <span>{m.time}</span>
+        {out && <MessageStatus status={m.status} lang={_lang} />}
       </div>
     );
+    const withCaption = (body, text = caption) => (
+      <div className="space-y-1.5">
+        {body}
+        {text && !text.startsWith("blob:") && <div dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{text}</div>}
+        {time}
+      </div>
+    );
+    let media = null;
+    if (kind === "voice") {
+      media = <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={th.checkmarks} isWhatsApp />;
+    } else if (kind === "image" && mediaUrl) {
+      media = withCaption(<PhotoBody src={mediaUrl} caption={caption} lang={_lang} onOpen={onOpenImage && !m.deleted ? () => onOpenImage(m.id) : undefined} />);
+    } else if (kind === "sticker" && mediaUrl) {
+      media = <div>{<StickerBody src={mediaUrl} lang={_lang} />}{time}</div>;
+    } else if (kind === "video" && mediaUrl) {
+      media = withCaption(<VideoBody src={mediaUrl} caption={caption} lang={_lang} />);
+    } else if (kind === "document") {
+      // The server's file name wins; for older messages a bare file name in the
+      // text is the label and any other text is the caption.
+      const isName = !m.fileName && looksLikeFileName(caption);
+      media = withCaption(<DocumentBody src={mediaUrl} label={m.fileName || (isName ? caption : "")} lang={_lang} out={out} />, isName ? "" : caption);
+    } else if (kind === "location") {
+      media = withCaption(<LocationBody body={m.text} lang={_lang} />, "");
+    } else if (kind === "contact") {
+      media = withCaption(<ContactBody body={m.text} lang={_lang} />, "");
+    } else if (kind === "buttons" || kind === "list") {
+      media = withCaption(<ChoiceBody body={m.text} kind={kind} lang={_lang} />, "");
+    } else if (kind === "unsupported") {
+      media = withCaption(<UnsupportedBody lang={_lang} />, "");
+    }
+    return <WhatsAppBubble
+        m={m}
+        th={th}
+        lang={_lang}
+        mine={m.myReaction || ""}
+        onReply={onReply}
+        onCopy={(msg) => { void navigator.clipboard?.writeText(msg.text || ""); }}
+        onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined}
+      >{media}</WhatsAppBubble>;
   }
 
   if (isTelegram) {
@@ -890,8 +1035,8 @@ function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, che
               className={cn(
                 "w-1 rounded-full transition-colors",
                 playing && i < 11
-                  ? isWhatsApp ? "bg-[#00a884]" : "bg-primary"
-                  : isWhatsApp ? "bg-[#8696a0]" : out ? "bg-white/60" : "bg-black/30"
+                  ? isWhatsApp ? "bg-[var(--wa-green)]" : "bg-primary"
+                  : isWhatsApp ? "bg-[var(--wa-text-faint)]" : out ? "bg-white/60" : "bg-black/30"
               )}
               style={{ height: `${h}px` }}
             />
@@ -919,7 +1064,7 @@ function getMessageDayKey(iso) {
   return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-function formatWhatsAppDay(iso, lang, _t) {
+export function formatWhatsAppDay(iso, lang, _t) {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -929,5 +1074,9 @@ function formatWhatsAppDay(iso, lang, _t) {
   const diff = (today.getTime() - target.getTime()) / 86400000;
   if (diff === 0) return lang === "ar" ? "اليوم" : "Today";
   if (diff === 1) return lang === "ar" ? "أمس" : "Yesterday";
-  return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "short", month: "short", day: "numeric" });
+  // WhatsApp Web: a weekday name for the last week, then a plain dd/mm/yyyy.
+  if (diff > 1 && diff < 7) return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", { weekday: "long" });
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${date.getFullYear()}`;
 }

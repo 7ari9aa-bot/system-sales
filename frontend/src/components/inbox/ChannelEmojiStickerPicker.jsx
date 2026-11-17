@@ -88,6 +88,8 @@ export default function ChannelEmojiStickerPicker({
           >
             😀 {isAr ? "الرموز" : "Emoji"}
           </button>
+          {/* A sticker is sent as the text "🖼️ name", not as a sticker, so WhatsApp (where it would reach the customer) does not offer it. */}
+          {!isWhatsApp && (
           <button
             type="button"
             onClick={() => setActiveTab("sticker")}
@@ -98,6 +100,7 @@ export default function ChannelEmojiStickerPicker({
           >
             🖼️ {isAr ? "ملصقات" : "Stickers"}
           </button>
+          )}
         </div>
         <button
           type="button"

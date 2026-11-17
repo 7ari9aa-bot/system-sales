@@ -6,6 +6,7 @@ import Guardian from '@/components/Guardian'
 import { guardianReport } from '@/lib/guardian'
 import { startErrorTelemetry } from '@/lib/errorTelemetry'
 import '@/index.css'
+import '@/components/inbox/whatsapp/whatsapp-theme.css'
 
 // الحارس: أي خطأ جافاسكريبت أو promise مرفوض بيتصطاد ويظهر في الشارة
 // بدل ما يضيع صامت في الكونسول.

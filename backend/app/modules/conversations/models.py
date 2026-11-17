@@ -97,6 +97,11 @@ class Conversation(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Store-wide list state (shared by every staff member; never sent to the provider).
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    marked_unread: Mapped[bool] = mapped_column(default=False, server_default="false")
     # §143: tombstone — soft-delete columns (privacy deletion).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
@@ -299,6 +304,10 @@ class Attachment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     # the transcription is paid for and lost.
     transcript_text: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(String(15))
+    # Outbound only (NULL for inbound media): what the agent sent this file as
+    # (image | sticker | audio | video | document) and the name the customer sees.
+    kind: Mapped[str | None] = mapped_column(String(15))
+    filename: Mapped[str | None] = mapped_column(String(255))
 
     __table_args__ = (
         Index("ix_attachments_tenant_message", "tenant_id", "message_id"),

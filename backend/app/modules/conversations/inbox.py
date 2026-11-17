@@ -97,6 +97,8 @@ class InboxQuery:
         channel: str | None = None,
         channels: list[str] | None = None,
         customer_id: UUID | None = None,
+        archived: bool | None = False,
+        pinned_only: bool = False,
         limit: int = 50,
         before_at: datetime | None = None,
         before_id: UUID | None = None,
@@ -133,6 +135,12 @@ class InboxQuery:
             else:
                 where.append("c.channel = ANY(CAST(:channels AS text[]))")
                 params["channels"] = list(channels)
+        if archived is True:
+            where.append("c.archived_at IS NOT NULL")
+        elif archived is False:
+            where.append("c.archived_at IS NULL")
+        if pinned_only:
+            where.append("c.pinned_at IS NOT NULL")
         if customer_id is not None:
             where.append("c.customer_id = :customer_id")
             params["customer_id"] = str(customer_id)
@@ -185,6 +193,10 @@ class InboxQuery:
                 c.last_customer_message_at,
                 c.messaging_policy_state,
                 c.unread_count,
+                c.pinned_at,
+                c.muted_until,
+                c.archived_at,
+                c.marked_unread,
                 cust.name  AS customer_name,
                 cust.phone AS customer_phone,
                 CASE WHEN lm.deleted THEN NULL
@@ -192,6 +204,7 @@ class InboxQuery:
                 lm.deleted    AS last_message_deleted,
                 lm.content_type AS last_message_content_type,
                 lm.direction    AS last_message_direction,
+                lm.status       AS last_message_status,
                 lm.sender_type  AS last_message_sender_type,
                 lm.created_at   AS last_message_created_at,
                 sla.kind        AS sla_kind,
@@ -202,7 +215,7 @@ class InboxQuery:
                 ON cust.id = c.customer_id
                AND cust.tenant_id = c.tenant_id
               LEFT JOIN LATERAL (
-                    SELECT m.body, m.content_type, m.direction, m.sender_type,
+                    SELECT m.body, m.content_type, m.direction, m.sender_type, m.status,
                            m.created_at, m.deleted
                       FROM messages m
                      WHERE m.tenant_id = c.tenant_id
@@ -262,12 +275,17 @@ class InboxQuery:
             "last_customer_message_at": _iso(row.last_customer_message_at),
             "messaging_policy_state": row.messaging_policy_state,
             "unread_count": int(row.unread_count or 0),
+            "pinned_at": _iso(row.pinned_at),
+            "muted_until": _iso(row.muted_until),
+            "archived_at": _iso(row.archived_at),
+            "marked_unread": bool(row.marked_unread),
             "last_message_preview": row.last_message_preview,
             # A tombstone is a fact the list needs: NULL preview alone cannot
             # tell "deleted" from "a photo", and the row then reads as broken.
             "last_message_deleted": bool(row.last_message_deleted),
             "last_message_content_type": row.last_message_content_type,
             "last_message_direction": row.last_message_direction,
+            "last_message_status": row.last_message_status,
             "last_message_sender_type": row.last_message_sender_type,
             "last_message_created_at": _iso(row.last_message_created_at),
             "sla_kind": row.sla_kind,

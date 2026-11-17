@@ -3,12 +3,15 @@ import { Search } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
+import ChatList from "@/components/inbox/whatsapp/ChatList";
+import { readSignalBody, supportsReadSignal } from "../components/inbox/whatsapp/readSignal";
+import { visibleRows } from "@/components/inbox/whatsapp/chatListState";
 import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
 import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
 import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
-import { appendLocalMessage, sendReply } from "@/lib/inboxSend";
+import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/lib/inboxSend";
 import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
@@ -52,7 +55,10 @@ function toMessage(message) {
   return {
     id: message.id,
     side: message.direction === "outbound" ? "out" : "in",
-    text: message.body || message.media_type || "",
+    // A file sent without a caption has no text; `media_type` is a code ("audio"),
+    // not something to show.
+    text: message.body || "",
+    fileName: message.filename || "",
     time: displayTime(message.created_at),
     createdAt: message.created_at,
     status: message.status,
@@ -60,6 +66,12 @@ function toMessage(message) {
     ai: message.sender_type === "ai",
     mediaUrl: message.media_url,
     mediaType: message.media_type,
+    contentType: message.content_type || "text",
+    edited: Boolean(message.edited),
+    deleted: Boolean(message.deleted),
+    replyTo: message.reply_to || null,
+    reactions: Array.isArray(message.reactions) ? message.reactions : [],
+    myReaction: message.my_reaction || "",
   };
 }
 
@@ -88,6 +100,17 @@ function toConversation(row, channel, t) {
     assigneeUserId: row.assignee_user_id || null,
     unread: Number(row.unread_count) || 0,
     time: displayTime(row.last_message_at),
+    customerId: row.customer_id || null,
+    lastAt: row.last_message_at || null,
+    lastCustomerMessageAt: row.last_customer_message_at || null,
+    phone: row.customer_phone || "",
+    lastDirection: row.last_message_direction || null,
+    lastContentType: row.last_message_content_type || null,
+    lastStatus: row.last_message_status || null,
+    pinnedAt: row.pinned_at || null,
+    mutedUntil: row.muted_until || null,
+    archivedAt: row.archived_at || null,
+    markedUnread: Boolean(row.marked_unread),
     avatarUrl: row.customer_avatar_url || row.profile_photo_url || row.avatar_url || null,
     hasStory: Boolean(row.has_story || row.story_available || row.story?.available),
     folder: row.folder || row.inbox_folder || row.category || (channel?.id === "instagram" ? "primary" : undefined),
@@ -210,8 +233,15 @@ export default function Inbox() {
     const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
     if (cursor) params.set("cursor", cursor);
     const response = await api(`/inbox?${params.toString()}`);
+    // The default list hides archived chats; the first page also fetches them so
+    // the Archived entry and its view are complete.
+    const archivedResponse = cursor ? null : await api(`/inbox?${new URLSearchParams({ limit: String(INBOX_PAGE_SIZE), archived: "true" }).toString()}`).catch(() => null);
     const page = Object.fromEntries(CHANNELS.map((channel) => [channel.id, []]));
-    for (const row of response?.items ?? []) {
+    const seenIds = new Set();
+    for (const row of [...(response?.items ?? []), ...(archivedResponse?.items ?? [])]) {
+      // One row can only be in one of the two answers, but never trust that.
+      if (seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
       const channel = row.channel || "webchat";
       if (!page[channel]) continue;
       page[channel].push(toConversation(row, getChannel(channel), t));
@@ -384,10 +414,16 @@ export default function Inbox() {
     { id: "general", label: lang === "ar" ? "عام" : "General" },
     { id: "requests", label: lang === "ar" ? "طلبات" : "Requests" },
   ];
+  const visibleWhatsAppRows = useMemo(() => visibleRows(conversations, { tab: "all", query: "", archived: false }), [conversations]);
   const visibleConversations = isInstagram
     ? filtered.filter((conversation) => (conversation.folder || "primary") === instagramFolder)
     : filtered;
-  const current = visibleConversations.find((conversation) => conversation.id === activeId) || visibleConversations[0] || null;
+  // WhatsApp lists are ordered pinned-first and hide archived chats, so the
+  // fallback "first row" must be the first row the person can actually see.
+  const currentPool = isWhatsApp ? visibleWhatsAppRows : visibleConversations;
+  const current = currentPool.find((conversation) => conversation.id === activeId)
+    || (isWhatsApp ? conversations.find((conversation) => conversation.id === activeId) : null)
+    || currentPool[0] || null;
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
   const connectedCount = channels.filter((item) => item.connected).length;
@@ -495,6 +531,14 @@ export default function Inbox() {
       });
       return;
     }
+    // The customer sees blue ticks only when the business really read their message.
+    // A courtesy: a failure is silent and never blocks opening the chat.
+    if (supportsReadSignal(conversation) && !conversation.markedUnread) {
+      api(`/conversations/${conversation.id}/read-signal`, {
+        method: "POST",
+        body: readSignalBody(false),
+      }).catch(() => {});
+    }
     api(`/conversations/${conversation.id}/read`, { method: "POST" })
       .then(() => {
         setConvMap((previous) => ({
@@ -507,7 +551,28 @@ export default function Inbox() {
       .catch((e) => setError(e?.message || "Could not mark the conversation as read."));
   }
 
-  async function handleSend(conversationId, text) {
+  // Pin, mute, archive or mark unread. The server answers with the new state;
+  // the list changes only after it confirms, never on a guess.
+  async function changeListState(conversation, body) {
+    if (isDemoConversation(conversation.id)) return;
+    try {
+      const saved = await api(`/conversations/${conversation.id}/list-state`, { method: "POST", body });
+      setConvMap((previous) => ({
+        ...previous,
+        [activeChannel]: (previous[activeChannel] || []).map((row) => row.id === conversation.id ? {
+          ...row,
+          pinnedAt: saved.pinned_at || null,
+          mutedUntil: saved.muted_until || null,
+          archivedAt: saved.archived_at || null,
+          markedUnread: Boolean(saved.marked_unread),
+        } : row),
+      }));
+    } catch (e) {
+      setError(e?.message || "Could not update the conversation.");
+    }
+  }
+
+  async function handleSend(conversationId, text, opts = {}) {
     if (isDemoConversation(conversationId)) {
       const createdAt = new Date().toISOString();
       const localMessage = {
@@ -540,26 +605,67 @@ export default function Inbox() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text);
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null });
       if (!result.ok) {
         setError(result.error);
         return false;
       }
       const sent = result.sent;
       const createdAt = sent?.created_at || new Date().toISOString();
+      // A file the agent just sent shows from the local copy (the server's link
+      // is signed and arrives with the next load), as its own kind of message.
+      const sentFile = opts.mediaId
+        ? {
+            mediaType: opts.mediaKind,
+            contentType: { image: "image", sticker: "image", audio: "voice", video: "video", document: "file" }[opts.mediaKind],
+            mediaUrl: opts.previewFile ? URL.createObjectURL(opts.previewFile) : undefined,
+            fileName: opts.filename,
+          }
+        : {};
       const localMessage = {
         id: sent?.id || `${conversationId}-${Date.now()}`,
+        // No server id yet: this echo cannot be reacted to until the list reloads.
+        unsaved: !sent?.id,
         side: "out",
+        ...sentFile,
         text,
         time: displayTime(createdAt),
         createdAt,
         status: sent?.status || "queued",
+        // The quote is shown straight away, built from the message being answered.
+        replyTo: opts.replyTo
+          ? {
+              id: opts.replyTo.id,
+              available: true,
+              direction: opts.replyTo.side === "out" ? "outbound" : "inbound",
+              content_type: opts.replyTo.contentType || "text",
+              body: opts.replyTo.text || "",
+            }
+          : null,
       };
-      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text));
+      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text || opts.filename || ""));
       return true;
     } finally {
       setSending(false);
     }
+  }
+
+  // Show the reaction at once, then ask the server; if it refuses, put it back
+  // and say why, so the screen never claims a reaction that was not sent.
+  async function handleReact(conversationId, messageId, emoji, previous = "") {
+    const channelId = activeChannel;
+    if (demoAccount) {
+      setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, emoji, previous));
+      return true;
+    }
+    setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, emoji, previous));
+    const result = await sendReaction(conversationId, messageId, emoji);
+    if (!result.ok) {
+      setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, previous, emoji));
+      setError(result.error);
+      return false;
+    }
+    return true;
   }
 
   async function decideApproval(approval, decision) {
@@ -688,7 +794,7 @@ export default function Inbox() {
         className={cn(
           "grid min-h-0 flex-1 grid-cols-1",
           isWhatsApp
-            ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
+            ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_1px_minmax(0,1fr)] lg:gap-0"
             : isTelegram
               ? "gap-0 lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
               : isInstagram
@@ -700,9 +806,40 @@ export default function Inbox() {
       >
         <div className={cn(
           "bg-card border flex-col min-h-0 overflow-hidden",
-          isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
+          isWhatsApp ? "rounded-none border-0 bg-[var(--wa-bg-panel)]" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
           (isWhatsApp || isMessenger) && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
+          {isWhatsApp ? (
+            loadingInbox ? (
+              <div className="py-10 text-center px-4 text-[13px] text-muted-foreground">{t("common.loading")}</div>
+            ) : inboxLoadError ? (
+              <div role="alert" className="m-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-center text-[12.5px] text-destructive">
+                <p>{inboxLoadError}</p>
+                <button type="button" onClick={() => setInboxRetryAttempt((attempt) => attempt + 1)} className="mt-2 font-medium underline">
+                  {t("common.retry", "Retry")}
+                </button>
+              </div>
+            ) : (
+              <ChatList
+                rows={conversations}
+                activeId={current?.id}
+                lang={lang}
+                ConversationAvatar={ConversationAvatar}
+                onOpen={(conversation) => { selectConversation(conversation); setMobileChatOpen(true); }}
+                onChange={changeListState}
+                footer={(loadingMoreInbox || inboxMoreError || inboxCursor) ? (
+                  <div className="px-3 py-2 text-center text-[11.5px] text-muted-foreground">
+                    {inboxMoreError ? (
+                      <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
+                    ) : loadingMoreInbox ? t("common.loading") : (
+                      <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("inbox.loadMore", "Load more conversations")}</button>
+                    )}
+                  </div>
+                ) : null}
+              />
+            )
+          ) : (
+          <>
           <div className={cn(isTelegram ? "space-y-0 p-2" : isInstagram ? "space-y-3 px-4 pb-3 pt-4" : isMessenger ? "space-y-3 p-4" : "space-y-2.5 p-3", isWhatsApp ? "border-b border-[#d1d7db]" : isTelegram ? "border-b border-[#e4e9ec]" : isInstagram ? "border-b border-[#dbdbdb]" : isMessenger ? "border-b border-[#e4e6eb]" : "border-b border-border")}>
             {isInstagram && <div className="flex items-center justify-between"><h2 className="text-[19px] font-semibold tracking-tight text-[#262626]">{lang === "ar" ? "الرسائل" : "Messages"}</h2>{instagramAccountIdentity && <span dir="ltr" className="text-[12px] font-semibold text-[#8e8e8e]">{instagramAccountIdentity.startsWith("@") ? instagramAccountIdentity : `@${instagramAccountIdentity}`}</span>}</div>}
             {isMessenger && <h2 className="text-[20px] font-bold tracking-[-0.02em] text-[#050505]">{lang === "ar" ? "المحادثات" : "Chats"}</h2>}
@@ -840,6 +977,8 @@ export default function Inbox() {
               </div>
             )}
           </div>
+          </>
+          )}
           {channelStatus && connectedCount === 0 && (
             <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               {t("inbox.noConnectedChannels", "Connect a channel in Settings → Channels to start receiving messages.")}
@@ -858,8 +997,8 @@ export default function Inbox() {
             tabIndex={0}
             className={cn(
               "group relative hidden cursor-col-resize touch-none select-none border-x outline-none transition-colors lg:block",
-              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : isInstagram ? "border-[#dbdbdb] bg-white hover:bg-[#fff2f6] focus-visible:bg-[#fff2f6]" : isTelegram ? "border-[#e4e9ec] bg-white hover:bg-[#eff8fd] focus-visible:bg-[#eff8fd]" : "border-[#d1d7db] bg-[#f7f5f3] hover:bg-[#e8f5ef] focus-visible:bg-[#e8f5ef]",
-              isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : isInstagram ? "bg-[#fff2f6]" : isTelegram ? "bg-[#eff8fd]" : "bg-[#e8f5ef]")
+              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : isInstagram ? "border-[#dbdbdb] bg-white hover:bg-[#fff2f6] focus-visible:bg-[#fff2f6]" : isTelegram ? "border-[#e4e9ec] bg-white hover:bg-[#eff8fd] focus-visible:bg-[#eff8fd]" : "border-x-0 bg-[var(--wa-divider)] before:absolute before:inset-y-0 before:-inset-x-1.5 before:content-[''] hover:bg-[#00a884] focus-visible:bg-[#00a884]",
+              isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : isInstagram ? "bg-[#fff2f6]" : isTelegram ? "bg-[#eff8fd]" : "bg-[var(--wa-bg-hover)]")
             )}
             onPointerDown={handleResizePointerDown}
             onPointerMove={handleResizePointerMove}
@@ -868,8 +1007,8 @@ export default function Inbox() {
             onLostPointerCapture={() => finishChatListResize()}
             onKeyDown={handleResizeKeyDown}
           >
-            <span className={cn("absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors", isMessenger ? "bg-[#e4e6eb] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#dbdbdb] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#e4e9ec] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[#d1d7db] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
-            <span className={cn("absolute left-1/2 top-1/2 h-9 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors", isMessenger ? "bg-[#c4c8ce] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#c4c8ce] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#c4c8ce] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[#c1c9ce] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
+            <span className={cn("absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors", isMessenger ? "bg-[#e4e6eb] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#dbdbdb] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#e4e9ec] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[var(--wa-divider)] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
+            <span className={cn("absolute left-1/2 top-1/2 h-9 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors", isMessenger ? "bg-[#c4c8ce] group-hover:bg-[#0084ff] group-focus-visible:bg-[#0084ff]" : isInstagram ? "bg-[#c4c8ce] group-hover:bg-[#d62976] group-focus-visible:bg-[#d62976]" : isTelegram ? "bg-[#c4c8ce] group-hover:bg-[#2aabee] group-focus-visible:bg-[#2aabee]" : "bg-[var(--wa-divider)] group-hover:bg-[#00a884] group-focus-visible:bg-[#00a884]")} />
           </div>
         )}
 
@@ -896,6 +1035,9 @@ export default function Inbox() {
           error={null}
           t={t}
           onSend={handleSend}
+          onReact={handleReact}
+          onListStateChange={changeListState}
+          pinnedCount={isWhatsApp ? conversations.filter((row) => row.pinnedAt && !row.archivedAt).length : 0}
           onApprove={() => decideApproval(pendingApproval, "APPROVED")}
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />

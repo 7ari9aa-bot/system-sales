@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <!-- original doodles: bubble, heart, star, tag, bag, clock, smile, plus -->
+  <path d="M22 28h30a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H38l-8 8v-8h-8a6 6 0 0 1-6-6V34a6 6 0 0 1 6-6z"/>
+  <path d="M150 40c-6-9-20-3-14 8 3 5 14 12 14 12s11-7 14-12c6-11-8-17-14-8z"/>
+  <path d="m208 30 4 9 10 1-7 7 2 10-9-5-9 5 2-10-7-7 10-1z"/>
+  <path d="M30 120l16-16 22 4 4 22-16 16z"/><circle cx="56" cy="114" r="2"/>
+  <path d="M112 112h28l3 30h-34z"/><path d="M120 112a6 6 0 0 1 12 0"/>
+  <circle cx="196" cy="128" r="16"/><path d="M196 118v10l7 4"/>
+  <circle cx="40" cy="200" r="15"/><path d="M33 204c2 4 5 6 7 6s5-2 7-6"/><circle cx="35" cy="195" r=".8"/><circle cx="45" cy="195" r=".8"/>
+  <path d="M120 188v24M108 200h24"/>
+  <path d="M176 196c8-10 22-4 18 8-2 6-18 14-18 14s-16-8-18-14c-4-12 10-18 18-8z" transform="translate(8 -6) scale(.8)"/>
+</svg>

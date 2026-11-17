@@ -3,6 +3,7 @@ import { MessageCircle, Instagram, MessagesSquare, MessageSquare, Send, Facebook
 import { CHANNELS } from "@/lib/channels";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { WhatsAppChannelBadge } from "@/components/inbox/whatsapp/icons";
 
 const ICONS = { MessageCircle, Instagram, MessagesSquare, MessageSquare, Send, Facebook };
 
@@ -12,6 +13,7 @@ export default function ChannelSwitcher({ active, onSelect, channels = CHANNELS,
     <nav aria-label={t("inbox.title")} className="flex w-full flex-col items-center gap-1.5 overflow-y-auto overflow-x-hidden py-2">
       {channels.map((ch) => {
         const Icon = ICONS[ch.icon] || MessageCircle;
+        const isWhatsAppChannel = ch.id === "whatsapp";
         const isActive = active === ch.id;
         const locked = !ch.connected;
         const unread = Number(unreadByChannel[ch.id]) || 0;
@@ -34,7 +36,12 @@ export default function ChannelSwitcher({ active, onSelect, channels = CHANNELS,
             )}
             style={isActive && !locked ? { background: ch.accent } : undefined}
           >
-            <Icon className={cn("h-[18px] w-[18px]", locked && "opacity-50")} />
+            {isWhatsAppChannel ? (
+              // Active: the tile is already green, so the mark flips to white.
+              <WhatsAppChannelBadge size={22} className={cn(isActive && !locked ? "text-white [&_path:last-child]:fill-[#25d366]" : "text-[#25d366]", locked && "opacity-50")} />
+            ) : (
+              <Icon className={cn("h-[18px] w-[18px]", locked && "opacity-50")} />
+            )}
             {locked && <Lock aria-hidden="true" className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full bg-background p-px opacity-75" />}
             {unread > 0 && (
               <span aria-label={`${unread} unread`} className="absolute -right-0.5 -top-0.5 min-w-[17px] rounded-full bg-[#2aabee] px-1 text-center text-[9px] font-semibold leading-[17px] tabular-nums text-white shadow-sm">

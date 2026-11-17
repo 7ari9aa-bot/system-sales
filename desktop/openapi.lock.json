@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 468,
-    "sha256": "4c2995b15a16b35e6bac03c97ed16d2110c25a06d947a97a6236f5abe56da511",
+    "operations": 472,
+    "sha256": "3797ca2359d71d178b359b7db6b0b0b7e9ef3a2a9d5178c1f787cce0452a6c65",
     "typed_operations": 295
   },
   "spec": {
@@ -10618,6 +10618,63 @@
           "title": "LimitIn",
           "type": "object"
         },
+        "ListStateRequest": {
+          "description": "Shared list flags for one conversation. Only the fields sent change.\n\n``mute`` is a duration: \"8h\" | \"1w\" | \"always\" | \"off\". Anything else is a\nvalidation error, so the client can never write an arbitrary date.",
+          "properties": {
+            "archived": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived"
+            },
+            "marked_unread": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Marked Unread"
+            },
+            "mute": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "8h",
+                    "1w",
+                    "always",
+                    "off"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mute"
+            },
+            "pinned": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pinned"
+            }
+          },
+          "title": "ListStateRequest",
+          "type": "object"
+        },
         "LocationAccessGrant": {
           "description": "PUT body — role_override is the only mutable grant attribute.",
           "properties": {
@@ -14162,6 +14219,31 @@
           "title": "QuoteRequest",
           "type": "object"
         },
+        "ReactionRequest": {
+          "description": "An emoji reaction to one message. An empty emoji withdraws our reaction.",
+          "properties": {
+            "emoji": {
+              "default": "",
+              "maxLength": 16,
+              "title": "Emoji",
+              "type": "string"
+            }
+          },
+          "title": "ReactionRequest",
+          "type": "object"
+        },
+        "ReadSignalRequest": {
+          "description": "Opening a chat sends the read receipt; typing adds the \"typing…\" indicator.",
+          "properties": {
+            "typing": {
+              "default": false,
+              "title": "Typing",
+              "type": "boolean"
+            }
+          },
+          "title": "ReadSignalRequest",
+          "type": "object"
+        },
         "ReceiptEmailRequest": {
           "properties": {
             "email": {
@@ -16470,6 +16552,30 @@
                 }
               ],
               "title": "Body"
+            },
+            "media_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Id"
+            },
+            "reply_to_message_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To Message Id"
             },
             "template_language": {
               "default": "ar",
@@ -33245,6 +33351,228 @@
           ]
         }
       },
+      "/api/v1/conversations/{conversation_id}/list-state": {
+        "post": {
+          "description": "Pin, mute, archive or mark a conversation unread, for the whole store.\n\nThese are inbox-only flags. Nothing is sent to the channel provider.",
+          "operationId": "set_list_state_api_v1_conversations__conversation_id__list_state_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListStateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set List State",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/media": {
+        "post": {
+          "description": "Store a file an agent is about to send. The raw file is the request body.\n\nThe response carries a ``media_id``; the send request names it. Nothing\nreaches the customer from here.",
+          "operationId": "upload_media_api_v1_conversations__conversation_id__media_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Media",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
       "/api/v1/conversations/{conversation_id}/messages": {
         "get": {
           "operationId": "list_messages_api_v1_conversations__conversation_id__messages_get",
@@ -33491,6 +33819,132 @@
           ]
         }
       },
+      "/api/v1/conversations/{conversation_id}/messages/{message_id}/reaction": {
+        "post": {
+          "description": "React to a message with an emoji (an empty emoji withdraws ours).\n\nIt travels as a message of its own (queued, sent by the worker) so it gets the\nsame channel policy, access checks and delivery tracking as any other send.",
+          "operationId": "react_to_message_api_v1_conversations__conversation_id__messages__message_id__reaction_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "message_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Message Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "React To Message",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
       "/api/v1/conversations/{conversation_id}/read": {
         "post": {
           "operationId": "mark_read_api_v1_conversations__conversation_id__read_post",
@@ -33591,6 +34045,122 @@
             }
           },
           "summary": "Mark Read",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/read-signal": {
+        "post": {
+          "description": "Show the customer the blue ticks (and, while we type, \"typing…\") on WhatsApp.\n\nThis is separate from ``/read``, which only clears OUR unread badge. It needs\nthe same rights as sending, because the customer sees it as the business acting.\nA failure is reported as ``sent: false`` and never raised: it is a courtesy.",
+          "operationId": "send_read_signal_api_v1_conversations__conversation_id__read_signal_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadSignalRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Send Read Signal",
           "tags": [
             "inbox"
           ]
@@ -42199,6 +42769,16 @@
                   }
                 ],
                 "title": "Customer Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "archived",
+              "required": false,
+              "schema": {
+                "default": false,
+                "title": "Archived",
+                "type": "boolean"
               }
             },
             {
