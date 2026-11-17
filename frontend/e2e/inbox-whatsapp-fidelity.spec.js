@@ -208,10 +208,65 @@ test("the contact panel is a flat side panel with the real number and reply wind
   await expect(panel).toBeVisible();
   const st = await panel.evaluate((el) => { const s = getComputedStyle(el); return { shadow: s.boxShadow, w: el.getBoundingClientRect().width }; });
   expect(st.shadow).toBe("none");
-  expect(st.w).toBeLessThanOrEqual(390);
+  expect(st.w).toBeLessThanOrEqual(320);
   await expect(page.getByTestId("info-about-phone")).toContainText("+20");
   await expect(page.getByTestId("info-window")).toBeVisible();
   const box = await panel.boundingBox();
   expect(box.x + box.width).toBeLessThanOrEqual(1280);
   expect(box.x).toBeGreaterThanOrEqual(0);
+});
+
+// The strip around the input capsule is transparent (the chat wallpaper shows through),
+// and the filter pills never scroll sideways.
+test("the input strip is transparent and the filter pills have no scrollbar", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const strip = await page.getByTestId("composer-capsule").evaluate((el) => {
+    let n = el.parentElement; const out = [];
+    while (n && !n.matches('[data-testid="chat-view"], main')) { const s = getComputedStyle(n); out.push([s.backgroundColor, s.borderTopWidth]); n = n.parentElement; if (out.length > 4) break; }
+    return out.slice(0, 4);
+  });
+  for (const [bg, bw] of strip.slice(0, 3)) { expect(bg).toBe("rgba(0, 0, 0, 0)"); expect(bw).toBe("0px"); }
+  const tabs = await page.getByRole("tablist").first().evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, ox: getComputedStyle(el).overflowX }));
+  expect(tabs.sw).toBeLessThanOrEqual(tabs.cw);
+  expect(tabs.ox).not.toBe("auto");
+  expect(tabs.ox).not.toBe("scroll");
+});
+
+// In the real WhatsApp the chat narrows to make room for the contact panel, and the
+// panel is plain white with no grey bands between its sections.
+test("opening the contact panel narrows the chat instead of covering it", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const input = page.getByTestId("composer-capsule");
+  const before = await input.boundingBox();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const after = await input.boundingBox();
+  const p = await panel.boundingBox();
+  expect(after.width).toBeLessThan(before.width - 250);
+  expect(after.x + after.width).toBeLessThanOrEqual(p.x + 1);
+  const bg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).toBe("rgb(255, 255, 255)");
+});
+
+// Contact panel details copied from WhatsApp Web: a person icon in a pink circle,
+// a "Media, links and docs" row with a count and a chevron, and a hairline between sections.
+test("the contact panel has the person avatar, the media row and section hairlines", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const av = await panel.getByTestId("contact-name").evaluate((el) => { const a = el.previousElementSibling; const r = a.getBoundingClientRect(); return { bg: getComputedStyle(a).backgroundColor, w: Math.round(r.width), svg: !!a.querySelector("svg"), text: a.textContent.trim() }; });
+  expect(av.bg).toBe("rgb(255, 218, 231)");
+  expect(av.w).toBe(80);
+  expect(av.svg).toBe(true);
+  expect(av.text).toBe("");
+  const row = panel.getByTestId("info-media-row");
+  await expect(row).toBeVisible();
+  expect(await row.locator("svg").count()).toBe(2);
+  const borders = await panel.locator("section").evaluateAll((els) => els.slice(0, -1).map((e) => getComputedStyle(e).borderBottomWidth));
+  for (const b of borders) expect(b).toBe("1px");
 });

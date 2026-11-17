@@ -279,7 +279,7 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "wa-scope rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
+      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? cn("wa-scope rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0", contactDrawerOpen && "lg:pe-[308px]") : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}
     >
       {isWhatsApp ? (
@@ -605,8 +605,8 @@ export default function ChannelChat({
 
       {/* Input Bar */}
       <div
-        className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-3 py-1 sm:px-4", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
-        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "var(--wa-bg-header)" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: "1px solid " + th.inputBorder }}
+        className={cn("shrink-0 p-2 relative z-20", isWhatsApp && "px-0 py-0", isInstagram && "px-3 py-2", isMessenger && "px-4 py-3", isTelegram && "px-2 py-1 sm:px-3 sm:py-1.5")}
+        style={isApp ? { background: "hsl(var(--card))", borderTop: "1px solid hsl(var(--border))" } : { background: isWhatsApp ? "transparent" : isTelegram ? "#f5f6f7" : isInstagram ? "#fff" : isMessenger ? "#fff" : th.inputBg, borderTop: isWhatsApp ? "none" : "1px solid " + th.inputBorder }}
       >
         {isWhatsApp && isRecordingVoice ? (
           <VoiceRecorder
