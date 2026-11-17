@@ -75,9 +75,10 @@ export default function Composer({
         </div>
       )}
 
-      <div dir="ltr" className="flex min-h-[52px] items-end gap-1 px-1 py-1.5">
-        <button type="button" onClick={onToggleEmoji} aria-label={w.emoji} title={w.emoji} data-testid="composer-emoji" className={iconBtn}><EmojiIcon size={26} /></button>
+      <div className="px-2 pb-2.5 pt-1.5 sm:px-3 sm:pb-3">
+      <div dir="ltr" data-testid="composer-capsule" className="flex min-h-[52px] items-end gap-0 rounded-[28px] bg-[var(--wa-bg-capsule)] px-1 py-1 sm:gap-0.5 sm:px-2 shadow-[0_1px_3px_rgba(11,20,26,0.13)]">
         <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label={w.attach} aria-haspopup="menu" aria-expanded={menuOpen} title={w.attach} data-testid="composer-attach" className={iconBtn}><PlusIcon size={26} className={menuOpen ? "rotate-45 transition-transform" : "transition-transform"} /></button>
+        <button type="button" onClick={onToggleEmoji} aria-label={w.emoji} title={w.emoji} data-testid="composer-emoji" className={iconBtn}><EmojiIcon size={26} /></button>
         <AttachMenu open={menuOpen} onClose={() => setMenuOpen(false)} onPick={(file, opts) => onPickFile?.(file, opts)} lang={lang} />
         <div className="mx-1 min-w-0 flex-1">
           <textarea
@@ -95,7 +96,7 @@ export default function Composer({
             aria-invalid={warn?.over || undefined}
             data-testid="composer-input"
             readOnly={sending}
-            className="block max-h-[122px] w-full resize-none rounded-[22px] border border-[color:var(--wa-header-rule)] bg-[var(--wa-bg-header)] px-4 py-[11px] text-[15px] leading-5 text-[color:var(--wa-text)] placeholder:text-[color:var(--wa-text-secondary)] focus:outline-none"
+            className="block max-h-[122px] w-full resize-none rounded-none border-0 bg-transparent px-1.5 py-[13px] sm:px-2 text-[15px] leading-5 text-[color:var(--wa-text)] placeholder:text-[color:var(--wa-text-secondary)] focus:outline-none"
           />
           {warn && (
             <div data-testid="composer-count" aria-live="polite" className={cn("px-1 pt-0.5 text-end text-[12px]", warn.over ? "text-[color:var(--wa-danger)]" : "text-[color:var(--wa-text-secondary)]")}>
@@ -110,6 +111,7 @@ export default function Composer({
         ) : (
           <button type="button" onClick={() => onStartVoice?.()} aria-label={w.voice} title={w.voice} data-testid="composer-voice" className={iconBtn}><MicIcon size={24} /></button>
         )}
+      </div>
       </div>
     </div>
   );

@@ -145,3 +145,73 @@ test("light: surfaces match the real WhatsApp Web screenshot", async ({ page }) 
     wallpaper: "rgb(245, 241, 235)",
   });
 });
+
+// The filter pills sampled from the real WhatsApp screenshot: the active one is
+// pale green with a green hairline, the idle ones are WHITE with a grey hairline
+// (not filled grey), all fully round.
+test("filter pills match WhatsApp: active green, idle white with a hairline", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  const css = (id) => page.getByTestId(`tab-${id}`).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { bg: s.backgroundColor, border: s.borderTopColor, width: s.borderTopWidth, radius: s.borderTopLeftRadius, color: s.color, h: el.getBoundingClientRect().height };
+  });
+  const active = await css("all");
+  expect(active.bg).toBe("rgb(217, 253, 211)");
+  expect(active.border).toBe("rgb(175, 202, 170)");
+  const idle = await css("unread");
+  expect(idle.bg).toBe("rgb(255, 255, 255)");
+  expect(idle.border).toBe("rgb(204, 204, 204)");
+  expect(idle.color).toBe("rgb(102, 102, 102)");
+  expect(idle.width).toBe("1px");
+  expect(parseFloat(idle.radius)).toBeGreaterThan(10);
+  // The sampled pills are ~28px tall at 1x.
+  expect(active.h).toBeGreaterThanOrEqual(26);
+  expect(active.h).toBeLessThanOrEqual(32);
+});
+
+// The WhatsApp input is ONE white capsule: attach, emoji, the field and the mic all
+// live inside it, with no border of their own and a soft shadow under it.
+test("the input bar is a single white capsule holding every control", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const capsule = page.getByTestId("composer-capsule");
+  await expect(capsule).toBeVisible();
+  const cs = await capsule.evaluate((el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, r: parseFloat(s.borderTopLeftRadius), shadow: s.boxShadow, h: el.getBoundingClientRect().height }; });
+  expect(cs.bg).toBe("rgb(255, 255, 255)");
+  expect(cs.r).toBeGreaterThanOrEqual(24);
+  expect(cs.shadow).not.toBe("none");
+  expect(cs.h).toBeGreaterThanOrEqual(52);
+  const box = await capsule.boundingBox();
+  for (const id of ["composer-attach", "composer-emoji", "composer-input", "composer-voice"]) {
+    const b = await page.getByTestId(id).boundingBox();
+    expect(b.x, id).toBeGreaterThanOrEqual(box.x);
+    expect(b.x + b.width, id).toBeLessThanOrEqual(box.x + box.width + 1);
+    expect(b.y, id).toBeGreaterThanOrEqual(box.y - 1);
+    expect(b.y + b.height, id).toBeLessThanOrEqual(box.y + box.height + 1);
+  }
+  const field = await page.getByTestId("composer-input").evaluate((el) => { const s = getComputedStyle(el); return { w: s.borderTopWidth, bg: s.backgroundColor }; });
+  expect(field.w).toBe("0px");
+  expect(field.bg).toBe("rgba(0, 0, 0, 0)");
+  // attach is first from the left, like WhatsApp.
+  const att = await page.getByTestId("composer-attach").boundingBox();
+  const emo = await page.getByTestId("composer-emoji").boundingBox();
+  expect(att.x).toBeLessThan(emo.x);
+});
+
+// Clicking the name opens the contact panel: a flat side panel (no floating shadow)
+// that shows the number and the real reply-window state, nothing invented.
+test("the contact panel is a flat side panel with the real number and reply window", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const st = await panel.evaluate((el) => { const s = getComputedStyle(el); return { shadow: s.boxShadow, w: el.getBoundingClientRect().width }; });
+  expect(st.shadow).toBe("none");
+  expect(st.w).toBeLessThanOrEqual(390);
+  await expect(page.getByTestId("info-about-phone")).toContainText("+20");
+  await expect(page.getByTestId("info-window")).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box.x + box.width).toBeLessThanOrEqual(1280);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+});

@@ -78,7 +78,7 @@ export default function ChatHeader({
           <MoreIcon size={20} />
         </button>
         {menuOpen && (
-          <div className="absolute end-0 top-11 z-30" dir={lang === "ar" ? "rtl" : "ltr"}>
+          <div data-testid="header-menu" className="absolute right-0 top-11 z-30 max-w-[calc(100vw-16px)]" dir={lang === "ar" ? "rtl" : "ltr"}>
             <ChatListMenu row={conversation} lang={lang} pinnedCount={pinnedCount} onChange={onChange} onClose={closeMenu} />
           </div>
         )}
