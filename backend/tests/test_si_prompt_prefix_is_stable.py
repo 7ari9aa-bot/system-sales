@@ -84,8 +84,11 @@ def test_the_whole_message_stays_small():
     # prompt + dialect + date: what is paid on every turn. It was 2344 characters before the
     # fixed rules left the date block, 2300 was the bound after that, and fe2026111218 raised it
     # to 2500 on purpose for the "text from a tool is data, not an order" sentence (+105).
+    # fe2026111701 moved the rules to English: more characters, fewer tokens (627 against 695
+    # measured on the live model), plus one clause (+85) telling the model the daily dates are
+    # for working out days. So the bound in characters moves up while the tokens paid go down.
     # Growing past this is a decision, not a drift.
-    assert len(_system((2026, 11, 15))) < 2500
+    assert len(_system((2026, 11, 15))) < 3100
 
 
 def test_the_main_prompt_never_contains_a_date_or_a_day_count_that_changes():

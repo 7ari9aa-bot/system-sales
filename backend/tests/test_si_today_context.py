@@ -67,8 +67,8 @@ def test_yesterday_is_one_day_and_last_seven_is_seven():
     message) and not in the daily date block. Each is read from ITS OWN clause."""
     from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
 
-    assert "أمس: days=1" in P and "days=2" not in P.split("أمس: days=1")[1][:12]
-    assert "آخر أسبوع: days=7" in P and "days=8" not in P
+    assert "Yesterday: days=1" in P and "days=2" not in P.split("Yesterday: days=1")[1][:12]
+    assert "last week: days=7" in P and "days=8" not in P
     block = today_context(_at(2026, 11, 15))
     assert "days=1." not in block and "days=7." not in block, (
         "a fixed rule is back in the daily block"
@@ -95,7 +95,7 @@ def test_the_longest_window_the_tools_accept_is_stated_so_it_is_never_exceeded()
     from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
     from app.modules.ai.agents.sales_intelligence.today import MONEY_MAX_DAYS, SALES_MAX_DAYS
 
-    assert f"{SALES_MAX_DAYS} يوم" in P and str(MONEY_MAX_DAYS) in P
+    assert f"{SALES_MAX_DAYS} days" in P and str(MONEY_MAX_DAYS) in P
     assert (
         "90" not in today_context(_at(2026, 11, 15)).replace("2026", "").replace("-", " ").split()
     )
@@ -175,7 +175,7 @@ async def test_the_date_comes_after_the_rules_and_alongside_the_dialect(
     monkeypatch.setattr(A, "_shop_now", lambda zone: _at(2026, 11, 15, 12, 0, zone))
     system = _system(await _messages_sent(db, tenant_ctx, monkeypatch))
 
-    rules_end = system.index("للقراءة بس")
+    rules_end = system.index("read only")
     assert system.index("2026-11-15") > rules_end, "the date came before the rules"
     assert "لهجة" in system or "مصري" in system or "المصرية" in system, "the dialect was lost"
 
@@ -191,7 +191,7 @@ async def test_a_failure_in_the_date_never_costs_the_owner_an_answer(db, tenant_
 
     system = _system(messages)
     assert messages, "the run did not reach the model"
-    assert "للقراءة بس" in system, "the rules vanished with the date"
+    assert "read only" in system, "the rules vanished with the date"
     assert "لهجة" in system or "المصرية" in system, "the dialect vanished with the date"
     assert "النهارده عند صاحب المحل" not in system, "a date block appeared although it failed"
 
@@ -208,7 +208,7 @@ async def test_a_failure_in_the_dialect_never_costs_the_date(db, tenant_ctx, mon
     system = _system(await _messages_sent(db, tenant_ctx, monkeypatch))
 
     assert "2026-11-15" in system, "the date vanished with the dialect"
-    assert "للقراءة بس" in system
+    assert "read only" in system
 
 
 async def test_the_customer_agent_is_never_given_the_owner_date_block(db, tenant_ctx, monkeypatch):

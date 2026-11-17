@@ -61,40 +61,43 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
 def test_the_prompt_keeps_the_sales_means_money_rule_and_names_real_metrics() -> None:
     from app.modules.analytics import compiler
 
-    assert "ابدأ بالإيراد المسلَّم (delivered_revenue" in SI_SYSTEM_PROMPT
+    assert "Start with delivered_revenue" in SI_SYSTEM_PROMPT
     computable = compiler.computable_metric_names()
     for name in ("delivered_revenue", "collected_revenue", "orders_placed"):
         assert name in SI_SYSTEM_PROMPT
         assert name in computable, f"the prompt sends the model to {name}, which no tool computes"
 
 
+_TEXT = _load()._NEW  # the text this migration wrote (history), not the code of today
+
+
 def test_the_prompt_asks_for_short_on_topic_answers() -> None:
-    assert "جاوب على اللي اتسأل بس" in SI_SYSTEM_PROMPT
-    assert "بأقصر شكل" in SI_SYSTEM_PROMPT
+    assert "جاوب على اللي اتسأل بس" in _TEXT
+    assert "بأقصر شكل" in _TEXT
 
 
 def test_a_greeting_gets_one_short_line_with_no_tools_and_no_menu() -> None:
-    assert "تحية" in SI_SYSTEM_PROMPT
-    assert "جملة واحدة قصيرة" in SI_SYSTEM_PROMPT
-    assert "من غير أدوات" in SI_SYSTEM_PROMPT
-    assert "قوائم اقتراحات" in SI_SYSTEM_PROMPT
+    assert "تحية" in _TEXT
+    assert "جملة واحدة قصيرة" in _TEXT
+    assert "من غير أدوات" in _TEXT
+    assert "قوائم اقتراحات" in _TEXT
 
 
 def test_the_prompt_forbids_internal_names_and_says_what_to_say_instead() -> None:
-    assert "متكتبش أبداً أسماء داخلية" in SI_SYSTEM_PROMPT
-    assert "الفلوس اللي اتحصّلت" in SI_SYSTEM_PROMPT
-    assert "المرتجعات" in SI_SYSTEM_PROMPT
+    assert "متكتبش أبداً أسماء داخلية" in _TEXT
+    assert "الفلوس اللي اتحصّلت" in _TEXT
+    assert "المرتجعات" in _TEXT
 
 
 def test_the_prompt_answers_in_the_owners_own_language() -> None:
-    assert "بنفس لغة وأسلوب صاحب المحل" in SI_SYSTEM_PROMPT
+    assert "بنفس لغة وأسلوب صاحب المحل" in _TEXT
 
 
 def test_the_prompt_stays_small_because_every_word_is_paid_for_on_every_message() -> None:
     # raised on purpose from 1400 by fe2026111215: the assistant now covers the whole shop, reads a
     # period from the date and tells three kinds of "no data" apart. Every line was measured and the
     # duplicated rules were removed (about +280 tokens a turn). Growing past this is a decision.
-    assert len(SI_SYSTEM_PROMPT) < 2100
+    assert len(_TEXT) < 2100
 
 
 @pytest.fixture

@@ -23,7 +23,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 PATH = VERSIONS / "fe2026111217_si_prompt_arabic_only_plain_numbers.py"
@@ -199,8 +198,11 @@ async def test_updated_at_moves_for_the_rows_it_changes_and_not_for_the_rest(adm
     assert rows[kept] == 2020
 
 
+_TEXT = _load()._NEW  # the text this migration wrote (history), not the code of today
+
+
 def test_the_prompt_asks_for_arabic_and_plain_numbers_in_the_answer_paragraph() -> None:
-    answer = next(p for p in SI_SYSTEM_PROMPT.split("\n") if p.startswith("الرد:"))
+    answer = next(p for p in _TEXT.split("\n") if p.startswith("الرد:"))
     assert "بعربي بس" in answer, "the model is not told to stay in Arabic"
     assert "من غير نجوم" in answer, "the model is not told to avoid markdown stars"
     assert "الأرقام والتواريخ" in answer
@@ -219,9 +221,9 @@ def test_no_other_rule_was_dropped_to_make_room() -> None:
         "أسماء الأدوات",
         "حالة البيانات",
     ):
-        assert kept in SI_SYSTEM_PROMPT, f"{kept!r} was lost while shortening"
+        assert kept in _TEXT, f"{kept!r} was lost while shortening"
 
 
 def test_it_still_fits_the_size_bound() -> None:
     # the bound was 1900 when this migration was written; fe2026111218 raised it to 2100 on purpose
-    assert len(SI_SYSTEM_PROMPT) < 2100
+    assert len(_TEXT) < 2100
