@@ -115,6 +115,8 @@ class ReadSignalService:
                 ProviderCredentials(config=config), provider_id, typing=typing
             )
         except Exception as exc:  # noqa: BLE001 - a courtesy signal never blocks the agent
-            logger.warning("whatsapp.read_signal_failed conversation=%s err=%s", conversation.id, exc)
+            logger.warning(
+                "whatsapp.read_signal_failed conversation=%s err=%s", conversation.id, exc
+            )
             return ReadSignalResult(False, "provider_error")
         return ReadSignalResult(True)

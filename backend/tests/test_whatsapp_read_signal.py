@@ -162,15 +162,23 @@ async def test_typing_sends_the_indicator(db, tenant_ctx, spy) -> None:
 @pytest.mark.asyncio
 async def test_it_refers_to_the_newest_customer_message(db, tenant_ctx, spy) -> None:
     cid = await _chat(db, tenant_ctx, "wamid.FIRST")
-    second = await _customer_message(db, tenant_ctx.tenant_id, "201001234567", "wamid.SECOND", "again")
+    second = await _customer_message(
+        db, tenant_ctx.tenant_id, "201001234567", "wamid.SECOND", "again"
+    )
     assert second == cid
     # Stored in one instant, as a webhook batch is: only the provider's own time differs.
-    rows = (await db.execute(sa.select(Message).where(Message.conversation_id == cid))).scalars().all()
+    rows = (
+        (await db.execute(sa.select(Message).where(Message.conversation_id == cid))).scalars().all()
+    )
     same = rows[0].created_at
     for m in rows:
         m.created_at = same
         m.payload = {
-            "raw": {"timestamp": "1700000009" if m.channel_message_id == "wamid.SECOND" else "1700000001"}
+            "raw": {
+                "timestamp": "1700000009"
+                if m.channel_message_id == "wamid.SECOND"
+                else "1700000001"
+            }
         }
     await db.flush()
     ctx = await ctx_for(db, tenant_ctx, "owner")
@@ -181,7 +189,9 @@ async def test_it_refers_to_the_newest_customer_message(db, tenant_ctx, spy) -> 
 @pytest.mark.asyncio
 async def test_outside_the_24h_window_nothing_is_sent(db, tenant_ctx, spy) -> None:
     cid = await _chat(db, tenant_ctx)
-    (await _conversation(db, cid)).last_customer_message_at = datetime.now(UTC) - timedelta(hours=25)
+    (await _conversation(db, cid)).last_customer_message_at = datetime.now(UTC) - timedelta(
+        hours=25
+    )
     await db.flush()
     ctx = await ctx_for(db, tenant_ctx, "owner")
     out = await send_read_signal(cid, ReadSignalRequest(typing=True), ctx=ctx)
