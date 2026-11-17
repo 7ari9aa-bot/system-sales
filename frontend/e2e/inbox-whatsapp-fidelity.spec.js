@@ -81,3 +81,27 @@ test("the WhatsApp avatar is the grey person disc, in both themes", async ({ pag
     expect([bg, list]).toContain(want);
   }
 });
+
+test("the list uses WhatsApp Web's own type sizes and 72px rows", async ({ page }) => {
+  await boot(page, "light", { width: 1440, height: 900 });
+  const m = await page.evaluate(() => {
+    const row = document.querySelector("[data-testid=chat-row]");
+    const px = (e) => parseFloat(getComputedStyle(e).fontSize);
+    return {
+      rowHeight: Math.round(row.getBoundingClientRect().height),
+      name: px(row.querySelector("span[dir=auto]")),
+      preview: px(row.querySelector("p")),
+      search: px(document.querySelector("[data-testid=chat-list] input")),
+      tab: px(document.querySelector("[data-testid=tab-all]")),
+    };
+  });
+  expect(m).toMatchObject({ name: 17, preview: 14, search: 15, tab: 14 });
+  expect(m.rowHeight).toBeGreaterThanOrEqual(72);
+  expect(m.rowHeight).toBeLessThanOrEqual(73);
+});
+
+test("the chat header has no video or call controls, only search and more", async ({ page }) => {
+  await boot(page, "light", { width: 1440, height: 900 });
+  const labels = await page.getByTestId("chat-header").locator("button").evaluateAll((b) => b.map((x) => x.dataset.testid));
+  expect(labels.filter((l) => l !== "header-back")).toEqual(["header-identity", "header-search", "header-more"]);
+});

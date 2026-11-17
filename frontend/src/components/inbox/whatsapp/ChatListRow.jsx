@@ -34,7 +34,7 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
         type="button"
         aria-pressed={active}
         onClick={onOpen}
-        className={cn("flex min-w-0 flex-1 gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]", lang === "ar" ? "text-right" : "text-left")}
+        className={cn("flex min-h-[72px] min-w-0 flex-1 gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]", lang === "ar" ? "text-right" : "text-left")}
       >
         <div className="shrink-0">
           {ConversationAvatar ? (
@@ -45,14 +45,14 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span dir="auto" className={cn("truncate text-[15px] text-[color:var(--wa-text)]", unread && "font-semibold")}>{row.customer}</span>
-            <span dir="ltr" className={cn("shrink-0 text-[11.5px]", unread && !muted ? "font-medium text-[#1fa855]" : "text-[color:var(--wa-text-secondary)]")}>
+            <span dir="auto" className={cn("truncate text-[17px] leading-[21px] text-[color:var(--wa-text)]", unread && "font-semibold")}>{row.customer}</span>
+            <span dir="ltr" className={cn("shrink-0 text-[12px]", unread && !muted ? "font-medium text-[#1fa855]" : "text-[color:var(--wa-text-secondary)]")}>
               {listTimestamp(row.lastAt, lang)}
             </span>
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1">
             {mine && <MessageStatus status={row.lastStatus} lang={lang} className="shrink-0" />}
-            <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[13.5px]", unread ? "text-[color:var(--wa-text)]" : "text-[color:var(--wa-text-secondary)]")}>{row.preview}</p>
+            <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[14px] leading-[20px]", unread ? "text-[color:var(--wa-text)]" : "text-[color:var(--wa-text-secondary)]")}>{row.preview}</p>
             <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--wa-text-secondary)]">
               {muted && <MuteIcon size={15} role="img" aria-hidden={false} aria-label={w.muted} />}
               {pinned && <PushPinIcon size={15} role="img" aria-hidden={false} aria-label={w.pinned} />}

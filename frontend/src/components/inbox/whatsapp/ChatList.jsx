@@ -47,7 +47,7 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
             dir={lang === "ar" ? "rtl" : "ltr"}
             aria-label={w.search}
             placeholder={w.search}
-            className={cn("h-9 w-full rounded-lg border border-[color:var(--wa-bg-input)] bg-[var(--wa-bg-input)] text-[13.5px] placeholder:text-[color:var(--wa-text-secondary)] focus:border-[color:var(--wa-green)] focus:outline-none", lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3")}
+            className={cn("h-10 w-full rounded-lg lg:h-[35px] border border-[color:var(--wa-bg-input)] bg-[var(--wa-bg-input)] text-[15px] placeholder:text-[color:var(--wa-text-secondary)] focus:border-[color:var(--wa-green)] focus:outline-none", lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3")}
           />
         </div>
         {!archiveView && (
@@ -61,7 +61,7 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
                 data-testid={`tab-${id}`}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "whitespace-nowrap rounded-full px-3.5 py-2.5 text-[13px] sm:px-3 sm:py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]",
+                  "whitespace-nowrap rounded-full px-3.5 py-2.5 text-[14px] sm:px-3 sm:py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]",
                   tab === id ? "bg-[var(--wa-pill-active)] font-medium text-[color:var(--wa-green-text)]" : "bg-[var(--wa-bg-input)] text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-chip)]",
                 )}
               >
