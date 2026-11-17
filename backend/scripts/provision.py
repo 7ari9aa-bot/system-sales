@@ -165,8 +165,10 @@ def _rls_statements() -> list[str]:
 # is acknowledged while ingesting nothing. SECURITY DEFINER runs the lookup as
 # the table owner and returns ONLY the tenant id, so provider credentials in
 # integrations.config never leave the table. search_path is pinned — mandatory
-# for SECURITY DEFINER. Kept identical to migration c0a2026f0199 so an
-# already-provisioned database converges.
+# for SECURITY DEFINER. Kept identical to the LATEST migration that defines it
+# (fe2026101711, which added facebook) so an already-provisioned database
+# converges. provision runs after every `alembic upgrade head`, so a stale copy
+# here silently removes a channel from routing.
 CHANNEL_TENANT_FN_SQL = """
 CREATE OR REPLACE FUNCTION public.resolve_channel_tenant(p_provider text, p_key text)
 RETURNS uuid
@@ -185,6 +187,7 @@ AS $fn$
              WHEN 'telegram' THEN i.config->>'public_key'
              WHEN 'messenger' THEN i.config->>'account_id'
              WHEN 'instagram' THEN i.config->>'account_id'
+             WHEN 'facebook' THEN COALESCE(i.config->>'account_id', i.config->>'page_id')
              WHEN 'webchat' THEN i.config->>'public_key'
              ELSE NULL
            END
@@ -200,6 +203,8 @@ AS $fn$
                       WHEN 'telegram' THEN duplicate.config->>'public_key'
                       WHEN 'messenger' THEN duplicate.config->>'account_id'
                       WHEN 'instagram' THEN duplicate.config->>'account_id'
+                      WHEN 'facebook' THEN COALESCE(duplicate.config->>'account_id',
+                           duplicate.config->>'page_id')
                       WHEN 'webchat' THEN duplicate.config->>'public_key'
                       ELSE NULL
                     END
