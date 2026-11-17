@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import ChatListMenu from "./ChatListMenu";
 import MessageStatus from "./MessageStatus";
-import { ChevronDownIcon, MuteIcon, PushPinIcon } from "./icons";
+import { CameraIcon, ChevronDownIcon, FileIcon, MicIcon, MuteIcon, PushPinIcon } from "./icons";
 import { badgeCount, isMuted, isUnread, listTimestamp } from "./chatListState";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,8 @@ const WORDS = {
  * One row of the chat list. A row is a div with a real button for opening the
  * chat, so the options button next to it is not nested inside another button.
  */
+const KIND_GLYPH = { image: CameraIcon, video: CameraIcon, sticker: CameraIcon, document: FileIcon, file: FileIcon, audio: MicIcon, voice: MicIcon };
+
 export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0, onOpen, onChange, ConversationAvatar }) {
   const w = WORDS[lang] || WORDS.en;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -22,6 +24,7 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
   const muted = isMuted(row);
   const pinned = Boolean(row.pinnedAt);
   const mine = row.lastDirection === "outbound";
+  const KindGlyph = KIND_GLYPH[row.lastContentType] || null;
 
   return (
     <div
@@ -52,6 +55,7 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1">
             {mine && <MessageStatus status={row.lastStatus} lang={lang} className="shrink-0" />}
+            {KindGlyph && <KindGlyph size={16} className="shrink-0 text-[color:var(--wa-text-secondary)]" aria-hidden="true" />}
             <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[14px] leading-[20px]", unread ? "text-[color:var(--wa-text)]" : "text-[color:var(--wa-text-secondary)]")}>{row.preview}</p>
             <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--wa-text-secondary)]">
               {muted && <MuteIcon size={15} role="img" aria-hidden={false} aria-label={w.muted} />}

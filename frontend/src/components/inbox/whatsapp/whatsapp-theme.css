@@ -3,9 +3,11 @@
    component. Values are WhatsApp Web's. The brand greens and the red used for
    errors keep their identity in both modes and only shift for contrast. */
 :root {
-  --wa-bg-chat: #efeae2;        /* the wallpaper behind messages */
+  --wa-bg-chat: #f5f1eb;        /* the wallpaper behind messages */
   --wa-bg-panel: #ffffff;       /* list, header, info panel */
-  --wa-bg-input: #f0f2f5;       /* input bar, search field, pills */
+  --wa-bg-input: #f6f5f4;       /* search field, pills */
+  --wa-bg-header: #ffffff;      /* chat header and composer: white, like the real app */
+  --wa-header-rule: #e7e1d8;    /* the hairline under the chat header */
   --wa-bg-hover: #f5f6f6;       /* hover and secondary surfaces */
   --wa-bg-chip: #e9edef;        /* pressed pills, disabled fields */
   --wa-bubble-out: #d9fdd3;
@@ -15,9 +17,9 @@
   --wa-text-secondary: #5b6b76; /* WhatsApp's #667781 is 4.29:1 on the hover grey; this clears 4.5:1 on every light surface */
   --wa-text-icon: #54656f;
   --wa-text-faint: #8696a0;
-  --wa-divider: #d1d7db;
-  --wa-avatar-bg: #dfe5e7;      /* the default grey avatar */
-  --wa-avatar-fg: #ffffff;
+  --wa-divider: #dedad4;
+  --wa-avatar-bg: #caecfa;      /* the default avatar disc, as in the real app */
+  --wa-avatar-fg: #54656f;
   --wa-green: #00a884;
   --wa-green-text: #025144;     /* text on the light-green pill */
   --wa-pill-active: #d9fdd3;
@@ -35,6 +37,8 @@
   --wa-bg-chat: #0b141a;
   --wa-bg-panel: #111b21;
   --wa-bg-input: #202c33;
+  --wa-bg-header: #202c33;
+  --wa-header-rule: #222d34;
   --wa-bg-hover: #182229;
   --wa-bg-chip: #2a3942;
   --wa-bubble-out: #005c4b;

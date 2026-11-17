@@ -95,7 +95,7 @@ export default function Composer({
             aria-invalid={warn?.over || undefined}
             data-testid="composer-input"
             readOnly={sending}
-            className="block max-h-[122px] w-full resize-none rounded-lg border-0 bg-[var(--wa-bg-input)] px-3 py-[11px] text-[15px] leading-5 text-[color:var(--wa-text)] placeholder:text-[color:var(--wa-text-secondary)] focus:outline-none"
+            className="block max-h-[122px] w-full resize-none rounded-[22px] border border-[color:var(--wa-header-rule)] bg-[var(--wa-bg-header)] px-4 py-[11px] text-[15px] leading-5 text-[color:var(--wa-text)] placeholder:text-[color:var(--wa-text-secondary)] focus:outline-none"
           />
           {warn && (
             <div data-testid="composer-count" aria-live="polite" className={cn("px-1 pt-0.5 text-end text-[12px]", warn.over ? "text-[color:var(--wa-danger)]" : "text-[color:var(--wa-text-secondary)]")}>

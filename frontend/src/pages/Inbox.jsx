@@ -104,6 +104,7 @@ function toConversation(row, channel, t) {
     lastCustomerMessageAt: row.last_customer_message_at || null,
     phone: row.customer_phone || "",
     lastDirection: row.last_message_direction || null,
+    lastContentType: row.last_message_content_type || null,
     lastStatus: row.last_message_status || null,
     pinnedAt: row.pinned_at || null,
     mutedUntil: row.muted_until || null,
@@ -784,7 +785,7 @@ export default function Inbox() {
         className={cn(
           "grid min-h-0 flex-1 grid-cols-1",
           isWhatsApp
-            ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:gap-0"
+            ? "grid-rows-[minmax(0,1fr)] lg:grid-cols-[var(--inbox-chat-list-width)_1px_minmax(0,1fr)] lg:gap-0"
             : isTelegram
               ? "gap-0 lg:grid-cols-[var(--inbox-chat-list-width)_5px_minmax(0,1fr)] lg:grid-rows-1 grid-rows-[minmax(180px,30dvh)_minmax(0,1fr)] sm:grid-rows-[minmax(240px,32dvh)_minmax(0,1fr)]"
               : isInstagram
@@ -987,7 +988,7 @@ export default function Inbox() {
             tabIndex={0}
             className={cn(
               "group relative hidden cursor-col-resize touch-none select-none border-x outline-none transition-colors lg:block",
-              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : isInstagram ? "border-[#dbdbdb] bg-white hover:bg-[#fff2f6] focus-visible:bg-[#fff2f6]" : isTelegram ? "border-[#e4e9ec] bg-white hover:bg-[#eff8fd] focus-visible:bg-[#eff8fd]" : "border-transparent bg-[var(--wa-bg-panel)] hover:bg-[var(--wa-bg-hover)] focus-visible:bg-[var(--wa-bg-hover)]",
+              isMessenger ? "border-[#e4e6eb] bg-white hover:bg-[#e7f3ff] focus-visible:bg-[#e7f3ff]" : isInstagram ? "border-[#dbdbdb] bg-white hover:bg-[#fff2f6] focus-visible:bg-[#fff2f6]" : isTelegram ? "border-[#e4e9ec] bg-white hover:bg-[#eff8fd] focus-visible:bg-[#eff8fd]" : "border-x-0 bg-[var(--wa-divider)] before:absolute before:inset-y-0 before:-inset-x-1.5 before:content-[''] hover:bg-[#00a884] focus-visible:bg-[#00a884]",
               isResizingChatList && (isMessenger ? "bg-[#e7f3ff]" : isInstagram ? "bg-[#fff2f6]" : isTelegram ? "bg-[#eff8fd]" : "bg-[var(--wa-bg-hover)]")
             )}
             onPointerDown={handleResizePointerDown}

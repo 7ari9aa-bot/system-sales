@@ -72,10 +72,10 @@ test("dark mode: nothing bright is painted anywhere in the inbox", async ({ page
   expect(bright).toEqual([]);
 });
 
-test("the WhatsApp avatar is the grey person disc, in both themes", async ({ page }) => {
+test("the WhatsApp avatar is the default disc: light blue in light mode (sampled from the real app), grey in dark", async ({ page }) => {
   for (const theme of ["light", "dark"]) {
     await boot(page, theme, { width: 1280, height: 780 });
-    const want = theme === "light" ? "rgb(223, 229, 231)" : "rgb(106, 113, 117)";
+    const want = theme === "light" ? "rgb(202, 236, 250)" : "rgb(106, 113, 117)";
     const bg = await page.getByTestId("chat-header").locator("div,span").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     const list = await page.getByTestId("chat-row").first().locator("div").first().evaluate((el) => getComputedStyle(el.querySelector("[aria-hidden]") || el).backgroundColor);
     expect([bg, list]).toContain(want);
@@ -124,4 +124,24 @@ test("dark mode: no bright vertical strip anywhere in the screenshot", async ({ 
     return cols;
   }, shot.toString("base64"));
   expect(bright).toEqual([]);
+});
+
+// Colours sampled from a real WhatsApp Web screenshot (light mode), not from memory.
+test("light: surfaces match the real WhatsApp Web screenshot", async ({ page }) => {
+  await boot(page, "light", { width: 1024, height: 576 });
+  const c = await page.evaluate(() => {
+    const bg = (el) => getComputedStyle(el).backgroundColor;
+    return {
+      header: bg(document.querySelector("[data-testid=chat-header]")),
+      list: bg(document.querySelector("[data-testid=chat-list]")),
+      search: bg(document.querySelector("[data-testid=chat-list] input")),
+      wallpaper: bg(document.querySelector("[data-testid=chat-header]").nextElementSibling),
+    };
+  });
+  expect(c).toEqual({
+    header: "rgb(255, 255, 255)",
+    list: "rgb(255, 255, 255)",
+    search: "rgb(246, 245, 244)",
+    wallpaper: "rgb(245, 241, 235)",
+  });
 });

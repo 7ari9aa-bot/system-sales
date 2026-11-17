@@ -42,7 +42,7 @@ export default function ChatHeader({
   const closeMenu = () => { setMenuOpen(false); moreRef.current?.focus(); };
 
   return (
-    <header dir="ltr" data-testid="chat-header" className="relative z-20 flex h-[59px] shrink-0 items-center gap-1 bg-[var(--wa-bg-input)] px-4">
+    <header dir="ltr" data-testid="chat-header" className="relative z-20 flex h-[59px] shrink-0 items-center gap-1 border-b border-[color:var(--wa-header-rule)] bg-[var(--wa-bg-header)] px-4">
       {onBack && (
         <button type="button" onClick={onBack} aria-label={w.back} data-testid="header-back" className={cn(iconBtn, "-ms-2 lg:hidden")}>
           <BackIcon size={22} className={lang === "ar" ? "rotate-180" : undefined} />
