@@ -144,7 +144,7 @@ export default function ChannelChat({
     backgroundColor: "var(--wa-bg-chat)",
     backgroundImage: "var(--wa-wallpaper)",
     backgroundRepeat: "repeat",
-    backgroundSize: "240px 240px",
+    backgroundSize: "160px 176px",
   } : isTelegram ? {
     backgroundColor: "#a9cf9a",
     backgroundImage: "url('/telegram-chat-wallpaper.png')",
