@@ -24,6 +24,7 @@ VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions
 HARDENING_MIGRATION = VERSIONS_DIR / "b2c3d4e5f6a7_hardening_rls_segments_worker_columns.py"
 CHANNEL_IDENTITY_MIGRATION = VERSIONS_DIR / "db6022a13691_secure_channel_identity_routing.py"
 TELEGRAM_BOT_IDENTITY_MIGRATION = VERSIONS_DIR / "fbc2a817d901_telegram_bot_identity_uniqueness.py"
+FACEBOOK_IDENTITY_MIGRATION = VERSIONS_DIR / "fe2026111722_facebook_page_identity_uniqueness.py"
 TELEGRAM_LEGACY_PAUSE_MIGRATION = (
     VERSIONS_DIR / "a8f41c9d07e2_pause_unverified_telegram_channels.py"
 )
@@ -745,3 +746,36 @@ def test_the_timezone_guard_can_actually_fail() -> None:
     assert any(tz for tz in declared.values()), (
         "the parser found no timezone-aware DateTime columns at all"
     )
+
+
+def test_facebook_page_identity_is_unique_like_messenger() -> None:
+    """A Page id must be globally unique across tenants, exactly like Messenger.
+
+    Facebook was shipped on the claim "no migration is needed", but the unique
+    index lists providers by name, so a Page could be connected by two tenants
+    and `resolve_channel_tenant` then returns NULL for BOTH (silent drop).
+    """
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(FACEBOOK_IDENTITY_MIGRATION)
+    module.upgrade()
+
+    assert len(captured) == 3
+    for sql in captured:
+        pglast.parser.parse_sql(sql)
+    assert "provider = 'facebook'" in captured[0]
+    assert "HAVING count(*) > 1" in captured[0]
+    assert "reconcile integrations before deploying" in captured[0]
+    assert "DROP INDEX IF EXISTS public.uq_integrations_active_channel_identity" in captured[1]
+    assert "provider IN ('messenger', 'instagram', 'facebook')" in captured[2]
+    # Telegram keeps its bot_id identity: the earlier fix must not regress.
+    assert "WHEN provider = 'telegram' THEN config->>'bot_id'" in captured[2]
+
+    from app.modules.platform.models import Integration
+
+    model_index = next(
+        index
+        for index in Integration.__table__.indexes
+        if index.name == "uq_integrations_active_channel_identity"
+    )
+    assert "'facebook'" in str(model_index.expressions[1])
+    assert "'facebook'" in str(model_index.dialect_options["postgresql"]["where"])
