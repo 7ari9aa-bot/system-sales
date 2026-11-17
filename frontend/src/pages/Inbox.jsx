@@ -60,6 +60,11 @@ function toMessage(message) {
     ai: message.sender_type === "ai",
     mediaUrl: message.media_url,
     mediaType: message.media_type,
+    contentType: message.content_type || "text",
+    edited: Boolean(message.edited),
+    deleted: Boolean(message.deleted),
+    replyTo: message.reply_to || null,
+    reactions: Array.isArray(message.reactions) ? message.reactions : [],
   };
 }
 
