@@ -168,3 +168,32 @@ test("filter pills match WhatsApp: active green, idle white with a hairline", as
   expect(active.h).toBeGreaterThanOrEqual(26);
   expect(active.h).toBeLessThanOrEqual(32);
 });
+
+// The WhatsApp input is ONE white capsule: attach, emoji, the field and the mic all
+// live inside it, with no border of their own and a soft shadow under it.
+test("the input bar is a single white capsule holding every control", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const capsule = page.getByTestId("composer-capsule");
+  await expect(capsule).toBeVisible();
+  const cs = await capsule.evaluate((el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, r: parseFloat(s.borderTopLeftRadius), shadow: s.boxShadow, h: el.getBoundingClientRect().height }; });
+  expect(cs.bg).toBe("rgb(255, 255, 255)");
+  expect(cs.r).toBeGreaterThanOrEqual(24);
+  expect(cs.shadow).not.toBe("none");
+  expect(cs.h).toBeGreaterThanOrEqual(52);
+  const box = await capsule.boundingBox();
+  for (const id of ["composer-attach", "composer-emoji", "composer-input", "composer-voice"]) {
+    const b = await page.getByTestId(id).boundingBox();
+    expect(b.x, id).toBeGreaterThanOrEqual(box.x);
+    expect(b.x + b.width, id).toBeLessThanOrEqual(box.x + box.width + 1);
+    expect(b.y, id).toBeGreaterThanOrEqual(box.y - 1);
+    expect(b.y + b.height, id).toBeLessThanOrEqual(box.y + box.height + 1);
+  }
+  const field = await page.getByTestId("composer-input").evaluate((el) => { const s = getComputedStyle(el); return { w: s.borderTopWidth, bg: s.backgroundColor }; });
+  expect(field.w).toBe("0px");
+  expect(field.bg).toBe("rgba(0, 0, 0, 0)");
+  // attach is first from the left, like WhatsApp.
+  const att = await page.getByTestId("composer-attach").boundingBox();
+  const emo = await page.getByTestId("composer-emoji").boundingBox();
+  expect(att.x).toBeLessThan(emo.x);
+});

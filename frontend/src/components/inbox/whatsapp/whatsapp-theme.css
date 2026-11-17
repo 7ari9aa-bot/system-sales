@@ -22,6 +22,7 @@
   --wa-avatar-fg: #54656f;
   --wa-green: #00a884;
   --wa-green-text: #025144;     /* text on the light-green pill */
+  --wa-bg-capsule: #ffffff;       /* the single white input capsule */
   --wa-pill-active: #d9fdd3;
   --wa-pill-active-rule: #afcaaa;   /* sampled: the active pill's 1px edge */
   --wa-pill-bg: #ffffff;            /* sampled: idle pills are white with a hairline */
@@ -58,6 +59,7 @@
   --wa-avatar-fg: #cfd4d6;
   --wa-green: #00a884;
   --wa-green-text: #d9fdd3;
+  --wa-bg-capsule: #2a3942;
   --wa-pill-active: #0a332c;
   --wa-pill-active-rule: #1f5c4d;
   --wa-pill-bg: transparent;
