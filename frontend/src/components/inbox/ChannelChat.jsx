@@ -68,6 +68,7 @@ export default function ChannelChat({
 
   const scrollRef = useRef(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [lastSeenId, setLastSeenId] = useState(null);
   const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
@@ -129,6 +130,7 @@ export default function ChannelChat({
 
   useEffect(() => {
     setText("");
+    setReplyingTo(null);
     setSearchQuery("");
     setSearchOpen(false);
     setThemePickerOpen(false);
@@ -143,9 +145,10 @@ export default function ChannelChat({
   async function submitMessage() {
     const body = text.trim();
     if (!body || sending || !conversation) return;
-    const sent = await onSend?.(conversation.id, body);
+    const sent = await onSend?.(conversation.id, body, replyingTo ? { replyTo: replyingTo } : undefined);
     if (sent !== false) {
       setText("");
+      setReplyingTo(null);
       setEmojiPickerOpen(false);
       setAttachmentMenuOpen(false);
     }
@@ -493,7 +496,29 @@ export default function ChannelChat({
         ) : isWhatsApp ? (
           // Original layout: emoji + attach sit OUTSIDE the white field, on the
           // grey bar; the field is a rounded rectangle; send/mic are bare icons.
-          <div dir="ltr" className="flex min-h-[52px] items-center gap-1 px-1 py-1.5" style={{ fontFamily: WHATSAPP_FONT }}>
+          <div style={{ fontFamily: WHATSAPP_FONT }}>
+          {replyingTo && (
+            <div data-testid="replying-to" dir="auto" className="mx-2 mt-2 flex items-stretch gap-2 overflow-hidden rounded-lg bg-[#f0f2f5] ring-1 ring-black/5">
+              <span aria-hidden="true" className="w-1 shrink-0" style={{ background: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }} />
+              <div className="min-w-0 flex-1 py-1.5">
+                <div className="text-[12.5px] font-medium" style={{ color: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }}>
+                  {replyingTo.side === "out" ? (lang === "ar" ? "أنت" : "You") : (conversation.name || (lang === "ar" ? "العميل" : "Customer"))}
+                </div>
+                <div className="truncate text-[13px] text-[#667781]">{replyingTo.text || (lang === "ar" ? "مرفق" : "Attachment")}</div>
+              </div>
+              <button
+                type="button"
+                data-testid="cancel-reply"
+                onClick={() => setReplyingTo(null)}
+                aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"}
+                title={lang === "ar" ? "إلغاء الرد" : "Cancel reply"}
+                className="grid w-9 shrink-0 place-items-center text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          <div dir="ltr" className="flex min-h-[52px] items-center gap-1 px-1 py-1.5">
             <button
               type="button"
               onClick={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
@@ -516,7 +541,7 @@ export default function ChannelChat({
               value={text}
               onChange={(e) => setText(e.target.value)}
               dir="auto"
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
+              onKeyDown={(e) => { if (e.key === "Escape" && replyingTo) { setReplyingTo(null); } else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
               placeholder={t("inbox.typeMessage")}
               aria-label={t("inbox.typeMessage")}
               disabled={sending}
@@ -544,6 +569,7 @@ export default function ChannelChat({
                 <MicIcon size={24} />
               </button>
             )}
+          </div>
           </div>
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
@@ -813,7 +839,7 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
         </div>
       );
     }
-    return <WhatsAppBubble m={m} th={th} lang={_lang}>{media}</WhatsAppBubble>;
+    return <WhatsAppBubble m={m} th={th} lang={_lang} onReply={(msg) => setReplyingTo(msg)}>{media}</WhatsAppBubble>;
   }
 
   if (isTelegram) {

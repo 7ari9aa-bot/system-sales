@@ -1,7 +1,7 @@
 import React from "react";
 import { Sparkles } from "lucide-react";
 import MessageStatus from "./MessageStatus";
-import { BlockedIcon, CameraIcon, FileIcon, MicIcon, PinIcon, UserIcon } from "./icons";
+import { BlockedIcon, CameraIcon, FileIcon, MicIcon, PinIcon, ReplyIcon, UserIcon } from "./icons";
 import { cn } from "@/lib/utils";
 
 // WhatsApp's own text stack. These are the fonts the operating system already
@@ -10,8 +10,8 @@ export const WHATSAPP_FONT =
   '"Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif';
 
 const WORDS = {
-  ar: { deleted: "تم حذف هذه الرسالة", edited: "معدّلة", photo: "صورة", voice: "رسالة صوتية", video: "فيديو", file: "مستند", location: "الموقع", contact: "جهة اتصال", you: "أنت", unavailable: "الرسالة غير متاحة", unsupported: "رسالة غير مدعومة" },
-  en: { deleted: "This message was deleted", edited: "Edited", photo: "Photo", voice: "Voice message", video: "Video", file: "Document", location: "Location", contact: "Contact", you: "You", unavailable: "Message unavailable", unsupported: "Unsupported message" },
+  ar: { deleted: "تم حذف هذه الرسالة", reply: "رد", edited: "معدّلة", photo: "صورة", voice: "رسالة صوتية", video: "فيديو", file: "مستند", location: "الموقع", contact: "جهة اتصال", you: "أنت", unavailable: "الرسالة غير متاحة", unsupported: "رسالة غير مدعومة" },
+  en: { deleted: "This message was deleted", reply: "Reply", edited: "Edited", photo: "Photo", voice: "Voice message", video: "Video", file: "Document", location: "Location", contact: "Contact", you: "You", unavailable: "Message unavailable", unsupported: "Unsupported message" },
 };
 
 // What a quoted message shows when it has no text of its own.
@@ -70,13 +70,13 @@ function Meta({ m, out, lang }) {
 
 // One WhatsApp bubble. `children` carries media rendered by the caller (voice
 // player, image) so existing players are reused rather than duplicated.
-export default function WhatsAppBubble({ m, th, lang = "ar", children }) {
+export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply }) {
   const out = m.side === "out";
   const w = WORDS[lang] || WORDS.en;
   const hasReactions = !m.deleted && m.reactions?.length > 0;
 
   return (
-    <div className={cn("flex", out ? "justify-end" : "justify-start", hasReactions && "mb-3")}>
+    <div className={cn("group/bubble flex items-center gap-1", out ? "flex-row-reverse justify-start" : "justify-start", hasReactions && "mb-3")}>
       <div
         data-testid="whatsapp-bubble"
         data-direction={out ? "out" : "in"}
@@ -109,6 +109,18 @@ export default function WhatsAppBubble({ m, th, lang = "ar", children }) {
         )}
         <Reactions reactions={hasReactions ? m.reactions : null} />
       </div>
+      {onReply && !m.deleted && (
+        <button
+          type="button"
+          data-testid="bubble-reply"
+          onClick={() => onReply(m)}
+          aria-label={w.reply}
+          title={w.reply}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/90 text-[#54656f] opacity-0 shadow-sm transition-opacity hover:bg-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] group-hover/bubble:opacity-100"
+        >
+          <ReplyIcon size={16} />
+        </button>
+      )}
     </div>
   );
 }

@@ -512,7 +512,7 @@ export default function Inbox() {
       .catch((e) => setError(e?.message || "Could not mark the conversation as read."));
   }
 
-  async function handleSend(conversationId, text) {
+  async function handleSend(conversationId, text, opts = {}) {
     if (isDemoConversation(conversationId)) {
       const createdAt = new Date().toISOString();
       const localMessage = {
@@ -545,7 +545,7 @@ export default function Inbox() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text);
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null });
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -559,6 +559,16 @@ export default function Inbox() {
         time: displayTime(createdAt),
         createdAt,
         status: sent?.status || "queued",
+        // The quote is shown straight away, built from the message being answered.
+        replyTo: opts.replyTo
+          ? {
+              id: opts.replyTo.id,
+              available: true,
+              direction: opts.replyTo.side === "out" ? "outbound" : "inbound",
+              content_type: opts.replyTo.contentType || "text",
+              body: opts.replyTo.text || "",
+            }
+          : null,
       };
       setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text));
       return true;

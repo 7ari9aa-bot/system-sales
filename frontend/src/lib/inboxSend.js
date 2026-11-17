@@ -22,13 +22,15 @@ export const TIMEOUT_MESSAGE =
   "Sending took too long. It may have gone through: check the conversation before sending again.";
 
 /** @returns {Promise<{ok: true, sent: object|null} | {ok: false, error: string}>} */
-export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents } = {}) {
+export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null } = {}) {
   const slot = `send:${conversationId}`;
-  const key = intents.take(slot, { text });
+  // Which message is being answered is part of the intention: the same words as
+  // a reply to a different message must be a new send, not a replay.
+  const key = intents.take(slot, { text, replyToId });
   try {
     const sent = await api(`/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: { body: text },
+      body: replyToId ? { body: text, reply_to_message_id: replyToId } : { body: text },
       headers: { "Idempotency-Key": key },
     });
     intents.done(slot);

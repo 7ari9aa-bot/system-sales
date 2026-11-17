@@ -80,3 +80,27 @@ describe("quotePreview", () => {
     expect(quotePreview({ available: true, content_type: "weird", body: "" }, "en").text).toBe("Unsupported message");
   });
 });
+
+describe("WhatsAppBubble reply button", () => {
+  const withReply = (m, lang = "ar") =>
+    renderToStaticMarkup(React.createElement(WhatsAppBubble, { m: { ...base, ...m }, th, lang, onReply: () => {} }));
+
+  test("is offered on a normal message, labelled for the reader", () => {
+    expect(withReply({})).toContain('data-testid="bubble-reply"');
+    expect(withReply({})).toContain('aria-label="رد"');
+    expect(withReply({}, "en")).toContain('aria-label="Reply"');
+  });
+
+  test("is not shown without a handler", () => {
+    expect(render({})).not.toContain("bubble-reply");
+  });
+
+  test("is not offered on a deleted message", () => {
+    expect(withReply({ deleted: true })).not.toContain("bubble-reply");
+  });
+
+  test("an outgoing bubble keeps its own side", () => {
+    expect(withReply({ side: "out", status: "sent" })).toContain("flex-row-reverse");
+    expect(withReply({ side: "in" })).not.toContain("flex-row-reverse");
+  });
+});

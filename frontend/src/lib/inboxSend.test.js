@@ -167,3 +167,39 @@ describe("appendLocalMessage (channel switch during send)", () => {
     expect(appendLocalMessage({}, "facebook", "c1", msg, "hi")).toEqual({ facebook: [] });
   });
 });
+
+describe("sendReply quoting", () => {
+  const okApi = () => vi.fn().mockResolvedValue({ id: "m1" });
+
+  it("sends the quoted message id when replying", async () => {
+    const api = okApi();
+    await sendReply("c1", "تمام", { api, intents: fresh(), replyToId: "msg-9" });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "تمام", reply_to_message_id: "msg-9" });
+  });
+
+  it("leaves the body exactly as before when nothing is quoted", async () => {
+    const api = okApi();
+    await sendReply("c1", "تمام", { api, intents: fresh() });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "تمام" });
+  });
+
+  it("the same words in reply to a different message is a new send, not a replay", async () => {
+    const api = okApi();
+    const intents = fresh();
+    // Both attempts end without success, so the slot keeps its key.
+    api.mockRejectedValue(err({ code: "timeout" }));
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-2" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("a retry of the same quoted reply reuses its key", async () => {
+    const api = vi.fn().mockRejectedValue(err({ code: "timeout" }));
+    const intents = fresh();
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
+    const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
+    expect(keys[0]).toBe(keys[1]);
+  });
+});
