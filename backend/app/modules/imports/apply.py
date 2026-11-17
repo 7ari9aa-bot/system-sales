@@ -25,14 +25,20 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.modules.imports.fields import SHEET_IMAGES, SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
 from app.modules.imports.models import ImportRow
 
 logger = logging.getLogger(__name__)
 
 BATCH_LIMIT = 500  # standing ceiling: a batch never holds more rows than this
+# A picture row is a network download plus an object-store write, which a rolled-back batch cannot
+# undo. So a batch of pictures is small: a crash orphans at most this many stored files, and the
+# transaction (and its row locks) stays short while the downloads run.
+IMAGE_BATCH_LIMIT = 25
 # Products before variants before stock: a variant needs its product, stock needs its variant.
-SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK)
+# Pictures go last: they are the slowest rows (each one is a download) and the least critical, so
+# a shop that runs out of time still has every product, price and quantity in place.
+SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 OPENING_STOCK_REASON = "opening_stock"
 REFERENCE_TYPE = "import_session"
 
@@ -58,6 +64,8 @@ class Ports:
     record_opening_stock: Callable[
         [AsyncSession, uuid.UUID, str, str, Decimal, uuid.UUID], Awaitable[uuid.UUID | None]
     ]
+    # (sku, link) -> image id. Fetches the link, stores the bytes, attaches the picture.
+    attach_image: Callable[[AsyncSession, uuid.UUID, str, str], Awaitable[uuid.UUID]]
 
 
 @dataclass(slots=True)
@@ -140,6 +148,8 @@ async def apply_batch(
     limit = max(1, min(limit, BATCH_LIMIT))
     result = BatchResult()
     rows = await _next_rows(session, tenant_id, session_id, limit)
+    if rows and rows[0].sheet == SHEET_IMAGES:
+        rows = rows[:IMAGE_BATCH_LIMIT]
     result.taken = len(rows)
 
     for row in rows:
@@ -197,6 +207,11 @@ async def _write(
             session, tenant_id, str(values["sku"]), str(values["warehouse"]), quantity, session_id
         )
         return {"variant_id": str(variant_id), "action": "created"}
+    if row.sheet == SHEET_IMAGES:
+        image_id = await ports.attach_image(
+            session, tenant_id, str(values["sku"]), str(values["url"])
+        )
+        return {"image_id": str(image_id), "action": "created"}
     raise ApplyError("unsupported_sheet", f"sheet {row.sheet!r} cannot be imported yet")
 
 

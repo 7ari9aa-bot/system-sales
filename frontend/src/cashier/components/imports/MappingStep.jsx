@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
 import SectionCard from "@/cashier/components/ui-kit/SectionCard";
-import { SHEET_LABEL, canValidate, mappingRows } from "@/cashier/api/importCenter";
+import { SHEET_LABEL, canValidate, ignoredColumnsOf, mappingRows } from "@/cashier/api/importCenter";
 
 const IGNORE = "__ignore__";
 
@@ -19,12 +19,25 @@ function SheetMapping({ name, sheet, onChange }) {
   const rows = mappingRows(sheet);
   const missing = sheet.missing_required ?? [];
   const labelOf = (key) => sheet.fields.find((f) => f.key === key)?.label_ar ?? key;
+  // Only columns still unmapped on screen: a merchant who maps one by hand clears the warning.
+  const stillIgnored = new Set(rows.filter((r) => !r.field).map((r) => r.header));
+  const ignoredNow = ignoredColumnsOf({
+    ignored_columns: (sheet.ignored_columns ?? []).filter((c) => stillIgnored.has(c.column)),
+  });
   return (
     <SectionCard
       title={SHEET_LABEL[name] ?? name}
       description={`${sheet.rows} صفًّا`}
       action={missing.length > 0 && <span className="text-[11px] font-semibold text-red-600">ناقص: {missing.map(labelOf).join("، ")}</span>}
     >
+      {ignoredNow.stock.length > 0 && (
+        <p role="alert" className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            العمود {ignoredNow.stock.map((c) => `«${c}»`).join("، ")} لن يُحمَّل كرصيد. الكميات تُستورد فقط من ورقة <b>رصيد أول المدة</b> (أعمدتها: SKU والكمية والمخزن).
+          </span>
+        </p>
+      )}
       <ul className="divide-y divide-border">
         {rows.map(({ header, field }) => (
           <li key={header} className="flex items-center gap-3 py-2">

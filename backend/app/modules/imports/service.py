@@ -30,14 +30,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.imports import lookup
 from app.modules.imports.apply import BATCH_LIMIT
-from app.modules.imports.fields import SHEET_FIELDS, SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
-from app.modules.imports.mapping import missing_required, suggest_mapping
+from app.modules.imports.fields import (
+    SHEET_FIELDS,
+    SHEET_IMAGES,
+    SHEET_PRODUCTS,
+    SHEET_STOCK,
+    SHEET_VARIANTS,
+)
+from app.modules.imports.mapping import ignored_columns, missing_required, suggest_mapping
 from app.modules.imports.models import ImportRow, ImportSession
 from app.modules.imports.reader import SheetData, read_workbook
 from app.modules.imports.validation import (
     DUPLICATE_POLICIES,
     RowVerdict,
     summarize,
+    validate_images,
     validate_products,
     validate_stock,
     validate_variants,
@@ -47,7 +54,7 @@ from app.modules.imports.verdicts import fields_for_row
 BLANK_POLICIES = ("keep", "clear")
 DEFAULT_OPTIONS = {"duplicate_policy": "create_only", "blank_policy": "keep"}
 # Sheets this phase understands. Anything else in the workbook is reported, not guessed at.
-KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK)
+KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 _EDITABLE = ("uploaded", "analyzed", "mapped", "validated")
 
 _STORE_VERDICTS = text(
@@ -163,6 +170,7 @@ def describe(imp: ImportSession) -> dict[str, Any]:
             "rows": (imp.stats or {}).get("rows", {}).get(sheet, 0),
             "mapping": mapping,
             "missing_required": missing_required(sheet, mapping),
+            "ignored_columns": ignored_columns(sheet, mapping),
             "fields": [
                 {
                     "key": f.key,
@@ -268,15 +276,22 @@ async def validate_session(
     }
     skus = _collect(variant_rows, maps.get(SHEET_VARIANTS, {}), "sku")
     stock_skus = _collect(stock_rows, maps.get(SHEET_STOCK, {}), "sku")
+    image_rows = rows.get(SHEET_IMAGES, [])
+    image_skus = _collect(image_rows, maps.get(SHEET_IMAGES, {}), "sku")
     barcodes = _collect(variant_rows, maps.get(SHEET_VARIANTS, {}), "barcode")
 
     existing = await lookup.load_existing(
-        session, tenant_id, product_refs=refs, skus=skus | stock_skus, barcodes=barcodes
+        session,
+        tenant_id,
+        product_refs=refs,
+        skus=skus | stock_skus | image_skus,
+        barcodes=barcodes,
     )
     existing.opening_stock_done = await lookup.load_opening_stock_done(
         session, tenant_id, stock_skus
     )
-    known = await lookup.known_variant_skus(session, tenant_id, stock_skus)
+    known = await lookup.known_variant_skus(session, tenant_id, stock_skus | image_skus)
+    attached = await lookup.load_attached_images(session, tenant_id, image_skus)
 
     verdicts: dict[str, list[RowVerdict]] = {}
     if SHEET_PRODUCTS in maps:
@@ -303,6 +318,14 @@ async def validate_session(
             skus_in_file=file_skus,
             known_skus=known,
             default_warehouse=lookup.default_warehouse(existing, None),
+        )
+    if SHEET_IMAGES in maps:
+        verdicts[SHEET_IMAGES] = validate_images(
+            image_rows,
+            maps[SHEET_IMAGES],
+            skus_in_file=file_skus,
+            known_skus=known,
+            already_attached=attached,
         )
 
     # One UPDATE per 500 rows, not one per row: a full file is 100k rows. The chunk travels as

@@ -84,6 +84,7 @@ async def test_every_route_needs_both_permissions(api, granted):
     """Importing writes products and the stock ledger, so one of the two is not enough."""
     some_id = "00000000-0000-0000-0000-000000000001"
     calls = [
+        ("GET", "/api/v1/imports/template.xlsx"),
         ("POST", "/api/v1/imports/sessions?filename=a.xlsx"),
         ("GET", "/api/v1/imports/sessions"),
         ("GET", f"/api/v1/imports/sessions/{some_id}"),

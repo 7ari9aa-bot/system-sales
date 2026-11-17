@@ -161,10 +161,86 @@ async def _record_opening_stock(
     return variant_id
 
 
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # the same ceiling as a picture uploaded by hand
+_IMAGE_SIGNATURES = {
+    "image/jpeg": lambda d: d.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda d: d.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/gif": lambda d: d.startswith((b"GIF87a", b"GIF89a")),
+    "image/webp": lambda d: len(d) >= 12 and d.startswith(b"RIFF") and d[8:12] == b"WEBP",
+    "image/bmp": lambda d: d.startswith(b"BM"),
+}
+_VARIANT_PRODUCT = text(
+    "SELECT id, product_id FROM product_variants WHERE tenant_id = :t AND sku = :sku"
+)
+
+
+async def _attach_image(
+    session: AsyncSession, tenant_id: uuid.UUID, sku: str, url: str
+) -> uuid.UUID:
+    """Download one picture, keep it in our own storage, and attach it to the SKU's product.
+
+    The link is fetched by ``storage.fetch``, which refuses non-public hosts on every redirect
+    hop and caps the size, so a merchant cannot point the worker at our own network. The bytes
+    are then checked against the picture's signature (the same rule as an upload by hand), so a
+    page that merely ends in ``.jpg`` is refused. The stored copy is what the catalog shows: the
+    merchant's link may be gone next month.
+    """
+    import hashlib
+
+    from app.core.storage import FetchedMedia, get_storage
+    from app.modules.catalog.service import CatalogService
+
+    storage = get_storage()
+    if not storage.configured:
+        raise ApplyError("storage_unavailable", "image storage is not set up for this shop yet")
+    found = (await session.execute(_VARIANT_PRODUCT, {"t": tenant_id, "sku": sku})).one_or_none()
+    if found is None:
+        raise ApplyError("unknown_sku", f"no variant with SKU '{sku}'")
+    variant_id, product_id = found
+    try:
+        fetched = await storage.fetch(url, max_bytes=MAX_IMAGE_BYTES)
+    except DomainError as exc:
+        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
+    except Exception as exc:  # network, TLS, timeout: a fixed sentence, the detail goes to the log
+        logger.warning("import.image_fetch_failed error=%s", type(exc).__name__)
+        raise ApplyError("image_unreachable", "the image link could not be downloaded") from exc
+
+    kind = (fetched.content_type or "").split(";", 1)[0].strip().lower()
+    check = _IMAGE_SIGNATURES.get(kind)
+    if check is None:
+        raise ApplyError("not_an_image", "the link is not a JPEG, PNG, GIF, WebP or BMP picture")
+    if not fetched.data or not check(fetched.data):
+        raise ApplyError("not_an_image", "the file at the link is not a real picture")
+
+    media = FetchedMedia(
+        data=fetched.data,
+        content_type=kind,
+        checksum=hashlib.sha256(fetched.data).hexdigest(),
+    )
+    stored = await storage.store(media, prefix=f"product-images/{tenant_id}", original_url=url)
+    if not stored.durable or not stored.storage_key:
+        raise ApplyError("storage_unavailable", "the picture could not be saved; try again later")
+    try:
+        image = await CatalogService.add_image(
+            session,
+            tenant_id,
+            product_id,
+            url=f"s3://{stored.storage_key}",
+            alt=None,
+            variant_id=variant_id,
+        )
+    except Exception:
+        # the row rolls back, so the object we just wrote would be orphaned
+        await storage.delete_objects([stored.storage_key])
+        raise
+    return image.id
+
+
 PORTS = Ports(
     upsert_product=_upsert_product,
     upsert_variant=_upsert_variant,
     record_opening_stock=_record_opening_stock,
+    attach_image=_attach_image,
 )
 
 

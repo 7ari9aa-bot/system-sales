@@ -36,6 +36,7 @@ export const SHEET_LABEL = {
   Products: "المنتجات",
   Variants: "الأصناف (اللون والمقاس)",
   "Opening Stock": "رصيد أول المدة",
+  Images: "صور المنتجات (روابط)",
 };
 
 /** What each validation code means to a merchant. Unknown codes fall back to a generic line. */
@@ -46,6 +47,11 @@ const ERROR_TEXT = {
   barcode_taken: "الباركود مستخدم لصنف آخر",
   sku_belongs_to_other_product: "هذا الـ SKU يخص منتجًا آخر",
   unknown_sku: "لا يوجد صنف بهذا الـ SKU",
+  not_a_link: "الصورة يجب أن تكون رابطًا كاملًا يبدأ بـ http أو https",
+  too_many_images: "عدد صور هذا الـ SKU أكبر من الحد المسموح (10)",
+  image_unreachable: "تعذّر تنزيل الصورة من الرابط (الرابط لا يعمل أو غير متاح للعامة)",
+  not_an_image: "الرابط لا يشير إلى صورة حقيقية (JPEG أو PNG أو GIF أو WebP أو BMP)",
+  storage_unavailable: "تعذّر حفظ الصورة الآن. أعد المحاولة لاحقًا",
   unknown_product: "المنتج غير موجود في الملف أو في المتجر",
   unknown_warehouse: "المخزن غير موجود",
   opening_stock_already_set: "رصيد أول المدة مسجّل لهذا الصنف من قبل",
@@ -125,6 +131,37 @@ export async function downloadErrorReport(id) {
   a.click();
   a.remove();
   URL.revokeObjectURL(href);
+}
+
+/**
+ * The starter workbook (Products, Variants, Opening Stock, Images). Its headers are the ones the column
+ * matcher already knows, so a merchant who fills it in sees every column mapped on the next step.
+ * Fetched with the session cookie for the same reason as the error report.
+ */
+export async function downloadTemplate() {
+  const res = await fetchWithTimeout(apiUrl("/imports/template.xlsx"), { credentials: "include" });
+  if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = "fihrist-import-template.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(href);
+}
+
+/**
+ * Columns the import will not read, split into the ones that cost the merchant money (stock typed
+ * on the wrong sheet: the quantity is silently not loaded) and the ones that are merely unused.
+ */
+export function ignoredColumnsOf(sheet) {
+  const all = sheet?.ignored_columns ?? [];
+  return {
+    stock: all.filter((c) => c.reason === "stock_on_wrong_sheet").map((c) => c.column),
+    other: all.filter((c) => c.reason !== "stock_on_wrong_sheet").map((c) => c.column),
+  };
 }
 
 /* -------------------------------------------------------------------------------- pure rules */

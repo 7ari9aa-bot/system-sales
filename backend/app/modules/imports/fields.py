@@ -104,12 +104,26 @@ STOCK_FIELDS: tuple[FieldSpec, ...] = (
 
 IMAGE_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("sku", "SKU", "SKU", ("sku", "itemcode", "code", "كود"), required=True),
-    FieldSpec("barcode", "الباركود", "Barcode", ("barcode", "ean", "الباركود", "باركود")),
     FieldSpec(
         "file_name",
-        "اسم الصورة",
-        "Image file",
-        ("image", "imagefile", "filename", "file", "photo", "الصورة", "اسمالصورة"),
+        "رابط الصورة",
+        "Image link",
+        (
+            "image",
+            "imagelink",
+            "imageurl",
+            "url",
+            "link",
+            "photo",
+            "picture",
+            "imagefile",
+            "filename",
+            "file",
+            "الصورة",
+            "رابطالصورة",
+            "اسمالصورة",
+            "صورة",
+        ),
         required=True,
     ),
 )
