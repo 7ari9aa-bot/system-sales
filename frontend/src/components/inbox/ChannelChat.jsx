@@ -252,7 +252,7 @@ export default function ChannelChat({
 
   if (!conversation) {
     return (
-      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 bg-white" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
+      <div className={cn("flex-1 grid place-items-center border bg-card text-center p-8", isWhatsApp ? "rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0" : isInstagram ? "rounded-none border-0 bg-white" : "rounded-2xl border-border", className, "lg:items-center lg:justify-center")}>
         <div>
           <div className="h-12 w-12 rounded-full bg-surface grid place-items-center mx-auto mb-3">
             <Sparkles className="h-5 w-5 text-muted-foreground" />
@@ -265,7 +265,7 @@ export default function ChannelChat({
 
   return (
     <div
-      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
+      className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "wa-scope rounded-xl border-[color:var(--wa-divider)] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}
     >
       {isWhatsApp ? (

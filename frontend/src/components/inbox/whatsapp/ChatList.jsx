@@ -29,7 +29,7 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
   const emptyText = query.trim() ? w.noMatch : archiveView ? w.emptyArchive : tab === "unread" ? w.emptyUnread : w.empty;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[var(--wa-bg-panel)]" data-testid="chat-list">
+    <div className="wa-scope flex min-h-0 flex-1 flex-col bg-[var(--wa-bg-panel)]" data-testid="chat-list">
       <div className="space-y-2 border-b border-[color:var(--wa-divider)] px-3 pb-0 pt-3">
         {archiveView ? (
           <div className="flex items-center gap-2 pb-2">

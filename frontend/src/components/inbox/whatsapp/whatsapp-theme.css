@@ -56,3 +56,12 @@
   --wa-overlay: rgba(0, 0, 0, 0.6);
   --wa-wallpaper: url('/chat-wallpaper-doodle-dark.svg');
 }
+
+/* Everything the WhatsApp inbox draws reads in WhatsApp's own type and ink, not the
+   app's (Plex Arabic and a warm brown). One class on each root, so the list, header,
+   info panel and bubbles can no longer drift apart. */
+.wa-scope {
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif;
+  color: var(--wa-text);
+}
+.wa-scope button, .wa-scope input, .wa-scope textarea { font-family: inherit; }
