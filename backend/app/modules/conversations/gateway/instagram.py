@@ -234,6 +234,114 @@ class InstagramAdapter(ChannelAdapter):
             raw=payload,
         )
 
+    # Instagram attachment types the Send API accepts, and the size caps Meta documents.
+    _MEDIA_KINDS = {
+        "image": "image",
+        "video": "video",
+        "audio": "audio",
+        "voice": "audio",
+        "file": "file",
+        "document": "file",
+    }
+
+    @classmethod
+    def build_send_payload(cls, message: OutboundMessage) -> dict[str, Any]:
+        """The Graph API body for one outbound message (pure, so it is testable).
+
+        A reaction names its target by provider id and carries only an emoji (an
+        empty one withdraws it). Anything else is text, one media attachment, or a
+        template, optionally quoting an earlier message.
+        """
+        recipient = {"id": message.customer_ref}
+        target = message.meta.get("reaction_to_provider_id")
+        if target:
+            emoji = message.body or ""
+            if emoji == REACTION_REMOVED or not emoji:
+                return {
+                    "recipient": recipient,
+                    "sender_action": "unreact",
+                    "payload": {"message_id": target},
+                }
+            return {
+                "recipient": recipient,
+                "sender_action": "react",
+                "payload": {"message_id": target, "reaction": emoji},
+            }
+        if message.template_name:
+            body: dict[str, Any] = {
+                "attachment": {
+                    "type": "template",
+                    "payload": {"template_type": message.template_name, **message.template_vars},
+                }
+            }
+        elif message.meta.get("like_heart"):
+            body = {"attachment": {"type": "like_heart"}}
+        elif message.meta.get("share_media_id"):
+            body = {
+                "attachment": {
+                    "type": "MEDIA_SHARE",
+                    "payload": {"id": message.meta["share_media_id"]},
+                }
+            }
+        elif message.media_url:
+            kind = cls._MEDIA_KINDS.get(str(message.meta.get("media_type", "image")), "image")
+            body = {"attachment": {"type": kind, "payload": {"url": message.media_url}}}
+        else:
+            body = {"text": message.body or ""}
+        payload: dict[str, Any] = {"recipient": recipient, "message": body}
+        reply_to = message.meta.get("reply_to_provider_id")
+        if reply_to:
+            # Verified: reply_to sits at the ROOT of the request, beside "message".
+            payload["reply_to"] = {"mid": reply_to}
+        quick = message.meta.get("quick_replies")
+        if quick and "text" in body:
+            body["quick_replies"] = [
+                {
+                    "content_type": "text",
+                    "title": str(q.get("title", ""))[:20],
+                    "payload": str(q.get("payload", q.get("title", ""))),
+                }
+                for q in quick[:13]
+            ]
+        return payload
+
+    @staticmethod
+    def build_sender_action(customer_ref: str, action: str) -> dict[str, Any]:
+        """mark_seen / typing_on / typing_off — no message body, just the action."""
+        if action not in ("mark_seen", "typing_on", "typing_off"):
+            raise ValueError(f"unsupported sender action: {action}")
+        return {"recipient": {"id": customer_ref}, "sender_action": action}
+
+    async def send_sender_action(
+        self,
+        credentials: ProviderCredentials,
+        customer_ref: str,
+        action: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        """Tell Instagram the agent saw the chat / is typing. Best effort for the caller."""
+        token = credentials.get("api_key")
+        account_id = credentials.get("account_id")
+        if not token or not account_id:
+            raise ExternalProviderError("instagram integration missing api_key or account_id")
+        url = f"{self._base}/{account_id}/messages"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        body = self.build_sender_action(customer_ref, action)
+
+        async def _post() -> None:
+            if _client is not None:
+                resp = await _client.post(url, headers=headers, json=body)
+            else:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+            data = parse_provider_body(resp, "instagram sender action")
+            if resp.status_code not in (200, 201):
+                raise ExternalProviderError(
+                    f"instagram {action} failed: HTTP {resp.status_code} — {str(data)[:200]}"
+                )
+
+        await get_breaker(PROVIDER_INSTAGRAM).call(_post)
+
     async def send(
         self,
         credentials: ProviderCredentials,
@@ -253,20 +361,7 @@ class InstagramAdapter(ChannelAdapter):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        payload: dict[str, Any] = {
-            "recipient": {"id": message.customer_ref},
-            "message": {"text": message.body or ""},
-        }
-        if message.template_name:
-            payload["message"] = {
-                "attachment": {
-                    "type": "template",
-                    "payload": {
-                        "template_type": message.template_name,
-                        **message.template_vars,
-                    },
-                }
-            }
+        payload = self.build_send_payload(message)
 
         async def _post() -> str:
             """Post and return the provider message id — entirely inside the breaker."""

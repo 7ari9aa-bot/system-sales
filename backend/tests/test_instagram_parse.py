@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
+
+import pytest
+
+from app.modules.conversations.gateway.base import OutboundMessage
 from app.modules.conversations.gateway.instagram import REACTION_REMOVED, InstagramAdapter
 
 A = InstagramAdapter()
@@ -170,3 +175,78 @@ def test_read_receipt_becomes_a_read_status():
     (s,) = A.parse_status_updates(p)
     assert (s.channel_message_id, s.status) == ("m9", "read")
     assert A.parse_status_updates({}) == []
+
+
+# ---------- outbound payloads, shapes taken from Meta's Send API page ----------
+
+
+def _out(**kw) -> OutboundMessage:
+    meta = kw.pop("meta", {})
+    return OutboundMessage(
+        tenant_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        message_id=uuid.uuid4(),
+        customer_ref="igsid-1",
+        meta=meta,
+        **kw,
+    )
+
+
+def test_send_text_and_reply_to_is_at_the_root():
+    assert A.build_send_payload(_out(body="hi")) == {
+        "recipient": {"id": "igsid-1"},
+        "message": {"text": "hi"},
+    }
+    p = A.build_send_payload(_out(body="yes", meta={"reply_to_provider_id": "m1"}))
+    assert p["reply_to"] == {"mid": "m1"} and "reply_to" not in p["message"]
+
+
+def test_send_each_media_kind():
+    for kind, want in (
+        ("image", "image"),
+        ("video", "video"),
+        ("audio", "audio"),
+        ("voice", "audio"),
+        ("document", "file"),
+    ):
+        p = A.build_send_payload(_out(media_url="https://x/f", meta={"media_type": kind}))
+        assert p["message"]["attachment"] == {"type": want, "payload": {"url": "https://x/f"}}
+
+
+def test_send_heart_and_own_post_share():
+    assert A.build_send_payload(_out(meta={"like_heart": True}))["message"] == {
+        "attachment": {"type": "like_heart"}
+    }
+    s = A.build_send_payload(_out(meta={"share_media_id": "p1"}))
+    assert s["message"]["attachment"] == {"type": "MEDIA_SHARE", "payload": {"id": "p1"}}
+
+
+def test_send_reaction_and_unreaction():
+    r = A.build_send_payload(_out(body="\u2764\ufe0f", meta={"reaction_to_provider_id": "m1"}))
+    assert r == {
+        "recipient": {"id": "igsid-1"},
+        "sender_action": "react",
+        "payload": {"message_id": "m1", "reaction": "\u2764\ufe0f"},
+    }
+    u = A.build_send_payload(_out(body=REACTION_REMOVED, meta={"reaction_to_provider_id": "m1"}))
+    assert u["sender_action"] == "unreact" and u["payload"] == {"message_id": "m1"}
+
+
+def test_quick_replies_are_capped_at_13_and_20_chars():
+    q = [{"title": "x" * 40, "payload": f"p{i}"} for i in range(20)]
+    p = A.build_send_payload(_out(body="pick", meta={"quick_replies": q}))
+    assert (
+        len(p["message"]["quick_replies"]) == 13
+        and len(p["message"]["quick_replies"][0]["title"]) == 20
+    )
+
+
+def test_sender_actions_only_allow_the_three_documented():
+    assert A.build_sender_action("c", "mark_seen") == {
+        "recipient": {"id": "c"},
+        "sender_action": "mark_seen",
+    }
+    for ok in ("typing_on", "typing_off"):
+        assert A.build_sender_action("c", ok)["sender_action"] == ok
+    with pytest.raises(ValueError):
+        A.build_sender_action("c", "react")
