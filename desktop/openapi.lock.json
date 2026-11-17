@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 468,
-    "sha256": "4c2995b15a16b35e6bac03c97ed16d2110c25a06d947a97a6236f5abe56da511",
+    "operations": 470,
+    "sha256": "d2a89848977d69976f25442f77864f3c3d3a8f7bfeb2ce026023d5a636f6a992",
     "typed_operations": 295
   },
   "spec": {
@@ -322,7 +322,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -1550,7 +1549,6 @@
         "AnomalyResult": {
           "properties": {
             "baseline": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Baseline",
               "type": "string"
             },
@@ -1563,7 +1561,6 @@
               "type": "boolean"
             },
             "observed": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Observed",
               "type": "string"
             },
@@ -2406,7 +2403,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -2492,7 +2488,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -2521,7 +2516,6 @@
               "title": "Actor Id"
             },
             "available_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Available Amount",
               "type": "string"
             },
@@ -2560,7 +2554,6 @@
               "type": "string"
             },
             "reserved_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Reserved Amount",
               "type": "string"
             },
@@ -2577,12 +2570,10 @@
               "title": "Reset At"
             },
             "spent_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Spent Amount",
               "type": "string"
             },
             "total_limit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Limit",
               "type": "string"
             },
@@ -3373,7 +3364,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3495,7 +3485,6 @@
             "max_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3692,14 +3681,12 @@
         "Comparison": {
           "properties": {
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
             "delta_pct": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -4261,7 +4248,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -4297,7 +4283,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -4313,7 +4298,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -4349,7 +4333,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -6597,7 +6580,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -6610,7 +6592,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -6626,7 +6607,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -6841,7 +6821,6 @@
               "type": "string"
             },
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
@@ -6888,7 +6867,6 @@
         "DriverResult": {
           "properties": {
             "aov_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Aov Contribution",
               "type": "string"
             },
@@ -6898,12 +6876,10 @@
               "type": "string"
             },
             "orders_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Orders Contribution",
               "type": "string"
             },
             "total_delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Delta",
               "type": "string"
             }
@@ -7325,7 +7301,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,15}0*$)\\d{0,10}\\.\\d{0,4}0*$)",
                   "type": "string"
                 }
               ],
@@ -7375,7 +7350,6 @@
               "type": "string"
             },
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -10618,6 +10592,63 @@
           "title": "LimitIn",
           "type": "object"
         },
+        "ListStateRequest": {
+          "description": "Shared list flags for one conversation. Only the fields sent change.\n\n``mute`` is a duration: \"8h\" | \"1w\" | \"always\" | \"off\". Anything else is a\nvalidation error, so the client can never write an arbitrary date.",
+          "properties": {
+            "archived": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived"
+            },
+            "marked_unread": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Marked Unread"
+            },
+            "mute": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "8h",
+                    "1w",
+                    "always",
+                    "off"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mute"
+            },
+            "pinned": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pinned"
+            }
+          },
+          "title": "ListStateRequest",
+          "type": "object"
+        },
         "LocationAccessGrant": {
           "description": "PUT body — role_override is the only mutable grant attribute.",
           "properties": {
@@ -11739,7 +11770,6 @@
               "type": "string"
             },
             "value": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Value",
               "type": "string"
             }
@@ -12028,7 +12058,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12135,7 +12164,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12444,7 +12472,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -13325,7 +13352,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -14162,6 +14188,19 @@
           "title": "QuoteRequest",
           "type": "object"
         },
+        "ReactionRequest": {
+          "description": "An emoji reaction to one message. An empty emoji withdraws our reaction.",
+          "properties": {
+            "emoji": {
+              "default": "",
+              "maxLength": 16,
+              "title": "Emoji",
+              "type": "string"
+            }
+          },
+          "title": "ReactionRequest",
+          "type": "object"
+        },
         "ReceiptEmailRequest": {
           "properties": {
             "email": {
@@ -14366,7 +14405,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -16471,6 +16509,18 @@
               ],
               "title": "Body"
             },
+            "reply_to_message_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To Message Id"
+            },
             "template_language": {
               "default": "ar",
               "maxLength": 15,
@@ -16658,7 +16708,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -19714,12 +19763,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             },
@@ -19763,17 +19810,14 @@
               "type": "string"
             },
             "net_balance": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Net Balance",
               "type": "string"
             },
             "total_credit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credit",
               "type": "string"
             },
             "total_debit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debit",
               "type": "string"
             }
@@ -19818,12 +19862,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             }
@@ -20076,7 +20118,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -20115,7 +20156,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -20194,7 +20234,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -20942,7 +20981,6 @@
               "type": "string"
             },
             "grand_total": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Grand Total",
               "type": "string"
             },
@@ -20960,7 +20998,6 @@
               "type": "string"
             },
             "subtotal": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Subtotal",
               "type": "string"
             }
@@ -33245,6 +33282,122 @@
           ]
         }
       },
+      "/api/v1/conversations/{conversation_id}/list-state": {
+        "post": {
+          "description": "Pin, mute, archive or mark a conversation unread, for the whole store.\n\nThese are inbox-only flags. Nothing is sent to the channel provider.",
+          "operationId": "set_list_state_api_v1_conversations__conversation_id__list_state_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListStateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set List State",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
       "/api/v1/conversations/{conversation_id}/messages": {
         "get": {
           "operationId": "list_messages_api_v1_conversations__conversation_id__messages_get",
@@ -33486,6 +33639,132 @@
             }
           },
           "summary": "Send Message",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/messages/{message_id}/reaction": {
+        "post": {
+          "description": "React to a message with an emoji (an empty emoji withdraws ours).\n\nIt travels as a message of its own (queued, sent by the worker) so it gets the\nsame channel policy, access checks and delivery tracking as any other send.",
+          "operationId": "react_to_message_api_v1_conversations__conversation_id__messages__message_id__reaction_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "message_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Message Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "React To Message",
           "tags": [
             "inbox"
           ]
@@ -42199,6 +42478,16 @@
                   }
                 ],
                 "title": "Customer Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "archived",
+              "required": false,
+              "schema": {
+                "default": false,
+                "title": "Archived",
+                "type": "boolean"
               }
             },
             {
