@@ -283,6 +283,8 @@ class AIGateway:
         status = "ok"
         result: ChatCompletionResult | None = None
         config: dict | None = None
+        # Tokens charged to the tenant's daily fairness counter before the call (0 until charged).
+        fairness_charged = 0
         # The owner's assistant times each model call onto the answer being written (a no-op
         # anywhere else). Imported here: the chat package imports this module.
         from app.modules.ai.chat import trace as chat_trace
@@ -298,10 +300,9 @@ class AIGateway:
             from app.core.fairness import ResourceType
             from app.core.fairness import consume as consume_fairness
 
+            fairness_charged = (len(str(messages)) // 4) + (max_tokens or 1024)
             fairness_ok = await consume_fairness(
-                tenant_id,
-                ResourceType.AI_TOKENS,
-                units=(len(str(messages)) // 4) + (max_tokens or 1024),
+                tenant_id, ResourceType.AI_TOKENS, units=fairness_charged
             )
             if not fairness_ok:
                 # Deliberately NOT a ValidationError: the worker treats that as
@@ -419,6 +420,31 @@ class AIGateway:
                     status=status,
                 )
             )
+            # §144: the counter was charged an ESTIMATE before the call (prompt length / 4 plus
+            # 1024 reply tokens). Settle it to what the call really used: give back the unused part
+            # (a model that answers in 150 tokens is not billed 1024, a failed or refused call is
+            # not billed at all) and add what the estimate missed (the tool schemas are not in
+            # `messages`, so a real prompt runs ~1.5k tokens above the estimate; measured live, a
+            # question was charged 4.6k of 6.9k used). Best effort and never raises.
+            if fairness_charged:
+                from app.core.fairness import ResourceType as _RT
+                from app.core.fairness import charge_extra as charge_fairness_extra
+                from app.core.fairness import refund as refund_fairness
+
+                if result is None:
+                    delta = -fairness_charged  # the call never completed: nothing was spent
+                elif result.tokens_in + result.tokens_out > 0:
+                    delta = (result.tokens_in + result.tokens_out) - fairness_charged
+                else:
+                    # A provider that reports no usage reads as 0/0 here. That is "unknown", not
+                    # "free": keep the estimate, or a silent provider would open the budget wide.
+                    delta = 0
+                if delta < 0:
+                    await asyncio.shield(refund_fairness(tenant_id, _RT.AI_TOKENS, units=-delta))
+                elif delta > 0:
+                    await asyncio.shield(
+                        charge_fairness_extra(tenant_id, _RT.AI_TOKENS, units=delta)
+                    )
             # §42 settle (P1-2): release the hold whether the call succeeded or not —
             # a failed or cancelled call must not hold budget until its TTL expires.
             # Shielded against asyncio.wait_for cancellation so the hold is always released.

@@ -36,6 +36,7 @@ unavailable, which is worse than one tenant briefly exceeding its budget.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
@@ -189,6 +190,25 @@ DEFAULT_DAILY_BUDGETS: dict[ResourceType, int] = {
     ResourceType.WORKER_SECONDS: 3_600,  # 1 hour of worker time/day
 }
 
+# An operator may raise the AI token budget for a deployment that is still being built (no real
+# customers, heavy measurement) with FAIRNESS_AI_TOKENS_DAILY. Unset, blank, non-numeric or
+# non-positive values all mean "use the default": a typo must never switch the gate off or lock
+# every tenant out. Only AI tokens can be overridden; the other budgets keep their defaults.
+_AI_TOKENS_ENV = "FAIRNESS_AI_TOKENS_DAILY"
+
+
+def daily_limit(resource: ResourceType) -> int:
+    """The enforced daily budget for ``resource`` (the default unless the operator overrode it)."""
+    default = DEFAULT_DAILY_BUDGETS[resource]
+    if resource is not ResourceType.AI_TOKENS:
+        return default
+    raw = os.environ.get(_AI_TOKENS_ENV, "").strip()
+    if not (raw.isascii() and raw.isdigit()):
+        return default
+    value = int(raw)
+    return value if value > 0 else default
+
+
 # Redis key prefix for fairness budgets
 _KEY_PREFIX = "fairness"
 # Sliding window: 24 hours
@@ -223,7 +243,7 @@ async def check_budget(
     actually deduct. The check is approximate (it reads the current counter
     without consuming) so a race between check and consume is possible.
     """
-    limit = DEFAULT_DAILY_BUDGETS[resource]
+    limit = daily_limit(resource)
     try:
         redis = get_redis()
         key = _budget_key(tenant_id, resource)
@@ -273,7 +293,7 @@ async def consume(
         pipe.expire(key, _WINDOW_SECONDS)
         results = await pipe.execute()
         new_total = int(results[0] or 0)
-        limit = DEFAULT_DAILY_BUDGETS[resource]
+        limit = daily_limit(resource)
         return new_total <= limit
     except Exception as exc:  # noqa: BLE001 — fail open
         logger.warning(
@@ -297,16 +317,50 @@ async def refund(
     clamped at 0 (a refund of 1000 tokens on a counter of 500 does not
     make the counter -500).
     """
+    if units <= 0:
+        return
     try:
         redis = get_redis()
         key = _budget_key(tenant_id, resource)
-        # DECRBY but don't go below 0
-        current = int(await redis.get(key) or 0)
-        new_val = max(current - units, 0)
-        await redis.set(key, new_val, ex=_WINDOW_SECONDS)
+        # One atomic DECRBY (two concurrent refunds must both land, which a GET then SET loses), and
+        # no EXPIRE: a refund must not extend the window the original charge started. A counter that
+        # went below zero (a refund larger than what is left after the window rolled over) is put
+        # back to 0 rather than left negative, which would hand out free budget.
+        new_val = int(await redis.decrby(key, units))
+        if new_val < 0:
+            await redis.incrby(key, -new_val)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning(
             "fairness.refund_failed tenant=%s resource=%s error=%s",
+            tenant_id,
+            resource.value,
+            type(exc).__name__,
+        )
+
+
+async def charge_extra(
+    tenant_id: uuid.UUID,
+    resource: ResourceType,
+    *,
+    units: int = 1,
+) -> None:
+    """§144: add units that were really spent but not charged up front (an estimate that was low).
+
+    Unlike `consume()` this never refuses and never restarts the window: the work already happened,
+    so there is nothing left to refuse, and extending the TTL on every settle would keep a busy
+    store's day from ever rolling over. A counter whose key already expired is left alone rather
+    than recreated with no expiry (the window it belonged to is over).
+    """
+    if units <= 0:
+        return
+    try:
+        redis = get_redis()
+        key = _budget_key(tenant_id, resource)
+        if await redis.exists(key):
+            await redis.incrby(key, units)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            "fairness.charge_extra_failed tenant=%s resource=%s error=%s",
             tenant_id,
             resource.value,
             type(exc).__name__,
@@ -317,7 +371,7 @@ async def get_usage(tenant_id: uuid.UUID) -> dict:
     """§144: return the current usage snapshot for all resources."""
     result: dict[str, dict] = {}
     for resource in ResourceType:
-        limit = DEFAULT_DAILY_BUDGETS[resource]
+        limit = daily_limit(resource)
         try:
             redis = get_redis()
             key = _budget_key(tenant_id, resource)
@@ -340,6 +394,7 @@ __all__ = [
     "EventPriority",
     "ResourceType",
     "check_budget",
+    "daily_limit",
     "consume",
     "get_usage",
     "priority_for",
