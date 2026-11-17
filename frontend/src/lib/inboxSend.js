@@ -54,3 +54,43 @@ export function appendLocalMessage(convMap, channelId, conversationId, message, 
       : row),
   };
 }
+
+/** Show OUR reaction on one message right away (an empty emoji clears it).
+ *  Only that message in that conversation changes; the other person's reaction
+ *  stays. Returns the previous value so a refused request can be put back. */
+export function setMyReaction(convMap, channelId, conversationId, messageId, emoji, previous = "") {
+  return {
+    ...convMap,
+    [channelId]: (convMap[channelId] || []).map((row) => row.id !== conversationId
+      ? row
+      : {
+          ...row,
+          messages: (row.messages || []).map((m) => {
+            if (m.id !== messageId) return m;
+            const without = previous ? removeOnce(m.reactions || [], previous) : (m.reactions || []);
+            return { ...m, myReaction: emoji, reactions: emoji ? [...without, emoji] : without };
+          }),
+        }),
+  };
+}
+
+function removeOnce(list, value) {
+  const at = list.indexOf(value);
+  return at < 0 ? list : [...list.slice(0, at), ...list.slice(at + 1)];
+}
+
+/** React to one message with an emoji; an empty emoji withdraws our reaction.
+ *  A reaction is idempotent by nature (the newest one per person wins), so no
+ *  Idempotency-Key is needed and a retry is harmless.
+ *  @returns {Promise<{ok: true} | {ok: false, error: string}>} */
+export async function sendReaction(conversationId, messageId, emoji, { api = defaultApi } = {}) {
+  try {
+    await api(`/conversations/${conversationId}/messages/${messageId}/reaction`, {
+      method: "POST",
+      body: { emoji },
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Could not send the reaction." };
+  }
+}

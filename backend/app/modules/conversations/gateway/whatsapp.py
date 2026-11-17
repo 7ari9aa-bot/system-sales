@@ -263,6 +263,21 @@ class WhatsAppAdapter:
         return await get_breaker(PROVIDER_WHATSAPP).call(_post)
 
     def _build_send_payload(self, message: OutboundMessage) -> dict:
+        # A reaction is its own message type: it names the target by provider id
+        # and carries only the emoji (an empty one withdraws the reaction). It is
+        # never a quoted reply, so it returns before the context block below.
+        if message.meta.get("reaction_to_provider_id"):
+            emoji = message.body or ""
+            return {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": message.customer_ref,
+                "type": "reaction",
+                "reaction": {
+                    "message_id": message.meta["reaction_to_provider_id"],
+                    "emoji": "" if emoji == REACTION_REMOVED else emoji,
+                },
+            }
         payload = self._build_send_body(message)
         # A quoted reply. Templates are never replies (they open a conversation
         # outside the window), so they are left exactly as they were.

@@ -14,15 +14,19 @@ from unittest.mock import MagicMock
 import pytest
 import sqlalchemy as sa
 
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.conversations.gateway.base import OutboundMessage
 from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED, WhatsAppAdapter
 from app.modules.conversations.models import Message
-from app.modules.conversations.routers._deps import SendMessageRequest
-from app.modules.conversations.routers.inbox import send_message
+from app.modules.conversations.routers._deps import ReactionRequest, SendMessageRequest
+from app.modules.conversations.routers.inbox import (
+    _present_messages,
+    react_to_message,
+    send_message,
+)
 from app.modules.conversations.service import ConversationService
-from app.workers.message_worker import MessageWorker
+from app.workers.message_worker import MessageWorker, PermanentError
 from tests._pos_helpers import ctx_for
 
 adapter = WhatsAppAdapter()
@@ -237,3 +241,142 @@ async def test_the_worker_alone_also_refuses_to_quote_across_conversations(db, t
     assert plan is not None
     assert "reply_to_provider_id" not in plan.outbound.meta
     assert "context" not in adapter._build_send_payload(plan.outbound)
+
+
+# ---- reactions sent by staff ----------------------------------------------------
+
+
+def test_a_reaction_is_sent_as_a_reaction_not_as_text() -> None:
+    payload = adapter._build_send_payload(
+        _outbound(body="👍", meta={"reaction_to_provider_id": "wamid.ABC"})
+    )
+    assert payload["type"] == "reaction"
+    assert payload["reaction"] == {"message_id": "wamid.ABC", "emoji": "👍"}
+    assert "text" not in payload and "context" not in payload
+
+
+def test_withdrawing_a_reaction_sends_an_empty_emoji() -> None:
+    payload = adapter._build_send_payload(
+        _outbound(body=REACTION_REMOVED, meta={"reaction_to_provider_id": "wamid.ABC"})
+    )
+    assert payload["reaction"]["emoji"] == ""
+
+
+async def _react(db, tenant_ctx, conversation_id, message_id, emoji):
+    return await react_to_message(
+        conversation_id,
+        message_id,
+        ReactionRequest(emoji=emoji),
+        ctx=await ctx_for(db, tenant_ctx, "owner"),
+    )
+
+
+async def test_a_staff_reaction_is_queued_and_folds_onto_its_target(db, tenant_ctx) -> None:
+    wamid = f"wamid.{uuid.uuid4().hex}"
+    conversation_id = await _customer_message(
+        db, tenant_ctx.tenant_id, f"2010{uuid.uuid4().int % 10**8:08d}", wamid, "السعر؟"
+    )
+    target = await _stored(db, conversation_id, wamid)
+
+    out = await _react(db, tenant_ctx, conversation_id, target.id, "👍")
+    assert out["emoji"] == "👍"
+
+    rows = list(
+        (await db.execute(sa.select(Message).where(Message.conversation_id == conversation_id)))
+        .scalars()
+        .all()
+    )
+    items = _present_messages(rows, {})
+    # The reaction is not a line of its own: it sits on the message it answers.
+    assert [i["id"] for i in items] == [str(target.id)]
+    assert items[0]["reactions"] == ["👍"]
+    assert items[0]["my_reaction"] == "👍"
+
+    plan = await MessageWorker(bus=MagicMock())._deliver_one(
+        db, tenant_ctx.tenant_id, uuid.UUID(out["id"])
+    )
+    assert plan is not None
+    sent = adapter._build_send_payload(plan.outbound)
+    assert sent["type"] == "reaction"
+    assert sent["reaction"]["message_id"] == wamid
+
+
+async def test_withdrawing_removes_it_from_the_target(db, tenant_ctx) -> None:
+    wamid = f"wamid.{uuid.uuid4().hex}"
+    conversation_id = await _customer_message(
+        db, tenant_ctx.tenant_id, f"2010{uuid.uuid4().int % 10**8:08d}", wamid, "تمام"
+    )
+    target = await _stored(db, conversation_id, wamid)
+    await _react(db, tenant_ctx, conversation_id, target.id, "❤️")
+    await _react(db, tenant_ctx, conversation_id, target.id, "")
+
+    rows = list(
+        (await db.execute(sa.select(Message).where(Message.conversation_id == conversation_id)))
+        .scalars()
+        .all()
+    )
+    after = _present_messages(rows, {})[0]
+    assert after["reactions"] == []
+    assert after["my_reaction"] == ""
+
+
+async def test_a_reaction_cannot_target_another_conversations_message(db, tenant_ctx) -> None:
+    mine = await _customer_message(
+        db,
+        tenant_ctx.tenant_id,
+        f"2010{uuid.uuid4().int % 10**8:08d}",
+        f"wamid.{uuid.uuid4().hex}",
+        "أنا",
+    )
+    other_wamid = f"wamid.{uuid.uuid4().hex}"
+    other = await _customer_message(
+        db, tenant_ctx.tenant_id, f"2011{uuid.uuid4().int % 10**8:08d}", other_wamid, "تاني"
+    )
+    foreign = await _stored(db, other, other_wamid)
+    with pytest.raises(NotFoundError):
+        await _react(db, tenant_ctx, mine, foreign.id, "👍")
+
+
+async def test_a_reaction_to_a_reaction_or_a_deleted_message_is_refused(db, tenant_ctx) -> None:
+    wamid = f"wamid.{uuid.uuid4().hex}"
+    conversation_id = await _customer_message(
+        db, tenant_ctx.tenant_id, f"2010{uuid.uuid4().int % 10**8:08d}", wamid, "x"
+    )
+    target = await _stored(db, conversation_id, wamid)
+    target.deleted = True
+    await db.flush()
+    with pytest.raises(ConflictError):
+        await _react(db, tenant_ctx, conversation_id, target.id, "👍")
+
+
+@pytest.mark.parametrize("bad", ["hello", "a", "👍 👍", "1"])
+async def test_only_an_emoji_is_accepted(db, tenant_ctx, bad) -> None:
+    wamid = f"wamid.{uuid.uuid4().hex}"
+    conversation_id = await _customer_message(
+        db, tenant_ctx.tenant_id, f"2010{uuid.uuid4().int % 10**8:08d}", wamid, "x"
+    )
+    target = await _stored(db, conversation_id, wamid)
+    with pytest.raises(ValidationError):
+        await _react(db, tenant_ctx, conversation_id, target.id, bad)
+
+
+async def test_the_worker_fails_a_reaction_whose_target_is_gone(db, tenant_ctx) -> None:
+    """Never let it go out as a plain text message holding only an emoji."""
+    conversation_id = await _customer_message(
+        db,
+        tenant_ctx.tenant_id,
+        f"2010{uuid.uuid4().int % 10**8:08d}",
+        f"wamid.{uuid.uuid4().hex}",
+        "x",
+    )
+    orphan = await ConversationService.add_message(
+        db,
+        tenant_ctx.tenant_id,
+        conversation_id=conversation_id,
+        direction="outbound",
+        sender_type="agent",
+        body="👍",
+        content_type="reaction",
+    )
+    with pytest.raises(PermanentError):
+        await MessageWorker(bus=MagicMock())._deliver_one(db, tenant_ctx.tenant_id, orphan.id)

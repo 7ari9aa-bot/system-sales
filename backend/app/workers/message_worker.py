@@ -634,6 +634,12 @@ class MessageWorker(StreamWorker):
                     )
                 )
             ).scalar_one_or_none()
+        if message.content_type == "reaction" and not reply_to_provider_id:
+            # Without its target a reaction would go out as a plain text message
+            # holding just an emoji. Fail it instead.
+            message.status = "failed"
+            message.error = "reaction target is not available"
+            raise PermanentError("reaction target is not available")
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),
@@ -648,7 +654,15 @@ class MessageWorker(StreamWorker):
                 # not actually be delivered even when one was required.
                 template_name=message.template_name,
                 template_vars=message.template_vars or {},
-                meta={"reply_to_provider_id": reply_to_provider_id} if reply_to_provider_id else {},
+                meta=(
+                    {
+                        "reaction_to_provider_id"
+                        if message.content_type == "reaction"
+                        else "reply_to_provider_id": reply_to_provider_id
+                    }
+                    if reply_to_provider_id
+                    else {}
+                ),
             ),
             set_channel_message_id=conversation.channel != "webchat",
         )

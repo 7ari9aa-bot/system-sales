@@ -8,7 +8,7 @@ import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
 import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
-import { appendLocalMessage, sendReply } from "@/lib/inboxSend";
+import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/lib/inboxSend";
 import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
@@ -65,6 +65,7 @@ function toMessage(message) {
     deleted: Boolean(message.deleted),
     replyTo: message.reply_to || null,
     reactions: Array.isArray(message.reactions) ? message.reactions : [],
+    myReaction: message.my_reaction || "",
   };
 }
 
@@ -554,6 +555,8 @@ export default function Inbox() {
       const createdAt = sent?.created_at || new Date().toISOString();
       const localMessage = {
         id: sent?.id || `${conversationId}-${Date.now()}`,
+        // No server id yet: this echo cannot be reacted to until the list reloads.
+        unsaved: !sent?.id,
         side: "out",
         text,
         time: displayTime(createdAt),
@@ -575,6 +578,24 @@ export default function Inbox() {
     } finally {
       setSending(false);
     }
+  }
+
+  // Show the reaction at once, then ask the server; if it refuses, put it back
+  // and say why, so the screen never claims a reaction that was not sent.
+  async function handleReact(conversationId, messageId, emoji, previous = "") {
+    const channelId = activeChannel;
+    if (demoAccount) {
+      setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, emoji, previous));
+      return true;
+    }
+    setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, emoji, previous));
+    const result = await sendReaction(conversationId, messageId, emoji);
+    if (!result.ok) {
+      setConvMap((prev) => setMyReaction(prev, channelId, conversationId, messageId, previous, emoji));
+      setError(result.error);
+      return false;
+    }
+    return true;
   }
 
   async function decideApproval(approval, decision) {
@@ -911,6 +932,7 @@ export default function Inbox() {
           error={null}
           t={t}
           onSend={handleSend}
+          onReact={handleReact}
           onApprove={() => decideApproval(pendingApproval, "APPROVED")}
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />

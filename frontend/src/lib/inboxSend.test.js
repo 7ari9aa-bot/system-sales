@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createIntentKeys, fingerprint } from "./intentKeys";
-import { appendLocalMessage, sendReply, TIMEOUT_MESSAGE } from "./inboxSend";
+import { appendLocalMessage, sendReply, setMyReaction, TIMEOUT_MESSAGE } from "./inboxSend";
 
 const fresh = () => createIntentKeys("msg");
 const err = (props) => Object.assign(new Error(props.message ?? "boom"), props);
@@ -201,5 +201,63 @@ describe("sendReply quoting", () => {
     await sendReply("c1", "تمام", { api, intents, replyToId: "msg-1" });
     const keys = api.mock.calls.map((c) => c[1].headers["Idempotency-Key"]);
     expect(keys[0]).toBe(keys[1]);
+  });
+});
+
+describe("sendReaction", () => {
+  it("posts the emoji to the message's reaction route", async () => {
+    const api = vi.fn().mockResolvedValue({});
+    const { sendReaction } = await import("./inboxSend");
+    const r = await sendReaction("c1", "m1", "👍", { api });
+    expect(r).toEqual({ ok: true });
+    expect(api).toHaveBeenCalledWith("/conversations/c1/messages/m1/reaction", { method: "POST", body: { emoji: "👍" } });
+  });
+
+  it("reports the server's reason when it is refused", async () => {
+    const { sendReaction } = await import("./inboxSend");
+    const api = vi.fn().mockRejectedValue(err({ message: "this message cannot be reacted to" }));
+    expect(await sendReaction("c1", "m1", "👍", { api })).toEqual({ ok: false, error: "this message cannot be reacted to" });
+  });
+});
+
+describe("setMyReaction", () => {
+  const map = () => ({
+    whatsapp: [
+      { id: "c1", messages: [{ id: "m1", reactions: ["😂"], myReaction: "" }, { id: "m2", reactions: [] }] },
+      { id: "c2", messages: [{ id: "m1", reactions: [] }] },
+    ],
+    instagram: [{ id: "c1", messages: [{ id: "m1", reactions: [] }] }],
+  });
+
+  it("adds our reaction next to the customer's", () => {
+    const next = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    expect(next.whatsapp[0].messages[0]).toMatchObject({ reactions: ["😂", "👍"], myReaction: "👍" });
+  });
+
+  it("changing it replaces ours and keeps theirs", () => {
+    const once = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    const twice = setMyReaction(once, "whatsapp", "c1", "m1", "❤️", "👍");
+    expect(twice.whatsapp[0].messages[0].reactions).toEqual(["😂", "❤️"]);
+  });
+
+  it("withdrawing removes only ours", () => {
+    const once = setMyReaction(map(), "whatsapp", "c1", "m1", "👍");
+    const gone = setMyReaction(once, "whatsapp", "c1", "m1", "", "👍");
+    expect(gone.whatsapp[0].messages[0]).toMatchObject({ reactions: ["😂"], myReaction: "" });
+  });
+
+  it("touches nothing else: other messages, conversations or channels", () => {
+    const before = map();
+    const next = setMyReaction(before, "whatsapp", "c1", "m1", "👍");
+    expect(next.whatsapp[0].messages[1]).toBe(before.whatsapp[0].messages[1]);
+    expect(next.whatsapp[1]).toBe(before.whatsapp[1]);
+    expect(next.instagram).toBe(before.instagram);
+  });
+
+  it("putting back the previous value undoes a refused reaction", () => {
+    const start = map();
+    const tried = setMyReaction(start, "whatsapp", "c1", "m1", "👍");
+    const undone = setMyReaction(tried, "whatsapp", "c1", "m1", "", "👍");
+    expect(undone.whatsapp[0].messages[0].reactions).toEqual(["😂"]);
   });
 });

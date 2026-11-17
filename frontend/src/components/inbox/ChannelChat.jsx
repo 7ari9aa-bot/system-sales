@@ -50,6 +50,7 @@ export default function ChannelChat({
   pendingDecision = false,
   t,
   onSend,
+  onReact,
   onApprove,
   onDecline,
 }) {
@@ -385,6 +386,8 @@ export default function ChannelChat({
                 lang={lang}
                 th={th}
                 conversation={conversation}
+                onReply={setReplyingTo}
+                onReact={onReact}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -789,7 +792,7 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
+function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -839,7 +842,15 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
         </div>
       );
     }
-    return <WhatsAppBubble m={m} th={th} lang={_lang} onReply={(msg) => setReplyingTo(msg)}>{media}</WhatsAppBubble>;
+    return <WhatsAppBubble
+        m={m}
+        th={th}
+        lang={_lang}
+        mine={m.myReaction || ""}
+        onReply={onReply}
+        onCopy={(msg) => { void navigator.clipboard?.writeText(msg.text || ""); }}
+        onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined}
+      >{media}</WhatsAppBubble>;
   }
 
   if (isTelegram) {

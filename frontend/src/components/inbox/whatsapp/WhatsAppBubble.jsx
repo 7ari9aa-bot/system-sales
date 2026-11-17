@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
+import MessageMenu from "./MessageMenu";
 import MessageStatus from "./MessageStatus";
-import { BlockedIcon, CameraIcon, FileIcon, MicIcon, PinIcon, ReplyIcon, UserIcon } from "./icons";
+import { BlockedIcon, CameraIcon, FileIcon, MicIcon, ChevronDownIcon, PinIcon, UserIcon } from "./icons";
 import { cn } from "@/lib/utils";
 
 // WhatsApp's own text stack. These are the fonts the operating system already
@@ -10,8 +11,8 @@ export const WHATSAPP_FONT =
   '"Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif';
 
 const WORDS = {
-  ar: { deleted: "تم حذف هذه الرسالة", reply: "رد", edited: "معدّلة", photo: "صورة", voice: "رسالة صوتية", video: "فيديو", file: "مستند", location: "الموقع", contact: "جهة اتصال", you: "أنت", unavailable: "الرسالة غير متاحة", unsupported: "رسالة غير مدعومة" },
-  en: { deleted: "This message was deleted", reply: "Reply", edited: "Edited", photo: "Photo", voice: "Voice message", video: "Video", file: "Document", location: "Location", contact: "Contact", you: "You", unavailable: "Message unavailable", unsupported: "Unsupported message" },
+  ar: { deleted: "تم حذف هذه الرسالة", reply: "رد", options: "خيارات الرسالة", edited: "معدّلة", photo: "صورة", voice: "رسالة صوتية", video: "فيديو", file: "مستند", location: "الموقع", contact: "جهة اتصال", you: "أنت", unavailable: "الرسالة غير متاحة", unsupported: "رسالة غير مدعومة" },
+  en: { deleted: "This message was deleted", reply: "Reply", options: "Message options", edited: "Edited", photo: "Photo", voice: "Voice message", video: "Video", file: "Document", location: "Location", contact: "Contact", you: "You", unavailable: "Message unavailable", unsupported: "Unsupported message" },
 };
 
 // What a quoted message shows when it has no text of its own.
@@ -70,8 +71,10 @@ function Meta({ m, out, lang }) {
 
 // One WhatsApp bubble. `children` carries media rendered by the caller (voice
 // player, image) so existing players are reused rather than duplicated.
-export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply }) {
+export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply, onCopy, onReact, mine = "" }) {
   const out = m.side === "out";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hasMenu = Boolean(onReply || onCopy || onReact) && !m.deleted;
   const w = WORDS[lang] || WORDS.en;
   const hasReactions = !m.deleted && m.reactions?.length > 0;
 
@@ -80,6 +83,7 @@ export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply }
       <div
         data-testid="whatsapp-bubble"
         data-direction={out ? "out" : "in"}
+        onContextMenu={hasMenu ? (e) => { e.preventDefault(); setMenuOpen(true); } : undefined}
         className="relative max-w-[82%] rounded-lg px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[72%] lg:max-w-[65%]"
         style={{ background: out ? th.out : th.in, color: out ? th.outText : th.inText, fontFamily: WHATSAPP_FONT }}
       >
@@ -109,17 +113,29 @@ export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply }
         )}
         <Reactions reactions={hasReactions ? m.reactions : null} />
       </div>
-      {onReply && !m.deleted && (
-        <button
-          type="button"
-          data-testid="bubble-reply"
-          onClick={() => onReply(m)}
-          aria-label={w.reply}
-          title={w.reply}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/90 text-[#54656f] opacity-0 shadow-sm transition-opacity hover:bg-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] group-hover/bubble:opacity-100"
-        >
-          <ReplyIcon size={16} />
-        </button>
+      {hasMenu && (
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            data-testid="bubble-options"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label={w.options}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={w.options}
+            className={cn(
+              "grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[#54656f] shadow-sm transition-opacity hover:bg-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] group-hover/bubble:opacity-100",
+              menuOpen ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <ChevronDownIcon size={16} />
+          </button>
+          {menuOpen && (
+            <div className={cn("absolute top-8 z-30", out ? "end-0" : "start-0")}>
+              <MessageMenu m={m} lang={lang} mine={mine} canReact={Boolean(onReact)} onReply={onReply} onCopy={onCopy} onReact={onReact} onClose={() => setMenuOpen(false)} />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -161,3 +161,10 @@ export function WhatsAppChannelBadge({ size = 20, className, title }) {
     </svg>
   );
 }
+
+export const CopyIcon = (p) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+  </Svg>
+);

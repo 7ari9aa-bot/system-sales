@@ -48,6 +48,12 @@ class SendMessageRequest(BaseModel):
     reply_to_message_id: uuid.UUID | None = None
 
 
+class ReactionRequest(BaseModel):
+    """An emoji reaction to one message. An empty emoji withdraws our reaction."""
+
+    emoji: str = Field(default="", max_length=16)
+
+
 class AssignRequest(BaseModel):
     user_id: uuid.UUID | None = None
 

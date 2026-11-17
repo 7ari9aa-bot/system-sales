@@ -57,4 +57,12 @@ export default [
       "react-hooks/rules-of-hooks": "error",
     },
   },
+  {
+    // A handler used outside the scope that defines it is a ReferenceError that
+    // only fires on click, so nothing renders wrong until a person presses it.
+    // no-undef is off project-wide (it needs a clean baseline), but the inbox
+    // chat surface is clean and must stay that way.
+    files: ["src/components/inbox/ChannelChat.jsx", "src/components/inbox/whatsapp/**/*.jsx", "src/pages/Inbox.jsx"],
+    rules: { "no-undef": "error" },
+  },
 ];

@@ -14,6 +14,7 @@ from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.routers._deps import (
     AssignRequest,
+    ReactionRequest,
     SendMessageRequest,
     TenantContext,
     TenantCtxDep,
@@ -252,6 +253,8 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "created_at": m.created_at.isoformat(),
                 "reply_to": _present_quote(m, quoted),
                 "reactions": [e for e in (reactions.get(m.id) or {}).values() if e],
+                # What WE reacted with, so the menu can offer to withdraw it.
+                "my_reaction": (reactions.get(m.id) or {}).get("outbound") or "",
             }
         )
     return items
@@ -341,6 +344,72 @@ async def send_message(
         payload={"message_id": str(message.id), "conversation_id": str(conversation_id)},
     )
     return {"id": str(message.id), "status": message.status}
+
+
+@router.post("/conversations/{conversation_id}/messages/{message_id}/reaction", status_code=201)
+async def react_to_message(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    body: ReactionRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """React to a message with an emoji (an empty emoji withdraws ours).
+
+    It travels as a message of its own (queued, sent by the worker) so it gets the
+    same channel policy, access checks and delivery tracking as any other send.
+    """
+    from sqlalchemy import select as _select
+
+    from app.core.events.writer import add_outbox_event
+    from app.modules.conversations.models import Message as _Message
+
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
+    await _ensure_channel_send(ctx, conversation)
+    if conversation.status == "closed":
+        raise ConflictError("conversation is closed")
+    if conversation.channel != "whatsapp":
+        raise ValidationError("reactions are only supported on WhatsApp")
+    emoji = body.emoji.strip()
+    if any(ch.isspace() for ch in emoji) or any(ch.isalnum() and ch.isascii() for ch in emoji):
+        raise ValidationError("reaction must be a single emoji")
+
+    target = (
+        await ctx.session.execute(
+            _select(_Message).where(
+                _Message.tenant_id == ctx.tenant_id,
+                _Message.conversation_id == conversation_id,
+                _Message.id == message_id,
+            )
+        )
+    ).scalar_one_or_none()
+    # A reaction to another conversation's message is reported as not found, the
+    # same answer as a message that does not exist.
+    if target is None:
+        raise NotFoundError("message not found")
+    if target.deleted or target.content_type == "reaction" or not target.channel_message_id:
+        raise ConflictError("this message cannot be reacted to")
+
+    message = await ConversationService.add_message(
+        ctx.session,
+        ctx.tenant_id,
+        conversation_id=conversation_id,
+        direction="outbound",
+        sender_type="agent",
+        body=emoji or REACTION_REMOVED,
+        sender_user_id=ctx.user.id,
+        content_type="reaction",
+        reply_to_message_id=target.id,
+    )
+    await add_outbox_event(
+        ctx.session,
+        aggregate_type="message",
+        aggregate_id=message.id,
+        event_type="message.outbound",
+        tenant_id=ctx.tenant_id,
+        payload={"message_id": str(message.id), "conversation_id": str(conversation_id)},
+    )
+    return {"id": str(message.id), "target_id": str(target.id), "emoji": emoji}
 
 
 @router.post("/conversations/{conversation_id}/assign")
