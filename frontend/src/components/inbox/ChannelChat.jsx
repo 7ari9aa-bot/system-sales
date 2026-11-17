@@ -31,10 +31,11 @@ import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
+import Composer from "./whatsapp/Composer";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/regional";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
-import { ChevronDownIcon, EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
+import { ChevronDownIcon } from "./whatsapp/icons";
 import MessageStatus from "./whatsapp/MessageStatus";
 
 export default function ChannelChat({
@@ -507,7 +508,7 @@ export default function ChannelChat({
         isOpen={emojiPickerOpen}
         onClose={() => setEmojiPickerOpen(false)}
         onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
-        onSelectSticker={(sticker) => {
+        onSelectSticker={isWhatsApp ? undefined : (sticker) => {
           void onSend?.(conversation.id, `🖼️ ${sticker.label}`, { mediaType: "image", mediaUrl: sticker.url });
         }}
         lang={lang}
@@ -515,7 +516,7 @@ export default function ChannelChat({
       />
 
       <ChannelAttachmentMenu
-        isOpen={attachmentMenuOpen}
+        isOpen={attachmentMenuOpen && !isWhatsApp}
         onClose={() => setAttachmentMenuOpen(false)}
         channelId={channel.id}
         lang={lang}
@@ -544,83 +545,19 @@ export default function ChannelChat({
             lang={lang}
           />
         ) : isWhatsApp ? (
-          // Original layout: emoji + attach sit OUTSIDE the white field, on the
-          // grey bar; the field is a rounded rectangle; send/mic are bare icons.
-          <div style={{ fontFamily: WHATSAPP_FONT }}>
-          {replyingTo && (
-            <div data-testid="replying-to" dir="auto" className="mx-2 mt-2 flex items-stretch gap-2 overflow-hidden rounded-lg bg-[#f0f2f5] ring-1 ring-black/5">
-              <span aria-hidden="true" className="w-1 shrink-0" style={{ background: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }} />
-              <div className="min-w-0 flex-1 py-1.5">
-                <div className="text-[12.5px] font-medium" style={{ color: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }}>
-                  {replyingTo.side === "out" ? (lang === "ar" ? "أنت" : "You") : (conversation.name || (lang === "ar" ? "العميل" : "Customer"))}
-                </div>
-                <div className="truncate text-[13px] text-[#667781]">{replyingTo.text || (lang === "ar" ? "مرفق" : "Attachment")}</div>
-              </div>
-              <button
-                type="button"
-                data-testid="cancel-reply"
-                onClick={() => setReplyingTo(null)}
-                aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"}
-                title={lang === "ar" ? "إلغاء الرد" : "Cancel reply"}
-                className="grid w-9 shrink-0 place-items-center text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-          <div dir="ltr" className="flex min-h-[52px] items-center gap-1 px-1 py-1.5">
-            <button
-              type="button"
-              onClick={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
-              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji"}
-              title={lang === "ar" ? "الرموز التعبيرية" : "Emoji"}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
-            >
-              <EmojiIcon size={26} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAttachmentMenuOpen((v) => !v); setEmojiPickerOpen(false); }}
-              aria-label={lang === "ar" ? "إرفاق" : "Attach"}
-              title={lang === "ar" ? "إرفاق" : "Attach"}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
-            >
-              <PlusIcon size={26} />
-            </button>
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              dir="auto"
-              onKeyDown={(e) => { if (e.key === "Escape" && replyingTo) { setReplyingTo(null); } else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
-              placeholder={t("inbox.typeMessage")}
-              aria-label={t("inbox.typeMessage")}
-              disabled={sending}
-              className="mx-1 h-[42px] min-w-0 flex-1 rounded-lg border-0 bg-white px-3 text-[15px] text-[#111b21] placeholder:text-[#667781] focus:outline-none"
-            />
-            {text.trim() ? (
-              <button
-                type="button"
-                onClick={() => { void submitMessage(); }}
-                disabled={sending}
-                aria-label={t("inbox.send")}
-                title={t("inbox.send")}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] disabled:opacity-50"
-              >
-                <SendIcon size={24} className={lang === "ar" ? "-scale-x-100" : undefined} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsRecordingVoice(true)}
-                aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
-                title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
-              >
-                <MicIcon size={24} />
-              </button>
-            )}
-          </div>
-          </div>
+          <Composer
+            value={text}
+            onChange={setText}
+            onSend={() => { void submitMessage(); }}
+            onToggleEmoji={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
+            onCancelReply={() => setReplyingTo(null)}
+            replyingTo={replyingTo}
+            customerName={conversation.customer}
+            lastCustomerMessageAt={conversation.lastCustomerMessageAt}
+            sending={sending}
+            lang={lang}
+            fontFamily={WHATSAPP_FONT}
+          />
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
             <button
