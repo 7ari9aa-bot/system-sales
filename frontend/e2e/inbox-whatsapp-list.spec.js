@@ -114,7 +114,9 @@ test("muting always sends the closed value and greys the unread badge", async ({
   await page.getByTestId("mute-always").click();
   await expect.poll(() => calls.length).toBe(1);
   expect(calls[0]).toEqual({ mute: "always" });
-  await expect(rowFor(page, "أحمد علي").getByTestId("unread-badge")).toHaveClass(/8696a0/);
+  const badge = rowFor(page, "أحمد علي").getByTestId("unread-badge");
+  await expect(badge).toHaveClass(/wa-text-faint/);
+  await expect(badge).toHaveCSS("background-color", "rgb(134, 150, 160)");
 });
 
 test("marking a read chat unread shows a dot, with no number", async ({ page }) => {

@@ -32,11 +32,11 @@ function QuotedReply({ quote, lang, out }) {
     <div
       data-testid="quoted-reply"
       dir="auto"
-      className={cn("mb-1 flex overflow-hidden rounded-md border-s-4 border-[#06cf9c] px-2 py-1 text-[12.5px] leading-tight", out ? "bg-[#cfe9ca]" : "bg-[#f5f6f6]")}
+      className={cn("mb-1 flex overflow-hidden rounded-md border-s-4 border-[#06cf9c] px-2 py-1 text-[12.5px] leading-tight", out ? "bg-[var(--wa-bubble-out-inner)]" : "bg-[var(--wa-bg-hover)]")}
     >
       <div className="min-w-0">
         {author && <div className="mb-0.5 text-[12.5px] font-medium text-[#06cf9c]">{author}</div>}
-        <div className="flex items-center gap-1 text-[#667781]">
+        <div className="flex items-center gap-1 text-[color:var(--wa-text-secondary)]">
           {Icon && <Icon size={14} />}
           <span className="line-clamp-2 break-words">{text}</span>
         </div>
@@ -50,7 +50,7 @@ function Reactions({ reactions }) {
   return (
     <span
       data-testid="reactions"
-      className="absolute -bottom-3 end-2 z-10 flex items-center gap-0.5 rounded-full bg-white px-1.5 py-px text-[14px] leading-5 shadow-[0_1px_2px_rgba(11,20,26,0.25)]"
+      className="absolute -bottom-3 end-2 z-10 flex items-center gap-0.5 rounded-full bg-[var(--wa-bg-panel)] px-1.5 py-px text-[14px] leading-5 shadow-[0_1px_2px_rgba(11,20,26,0.25)]"
     >
       {reactions.join("")}
     </span>
@@ -60,7 +60,7 @@ function Reactions({ reactions }) {
 function Meta({ m, out, lang }) {
   const w = WORDS[lang] || WORDS.en;
   return (
-    <span className="float-end ms-3 mt-1.5 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap align-bottom text-[11px] leading-none text-[#667781]" dir="ltr">
+    <span className="float-end ms-3 mt-1.5 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap align-bottom text-[11px] leading-none text-[color:var(--wa-text-secondary)]" dir="ltr">
       {m.edited && !m.deleted && <span dir="auto">{w.edited}</span>}
       <span>{m.time}</span>
       {m.ai && <Sparkles className="h-3 w-3 text-amber-500" aria-hidden="true" />}
@@ -95,7 +95,7 @@ export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply, 
           />
         )}
         {m.deleted ? (
-          <div dir="auto" className="flex items-center gap-1.5 italic text-[#667781]">
+          <div dir="auto" className="flex items-center gap-1.5 italic text-[color:var(--wa-text-secondary)]">
             <BlockedIcon size={16} />
             <span>{w.deleted}</span>
             <Meta m={m} out={out} lang={lang} />
@@ -124,7 +124,7 @@ export default function WhatsAppBubble({ m, th, lang = "ar", children, onReply, 
             aria-expanded={menuOpen}
             title={w.options}
             className={cn(
-              "grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[#54656f] shadow-sm transition-opacity hover:bg-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] group-hover/bubble:opacity-100",
+              "grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[color:var(--wa-text-icon)] shadow-sm transition-opacity hover:bg-[var(--wa-bg-panel)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)] group-hover/bubble:opacity-100",
               menuOpen ? "opacity-100" : "opacity-0",
             )}
           >

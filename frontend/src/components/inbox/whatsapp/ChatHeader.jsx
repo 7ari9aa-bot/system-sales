@@ -38,31 +38,31 @@ export default function ChatHeader({
   const phone = displayPhone(conversation.phone);
   const subtitle = headerSubtitle({ phone, windowInfo, lang });
   const warn = windowInfo.state === "closed" || windowInfo.state === "closing";
-  const iconBtn = "grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]";
+  const iconBtn = "grid h-10 w-10 shrink-0 place-items-center rounded-full text-[color:var(--wa-text-icon)] transition-colors hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]";
   const closeMenu = () => { setMenuOpen(false); moreRef.current?.focus(); };
 
   return (
-    <header dir="ltr" data-testid="chat-header" className="relative z-20 flex h-[60px] shrink-0 items-center gap-2 border-b border-[#d1d7db] bg-[#f0f2f5] px-4">
+    <header dir="ltr" data-testid="chat-header" className="relative z-20 flex h-[60px] shrink-0 items-center gap-2 border-b border-[color:var(--wa-divider)] bg-[var(--wa-bg-input)] px-4">
       {onBack && (
         <button type="button" onClick={onBack} aria-label={w.back} data-testid="header-back" className={cn(iconBtn, "-ms-2 lg:hidden")}>
           <BackIcon size={22} className={lang === "ar" ? "rotate-180" : undefined} />
         </button>
       )}
 
-      <button type="button" onClick={onOpenInfo} aria-label={`${w.contact}: ${conversation.customer}`} data-testid="header-identity" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
+      <button type="button" onClick={onOpenInfo} aria-label={`${w.contact}: ${conversation.customer}`} data-testid="header-identity" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
         {AvatarComponent ? (
           <AvatarComponent conversation={conversation} className="h-10 w-10 text-[13px]" />
         ) : (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-[#54656f]" style={{ background: conversation.color || "#dfe5e7" }} aria-hidden="true">{conversation.initials}</span>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-[color:var(--wa-text-icon)]" style={{ background: conversation.color || "var(--wa-divider)" }} aria-hidden="true">{conversation.initials}</span>
         )}
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span dir="auto" data-testid="header-name" className="truncate text-[16px] font-medium text-[#111b21]">{conversation.customer}</span>
-            {conversation.pinnedAt && <span title={w.pinned} role="img" aria-label={w.pinned} className="text-[#8696a0]">📌</span>}
-            {isMuted(conversation) && <span title={w.muted} role="img" aria-label={w.muted} className="text-[#8696a0]">🔇</span>}
+            <span dir="auto" data-testid="header-name" className="truncate text-[16px] font-medium text-[color:var(--wa-text)]">{conversation.customer}</span>
+            {conversation.pinnedAt && <span title={w.pinned} role="img" aria-label={w.pinned} className="text-[color:var(--wa-text-faint)]">📌</span>}
+            {isMuted(conversation) && <span title={w.muted} role="img" aria-label={w.muted} className="text-[color:var(--wa-text-faint)]">🔇</span>}
           </span>
           {subtitle && (
-            <span data-testid="header-subtitle" data-window={windowInfo.state} dir="auto" className={cn("flex items-center gap-1 truncate text-[13px]", warn ? "text-[#b45309]" : "text-[#667781]")}>
+            <span data-testid="header-subtitle" data-window={windowInfo.state} dir="auto" className={cn("flex items-center gap-1 truncate text-[13px]", warn ? "text-[color:var(--wa-warn)]" : "text-[color:var(--wa-text-secondary)]")}>
               {warn && <ClockIcon size={13} aria-hidden="true" />}
               <span className="truncate">{subtitle}</span>
             </span>
@@ -70,7 +70,7 @@ export default function ChatHeader({
         </span>
       </button>
 
-      <button type="button" onClick={onToggleSearch} aria-label={w.search} aria-pressed={searchOpen} data-testid="header-search" className={cn(iconBtn, searchOpen && "bg-black/5")}>
+      <button type="button" onClick={onToggleSearch} aria-label={w.search} aria-pressed={searchOpen} data-testid="header-search" className={cn(iconBtn, searchOpen && "bg-[var(--wa-bg-hover)]")}>
         <SearchIcon size={20} />
       </button>
       <button type="button" onClick={onOpenInfo} aria-label={w.info} data-testid="header-info" className={cn(iconBtn, "hidden sm:grid")}>

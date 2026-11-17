@@ -29,25 +29,25 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
   const emptyText = query.trim() ? w.noMatch : archiveView ? w.emptyArchive : tab === "unread" ? w.emptyUnread : w.empty;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-white" data-testid="chat-list">
-      <div className="space-y-2 border-b border-[#d1d7db] px-3 pb-0 pt-3">
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--wa-bg-panel)]" data-testid="chat-list">
+      <div className="space-y-2 border-b border-[color:var(--wa-divider)] px-3 pb-0 pt-3">
         {archiveView ? (
           <div className="flex items-center gap-2 pb-2">
-            <button type="button" onClick={() => setArchiveView(false)} aria-label={w.back} className="grid h-8 w-8 place-items-center rounded-full text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
+            <button type="button" onClick={() => setArchiveView(false)} aria-label={w.back} className="grid h-8 w-8 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
               <BackIcon size={20} className={lang === "ar" ? "rotate-180" : ""} />
             </button>
-            <h2 className="text-[17px] font-semibold text-[#111b21]">{w.archived}</h2>
+            <h2 className="text-[17px] font-semibold text-[color:var(--wa-text)]">{w.archived}</h2>
           </div>
         ) : null}
         <div className="relative">
-          <SearchIcon size={16} className={cn("absolute top-1/2 -translate-y-1/2 text-[#667781]", lang === "ar" ? "right-3" : "left-3")} />
+          <SearchIcon size={16} className={cn("absolute top-1/2 -translate-y-1/2 text-[color:var(--wa-text-secondary)]", lang === "ar" ? "right-3" : "left-3")} />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             dir={lang === "ar" ? "rtl" : "ltr"}
             aria-label={w.search}
             placeholder={w.search}
-            className={cn("h-9 w-full rounded-lg border border-[#f0f2f5] bg-[#f0f2f5] text-[13.5px] placeholder:text-[#667781] focus:border-[#00a884] focus:outline-none", lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3")}
+            className={cn("h-9 w-full rounded-lg border border-[color:var(--wa-bg-input)] bg-[var(--wa-bg-input)] text-[13.5px] placeholder:text-[color:var(--wa-text-secondary)] focus:border-[color:var(--wa-green)] focus:outline-none", lang === "ar" ? "pr-9 pl-3 text-right" : "pl-9 pr-3")}
           />
         </div>
         {!archiveView && (
@@ -61,8 +61,8 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
                 data-testid={`tab-${id}`}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "whitespace-nowrap rounded-full px-3 py-1 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]",
-                  tab === id ? "bg-[#d9fdd3] font-medium text-[#025144]" : "bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]",
+                  "whitespace-nowrap rounded-full px-3.5 py-2.5 text-[13px] sm:px-3 sm:py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]",
+                  tab === id ? "bg-[var(--wa-pill-active)] font-medium text-[color:var(--wa-green-text)]" : "bg-[var(--wa-bg-input)] text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-chip)]",
                 )}
               >
                 {w[id]}
@@ -74,14 +74,14 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin" data-testid="chat-list-scroll">
         {!archiveView && counts.archived > 0 && !query.trim() && (
-          <button type="button" data-testid="open-archive" onClick={() => setArchiveView(true)} className="flex w-full items-center gap-4 border-b border-[#e9edef] px-5 py-3 text-start text-[14.5px] text-[#111b21] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#00a884]">
-            <ArchiveIcon size={20} className="text-[#00a884]" />
+          <button type="button" data-testid="open-archive" onClick={() => setArchiveView(true)} className="flex w-full items-center gap-4 border-b border-[color:var(--wa-bg-chip)] px-5 py-3 text-start text-[14.5px] text-[color:var(--wa-text)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]">
+            <ArchiveIcon size={20} className="text-[color:var(--wa-green)]" />
             <span className="flex-1">{w.archived}</span>
-            <span className="text-[12.5px] tabular-nums text-[#00a884]">{counts.archived}</span>
+            <span className="text-[12.5px] tabular-nums text-[color:var(--wa-green)]">{counts.archived}</span>
           </button>
         )}
         {shown.length === 0 ? (
-          <p className="px-4 py-10 text-center text-[13px] text-[#667781]">{emptyText}</p>
+          <p className="px-4 py-10 text-center text-[13px] text-[color:var(--wa-text-secondary)]">{emptyText}</p>
         ) : (
           shown.map((row) => (
             <ChatListRow

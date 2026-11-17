@@ -85,14 +85,14 @@ export default function VoiceRecorder({ onCancel, onDone, onError, lang = "ar", 
 
   return (
     <div data-testid="voice-recorder" role="status" aria-live="polite" dir="ltr" className="flex min-h-[52px] items-center gap-3 px-3 py-1.5">
-      <button type="button" onClick={cancel} aria-label={w.cancel} title={w.cancel} data-testid="voice-cancel" className="grid h-10 w-10 place-items-center rounded-full text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"><CloseIcon size={22} /></button>
-      <span className="flex flex-1 items-center gap-2 text-[15px] text-[#111b21]">
-        <span aria-hidden="true" className="h-3 w-3 animate-pulse rounded-full bg-[#ea0038]" />
+      <button type="button" onClick={cancel} aria-label={w.cancel} title={w.cancel} data-testid="voice-cancel" className="grid h-10 w-10 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]"><CloseIcon size={22} /></button>
+      <span className="flex flex-1 items-center gap-2 text-[15px] text-[color:var(--wa-text)]">
+        <span aria-hidden="true" className="h-3 w-3 animate-pulse rounded-full bg-[var(--wa-danger)]" />
         <span data-testid="voice-time" className="tabular-nums">{formatDuration(seconds)}</span>
-        <span className="text-[13px] text-[#667781]">{w.recording}</span>
-        <MicIcon size={18} className="text-[#667781]" />
+        <span className="text-[13px] text-[color:var(--wa-text-secondary)]">{w.recording}</span>
+        <MicIcon size={18} className="text-[color:var(--wa-text-secondary)]" />
       </span>
-      <button type="button" onClick={stop} disabled={!ready} aria-label={w.send} title={w.send} data-testid="voice-stop" className="grid h-11 w-11 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2 disabled:opacity-50"><SendIcon size={22} className={lang === "ar" ? "-scale-x-100" : undefined} /></button>
+      <button type="button" onClick={stop} disabled={!ready} aria-label={w.send} title={w.send} data-testid="voice-stop" className="grid h-11 w-11 place-items-center rounded-full bg-[var(--wa-green)] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)] focus-visible:ring-offset-2 disabled:opacity-50"><SendIcon size={22} className={lang === "ar" ? "-scale-x-100" : undefined} /></button>
     </div>
   );
 }

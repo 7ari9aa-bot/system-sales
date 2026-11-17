@@ -35,7 +35,7 @@ describe("ChatListRow", () => {
   });
   test("a muted chat turns the badge grey and shows the mute mark", () => {
     const out = rowOf(row({ unread: 2, mutedUntil: "9999-12-31T00:00:00Z" }));
-    expect(out).toContain("bg-[#8696a0]");
+    expect(out).toContain("bg-[var(--wa-text-faint)]");
     expect(out).toContain("Notifications muted");
     expect(rowOf(row({ unread: 2 }))).toContain("bg-[#25d366]");
   });

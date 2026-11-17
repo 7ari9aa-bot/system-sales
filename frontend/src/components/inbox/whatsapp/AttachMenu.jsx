@@ -37,7 +37,7 @@ export default function AttachMenu({ open, onClose, onPick, lang = "ar" }) {
     onClose?.();
   };
 
-  const item = "flex w-full items-center gap-3 px-4 py-2.5 text-[15px] text-[#111b21] hover:bg-[#f5f6f6] focus-visible:bg-[#f5f6f6] focus-visible:outline-none";
+  const item = "flex w-full items-center gap-3 px-4 py-2.5 text-[15px] text-[color:var(--wa-text)] hover:bg-[var(--wa-bg-hover)] focus-visible:bg-[var(--wa-bg-hover)] focus-visible:outline-none";
   return (
     <>
       <input ref={docRef} type="file" accept={DOCUMENT_ACCEPT} className="hidden" data-testid="attach-input-document" onChange={choose(false)} />
@@ -45,7 +45,7 @@ export default function AttachMenu({ open, onClose, onPick, lang = "ar" }) {
       <input ref={stickerRef} type="file" accept="image/webp" className="hidden" data-testid="attach-input-sticker" onChange={choose(true)} />
       {open && (
         <div ref={ref} role="menu" aria-label={w.menu} data-testid="attach-menu" dir={lang === "ar" ? "rtl" : "ltr"}
-          className="absolute bottom-full start-2 z-30 mb-2 w-60 overflow-hidden rounded-xl bg-white py-2 shadow-[0_2px_12px_rgba(11,20,26,0.25)]">
+          className="absolute bottom-full start-2 z-30 mb-2 w-60 overflow-hidden rounded-xl bg-[var(--wa-bg-panel)] py-2 shadow-[0_2px_12px_rgba(11,20,26,0.25)]">
           <button type="button" role="menuitem" className={item} data-testid="attach-document" onClick={() => docRef.current?.click()}>
             <span className="grid h-9 w-9 place-items-center rounded-full bg-[#7f66ff] text-white"><FileIcon size={20} /></span>{w.document}
           </button>

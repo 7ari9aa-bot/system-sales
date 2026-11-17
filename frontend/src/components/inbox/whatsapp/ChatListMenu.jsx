@@ -55,13 +55,13 @@ export default function ChatListMenu({ row, lang = "ar", pinnedCount = 0, onChan
   }, [onClose]);
 
   const choose = (body) => () => { onChange?.(body); onClose?.(); };
-  const item = "flex w-full items-center gap-3 px-4 py-2.5 text-start text-[14px] text-[#111b21] hover:bg-[#f5f6f6] focus-visible:bg-[#f5f6f6] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  const item = "flex w-full items-center gap-3 px-4 py-2.5 text-start text-[14px] text-[color:var(--wa-text)] hover:bg-[var(--wa-bg-hover)] focus-visible:bg-[var(--wa-bg-hover)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <div ref={ref} role="menu" aria-label={w.menu} data-testid="chat-list-menu" className="min-w-[210px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
+    <div ref={ref} role="menu" aria-label={w.menu} data-testid="chat-list-menu" className="min-w-[210px] overflow-hidden rounded-xl bg-[var(--wa-bg-panel)] py-1.5 shadow-lg ring-1 ring-[var(--wa-divider)]">
       {muteOpen ? (
         <div role="group" aria-label={w.muteFor}>
-          <div className="px-4 py-2 text-[12.5px] text-[#667781]">{w.muteFor}</div>
+          <div className="px-4 py-2 text-[12.5px] text-[color:var(--wa-text-secondary)]">{w.muteFor}</div>
           {["8h", "1w", "always"].map((d) => (
             <button key={d} type="button" role="menuitem" data-testid={`mute-${d}`} className={item} onClick={choose({ mute: d })}>
               {w[d]}
@@ -71,15 +71,15 @@ export default function ChatListMenu({ row, lang = "ar", pinnedCount = 0, onChan
       ) : (
         <>
           <button type="button" role="menuitem" data-testid="act-archive" className={item} onClick={choose({ archived: !archived })}>
-            <ArchiveIcon size={18} className="text-[#54656f]" />{archived ? w.unarchive : w.archive}
+            <ArchiveIcon size={18} className="text-[color:var(--wa-text-icon)]" />{archived ? w.unarchive : w.archive}
           </button>
           {muted ? (
             <button type="button" role="menuitem" data-testid="act-unmute" className={item} onClick={choose({ mute: "off" })}>
-              <MuteIcon size={18} className="text-[#54656f]" />{w.unmute}
+              <MuteIcon size={18} className="text-[color:var(--wa-text-icon)]" />{w.unmute}
             </button>
           ) : (
             <button type="button" role="menuitem" data-testid="act-mute" className={item} onClick={() => setMuteOpen(true)}>
-              <MuteIcon size={18} className="text-[#54656f]" />{w.mute}
+              <MuteIcon size={18} className="text-[color:var(--wa-text-icon)]" />{w.mute}
             </button>
           )}
           <button
@@ -87,10 +87,10 @@ export default function ChatListMenu({ row, lang = "ar", pinnedCount = 0, onChan
             title={pinBlocked ? w.pinLimit : undefined}
             className={cn(item)} onClick={choose({ pinned: !pinned })}
           >
-            <PushPinIcon size={18} className="text-[#54656f]" />{pinned ? w.unpin : w.pin}
+            <PushPinIcon size={18} className="text-[color:var(--wa-text-icon)]" />{pinned ? w.unpin : w.pin}
           </button>
           <button type="button" role="menuitem" data-testid="act-unread" className={item} onClick={choose({ marked_unread: !unread })}>
-            <UnreadIcon size={18} className="text-[#54656f]" />{unread ? w.read : w.unread}
+            <UnreadIcon size={18} className="text-[color:var(--wa-text-icon)]" />{unread ? w.read : w.unread}
           </button>
         </>
       )}

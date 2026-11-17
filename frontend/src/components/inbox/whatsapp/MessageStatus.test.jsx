@@ -23,14 +23,14 @@ describe("MessageStatus", () => {
   const render = (status, lang) => renderToStaticMarkup(React.createElement(MessageStatus, { status, lang }));
 
   test("read is blue, delivered is grey, and they are different", () => {
-    expect(render("read")).toContain("#53bdeb");
-    expect(render("delivered")).not.toContain("#53bdeb");
-    expect(render("delivered")).toContain("#667781");
+    expect(render("read")).toContain("var(--wa-ticks-read)");
+    expect(render("delivered")).not.toContain("var(--wa-ticks-read)");
+    expect(render("delivered")).toContain("var(--wa-text-secondary)");
   });
 
   test("a failed message is red and announced as failed", () => {
     const html = render("failed", "ar");
-    expect(html).toContain("#ea0038");
+    expect(html).toContain("var(--wa-danger)");
     expect(html).toContain("فشل الإرسال");
   });
 

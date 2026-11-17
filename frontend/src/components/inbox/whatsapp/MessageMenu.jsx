@@ -45,7 +45,7 @@ export default function MessageMenu({ m, lang = "ar", mine = "", canReact = true
   return (
     <div ref={ref} role="menu" aria-label={w.menu} data-testid="message-menu" className="flex flex-col gap-1.5">
       {canReact && (
-        <div role="group" className="flex items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-black/5">
+        <div role="group" className="flex items-center gap-0.5 rounded-full bg-[var(--wa-bg-panel)] px-1.5 py-1 shadow-lg ring-1 ring-[var(--wa-divider)]">
           {QUICK_REACTIONS.map((emoji) => (
             <button
               key={emoji}
@@ -55,20 +55,20 @@ export default function MessageMenu({ m, lang = "ar", mine = "", canReact = true
               aria-label={mine === emoji ? `${w.remove} ${emoji}` : `${w.react} ${emoji}`}
               aria-pressed={mine === emoji}
               onClick={done(() => onReact?.(mine === emoji ? "" : emoji))}
-              className={cn("grid h-9 w-9 place-items-center rounded-full text-[22px] leading-none transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]", mine === emoji && "bg-[#e7f8f3]")}
+              className={cn("grid h-9 w-9 place-items-center rounded-full text-[22px] leading-none transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]", mine === emoji && "bg-[#e7f8f3]")}
             >
               {emoji}
             </button>
           ))}
         </div>
       )}
-      <div className="min-w-[160px] overflow-hidden rounded-xl bg-white py-1.5 text-[14.5px] text-[#111b21] shadow-lg ring-1 ring-black/5">
-        <button type="button" role="menuitem" data-testid="menu-reply" onClick={done(() => onReply?.(m))} className="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[#f5f6f6] focus-visible:bg-[#f5f6f6] focus-visible:outline-none">
+      <div className="min-w-[160px] overflow-hidden rounded-xl bg-[var(--wa-bg-panel)] py-1.5 text-[14.5px] text-[color:var(--wa-text)] shadow-lg ring-1 ring-[var(--wa-divider)]">
+        <button type="button" role="menuitem" data-testid="menu-reply" onClick={done(() => onReply?.(m))} className="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[var(--wa-bg-hover)] focus-visible:bg-[var(--wa-bg-hover)] focus-visible:outline-none">
           <ReplyIcon size={18} />
           <span>{w.reply}</span>
         </button>
         {hasText && (
-          <button type="button" role="menuitem" data-testid="menu-copy" onClick={done(() => onCopy?.(m))} className="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[#f5f6f6] focus-visible:bg-[#f5f6f6] focus-visible:outline-none">
+          <button type="button" role="menuitem" data-testid="menu-copy" onClick={done(() => onCopy?.(m))} className="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[var(--wa-bg-hover)] focus-visible:bg-[var(--wa-bg-hover)] focus-visible:outline-none">
             <CopyIcon size={18} />
             <span>{w.copy}</span>
           </button>

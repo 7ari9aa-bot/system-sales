@@ -33,9 +33,9 @@ export default function MessageStatus({ status, lang = "ar", className = "" }) {
   const kind = statusKind(status);
   const label = (LABEL[lang] || LABEL.en)[kind];
   const common = { role: "img", "aria-label": label, title: label, "data-status": kind, className };
-  if (kind === "read") return <span {...common}><DoubleTickIcon size={17} className="text-[#53bdeb]" /></span>;
-  if (kind === "delivered") return <span {...common}><DoubleTickIcon size={17} className="text-[#667781]" /></span>;
-  if (kind === "sent") return <span {...common}><TickIcon size={14} className="text-[#667781]" /></span>;
-  if (kind === "failed") return <span {...common}><AlertIcon size={15} className="text-[#ea0038]" /></span>;
-  return <span {...common}><ClockIcon size={13} className="text-[#667781]" /></span>;
+  if (kind === "read") return <span {...common}><DoubleTickIcon size={17} className="text-[color:var(--wa-ticks-read)]" /></span>;
+  if (kind === "delivered") return <span {...common}><DoubleTickIcon size={17} className="text-[color:var(--wa-text-secondary)]" /></span>;
+  if (kind === "sent") return <span {...common}><TickIcon size={14} className="text-[color:var(--wa-text-secondary)]" /></span>;
+  if (kind === "failed") return <span {...common}><AlertIcon size={15} className="text-[color:var(--wa-danger)]" /></span>;
+  return <span {...common}><ClockIcon size={13} className="text-[color:var(--wa-text-secondary)]" /></span>;
 }

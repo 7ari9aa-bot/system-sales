@@ -49,12 +49,12 @@ export default function Composer({
     el.style.height = `${Math.min(el.scrollHeight, line * rowsFor(value) + 22)}px`;
   }, [value]);
 
-  const iconBtn = "grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] disabled:opacity-50";
+  const iconBtn = "grid h-10 w-10 shrink-0 place-items-center rounded-full text-[color:var(--wa-text-icon)] transition-colors hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)] disabled:opacity-50";
 
   if (closed) {
     return (
-      <div data-testid="composer-closed" role="status" dir={lang === "ar" ? "rtl" : "ltr"} style={{ fontFamily }} className="flex items-center gap-3 px-4 py-3 text-[13.5px] text-[#54656f]">
-        <AlertIcon size={20} className="shrink-0 text-[#b45309]" />
+      <div data-testid="composer-closed" role="status" dir={lang === "ar" ? "rtl" : "ltr"} style={{ fontFamily }} className="flex items-center gap-3 px-4 py-3 text-[13.5px] text-[color:var(--wa-text-icon)]">
+        <AlertIcon size={20} className="shrink-0 text-[color:var(--wa-warn)]" />
         <span>{w.closed}</span>
       </div>
     );
@@ -63,13 +63,13 @@ export default function Composer({
   return (
     <div style={{ fontFamily }} className="relative">
       {replyingTo && (
-        <div data-testid="replying-to" dir="auto" className="mx-2 mt-2 flex items-stretch gap-2 overflow-hidden rounded-lg bg-[#f0f2f5] ring-1 ring-black/5">
-          <span aria-hidden="true" className="w-1 shrink-0" style={{ background: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }} />
+        <div data-testid="replying-to" dir="auto" className="mx-2 mt-2 flex items-stretch gap-2 overflow-hidden rounded-lg bg-[var(--wa-bg-input)] ring-1 ring-[var(--wa-divider)]">
+          <span aria-hidden="true" className="w-1 shrink-0" style={{ background: replyingTo.side === "out" ? "#06cf9c" : "var(--wa-ticks-read)" }} />
           <div className="min-w-0 flex-1 py-1.5">
-            <div className="text-[12.5px] font-medium" style={{ color: replyingTo.side === "out" ? "#06cf9c" : "#53bdeb" }}>{replyingTo.side === "out" ? w.you : (customerName || w.customer)}</div>
-            <div className="truncate text-[13px] text-[#667781]">{replyingTo.text || w.attachment}</div>
+            <div className="text-[12.5px] font-medium" style={{ color: replyingTo.side === "out" ? "#06cf9c" : "var(--wa-ticks-read)" }}>{replyingTo.side === "out" ? w.you : (customerName || w.customer)}</div>
+            <div className="truncate text-[13px] text-[color:var(--wa-text-secondary)]">{replyingTo.text || w.attachment}</div>
           </div>
-          <button type="button" data-testid="cancel-reply" onClick={onCancelReply} aria-label={w.cancelReply} title={w.cancelReply} className="grid w-9 shrink-0 place-items-center text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
+          <button type="button" data-testid="cancel-reply" onClick={onCancelReply} aria-label={w.cancelReply} title={w.cancelReply} className="grid w-9 shrink-0 place-items-center text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
             <CloseIcon size={16} />
           </button>
         </div>
@@ -95,10 +95,10 @@ export default function Composer({
             aria-invalid={warn?.over || undefined}
             data-testid="composer-input"
             readOnly={sending}
-            className="block max-h-[122px] w-full resize-none rounded-lg border-0 bg-white px-3 py-[11px] text-[15px] leading-5 text-[#111b21] placeholder:text-[#667781] focus:outline-none"
+            className="block max-h-[122px] w-full resize-none rounded-lg border-0 bg-[var(--wa-bg-input)] px-3 py-[11px] text-[15px] leading-5 text-[color:var(--wa-text)] placeholder:text-[color:var(--wa-text-secondary)] focus:outline-none"
           />
           {warn && (
-            <div data-testid="composer-count" aria-live="polite" className={cn("px-1 pt-0.5 text-end text-[12px]", warn.over ? "text-[#ea0038]" : "text-[#667781]")}>
+            <div data-testid="composer-count" aria-live="polite" className={cn("px-1 pt-0.5 text-end text-[12px]", warn.over ? "text-[color:var(--wa-danger)]" : "text-[color:var(--wa-text-secondary)]")}>
               {warn.over ? `${w.over} ${Math.abs(warn.left)}` : `${warn.left} ${w.left}`}
             </div>
           )}

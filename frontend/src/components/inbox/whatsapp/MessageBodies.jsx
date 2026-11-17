@@ -16,7 +16,7 @@ export function PhotoBody({ src, caption, lang, onOpen, className }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div data-testid="media-failed" role="img" aria-label={w.photoFailed} className="flex h-32 w-56 max-w-full items-center justify-center gap-2 rounded-lg bg-black/5 text-[13px] text-[#667781]">
+      <div data-testid="media-failed" role="img" aria-label={w.photoFailed} className="flex h-32 w-56 max-w-full items-center justify-center gap-2 rounded-lg bg-[var(--wa-bg-hover)] text-[13px] text-[color:var(--wa-text-secondary)]">
         <BlockedIcon size={18} />{w.photoFailed}
       </div>
     );
@@ -25,7 +25,7 @@ export function PhotoBody({ src, caption, lang, onOpen, className }) {
   return (
     <div className="max-w-[280px] overflow-hidden rounded-lg">
       {onOpen ? (
-        <button type="button" data-testid="open-image" onClick={onOpen} aria-label={w.photo} className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">{img}</button>
+        <button type="button" data-testid="open-image" onClick={onOpen} aria-label={w.photo} className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">{img}</button>
       ) : img}
     </div>
   );
@@ -34,7 +34,7 @@ export function PhotoBody({ src, caption, lang, onOpen, className }) {
 export function StickerBody({ src, lang }) {
   const w = t(lang);
   const [failed, setFailed] = useState(false);
-  if (failed) return <div data-testid="media-failed" className="text-[13px] text-[#667781]">{w.sticker}</div>;
+  if (failed) return <div data-testid="media-failed" className="text-[13px] text-[color:var(--wa-text-secondary)]">{w.sticker}</div>;
   // A sticker has no bubble chrome and no caption: just the image.
   return <img data-testid="sticker" src={src} alt={w.sticker} loading="lazy" onError={() => setFailed(true)} className="h-36 w-36 object-contain" />;
 }
@@ -45,7 +45,7 @@ export function VideoBody({ src, caption, lang }) {
   const [playing, setPlaying] = useState(false);
   if (failed) {
     return (
-      <div data-testid="media-failed" className="flex h-24 w-56 max-w-full items-center justify-center gap-2 rounded-lg bg-black/5 text-[13px] text-[#667781]"><BlockedIcon size={18} />{w.mediaFailed}</div>
+      <div data-testid="media-failed" className="flex h-24 w-56 max-w-full items-center justify-center gap-2 rounded-lg bg-[var(--wa-bg-hover)] text-[13px] text-[color:var(--wa-text-secondary)]"><BlockedIcon size={18} />{w.mediaFailed}</div>
     );
   }
   return (
@@ -53,8 +53,8 @@ export function VideoBody({ src, caption, lang }) {
       {playing ? (
         <video data-testid="video" src={src} controls autoPlay preload="metadata" onError={() => setFailed(true)} className="max-h-64 w-full" aria-label={caption || w.video} />
       ) : (
-        <button type="button" data-testid="play-video" onClick={() => setPlaying(true)} aria-label={w.play} className="grid h-40 w-64 max-w-full place-items-center text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55"><PlayIcon size={26} /></span>
+        <button type="button" data-testid="play-video" onClick={() => setPlaying(true)} aria-label={w.play} className="grid h-40 w-64 max-w-full place-items-center text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--wa-bg-hover)]5"><PlayIcon size={26} /></span>
         </button>
       )}
     </div>
@@ -66,14 +66,14 @@ export function DocumentBody({ src, label, lang, out }) {
   const name = label || fileNameOf(src, w.document);
   const ext = fileExtension(name);
   return (
-    <div data-testid="document" className={cn("flex w-64 max-w-full items-center gap-3 rounded-lg p-2", out ? "bg-[#cfe9ca]" : "bg-[#f5f6f6]")}>
+    <div data-testid="document" className={cn("flex w-64 max-w-full items-center gap-3 rounded-lg p-2", out ? "bg-[var(--wa-bubble-out-inner)]" : "bg-[var(--wa-bg-hover)]")}>
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7f66ff]/15 text-[#7f66ff]"><FileIcon size={22} /></span>
       <span className="min-w-0 flex-1">
         <span dir="auto" className="block truncate text-[13.5px] font-medium">{name}</span>
-        {ext && <span className="block text-[11.5px] text-[#667781]">{ext}</span>}
+        {ext && <span className="block text-[11.5px] text-[color:var(--wa-text-secondary)]">{ext}</span>}
       </span>
       {src && (
-        <a href={src} target="_blank" rel="noopener noreferrer" download data-testid="document-download" aria-label={`${w.download} ${name}`} title={w.download} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]">
+        <a href={src} target="_blank" rel="noopener noreferrer" download data-testid="document-download" aria-label={`${w.download} ${name}`} title={w.download} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
           <DownloadIcon size={20} />
         </a>
       )}
@@ -87,12 +87,12 @@ export function LocationBody({ body, lang }) {
   const w = t(lang);
   const { title, address } = parseLocation(body);
   return (
-    <div data-testid="location" className="flex w-64 max-w-full items-center gap-3 rounded-lg bg-black/5 p-2">
+    <div data-testid="location" className="flex w-64 max-w-full items-center gap-3 rounded-lg bg-[var(--wa-bg-hover)] p-2">
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ea4335]/15 text-[#ea4335]"><PinIcon size={22} /></span>
       <span className="min-w-0 flex-1" dir="auto">
-        <span className="block text-[11.5px] text-[#667781]">{w.location}</span>
+        <span className="block text-[11.5px] text-[color:var(--wa-text-secondary)]">{w.location}</span>
         <span className="block truncate text-[13.5px] font-medium">{title || w.location}</span>
-        {address && <span className="block truncate text-[12.5px] text-[#667781]">{address}</span>}
+        {address && <span className="block truncate text-[12.5px] text-[color:var(--wa-text-secondary)]">{address}</span>}
       </span>
     </div>
   );
@@ -102,12 +102,12 @@ export function ContactBody({ body, lang }) {
   const w = t(lang);
   const { name, phone } = parseContact(body);
   return (
-    <div data-testid="contact-card" className="flex w-64 max-w-full items-center gap-3 rounded-lg bg-black/5 p-2">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#dfe5e7] text-[#54656f]"><UserIcon size={22} /></span>
+    <div data-testid="contact-card" className="flex w-64 max-w-full items-center gap-3 rounded-lg bg-[var(--wa-bg-hover)] p-2">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--wa-divider)] text-[color:var(--wa-text-icon)]"><UserIcon size={22} /></span>
       <span className="min-w-0 flex-1" dir="auto">
-        <span className="block text-[11.5px] text-[#667781]">{w.contact}</span>
+        <span className="block text-[11.5px] text-[color:var(--wa-text-secondary)]">{w.contact}</span>
         <span className="block truncate text-[13.5px] font-medium">{name || phone || w.contact}</span>
-        {name && <span className="block truncate text-[12.5px] text-[#667781]" dir="ltr">{phone || w.noNumber}</span>}
+        {name && <span className="block truncate text-[12.5px] text-[color:var(--wa-text-secondary)]" dir="ltr">{phone || w.noNumber}</span>}
       </span>
     </div>
   );
@@ -119,7 +119,7 @@ export function ChoiceBody({ body, kind, lang }) {
   const Icon = kind === "list" ? ListIcon : null;
   return (
     <div data-testid={kind === "list" ? "list-reply" : "button-reply"}>
-      <div className="mb-0.5 flex items-center gap-1 text-[11.5px] text-[#667781]">
+      <div className="mb-0.5 flex items-center gap-1 text-[11.5px] text-[color:var(--wa-text-secondary)]">
         {Icon && <Icon size={13} />}{kind === "list" ? w.listReply : w.buttonReply}
       </div>
       <div dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{body}</div>
@@ -129,7 +129,7 @@ export function ChoiceBody({ body, kind, lang }) {
 
 export function UnsupportedBody({ lang }) {
   return (
-    <div data-testid="unsupported" dir="auto" className="flex items-start gap-2 italic text-[#667781]">
+    <div data-testid="unsupported" dir="auto" className="flex items-start gap-2 italic text-[color:var(--wa-text-secondary)]">
       <BlockedIcon size={16} className="mt-0.5 shrink-0" />
       <span>{t(lang).unsupported}</span>
     </div>

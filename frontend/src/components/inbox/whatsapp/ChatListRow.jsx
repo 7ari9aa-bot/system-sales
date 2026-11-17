@@ -28,32 +28,32 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
       data-testid="chat-row"
       data-unread={unread}
       data-pinned={pinned}
-      className={cn("group/row relative flex items-stretch border-b border-[#e9edef] transition-colors hover:bg-[#f5f6f6]", active && "bg-[#f0f2f5]")}
+      className={cn("group/row relative flex items-stretch border-b border-[color:var(--wa-bg-chip)] transition-colors hover:bg-[var(--wa-bg-hover)]", active && "bg-[var(--wa-bg-input)]")}
     >
       <button
         type="button"
         aria-pressed={active}
         onClick={onOpen}
-        className={cn("flex min-w-0 flex-1 gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#00a884]", lang === "ar" ? "text-right" : "text-left")}
+        className={cn("flex min-w-0 flex-1 gap-3 px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--wa-green)]", lang === "ar" ? "text-right" : "text-left")}
       >
         <div className="shrink-0">
           {ConversationAvatar ? (
             <ConversationAvatar conversation={row} className="h-12 w-12 text-[12px]" />
           ) : (
-            <div className="grid h-12 w-12 place-items-center rounded-full text-[12px] font-semibold text-[#54656f]" style={{ background: row.color }}>{row.initials}</div>
+            <div className="grid h-12 w-12 place-items-center rounded-full text-[12px] font-semibold text-[color:var(--wa-text-icon)]" style={{ background: row.color }}>{row.initials}</div>
           )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span dir="auto" className={cn("truncate text-[15px] text-[#111b21]", unread && "font-semibold")}>{row.customer}</span>
-            <span dir="ltr" className={cn("shrink-0 text-[11.5px]", unread && !muted ? "font-medium text-[#1fa855]" : "text-[#667781]")}>
+            <span dir="auto" className={cn("truncate text-[15px] text-[color:var(--wa-text)]", unread && "font-semibold")}>{row.customer}</span>
+            <span dir="ltr" className={cn("shrink-0 text-[11.5px]", unread && !muted ? "font-medium text-[#1fa855]" : "text-[color:var(--wa-text-secondary)]")}>
               {listTimestamp(row.lastAt, lang)}
             </span>
           </div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1">
             {mine && <MessageStatus status={row.lastStatus} lang={lang} className="shrink-0" />}
-            <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[13.5px]", unread ? "text-[#111b21]" : "text-[#667781]")}>{row.preview}</p>
-            <span className="flex shrink-0 items-center gap-1.5 text-[#667781]">
+            <p dir="auto" className={cn("min-w-0 flex-1 truncate text-[13.5px]", unread ? "text-[color:var(--wa-text)]" : "text-[color:var(--wa-text-secondary)]")}>{row.preview}</p>
+            <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--wa-text-secondary)]">
               {muted && <MuteIcon size={15} role="img" aria-hidden={false} aria-label={w.muted} />}
               {pinned && <PushPinIcon size={15} role="img" aria-hidden={false} aria-label={w.pinned} />}
               {unread && (
@@ -63,7 +63,7 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
                   className={cn(
                     "grid place-items-center rounded-full text-[11.5px] font-semibold tabular-nums text-white",
                     count ? "h-5 min-w-5 px-1.5" : "h-3 w-3",
-                    muted ? "bg-[#8696a0]" : "bg-[#25d366]",
+                    muted ? "bg-[var(--wa-text-faint)]" : "bg-[#25d366]",
                   )}
                 >
                   {count ? (count > 99 ? "99+" : count) : null}
@@ -81,7 +81,7 @@ export default function ChatListRow({ row, active, lang = "ar", pinnedCount = 0,
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
-          className={cn("grid h-6 w-6 place-items-center rounded-full text-[#54656f] hover:bg-black/5 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] group-hover/row:opacity-100", menuOpen ? "opacity-100" : "opacity-0 [@media(hover:none)]:opacity-100")}
+          className={cn("grid h-10 w-10 place-items-center rounded-full text-[color:var(--wa-text-icon)] sm:h-6 sm:w-6 hover:bg-[var(--wa-bg-hover)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)] group-hover/row:opacity-100", menuOpen ? "opacity-100" : "opacity-0 [@media(hover:none)]:opacity-100")}
         >
           <ChevronDownIcon size={16} />
         </button>
