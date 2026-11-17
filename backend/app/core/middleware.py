@@ -105,6 +105,9 @@ _PRODUCT_IMAGE_UPLOAD_PATH = re.compile(r"^/products/[0-9a-fA-F-]{36}/images/upl
 # A merchant's catalog workbook: the raw file is the body. Same figure as the reader's ceiling.
 MAX_IMPORT_UPLOAD_BYTES = 20 * 1024 * 1024
 _IMPORT_UPLOAD_PATH = re.compile(r"^/imports/sessions$")
+# The pictures archive of one import session. Larger than a workbook: it carries the photos.
+MAX_IMPORT_ARCHIVE_BYTES = 200 * 1024 * 1024
+_IMPORT_ARCHIVE_PATH = re.compile(r"^/imports/sessions/[0-9a-fA-F-]{36}/images\.zip$")
 
 # A path segment that looks like an id (uuid or integer) is collapsed so the
 # endpoint tier keys a route shape, not one key per row.
@@ -407,6 +410,8 @@ class BodySizeLimitMiddleware:
             max_bytes = MAX_PRODUCT_IMAGE_UPLOAD_BYTES
         elif scope.get("method") == "POST" and _IMPORT_UPLOAD_PATH.fullmatch(route_path):
             max_bytes = MAX_IMPORT_UPLOAD_BYTES
+        elif scope.get("method") == "POST" and _IMPORT_ARCHIVE_PATH.fullmatch(route_path):
+            max_bytes = MAX_IMPORT_ARCHIVE_BYTES
 
         declared = _header(scope, b"content-length")
         if declared is not None:

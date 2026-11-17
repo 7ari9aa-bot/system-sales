@@ -8,6 +8,7 @@ vi.mock("@/lib/api", async () => {
 });
 
 import {
+  MAX_ARCHIVE_BYTES,
   MAX_IMPORT_BYTES,
   SHEET_LABEL,
   assignField,
@@ -19,7 +20,10 @@ import {
   errorText,
   getImportPreview,
   importErrorText,
+  archiveFileProblem,
+  archiveSummary,
   ignoredColumnsOf,
+  refusedText,
   importFileProblem,
   isFinished,
   mappingRows,
@@ -29,6 +33,7 @@ import {
   startImport,
   topProblems,
   totalsOf,
+  uploadImageArchive,
   uploadImportFile,
   validateImport,
 } from "./importCenter";
@@ -166,6 +171,93 @@ describe("image import wording", () => {
   it("names the Images sheet and explains every code the server can return for a picture", () => {
     expect(SHEET_LABEL.Images).toBeTruthy();
     for (const code of ["not_a_link", "too_many_images", "image_unreachable", "not_an_image", "storage_unavailable"]) {
+      expect(errorText(code), code).not.toBe("قيمة غير صالحة");
+    }
+  });
+});
+
+describe("pictures archive", () => {
+  const zip = (over = {}) => ({ name: "photos.zip", type: "application/zip", size: 5_000_000, ...over });
+
+  it("accepts a zip well past the 20 MB workbook limit, up to its own ceiling", () => {
+    expect(MAX_ARCHIVE_BYTES).toBeGreaterThan(MAX_IMPORT_BYTES);
+    expect(archiveFileProblem(zip({ size: MAX_IMPORT_BYTES + 1 }))).toBeNull();
+    expect(archiveFileProblem(zip({ size: MAX_ARCHIVE_BYTES }))).toBeNull();
+    expect(archiveFileProblem(zip({ size: MAX_ARCHIVE_BYTES + 1 }))).toMatch(/200/);
+  });
+  it("refuses what is not a zip, is empty, or is missing, in any letter case", () => {
+    expect(archiveFileProblem(zip({ name: "PHOTOS.ZIP" }))).toBeNull();
+    expect(archiveFileProblem(zip({ name: "photos.rar" }))).toMatch(/zip/);
+    expect(archiveFileProblem(zip({ name: "photos.xlsx" }))).toMatch(/zip/);
+    expect(archiveFileProblem(zip({ size: 0 }))).toMatch(/فارغ/);
+    expect(archiveFileProblem(undefined)).toBeTruthy();
+  });
+  it("sends the raw zip to the session's own path as application/zip", async () => {
+    const f = zip();
+    await uploadImageArchive("abc", f);
+    const [path, opts] = apiMock.mock.calls[0];
+    expect(path).toBe("/imports/sessions/abc/images.zip");
+    expect(opts).toMatchObject({ method: "POST", body: f, rawBody: true, contentType: "application/zip" });
+  });
+  it("does not call the server for an archive it already knows is refused", async () => {
+    await expect(uploadImageArchive("abc", zip({ name: "a.rar" }))).rejects.toThrow();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+  it("encodes a session id that is not path-safe", async () => {
+    await uploadImageArchive("a/b", zip());
+    expect(apiMock.mock.calls[0][0]).toBe("/imports/sessions/a%2Fb/images.zip");
+  });
+});
+
+describe("archiveSummary", () => {
+  it("is null until the server has seen an archive", () => {
+    expect(archiveSummary({})).toBeNull();
+    expect(archiveSummary(undefined)).toBeNull();
+  });
+  it("turns the server's report into what the card shows", () => {
+    const got = archiveSummary({
+      image_archive: {
+        files: 12,
+        bytes: 5 * 1024 * 1024,
+        refused: { "run.exe": "not a picture file name", "a.png": "encrypted" },
+        ambiguous: ["x.jpg"],
+      },
+    });
+    expect(got.files).toBe(12);
+    expect(got.megabytes).toBe(5);
+    expect(got.refused).toEqual([
+      { name: "run.exe", reason: "not a picture file name" },
+      { name: "a.png", reason: "encrypted" },
+    ]);
+    expect(got.ambiguous).toEqual(["x.jpg"]);
+  });
+  it("never shows 0 MB for a tiny archive, and tolerates missing fields", () => {
+    expect(archiveSummary({ image_archive: { files: 1, bytes: 10 } }).megabytes).toBe(0.1);
+    expect(archiveSummary({ image_archive: {} })).toMatchObject({ files: 0, refused: [], ambiguous: [] });
+  });
+});
+
+describe("refusedText", () => {
+  it("explains every reason the server can give for leaving a file out", () => {
+    for (const r of [
+      "not a picture file name",
+      "picture is larger than 10 MB",
+      "compression ratio is not that of a picture",
+      "encrypted",
+      "symbolic link",
+      "absolute path",
+      "path leaves the archive",
+      "control characters in the name",
+    ]) {
+      expect(refusedText(r), r).not.toBe("غير مقبول");
+    }
+    expect(refusedText("something new")).toBe("غير مقبول");
+  });
+});
+
+describe("archive error wording", () => {
+  it("explains every code the server can return for a file name or the archive", () => {
+    for (const code of ["bad_file_name", "no_archive", "not_in_archive", "ambiguous_name", "image_unreadable"]) {
       expect(errorText(code), code).not.toBe("قيمة غير صالحة");
     }
   });

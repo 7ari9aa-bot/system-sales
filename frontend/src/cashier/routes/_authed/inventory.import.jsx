@@ -14,6 +14,7 @@ import {
   useImportSession,
   useSaveMapping,
   useStartImport,
+  useUploadImageArchive,
   useUploadImport,
   useValidateImport,
 } from "@/cashier/api/useImportCenter";
@@ -32,11 +33,12 @@ export default function InventoryImportPage() {
   const preview = useImportPreview(id, step === "review" || step === "run");
 
   const upload = useUploadImport();
+  const archive = useUploadImageArchive(id);
   const save = useSaveMapping(id);
   const validate = useValidateImport(id);
   const start = useStartImport(id);
   const cancel = useCancelImport(id);
-  const busy = upload.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
+  const busy = upload.isPending || archive.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
 
   const run = async (fn, after) => {
     setError("");
@@ -62,6 +64,7 @@ export default function InventoryImportPage() {
       return validate.mutateAsync();
     });
 
+  const onArchive = (file) => run(() => archive.mutateAsync(file));
   const onStart = () => run(() => start.mutateAsync());
   const onCancel = () => run(() => cancel.mutateAsync());
   const onDownload = () =>
@@ -122,6 +125,9 @@ export default function InventoryImportPage() {
           onChange={(sheet, header, field) => setDraft((d) => ({ ...d, [sheet]: assignField(d[sheet] ?? session.sheets[sheet].mapping, header, field) }))}
           onPolicy={(p) => setPolicy(shownPolicy(p))}
           onNext={onCheck}
+          onArchive={onArchive}
+          archiveBusy={archive.isPending}
+          archiveError={error}
         />
       )}
       {session && step === "review" && (

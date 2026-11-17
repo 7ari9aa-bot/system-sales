@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.imports import lookup
+from app.modules.imports import imagezip, lookup, normalize
 from app.modules.imports.apply import BATCH_LIMIT
 from app.modules.imports.fields import (
     SHEET_FIELDS,
@@ -56,6 +56,8 @@ DEFAULT_OPTIONS = {"duplicate_policy": "create_only", "blank_policy": "keep"}
 # Sheets this phase understands. Anything else in the workbook is reported, not guessed at.
 KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
 _EDITABLE = ("uploaded", "analyzed", "mapped", "validated")
+# What survives a re-check or a re-map: facts about the FILE, not results of checking it.
+_KEPT_STATS = ("rows", "ignored_sheets", "image_archive")
 
 _STORE_VERDICTS = text(
     """
@@ -222,7 +224,7 @@ async def set_mapping(
     imp.options = new_options
     # Any change makes an earlier check stale: the merchant must check again before starting.
     imp.status = "mapped"
-    imp.stats = {k: v for k, v in (imp.stats or {}).items() if k in ("rows", "ignored_sheets")}
+    imp.stats = {k: v for k, v in (imp.stats or {}).items() if k in _KEPT_STATS}
     await session.execute(
         update(ImportRow)
         .where(ImportRow.session_id == imp.id)
@@ -247,8 +249,20 @@ def _collect(rows, mapping, field_key) -> set[str]:
     return {v.strip() for _, r in rows if header and (v := r.get(header)) and v.strip()}
 
 
+async def _archive_catalog(imp: ImportSession, storage) -> imagezip.Catalog | None:
+    """What the kept pictures archive holds, or None when there is none to read.
+
+    A catalog is cheap (the directory only), but the archive is fetched back from storage, so a
+    shop with no ``Images`` rows that use file names never pays for it.
+    """
+    if not imp.file_key or storage is None:
+        return None
+    fetched = await storage.read_object(imp.file_key, max_bytes=imagezip.MAX_ZIP_BYTES)
+    return imagezip.catalog_of(fetched.data)
+
+
 async def validate_session(
-    session: AsyncSession, tenant_id: uuid.UUID, session_id: uuid.UUID
+    session: AsyncSession, tenant_id: uuid.UUID, session_id: uuid.UUID, *, storage=None
 ) -> ImportSession:
     """Check every row against the file and the shop, store each verdict, count the result."""
     from app.modules.imports.normalize import slugify
@@ -320,12 +334,16 @@ async def validate_session(
             default_warehouse=lookup.default_warehouse(existing, None),
         )
     if SHEET_IMAGES in maps:
+        wants_archive = any(
+            not normalize.is_link(c) for c in _collect(image_rows, maps[SHEET_IMAGES], "file_name")
+        )
         verdicts[SHEET_IMAGES] = validate_images(
             image_rows,
             maps[SHEET_IMAGES],
             skus_in_file=file_skus,
             known_skus=known,
             already_attached=attached,
+            archive=await _archive_catalog(imp, storage) if wants_archive else None,
         )
 
     # One UPDATE per 500 rows, not one per row: a full file is 100k rows. The chunk travels as
@@ -340,7 +358,7 @@ async def validate_session(
                 chunk.append({"n": v.row_number, **fields})
             await session.execute(_STORE_VERDICTS, {"sid": imp.id, "sheet": sheet, "rows": chunk})
     imp.stats = {
-        **{k: v for k, v in (imp.stats or {}).items() if k in ("rows", "ignored_sheets")},
+        **{k: v for k, v in (imp.stats or {}).items() if k in _KEPT_STATS},
         "sheets": {s: summarize(v) for s, v in verdicts.items()},
         "by_status": {s: dict(c) for s, c in by_sheet_status.items()},
     }
@@ -408,6 +426,71 @@ async def start(
     imp.stats = {**(imp.stats or {}), "to_apply": valid}
     await session.flush()
     return imp
+
+
+_ZIP_TYPE = "application/zip"
+_ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06")
+
+
+async def attach_image_archive(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    session_id: uuid.UUID,
+    *,
+    data: bytes,
+    storage,
+) -> ImportSession:
+    """Keep the merchant's pictures archive for this import and say what is in it.
+
+    Nothing is unpacked here. The archive is judged from its directory (``imagezip``), then kept
+    in the shop's own storage so the import job, which may run minutes later on another worker,
+    can read one picture at a time. Sending a second archive replaces the first. What the archive
+    holds is saved as names only; the next check matches the sheet's file names against it.
+    """
+    from app.core.storage import FetchedMedia
+
+    imp = await get(session, tenant_id, session_id)
+    if imp.status not in _EDITABLE:
+        raise ConflictError(f"the import is {imp.status}; pictures can no longer be added")
+    if not data.startswith(_ZIP_MAGIC):
+        raise ValidationError("this file is not a valid .zip archive")
+    if not storage.configured:
+        raise ValidationError("picture storage is not set up for this shop yet")
+    catalog = imagezip.catalog_of(data)  # raises on a hostile archive as a whole
+
+    stored = await storage.store(
+        FetchedMedia(data=data, content_type=_ZIP_TYPE, checksum=hashlib.sha256(data).hexdigest()),
+        prefix=f"import-archives/{tenant_id}",
+        original_url="",
+    )
+    if not stored.durable or not stored.storage_key:
+        raise ValidationError("the archive could not be saved; try again later")
+    previous = imp.file_key
+    imp.file_key = stored.storage_key
+    imp.stats = {
+        **(imp.stats or {}),
+        "image_archive": {
+            "files": len(catalog.entries),
+            "bytes": len(data),
+            "refused": dict(sorted(catalog.refused.items())[:50]),
+            "ambiguous": sorted(catalog.ambiguous)[:50],
+        },
+    }
+    # A checked import was judged against the OLD archive (or none): it must be checked again.
+    if imp.status == "validated":
+        imp.status = "analyzed"
+    await session.flush()
+    if previous:
+        await storage.delete_objects([previous])
+    return imp
+
+
+async def drop_image_archive(session: AsyncSession, imp: ImportSession, *, storage) -> None:
+    """Remove the kept archive once the import is over (done, failed or cancelled)."""
+    if imp.file_key:
+        key, imp.file_key = imp.file_key, None
+        await session.flush()
+        await storage.delete_objects([key])
 
 
 async def cancel(

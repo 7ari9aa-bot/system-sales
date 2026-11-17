@@ -7,6 +7,7 @@ import {
   listImportSessions,
   saveImportMapping,
   startImport,
+  uploadImageArchive,
   uploadImportFile,
   validateImport,
 } from "./importCenter";
@@ -79,6 +80,7 @@ function useSessionMutation(fn, opts) {
 }
 
 export const useUploadImport = () => useSessionMutation(uploadImportFile);
+export const useUploadImageArchive = (id) => useSessionMutation((file) => uploadImageArchive(id, file));
 export const useSaveMapping = (id) => useSessionMutation((body) => saveImportMapping(id, body));
 export const useValidateImport = (id) => useSessionMutation(() => validateImport(id));
 export const useStartImport = (id) => useSessionMutation(() => startImport(id));

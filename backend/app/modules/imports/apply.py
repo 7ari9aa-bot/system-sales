@@ -64,8 +64,11 @@ class Ports:
     record_opening_stock: Callable[
         [AsyncSession, uuid.UUID, str, str, Decimal, uuid.UUID], Awaitable[uuid.UUID | None]
     ]
-    # (sku, link) -> image id. Fetches the link, stores the bytes, attaches the picture.
-    attach_image: Callable[[AsyncSession, uuid.UUID, str, str], Awaitable[uuid.UUID]]
+    # (sku, picture, source 'url'|'zip', session id) -> image id. Gets the picture (downloads the
+    # link, or reads the file out of the merchant's archive), stores it, attaches it.
+    attach_image: Callable[
+        [AsyncSession, uuid.UUID, str, str, str, uuid.UUID], Awaitable[uuid.UUID]
+    ]
 
 
 @dataclass(slots=True)
@@ -209,7 +212,12 @@ async def _write(
         return {"variant_id": str(variant_id), "action": "created"}
     if row.sheet == SHEET_IMAGES:
         image_id = await ports.attach_image(
-            session, tenant_id, str(values["sku"]), str(values["url"])
+            session,
+            tenant_id,
+            str(values["sku"]),
+            str(values["url"]),
+            str(values.get("source") or "url"),
+            session_id,
         )
         return {"image_id": str(image_id), "action": "created"}
     raise ApplyError("unsupported_sheet", f"sheet {row.sheet!r} cannot be imported yet")
