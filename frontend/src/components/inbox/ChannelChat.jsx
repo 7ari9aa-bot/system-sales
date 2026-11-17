@@ -38,6 +38,7 @@ import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
+import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
 import { formatCurrency } from "@/lib/regional";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
 import { ChevronDownIcon } from "./whatsapp/icons";
@@ -117,6 +118,19 @@ export default function ChannelChat({
 
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
+
+  // "typing…" on the customer's phone while an agent writes a WhatsApp reply. One
+  // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
+  // while there is text: it is a courtesy, so a failure is silent.
+  const typingSentAtRef = useRef(null);
+  useEffect(() => {
+    if (!isWhatsApp || !supportsReadSignal(conversation)) return;
+    if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
+    typingSentAtRef.current = Date.now();
+    api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});
+  }, [text, isWhatsApp, conversation?.id, conversation?.lastCustomerMessageAt]);
+  // A different chat starts its own 20s clock.
+  useEffect(() => { typingSentAtRef.current = null; }, [conversation?.id]);
   const isInstagram = channel.id === "instagram";
   const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";

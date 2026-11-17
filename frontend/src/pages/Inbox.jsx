@@ -4,6 +4,7 @@ import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import ChatList from "@/components/inbox/whatsapp/ChatList";
+import { readSignalBody, supportsReadSignal } from "../components/inbox/whatsapp/readSignal";
 import { visibleRows } from "@/components/inbox/whatsapp/chatListState";
 import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
 import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
@@ -529,6 +530,14 @@ export default function Inbox() {
         return next;
       });
       return;
+    }
+    // The customer sees blue ticks only when the business really read their message.
+    // A courtesy: a failure is silent and never blocks opening the chat.
+    if (supportsReadSignal(conversation) && !conversation.markedUnread) {
+      api(`/conversations/${conversation.id}/read-signal`, {
+        method: "POST",
+        body: readSignalBody(false),
+      }).catch(() => {});
     }
     api(`/conversations/${conversation.id}/read`, { method: "POST" })
       .then(() => {
