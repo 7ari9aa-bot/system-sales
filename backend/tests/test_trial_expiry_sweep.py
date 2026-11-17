@@ -313,17 +313,25 @@ async def test_a_tenant_that_changed_state_after_being_listed_is_not_locked(
     tenant_id = await _tenant(db, _expired_trial())
     real_bind = trial_expiry.bind_tenant
 
+    moved: list[int] = []
+
     async def bind_after_the_tenant_moved(session, tid, **kwargs):
-        await session.execute(
+        # Bind first: `tenants` is FORCE RLS, so an UPDATE with no bound tenant matches ZERO rows
+        # without an error. The test used to lean on the tenant still being bound from `_tenant()`,
+        # which holds in a short run but not behind thousands of earlier tests, and then it failed
+        # with a baffling `trial_expired` instead of saying the move never happened.
+        await real_bind(session, tid, **kwargs)
+        result = await session.execute(
             sa.text(
                 "UPDATE tenants SET lifecycle_state = 'suspended', is_active = false WHERE id = :t"
             ),
             {"t": tid},
         )
-        await real_bind(session, tid, **kwargs)
+        moved.append(result.rowcount)
 
     monkeypatch.setattr(trial_expiry, "bind_tenant", bind_after_the_tenant_moved)
 
     await lock_expired_trials(now=NOW)
 
+    assert moved == [1], f"the tenant was never moved mid-sweep (rows touched: {moved})"
     assert await _state(db, tenant_id) == ("suspended", False)

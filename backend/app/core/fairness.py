@@ -317,13 +317,18 @@ async def refund(
     clamped at 0 (a refund of 1000 tokens on a counter of 500 does not
     make the counter -500).
     """
+    if units <= 0:
+        return
     try:
         redis = get_redis()
         key = _budget_key(tenant_id, resource)
-        # DECRBY but don't go below 0
-        current = int(await redis.get(key) or 0)
-        new_val = max(current - units, 0)
-        await redis.set(key, new_val, ex=_WINDOW_SECONDS)
+        # One atomic DECRBY (two concurrent refunds must both land, which a GET then SET loses), and
+        # no EXPIRE: a refund must not extend the window the original charge started. A counter that
+        # went below zero (a refund larger than what is left after the window rolled over) is put
+        # back to 0 rather than left negative, which would hand out free budget.
+        new_val = int(await redis.decrby(key, units))
+        if new_val < 0:
+            await redis.incrby(key, -new_val)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning(
             "fairness.refund_failed tenant=%s resource=%s error=%s",
