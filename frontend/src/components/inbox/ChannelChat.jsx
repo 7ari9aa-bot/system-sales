@@ -27,7 +27,8 @@ import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
-import { EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
+import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
+import { ChevronDownIcon, EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
 import MessageStatus from "./whatsapp/MessageStatus";
 
 export default function ChannelChat({
@@ -66,6 +67,8 @@ export default function ChannelChat({
   const [customer360Record, setCustomer360Record] = useState(null);
 
   const scrollRef = useRef(null);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [lastSeenId, setLastSeenId] = useState(null);
   const telegramScrollTimerRef = useRef(null);
   const preserveScrollRef = useRef(null);
   const messageViewportRef = useRef({ conversationId: null, latestMessageId: null });
@@ -80,10 +83,11 @@ export default function ChannelChat({
   const allMessages = conversation?.messages || [];
 
   const messageBackgroundStyle = isWhatsApp ? {
+    // Our own doodle tile on the familiar beige: nothing is fetched from Meta.
     backgroundColor: "#efeae2",
-    backgroundImage: "linear-gradient(rgba(245,240,232,0.88), rgba(245,240,232,0.88)), url('https://static.whatsapp.net/rsrc.php/yp/r/OA5z0a81CZk.webp')",
-    backgroundRepeat: "no-repeat, repeat",
-    backgroundSize: "100% 100%, 320px 570px",
+    backgroundImage: "url('/chat-wallpaper-doodle.svg')",
+    backgroundRepeat: "repeat",
+    backgroundSize: "240px 240px",
   } : isTelegram ? {
     backgroundColor: "#a9cf9a",
     backgroundImage: "url('/telegram-chat-wallpaper.png')",
@@ -107,8 +111,18 @@ export default function ChannelChat({
     if (preserve?.conversationId === conversation.id) {
       element.scrollTop = preserve.scrollTop + element.scrollHeight - preserve.scrollHeight;
       preserveScrollRef.current = null;
-    } else if (previous.conversationId !== conversation.id || previous.latestMessageId !== latestMessageId) {
+    } else if (previous.conversationId !== conversation.id) {
       element.scrollTop = element.scrollHeight;
+      setLastSeenId(null);
+    } else if (previous.latestMessageId !== latestMessageId) {
+      const newest = messages.at(-1);
+      // WhatsApp never yanks you away from history you are reading: a customer
+      // message that arrives while you are scrolled up waits behind the button.
+      if (isWhatsApp && newest?.side === "in" && isAwayFromBottom(element)) {
+        setLastSeenId((seen) => seen ?? previous.latestMessageId);
+      } else {
+        element.scrollTop = element.scrollHeight;
+      }
     }
     messageViewportRef.current = { conversationId: conversation.id, latestMessageId };
   }, [conversation?.id, conversation?.messages]);
@@ -155,6 +169,9 @@ export default function ChannelChat({
       telegramScrollTimerRef.current = setTimeout(() => setTelegramMessagesScrolling(false), 800);
     }
     void loadOlderAtTop(event.currentTarget);
+    const away = isAwayFromBottom(event.currentTarget);
+    setAwayFromBottom(away);
+    if (!away) setLastSeenId(null);
   }, [isTelegram, loadOlderAtTop]);
 
   if (!conversation) {
@@ -408,6 +425,29 @@ export default function ChannelChat({
           </div>
         )}
       </div>
+      {isWhatsApp && awayFromBottom && (
+        <div className="pointer-events-none relative z-20 h-0">
+          <button
+            type="button"
+            data-testid="jump-to-latest"
+            onClick={() => {
+              const el = scrollRef.current;
+              if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+              setLastSeenId(null);
+            }}
+            aria-label={lang === "ar" ? "الانتقال لآخر الرسائل" : "Jump to latest messages"}
+            title={lang === "ar" ? "الانتقال لآخر الرسائل" : "Jump to latest messages"}
+            className="pointer-events-auto absolute -top-14 end-4 grid h-10 w-10 place-items-center rounded-full bg-white text-[#54656f] shadow-[0_1px_4px_rgba(11,20,26,0.3)] transition-colors hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+          >
+            <ChevronDownIcon size={24} />
+            {unreadSince(conversation.messages, lastSeenId) > 0 && (
+              <span data-testid="jump-unread" className="absolute -top-2 start-1/2 grid h-5 min-w-5 -translate-x-1/2 place-items-center rounded-full bg-[#25d366] px-1 text-[11px] font-semibold leading-none text-white" dir="ltr">
+                {unreadSince(conversation.messages, lastSeenId)}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Attachment & Emoji Popovers above input */}
       <ChannelEmojiStickerPicker
