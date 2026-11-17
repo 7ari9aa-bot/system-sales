@@ -31,6 +31,7 @@ from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.imports import imagezip, lookup, normalize
 from app.modules.imports.apply import BATCH_LIMIT
 from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
     SHEET_FIELDS,
     SHEET_IMAGES,
     SHEET_PRODUCTS,
@@ -44,6 +45,7 @@ from app.modules.imports.validation import (
     DUPLICATE_POLICIES,
     RowVerdict,
     summarize,
+    validate_customers,
     validate_images,
     validate_products,
     validate_stock,
@@ -54,7 +56,7 @@ from app.modules.imports.verdicts import fields_for_row
 BLANK_POLICIES = ("keep", "clear")
 DEFAULT_OPTIONS = {"duplicate_policy": "create_only", "blank_policy": "keep"}
 # Sheets this phase understands. Anything else in the workbook is reported, not guessed at.
-KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
+KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES, SHEET_CUSTOMERS)
 _EDITABLE = ("uploaded", "analyzed", "mapped", "validated")
 # What survives a re-check or a re-map: facts about the FILE, not results of checking it.
 _KEPT_STATS = ("rows", "ignored_sheets", "image_archive")
@@ -105,6 +107,25 @@ async def list_sessions(
     return list(rows.scalars())
 
 
+def _csv_sheet_kind(headers: list[str]) -> str:
+    """A CSV has no sheet name, so its columns say what it is.
+
+    Products is the default and the old behaviour. It is a customer list only when the header
+    names a customer's own handles (a phone or an email) and none of the columns that make a
+    catalog row (a SKU, a price, a quantity): a product list may well carry a "supplier phone".
+    """
+    from app.modules.imports.mapping import suggest_mapping
+
+    def kinds(sheet: str) -> set[str]:
+        return {k for k in suggest_mapping(sheet, headers).values() if k}
+
+    customer = kinds(SHEET_CUSTOMERS)
+    catalog = kinds(SHEET_VARIANTS) | kinds(SHEET_STOCK)
+    if {"phone", "email"} & customer and not ({"sku", "price", "quantity"} & catalog):
+        return SHEET_CUSTOMERS
+    return SHEET_PRODUCTS
+
+
 async def create_session(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -123,10 +144,11 @@ async def create_session(
     if not usable:
         # A CSV is one sheet of unknown name: it can only be the product list.
         if len(sheets) == 1 and file_name.lower().endswith((".csv", ".txt")):
-            usable = {SHEET_PRODUCTS: sheets[0]}
+            usable = {_csv_sheet_kind(sheets[0].headers): sheets[0]}
         else:
             raise ValidationError(
-                "no sheet named Products, Variants or Opening Stock was found in the file"
+                "no sheet named Products, Variants, Opening Stock, Images or Customers "
+                "was found in the file"
             )
     ignored = sorted(s.name for s in sheets if _sheet_key(s.name) is None and usable)
 
@@ -261,6 +283,57 @@ async def _archive_catalog(imp: ImportSession, storage) -> imagezip.Catalog | No
     return imagezip.catalog_of(fetched.data)
 
 
+async def _check_customers(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    rows: list[tuple[int, dict[str, str]]],
+    mapping: dict[str, str | None],
+) -> list[RowVerdict]:
+    """Judge the customer rows against the customers the shop already has.
+
+    Existing rows are looked up under every spelling a legacy row may hold, then mapped back to
+    the canonical handle, because the check compares canonical values and the shop's own rule
+    (not this module) decides what a handle is.
+    """
+    from app.core.contact_norm import email_candidates, phone_candidates
+
+    phones: dict[str, str] = {}  # any spelling -> canonical
+    emails: dict[str, str] = {}
+    for _, row in rows:
+        for cell, parse, spellings, into in (
+            (_cell(row, mapping, "phone"), normalize.parse_phone, phone_candidates, phones),
+            (_cell(row, mapping, "email"), normalize.parse_email, email_candidates, emails),
+        ):
+            try:
+                canonical = parse(cell)
+            except normalize.CellError:
+                continue  # the validator reports it on its row
+            if canonical:
+                for spelling in spellings(cell) or [canonical]:
+                    into[spelling] = canonical
+                into[canonical] = canonical
+    held_phones, held_emails = await lookup.load_customer_contacts(
+        session, tenant_id, phones=phones, emails=emails
+    )
+    return validate_customers(
+        rows,
+        mapping,
+        taken_phones={
+            canonical: live
+            for spelling, live in held_phones.items()
+            if (canonical := phones.get(spelling)) is not None
+        },
+        taken_emails={emails[e] for e in held_emails if e in emails},
+    )
+
+
+def _cell(row: dict[str, str], mapping: dict[str, str | None], key: str) -> str:
+    for header, mapped in mapping.items():
+        if mapped == key:
+            return row.get(header, "") or ""
+    return ""
+
+
 async def validate_session(
     session: AsyncSession, tenant_id: uuid.UUID, session_id: uuid.UUID, *, storage=None
 ) -> ImportSession:
@@ -290,6 +363,7 @@ async def validate_session(
     }
     skus = _collect(variant_rows, maps.get(SHEET_VARIANTS, {}), "sku")
     stock_skus = _collect(stock_rows, maps.get(SHEET_STOCK, {}), "sku")
+    customer_rows = rows.get(SHEET_CUSTOMERS, [])
     image_rows = rows.get(SHEET_IMAGES, [])
     image_skus = _collect(image_rows, maps.get(SHEET_IMAGES, {}), "sku")
     barcodes = _collect(variant_rows, maps.get(SHEET_VARIANTS, {}), "barcode")
@@ -333,6 +407,11 @@ async def validate_session(
             known_skus=known,
             default_warehouse=lookup.default_warehouse(existing, None),
         )
+    if SHEET_CUSTOMERS in maps:
+        verdicts[SHEET_CUSTOMERS] = await _check_customers(
+            session, tenant_id, customer_rows, maps[SHEET_CUSTOMERS]
+        )
+
     if SHEET_IMAGES in maps:
         wants_archive = any(
             not normalize.is_link(c) for c in _collect(image_rows, maps[SHEET_IMAGES], "file_name")

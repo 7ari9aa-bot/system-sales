@@ -22,7 +22,7 @@ from decimal import Decimal
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import DomainError
+from app.core.errors import ConflictError, DomainError
 from app.modules.imports.apply import BATCH_LIMIT, REFERENCE_TYPE, ApplyError, Ports, apply_batch
 from app.modules.imports.models import ImportSession
 from app.modules.imports.verdicts import values_of
@@ -174,6 +174,45 @@ _VARIANT_PRODUCT = text(
 )
 
 
+async def _create_customer(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    name: str,
+    phone: str | None,
+    email: str | None,
+    source: str,
+    tags: list[str],
+) -> uuid.UUID:
+    """One customer, through the customers service's own intake (never a direct write).
+
+    ``create_from_import`` is the rule the shop already applies to a customer typed by hand or
+    arriving from a channel: contacts canonicalised, a live duplicate refused. A row the check let
+    through can still lose a race to a customer created a second ago; that is this row's error.
+    """
+    from app.core.contact_norm import ContactNormalizationError
+    from app.modules.customers.service import CustomerService
+
+    try:
+        customer = await CustomerService.create_from_import(
+            session,
+            tenant_id,
+            name=name,
+            phone=phone,
+            email=email,
+            source=source,
+            tags=",".join(tags) or None,
+        )
+    except ContactNormalizationError as exc:
+        raise ApplyError("bad_contact", "the phone or email is not valid") from exc
+    except ConflictError as exc:
+        raise ApplyError(
+            "already_a_customer", "a customer with this phone or email exists"
+        ) from exc
+    except DomainError as exc:
+        raise _refused(exc) from exc
+    return customer.id
+
+
 def _sniff(data: bytes) -> str | None:
     """The picture type the BYTES say they are, whatever a header or a file name claims."""
     return next((kind for kind, check in _IMAGE_SIGNATURES.items() if check(data)), None)
@@ -303,6 +342,7 @@ PORTS = Ports(
     upsert_variant=_upsert_variant,
     record_opening_stock=_record_opening_stock,
     attach_image=_attach_image,
+    create_customer=_create_customer,
 )
 
 

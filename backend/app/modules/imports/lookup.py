@@ -25,6 +25,50 @@ OPENING_STOCK_REASON = "opening_stock"
 BARCODE_TYPE = "barcode"
 
 
+# What the database itself refuses. ``uq_customers_tenant_phone`` covers EVERY row of the shop,
+# including a customer who was deleted or merged away, so such a row still holds its number and a
+# new customer with it is refused at insert. An email has no such key: the customers service
+# refuses it only while a LIVE customer holds it. The check mirrors each rule exactly, or a row
+# would pass here and fail at run time.
+_CUSTOMER_PHONES = text(
+    "SELECT phone, (deleted_at IS NULL AND merged_into_customer_id IS NULL) AS live "
+    "FROM customers WHERE tenant_id = :t AND phone IN :keys"
+).bindparams(bindparam("keys", expanding=True))
+_CUSTOMER_EMAILS = text(
+    "SELECT email FROM customers WHERE tenant_id = :t AND email IN :keys "
+    "AND deleted_at IS NULL AND merged_into_customer_id IS NULL"
+).bindparams(bindparam("keys", expanding=True))
+
+
+async def load_customer_contacts(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phones: Iterable[str],
+    emails: Iterable[str],
+) -> tuple[dict[str, bool], set[str]]:
+    """Which of these phones and emails the shop already holds.
+
+    Returns ``({phone: held_by_a_live_customer}, {emails of live customers})``. A phone held only
+    by a deleted or merged customer is still returned (with ``False``): the database will not
+    take it, and the merchant needs to be told why. Pass every spelling a legacy row may hold
+    (``phone_candidates``); the caller maps a hit back to the canonical value.
+    """
+    taken_phones: dict[str, bool] = {}
+    for batch in _chunks(sorted(set(phones))):
+        for phone, live in (
+            await session.execute(_CUSTOMER_PHONES, {"t": tenant_id, "keys": batch})
+        ).all():
+            # one row per phone: the unique key means a phone cannot be held twice
+            taken_phones[phone] = bool(live)
+    taken_emails: set[str] = set()
+    for batch in _chunks(sorted(set(emails))):
+        taken_emails.update(
+            (await session.execute(_CUSTOMER_EMAILS, {"t": tenant_id, "keys": batch})).scalars()
+        )
+    return taken_phones, taken_emails
+
+
 def _chunks[T](values: Iterable[T], size: int = CHUNK) -> Iterator[list[T]]:
     batch: list[T] = []
     for value in values:

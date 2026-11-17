@@ -83,7 +83,9 @@ async def test_a_csv_is_taken_as_the_product_list(db, tenant_ctx):
 
 
 async def test_a_workbook_with_no_known_sheet_is_refused_with_a_reason(db, tenant_ctx):
-    with pytest.raises(ValidationError, match="Products, Variants or Opening Stock"):
+    with pytest.raises(
+        ValidationError, match="Products, Variants, Opening Stock, Images or Customers"
+    ):
         await _upload(db, tenant_ctx.tenant_id, {"Sheet1": [["a"], ["b"]]})
 
 
