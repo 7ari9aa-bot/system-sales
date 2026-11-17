@@ -208,7 +208,7 @@ test("the contact panel is a flat side panel with the real number and reply wind
   await expect(panel).toBeVisible();
   const st = await panel.evaluate((el) => { const s = getComputedStyle(el); return { shadow: s.boxShadow, w: el.getBoundingClientRect().width }; });
   expect(st.shadow).toBe("none");
-  expect(st.w).toBeLessThanOrEqual(390);
+  expect(st.w).toBeLessThanOrEqual(320);
   await expect(page.getByTestId("info-about-phone")).toContainText("+20");
   await expect(page.getByTestId("info-window")).toBeVisible();
   const box = await panel.boundingBox();
@@ -245,7 +245,7 @@ test("opening the contact panel narrows the chat instead of covering it", async 
   await expect(panel).toBeVisible();
   const after = await input.boundingBox();
   const p = await panel.boundingBox();
-  expect(after.width).toBeLessThan(before.width - 300);
+  expect(after.width).toBeLessThan(before.width - 250);
   expect(after.x + after.width).toBeLessThanOrEqual(p.x + 1);
   const bg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(255, 255, 255)");

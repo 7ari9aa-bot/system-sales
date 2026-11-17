@@ -100,7 +100,7 @@ export default function ContactInfoPanel({ conversation, lang = "ar", now, custo
       aria-label={w.title}
       data-testid="contact-info"
       dir={lang === "ar" ? "rtl" : "ltr"}
-      className="absolute inset-y-0 end-0 z-40 flex w-full flex-col overflow-hidden bg-[var(--wa-bg-panel)] outline-none sm:w-[380px] sm:border-s sm:border-[color:var(--wa-divider)]"
+      className="absolute inset-y-0 end-0 z-40 flex w-full flex-col overflow-hidden bg-[var(--wa-bg-panel)] outline-none sm:w-[308px] sm:border-s sm:border-[color:var(--wa-divider)]"
     >
       <header className="flex h-[59px] shrink-0 items-center gap-5 bg-[var(--wa-bg-panel)] px-4 text-[color:var(--wa-text)]">
         <button type="button" onClick={onClose} aria-label={w.close} data-testid="contact-close" className="grid h-9 w-9 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
@@ -111,7 +111,7 @@ export default function ContactInfoPanel({ conversation, lang = "ar", now, custo
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
         <Section className="flex flex-col items-center gap-1 py-6">
-          <div className="grid h-[200px] w-[200px] max-w-full place-items-center rounded-full text-[56px] font-semibold text-[color:var(--wa-text-icon)]" style={{ background: conversation.color || "var(--wa-divider)" }} aria-hidden="true">
+          <div className="grid h-[80px] w-[80px] max-w-full place-items-center rounded-full text-[26px] font-semibold text-[color:var(--wa-text-icon)]" style={{ background: "#ffdae7" }} aria-hidden="true">
             {conversation.initials}
           </div>
           <h4 dir="auto" data-testid="contact-name" className="mt-3 text-[22px] text-[color:var(--wa-text)]">{conversation.customer}</h4>
