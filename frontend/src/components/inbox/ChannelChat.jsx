@@ -30,6 +30,7 @@ import ImageViewer from "./whatsapp/ImageViewer";
 import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
+import ChatHeader from "./whatsapp/ChatHeader";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/regional";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
@@ -57,6 +58,7 @@ export default function ChannelChat({
   onSend,
   onReact,
   onListStateChange,
+  pinnedCount = 0,
   onApprove,
   onDecline,
 }) {
@@ -224,7 +226,20 @@ export default function ChannelChat({
       className={cn("relative flex-1 flex flex-col min-h-0 overflow-hidden border", isWhatsApp ? "rounded-xl border-[#d1d7db] lg:rounded-none lg:border-y lg:border-r lg:border-l-0" : isInstagram ? "rounded-none border-0 border-s border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-s border-[#e4e6eb] bg-white" : "rounded-2xl border-border", className)}
       style={isApp ? undefined : { background: th.chatBg }}
     >
-      {/* Header — Click opens authentic channel profile drawer */}
+      {isWhatsApp ? (
+        <ChatHeader
+          conversation={conversation}
+          lang={lang}
+          pinnedCount={pinnedCount}
+          searchOpen={searchOpen}
+          AvatarComponent={ConversationAvatar}
+          onBack={onBack}
+          onOpenInfo={() => setContactDrawerOpen(true)}
+          onToggleSearch={() => { setSearchOpen((open) => !open); setSearchQuery(""); }}
+          onChange={(body) => onListStateChange?.(conversation, body)}
+        />
+      ) : (
+      <>
       <div
         dir={isWhatsApp || isTelegram ? "ltr" : isInstagram || isMessenger ? (lang === "ar" ? "rtl" : "ltr") : undefined}
         className={cn("relative flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
@@ -309,6 +324,9 @@ export default function ChannelChat({
           <MoreVertical className="h-[18px] w-[18px]" />
         </button>
       </div>
+
+      </>
+      )}
 
       {/* Messenger Theme Dialog */}
       {isMessenger && themePickerOpen && (

@@ -34,7 +34,7 @@ async function boot(page, { customerBlocked = false } = {}) {
   await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("chat-row")).toHaveCount(1);
   await page.getByTestId("chat-row").getByRole("button").first().click();
-  await page.getByRole("button", { name: /Chat options & Profile|خيارات المحادثة والملف الشخصي/ }).click();
+  await page.getByTestId("header-info").click();
   await expect(page.getByTestId("contact-info")).toBeVisible();
   return { calls };
 }
@@ -81,7 +81,7 @@ test("closes with the close button and with Escape", async ({ page }) => {
   await boot(page);
   await page.getByTestId("contact-close").click();
   await expect(page.getByTestId("contact-info")).toHaveCount(0);
-  await page.getByRole("button", { name: /Chat options & Profile|خيارات المحادثة والملف الشخصي/ }).click();
+  await page.getByTestId("header-info").click();
   await expect(page.getByTestId("contact-info")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("contact-info")).toHaveCount(0);

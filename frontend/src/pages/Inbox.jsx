@@ -98,6 +98,7 @@ function toConversation(row, channel, t) {
     time: displayTime(row.last_message_at),
     customerId: row.customer_id || null,
     lastAt: row.last_message_at || null,
+    lastCustomerMessageAt: row.last_customer_message_at || null,
     phone: row.customer_phone || "",
     lastDirection: row.last_message_direction || null,
     lastStatus: row.last_message_status || null,
@@ -1012,6 +1013,7 @@ export default function Inbox() {
           onSend={handleSend}
           onReact={handleReact}
           onListStateChange={changeListState}
+          pinnedCount={isWhatsApp ? conversations.filter((row) => row.pinnedAt && !row.archivedAt).length : 0}
           onApprove={() => decideApproval(pendingApproval, "APPROVED")}
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
