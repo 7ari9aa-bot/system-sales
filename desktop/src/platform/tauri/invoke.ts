@@ -22,11 +22,19 @@ export interface LogRecordPayload {
 export interface CommandArgs {
   readonly app_info: undefined
   readonly log_write: { readonly record: LogRecordPayload }
+  readonly list_printers: undefined
+  readonly print_raw: { readonly data: number[] }
+  readonly check_update: undefined
+  readonly install_update: undefined
 }
 
 export interface CommandResults {
   readonly app_info: unknown
   readonly log_write: null
+  readonly list_printers: unknown
+  readonly print_raw: unknown
+  readonly check_update: unknown
+  readonly install_update: unknown
 }
 
 export type CommandName = keyof CommandArgs

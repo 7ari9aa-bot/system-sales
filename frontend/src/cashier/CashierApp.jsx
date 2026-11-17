@@ -26,6 +26,7 @@ const Page17 = lazy(() => import("./routes/_authed/sales.index.jsx"));
 const Page19 = lazy(() => import("./routes/_authed/shifts.jsx"));
 const Page20 = lazy(() => import("./routes/_authed/supplier-returns.jsx"));
 const Page21 = lazy(() => import("./routes/_authed/suppliers.jsx"));
+const PageSupplyChain = lazy(() => import("@/pages/Inventory"));
 
 // شاشات العمل (بيع / مرتجع / استبدال): ارتفاعها ارتفاع الشاشة والصفحة لا تتمرّر، الجداول فقط تتمرّر داخليًا.
 const WORK_SURFACE = /^\/cashier\/(pos|returns|exchanges)\/?$/;
@@ -73,6 +74,7 @@ export default function CashierApp() {
         {/* إعدادات الكاشير انتقلت لقسم الإعدادات الرئيسي (قسم إعدادات واحد). */}
         <Route path="settings" element={<Navigate to="/settings/pos" replace />} />
         <Route path="shifts" element={<Page19 />} />
+        <Route path="supply-chain" element={<PageSupplyChain />} />
         <Route path="supplier-returns" element={<Page20 />} />
         <Route path="suppliers" element={<Page21 />} />
         <Route path="*" element={<Navigate to="/cashier/pos" replace />} />

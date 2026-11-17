@@ -17,12 +17,21 @@ from app.modules.inventory.services import (
     MOVEMENT_REASONS,
     PHYSICAL_MOVEMENT_REASONS,
     RESERVATION_REFERENCE,
+    ChannelAllocationService,
     ConflictError,
     InsufficientStockError,
+    InventoryBundleService,
+    InventoryReportingService,
     InventoryReservationService,
     InventoryService,
     NotFoundError,
+    QualityInspectionService,
+    ReplenishmentService,
+    StocktakeService,
+    TraceabilityService,
     ValidationError,
+    ValuationService,
+    WarehouseLocationService,
     check_movement_shape,
     check_physical_settlement,
 )
@@ -30,10 +39,28 @@ from app.modules.inventory.services import (
 # Preserve __module__ for test reflection and introspection
 InventoryService.__module__ = "app.modules.inventory.service"
 InventoryReservationService.__module__ = "app.modules.inventory.service"
+InventoryService.QualityInspectionService = QualityInspectionService  # type: ignore[attr-defined]
+InventoryService.ReplenishmentService = ReplenishmentService  # type: ignore[attr-defined]
+InventoryService.StocktakeService = StocktakeService  # type: ignore[attr-defined]
+InventoryService.WarehouseLocationService = WarehouseLocationService  # type: ignore[attr-defined]
+InventoryService.ValuationService = ValuationService  # type: ignore[attr-defined]
+InventoryService.InventoryBundleService = InventoryBundleService  # type: ignore[attr-defined]
+InventoryService.TraceabilityService = TraceabilityService  # type: ignore[attr-defined]
+InventoryService.InventoryReportingService = InventoryReportingService  # type: ignore[attr-defined]
+InventoryService.ChannelAllocationService = ChannelAllocationService  # type: ignore[attr-defined]
 
 __all__ = [
     "InventoryService",
     "InventoryReservationService",
+    "QualityInspectionService",
+    "ReplenishmentService",
+    "StocktakeService",
+    "WarehouseLocationService",
+    "ValuationService",
+    "InventoryBundleService",
+    "TraceabilityService",
+    "InventoryReportingService",
+    "ChannelAllocationService",
     "ConflictError",
     "NotFoundError",
     "ValidationError",

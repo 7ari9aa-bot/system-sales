@@ -18,10 +18,18 @@ from ._common import (
     check_physical_settlement,
 )
 from .balances import BalanceServiceMixin
+from .bundles import InventoryBundleService
+from .channel_allocation import ChannelAllocationService
+from .locations import WarehouseLocationService
 from .movements import MovementServiceMixin
+from .quality import QualityInspectionService
+from .replenishment import ReplenishmentService
+from .reporting import InventoryReportingService
 from .reservations import InventoryReservationService
 from .stocktakes import StocktakeService
+from .traceability import TraceabilityService
 from .transfers import TransferServiceMixin
+from .valuation import ValuationService
 
 
 class InventoryService(BalanceServiceMixin, MovementServiceMixin, TransferServiceMixin):
@@ -32,6 +40,14 @@ __all__ = [
     "InventoryService",
     "InventoryReservationService",
     "StocktakeService",
+    "QualityInspectionService",
+    "WarehouseLocationService",
+    "ReplenishmentService",
+    "ValuationService",
+    "InventoryBundleService",
+    "TraceabilityService",
+    "InventoryReportingService",
+    "ChannelAllocationService",
     "ConflictError",
     "NotFoundError",
     "ValidationError",

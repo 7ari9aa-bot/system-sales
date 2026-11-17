@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -44,6 +45,7 @@ class MovementServiceMixin:
         reference_type: str | None = None,
         reference_id: UUID | None = None,
         actor_user_id: UUID | None = None,
+        cost_value: Decimal | None = None,
     ) -> InventoryMovement:
         """Apply a stock movement and append its ledger row.
 
@@ -94,6 +96,7 @@ class MovementServiceMixin:
             reference_type=reference_type,
             reference_id=reference_id,
             actor_user_id=actor_user_id,
+            cost_value=cost_value,
         )
 
     @staticmethod
@@ -110,6 +113,7 @@ class MovementServiceMixin:
         reference_type: str | None = None,
         reference_id: UUID | None = None,
         actor_user_id: UUID | None = None,
+        cost_value: Decimal | None = None,
     ) -> InventoryMovement:
         """Append one ledger row (the single writer of the append-only ledger)."""
         check_movement_shape(direction, reason)
@@ -124,6 +128,7 @@ class MovementServiceMixin:
             reference_id=reference_id,
             balance_after=balance_after,
             actor_user_id=actor_user_id,
+            cost_value=cost_value,
         )
         session.add(movement)
         await session.flush()
@@ -138,8 +143,9 @@ class MovementServiceMixin:
         variant_id: UUID,
         warehouse_id: UUID,
         quantity: int,
+        channel: str | None = None,
     ) -> InventoryBalance:
-        """Hold stock for an order: on_hand - reserved must cover quantity."""
+        """Hold stock for an order: on_hand - quarantined - reserved must cover quantity."""
         quantity = _positive_int(quantity)
         await BalanceServiceMixin._get_variant(session, tenant_id, variant_id)
         await BalanceServiceMixin._get_warehouse(session, tenant_id, warehouse_id)
@@ -147,13 +153,28 @@ class MovementServiceMixin:
             session, tenant_id, variant_id, warehouse_id
         )
 
-        available = balance.on_hand - balance.reserved
+        available = balance.on_hand - getattr(balance, "quarantined", 0) - balance.reserved
         if available < quantity:
             raise InsufficientStockError(
                 f"cannot reserve {quantity} of variant {variant_id} in warehouse "
                 f"{warehouse_id}: on_hand={balance.on_hand}, "
                 f"reserved={balance.reserved}, available={available}"
             )
+
+        if channel:
+            from app.modules.inventory.services.channel_allocation import (
+                ChannelAllocationService,
+            )
+
+            await ChannelAllocationService.reserve_in_channel(
+                session,
+                tenant_id,
+                warehouse_id=warehouse_id,
+                variant_id=variant_id,
+                channel=channel,
+                quantity=quantity,
+            )
+
         balance.reserved += quantity
         await MovementServiceMixin._append(
             session,
@@ -175,6 +196,7 @@ class MovementServiceMixin:
         variant_id: UUID,
         warehouse_id: UUID,
         quantity: int,
+        channel: str | None = None,
     ) -> InventoryBalance:
         """Give reserved stock back; never drops reserved below zero."""
         quantity = _positive_int(quantity)
@@ -187,6 +209,21 @@ class MovementServiceMixin:
         freed = min(quantity, balance.reserved)
         if freed == 0:
             return balance
+
+        if channel:
+            from app.modules.inventory.services.channel_allocation import (
+                ChannelAllocationService,
+            )
+
+            await ChannelAllocationService.release_from_channel(
+                session,
+                tenant_id,
+                warehouse_id=warehouse_id,
+                variant_id=variant_id,
+                channel=channel,
+                quantity=freed,
+            )
+
         balance.reserved -= freed
         await MovementServiceMixin._append_release(
             session,

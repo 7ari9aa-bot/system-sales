@@ -25,6 +25,7 @@ READS = [
     ("si_finance", "report", "purchasing", {}, "purchasing:read"),
     ("si_shop", "view", "products", {}, "orders:read"),
     ("si_shop", "view", "stock", {}, "inventory:read"),
+    ("si_shop", "view", "inventory_health", {}, "inventory:read"),
     ("si_shop", "view", "cashier", {}, "orders:read"),
     ("si_shop", "view", "order", {"query": "1001"}, "orders:read"),
     ("si_shop", "view", "customer", {"query": "ahmed"}, "customers:read"),

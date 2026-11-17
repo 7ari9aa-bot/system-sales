@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -14,7 +16,15 @@ from app.modules.inventory.service import (
     MOVEMENT_DIRECTION_PATTERN,
     MOVEMENT_REASON_FILTER_PATTERN,
     MOVEMENT_REASON_PATTERN,
+    ChannelAllocationService,
+    InventoryReportingService,
     InventoryService,
+    QualityInspectionService,
+    ReplenishmentService,
+    StocktakeService,
+    TraceabilityService,
+    ValuationService,
+    WarehouseLocationService,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -160,3 +170,1015 @@ async def resolve_reconciliation_finding(
         note=body.note,
     )
     return _finding_out(finding)
+
+
+# ------------------------------------------------ locations & relocation ----
+
+
+class LocationCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    code: str = Field(min_length=1, max_length=63)
+    kind: str = Field(
+        default="bin",
+        pattern="^(receiving|qc|storage|picking|packing|returns|quarantine|damaged|zone|rack|shelf|bin)$",
+    )
+    parent_id: uuid.UUID | None = None
+    capacity: int | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class LocationOut(BaseModel):
+    id: str
+    warehouse_id: str
+    name: str
+    code: str
+    kind: str
+    parent_id: str | None
+    capacity: int | None
+    is_active: bool
+    notes: str | None
+
+
+class RelocateRequest(BaseModel):
+    variant_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    from_location_id: uuid.UUID
+    to_location_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
+@router.get("/warehouses")
+async def list_warehouses(ctx: TenantCtxDep):
+    from sqlalchemy import select
+
+    from app.modules.inventory.models import Warehouse
+
+    q = (
+        select(Warehouse)
+        .where(Warehouse.tenant_id == ctx.tenant_id, Warehouse.is_active.is_(True))
+        .order_by(Warehouse.created_at.asc())
+    )
+    rows = list((await ctx.session.execute(q)).scalars())
+    return [
+        {
+            "id": str(w.id),
+            "name": w.name,
+            "code": w.code,
+            "address": w.address,
+            "is_active": w.is_active,
+        }
+        for w in rows
+    ]
+
+
+@router.get("/warehouses/{warehouse_id}/locations", response_model=list[LocationOut])
+async def list_warehouse_locations(warehouse_id: uuid.UUID, ctx: TenantCtxDep):
+    rows = await WarehouseLocationService.list_locations(ctx.session, ctx.tenant_id, warehouse_id)
+    return [
+        LocationOut(
+            id=str(r.id),
+            warehouse_id=str(r.warehouse_id),
+            name=r.name,
+            code=r.code,
+            kind=r.kind,
+            parent_id=str(r.parent_id) if r.parent_id else None,
+            capacity=r.capacity,
+            is_active=r.is_active,
+            notes=r.notes,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/warehouses/{warehouse_id}/locations", status_code=201, response_model=LocationOut)
+async def create_warehouse_location(
+    warehouse_id: uuid.UUID,
+    body: LocationCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    loc = await WarehouseLocationService.create_location(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=warehouse_id,
+        name=body.name,
+        code=body.code,
+        kind=body.kind,
+        parent_id=body.parent_id,
+        capacity=body.capacity,
+        notes=body.notes,
+    )
+    return LocationOut(
+        id=str(loc.id),
+        warehouse_id=str(loc.warehouse_id),
+        name=loc.name,
+        code=loc.code,
+        kind=loc.kind,
+        parent_id=str(loc.parent_id) if loc.parent_id else None,
+        capacity=loc.capacity,
+        is_active=loc.is_active,
+        notes=loc.notes,
+    )
+
+
+@router.post("/relocate", status_code=201)
+async def relocate_stock(
+    body: RelocateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    mov = await WarehouseLocationService.relocate(
+        ctx.session,
+        ctx.tenant_id,
+        variant_id=body.variant_id,
+        warehouse_id=body.warehouse_id,
+        from_location_id=body.from_location_id,
+        to_location_id=body.to_location_id,
+        quantity=body.quantity,
+        actor_user_id=ctx.user.id,
+    )
+    return {"id": str(mov.id), "quantity": mov.quantity}
+
+
+# ------------------------------------------------ quality inspections ----
+
+
+class InspectionCreateRequest(BaseModel):
+    source_type: str = Field(pattern="^(goods_receipt|return_receipt|transfer_receipt)$")
+    warehouse_id: uuid.UUID
+    source_id: uuid.UUID | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class InspectionResultRequest(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    verdict: str = Field(pattern="^(pass|quarantine|reject)$")
+    note: str | None = Field(default=None, max_length=255)
+
+
+class InspectionCompleteRequest(BaseModel):
+    verdict: str | None = Field(default=None, pattern="^(passed|quarantined|rejected)$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/inspections", status_code=201)
+async def create_inspection(
+    body: InspectionCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    insp = await QualityInspectionService.create(
+        ctx.session,
+        ctx.tenant_id,
+        source_type=body.source_type,
+        warehouse_id=body.warehouse_id,
+        source_id=body.source_id,
+        note=body.note,
+    )
+    return {"id": str(insp.id), "status": insp.status}
+
+
+@router.get("/inspections/{inspection_id}")
+async def get_inspection(inspection_id: uuid.UUID, ctx: TenantCtxDep):
+    insp = await QualityInspectionService.get(ctx.session, ctx.tenant_id, inspection_id)
+    return {
+        "id": str(insp.id),
+        "source_type": insp.source_type,
+        "source_id": str(insp.source_id) if insp.source_id else None,
+        "warehouse_id": str(insp.warehouse_id),
+        "status": insp.status,
+        "note": insp.note,
+    }
+
+
+@router.post("/inspections/{inspection_id}/results", status_code=201)
+async def record_inspection_result(
+    inspection_id: uuid.UUID,
+    body: InspectionResultRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    res = await QualityInspectionService.record_result(
+        ctx.session,
+        ctx.tenant_id,
+        inspection_id=inspection_id,
+        variant_id=body.variant_id,
+        quantity=body.quantity,
+        verdict=body.verdict,
+        note=body.note,
+        user_id=ctx.user.id,
+    )
+    return {"id": str(res.id), "inspection_id": str(res.inspection_id), "verdict": res.verdict}
+
+
+@router.post("/inspections/{inspection_id}/complete")
+async def complete_inspection(
+    inspection_id: uuid.UUID,
+    body: InspectionCompleteRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    insp = await QualityInspectionService.complete(
+        ctx.session,
+        ctx.tenant_id,
+        inspection_id=inspection_id,
+        user_id=ctx.user.id,
+        note=body.note,
+    )
+    return {"id": str(insp.id), "status": insp.status}
+
+
+# ------------------------------------------------ transfers lifecycle ----
+
+
+class TransferLineIn(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
+class TransferCreateRequest(BaseModel):
+    from_warehouse_id: uuid.UUID
+    to_warehouse_id: uuid.UUID
+    lines: list[TransferLineIn]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class TransferShipLineIn(BaseModel):
+    transfer_line_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
+class TransferShipRequest(BaseModel):
+    lines: list[TransferShipLineIn]
+    carrier: str | None = Field(default=None, max_length=255)
+    tracking_number: str | None = Field(default=None, max_length=255)
+
+
+class TransferReceiveLineIn(BaseModel):
+    transfer_line_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
+class TransferReceiveRequest(BaseModel):
+    lines: list[TransferReceiveLineIn]
+
+
+@router.get("/transfers")
+async def list_transfers(
+    ctx: TenantCtxDep,
+    status: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+):
+    from sqlalchemy import select
+
+    from app.modules.inventory.models import InventoryTransfer
+
+    q = select(InventoryTransfer).where(InventoryTransfer.tenant_id == ctx.tenant_id)
+    if status:
+        q = q.where(InventoryTransfer.status == status)
+    q = q.order_by(InventoryTransfer.created_at.desc()).limit(limit)
+    rows = list((await ctx.session.execute(q)).scalars())
+    return [
+        {
+            "id": str(t.id),
+            "from_warehouse_id": str(t.from_warehouse_id),
+            "to_warehouse_id": str(t.to_warehouse_id),
+            "status": t.status,
+            "note": t.notes,
+            "created_at": t.created_at.isoformat(),
+        }
+        for t in rows
+    ]
+
+
+@router.get("/transfers/{transfer_id}")
+async def get_transfer(transfer_id: uuid.UUID, ctx: TenantCtxDep):
+    tr = await InventoryService.get_transfer(ctx.session, ctx.tenant_id, transfer_id)
+    return {
+        "id": str(tr.id),
+        "from_warehouse_id": str(tr.from_warehouse_id),
+        "to_warehouse_id": str(tr.to_warehouse_id),
+        "status": tr.status,
+        "note": tr.notes,
+        "created_at": tr.created_at.isoformat(),
+    }
+
+
+@router.post("/transfers", status_code=201)
+async def create_transfer(
+    body: TransferCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    tr = await InventoryService.create_transfer(
+        ctx.session,
+        ctx.tenant_id,
+        from_warehouse_id=body.from_warehouse_id,
+        to_warehouse_id=body.to_warehouse_id,
+        lines=[ln.model_dump(mode="json") for ln in body.lines],
+        notes=body.note,
+    )
+    return {"id": str(tr.id), "status": tr.status}
+
+
+@router.post("/transfers/{transfer_id}/ship")
+async def ship_transfer(
+    transfer_id: uuid.UUID,
+    body: TransferShipRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    sh = await InventoryService.ship_transfer(
+        ctx.session,
+        ctx.tenant_id,
+        transfer_id=transfer_id,
+        lines=[ln.model_dump(mode="json") for ln in body.lines],
+        carrier=body.carrier,
+        tracking_number=body.tracking_number,
+        actor_user_id=ctx.user.id,
+    )
+    return {"shipment_id": str(sh.id), "transfer_id": str(transfer_id)}
+
+
+@router.post("/transfers/{transfer_id}/receive")
+async def receive_transfer(
+    transfer_id: uuid.UUID,
+    body: TransferReceiveRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    rc = await InventoryService.receive_transfer(
+        ctx.session,
+        ctx.tenant_id,
+        transfer_id=transfer_id,
+        lines=[ln.model_dump(mode="json") for ln in body.lines],
+        actor_user_id=ctx.user.id,
+    )
+    return {"receipt_id": str(rc.id), "transfer_id": str(transfer_id)}
+
+
+# ------------------------------------------------ stocktakes upgrade ----
+
+
+class StocktakeCreateRequest(BaseModel):
+    warehouse_id: uuid.UUID
+    kind: str = Field(default="full", pattern="^(full|cycle|blind|spot)$")
+    is_blind: bool = False
+    variance_threshold_percent: Decimal = Decimal("5.0")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class StocktakeCountRequest(BaseModel):
+    variant_id: uuid.UUID
+    counted_quantity: int = Field(ge=0)
+
+
+@router.get("/stocktakes")
+async def list_stocktakes(
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID | None = None,
+    status: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+):
+    rows = await StocktakeService.list_stocktakes(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id, status=status, limit=limit
+    )
+    return [
+        {
+            "id": str(s.id),
+            "stocktake_number": s.stocktake_number,
+            "warehouse_id": str(s.warehouse_id),
+            "kind": s.kind,
+            "status": s.status,
+            "is_blind": s.is_blind,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in rows
+    ]
+
+
+@router.get("/stocktakes/{stocktake_id}")
+async def get_stocktake(stocktake_id: uuid.UUID, ctx: TenantCtxDep):
+    st = await StocktakeService.get_stocktake(ctx.session, ctx.tenant_id, stocktake_id)
+    return {
+        "id": str(st.id),
+        "stocktake_number": st.stocktake_number,
+        "warehouse_id": str(st.warehouse_id),
+        "kind": st.kind,
+        "status": st.status,
+        "is_blind": st.is_blind,
+        "created_at": st.created_at.isoformat(),
+    }
+
+
+@router.post("/stocktakes", status_code=201)
+async def create_stocktake(
+    body: StocktakeCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    st = await StocktakeService.create_stocktake(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=body.warehouse_id,
+        kind=body.kind,
+        is_blind=body.is_blind,
+        variance_threshold_percent=body.variance_threshold_percent,
+        note=body.note,
+        created_by_user_id=ctx.user.id,
+    )
+    return {"id": str(st.id), "stocktake_number": st.stocktake_number, "status": st.status}
+
+
+@router.post("/stocktakes/{stocktake_id}/count")
+async def record_stocktake_count(
+    stocktake_id: uuid.UUID,
+    body: StocktakeCountRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    line = await StocktakeService.record_count(
+        ctx.session,
+        ctx.tenant_id,
+        stocktake_id=stocktake_id,
+        variant_id=body.variant_id,
+        counted_quantity=body.counted_quantity,
+        counter_user_id=ctx.user.id,
+    )
+    return {
+        "line_id": str(line.id),
+        "variant_id": str(line.variant_id),
+        "counted": line.counted_quantity,
+    }
+
+
+@router.post("/stocktakes/{stocktake_id}/complete")
+async def complete_stocktake(
+    stocktake_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    st = await StocktakeService.reconcile_stocktake(
+        ctx.session,
+        ctx.tenant_id,
+        stocktake_id=stocktake_id,
+        actor_user_id=ctx.user.id,
+    )
+    return {"id": str(st.id), "status": st.status}
+
+
+# ------------------------------------------------ replenishment engine ----
+
+
+class PolicySetRequest(BaseModel):
+    variant_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    min_stock: int = Field(ge=0)
+    max_stock: int | None = Field(default=None, ge=0)
+    safety_stock: int = Field(default=0, ge=0)
+    lead_time_days: int = Field(default=0, ge=0)
+    moq: int = Field(default=1, gt=0)
+    order_multiple: int = Field(default=1, gt=0)
+    review_period_days: int = Field(default=7, gt=0)
+    preferred_supplier_id: uuid.UUID | None = None
+
+
+@router.get("/replenishment/policies")
+async def list_replenishment_policies(
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+):
+    from sqlalchemy import select
+
+    from app.modules.inventory.models import InventoryPolicy
+
+    q = select(InventoryPolicy).where(InventoryPolicy.tenant_id == ctx.tenant_id)
+    if warehouse_id:
+        q = q.where(InventoryPolicy.warehouse_id == warehouse_id)
+    rows = list((await ctx.session.execute(q.limit(limit))).scalars())
+    return [
+        {
+            "variant_id": str(p.variant_id),
+            "warehouse_id": str(p.warehouse_id),
+            "min_stock": p.min_stock,
+            "max_stock": p.max_stock,
+            "safety_stock": p.safety_stock,
+            "lead_time_days": p.lead_time_days,
+            "moq": p.moq,
+            "order_multiple": p.order_multiple,
+        }
+        for p in rows
+    ]
+
+
+@router.post("/replenishment/policies", status_code=201)
+async def set_replenishment_policy(
+    body: PolicySetRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    pol = await ReplenishmentService.set_policy(
+        ctx.session,
+        ctx.tenant_id,
+        variant_id=body.variant_id,
+        warehouse_id=body.warehouse_id,
+        min_stock=body.min_stock,
+        max_stock=body.max_stock,
+        safety_stock=body.safety_stock,
+        lead_time_days=body.lead_time_days,
+        moq=body.moq,
+        order_multiple=body.order_multiple,
+        review_period_days=body.review_period_days,
+        preferred_supplier_id=body.preferred_supplier_id,
+    )
+    return {
+        "variant_id": str(pol.variant_id),
+        "warehouse_id": str(pol.warehouse_id),
+        "min_stock": pol.min_stock,
+        "max_stock": pol.max_stock,
+    }
+
+
+@router.get("/replenishment/suggestions")
+async def list_reorder_suggestions(
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID | None = None,
+    status: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+):
+    from sqlalchemy import select
+
+    from app.modules.inventory.models import ReorderSuggestion
+
+    q = select(ReorderSuggestion).where(ReorderSuggestion.tenant_id == ctx.tenant_id)
+    if warehouse_id:
+        q = q.where(ReorderSuggestion.warehouse_id == warehouse_id)
+    if status:
+        q = q.where(ReorderSuggestion.status == status)
+    rows = list(
+        (
+            await ctx.session.execute(q.order_by(ReorderSuggestion.created_at.desc()).limit(limit))
+        ).scalars()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "variant_id": str(s.variant_id),
+            "warehouse_id": str(s.warehouse_id),
+            "suggested_quantity": s.suggested_quantity,
+            "source": s.source,
+            "status": s.status,
+            "reason": s.reason,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in rows
+    ]
+
+
+@router.post("/replenishment/generate")
+async def generate_reorder_suggestions(
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+    warehouse_id: uuid.UUID | None = None,
+):
+    suggestions = await ReplenishmentService.generate_suggestions(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id
+    )
+    return {"generated_count": len(suggestions)}
+
+
+@router.post("/replenishment/suggestions/{suggestion_id}/approve")
+async def approve_reorder_suggestion(
+    suggestion_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    sug = await ReplenishmentService.approve_suggestion(
+        ctx.session, ctx.tenant_id, suggestion_id=suggestion_id
+    )
+    return {"id": str(sug.id), "status": sug.status}
+
+
+@router.post("/replenishment/suggestions/{suggestion_id}/dismiss")
+async def dismiss_reorder_suggestion(
+    suggestion_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    sug = await ReplenishmentService.dismiss_suggestion(
+        ctx.session, ctx.tenant_id, suggestion_id=suggestion_id
+    )
+    return {"id": str(sug.id), "status": sug.status}
+
+
+# ------------------------------------------------ valuation & landed cost ----
+
+
+class LandedCostCreateRequest(BaseModel):
+    warehouse_id: uuid.UUID
+    total: Decimal = Field(gt=0)
+    purchase_order_id: uuid.UUID | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.get("/valuation")
+async def get_valuation(ctx: TenantCtxDep, warehouse_id: uuid.UUID | None = None):
+    res = await ValuationService.calculate_valuation(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id
+    )
+    return {
+        "total_valuation": f"{res['total_valuation']:.4f}",
+        "total_quantity": res["total_quantity"],
+        "average_unit_cost": f"{res['average_unit_cost']:.4f}",
+        "layer_count": res["layer_count"],
+    }
+
+
+@router.post("/landed-costs", status_code=201)
+async def create_landed_cost(
+    body: LandedCostCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    lc = await ValuationService.create_landed_cost(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=body.warehouse_id,
+        total=body.total,
+        purchase_order_id=body.purchase_order_id,
+        note=body.note,
+        user_id=ctx.user.id,
+    )
+    return {
+        "id": str(lc.id),
+        "warehouse_id": str(lc.warehouse_id),
+        "total": f"{lc.total:.2f}",
+        "status": lc.status,
+    }
+
+
+@router.post("/landed-costs/{cost_id}/post")
+async def post_landed_cost(
+    cost_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    lc = await ValuationService.post_landed_cost(ctx.session, ctx.tenant_id, cost_id=cost_id)
+    return {"id": str(lc.id), "status": lc.status}
+
+
+# ------------------------------------------------ traceability ----
+
+
+class TrackingPolicyRequest(BaseModel):
+    mode: str = Field(pattern="^(none|batch|serial)$")
+    expiry_required: bool = False
+
+
+class LotCreateRequest(BaseModel):
+    lot_code: str = Field(min_length=1, max_length=63)
+    expires_at: datetime | None = None
+    supplier_id: uuid.UUID | None = None
+    unit_cost: Decimal | None = None
+
+
+class SerialsRegisterRequest(BaseModel):
+    warehouse_id: uuid.UUID
+    serial_numbers: list[str]
+
+
+@router.get("/variants/{variant_id}/tracking-policy")
+async def get_tracking_policy(variant_id: uuid.UUID, ctx: TenantCtxDep):
+    pol = await TraceabilityService.get_tracking_policy(
+        ctx.session, ctx.tenant_id, variant_id=variant_id
+    )
+    return {
+        "variant_id": str(variant_id),
+        "mode": pol.mode if pol else "none",
+        "expiry_required": pol.expiry_required if pol else False,
+    }
+
+
+@router.post("/variants/{variant_id}/tracking-policy")
+async def set_tracking_policy(
+    variant_id: uuid.UUID,
+    body: TrackingPolicyRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    pol = await TraceabilityService.set_tracking_policy(
+        ctx.session,
+        ctx.tenant_id,
+        variant_id=variant_id,
+        mode=body.mode,
+        expiry_required=body.expiry_required,
+    )
+    return {
+        "variant_id": str(pol.variant_id),
+        "mode": pol.mode,
+        "expiry_required": pol.expiry_required,
+    }
+
+
+@router.get("/variants/{variant_id}/lots")
+async def list_variant_lots(variant_id: uuid.UUID, ctx: TenantCtxDep):
+    rows = await TraceabilityService.list_lots(ctx.session, ctx.tenant_id, variant_id=variant_id)
+    return [
+        {
+            "id": str(lot.id),
+            "lot_code": lot.lot_code,
+            "expires_at": lot.expires_at.isoformat() if lot.expires_at else None,
+            "supplier_id": str(lot.supplier_id) if lot.supplier_id else None,
+            "unit_cost": str(lot.unit_cost) if lot.unit_cost is not None else None,
+        }
+        for lot in rows
+    ]
+
+
+@router.post("/variants/{variant_id}/lots", status_code=201)
+async def create_variant_lot(
+    variant_id: uuid.UUID,
+    body: LotCreateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    lot = await TraceabilityService.create_lot(
+        ctx.session,
+        ctx.tenant_id,
+        variant_id=variant_id,
+        lot_code=body.lot_code,
+        expires_at=body.expires_at,
+        supplier_id=body.supplier_id,
+        unit_cost=body.unit_cost,
+    )
+    return {"id": str(lot.id), "lot_code": lot.lot_code}
+
+
+@router.get("/variants/{variant_id}/serials")
+async def list_variant_serials(
+    variant_id: uuid.UUID,
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID | None = None,
+    status: str | None = None,
+):
+    rows = await TraceabilityService.list_serials(
+        ctx.session, ctx.tenant_id, variant_id=variant_id, warehouse_id=warehouse_id, status=status
+    )
+    return [
+        {
+            "id": str(s.id),
+            "serial_number": s.serial_number,
+            "warehouse_id": str(s.warehouse_id),
+            "status": s.status,
+        }
+        for s in rows
+    ]
+
+
+@router.post("/variants/{variant_id}/serials", status_code=201)
+async def register_variant_serials(
+    variant_id: uuid.UUID,
+    body: SerialsRegisterRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    serials = await TraceabilityService.register_serials(
+        ctx.session,
+        ctx.tenant_id,
+        variant_id=variant_id,
+        warehouse_id=body.warehouse_id,
+        serial_numbers=body.serial_numbers,
+    )
+    return {"registered_count": len(serials)}
+
+
+# ------------------------------------------------ reports ----
+
+
+@router.get("/reports/summary")
+async def get_stock_summary(ctx: TenantCtxDep, warehouse_id: uuid.UUID | None = None):
+    res = await InventoryReportingService.stock_summary(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id
+    )
+    return {
+        "on_hand": res["on_hand"],
+        "sellable": res["sellable"],
+        "available": res["available"],
+        "reserved": res["reserved"],
+        "quarantined": res["quarantined"],
+        "in_transit": res["in_transit"],
+        "total_valuation": f"{res['total_valuation']:.4f}",
+    }
+
+
+@router.get("/reports/dead-stock")
+async def get_dead_stock(
+    ctx: TenantCtxDep,
+    days_inactive: Annotated[int, Query(ge=7, le=365)] = 90,
+    warehouse_id: uuid.UUID | None = None,
+):
+    rows = await InventoryReportingService.dead_stock(
+        ctx.session, ctx.tenant_id, days_inactive=days_inactive, warehouse_id=warehouse_id
+    )
+    return rows
+
+
+@router.get("/reports/low-stock-alerts")
+async def get_low_stock_alerts(ctx: TenantCtxDep, warehouse_id: uuid.UUID | None = None):
+    rows = await InventoryReportingService.low_stock_alerts(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id
+    )
+    return rows
+
+
+@router.get("/reports/apparel-insights")
+async def get_apparel_insights(
+    ctx: TenantCtxDep,
+    days: Annotated[int, Query(ge=1, le=180)] = 30,
+    warehouse_id: uuid.UUID | None = None,
+):
+    return await InventoryReportingService.apparel_insights(
+        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id, days=days
+    )
+
+
+# ------------------------------------------------ channel allocations ----
+
+
+class ChannelAllocationIn(BaseModel):
+    warehouse_id: uuid.UUID
+    variant_id: uuid.UUID
+    channel: str = Field(min_length=1, max_length=31)
+    quantity: int = Field(ge=0)
+
+
+class ChannelAllocationOut(BaseModel):
+    id: uuid.UUID
+    warehouse_id: uuid.UUID
+    variant_id: uuid.UUID
+    channel: str
+    allocated_quantity: int
+    reserved_in_channel: int
+
+
+class ChannelAvailabilityOut(BaseModel):
+    variant_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    channel: str
+    available_quantity: int
+    allocated_quantity: int | None = None
+    reserved_in_channel: int = 0
+    global_available: int
+
+
+class MarkSerialsRequest(BaseModel):
+    serial_codes: list[str] = Field(min_length=1)
+
+
+@router.get("/channel-allocations", response_model=list[ChannelAllocationOut])
+async def list_channel_allocations(
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID | None = None,
+    variant_id: uuid.UUID | None = None,
+    channel: str | None = None,
+):
+    rows = await ChannelAllocationService.list_allocations(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=warehouse_id,
+        variant_id=variant_id,
+        channel=channel,
+    )
+    return [
+        ChannelAllocationOut(
+            id=r.id,
+            warehouse_id=r.warehouse_id,
+            variant_id=r.variant_id,
+            channel=r.channel,
+            allocated_quantity=r.allocated_quantity,
+            reserved_in_channel=r.reserved_in_channel,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/channel-allocations", response_model=ChannelAllocationOut, status_code=201)
+async def set_channel_allocation(
+    body: ChannelAllocationIn,
+    ctx: TenantCtxDep,
+):
+    alloc = await ChannelAllocationService.set_allocation(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=body.warehouse_id,
+        variant_id=body.variant_id,
+        channel=body.channel,
+        quantity=body.quantity,
+    )
+    return ChannelAllocationOut(
+        id=alloc.id,
+        warehouse_id=alloc.warehouse_id,
+        variant_id=alloc.variant_id,
+        channel=alloc.channel,
+        allocated_quantity=alloc.allocated_quantity,
+        reserved_in_channel=alloc.reserved_in_channel,
+    )
+
+
+@router.delete("/channel-allocations/{allocation_id}", status_code=200)
+async def delete_channel_allocation(
+    allocation_id: uuid.UUID,
+    ctx: TenantCtxDep,
+):
+    await ChannelAllocationService.delete_allocation(
+        ctx.session,
+        ctx.tenant_id,
+        allocation_id=allocation_id,
+    )
+    return {"ok": True}
+
+
+@router.get("/channel-availability", response_model=ChannelAvailabilityOut)
+async def get_channel_availability(
+    ctx: TenantCtxDep,
+    warehouse_id: uuid.UUID,
+    variant_id: uuid.UUID,
+    channel: str,
+):
+    res = await ChannelAllocationService.get_channel_availability(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=warehouse_id,
+        variant_id=variant_id,
+        channel=channel,
+    )
+    return ChannelAvailabilityOut(**res)
+
+
+# ------------------------------------------------ checkout traceability ----
+
+
+@router.get("/variants/{variant_id}/checkout-traceability")
+async def get_checkout_traceability(
+    variant_id: uuid.UUID,
+    ctx: TenantCtxDep,
+):
+    """Retrieve tracking policy and available lots/serials for checkout."""
+    pol = await TraceabilityService.get_tracking_policy(
+        ctx.session, ctx.tenant_id, variant_id=variant_id
+    )
+    mode = pol.mode if pol else "none"
+    expiry_req = pol.expiry_required if pol else False
+
+    lots = []
+    serials = []
+    if mode == "batch":
+        lots_rows = await TraceabilityService.list_lots(
+            ctx.session, ctx.tenant_id, variant_id=variant_id
+        )
+        lots = [
+            {
+                "id": str(lot_item.id),
+                "lot_code": lot_item.lot_code,
+                "expires_at": lot_item.expires_at.isoformat() if lot_item.expires_at else None,
+                "unit_cost": str(lot_item.unit_cost) if lot_item.unit_cost is not None else None,
+            }
+            for lot_item in lots_rows
+        ]
+    elif mode == "serial":
+        serials_rows = await TraceabilityService.list_serials(
+            ctx.session, ctx.tenant_id, variant_id=variant_id, status="in_stock"
+        )
+        serials = [
+            {
+                "id": str(s.id),
+                "serial_code": s.serial_code,
+                "lot_id": str(s.lot_id) if s.lot_id else None,
+                "status": s.status,
+            }
+            for s in serials_rows
+        ]
+
+    return {
+        "variant_id": str(variant_id),
+        "mode": mode,
+        "expiry_required": expiry_req,
+        "lots": lots,
+        "serials": serials,
+    }
+
+
+@router.post("/variants/{variant_id}/serials/mark-sold")
+async def mark_serials_sold(
+    variant_id: uuid.UUID,
+    body: MarkSerialsRequest,
+    ctx: TenantCtxDep,
+):
+    for code in body.serial_codes:
+        await TraceabilityService.update_serial_status(
+            ctx.session,
+            ctx.tenant_id,
+            variant_id=variant_id,
+            serial_code=code,
+            status="sold",
+        )
+    return {"ok": True, "count": len(body.serial_codes)}
+
+
+@router.post("/variants/{variant_id}/serials/mark-returned")
+async def mark_serials_returned(
+    variant_id: uuid.UUID,
+    body: MarkSerialsRequest,
+    ctx: TenantCtxDep,
+):
+    for code in body.serial_codes:
+        await TraceabilityService.update_serial_status(
+            ctx.session,
+            ctx.tenant_id,
+            variant_id=variant_id,
+            serial_code=code,
+            status="returned",
+        )
+    return {"ok": True, "count": len(body.serial_codes)}

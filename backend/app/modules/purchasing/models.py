@@ -1,9 +1,13 @@
-"""PURCHASING domain models: suppliers, purchase orders, supplier payments, supplier returns,
-and the moving-average cost of every variant.
+"""PURCHASING domain models: suppliers, purchase orders, goods receipts, supplier payments,
+supplier returns, and the moving-average cost of every variant.
 
 Design rules (backend design doc, phase 2):
   * Receiving and paying are SEPARATE facts. A purchase order has a receipt state (stored) and a
     payment state that is DERIVED from supplier_payments. Buying on credit is the normal case.
+  * A PURCHASE ORDER NEVER ADDS STOCK. Only a POSTED goods receipt does (D5): the order says
+    what was ordered, the receipt says what arrived, and the stock movement references the
+    receipt. A receipt may be partial, so the order walks
+    draft -> approved -> sent -> partially_received -> received -> cancelled.
   * Stock enters/leaves only through InventoryService.move(), never by writing the ledger here
     (reason 'purchase' in, 'supplier_return' out, reference_type = the document).
   * A supplier's balance is never stored. It is computed from received orders, payments and
@@ -45,7 +49,11 @@ from app.core.model_kit import (
 )
 
 SUPPLIER_STATUSES: frozenset[str] = frozenset({"active", "inactive"})
-PO_STATUSES: frozenset[str] = frozenset({"draft", "received", "cancelled"})
+PO_STATUSES: frozenset[str] = frozenset(
+    {"draft", "approved", "sent", "partially_received", "received", "cancelled"}
+)
+GOODS_RECEIPT_STATUSES: frozenset[str] = frozenset({"draft", "posted", "rejected", "cancelled"})
+GOODS_RECEIPT_CONDITIONS: frozenset[str] = frozenset({"good", "quarantine", "reject"})
 PAYMENT_METHODS: frozenset[str] = frozenset({"cash", "card", "wallet", "bank_transfer"})
 RETURN_STATUSES: frozenset[str] = frozenset({"review", "accepted", "rejected"})
 RETURN_SETTLEMENTS: frozenset[str] = frozenset({"cash", "credit", "replace"})
@@ -75,6 +83,20 @@ class Supplier(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
 
 
 class PurchaseOrder(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """What was ORDERED. It never adds stock — only a posted goods receipt does (D5).
+
+    allowed status values:
+      draft | approved | sent | partially_received | received | cancelled
+
+    The lifecycle is a document's: the order is written, approved, sent to the
+    supplier, then received (in parts, so `partially_received` is a real state)
+    until it is fully `received` or cancelled.
+
+    `received_at` is the moment the order became FULLY received — a partial
+    receipt does not set it, the receipt carries that moment. The database
+    enforces that the two agree.
+    """
+
     __tablename__ = "purchase_orders"
 
     number: Mapped[str] = mapped_column(String(31))
@@ -85,11 +107,20 @@ class PurchaseOrder(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
         UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
     )
     order_date: Mapped[date] = mapped_column(Date)
-    # allowed: draft | received | cancelled  (payment state is derived, not stored)
-    status: Mapped[str] = mapped_column(String(15), server_default="draft")
+    # allowed: draft | approved | sent | partially_received | received | cancelled
+    # (payment state is derived, not stored)
+    # (31 chars, not 15: `partially_received` is 18 characters long.)
+    status: Mapped[str] = mapped_column(String(31), server_default="draft")
     total: Mapped[Decimal] = mapped_column(MONEY, server_default="0")
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The day the supplier promised the goods. NULL = no promise made.
+    expected_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -98,10 +129,11 @@ class PurchaseOrder(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_purchase_orders_tenant_number"),
         CheckConstraint(
-            "status IN ('draft','received','cancelled')", name="ck_purchase_orders_status"
+            "status IN ('draft','approved','sent','partially_received','received','cancelled')",
+            name="ck_purchase_orders_status",
         ),
         CheckConstraint("total >= 0", name="ck_purchase_orders_total"),
-        # A received order says when; any other state must not.
+        # A fully received order says when; any other state must not.
         CheckConstraint(
             "(status = 'received') = (received_at IS NOT NULL)",
             name="ck_purchase_orders_received_at",
@@ -112,7 +144,16 @@ class PurchaseOrder(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
 
 
 class PurchaseOrderLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
-    """Lines are written with their order and never edited (a wrong order is cancelled)."""
+    """One variant on a purchase order.
+
+    `quantity` is what was ORDERED; `quantity_received` is what actually
+    ARRIVED. The gap between them is the open amount — a receipt of 70 against
+    an order of 100 leaves 30 open and the order `partially_received`.
+
+    A purchase order NEVER moves stock: only a posted goods receipt does. The
+    receipt lines are the record of what arrived; this column is their running
+    total on the order.
+    """
 
     __tablename__ = "purchase_order_lines"
 
@@ -123,6 +164,7 @@ class PurchaseOrderLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
         UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="RESTRICT")
     )
     quantity: Mapped[int] = mapped_column(Integer)
+    quantity_received: Mapped[int] = mapped_column(Integer, server_default="0")
     unit_cost: Mapped[Decimal] = mapped_column(MONEY)
     line_total: Mapped[Decimal] = mapped_column(MONEY)
     position: Mapped[int] = mapped_column(
@@ -134,10 +176,98 @@ class PurchaseOrderLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMix
         CheckConstraint("position > 0", name="ck_po_lines_position"),
         CheckConstraint("quantity > 0", name="ck_po_lines_quantity"),
         CheckConstraint("unit_cost >= 0", name="ck_po_lines_unit_cost"),
+        CheckConstraint("quantity_received >= 0", name="ck_purchase_order_lines_quantity_received"),
         # The database itself refuses a line whose total is not quantity x cost.
         CheckConstraint("line_total = quantity * unit_cost", name="ck_po_lines_total"),
         Index("ix_po_lines_order", "tenant_id", "purchase_order_id"),
         Index("ix_po_lines_variant", "tenant_id", "variant_id"),
+    )
+
+
+class GoodsReceipt(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """What ACTUALLY ARRIVED against a purchase order (D5).
+
+    This is the document the stock movement points at: the purchase order says
+    what was ordered, the receipt says what came in the door, and the `in`
+    movement references the receipt. A receipt may be partial, so one order can
+    carry several receipts and end `partially_received` until the last one.
+
+    allowed status values:
+      draft | posted | rejected | cancelled
+
+    A receipt is only a fact once it is `posted`; a draft is a document still
+    being written and a rejected one says the goods never arrived.
+    """
+
+    __tablename__ = "goods_receipts"
+
+    number: Mapped[str] = mapped_column(String(31))
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_orders.id", ondelete="RESTRICT")
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
+    )
+    # allowed: draft | posted | rejected | cancelled
+    status: Mapped[str] = mapped_column(String(15), server_default="draft")
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_goods_receipts_tenant_number"),
+        CheckConstraint(
+            "status IN ('draft','posted','rejected','cancelled')", name="ck_goods_receipts_status"
+        ),
+        Index("ix_goods_receipts_tenant_purchase_order", "tenant_id", "purchase_order_id"),
+        Index("ix_goods_receipts_tenant_warehouse", "tenant_id", "warehouse_id"),
+    )
+
+
+class GoodsReceiptLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """One variant as it arrived — and in what condition.
+
+    `quantity` is what came in the door, `unit_cost` what it cost and
+    `line_total` their product. `condition` is what the receiver saw
+    (good | quarantine | reject): a quarantined arrival is not sellable stock,
+    so it is not the same fact as a good one.
+
+    The receipt line points at the order line it answers, so the order's
+    `quantity_received` is always the sum of the receipts that close it.
+    """
+
+    __tablename__ = "goods_receipt_lines"
+
+    goods_receipt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("goods_receipts.id", ondelete="CASCADE")
+    )
+    purchase_order_line_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_order_lines.id", ondelete="RESTRICT")
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="RESTRICT")
+    )
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_cost: Mapped[Decimal] = mapped_column(COST)
+    line_total: Mapped[Decimal] = mapped_column(COST)
+    position: Mapped[int] = mapped_column(Integer)  # 1-based place on the document
+    # allowed: good | quarantine | reject
+    condition: Mapped[str] = mapped_column(String(15), server_default="good")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "goods_receipt_id", "position", name="uq_goods_receipt_lines_position"
+        ),
+        CheckConstraint("quantity > 0", name="ck_goods_receipt_lines_quantity"),
+        CheckConstraint("unit_cost >= 0", name="ck_goods_receipt_lines_unit_cost"),
+        CheckConstraint("line_total >= 0", name="ck_goods_receipt_lines_line_total"),
+        CheckConstraint("position > 0", name="ck_goods_receipt_lines_position"),
+        CheckConstraint(
+            "condition IN ('good','quarantine','reject')", name="ck_goods_receipt_lines_condition"
+        ),
+        Index("ix_goods_receipt_lines_receipt", "tenant_id", "goods_receipt_id"),
     )
 
 

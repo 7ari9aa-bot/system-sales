@@ -239,6 +239,7 @@ class PosCashMovement(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin
     amount: Mapped[Decimal] = mapped_column(MONEY)
     reference_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

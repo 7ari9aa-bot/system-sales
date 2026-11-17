@@ -17,13 +17,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.models import InventoryBalance, Stocktake, StocktakeLine
+from app.modules.inventory.models import (
+    InventoryBalance,
+    Stocktake,
+    StocktakeAssignment,
+    StocktakeLine,
+)
 
 from ._common import _now
 from .balances import BalanceServiceMixin
 from .movements import MovementServiceMixin
 
 _MAX_COUNT = 1_000_000
+_VALID_KINDS = frozenset({"full", "cycle", "blind", "spot", "abc"})
 
 
 def _qty(value: object, field: str) -> int:
@@ -42,10 +48,20 @@ class StocktakeService:
         tenant_id: UUID,
         warehouse_id: UUID,
         *,
+        kind: str = "full",
+        scope: list | None = None,
+        blind: bool = False,
+        recount_threshold_pct: int = 10,
         user_id: UUID | None = None,
         note: str | None = None,
     ) -> Stocktake:
-        """Start a count: one line per active variant, each holding today's book quantity."""
+        """Start a count: one line per variant in scope, holding book quantity."""
+        if kind not in _VALID_KINDS:
+            raise ValidationError(f"kind must be one of {sorted(_VALID_KINDS)}")
+        if kind == "blind":
+            blind = True
+        recount_threshold = max(1, min(int(recount_threshold_pct), 100))
+
         await BalanceServiceMixin._get_warehouse(session, tenant_id, warehouse_id)
         existing = (
             await session.execute(
@@ -63,6 +79,10 @@ class StocktakeService:
             tenant_id=tenant_id,
             warehouse_id=warehouse_id,
             status="OPEN",
+            kind=kind,
+            scope=scope or [],
+            blind=blind,
+            recount_threshold_pct=recount_threshold,
             note=(note or "").strip()[:255] or None,
             opened_by_user_id=user_id,
         )
@@ -83,7 +103,31 @@ class StocktakeService:
                 )
             ).all()
         }
-        variant_ids = await BalanceServiceMixin._active_variant_ids(session, tenant_id)
+
+        # Determine which variants are in scope
+        scoped_variants: list[UUID] | None = None
+        if scope and isinstance(scope, list):
+            v_ids: list[UUID] = []
+            for item in scope:
+                if isinstance(item, dict) and "variant_id" in item:
+                    try:
+                        v_ids.append(UUID(str(item["variant_id"])))
+                    except Exception:
+                        pass
+                elif isinstance(item, (str, UUID)):
+                    try:
+                        v_ids.append(UUID(str(item)))
+                    except Exception:
+                        pass
+            if v_ids:
+                scoped_variants = v_ids
+
+        variant_ids = (
+            scoped_variants
+            if scoped_variants is not None
+            else await BalanceServiceMixin._active_variant_ids(session, tenant_id)
+        )
+
         for variant_id in variant_ids:
             session.add(
                 StocktakeLine(
@@ -91,6 +135,7 @@ class StocktakeService:
                     stocktake_id=stocktake.id,
                     variant_id=variant_id,
                     expected_qty=max(on_hand.get(variant_id, 0), 0),
+                    recount_count=0,
                 )
             )
         await session.flush()
@@ -116,6 +161,8 @@ class StocktakeService:
         tenant_id: UUID,
         stocktake_id: UUID,
         counts: list[dict],
+        *,
+        user_id: UUID | None = None,
     ) -> int:
         """Save counted quantities (``{"variant_id", "counted_qty"}``; ``None`` un-counts a line).
 
@@ -161,9 +208,71 @@ class StocktakeService:
                 "some variants are not part of this stocktake", details={"count": len(missing)}
             )
         for line in lines:
-            line.counted_qty = wanted[line.variant_id]
+            new_qty = wanted[line.variant_id]
+            # If changing an already-counted value, track it as a recount
+            if line.counted_qty is not None and new_qty != line.counted_qty:
+                line.recount_count = (line.recount_count or 0) + 1
+            line.counted_qty = new_qty
+            if user_id:
+                line.counted_by_user_id = user_id
+
+        # Update counter's assignment progress if assigned
+        if user_id:
+            asgn = (
+                await session.execute(
+                    select(StocktakeAssignment).where(
+                        StocktakeAssignment.tenant_id == tenant_id,
+                        StocktakeAssignment.stocktake_id == stocktake_id,
+                        StocktakeAssignment.user_id == user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if asgn:
+                asgn.status = "counted"
+                asgn.counted_at = _now()
+                asgn.counted_lines = len(lines)
+
         await session.flush()
         return len(lines)
+
+    @staticmethod
+    async def assign_counter(
+        session: AsyncSession,
+        tenant_id: UUID,
+        stocktake_id: UUID,
+        *,
+        user_id: UUID,
+        location_id: UUID | None = None,
+    ) -> StocktakeAssignment:
+        """Assign a team member to count this stocktake or a specific warehouse location."""
+        stocktake = await StocktakeService._get(session, tenant_id, stocktake_id)
+        if stocktake.status != "OPEN":
+            raise ConflictError(f"cannot assign counter to a {stocktake.status} stocktake")
+
+        assignment = (
+            await session.execute(
+                select(StocktakeAssignment).where(
+                    StocktakeAssignment.tenant_id == tenant_id,
+                    StocktakeAssignment.stocktake_id == stocktake_id,
+                    StocktakeAssignment.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None:
+            assignment = StocktakeAssignment(
+                tenant_id=tenant_id,
+                stocktake_id=stocktake_id,
+                user_id=user_id,
+                location_id=location_id,
+                status="assigned",
+            )
+            session.add(assignment)
+        else:
+            assignment.location_id = location_id
+            assignment.status = "assigned"
+
+        await session.flush()
+        return assignment
 
     @staticmethod
     async def cancel(
@@ -298,8 +407,17 @@ class StocktakeService:
         ]
 
     @staticmethod
-    async def detail(session: AsyncSession, tenant_id: UUID, stocktake_id: UUID) -> dict:
-        """The count with its lines, each next to today's balance so the screen can show drift."""
+    async def detail(
+        session: AsyncSession,
+        tenant_id: UUID,
+        stocktake_id: UUID,
+        *,
+        for_counter: bool = False,
+    ) -> dict:
+        """The count with its lines, each next to today's balance so the screen can show drift.
+
+        A blind count hides expected_qty and current_qty when accessed by a counter.
+        """
         stocktake = await StocktakeService._get(session, tenant_id, stocktake_id)
         rows = (
             await session.execute(
@@ -317,21 +435,62 @@ class StocktakeService:
                 .order_by(StocktakeLine.variant_id)
             )
         ).all()
+
+        assignments = list(
+            (
+                await session.execute(
+                    select(StocktakeAssignment).where(
+                        StocktakeAssignment.tenant_id == tenant_id,
+                        StocktakeAssignment.stocktake_id == stocktake_id,
+                    )
+                )
+            ).scalars()
+        )
+
+        hide_book = stocktake.blind and for_counter
+        threshold = stocktake.recount_threshold_pct or 10
+
+        lines_out = []
+        for line, current in rows:
+            needs_recount = False
+            if line.counted_qty is not None and line.expected_qty > 0:
+                variance_pct = abs(line.counted_qty - line.expected_qty) / line.expected_qty * 100
+                if variance_pct >= threshold:
+                    needs_recount = True
+
+            lines_out.append(
+                {
+                    "variant_id": str(line.variant_id),
+                    "expected_qty": None if hide_book else line.expected_qty,
+                    "counted_qty": line.counted_qty,
+                    "current_qty": None
+                    if hide_book
+                    else (int(current) if current is not None else 0),
+                    "applied_delta": line.applied_delta,
+                    "recount_count": line.recount_count or 0,
+                    "needs_recount": needs_recount,
+                }
+            )
+
         return {
             "id": str(stocktake.id),
             "warehouse_id": str(stocktake.warehouse_id),
             "status": stocktake.status,
+            "kind": stocktake.kind,
+            "blind": stocktake.blind,
+            "scope": stocktake.scope,
+            "recount_threshold_pct": threshold,
             "note": stocktake.note,
             "created_at": stocktake.created_at.isoformat() if stocktake.created_at else None,
             "closed_at": stocktake.closed_at.isoformat() if stocktake.closed_at else None,
-            "lines": [
+            "assignments": [
                 {
-                    "variant_id": str(line.variant_id),
-                    "expected_qty": line.expected_qty,
-                    "counted_qty": line.counted_qty,
-                    "current_qty": int(current) if current is not None else 0,
-                    "applied_delta": line.applied_delta,
+                    "user_id": str(a.user_id),
+                    "location_id": str(a.location_id) if a.location_id else None,
+                    "status": a.status,
+                    "counted_lines": a.counted_lines,
                 }
-                for line, current in rows
+                for a in assignments
             ],
+            "lines": lines_out,
         }

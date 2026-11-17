@@ -148,4 +148,19 @@ describe("recordSale note", () => {
     expect(calls[0].body).not.toHaveProperty("note");
     expect(calls[1].body).not.toHaveProperty("note");
   });
+
+  it("handles cash movements and shift handover with intent", async () => {
+    await posApi.listCashMovements("s1");
+    expect(calls[0].path).toBe("/pos/sessions/s1/cash-movements");
+
+    await posApi.addCashMovement("s1", { reason: "pay_in", amount: "100.50", notes: "  morning  " }, newIntent());
+    expect(calls[1].path).toBe("/pos/sessions/s1/cash-movements");
+    expect(calls[1].body).toEqual({ reason: "pay_in", amount: "100.50", notes: "morning" });
+    expect(calls[1].headers["Idempotency-Key"]).toMatch(/^pos-/);
+
+    await posApi.handoverSession("s1", "u2", newIntent());
+    expect(calls[2].path).toBe("/pos/sessions/s1/handover");
+    expect(calls[2].body).toEqual({ new_cashier_id: "u2" });
+    expect(calls[2].headers["Idempotency-Key"]).toMatch(/^pos-/);
+  });
 });

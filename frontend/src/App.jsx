@@ -25,6 +25,7 @@ const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
 const Customers = lazy(() => import('@/pages/Customers'));
+const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
 
 // وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
@@ -109,6 +110,7 @@ const DashboardRoutes = () => (
         <Route path="/products" element={<Navigate to="/cashier/inventory" replace />} />
         <Route path="/products/new" element={<Navigate to="/cashier/products/new" replace />} />
         <Route path="/inventory" element={<Navigate to="/cashier/inventory" replace />} />
+        <Route path="/supply-chain" element={<Navigate to="/cashier/supply-chain" replace />} />
         <Route path="/pos" element={<Navigate to="/cashier/pos" replace />} />
         {/* The manual sales workspace is gone; the cashier took its place. Old
             links (bookmarks, cached ?s=new|returns|exchanges) redirect there
@@ -175,7 +177,7 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/pos', '/cashier', '/sales',
+  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/supply-chain', '/pos', '/cashier', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/owner', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }

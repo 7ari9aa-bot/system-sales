@@ -395,6 +395,71 @@ class PosService(PosReceiptReads):
         outflow = next((Decimal(a) for d, a in rows if d == "out"), Decimal("0"))
         return inflow, outflow
 
+    @staticmethod
+    async def add_cash_movement(
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        direction: str,
+        reason: str,
+        amount: object,
+        notes: str | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> PosCashMovement:
+        """Record a manual drawer movement (pay-in, pay-out, cash drop).
+
+        NOT for sales or refunds — those are recorded by the sell/return flows.
+        Locks the session row to prevent race with close.
+        """
+        _MANUAL_REASONS = {"pay_in", "pay_out", "cash_drop"}
+        if reason not in _MANUAL_REASONS:
+            raise ValidationError(f"reason must be one of {sorted(_MANUAL_REASONS)}")
+        if direction not in {"in", "out"}:
+            raise ValidationError("direction must be 'in' or 'out'")
+        expected_dir = "in" if reason == "pay_in" else "out"
+        if direction != expected_dir:
+            raise ValidationError(f"reason '{reason}' requires direction '{expected_dir}'")
+
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
+        if pos_session.status != "OPEN":
+            raise ConflictError("cannot add cash movement to a closed session")
+        await PosService._ensure_may_operate(session, tenant_id, pos_session, actor_user_id)
+
+        amt = _positive_amount(amount, "amount")
+        movement = PosCashMovement(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            direction=direction,
+            reason=reason,
+            amount=amt,
+            notes=str(notes).strip()[:255] if notes else None,
+            created_by_user_id=actor_user_id,
+        )
+        session.add(movement)
+        await session.flush()
+        return movement
+
+    @staticmethod
+    async def list_cash_movements(
+        session: AsyncSession, tenant_id: UUID, session_id: UUID
+    ) -> list[PosCashMovement]:
+        rows = (
+            (
+                await session.execute(
+                    select(PosCashMovement)
+                    .where(
+                        PosCashMovement.tenant_id == tenant_id,
+                        PosCashMovement.session_id == session_id,
+                    )
+                    .order_by(PosCashMovement.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
     # --------------------------------------------------------------- scan ----
 
     @staticmethod
@@ -1254,6 +1319,28 @@ class PosService(PosReceiptReads):
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
         await PosService._record_close(session, tenant_id, pos_session, closed_by=closed_by)
+        return pos_session
+
+    @staticmethod
+    async def handover_session(
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        new_cashier_id: UUID,
+        actor_user_id: UUID | None = None,
+        shift_override: bool = False,
+    ) -> PosSession:
+        """Transfer the drawer to another cashier without closing the day."""
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
+        if pos_session.status != "OPEN":
+            raise ConflictError("cannot hand over a closed session")
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, new_cashier_id, override=shift_override
+        )
+        pos_session.cashier_user_id = new_cashier_id
+        await session.flush()
         return pos_session
 
     @staticmethod

@@ -37,6 +37,7 @@ export const navGroups = [
       { to: "/products/new", label: "إضافة منتج", icon: Shirt },
       { to: "/labels", label: "طباعة باركود", icon: Printer },
       { to: "/inventory", label: "المخزون", icon: Boxes },
+      { to: "/supply-chain", label: "سلاسل الإمداد", icon: Truck },
     ],
   },
   {
@@ -67,6 +68,7 @@ export function pageTitle(pathname) {
   if (pathname.startsWith("/products/") && pathname.endsWith("/edit")) return "تعديل منتج";
   if (pathname === "/inventory/movements") return "حركة الأصناف";
   if (pathname === "/inventory/stocktake") return "الجرد الفعلي";
+  if (pathname === "/supply-chain" || pathname === "/cashier/supply-chain") return "سلاسل الإمداد والمستودعات";
   if (pathname === "/returns/log") return "سجل المرتجعات";
   if (pathname === "/exchanges/log") return "سجل الاستبدال";
   const match = flatNav

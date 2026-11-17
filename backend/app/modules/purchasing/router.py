@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.purchasing.service import (
     CostService,
+    GoodsReceiptService,
     PurchaseService,
     SupplierPaymentService,
     SupplierReturnService,
@@ -223,7 +224,9 @@ async def _po_out(ctx, order) -> PoOut:
 async def list_purchase_orders(
     ctx: ReadCtx,
     supplier_id: uuid.UUID | None = None,
-    status: Annotated[str | None, Query(pattern="^(draft|received|cancelled)$")] = None,
+    status: Annotated[
+        str | None, Query(pattern="^(draft|received|partially_received|cancelled)$")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ):
@@ -270,6 +273,114 @@ async def receive_purchase_order(order_id: uuid.UUID, ctx: WriteCtx):
 @router.post("/purchase-orders/{order_id}/cancel", response_model=PoOut)
 async def cancel_purchase_order(order_id: uuid.UUID, ctx: WriteCtx):
     return await _po_out(ctx, await PurchaseService.cancel(ctx.session, ctx.tenant_id, order_id))
+
+
+# --------------------------------------------------- goods receipts ----
+
+
+class GoodsReceiptLineIn(BaseModel):
+    purchase_order_line_id: uuid.UUID
+    variant_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    unit_cost: str = Field(min_length=1, max_length=20)
+    condition: str = Field(default="good", pattern="^(good|quarantine|reject)$")
+    note: str | None = Field(default=None, max_length=255)
+
+
+class GoodsReceiptIn(BaseModel):
+    lines: list[GoodsReceiptLineIn]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class GoodsReceiptLineOut(BaseModel):
+    id: str
+    purchase_order_line_id: str
+    variant_id: str
+    quantity: int
+    unit_cost: str
+    line_total: str
+    condition: str
+
+
+class GoodsReceiptOut(BaseModel):
+    id: str
+    number: str
+    purchase_order_id: str
+    warehouse_id: str
+    status: str
+    note: str | None
+    created_at: str
+    received_at: str | None
+    lines: list[GoodsReceiptLineOut] = Field(default_factory=list)
+
+
+async def _gr_out(ctx, gr) -> GoodsReceiptOut:
+    lines = await GoodsReceiptService.lines_of(ctx.session, ctx.tenant_id, gr.id)
+    return GoodsReceiptOut(
+        id=str(gr.id),
+        number=gr.number,
+        purchase_order_id=str(gr.purchase_order_id),
+        warehouse_id=str(gr.warehouse_id),
+        status=gr.status,
+        note=gr.note,
+        created_at=gr.created_at.isoformat(),
+        received_at=gr.received_at.isoformat() if gr.received_at else None,
+        lines=[
+            GoodsReceiptLineOut(
+                id=str(ln.id),
+                purchase_order_line_id=str(ln.purchase_order_line_id),
+                variant_id=str(ln.variant_id),
+                quantity=ln.quantity,
+                unit_cost=_m(ln.unit_cost) or "0.00",
+                line_total=_m(ln.line_total) or "0.00",
+                condition=ln.condition,
+            )
+            for ln in lines
+        ],
+    )
+
+
+@router.post(
+    "/purchase-orders/{order_id}/receipts", status_code=201, response_model=GoodsReceiptOut
+)
+async def create_goods_receipt(order_id: uuid.UUID, body: GoodsReceiptIn, ctx: WriteCtx):
+    gr = await GoodsReceiptService.create(
+        ctx.session,
+        ctx.tenant_id,
+        purchase_order_id=order_id,
+        lines=[ln.model_dump(mode="json") for ln in body.lines],
+        note=body.note,
+        actor_user_id=ctx.user.id,
+    )
+    return await _gr_out(ctx, gr)
+
+
+@router.get("/purchase-orders/{order_id}/receipts", response_model=list[GoodsReceiptOut])
+async def list_goods_receipts_for_po(order_id: uuid.UUID, ctx: ReadCtx):
+    rows = await GoodsReceiptService.list_for_po(ctx.session, ctx.tenant_id, order_id)
+    return [await _gr_out(ctx, gr) for gr in rows]
+
+
+@router.get("/goods-receipts/{receipt_id}", response_model=GoodsReceiptOut)
+async def get_goods_receipt(receipt_id: uuid.UUID, ctx: ReadCtx):
+    gr = await GoodsReceiptService.get(ctx.session, ctx.tenant_id, receipt_id)
+    return await _gr_out(ctx, gr)
+
+
+@router.post("/goods-receipts/{receipt_id}/post", response_model=GoodsReceiptOut)
+async def post_goods_receipt(receipt_id: uuid.UUID, ctx: WriteCtx):
+    gr = await GoodsReceiptService.post(
+        ctx.session, ctx.tenant_id, receipt_id, actor_user_id=ctx.user.id
+    )
+    return await _gr_out(ctx, gr)
+
+
+@router.post("/goods-receipts/{receipt_id}/cancel", response_model=GoodsReceiptOut)
+async def cancel_goods_receipt(receipt_id: uuid.UUID, ctx: WriteCtx):
+    gr = await GoodsReceiptService.cancel(
+        ctx.session, ctx.tenant_id, receipt_id, actor_user_id=ctx.user.id
+    )
+    return await _gr_out(ctx, gr)
 
 
 # ---------------------------------------------------------- payments ----

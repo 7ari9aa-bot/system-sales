@@ -99,7 +99,11 @@ pub fn run() {
         }))
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
-            commands::log_write
+            commands::log_write,
+            commands::list_printers,
+            commands::print_raw,
+            commands::check_update,
+            commands::install_update
         ])
         .setup(|app| {
             let settings_path = app

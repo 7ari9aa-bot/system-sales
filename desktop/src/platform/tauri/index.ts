@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { call } from './invoke'
-import type { AppInfo, LogPort, Platform, RuntimePort, ShellPort } from '../port'
+import type { AppInfo, LogPort, Platform, PrinterDevice, PrinterPort, RuntimePort, ShellPort, UpdateCheckResult, UpdaterPort } from '../port'
 import type { LogRecord } from '@/shared/log'
 
 const appInfoSchema = z.object({
@@ -49,6 +49,34 @@ const runtime: RuntimePort = {
   },
 }
 
+const printer: PrinterPort = {
+  async listPrinters(): Promise<PrinterDevice[]> {
+    try {
+      const res = await call('list_printers')
+      return Array.isArray(res) ? (res as PrinterDevice[]) : []
+    } catch {
+      return []
+    }
+  },
+  async printRaw(data: Uint8Array): Promise<void> {
+    await call('print_raw', { data: Array.from(data) })
+  },
+}
+
+const updater: UpdaterPort = {
+  async check(): Promise<UpdateCheckResult> {
+    try {
+      const res = (await call('check_update')) as UpdateCheckResult | undefined
+      return res?.available !== undefined ? res : { available: false }
+    } catch {
+      return { available: false }
+    }
+  },
+  async downloadAndInstall(): Promise<void> {
+    await call('install_update')
+  },
+}
+
 export function createTauriPlatform(): Platform {
-  return { kind: 'tauri', shell, log, runtime }
+  return { kind: 'tauri', shell, log, runtime, printer, updater }
 }

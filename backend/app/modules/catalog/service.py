@@ -11,6 +11,7 @@ from __future__ import annotations
 from app.modules.catalog.services import (
     _PRODUCT_STATUSES,
     IDENTIFIER_TYPES,
+    BundleServiceMixin,
     CatalogService,
     IdentifierServiceMixin,
     OptionServiceMixin,
@@ -30,6 +31,7 @@ __all__ = [
     "TaxonomyServiceMixin",
     "IdentifierServiceMixin",
     "OptionServiceMixin",
+    "BundleServiceMixin",
     "_PRODUCT_STATUSES",
     "IDENTIFIER_TYPES",
     "_to_decimal",

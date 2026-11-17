@@ -251,7 +251,17 @@ export default function PosInvoiceTable({
                     {line.barcode || line.code}
                   </td>
                   <td className={cn(CELL, "truncate", active ? "font-semibold text-foreground" : "font-medium")} title={line.name}>
-                    {line.name}
+                    <div>{line.name}</div>
+                    {line.serialCodes?.length ? (
+                      <div className="text-[10px] text-muted-foreground font-mono">
+                        سيريال: {line.serialCodes.join(", ")}
+                      </div>
+                    ) : null}
+                    {line.lotCode ? (
+                      <div className="text-[10px] text-muted-foreground font-mono">
+                        تشغيلة: {line.lotCode}
+                      </div>
+                    ) : null}
                   </td>
                   <td className={cn(CELL, "text-center font-semibold")}>{line.size}</td>
                   <td className={cn(CELL, "overflow-hidden")}>

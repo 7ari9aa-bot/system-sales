@@ -22,7 +22,7 @@ describe('resolvePlatform', () => {
   it('exposes exactly the ports Phase 0 owns', async () => {
     const platform = await resolvePlatform()
 
-    expect(Object.keys(platform).sort()).toEqual(['kind', 'log', 'runtime', 'shell'])
+    expect(Object.keys(platform).sort()).toEqual(['kind', 'log', 'printer', 'runtime', 'shell', 'updater'])
   })
 
   it('selects the Tauri platform when the runtime is present', async () => {

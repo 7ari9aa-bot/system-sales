@@ -32,7 +32,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.purchasing.catalog_lookup import existing_variant_ids
 from app.modules.purchasing.models import (
+    GOODS_RECEIPT_CONDITIONS,
     PAYMENT_METHODS,
+    GoodsReceipt,
+    GoodsReceiptLine,
     PurchaseOrder,
     PurchaseOrderLine,
     Supplier,
@@ -471,6 +474,45 @@ class PurchaseService:
         if receive_now:
             await PurchaseService.receive(session, tenant_id, order.id, created_by)
         return order
+
+    @staticmethod
+    async def create_from_reorder_suggestion(
+        session: AsyncSession,
+        tenant_id: UUID,
+        suggestion_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        unit_cost: str | None = None,
+    ) -> PurchaseOrder:
+        """Approve an open reorder suggestion and create its draft PurchaseOrder (D9)."""
+        replenish = _inventory().ReplenishmentService
+        sugg = await replenish.approve_suggestion(
+            session, tenant_id, suggestion_id, user_id=user_id
+        )
+        policy = await replenish.get_policy(
+            session, tenant_id, variant_id=sugg.variant_id, warehouse_id=sugg.warehouse_id
+        )
+        if not policy or not policy.preferred_supplier_id:
+            raise ValidationError(
+                "cannot create purchase order: policy has no preferred_supplier_id"
+            )
+
+        cost_str = unit_cost or "0.00"
+        return await PurchaseService.create(
+            session,
+            tenant_id,
+            supplier_id=policy.preferred_supplier_id,
+            warehouse_id=sugg.warehouse_id,
+            lines=[
+                {
+                    "variant_id": str(sugg.variant_id),
+                    "quantity": sugg.suggested_quantity,
+                    "unit_cost": cost_str,
+                }
+            ],
+            note=f"Replenishment from suggestion {sugg.id}",
+            created_by=user_id,
+        )
 
     @staticmethod
     async def receive(
@@ -940,3 +982,361 @@ class SupplierReturnService:
             SupplierReturn.return_date.desc(), SupplierReturn.created_at.desc(), SupplierReturn.id
         )
         return list((await session.execute(q.limit(limit).offset(offset))).scalars())
+
+
+class GoodsReceiptService:
+    """Create, post, and cancel goods receipts (partial receiving for POs, D5).
+
+    A purchase order says what was ORDERED. A goods receipt says what ARRIVED.
+    Only a posted receipt writes stock (`in` / `purchase` movements).
+
+    Receipt lines carry a `condition` (good | quarantine | reject):
+      * good        → `in` movement → sellable stock
+      * quarantine  → `in` movement + `quarantined` counter bump → not sellable
+      * reject      → NO movement → never entered inventory
+    """
+
+    @staticmethod
+    async def create(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        purchase_order_id: UUID,
+        lines: list[dict[str, Any]],
+        note: str | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> GoodsReceipt:
+        order = (
+            await session.execute(
+                select(PurchaseOrder)
+                .where(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.id == purchase_order_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise NotFoundError("purchase order not found")
+        if order.status in ("cancelled",):
+            raise ConflictError("cannot receive against a cancelled purchase order")
+        if order.status == "received":
+            raise ConflictError("this purchase order is already fully received")
+
+        if not lines:
+            raise ValidationError("a goods receipt needs at least one line")
+        if len(lines) > 200:
+            raise ValidationError("a goods receipt is limited to 200 lines")
+
+        po_lines = list(
+            (
+                await session.execute(
+                    select(PurchaseOrderLine).where(
+                        PurchaseOrderLine.tenant_id == tenant_id,
+                        PurchaseOrderLine.purchase_order_id == purchase_order_id,
+                    )
+                )
+            ).scalars()
+        )
+        po_line_map: dict[UUID, PurchaseOrderLine] = {pl.id: pl for pl in po_lines}
+
+        clean: list[dict] = []
+        seen_pol: set[UUID] = set()
+        for idx, raw in enumerate(lines, start=1):
+            try:
+                pol_id = UUID(str(raw.get("purchase_order_line_id")))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise ValidationError(f"line {idx}: purchase_order_line_id is not valid") from exc
+
+            if pol_id in seen_pol:
+                raise ValidationError(
+                    f"line {idx}: duplicate purchase_order_line_id; "
+                    "merge the quantities into one line"
+                )
+            seen_pol.add(pol_id)
+
+            if pol_id not in po_line_map:
+                raise NotFoundError(
+                    f"line {idx}: purchase_order_line_id {pol_id} "
+                    "does not belong to this purchase order"
+                )
+            po_line = po_line_map[pol_id]
+
+            try:
+                variant_id = UUID(str(raw.get("variant_id")))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise ValidationError(f"line {idx}: variant_id is not valid") from exc
+
+            if variant_id != po_line.variant_id:
+                raise ValidationError(
+                    f"line {idx}: variant_id does not match the purchase order line"
+                )
+
+            qty = positive_int(raw.get("quantity"), f"line {idx} quantity")
+            unit_cost = money(raw.get("unit_cost"), f"line {idx} unit_cost", allow_zero=True)
+            condition = str(raw.get("condition", "good")).lower()
+            if condition not in GOODS_RECEIPT_CONDITIONS:
+                raise ValidationError(
+                    f"line {idx}: condition must be one of {sorted(GOODS_RECEIPT_CONDITIONS)}"
+                )
+
+            already = po_line.quantity_received or 0
+            remaining = po_line.quantity - already
+            if qty > remaining:
+                raise ValidationError(
+                    f"line {idx}: receiving {qty} but only {remaining} remain on the PO line "
+                    f"(ordered {po_line.quantity}, already received {already})"
+                )
+
+            line_total = (unit_cost * qty).quantize(Decimal("0.0001"))
+            clean.append(
+                {
+                    "purchase_order_line_id": pol_id,
+                    "variant_id": variant_id,
+                    "quantity": qty,
+                    "unit_cost": unit_cost,
+                    "line_total": line_total,
+                    "condition": condition,
+                }
+            )
+
+        note_clean = (note or "").strip()[:255] or None
+        receipt = GoodsReceipt(
+            tenant_id=tenant_id,
+            number=await _numbering().next_number(
+                session, tenant_id, "GR", on=datetime.now(UTC).date()
+            ),
+            purchase_order_id=purchase_order_id,
+            warehouse_id=order.warehouse_id,
+            status="draft",
+            note=note_clean,
+        )
+        session.add(receipt)
+        await session.flush()
+
+        for position, cl in enumerate(clean, start=1):
+            session.add(
+                GoodsReceiptLine(
+                    tenant_id=tenant_id,
+                    goods_receipt_id=receipt.id,
+                    purchase_order_line_id=cl["purchase_order_line_id"],
+                    variant_id=cl["variant_id"],
+                    quantity=cl["quantity"],
+                    unit_cost=cl["unit_cost"],
+                    line_total=cl["line_total"],
+                    position=position,
+                    condition=cl["condition"],
+                )
+            )
+        await session.flush()
+        return receipt
+
+    @staticmethod
+    async def post(
+        session: AsyncSession,
+        tenant_id: UUID,
+        receipt_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> GoodsReceipt:
+        receipt = (
+            await session.execute(
+                select(GoodsReceipt)
+                .where(GoodsReceipt.tenant_id == tenant_id, GoodsReceipt.id == receipt_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            raise NotFoundError("goods receipt not found")
+        if receipt.status == "posted":
+            raise ConflictError("this goods receipt is already posted")
+        if receipt.status in ("rejected", "cancelled"):
+            raise ConflictError(f"cannot post a {receipt.status} goods receipt")
+
+        order = (
+            await session.execute(
+                select(PurchaseOrder)
+                .where(
+                    PurchaseOrder.tenant_id == tenant_id,
+                    PurchaseOrder.id == receipt.purchase_order_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one()
+
+        gr_lines = list(
+            (
+                await session.execute(
+                    select(GoodsReceiptLine)
+                    .where(
+                        GoodsReceiptLine.tenant_id == tenant_id,
+                        GoodsReceiptLine.goods_receipt_id == receipt_id,
+                    )
+                    .order_by(GoodsReceiptLine.position)
+                )
+            ).scalars()
+        )
+
+        for gr_line in sorted(gr_lines, key=lambda x: str(x.variant_id)):
+            if gr_line.condition == "reject":
+                po_line = (
+                    await session.execute(
+                        select(PurchaseOrderLine)
+                        .where(
+                            PurchaseOrderLine.tenant_id == tenant_id,
+                            PurchaseOrderLine.id == gr_line.purchase_order_line_id,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one()
+                po_line.quantity_received = (po_line.quantity_received or 0) + gr_line.quantity
+                continue
+
+            await CostService._locked(session, tenant_id, gr_line.variant_id)
+            before = await CostService.total_on_hand(session, tenant_id, gr_line.variant_id)
+
+            await _inventory().move(
+                session,
+                tenant_id,
+                gr_line.variant_id,
+                receipt.warehouse_id,
+                direction="in",
+                quantity=gr_line.quantity,
+                reason="purchase",
+                reference_type="goods_receipt",
+                reference_id=receipt.id,
+                actor_user_id=actor_user_id,
+            )
+
+            if gr_line.condition == "quarantine":
+                bal = await _inventory()._locked_balance(
+                    session, tenant_id, gr_line.variant_id, receipt.warehouse_id
+                )
+                bal.quarantined = (bal.quarantined or 0) + gr_line.quantity
+
+            await CostService.apply_receipt(
+                session,
+                tenant_id,
+                gr_line.variant_id,
+                qty=gr_line.quantity,
+                unit_cost=Decimal(gr_line.unit_cost),
+                purchase_order_id=order.id,
+                on_hand_before=before,
+            )
+
+            await _inventory().ValuationService.create_cost_layer(
+                session,
+                tenant_id,
+                variant_id=gr_line.variant_id,
+                warehouse_id=receipt.warehouse_id,
+                quantity=gr_line.quantity,
+                unit_cost=Decimal(gr_line.unit_cost),
+                source_type="goods_receipt",
+                source_id=receipt.id,
+            )
+
+            po_line = (
+                await session.execute(
+                    select(PurchaseOrderLine)
+                    .where(
+                        PurchaseOrderLine.tenant_id == tenant_id,
+                        PurchaseOrderLine.id == gr_line.purchase_order_line_id,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one()
+            po_line.quantity_received = (po_line.quantity_received or 0) + gr_line.quantity
+
+        all_po_lines = list(
+            (
+                await session.execute(
+                    select(PurchaseOrderLine).where(
+                        PurchaseOrderLine.tenant_id == tenant_id,
+                        PurchaseOrderLine.purchase_order_id == order.id,
+                    )
+                )
+            ).scalars()
+        )
+        total_ordered = sum(pl.quantity for pl in all_po_lines)
+        total_received = sum(pl.quantity_received or 0 for pl in all_po_lines)
+
+        if total_received >= total_ordered:
+            order.status = "received"
+            order.received_at = datetime.now(UTC)
+        elif total_received > 0:
+            order.status = "partially_received"
+            order.received_at = None
+
+        receipt.status = "posted"
+        receipt.received_at = datetime.now(UTC)
+        receipt.received_by_user_id = actor_user_id
+
+        await session.flush()
+        return receipt
+
+    @staticmethod
+    async def cancel(
+        session: AsyncSession,
+        tenant_id: UUID,
+        receipt_id: UUID,
+    ) -> GoodsReceipt:
+        receipt = (
+            await session.execute(
+                select(GoodsReceipt)
+                .where(GoodsReceipt.tenant_id == tenant_id, GoodsReceipt.id == receipt_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            raise NotFoundError("goods receipt not found")
+        if receipt.status == "posted":
+            raise ConflictError("a posted goods receipt cannot be cancelled")
+        if receipt.status == "cancelled":
+            raise ConflictError("this goods receipt is already cancelled")
+        receipt.status = "cancelled"
+        await session.flush()
+        return receipt
+
+    @staticmethod
+    async def get(session: AsyncSession, tenant_id: UUID, receipt_id: UUID) -> GoodsReceipt:
+        receipt = (
+            await session.execute(
+                select(GoodsReceipt).where(
+                    GoodsReceipt.tenant_id == tenant_id, GoodsReceipt.id == receipt_id
+                )
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            raise NotFoundError("goods receipt not found")
+        return receipt
+
+    @staticmethod
+    async def lines_of(
+        session: AsyncSession, tenant_id: UUID, receipt_id: UUID
+    ) -> list[GoodsReceiptLine]:
+        return list(
+            (
+                await session.execute(
+                    select(GoodsReceiptLine)
+                    .where(
+                        GoodsReceiptLine.tenant_id == tenant_id,
+                        GoodsReceiptLine.goods_receipt_id == receipt_id,
+                    )
+                    .order_by(GoodsReceiptLine.position)
+                )
+            ).scalars()
+        )
+
+    @staticmethod
+    async def list_for_po(
+        session: AsyncSession, tenant_id: UUID, po_id: UUID
+    ) -> list[GoodsReceipt]:
+        return list(
+            (
+                await session.execute(
+                    select(GoodsReceipt)
+                    .where(
+                        GoodsReceipt.tenant_id == tenant_id,
+                        GoodsReceipt.purchase_order_id == po_id,
+                    )
+                    .order_by(GoodsReceipt.created_at.desc())
+                )
+            ).scalars()
+        )

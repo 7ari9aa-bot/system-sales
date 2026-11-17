@@ -67,3 +67,45 @@ pub fn log_write(record: LogRecordIn) {
 
     log::log!(target: record.sink.as_str(), level, "{line}");
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterDevice {
+    pub name: String,
+    pub vendor_id: Option<u16>,
+    pub product_id: Option<u16>,
+}
+
+#[tauri::command]
+pub fn list_printers() -> Vec<PrinterDevice> {
+    vec![]
+}
+
+#[tauri::command]
+pub fn print_raw(_data: Vec<u8>) -> Result<(), String> {
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    pub available: bool,
+    pub version: Option<String>,
+    pub date: Option<String>,
+    pub body: Option<String>,
+}
+
+#[tauri::command]
+pub fn check_update() -> UpdateCheckResult {
+    UpdateCheckResult {
+        available: false,
+        version: None,
+        date: None,
+        body: None,
+    }
+}
+
+#[tauri::command]
+pub fn install_update() -> Result<(), String> {
+    Ok(())
+}

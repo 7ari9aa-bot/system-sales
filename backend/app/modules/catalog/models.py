@@ -249,3 +249,66 @@ class ProductVariantOptionValue(
             name="uq_product_variant_option_values_tenant_variant_option",
         ),
     )
+
+
+class ProductBundle(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """A bundle/kit: a product sold as a fixed set of components.
+
+    Selling a bundle must decrement EACH component exactly once. If the
+    decrement is written twice the shop sells stock it does not have; if it is
+    written once per sale but the bundle is sold through the wrong path, the
+    component is never decremented and the shop creates phantom stock. The
+    component list is therefore data (the lines below), not a JSONB blob, so
+    the sale path can walk it and count it.
+
+    `bundle_type` says how the components relate:
+      bundle | kit
+
+    allowed bundle_type values:
+      bundle | kit
+    """
+
+    __tablename__ = "product_bundles"
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    # allowed: bundle | kit
+    bundle_type: Mapped[str] = mapped_column(String(15), server_default="bundle")
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "product_id", "name", name="uq_product_bundles_tenant_product_name"
+        ),
+    )
+
+
+class ProductBundleLine(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
+    """One component of a bundle: how many units of it one bundle consumes.
+
+    `quantity` is how many units of the component ONE bundle takes (a bundle
+    of 2x A and 1x B has quantity 2 on the A line). UNIQUE (tenant, bundle,
+    variant) means a component cannot appear twice, so the sale path cannot
+    decrement it twice by accident.
+    """
+
+    __tablename__ = "product_bundle_lines"
+
+    bundle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_bundles.id", ondelete="CASCADE")
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="RESTRICT")
+    )
+    quantity: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "bundle_id",
+            "variant_id",
+            name="uq_product_bundle_lines_tenant_bundle_variant",
+        ),
+    )

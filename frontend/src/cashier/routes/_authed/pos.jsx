@@ -14,17 +14,26 @@ import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
 import SuspendedDialog from "@/cashier/components/pos/SuspendedDialog";
 import HoldDialog from "@/cashier/components/pos/HoldDialog";
 import NoteDialog from "@/cashier/components/pos/NoteDialog";
+import TraceabilityDialog from "@/cashier/components/pos/TraceabilityDialog";
+import CashMovementDialog from "@/cashier/components/pos/CashMovementDialog";
+import ShiftHandoverDialog from "@/cashier/components/pos/ShiftHandoverDialog";
+import PrinterSetupDialog from "@/cashier/components/pos/PrinterSetupDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
 import { customerBlock } from "@/cashier/api/customerRule";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { resolveTypedCode } from "@/cashier/api/catalogAdapter";
-import { posApi } from "@/cashier/api/posApi";
+import { newIntent, posApi } from "@/cashier/api/posApi";
+import { supplyChainApi } from "@/lib/supplyChainApi";
 import { useAuth } from "@/lib/AuthContext";
 import { registerScanHandler, unregisterScanHandler } from "@/lib/scannerBridge";
 import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 import { scanRefusalText } from "../../api/scanRefusal";
+import { useOfflineSync } from "@/cashier/lib/useOfflineSync";
+import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
+import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
 
@@ -76,6 +85,22 @@ function PosScreen({ user, session }) {
   // The shift screen links here with ?held=1 to review parked invoices before closing: open that list once.
   const [searchParams, setSearchParams] = useSearchParams();
   const [dialog, setDialog] = useState(() => (searchParams.get("held") === "1" ? "held" : null)); // payment | receipt | cancel | held | note
+  const [traceabilityDialog, setTraceabilityDialog] = useState(null);
+  const [cashMovementOpen, setCashMovementOpen] = useState(false);
+  const [cashMovementPending, setCashMovementPending] = useState(false);
+  const [cashMovementError, setCashMovementError] = useState(null);
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [handoverPending, setHandoverPending] = useState(false);
+  const [handoverError, setHandoverError] = useState(null);
+  const [printerOpen, setPrinterOpen] = useState(false);
+  const offlineSync = useOfflineSync({
+    onSaleSynced: (result) => {
+      toast.success(`تمت مزامنة فاتورة غير متصلة: ${result?.number || "OK"}`);
+    },
+    onError: (err) => {
+      toast.error(`خطأ أثناء مزامنة فاتورة: ${err?.message || "خطأ"}`);
+    },
+  });
   useEffect(() => {
     if (searchParams.get("held") === "1") setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams]);
@@ -108,7 +133,21 @@ function PosScreen({ user, session }) {
     total: Number(sale.quote.total) || 0,
   };
 
-  function addVariant(variant) {
+  async function addVariant(variant) {
+    try {
+      const trace = await supplyChainApi.getCheckoutTraceability(variant.id);
+      if (trace && (trace.mode === "serial" || trace.mode === "batch")) {
+        setTraceabilityDialog({
+          variant,
+          quantity: 1,
+          traceInfo: trace,
+        });
+        return true;
+      }
+    } catch {
+      /* proceed with regular add if traceability check is unavailable */
+    }
+
     const r = sale.add(variant);
     if (!r.ok) {
       const looks = [variant.color, variant.size].filter(Boolean).join(" / ");
@@ -117,6 +156,25 @@ function PosScreen({ user, session }) {
     }
     setActiveLineId(String(variant.id));
     return true;
+  }
+
+  function handleTraceabilityConfirm({ serialCodes, lotId, lotCode }) {
+    if (!traceabilityDialog?.variant) return;
+    const v = traceabilityDialog.variant;
+    const r = sale.add({
+      ...v,
+      serialCodes,
+      lotId,
+      lotCode,
+    });
+    setTraceabilityDialog(null);
+    if (!r.ok) {
+      const looks = [v.color, v.size].filter(Boolean).join(" / ");
+      setScanError(`${v.productName}${looks ? ` (${looks})` : ""}: ${r.reason}`);
+      return;
+    }
+    setActiveLineId(String(v.id));
+    toast.success(`تمت إضافة ${v.productName}`);
   }
 
   // A scanner fires the next code before the previous answer is back. Codes are handled strictly one after
@@ -141,7 +199,7 @@ function PosScreen({ user, session }) {
       }
       const hit = scan?.found ? catalog.find((v) => v.id === scan.variant_id) : null;
       if (hit) {
-        if (addVariant(hit)) {
+        if (await addVariant(hit)) {
           setScanError("");
           clearIfStill(clean);
           toast.success(`تمت إضافة ${hit.productName}`);
@@ -153,7 +211,7 @@ function PosScreen({ user, session }) {
     }
     const hit = resolveTypedCode(catalog, clean);
     if (hit.kind === "one") {
-      if (addVariant(hit.variant)) {
+      if (await addVariant(hit.variant)) {
         setScanError("");
         clearIfStill(clean);
         toast.success(`تمت إضافة ${hit.variant.productName}`);
@@ -276,6 +334,34 @@ function PosScreen({ user, session }) {
   }
 
   async function confirmSale() {
+    if (!offlineSync.isOnline) {
+      try {
+        const payload = {
+          items: lines.map((l) => ({
+            variant_id: l.variantId,
+            quantity: l.quantity,
+            ...(l.discount ? { discount: l.discount } : {}),
+            ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
+            ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
+          })),
+          customer_phone: customerPhone?.trim() || undefined,
+          customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
+          customer_id: pickedCustomer?.id || undefined,
+          discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
+          note: sale.note || undefined,
+        };
+        await enqueueOfflineSale({ registerId: session.register_id, payload });
+        await offlineSync.refreshCount();
+        toast.info("تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
+        resetInvoice();
+        setDialog(null);
+        return;
+      } catch (err) {
+        toast.error("تعذر حفظ الفاتورة دون اتصال: " + (err.message || "خطأ"));
+        return;
+      }
+    }
+
     try {
       const r = await sale.confirm({
         cashier,
@@ -283,6 +369,38 @@ function PosScreen({ user, session }) {
         customerId: pickedCustomer?.id,
         customerPhone,
       });
+
+      for (const line of lines) {
+        if (line.serialCodes && line.serialCodes.length > 0) {
+          try {
+            await supplyChainApi.markSerialsSold(line.variantId, line.serialCodes);
+          } catch {
+            /* ignore background status update error */
+          }
+        }
+      }
+
+      if (isPrinterConnected()) {
+        try {
+          const bytes = buildReceiptEscPos({
+            shopName: session?.profile?.name || "FIHRIST POS",
+            receiptNumber: r?.number || r?.order_number || "",
+            items: lines.map((l) => ({
+              name: l.title || l.name || "Item",
+              quantity: l.quantity,
+              unit_price: l.price,
+              total: l.total,
+            })),
+            total: r?.total ?? sale.quote.total,
+            discount: sale.quote.discount,
+          });
+          printRaw(bytes).catch(() => {});
+          kickCashDrawer().catch(() => {});
+        } catch {
+          /* printer errors are non-fatal to the sale */
+        }
+      }
+
       setDialog("receipt");
       toast.success(`تم إتمام البيع ${r.number} بمبلغ ${r.total.toFixed(2)} ج.م`);
       if (r.customerNotice === "phone_not_recorded") {
@@ -294,10 +412,67 @@ function PosScreen({ user, session }) {
       setCustomerName("");
       setCustomerPhone("");
       setPickedCustomer(null);
-    } catch {
+    } catch (e) {
+      if (!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) {
+        try {
+          const payload = {
+            items: lines.map((l) => ({
+              variant_id: l.variantId,
+              quantity: l.quantity,
+              ...(l.discount ? { discount: l.discount } : {}),
+              ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
+              ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
+            })),
+            customer_phone: customerPhone?.trim() || undefined,
+            customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
+            customer_id: pickedCustomer?.id || undefined,
+            discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
+            note: sale.note || undefined,
+          };
+          await enqueueOfflineSale({ registerId: session.register_id, payload });
+          await offlineSync.refreshCount();
+          toast.info("انقطع الاتصال: تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
+          resetInvoice();
+          setDialog(null);
+          return;
+        } catch {
+          /* fallback to showing payError */
+        }
+      }
       /* the confirm dialog shows sale.payError and stays open so the cashier can retry safely */
     }
   }
+
+  const handleCashMovementConfirm = async ({ reason, amount, notes }) => {
+    setCashMovementError(null);
+    setCashMovementPending(true);
+    try {
+      await posApi.addCashMovement(session.id, { reason, amount, notes }, newIntent());
+      toast.success("تم تسجيل الحركة النقدية بالدرج بنجاح.");
+      setCashMovementOpen(false);
+      qc.invalidateQueries({ queryKey: ["cashier", "session", session.id] });
+    } catch (err) {
+      setCashMovementError(err?.message || "فشل تسجيل الحركة النقدية.");
+    } finally {
+      setCashMovementPending(false);
+    }
+  };
+
+  const handleHandoverConfirm = async (newCashierId) => {
+    setHandoverError(null);
+    setHandoverPending(true);
+    try {
+      await posApi.handoverSession(session.id, newCashierId, newIntent());
+      toast.success("تم تسليم الوردية بنجاح.");
+      setHandoverOpen(false);
+      qc.invalidateQueries({ queryKey: ["cashier", "session", session.id] });
+      window.location.reload();
+    } catch (err) {
+      setHandoverError(err?.message || "فشل تسليم الوردية.");
+    } finally {
+      setHandoverPending(false);
+    }
+  };
 
   useEffect(() => {
     function onKey(e) {
@@ -335,6 +510,18 @@ function PosScreen({ user, session }) {
           refreshHeld();
           setDialog("held");
         }}
+        onCashMovement={() => {
+          setCashMovementError(null);
+          setCashMovementOpen(true);
+        }}
+        onHandover={() => {
+          setHandoverError(null);
+          setHandoverOpen(true);
+        }}
+        onPrinterSetup={() => setPrinterOpen(true)}
+        isOnline={offlineSync.isOnline}
+        offlineCount={offlineSync.pendingCount}
+        onSyncOffline={offlineSync.syncPending}
       />
 
       <PosInvoiceTable
@@ -463,6 +650,41 @@ function PosScreen({ user, session }) {
         }}
         receipt={receipt}
         onNewSale={() => resetInvoice()}
+      />
+
+      {traceabilityDialog ? (
+        <TraceabilityDialog
+          open={Boolean(traceabilityDialog)}
+          onOpenChange={(open) => {
+            if (!open) setTraceabilityDialog(null);
+          }}
+          variant={traceabilityDialog.variant}
+          quantity={traceabilityDialog.quantity}
+          traceInfo={traceabilityDialog.traceInfo}
+          onConfirm={handleTraceabilityConfirm}
+        />
+      ) : null}
+
+      <CashMovementDialog
+        open={cashMovementOpen}
+        onOpenChange={setCashMovementOpen}
+        pending={cashMovementPending}
+        error={cashMovementError}
+        onConfirm={handleCashMovementConfirm}
+      />
+
+      <ShiftHandoverDialog
+        open={handoverOpen}
+        onOpenChange={setHandoverOpen}
+        currentCashierId={session.cashier_user_id}
+        pending={handoverPending}
+        error={handoverError}
+        onConfirm={handleHandoverConfirm}
+      />
+
+      <PrinterSetupDialog
+        open={printerOpen}
+        onOpenChange={setPrinterOpen}
       />
     </div>
   );

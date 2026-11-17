@@ -7,7 +7,7 @@ per-method reconciliation. The profile routes configure the terminal.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
@@ -521,6 +521,93 @@ async def close_session(session_id: UUID, ctx: PosWriteCtx, override: OverrideDe
         ctx.tenant_id,
         session_id,
         closed_by=ctx.user.id,
+        shift_override=override.active,
+    )
+    return _session_out(pos_session)
+
+
+class CashMovementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(pattern="^(pay_in|pay_out|cash_drop)$")
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=255)
+
+
+class CashMovementOut(BaseModel):
+    id: UUID
+    session_id: UUID
+    direction: str
+    reason: str
+    amount: Decimal
+    notes: str | None = None
+    created_at: datetime
+
+
+class HandoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_cashier_id: UUID
+
+
+@router.post(
+    "/sessions/{session_id}/cash-movements",
+    response_model=CashMovementOut,
+    status_code=201,
+)
+async def add_cash_movement(session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx):
+    """Record a manual cash movement (pay-in, pay-out, cash drop) for an open session."""
+    direction = "in" if body.reason == "pay_in" else "out"
+    movement = await PosService.add_cash_movement(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        direction=direction,
+        reason=body.reason,
+        amount=body.amount,
+        notes=body.notes,
+        actor_user_id=ctx.user.id,
+    )
+    return CashMovementOut(
+        id=movement.id,
+        session_id=movement.session_id,
+        direction=movement.direction,
+        reason=movement.reason,
+        amount=movement.amount,
+        notes=movement.notes,
+        created_at=movement.created_at,
+    )
+
+
+@router.get("/sessions/{session_id}/cash-movements", response_model=list[CashMovementOut])
+async def list_cash_movements(session_id: UUID, ctx: PosReadCtx):
+    """List manual cash movements for a session."""
+    rows = await PosService.list_cash_movements(ctx.session, ctx.tenant_id, session_id)
+    return [
+        CashMovementOut(
+            id=r.id,
+            session_id=r.session_id,
+            direction=r.direction,
+            reason=r.reason,
+            amount=r.amount,
+            notes=r.notes,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/sessions/{session_id}/handover")
+async def handover_session(
+    session_id: UUID, body: HandoverRequest, ctx: PosWriteCtx, override: OverrideDep
+):
+    """Transfer the drawer to another cashier without closing the day."""
+    pos_session = await PosService.handover_session(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        new_cashier_id=body.new_cashier_id,
+        actor_user_id=ctx.user.id,
         shift_override=override.active,
     )
     return _session_out(pos_session)

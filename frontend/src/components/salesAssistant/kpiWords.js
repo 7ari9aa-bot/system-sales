@@ -41,6 +41,13 @@ const METRIC_KEYS = {
   inbound_messages_total: "kpi.metric.inbound_messages_total",
   new: "kpi.metric.new",
   returning: "kpi.metric.returning",
+  inventory_total_units: "kpi.metric.inventory_total_units",
+  inventory_total_value: "kpi.metric.inventory_total_value",
+  inventory_dead_stock_count: "kpi.metric.inventory_dead_stock_count",
+  inventory_dead_stock_value: "kpi.metric.inventory_dead_stock_value",
+  inventory_low_stock_count: "kpi.metric.inventory_low_stock_count",
+  inventory_expiring_lots: "kpi.metric.inventory_expiring_lots",
+  inventory_pending_reorders: "kpi.metric.inventory_pending_reorders",
 };
 
 /** Every metric name the server can send a card for. The test checks the server's own list against it. */

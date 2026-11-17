@@ -87,6 +87,19 @@ export const posApi = {
   /* ---- shift ---- */
   // The close records the day; nothing is counted, so there is no body to send.
   closeSession: async (id) => post(`/pos/sessions/${seg(id)}/close`, {}),
+  listCashMovements: (id) => api(`/pos/sessions/${seg(id)}/cash-movements`),
+  addCashMovement: async (id, { reason, amount, notes }, intent) =>
+    post(
+      `/pos/sessions/${seg(id)}/cash-movements`,
+      compact({ reason, amount: toWire(amount), notes: notes ? String(notes).trim() : undefined }),
+      needIntent(intent),
+    ),
+  handoverSession: async (id, newCashierId, intent) =>
+    post(
+      `/pos/sessions/${seg(id)}/handover`,
+      { new_cashier_id: String(newCashierId) },
+      needIntent(intent),
+    ),
 
   /* ---- cart ---- */
   scan: (id, { identifierType, value }) =>

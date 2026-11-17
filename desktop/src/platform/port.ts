@@ -32,11 +32,36 @@ export interface RuntimePort {
   apiBaseUrl(): Promise<string | null>
 }
 
+export interface PrinterDevice {
+  readonly name: string
+  readonly vendorId?: number
+  readonly productId?: number
+}
+
+export interface PrinterPort {
+  listPrinters(): Promise<PrinterDevice[]>
+  printRaw(data: Uint8Array): Promise<void>
+}
+
+export interface UpdateCheckResult {
+  readonly available: boolean
+  readonly version?: string
+  readonly date?: string
+  readonly body?: string
+}
+
+export interface UpdaterPort {
+  check(): Promise<UpdateCheckResult>
+  downloadAndInstall(): Promise<void>
+}
+
 export interface Platform {
   readonly kind: PlatformKind
   readonly shell: ShellPort
   readonly log: LogPort
   readonly runtime: RuntimePort
+  readonly printer: PrinterPort
+  readonly updater: UpdaterPort
 }
 
 export interface NoopPlatformOptions {

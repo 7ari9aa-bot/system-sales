@@ -99,6 +99,9 @@ const lineOf = (v) => ({
   qty: 1,
   discountPct: 0,
   discount: 0,
+  serialCodes: v.serialCodes || null,
+  lotId: v.lotId || null,
+  lotCode: v.lotCode || null,
 });
 
 /**
@@ -118,7 +121,17 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
 
   // Each line carries its own discount percentage to the server (stored on the sale line, so a
   // return refunds what THAT line paid).
-  const cart = useMemo(() => lines.map((l) => ({ variantId: l.variantId, qty: l.qty, discountPct: l.discountPct })), [lines]);
+  const cart = useMemo(
+    () =>
+      lines.map((l) => ({
+        variantId: l.variantId,
+        qty: l.qty,
+        discountPct: l.discountPct,
+        ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
+        ...(l.lotId ? { lot_id: l.lotId } : {}),
+      })),
+    [lines],
+  );
 
   // `discountTotal` is the INVOICE-level discount only: the server adds the lines' own discounts,
   // so sending the combined figure would count them twice. The screen shows the server's quote.

@@ -715,6 +715,7 @@ async def _si_finance(
 _SHOP_VIEWS: dict[str, tuple[str, int, int, int | None]] = {
     "products": ("orders:read", 5, 20, 90),
     "stock": ("inventory:read", 10, 25, None),
+    "inventory_health": ("inventory:read", 10, 25, None),
     "cashier": ("orders:read", 8, 25, 366),
     "order": ("orders:read", 5, 10, None),
     "customer": ("customers:read", 5, 10, None),
@@ -726,7 +727,9 @@ _SHOP_NEEDS_QUERY = ("order", "customer")
 class SIShopArgs(BaseModel):
     """One read of the shop's own records. ``view`` says which."""
 
-    view: Literal["products", "stock", "cashier", "order", "customer", "top_customers"]
+    view: Literal[
+        "products", "stock", "inventory_health", "cashier", "order", "customer", "top_customers"
+    ]
     # products and cashier only: the window (products up to 90, cashier up to 366)
     days: int = Field(default=30, ge=1, le=366)
     # the biggest items to list; each view keeps its own default and ceiling
@@ -773,6 +776,8 @@ async def _si_shop(
         return await finder(session, tenant_id, query=query, limit=limit)
     if view == "stock":
         return await _si_stock_status(session, tenant_id, limit=limit, stagnant_days=stagnant_days)
+    if view == "inventory_health":
+        return await _si_inventory_health(session, tenant_id, limit=limit)
     if view == "top_customers":
         return await _si_top_customers(session, tenant_id, days=days, limit=limit)
     reader = _si_top_products if view == "products" else _si_cashier_summary
@@ -1091,6 +1096,232 @@ async def _si_stock_status(
             "out_of_stock": shown_out,
             "stagnant": shown_stagnant,
             "not_tracked": shown_untracked,
+        },
+        "limitations": limitations,
+        "facts": facts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Inventory health: valuation, dead stock, low stock alerts, expiring lots
+# ---------------------------------------------------------------------------
+
+#: Total FIFO stock valuation from active cost layers, grouped by warehouse.
+_VALUATION_SQL = (
+    "SELECT w.name AS warehouse,"
+    " COALESCE(SUM(cl.remaining_quantity), 0) AS units,"
+    " COALESCE(SUM(cl.remaining_quantity * cl.unit_cost), 0) AS value"
+    " FROM inventory_cost_layers cl"
+    " JOIN warehouses w ON w.id = cl.warehouse_id AND w.tenant_id = cl.tenant_id"
+    " WHERE cl.tenant_id = :tenant_id AND cl.remaining_quantity > 0"
+    " GROUP BY w.name ORDER BY value DESC"
+)
+
+#: Variants with on_hand > 0 that have had no outward sale movement in N days.
+_DEAD_STOCK_SQL = (
+    "SELECT v.sku, p.title AS product, v.title AS variant,"
+    " b.on_hand,"
+    " COALESCE(SUM(cl.remaining_quantity * cl.unit_cost), 0) AS tied_value"
+    " FROM inventory_balances b"
+    " JOIN product_variants v ON v.id = b.variant_id AND v.tenant_id = b.tenant_id"
+    " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
+    " LEFT JOIN inventory_cost_layers cl"
+    "   ON cl.variant_id = b.variant_id AND cl.warehouse_id = b.warehouse_id"
+    "   AND cl.tenant_id = b.tenant_id AND cl.remaining_quantity > 0"
+    " WHERE b.tenant_id = :tenant_id AND b.on_hand > 0"
+    "   AND NOT EXISTS ("
+    "     SELECT 1 FROM inventory_movements m"
+    "     WHERE m.variant_id = b.variant_id AND m.warehouse_id = b.warehouse_id"
+    "       AND m.tenant_id = b.tenant_id AND m.direction = 'out'"
+    "       AND m.reason = 'sale' AND m.created_at >= :since"
+    "   )"
+    " GROUP BY v.sku, p.title, v.title, b.on_hand"
+    " ORDER BY tied_value DESC"
+)
+
+#: Variants at or below their policy min_stock (available = on_hand - quarantined - reserved).
+_LOW_STOCK_SQL = (
+    "SELECT v.sku, p.title AS product, v.title AS variant,"
+    " GREATEST(b.on_hand - COALESCE(b.quarantined, 0) - COALESCE(b.reserved, 0), 0)"
+    "   AS available,"
+    " pol.min_stock, pol.max_stock"
+    " FROM inventory_policies pol"
+    " JOIN inventory_balances b"
+    "   ON b.variant_id = pol.variant_id AND b.warehouse_id = pol.warehouse_id"
+    "   AND b.tenant_id = pol.tenant_id"
+    " JOIN product_variants v ON v.id = pol.variant_id AND v.tenant_id = pol.tenant_id"
+    " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
+    " WHERE pol.tenant_id = :tenant_id"
+    "   AND GREATEST(b.on_hand - COALESCE(b.quarantined, 0)"
+    "       - COALESCE(b.reserved, 0), 0) <= pol.min_stock"
+    " ORDER BY (pol.min_stock"
+    "   - GREATEST(b.on_hand - COALESCE(b.quarantined, 0)"
+    "       - COALESCE(b.reserved, 0), 0)) DESC"
+)
+
+#: Lots expiring within the next N days (default 30) — FEFO visibility.
+_EXPIRING_LOTS_SQL = (
+    "SELECT l.lot_code, l.expires_at, v.sku,"
+    " p.title AS product, v.title AS variant"
+    " FROM inventory_lots l"
+    " JOIN product_variants v ON v.id = l.variant_id AND v.tenant_id = l.tenant_id"
+    " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
+    " WHERE l.tenant_id = :tenant_id"
+    "   AND l.expires_at IS NOT NULL AND l.expires_at <= :horizon"
+    " ORDER BY l.expires_at ASC"
+)
+
+#: Pending reorder suggestions (not yet converted to POs).
+_PENDING_REORDERS_SQL = (
+    "SELECT rs.status, v.sku, p.title AS product, v.title AS variant,"
+    " rs.suggested_quantity, rs.source, rs.reason"
+    " FROM reorder_suggestions rs"
+    " JOIN product_variants v ON v.id = rs.variant_id AND v.tenant_id = rs.tenant_id"
+    " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
+    " WHERE rs.tenant_id = :tenant_id AND rs.status IN ('open', 'accepted')"
+    " ORDER BY rs.created_at DESC"
+)
+
+
+async def _si_inventory_health(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int = 10,
+    context: dict | None = None,
+) -> dict:
+    """Full inventory health dashboard: valuation, dead stock, low stock, expiring lots,
+    pending reorders.
+
+    Read-only. Every figure comes from SQL against the inventory tables built by the
+    inventory service layer. No cross-module service import is needed."""
+    window = await _resolve_window(session, tenant_id, 1)
+    since_90 = datetime.now(UTC) - timedelta(days=90)
+    horizon_30 = datetime.now(UTC) + timedelta(days=30)
+    params = {"tenant_id": str(tenant_id)}
+
+    # 1. Valuation by warehouse
+    val_rows = (await session.execute(_sql(_VALUATION_SQL), params)).all()
+    total_units = sum(int(r.units) for r in val_rows)
+    total_value = sum(Decimal(str(r.value)) for r in val_rows)
+    valuation_by_warehouse = [
+        {"warehouse": r.warehouse, "units": int(r.units), "value": str(Decimal(str(r.value)))}
+        for r in val_rows[:limit]
+    ]
+
+    # 2. Dead stock (no sales in 90 days)
+    dead_rows = (await session.execute(_sql(_DEAD_STOCK_SQL), {**params, "since": since_90})).all()
+    dead_items = [
+        {
+            "sku": r.sku,
+            "product": r.product,
+            "variant": r.variant,
+            "on_hand": int(r.on_hand),
+            "tied_value": str(Decimal(str(r.tied_value))),
+        }
+        for r in dead_rows[:limit]
+    ]
+    total_dead_value = sum(Decimal(str(r.tied_value)) for r in dead_rows)
+
+    # 3. Low stock alerts (below policy min_stock)
+    low_rows = (await session.execute(_sql(_LOW_STOCK_SQL), params)).all()
+    low_items = [
+        {
+            "sku": r.sku,
+            "product": r.product,
+            "variant": r.variant,
+            "available": int(r.available),
+            "min_stock": int(r.min_stock),
+            "deficit": int(r.min_stock) - int(r.available),
+        }
+        for r in low_rows[:limit]
+    ]
+
+    # 4. Expiring lots (within 30 days)
+    exp_rows = (
+        await session.execute(_sql(_EXPIRING_LOTS_SQL), {**params, "horizon": horizon_30})
+    ).all()
+    expiring = [
+        {
+            "lot_code": r.lot_code,
+            "sku": r.sku,
+            "product": r.product,
+            "variant": r.variant,
+            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+        }
+        for r in exp_rows[:limit]
+    ]
+
+    # 5. Pending reorders
+    reorder_rows = (await session.execute(_sql(_PENDING_REORDERS_SQL), params)).all()
+    pending_reorders = [
+        {
+            "sku": r.sku,
+            "product": r.product,
+            "variant": r.variant,
+            "quantity": int(r.suggested_quantity),
+            "source": r.source,
+            "status": r.status,
+            "reason": r.reason,
+        }
+        for r in reorder_rows[:limit]
+    ]
+
+    limitations = []
+    for name, total, shown in (
+        ("dead stock items", len(dead_rows), dead_items),
+        ("low stock alerts", len(low_rows), low_items),
+        ("expiring lots", len(exp_rows), expiring),
+        ("pending reorders", len(reorder_rows), pending_reorders),
+    ):
+        if total > len(shown):
+            limitations.append(f"showing {len(shown)} of {total} {name}")
+    limitations.append(
+        "dead stock = no sale in 90 days; low stock = at or under policy min_stock; "
+        "expiring = lots expiring within 30 days; valuation = FIFO cost layers"
+    )
+
+    store = _evidence_store()
+    facts = _typed_facts(
+        store,
+        window,
+        "inventory_health",
+        [
+            ("inventory_total_units", total_units, "count", {}),
+            ("inventory_total_value", total_value, "money", {}),
+            ("inventory_dead_stock_count", len(dead_rows), "count", {}),
+            ("inventory_dead_stock_value", total_dead_value, "money", {}),
+            ("inventory_low_stock_count", len(low_rows), "count", {}),
+            ("inventory_expiring_lots", len(exp_rows), "count", {}),
+            ("inventory_pending_reorders", len(reorder_rows), "count", {}),
+        ],
+    )
+    return {
+        "capability": "inventory_health",
+        "status": "ok",
+        "summary": {
+            "valuation": {
+                "total_units": total_units,
+                "total_value": str(total_value),
+                "by_warehouse": valuation_by_warehouse,
+            },
+            "dead_stock": {
+                "count": len(dead_rows),
+                "tied_value": str(total_dead_value),
+                "items": dead_items,
+            },
+            "low_stock": {
+                "count": len(low_rows),
+                "items": low_items,
+            },
+            "expiring_lots": {
+                "count": len(exp_rows),
+                "items": expiring,
+            },
+            "pending_reorders": {
+                "count": len(reorder_rows),
+                "items": pending_reorders,
+            },
         },
         "limitations": limitations,
         "facts": facts,
@@ -2618,6 +2849,10 @@ def register_si_tools() -> None:
                 "(days max 90, limit max 20); "
                 "stock = what is out, running low or unsold "
                 "(stagnant_days, limit max 25); "
+                "inventory_health = full inventory health: FIFO stock valuation by warehouse, "
+                "dead stock (unsold 90 days) with tied-up capital, low stock alerts against "
+                "reorder policies, lots expiring within 30 days, and pending reorder "
+                "suggestions (limit up to 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
                 "shifts (days max 366, limit max 25; online order totals are in "
                 "si_metric); "

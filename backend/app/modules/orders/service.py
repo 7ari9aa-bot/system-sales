@@ -559,7 +559,9 @@ class OrderService:
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
         for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
-            await InventoryService.reserve(session, tenant_id, variant.id, warehouse.id, quantity)
+            await InventoryService.reserve(
+                session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
+            )
 
         # Subtotal stays the GROSS of the ladder prices; the per-line
         # discounts compose with the caller's order-level discount into one
@@ -940,7 +942,14 @@ class OrderService:
         for item in items:
             from app.modules.inventory.service import InventoryService as _IS2
 
-            await _IS2.release(session, tenant_id, item.variant_id, warehouse_id, item.quantity)
+            await _IS2.release(
+                session,
+                tenant_id,
+                item.variant_id,
+                warehouse_id,
+                item.quantity,
+                channel=order.channel,
+            )
         from app.modules.inventory.service import InventoryReservationService as _IRS
 
         await _IRS.cancel_for_order(session, tenant_id, order.id)
