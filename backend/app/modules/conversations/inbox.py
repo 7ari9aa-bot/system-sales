@@ -204,6 +204,7 @@ class InboxQuery:
                 lm.deleted    AS last_message_deleted,
                 lm.content_type AS last_message_content_type,
                 lm.direction    AS last_message_direction,
+                lm.status       AS last_message_status,
                 lm.sender_type  AS last_message_sender_type,
                 lm.created_at   AS last_message_created_at,
                 sla.kind        AS sla_kind,
@@ -214,7 +215,7 @@ class InboxQuery:
                 ON cust.id = c.customer_id
                AND cust.tenant_id = c.tenant_id
               LEFT JOIN LATERAL (
-                    SELECT m.body, m.content_type, m.direction, m.sender_type,
+                    SELECT m.body, m.content_type, m.direction, m.sender_type, m.status,
                            m.created_at, m.deleted
                       FROM messages m
                      WHERE m.tenant_id = c.tenant_id
@@ -284,6 +285,7 @@ class InboxQuery:
             "last_message_deleted": bool(row.last_message_deleted),
             "last_message_content_type": row.last_message_content_type,
             "last_message_direction": row.last_message_direction,
+            "last_message_status": row.last_message_status,
             "last_message_sender_type": row.last_message_sender_type,
             "last_message_created_at": _iso(row.last_message_created_at),
             "sla_kind": row.sla_kind,

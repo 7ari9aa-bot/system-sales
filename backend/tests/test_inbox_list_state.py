@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import sqlalchemy as sa
 from pydantic import ValidationError as PydanticValidationError
 
 from app.modules.conversations.gateway.ingest import IngestService
@@ -188,3 +189,23 @@ async def test_an_unknown_conversation_is_not_found(db, tenant_ctx) -> None:
         await ConversationService.set_list_state(
             db, tenant_ctx.tenant_id, uuid.uuid4(), pinned=True
         )
+
+
+async def test_the_list_row_carries_the_last_messages_delivery_status(db, tenant_ctx) -> None:
+    tid = tenant_ctx.tenant_id
+    cid = await _chat(db, tid)
+    # Inside one transaction both rows share now(), so the newest is decided by
+    # making the reply strictly later.
+    await db.execute(
+        sa.text(
+            "UPDATE messages SET created_at = created_at - interval '1 minute' "
+            "WHERE conversation_id = :c"
+        ),
+        {"c": str(cid)},
+    )
+    await ConversationService.add_message(
+        db, tid, conversation_id=cid, direction="outbound", sender_type="agent", body="تم"
+    )
+    row = next(r for r in await InboxQuery.page(db, tid, limit=50) if r["id"] == str(cid))
+    assert row["last_message_direction"] == "outbound"
+    assert row["last_message_status"]  # the tick the sidebar draws before the preview
