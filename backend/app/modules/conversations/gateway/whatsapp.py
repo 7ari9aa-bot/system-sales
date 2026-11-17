@@ -262,6 +262,65 @@ class WhatsAppAdapter:
         # fails is the caller's job, not the adapter's.
         return await get_breaker(PROVIDER_WHATSAPP).call(_post)
 
+    @staticmethod
+    def build_read_signal(provider_message_id: str, *, typing: bool) -> dict:
+        """The Cloud API body that marks a customer's message read (blue ticks on
+        THEIR phone) and, optionally, shows them "typing…".
+
+        It is ONE request: ``status: read`` plus ``typing_indicator``. Meta also
+        marks every earlier message in the conversation read, and clears the
+        indicator after 25 seconds or when we reply, whichever is first.
+        """
+        body: dict = {
+            "messaging_product": "whatsapp",
+            "status": "read",
+            "message_id": provider_message_id,
+        }
+        if typing:
+            body["typing_indicator"] = {"type": "text"}
+        return body
+
+    async def send_read_signal(
+        self,
+        credentials: ProviderCredentials,
+        provider_message_id: str,
+        *,
+        typing: bool,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        """Tell WhatsApp the customer's message was read, and optionally that we are typing.
+
+        Same rules as ``send``: it goes through the ``provider.whatsapp`` breaker, a
+        provider rejection is raised INSIDE it, and a 200 carrying an ``error`` body
+        is a failure too. The caller decides whether a failure matters; for a
+        courtesy signal it never should block the agent.
+        """
+        phone_number_id = credentials.get("phone_number_id")
+        token = credentials.get("access_token")
+        if not phone_number_id or not token:
+            raise ExternalProviderError("whatsapp integration missing credentials")
+        if not provider_message_id:
+            raise ExternalProviderError("whatsapp read signal: no message id")
+        body_payload = self.build_read_signal(provider_message_id, typing=typing)
+
+        async def _post() -> None:
+            url = f"{GRAPH_BASE}/{phone_number_id}/messages"
+            headers = {"Authorization": f"Bearer {token}"}
+            if _client is not None:
+                response = await _client.post(url, headers=headers, json=body_payload)
+            else:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    response = await client.post(url, headers=headers, json=body_payload)
+            if response.status_code >= 400:
+                raise ExternalProviderError(
+                    f"whatsapp read signal failed: {response.status_code} {response.text[:200]}"
+                )
+            data = parse_provider_body(response, "whatsapp read signal")
+            if data.get("success") is not True:
+                raise ExternalProviderError(f"whatsapp read signal not accepted: {str(data)[:200]}")
+
+        await get_breaker(PROVIDER_WHATSAPP).call(_post)
+
     def _build_send_payload(self, message: OutboundMessage) -> dict:
         # A reaction is its own message type: it names the target by provider id
         # and carries only the emoji (an empty one withdraws the reaction). It is

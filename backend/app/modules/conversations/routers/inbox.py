@@ -24,6 +24,7 @@ from app.modules.conversations.routers._deps import (
     AssignRequest,
     ListStateRequest,
     ReactionRequest,
+    ReadSignalRequest,
     SendMessageRequest,
     TenantContext,
     TenantCtxDep,
@@ -604,6 +605,29 @@ async def mark_read(ctx: TenantCtxDep, conversation_id: uuid.UUID):
     await _ensure_channel_access(ctx, conversation)
     await ConversationService.mark_read(ctx.session, ctx.tenant_id, conversation_id)
     return {"ok": True}
+
+
+@router.post("/conversations/{conversation_id}/read-signal")
+async def send_read_signal(
+    conversation_id: uuid.UUID,
+    body: ReadSignalRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Show the customer the blue ticks (and, while we type, "typing…") on WhatsApp.
+
+    This is separate from ``/read``, which only clears OUR unread badge. It needs
+    the same rights as sending, because the customer sees it as the business acting.
+    A failure is reported as ``sent: false`` and never raised: it is a courtesy.
+    """
+    from app.modules.conversations.read_signal_service import ReadSignalService
+
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
+    await _ensure_channel_send(ctx, conversation)
+    result = await ReadSignalService.send(
+        ctx.session, ctx.tenant_id, conversation, typing=body.typing
+    )
+    return {"sent": result.sent, "skipped": result.skipped}
 
 
 @router.post("/conversations/messages/reconcile")

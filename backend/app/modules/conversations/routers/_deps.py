@@ -52,6 +52,12 @@ class SendMessageRequest(BaseModel):
     media_id: uuid.UUID | None = None
 
 
+class ReadSignalRequest(BaseModel):
+    """Opening a chat sends the read receipt; typing adds the "typing…" indicator."""
+
+    typing: bool = False
+
+
 class ReactionRequest(BaseModel):
     """An emoji reaction to one message. An empty emoji withdraws our reaction."""
 
