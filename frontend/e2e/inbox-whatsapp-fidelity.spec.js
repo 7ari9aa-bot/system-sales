@@ -232,3 +232,21 @@ test("the input strip is transparent and the filter pills have no scrollbar", as
   expect(tabs.ox).not.toBe("auto");
   expect(tabs.ox).not.toBe("scroll");
 });
+
+// In the real WhatsApp the chat narrows to make room for the contact panel, and the
+// panel is plain white with no grey bands between its sections.
+test("opening the contact panel narrows the chat instead of covering it", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  const input = page.getByTestId("composer-capsule");
+  const before = await input.boundingBox();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const after = await input.boundingBox();
+  const p = await panel.boundingBox();
+  expect(after.width).toBeLessThan(before.width - 300);
+  expect(after.x + after.width).toBeLessThanOrEqual(p.x + 1);
+  const bg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).toBe("rgb(255, 255, 255)");
+});
