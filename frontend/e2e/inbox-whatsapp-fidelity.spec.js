@@ -105,3 +105,23 @@ test("the chat header has no video or call controls, only search and more", asyn
   const labels = await page.getByTestId("chat-header").locator("button").evaluateAll((b) => b.map((x) => x.dataset.testid));
   expect(labels.filter((l) => l !== "header-back")).toEqual(["header-identity", "header-search", "header-more"]);
 });
+
+// A pixel check, not a CSS one: the earlier background-colour scan skipped anything under
+// 6px, so a 5px light divider between the panes sailed through in dark mode.
+test("dark mode: no bright vertical strip anywhere in the screenshot", async ({ page }) => {
+  await boot(page, "dark", { width: 1440, height: 900 });
+  const shot = await page.screenshot();
+  const bright = await page.evaluate(async (b64) => {
+    const img = new Image(); img.src = "data:image/png;base64," + b64; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+    const cols = [];
+    for (let x = 0; x < c.width; x++) {
+      let hits = 0, n = 0;
+      for (let y = 0; y < c.height; y += 6) { const [r, gg, bb] = g.getImageData(x, y, 1, 1).data; n++; if (Math.min(r, gg, bb) > 150) hits++; }
+      if (hits / n > 0.5) cols.push(x);
+    }
+    return cols;
+  }, shot.toString("base64"));
+  expect(bright).toEqual([]);
+});
