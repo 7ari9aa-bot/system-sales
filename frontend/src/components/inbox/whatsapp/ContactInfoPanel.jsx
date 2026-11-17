@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArchiveIcon, ClockIcon, CloseIcon, FileIcon, MuteIcon, PushPinIcon, UnreadIcon } from "./icons";
+import { ArchiveIcon, ChevronDownIcon, ClockIcon, UserIcon, CloseIcon, FileIcon, MuteIcon, PushPinIcon, UnreadIcon } from "./icons";
 import { formatLeft, replyWindow } from "./replyWindow";
 import { countsOf, displayPhone, docsOf, mediaOf, sharedLinksOf } from "./contactInfo";
 import { isMuted } from "./chatListState";
@@ -33,7 +33,7 @@ const WORDS = {
 };
 
 function Section({ children, className }) {
-  return <section className={cn("bg-[var(--wa-bg-panel)] px-7 py-4", className)}>{children}</section>;
+  return <section className={cn("border-b border-[color:var(--wa-divider)] bg-[var(--wa-bg-panel)] px-7 py-4 last:border-b-0", className)}>{children}</section>;
 }
 
 function Row({ icon: Icon, label, hint, onClick, testId, danger, disabled }) {
@@ -111,8 +111,8 @@ export default function ContactInfoPanel({ conversation, lang = "ar", now, custo
 
       <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
         <Section className="flex flex-col items-center gap-1 py-6">
-          <div className="grid h-[80px] w-[80px] max-w-full place-items-center rounded-full text-[26px] font-semibold text-[color:var(--wa-text-icon)]" style={{ background: "#ffdae7" }} aria-hidden="true">
-            {conversation.initials}
+          <div className="grid h-[80px] w-[80px] max-w-full place-items-center rounded-full text-[color:#c2185b]" style={{ background: "#ffdae7" }} aria-hidden="true">
+            <UserIcon size={44} />
           </div>
           <h4 dir="auto" data-testid="contact-name" className="mt-3 text-[22px] text-[color:var(--wa-text)]">{conversation.customer}</h4>
           {phone && <div dir="ltr" data-testid="contact-phone" className="text-[16px] text-[color:var(--wa-text-secondary)]">{phone}</div>}
@@ -133,9 +133,11 @@ export default function ContactInfoPanel({ conversation, lang = "ar", now, custo
         )}
 
         <Section className="pb-2">
-          <div className="flex w-full items-center justify-between py-1 text-[14px] text-[color:var(--wa-text-secondary)]">
-            <span>{w.mediaLinksDocs}</span>
-            <span className="tabular-nums">{total}</span>
+          <div data-testid="info-media-row" className="flex w-full items-center gap-5 py-1 text-[16px] text-[color:var(--wa-text)]">
+            <FileIcon size={22} className="text-[color:var(--wa-text-icon)]" aria-hidden="true" />
+            <span className="flex-1">{w.mediaLinksDocs}</span>
+            <span className="tabular-nums text-[14px] text-[color:var(--wa-text-secondary)]">{total}</span>
+            <ChevronDownIcon size={16} className={cn("text-[color:var(--wa-text-icon)]", lang === "ar" ? "rotate-90" : "-rotate-90")} aria-hidden="true" />
           </div>
           <div role="tablist" className="mt-1 flex gap-4 border-b border-[color:var(--wa-bg-chip)]">
             {["media", "docs", "links"].map((id) => (
@@ -147,9 +149,9 @@ export default function ContactInfoPanel({ conversation, lang = "ar", now, custo
           </div>
           <div className="py-3" data-testid="info-body">
             {tab === "media" && (media.length ? (
-              <div className="grid grid-cols-3 gap-1">
+              <div data-testid="info-media-strip" className="flex gap-1 overflow-hidden">
                 {media.slice(0, 30).map((item) => (
-                  <button key={item.id} type="button" data-testid="info-media" onClick={() => onOpenImage?.(item.id)} className="aspect-square overflow-hidden rounded bg-[var(--wa-bg-chip)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
+                  <button key={item.id} type="button" data-testid="info-media" onClick={() => onOpenImage?.(item.id)} className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded bg-[var(--wa-bg-chip)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
                     {item.kind === "video" ? <video src={item.url} className="h-full w-full object-cover" muted preload="metadata" /> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}
                   </button>
                 ))}

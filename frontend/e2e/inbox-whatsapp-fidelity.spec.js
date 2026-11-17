@@ -250,3 +250,23 @@ test("opening the contact panel narrows the chat instead of covering it", async 
   const bg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(255, 255, 255)");
 });
+
+// Contact panel details copied from WhatsApp Web: a person icon in a pink circle,
+// a "Media, links and docs" row with a count and a chevron, and a hairline between sections.
+test("the contact panel has the person avatar, the media row and section hairlines", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const av = await panel.getByTestId("contact-name").evaluate((el) => { const a = el.previousElementSibling; const r = a.getBoundingClientRect(); return { bg: getComputedStyle(a).backgroundColor, w: Math.round(r.width), svg: !!a.querySelector("svg"), text: a.textContent.trim() }; });
+  expect(av.bg).toBe("rgb(255, 218, 231)");
+  expect(av.w).toBe(80);
+  expect(av.svg).toBe(true);
+  expect(av.text).toBe("");
+  const row = panel.getByTestId("info-media-row");
+  await expect(row).toBeVisible();
+  expect(await row.locator("svg").count()).toBe(2);
+  const borders = await panel.locator("section").evaluateAll((els) => els.slice(0, -1).map((e) => getComputedStyle(e).borderBottomWidth));
+  for (const b of borders) expect(b).toBe("1px");
+});
