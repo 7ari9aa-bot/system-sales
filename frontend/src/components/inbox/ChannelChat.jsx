@@ -29,6 +29,9 @@ import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import ImageViewer from "./whatsapp/ImageViewer";
 import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
+import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
+import { api } from "@/lib/api";
+import { formatCurrency } from "@/lib/regional";
 import { isAwayFromBottom, unreadSince } from "./whatsapp/scrollState";
 import { ChevronDownIcon, EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
 import MessageStatus from "./whatsapp/MessageStatus";
@@ -53,6 +56,7 @@ export default function ChannelChat({
   t,
   onSend,
   onReact,
+  onListStateChange,
   onApprove,
   onDecline,
 }) {
@@ -68,6 +72,26 @@ export default function ChannelChat({
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [customer360Record, setCustomer360Record] = useState(null);
+  const [waCustomer, setWaCustomer] = useState(null);
+
+  // The real customer record (email, spend, purchase block) is read only while
+  // the WhatsApp contact panel is open, and never trusted past this chat.
+  const waCustomerId = conversation?.customerId || null;
+  useEffect(() => {
+    setWaCustomer(null);
+    if (!contactDrawerOpen || channel.id !== "whatsapp" || !waCustomerId) return undefined;
+    let alive = true;
+    api(`/customers/${waCustomerId}`).then((row) => { if (alive) setWaCustomer(row); }).catch(() => { if (alive) setWaCustomer(null); });
+    return () => { alive = false; };
+  }, [contactDrawerOpen, channel.id, waCustomerId]);
+
+  async function toggleBuyBlock(block) {
+    if (!waCustomerId) return;
+    try {
+      const saved = await api(`/customers/${waCustomerId}/${block ? "block" : "unblock"}`, { method: "POST" });
+      setWaCustomer((previous) => (previous ? { ...previous, is_blocked: Boolean(saved?.is_blocked) } : previous));
+    } catch { /* the panel keeps showing the real state */ }
+  }
 
   const scrollRef = useRef(null);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
@@ -768,7 +792,30 @@ export default function ChannelChat({
         )}
       </div>
 
-      {/* Authentic Contact Details Drawer */}
+      {/* Contact details: WhatsApp has its own panel built from real data only. */}
+      {isWhatsApp ? (
+        contactDrawerOpen && (
+          <ContactInfoPanel
+            conversation={conversation}
+            customer={waCustomer}
+            lang={lang}
+            formatMoney={formatCurrency}
+            onClose={() => setContactDrawerOpen(false)}
+            onChange={(body) => onListStateChange?.(conversation, body)}
+            onToggleBuyBlock={waCustomerId ? toggleBuyBlock : undefined}
+            onOpenImage={(id) => { setContactDrawerOpen(false); setViewerId(id); }}
+            onOpenCustomerProfile={() => {
+              setContactDrawerOpen(false);
+              setCustomer360Record({
+                id: waCustomerId || undefined,
+                name: conversation.customer,
+                phone: waCustomer?.phone || conversation.phone,
+                lifetime_value: waCustomer?.lifetime_value,
+              });
+            }}
+          />
+        )
+      ) : (
       <ChannelContactDrawer
         isOpen={contactDrawerOpen}
         onClose={() => setContactDrawerOpen(false)}
@@ -784,6 +831,8 @@ export default function ChannelChat({
           });
         }}
       />
+
+      )}
 
       {/* Customer 360 Drawer when requested from Contact Info */}
       {customer360Record && (

@@ -96,6 +96,7 @@ function toConversation(row, channel, t) {
     assigneeUserId: row.assignee_user_id || null,
     unread: Number(row.unread_count) || 0,
     time: displayTime(row.last_message_at),
+    customerId: row.customer_id || null,
     lastAt: row.last_message_at || null,
     phone: row.customer_phone || "",
     lastDirection: row.last_message_direction || null,
@@ -1010,6 +1011,7 @@ export default function Inbox() {
           t={t}
           onSend={handleSend}
           onReact={handleReact}
+          onListStateChange={changeListState}
           onApprove={() => decideApproval(pendingApproval, "APPROVED")}
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
