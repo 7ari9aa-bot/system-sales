@@ -51,7 +51,7 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
           />
         </div>
         {!archiveView && (
-          <div role="tablist" aria-label={w.tabs} className="flex gap-1.5 overflow-x-auto pb-2.5">
+          <div role="tablist" aria-label={w.tabs} className="flex items-center gap-2 overflow-x-auto pb-2.5">
             {tabs.map((id) => (
               <button
                 key={id}
@@ -59,10 +59,13 @@ export default function ChatList({ rows, activeId, lang = "ar", onOpen, onChange
                 role="tab"
                 aria-selected={tab === id}
                 data-testid={`tab-${id}`}
+                data-pill={tab === id ? "active" : "idle"}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "whitespace-nowrap rounded-full px-3.5 py-2.5 text-[14px] sm:px-3 sm:py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]",
-                  tab === id ? "bg-[var(--wa-pill-active)] font-medium text-[color:var(--wa-green-text)]" : "bg-[var(--wa-bg-input)] text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-chip)]",
+                  "whitespace-nowrap rounded-full border px-3.5 py-[11px] text-[14px] leading-[18px] sm:py-[5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)] sm:px-3",
+                  tab === id
+                    ? "border-[color:var(--wa-pill-active-rule)] font-medium text-[color:var(--wa-green-text)]"
+                    : "border-[color:var(--wa-pill-rule)] text-[color:var(--wa-pill-text)] hover:bg-[var(--wa-bg-hover)]",
                 )}
               >
                 {w[id]}

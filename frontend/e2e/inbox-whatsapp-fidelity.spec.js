@@ -145,3 +145,26 @@ test("light: surfaces match the real WhatsApp Web screenshot", async ({ page }) 
     wallpaper: "rgb(245, 241, 235)",
   });
 });
+
+// The filter pills sampled from the real WhatsApp screenshot: the active one is
+// pale green with a green hairline, the idle ones are WHITE with a grey hairline
+// (not filled grey), all fully round.
+test("filter pills match WhatsApp: active green, idle white with a hairline", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  const css = (id) => page.getByTestId(`tab-${id}`).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { bg: s.backgroundColor, border: s.borderTopColor, width: s.borderTopWidth, radius: s.borderTopLeftRadius, color: s.color, h: el.getBoundingClientRect().height };
+  });
+  const active = await css("all");
+  expect(active.bg).toBe("rgb(217, 253, 211)");
+  expect(active.border).toBe("rgb(175, 202, 170)");
+  const idle = await css("unread");
+  expect(idle.bg).toBe("rgb(255, 255, 255)");
+  expect(idle.border).toBe("rgb(204, 204, 204)");
+  expect(idle.color).toBe("rgb(102, 102, 102)");
+  expect(idle.width).toBe("1px");
+  expect(parseFloat(idle.radius)).toBeGreaterThan(10);
+  // The sampled pills are ~28px tall at 1x.
+  expect(active.h).toBeGreaterThanOrEqual(26);
+  expect(active.h).toBeLessThanOrEqual(32);
+});

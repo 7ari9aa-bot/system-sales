@@ -23,6 +23,10 @@
   --wa-green: #00a884;
   --wa-green-text: #025144;     /* text on the light-green pill */
   --wa-pill-active: #d9fdd3;
+  --wa-pill-active-rule: #afcaaa;   /* sampled: the active pill's 1px edge */
+  --wa-pill-bg: #ffffff;            /* sampled: idle pills are white with a hairline */
+  --wa-pill-rule: #cccccc;
+  --wa-pill-text: #666666;
   --wa-green-link: #1b8755;     /* the text actions under a bubble (Open, Save as) */
   --wa-header: #008069;         /* preview screen bar */
   --wa-ticks-read: #53bdeb;
@@ -55,6 +59,10 @@
   --wa-green: #00a884;
   --wa-green-text: #d9fdd3;
   --wa-pill-active: #0a332c;
+  --wa-pill-active-rule: #1f5c4d;
+  --wa-pill-bg: transparent;
+  --wa-pill-rule: #2f3b43;
+  --wa-pill-text: #8696a0;
   --wa-green-link: #53d2a9;
   --wa-header: #202c33;
   --wa-ticks-read: #53bdeb;
@@ -75,3 +83,10 @@
   color: var(--wa-text);
 }
 .wa-scope button, .wa-scope input, .wa-scope textarea { font-family: inherit; }
+
+/* Filter pills. A plain `button` reset elsewhere in the app clears `background`
+   and beats a utility class, so the pill fills are set here, scoped and explicit. */
+.wa-scope [data-pill] { border-style: solid; border-width: 1px; }
+.wa-scope [data-pill="active"] { background-color: var(--wa-pill-active); border-color: var(--wa-pill-active-rule); color: var(--wa-green-text); }
+.wa-scope [data-pill="idle"] { background-color: var(--wa-pill-bg); border-color: var(--wa-pill-rule); color: var(--wa-pill-text); }
+.wa-scope [data-pill="idle"]:hover { background-color: var(--wa-bg-hover); }
