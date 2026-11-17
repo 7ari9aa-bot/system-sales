@@ -367,7 +367,7 @@ async def test_the_workbook_route_keeps_its_own_smaller_limit(api):
 
 
 async def test_checking_the_file_keeps_what_the_archive_card_shows(db, tenant_ctx):
-    """The card reads ``stats.image_archive``. Checking the file rewrote ``stats`` and dropped it."""
+    """The card reads ``stats.image_archive``; checking the file rewrote ``stats`` and lost it."""
     t = tenant_ctx.tenant_id
     await _shop_with_sku(db, t)
     storage = FakeStorage({})
