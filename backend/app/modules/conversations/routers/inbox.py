@@ -298,6 +298,25 @@ async def send_message(
         raise ConflictError("conversation is closed")
     if not body.body and not body.template_name:
         raise ValidationError("message needs body or template_name")
+    if body.reply_to_message_id is not None:
+        # The quoted message must belong to THIS conversation. Anything else is
+        # reported as not found, so the answer never confirms that a message
+        # exists in some other customer's conversation.
+        from sqlalchemy import select as _select
+
+        from app.modules.conversations.models import Message as _Message
+
+        found = (
+            await ctx.session.execute(
+                _select(_Message.id).where(
+                    _Message.tenant_id == ctx.tenant_id,
+                    _Message.conversation_id == conversation_id,
+                    _Message.id == body.reply_to_message_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if found is None:
+            raise NotFoundError("quoted message not found")
 
     # The policy decision lives in ConversationService.add_message so that the
     # AI, automation and campaigns are bound by exactly the same rule.
@@ -311,6 +330,7 @@ async def send_message(
         sender_user_id=ctx.user.id,
         template_name=body.template_name,
         template_vars=body.template_vars,
+        reply_to_message_id=body.reply_to_message_id,
     )
     await add_outbox_event(
         ctx.session,

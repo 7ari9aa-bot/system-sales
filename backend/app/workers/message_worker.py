@@ -620,6 +620,20 @@ class MessageWorker(StreamWorker):
             credentials_config = dict(integration.config or {})
             decrypted = await IntegrationCredentialsService.decrypt(session, integration)
             credentials_config.update(decrypted)
+        # A staff reply that quotes a message: hand the provider the quoted
+        # message's own id. Scoped to this tenant AND conversation, so a stale or
+        # forged reference can never quote another customer's message.
+        reply_to_provider_id: str | None = None
+        if message.reply_to_message_id is not None:
+            reply_to_provider_id = (
+                await session.execute(
+                    select(Message.channel_message_id).where(
+                        Message.tenant_id == tenant_id,
+                        Message.conversation_id == conversation.id,
+                        Message.id == message.reply_to_message_id,
+                    )
+                )
+            ).scalar_one_or_none()
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),
@@ -634,6 +648,7 @@ class MessageWorker(StreamWorker):
                 # not actually be delivered even when one was required.
                 template_name=message.template_name,
                 template_vars=message.template_vars or {},
+                meta={"reply_to_provider_id": reply_to_provider_id} if reply_to_provider_id else {},
             ),
             set_channel_message_id=conversation.channel != "webchat",
         )

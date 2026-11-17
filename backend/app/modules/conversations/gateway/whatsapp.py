@@ -263,6 +263,15 @@ class WhatsAppAdapter:
         return await get_breaker(PROVIDER_WHATSAPP).call(_post)
 
     def _build_send_payload(self, message: OutboundMessage) -> dict:
+        payload = self._build_send_body(message)
+        # A quoted reply. Templates are never replies (they open a conversation
+        # outside the window), so they are left exactly as they were.
+        reply_to = message.meta.get("reply_to_provider_id")
+        if reply_to and payload.get("type") != "template":
+            payload["context"] = {"message_id": reply_to}
+        return payload
+
+    def _build_send_body(self, message: OutboundMessage) -> dict:
         base = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",

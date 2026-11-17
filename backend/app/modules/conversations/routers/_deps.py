@@ -43,6 +43,9 @@ class SendMessageRequest(BaseModel):
     template_name: str | None = Field(default=None, max_length=127)
     template_vars: dict | None = None
     template_language: str = Field(default="ar", max_length=15)
+    # The message being replied to (our messages.id). Optional; checked against
+    # the conversation in the route.
+    reply_to_message_id: uuid.UUID | None = None
 
 
 class AssignRequest(BaseModel):
