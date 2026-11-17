@@ -421,24 +421,30 @@ class AIGateway:
                 )
             )
             # §144: the counter was charged an ESTIMATE before the call (prompt length / 4 plus
-            # 1024 reply tokens). Put back what the call did not really use, so a model that answers
-            # in 150 tokens is not billed 1024 and a failed or refused call is not billed at all.
-            # Without this a ~4-call question was charged ~19k tokens and a store hit its daily
-            # budget after ~100 questions. Best effort and never raises (refund swallows errors).
+            # 1024 reply tokens). Settle it to what the call really used: give back the unused part
+            # (a model that answers in 150 tokens is not billed 1024, a failed or refused call is
+            # not billed at all) and add what the estimate missed (the tool schemas are not in
+            # `messages`, so a real prompt runs ~1.5k tokens above the estimate; measured live, a
+            # question was charged 4.6k of 6.9k used). Best effort and never raises.
             if fairness_charged:
+                from app.core.fairness import ResourceType as _RT
+                from app.core.fairness import charge_extra as charge_fairness_extra
+                from app.core.fairness import refund as refund_fairness
+
                 if result is None:
-                    unused = fairness_charged  # the call never completed: nothing was spent
+                    delta = -fairness_charged  # the call never completed: nothing was spent
                 elif result.tokens_in + result.tokens_out > 0:
-                    unused = fairness_charged - (result.tokens_in + result.tokens_out)
+                    delta = (result.tokens_in + result.tokens_out) - fairness_charged
                 else:
                     # A provider that reports no usage reads as 0/0 here. That is "unknown", not
                     # "free": keep the estimate, or a silent provider would open the budget wide.
-                    unused = 0
-                if unused > 0:
-                    from app.core.fairness import ResourceType as _RT
-                    from app.core.fairness import refund as refund_fairness
-
-                    await asyncio.shield(refund_fairness(tenant_id, _RT.AI_TOKENS, units=unused))
+                    delta = 0
+                if delta < 0:
+                    await asyncio.shield(refund_fairness(tenant_id, _RT.AI_TOKENS, units=-delta))
+                elif delta > 0:
+                    await asyncio.shield(
+                        charge_fairness_extra(tenant_id, _RT.AI_TOKENS, units=delta)
+                    )
             # §42 settle (P1-2): release the hold whether the call succeeded or not —
             # a failed or cancelled call must not hold budget until its TTL expires.
             # Shielded against asyncio.wait_for cancellation so the hold is always released.

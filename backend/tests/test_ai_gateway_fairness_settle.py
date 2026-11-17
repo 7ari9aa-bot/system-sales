@@ -68,13 +68,16 @@ async def test_a_call_is_billed_what_it_used_not_the_estimate(db, tenant_ctx, re
     assert await _counter(redis, tenant_ctx.tenant_id) == 13
 
 
-async def test_a_call_that_used_more_than_the_estimate_is_not_refunded(db, tenant_ctx, redis):
+async def test_a_call_that_used_more_than_the_estimate_is_billed_what_it_used(
+    db, tenant_ctx, redis
+):
     handler = lambda r: httpx.Response(  # noqa: E731
         200, json=_reply({"prompt_tokens": 5000, "completion_tokens": 900})
     )
     await _call(db, tenant_ctx.tenant_id, handler)
-    # The charge stays at the estimate: settling never bills EXTRA, it only gives back.
-    assert await _counter(redis, tenant_ctx.tenant_id) == ESTIMATE
+    # The estimate leaves the tool schemas out, so real prompts run above it. Settling lands the
+    # counter on the real figure, not on the (low) estimate.
+    assert await _counter(redis, tenant_ctx.tenant_id) == 5900
 
 
 @pytest.mark.parametrize("usage", [None, {}, {"prompt_tokens": 0, "completion_tokens": 0}])
@@ -119,3 +122,23 @@ async def test_settling_never_extends_the_window_or_goes_below_zero(redis):
     await fairness.refund(tenant, AI, units=0)
     await fairness.refund(tenant, AI, units=-5)
     assert int(await redis.get(key)) == 0
+
+
+async def test_charge_extra_adds_without_restarting_the_window_or_reviving_an_expired_key(redis):
+    import uuid
+
+    tenant = uuid.uuid4()
+    key = fairness._budget_key(tenant, AI)
+    await redis.set(key, 500, ex=100)
+
+    await fairness.charge_extra(tenant, AI, units=250)
+    assert int(await redis.get(key)) == 750
+    assert 0 < await redis.ttl(key) <= 100  # the window the charge started is not extended
+
+    await fairness.charge_extra(tenant, AI, units=0)
+    await fairness.charge_extra(tenant, AI, units=-9)
+    assert int(await redis.get(key)) == 750
+
+    await redis.delete(key)  # the window rolled over while the call was in flight
+    await fairness.charge_extra(tenant, AI, units=400)
+    assert await redis.exists(key) == 0  # not recreated with no expiry

@@ -338,6 +338,35 @@ async def refund(
         )
 
 
+async def charge_extra(
+    tenant_id: uuid.UUID,
+    resource: ResourceType,
+    *,
+    units: int = 1,
+) -> None:
+    """§144: add units that were really spent but not charged up front (an estimate that was low).
+
+    Unlike `consume()` this never refuses and never restarts the window: the work already happened,
+    so there is nothing left to refuse, and extending the TTL on every settle would keep a busy
+    store's day from ever rolling over. A counter whose key already expired is left alone rather
+    than recreated with no expiry (the window it belonged to is over).
+    """
+    if units <= 0:
+        return
+    try:
+        redis = get_redis()
+        key = _budget_key(tenant_id, resource)
+        if await redis.exists(key):
+            await redis.incrby(key, units)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            "fairness.charge_extra_failed tenant=%s resource=%s error=%s",
+            tenant_id,
+            resource.value,
+            type(exc).__name__,
+        )
+
+
 async def get_usage(tenant_id: uuid.UUID) -> dict:
     """§144: return the current usage snapshot for all resources."""
     result: dict[str, dict] = {}
