@@ -41,6 +41,10 @@ _CANONICAL_MEDIA_CONTENT: dict[str, str] = {
 }
 
 
+# Stored as the body of a reaction row that withdraws the sender's earlier reaction.
+REACTION_REMOVED = "\u2205"
+
+
 class WhatsAppAdapter:
     name = "whatsapp"
 
@@ -170,7 +174,11 @@ class WhatsAppAdapter:
                 return list_reply.get("title"), None, None, "list"
             return None, None, None, "unsupported"
         if msg_type == "reaction":
-            return msg.get("reaction", {}).get("emoji"), None, None, "reaction"
+            # WhatsApp removes a reaction by sending an EMPTY emoji. A message
+            # row needs a body, so a removal is stored as an explicit marker
+            # rather than "" (which add_message rejects, failing the webhook).
+            emoji = (msg.get("reaction", {}).get("emoji") or "").strip()
+            return emoji or REACTION_REMOVED, None, None, "reaction"
         # A type this adapter does not know (order, system, referral, ...): the
         # raw JSON is kept as the body for forensics, and the canonical type is
         # honest about it instead of claiming "text".

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
+from app.modules.conversations.models import Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
 from app.modules.platform.models import IdempotencyKey, WebhookEvent
@@ -86,6 +87,25 @@ class IngestService:
             )
         )
 
+    @staticmethod
+    async def _resolve_reply_target(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        provider_ref: str | None,
+    ) -> uuid.UUID | None:
+        """Local message a provider reply points at, or None if we never stored it."""
+        if not provider_ref:
+            return None
+        found = await session.execute(
+            select(Message.id).where(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == conversation_id,
+                Message.channel_message_id == provider_ref,
+            )
+        )
+        return found.scalar_one_or_none()
+
     @classmethod
     async def ingest(
         cls,
@@ -114,14 +134,20 @@ class IngestService:
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=message.channel
         )
-        # §155: convert provider reply_to_message_id (string) to UUID if
-        # it matches a local message. None if it doesn't (foreign reply).
-        reply_to_uuid: uuid.UUID | None = None
-        if message.reply_to_message_id:
-            try:
-                reply_to_uuid = uuid.UUID(message.reply_to_message_id)
-            except ValueError:
-                reply_to_uuid = None  # provider-side id, not a local UUID
+        # §155: a provider reply/reaction names its target by the PROVIDER's id
+        # (a WhatsApp wamid), never by our UUID. Resolve it to the local message,
+        # but only inside THIS conversation: a forged id naming another
+        # customer's message must not link to it. The provider id is kept in
+        # provider_metadata so a target we never stored (older than our history)
+        # can still be shown as an unresolved quote instead of vanishing.
+        reply_to_uuid = await cls._resolve_reply_target(
+            session, tenant_id, conversation.id, message.reply_to_message_id
+        )
+        provider_metadata = (
+            {"reply_to_provider_id": message.reply_to_message_id}
+            if message.reply_to_message_id
+            else None
+        )
 
         created = await ConversationService.add_message(
             session,
@@ -134,6 +160,7 @@ class IngestService:
             media_type=message.media_type,
             content_type=message.content_type,
             reply_to_message_id=reply_to_uuid,
+            provider_metadata=provider_metadata,
             channel_message_id=message.channel_message_id,
             payload={"raw": message.raw} if message.raw else None,
         )

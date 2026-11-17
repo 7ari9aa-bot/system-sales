@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
+from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.routers._deps import (
     AssignRequest,
@@ -171,6 +172,17 @@ async def list_messages(
         rows = rows[1:]  # drop the overflow row (oldest) from the display page
         boundary = rows[0]  # oldest displayed row = next page's keyset boundary
         next_cursor = encode_cursor(boundary.created_at, boundary.id)
+    on_page = {m.id for m in rows}
+    outside_page = await ConversationService.quoted_targets(
+        ctx.session,
+        ctx.tenant_id,
+        conversation_id,
+        [
+            m.reply_to_message_id
+            for m in rows
+            if m.reply_to_message_id and m.reply_to_message_id not in on_page
+        ],
+    )
     storage_keys = await ConversationService.attachment_storage_keys(
         ctx.session, ctx.tenant_id, [message.id for message in rows]
     )
@@ -192,20 +204,82 @@ async def list_messages(
                 # provider URL when signing fails.
                 media_urls[message_id] = None
     return {
-        "items": [
+        "items": _present_messages(rows, media_urls, outside_page),
+        "next_cursor": next_cursor,
+    }
+
+
+def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) -> list[dict]:
+    """Shape a page of messages the way a chat client draws them.
+
+    A reaction is not a message of its own: WhatsApp shows it as a small emoji
+    under the message it targets. We store it as a row (it arrives as one), so
+    fold each reaction into its target here and drop the row from the list.
+    Only the newest reaction per sender counts (WhatsApp lets a person change
+    or remove theirs; an empty emoji removes it).
+    """
+    by_id = {m.id: m for m in rows}
+    quotable = {**(outside_page or {}), **by_id}
+    reactions: dict = {}
+    # Order by when the PROVIDER says it happened: two reactions in one webhook
+    # batch share a database timestamp, so created_at alone cannot tell which
+    # is the newer one.
+    for m in sorted(rows, key=_provider_order):
+        if m.content_type != "reaction" or m.reply_to_message_id not in by_id:
+            continue
+        emoji = (m.body or "").strip()
+        reactions.setdefault(m.reply_to_message_id, {})[m.direction] = (
+            "" if emoji == REACTION_REMOVED else emoji
+        )
+
+    items: list[dict] = []
+    for m in rows:
+        if m.content_type == "reaction" and m.reply_to_message_id in by_id:
+            continue  # shown on its target, not as a line of its own
+        quoted = quotable.get(m.reply_to_message_id) if m.reply_to_message_id else None
+        items.append(
             {
                 "id": str(m.id),
                 "direction": m.direction,
                 "sender_type": m.sender_type,
-                "body": m.body,
-                "media_url": media_urls.get(m.id, m.media_url),
-                "media_type": m.media_type,
+                "body": None if m.deleted else m.body,
+                "media_url": None if m.deleted else media_urls.get(m.id, m.media_url),
+                "media_type": None if m.deleted else m.media_type,
+                "content_type": m.content_type,
                 "status": m.status,
+                "edited": bool(m.edited),
+                "deleted": bool(m.deleted),
                 "created_at": m.created_at.isoformat(),
+                "reply_to": _present_quote(m, quoted),
+                "reactions": [e for e in (reactions.get(m.id) or {}).values() if e],
             }
-            for m in rows
-        ],
-        "next_cursor": next_cursor,
+        )
+    return items
+
+
+def _provider_order(m) -> tuple:
+    raw = ((m.payload or {}).get("raw") or {}).get("timestamp")
+    try:
+        provider_time = int(raw)
+    except (TypeError, ValueError):
+        provider_time = 0
+    return (m.created_at, provider_time)
+
+
+def _present_quote(m, quoted) -> dict | None:
+    """The quoted message a reply shows above its text, or None if not a reply."""
+    if quoted is None:
+        # We never stored the target (older than our history): keep the fact it
+        # was a reply so the client can draw an unavailable-quote placeholder.
+        if (m.provider_metadata or {}).get("reply_to_provider_id") and m.content_type != "reaction":
+            return {"id": None, "available": False}
+        return None
+    return {
+        "id": str(quoted.id),
+        "available": not quoted.deleted,
+        "direction": quoted.direction,
+        "content_type": quoted.content_type,
+        "body": None if quoted.deleted else (quoted.body or "")[:200],
     }
 
 

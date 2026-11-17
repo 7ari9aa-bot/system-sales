@@ -475,6 +475,29 @@ class ConversationService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def quoted_targets(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, Message]:
+        """Messages a page of replies quotes, even when older than the page.
+
+        Scoped to the conversation (not just the tenant) so a forged reference
+        can never surface another customer's text.
+        """
+        if not message_ids:
+            return {}
+        found = await session.execute(
+            select(Message).where(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == conversation_id,
+                Message.id.in_(message_ids),
+            )
+        )
+        return {m.id: m for m in found.scalars()}
+
+    @staticmethod
     async def list_messages(
         session: AsyncSession,
         tenant_id: uuid.UUID,
