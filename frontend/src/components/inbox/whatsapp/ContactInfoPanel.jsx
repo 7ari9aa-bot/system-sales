@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArchiveIcon, CloseIcon, FileIcon, MuteIcon, PushPinIcon, UnreadIcon } from "./icons";
+import { ArchiveIcon, ClockIcon, CloseIcon, FileIcon, MuteIcon, PushPinIcon, UnreadIcon } from "./icons";
+import { formatLeft, replyWindow } from "./replyWindow";
 import { countsOf, displayPhone, docsOf, mediaOf, sharedLinksOf } from "./contactInfo";
 import { isMuted } from "./chatListState";
 import { cn } from "@/lib/utils";
 
 const WORDS = {
   ar: {
-    title: "معلومات جهة الاتصال", close: "إغلاق", media: "الوسائط", docs: "المستندات", links: "الروابط",
+    title: "معلومات جهة الاتصال", close: "إغلاق", aboutPhone: "رقم الهاتف", windowOpen: "يمكنك الرد مجانًا. تتبقى", windowClosing: "تنتهي نافذة الرد بعد", windowClosed: "انتهت نافذة الرد. الرد بقالب معتمد فقط", windowNever: "لم يراسلنا العميل بعد", media: "الوسائط", docs: "المستندات", links: "الروابط",
     mediaLinksDocs: "الوسائط والروابط والمستندات", none: "لا يوجد شيء مشترك بعد",
     noMedia: "لا توجد وسائط مشتركة", noDocs: "لا توجد مستندات", noLinks: "لا توجد روابط",
     chatSettings: "إعدادات المحادثة", mute: "كتم الإشعارات", unmute: "إلغاء كتم الإشعارات", mutedForever: "مكتومة دائمًا",
@@ -18,7 +19,7 @@ const WORDS = {
     email: "البريد الإلكتروني", phone: "رقم الهاتف", open: "فتح",
   },
   en: {
-    title: "Contact info", close: "Close", media: "Media", docs: "Docs", links: "Links",
+    title: "Contact info", aboutPhone: "Phone number", windowOpen: "You can reply freely. Left:", windowClosing: "Reply window ends in", windowClosed: "Reply window closed. Approved templates only", windowNever: "The customer has not written yet", close: "Close", media: "Media", docs: "Docs", links: "Links",
     mediaLinksDocs: "Media, links and docs", none: "Nothing shared yet",
     noMedia: "No shared media", noDocs: "No documents", noLinks: "No links",
     chatSettings: "Chat settings", mute: "Mute notifications", unmute: "Unmute notifications", mutedForever: "Muted always",
@@ -60,7 +61,7 @@ function Row({ icon: Icon, label, hint, onClick, testId, danger, disabled }) {
  * about WhatsApp features this inbox does not have (encryption status,
  * disappearing messages, "About", starred messages).
  */
-export default function ContactInfoPanel({ conversation, lang = "ar", customer = null, onClose, onChange, onToggleBuyBlock, onOpenCustomerProfile, onOpenImage, formatMoney }) {
+export default function ContactInfoPanel({ conversation, lang = "ar", now, customer = null, onClose, onChange, onToggleBuyBlock, onOpenCustomerProfile, onOpenImage, formatMoney }) {
   const w = WORDS[lang] || WORDS.en;
   const ref = useRef(null);
   const [tab, setTab] = useState("media");
@@ -87,6 +88,9 @@ export default function ContactInfoPanel({ conversation, lang = "ar", customer =
   const archived = Boolean(conversation.archivedAt);
   const blocked = Boolean(customer?.is_blocked);
   const set = (body) => () => onChange?.(body);
+  const windowInfo = replyWindow(conversation.lastCustomerMessageAt, now);
+  const left = formatLeft(windowInfo.msLeft, lang);
+  const windowLine = windowInfo.state === "open" ? `${w.windowOpen} ${left}` : windowInfo.state === "closing" ? `${w.windowClosing} ${left}` : windowInfo.state === "closed" ? w.windowClosed : w.windowNever;
 
   return (
     <aside
@@ -96,7 +100,7 @@ export default function ContactInfoPanel({ conversation, lang = "ar", customer =
       aria-label={w.title}
       data-testid="contact-info"
       dir={lang === "ar" ? "rtl" : "ltr"}
-      className="absolute inset-y-0 end-0 z-40 flex w-full flex-col overflow-hidden bg-[var(--wa-bg-input)] shadow-2xl outline-none sm:w-[380px]"
+      className="absolute inset-y-0 end-0 z-40 flex w-full flex-col overflow-hidden bg-[var(--wa-bg-input)] outline-none sm:w-[380px] sm:border-s sm:border-[color:var(--wa-divider)]"
     >
       <header className="flex h-[60px] shrink-0 items-center gap-5 bg-[var(--wa-bg-input)] px-4 text-[color:var(--wa-text)]">
         <button type="button" onClick={onClose} aria-label={w.close} data-testid="contact-close" className="grid h-9 w-9 place-items-center rounded-full text-[color:var(--wa-text-icon)] hover:bg-[var(--wa-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--wa-green)]">
@@ -114,6 +118,19 @@ export default function ContactInfoPanel({ conversation, lang = "ar", customer =
           {phone && <div dir="ltr" data-testid="contact-phone" className="text-[16px] text-[color:var(--wa-text-secondary)]">{phone}</div>}
           {email && <div dir="ltr" className="text-[14px] text-[color:var(--wa-text-secondary)]">{email}</div>}
         </Section>
+
+        {(phone || windowLine) && (
+          <Section data-testid="info-about">
+            <p className="pb-1 text-[13px] text-[color:var(--wa-text-secondary)]">{w.aboutPhone}</p>
+            {phone && <div dir="ltr" data-testid="info-about-phone" className="py-1 text-start text-[16px] text-[color:var(--wa-text)]">{phone}</div>}
+            {windowLine && (
+              <div data-testid="info-window" data-window={windowInfo.state} className={cn("flex items-center gap-2 py-1 text-[14px]", windowInfo.state === "closed" ? "text-[color:var(--wa-warn)]" : "text-[color:var(--wa-green)]")}>
+                <ClockIcon size={16} aria-hidden="true" />
+                <span>{windowLine}</span>
+              </div>
+            )}
+          </Section>
+        )}
 
         <Section className="pb-2">
           <div className="flex w-full items-center justify-between py-1 text-[14px] text-[color:var(--wa-text-secondary)]">

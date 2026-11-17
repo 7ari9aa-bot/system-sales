@@ -197,3 +197,21 @@ test("the input bar is a single white capsule holding every control", async ({ p
   const emo = await page.getByTestId("composer-emoji").boundingBox();
   expect(att.x).toBeLessThan(emo.x);
 });
+
+// Clicking the name opens the contact panel: a flat side panel (no floating shadow)
+// that shows the number and the real reply-window state, nothing invented.
+test("the contact panel is a flat side panel with the real number and reply window", async ({ page }) => {
+  await boot(page, "light", { width: 1280, height: 720 });
+  await page.getByTestId("chat-row").first().click();
+  await page.getByTestId("header-identity").click();
+  const panel = page.getByTestId("contact-info");
+  await expect(panel).toBeVisible();
+  const st = await panel.evaluate((el) => { const s = getComputedStyle(el); return { shadow: s.boxShadow, w: el.getBoundingClientRect().width }; });
+  expect(st.shadow).toBe("none");
+  expect(st.w).toBeLessThanOrEqual(390);
+  await expect(page.getByTestId("info-about-phone")).toContainText("+20");
+  await expect(page.getByTestId("info-window")).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box.x + box.width).toBeLessThanOrEqual(1280);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+});
