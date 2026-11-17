@@ -3,6 +3,8 @@ import { Search } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
+import ChatList from "@/components/inbox/whatsapp/ChatList";
+import { visibleRows } from "@/components/inbox/whatsapp/chatListState";
 import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
 import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
 import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
@@ -94,6 +96,14 @@ function toConversation(row, channel, t) {
     assigneeUserId: row.assignee_user_id || null,
     unread: Number(row.unread_count) || 0,
     time: displayTime(row.last_message_at),
+    lastAt: row.last_message_at || null,
+    phone: row.customer_phone || "",
+    lastDirection: row.last_message_direction || null,
+    lastStatus: row.last_message_status || null,
+    pinnedAt: row.pinned_at || null,
+    mutedUntil: row.muted_until || null,
+    archivedAt: row.archived_at || null,
+    markedUnread: Boolean(row.marked_unread),
     avatarUrl: row.customer_avatar_url || row.profile_photo_url || row.avatar_url || null,
     hasStory: Boolean(row.has_story || row.story_available || row.story?.available),
     folder: row.folder || row.inbox_folder || row.category || (channel?.id === "instagram" ? "primary" : undefined),
@@ -216,8 +226,15 @@ export default function Inbox() {
     const params = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
     if (cursor) params.set("cursor", cursor);
     const response = await api(`/inbox?${params.toString()}`);
+    // The default list hides archived chats; the first page also fetches them so
+    // the Archived entry and its view are complete.
+    const archivedResponse = cursor ? null : await api(`/inbox?${new URLSearchParams({ limit: String(INBOX_PAGE_SIZE), archived: "true" }).toString()}`).catch(() => null);
     const page = Object.fromEntries(CHANNELS.map((channel) => [channel.id, []]));
-    for (const row of response?.items ?? []) {
+    const seenIds = new Set();
+    for (const row of [...(response?.items ?? []), ...(archivedResponse?.items ?? [])]) {
+      // One row can only be in one of the two answers, but never trust that.
+      if (seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
       const channel = row.channel || "webchat";
       if (!page[channel]) continue;
       page[channel].push(toConversation(row, getChannel(channel), t));
@@ -390,10 +407,16 @@ export default function Inbox() {
     { id: "general", label: lang === "ar" ? "عام" : "General" },
     { id: "requests", label: lang === "ar" ? "طلبات" : "Requests" },
   ];
+  const visibleWhatsAppRows = useMemo(() => visibleRows(conversations, { tab: "all", query: "", archived: false }), [conversations]);
   const visibleConversations = isInstagram
     ? filtered.filter((conversation) => (conversation.folder || "primary") === instagramFolder)
     : filtered;
-  const current = visibleConversations.find((conversation) => conversation.id === activeId) || visibleConversations[0] || null;
+  // WhatsApp lists are ordered pinned-first and hide archived chats, so the
+  // fallback "first row" must be the first row the person can actually see.
+  const currentPool = isWhatsApp ? visibleWhatsAppRows : visibleConversations;
+  const current = currentPool.find((conversation) => conversation.id === activeId)
+    || (isWhatsApp ? conversations.find((conversation) => conversation.id === activeId) : null)
+    || currentPool[0] || null;
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
   const connectedCount = channels.filter((item) => item.connected).length;
@@ -511,6 +534,27 @@ export default function Inbox() {
         }));
       })
       .catch((e) => setError(e?.message || "Could not mark the conversation as read."));
+  }
+
+  // Pin, mute, archive or mark unread. The server answers with the new state;
+  // the list changes only after it confirms, never on a guess.
+  async function changeListState(conversation, body) {
+    if (isDemoConversation(conversation.id)) return;
+    try {
+      const saved = await api(`/conversations/${conversation.id}/list-state`, { method: "POST", body });
+      setConvMap((previous) => ({
+        ...previous,
+        [activeChannel]: (previous[activeChannel] || []).map((row) => row.id === conversation.id ? {
+          ...row,
+          pinnedAt: saved.pinned_at || null,
+          mutedUntil: saved.muted_until || null,
+          archivedAt: saved.archived_at || null,
+          markedUnread: Boolean(saved.marked_unread),
+        } : row),
+      }));
+    } catch (e) {
+      setError(e?.message || "Could not update the conversation.");
+    }
   }
 
   async function handleSend(conversationId, text, opts = {}) {
@@ -739,6 +783,37 @@ export default function Inbox() {
           isWhatsApp ? "rounded-none border-0 bg-white" : isTelegram ? "rounded-none border-0 border-r border-[#e4e9ec] bg-white" : isInstagram ? "rounded-none border-0 border-r border-[#dbdbdb] bg-white" : isMessenger ? "rounded-none border-0 border-r border-[#e4e6eb] bg-white" : "rounded-2xl border-border",
           (isWhatsApp || isMessenger) && mobileChatOpen ? "hidden lg:flex" : "flex"
         )}>
+          {isWhatsApp ? (
+            loadingInbox ? (
+              <div className="py-10 text-center px-4 text-[13px] text-muted-foreground">{t("common.loading")}</div>
+            ) : inboxLoadError ? (
+              <div role="alert" className="m-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-center text-[12.5px] text-destructive">
+                <p>{inboxLoadError}</p>
+                <button type="button" onClick={() => setInboxRetryAttempt((attempt) => attempt + 1)} className="mt-2 font-medium underline">
+                  {t("common.retry", "Retry")}
+                </button>
+              </div>
+            ) : (
+              <ChatList
+                rows={conversations}
+                activeId={current?.id}
+                lang={lang}
+                ConversationAvatar={ConversationAvatar}
+                onOpen={(conversation) => { selectConversation(conversation); setMobileChatOpen(true); }}
+                onChange={changeListState}
+                footer={(loadingMoreInbox || inboxMoreError || inboxCursor) ? (
+                  <div className="px-3 py-2 text-center text-[11.5px] text-muted-foreground">
+                    {inboxMoreError ? (
+                      <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("common.retry", "Retry")}</button>
+                    ) : loadingMoreInbox ? t("common.loading") : (
+                      <button type="button" onClick={() => void loadMoreConversations()} className="text-primary hover:underline">{t("inbox.loadMore", "Load more conversations")}</button>
+                    )}
+                  </div>
+                ) : null}
+              />
+            )
+          ) : (
+          <>
           <div className={cn(isTelegram ? "space-y-0 p-2" : isInstagram ? "space-y-3 px-4 pb-3 pt-4" : isMessenger ? "space-y-3 p-4" : "space-y-2.5 p-3", isWhatsApp ? "border-b border-[#d1d7db]" : isTelegram ? "border-b border-[#e4e9ec]" : isInstagram ? "border-b border-[#dbdbdb]" : isMessenger ? "border-b border-[#e4e6eb]" : "border-b border-border")}>
             {isInstagram && <div className="flex items-center justify-between"><h2 className="text-[19px] font-semibold tracking-tight text-[#262626]">{lang === "ar" ? "الرسائل" : "Messages"}</h2>{instagramAccountIdentity && <span dir="ltr" className="text-[12px] font-semibold text-[#8e8e8e]">{instagramAccountIdentity.startsWith("@") ? instagramAccountIdentity : `@${instagramAccountIdentity}`}</span>}</div>}
             {isMessenger && <h2 className="text-[20px] font-bold tracking-[-0.02em] text-[#050505]">{lang === "ar" ? "المحادثات" : "Chats"}</h2>}
@@ -876,6 +951,8 @@ export default function Inbox() {
               </div>
             )}
           </div>
+          </>
+          )}
           {channelStatus && connectedCount === 0 && (
             <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
               {t("inbox.noConnectedChannels", "Connect a channel in Settings → Channels to start receiving messages.")}

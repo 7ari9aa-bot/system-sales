@@ -7,7 +7,7 @@ const components = Object.entries(icons).filter(([, value]) => typeof value === 
 
 describe("whatsapp icons", () => {
   test("the set is complete", () => {
-    expect(components.length).toBeGreaterThanOrEqual(18);
+    expect(components.length).toBeGreaterThanOrEqual(22);
   });
 
   test.each(components)("%s renders real, decorative-by-default svg geometry", (name, Icon) => {

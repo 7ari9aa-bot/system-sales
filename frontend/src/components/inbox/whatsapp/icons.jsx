@@ -180,3 +180,35 @@ export const DownloadIcon = (p) => (
     <path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" />
   </Svg>
 );
+
+// ---- chat list actions (original geometry) ----
+
+// A pushpin: the "pinned chat" mark. (PinIcon above is a map location pin.)
+export const PushPinIcon = (p) => (
+  <Svg {...p}>
+    <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" />
+    <path d="M12 14v7" />
+  </Svg>
+);
+
+export const MuteIcon = (p) => (
+  <Svg {...p}>
+    <path d="M4 9.5v5h3.5l5 4v-13l-5 4z" />
+    <path d="M16.5 9.5l4 5M20.5 9.5l-4 5" />
+  </Svg>
+);
+
+export const ArchiveIcon = (p) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
+    <path d="M5 8.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5" />
+    <path d="M10 12.5h4" />
+  </Svg>
+);
+
+export const UnreadIcon = (p) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+    <path d="M4 7l8 6 8-6" />
+  </Svg>
+);

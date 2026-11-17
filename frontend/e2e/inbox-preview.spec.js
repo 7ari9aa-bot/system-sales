@@ -46,7 +46,7 @@ test("a media message names itself instead of leaving the row blank", async ({ p
   });
 
   await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  const row = (name) => page.locator("button[aria-pressed]").filter({ hasText: name });
+  const row = (name) => page.getByTestId("chat-row").filter({ hasText: name });
   await expect(row("Omar")).toBeVisible();
   await expect(row("Omar")).toContainText("Photo");
   await expect(row("Sarah")).toContainText("هل يوجد مقاس L؟");

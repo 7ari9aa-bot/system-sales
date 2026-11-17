@@ -10,11 +10,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.consent import MARKETING_PURPOSE, evaluate_outbound_consent
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
 from app.modules.conversations.media import MediaService, MediaStorage
 from app.modules.conversations.models import (
@@ -593,6 +593,8 @@ class ConversationService:
 
     # Largest mute WhatsApp offers is "always"; we store it as a far-future date.
     MUTE_ALWAYS = datetime(9999, 12, 31, tzinfo=UTC)
+    # WhatsApp allows three pinned chats; the store shares one pinned strip.
+    MAX_PINNED = 3
 
     @staticmethod
     async def set_list_state(
@@ -618,7 +620,23 @@ class ConversationService:
         elif archived is False:
             conversation.archived_at = None
         if pinned is True:
-            conversation.pinned_at = now
+            if conversation.pinned_at is None:
+                held = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(Conversation)
+                        .where(
+                            Conversation.tenant_id == tenant_id,
+                            Conversation.pinned_at.is_not(None),
+                            Conversation.id != conversation_id,
+                        )
+                    )
+                ).scalar_one()
+                if held >= ConversationService.MAX_PINNED:
+                    raise ConflictError(
+                        f"at most {ConversationService.MAX_PINNED} conversations can be pinned"
+                    )
+            conversation.pinned_at = conversation.pinned_at or now
             conversation.archived_at = None
         elif pinned is False:
             conversation.pinned_at = None

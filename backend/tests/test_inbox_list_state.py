@@ -209,3 +209,19 @@ async def test_the_list_row_carries_the_last_messages_delivery_status(db, tenant
     row = next(r for r in await InboxQuery.page(db, tid, limit=50) if r["id"] == str(cid))
     assert row["last_message_direction"] == "outbound"
     assert row["last_message_status"]  # the tick the sidebar draws before the preview
+
+
+async def test_at_most_three_conversations_can_be_pinned(db, tenant_ctx) -> None:
+    from app.core.errors import ConflictError
+
+    tid = tenant_ctx.tenant_id
+    chats = [await _chat(db, tid) for _ in range(4)]
+    for cid in chats[:3]:
+        await ConversationService.set_list_state(db, tid, cid, pinned=True)
+    with pytest.raises(ConflictError):
+        await ConversationService.set_list_state(db, tid, chats[3], pinned=True)
+    # Pinning one that is already pinned is not a fourth, and unpinning frees a slot.
+    await ConversationService.set_list_state(db, tid, chats[0], pinned=True)
+    await ConversationService.set_list_state(db, tid, chats[0], pinned=False)
+    pinned = await ConversationService.set_list_state(db, tid, chats[3], pinned=True)
+    assert pinned.pinned_at is not None
