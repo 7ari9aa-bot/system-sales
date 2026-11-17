@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // The WhatsApp chat header over mocked HTTP.
 const ORIGIN = process.env.BASE_URL || "http://127.0.0.1:4173";
 
-async function boot(page, { lastCustomerMessageAt }) {
+async function boot(page, { lastCustomerMessageAt, openRow = false }) {
   const calls = [];
   const row = { id: "c1", channel: "whatsapp", status: "open", customer_id: "cust-1", customer_name: "Sara", customer_phone: "201001234567", unread_count: 0, assignee_user_id: null, last_message_at: new Date().toISOString(), last_customer_message_at: lastCustomerMessageAt, last_message_preview: "hi", last_message_content_type: "text", pinned_at: null, muted_until: null, archived_at: null, marked_unread: false };
   await page.context().addCookies([{ name: "csrf_token", value: "ui-test", url: new URL(ORIGIN).origin }]);
@@ -22,6 +22,7 @@ async function boot(page, { lastCustomerMessageAt }) {
     return send({ items: [], next_cursor: null });
   });
   await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  if (openRow) await page.getByTestId("chat-row").first().click();
   await expect(page.getByTestId("chat-header")).toBeVisible();
   return { calls };
 }
@@ -80,3 +81,23 @@ test("the more menu closes with Escape and gives focus back to its button", asyn
   await expect(page.getByTestId("chat-list-menu")).toHaveCount(0);
   await expect(page.getByTestId("header-more")).toBeFocused();
 });
+
+// The 3-dots menu must open INSIDE the screen. The header is forced left-to-right,
+// so a menu anchored with a logical "end" edge landed off-screen in Arabic.
+for (const [name, viewport] of [["desktop", { width: 1280, height: 720 }], ["mobile", { width: 390, height: 780 }]]) {
+  test(`the more menu opens fully inside the screen (${name})`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await boot(page, { lastCustomerMessageAt: hoursAgo(1), openRow: name === "mobile" });
+    await page.getByTestId("header-more").click();
+    const menu = page.getByTestId("header-menu");
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    // And it is the button's own edge, not somewhere else on the page.
+    const btn = await page.getByTestId("header-more").boundingBox();
+    expect(Math.abs(box.x + box.width - (btn.x + btn.width))).toBeLessThanOrEqual(2);
+  });
+}
