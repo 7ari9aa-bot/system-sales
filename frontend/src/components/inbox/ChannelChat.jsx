@@ -26,7 +26,8 @@ import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPic
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
-import WhatsAppBubble from "./whatsapp/WhatsAppBubble";
+import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
+import { EmojiIcon, MicIcon, PlusIcon, SendIcon } from "./whatsapp/icons";
 import MessageStatus from "./whatsapp/MessageStatus";
 
 export default function ChannelChat({
@@ -450,36 +451,36 @@ export default function ChannelChat({
             lang={lang}
           />
         ) : isWhatsApp ? (
-          <div dir="ltr" className="flex h-11 items-center gap-1.5 overflow-hidden rounded-full bg-white px-2 shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:h-14 sm:gap-2 sm:px-3" style={{ borderRadius: 9999 }}>
-            <button
-              type="button"
-              onClick={() => { setAttachmentMenuOpen((v) => !v); setEmojiPickerOpen(false); }}
-              aria-label={lang === "ar" ? "المرفقات" : "Attachments"}
-              title={lang === "ar" ? "المرفقات" : "Attachments"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-              style={{ color: "#54656f" }}
-            >
-              <Paperclip className="h-5 w-5" />
-            </button>
+          // Original layout: emoji + attach sit OUTSIDE the white field, on the
+          // grey bar; the field is a rounded rectangle; send/mic are bare icons.
+          <div dir="ltr" className="flex min-h-[52px] items-center gap-1 px-1 py-1.5" style={{ fontFamily: WHATSAPP_FONT }}>
             <button
               type="button"
               onClick={() => { setEmojiPickerOpen((v) => !v); setAttachmentMenuOpen(false); }}
-              aria-label={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
-              title={lang === "ar" ? "الرموز التعبيرية والاستيكرز" : "Emoji & Stickers"}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-              style={{ color: "#54656f" }}
+              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji"}
+              title={lang === "ar" ? "الرموز التعبيرية" : "Emoji"}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
             >
-              <Smile className="h-[21px] w-[21px]" />
+              <EmojiIcon size={26} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAttachmentMenuOpen((v) => !v); setEmojiPickerOpen(false); }}
+              aria-label={lang === "ar" ? "إرفاق" : "Attach"}
+              title={lang === "ar" ? "إرفاق" : "Attach"}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
+            >
+              <PlusIcon size={26} />
             </button>
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              dir={lang === "ar" ? "rtl" : "ltr"}
+              dir="auto"
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitMessage(); } }}
               placeholder={t("inbox.typeMessage")}
               aria-label={t("inbox.typeMessage")}
               disabled={sending}
-              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#111b21] focus:outline-none placeholder:text-[#8696a0]", lang === "ar" ? "text-right" : "text-left")}
+              className="mx-1 h-[42px] min-w-0 flex-1 rounded-lg border-0 bg-white px-3 text-[15px] text-[#111b21] placeholder:text-[#667781] focus:outline-none"
             />
             {text.trim() ? (
               <button
@@ -487,11 +488,10 @@ export default function ChannelChat({
                 onClick={() => { void submitMessage(); }}
                 disabled={sending}
                 aria-label={t("inbox.send")}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-2 transition-transform hover:scale-105"
                 title={t("inbox.send")}
-                style={{ backgroundColor: "#00a884", color: "#fff" }}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] disabled:opacity-50"
               >
-                <ArrowUpRight className="h-[18px] w-[18px]" />
+                <SendIcon size={24} className={lang === "ar" ? "-scale-x-100" : undefined} />
               </button>
             ) : (
               <button
@@ -499,10 +499,9 @@ export default function ChannelChat({
                 onClick={() => setIsRecordingVoice(true)}
                 aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
                 title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record voice message"}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#f5f6f6] hover:text-[#00a884] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] transition-colors"
-                style={{ color: "#54656f" }}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884]"
               >
-                <Mic className="h-[21px] w-[21px]" />
+                <MicIcon size={24} />
               </button>
             )}
           </div>
@@ -724,7 +723,7 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
+function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
