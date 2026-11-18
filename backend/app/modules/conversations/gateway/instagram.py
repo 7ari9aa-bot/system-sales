@@ -566,5 +566,52 @@ class InstagramAdapter(ChannelAdapter):
         )
         return str(data.get("message_id", ""))
 
+    # ---------- who the customer is ----------
+
+    _PROFILE_FIELDS = (
+        "name,username,profile_pic,is_verified_user,follower_count,"
+        "is_user_follow_business,is_business_follow_user"
+    )
+
+    async def get_user_profile(
+        self,
+        credentials: ProviderCredentials,
+        igsid: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any] | None:
+        """The customer's public profile by their page-scoped id, or None when it cannot be read.
+
+        Meta refuses it for someone who commented but never messaged ("user consent is
+        required") and for a blocked user, so a refusal is NORMAL and not an error: the chat
+        simply keeps showing what it has. Only a real outage (breaker open, network) raises.
+        `profile_pic` is a link that expires after a few days, so the caller must copy the
+        image, not keep the link.
+        """
+        try:
+            data = await self._graph(
+                "GET", igsid, credentials, params={"fields": self._PROFILE_FIELDS}, _client=_client
+            )
+        except ExternalProviderError as exc:
+            text = str(exc).lower()
+            if (
+                "consent" in text
+                or "cannot be loaded" in text
+                or "does not exist" in text
+                or "(#100)" in text
+            ):
+                return None
+            if "http 400" in text or "http 403" in text or "http 404" in text:
+                return None
+            raise
+        return {
+            "name": (data.get("name") or "").strip() or None,
+            "username": (data.get("username") or "").strip() or None,
+            "profile_pic": data.get("profile_pic") or None,
+            "verified": bool(data.get("is_verified_user")),
+            "follower_count": data.get("follower_count"),
+            "follows_you": data.get("is_user_follow_business"),
+            "you_follow": data.get("is_business_follow_user"),
+        }
+
 
 instagram_adapter = InstagramAdapter()

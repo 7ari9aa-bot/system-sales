@@ -123,3 +123,60 @@ async def test_a_rejection_is_an_error_not_a_success():
 async def test_missing_credentials_fail_before_any_call():
     with pytest.raises(ExternalProviderError):
         await A.list_media({"api_key": "t"})
+
+
+async def test_user_profile_asks_for_the_documented_fields():
+    seen: list = []
+    c = _client(
+        {
+            "name": "Sara A",
+            "username": "sara.a",
+            "profile_pic": "https://cdn/p.jpg",
+            "is_verified_user": True,
+            "follower_count": 120,
+            "is_user_follow_business": True,
+            "is_business_follow_user": False,
+        },
+        seen=seen,
+    )
+    out = await A.get_user_profile(CREDS, "igsid-9", _client=c)
+    r = seen[0]
+    assert r.method == "GET" and r.url.path.endswith("/igsid-9")
+    for f in ("name", "username", "profile_pic", "follower_count", "is_user_follow_business"):
+        assert f in r.url.params["fields"]
+    assert out == {
+        "name": "Sara A",
+        "username": "sara.a",
+        "profile_pic": "https://cdn/p.jpg",
+        "verified": True,
+        "follower_count": 120,
+        "follows_you": True,
+        "you_follow": False,
+    }
+
+
+async def test_a_null_name_is_none_not_an_empty_string():
+    out = await A.get_user_profile(CREDS, "i", _client=_client({"username": "u", "name": None}))
+    assert out["name"] is None and out["username"] == "u" and out["profile_pic"] is None
+
+
+async def test_a_refused_profile_is_none_not_an_error():
+    # Meta says "User consent is required" for a commenter who never messaged us.
+    for status in (400, 403, 404):
+        c = _client(
+            {
+                "error": {
+                    "message": "User consent is required to access the user profile",
+                    "code": 230,
+                }
+            },
+            status=status,
+        )
+        assert await A.get_user_profile(CREDS, "i", _client=c) is None
+
+
+async def test_a_real_outage_still_raises():
+    with pytest.raises(ExternalProviderError):
+        await A.get_user_profile(
+            CREDS, "i", _client=_client({"error": {"message": "boom"}}, status=500)
+        )
