@@ -391,7 +391,7 @@ export default function ChannelChat({
           onClick={() => setContactDrawerOpen(true)}
           title={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
           aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : undefined}
-          className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors", isInstagram ? "text-black hover:opacity-60" : "hover:bg-black/5 text-muted-foreground")}
+          className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors", isInstagram ? "text-[#0c1014] hover:opacity-60" : "hover:bg-black/5 text-muted-foreground")}
         >
           {isInstagram ? <IgInfo /> : <MoreVertical className="h-[18px] w-[18px]" />}
         </button>
@@ -429,7 +429,7 @@ export default function ChannelChat({
 
       {/* Search Messages in Chat */}
       {(isWhatsApp || isInstagram || isMessenger || isTelegram) && searchOpen && (
-        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-[var(--wa-bg-panel)] px-3", isWhatsApp ? "border-[color:var(--wa-divider)]" : isInstagram ? "border-[#dbdbdb]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
+        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b bg-[var(--wa-bg-panel)] px-3", isWhatsApp ? "border-[color:var(--wa-divider)]" : isInstagram ? "border-[#dbdfe4]" : isMessenger ? "border-[#e4e6eb]" : "border-[#e4e9ec]")}>
           <Search className={cn("h-4 w-4 shrink-0", isWhatsApp ? "text-[color:var(--wa-text-secondary)]" : isInstagram ? "text-[#8e8e8e]" : isMessenger ? "text-[#65676b]" : "text-[#82919e]")} />
           <input
             type="search"
@@ -465,9 +465,9 @@ export default function ChannelChat({
         {isInstagram && !hasOlderMessages && !loadingMessages && !searchQuery.trim() && (
           <div data-testid="ig-thread-intro" className="flex flex-col items-center px-4 pb-6 pt-8 text-center">
             <IgAvatar src={conversation.avatarUrl} size={96} />
-            <p dir="auto" className="mt-3 flex items-center gap-1 text-[20px] font-semibold text-black">{conversation.customer}{conversation.verified && <IgVerified size={14} />}</p>
-            <p className="text-[14px] text-[#737373]"><span dir="ltr">{String(conversation.handle || "").replace(/^@/, "") || "Instagram"}</span> · Instagram</p>
-            {onViewProfile && <button type="button" onClick={onViewProfile} className="mt-4 rounded-lg bg-[#efefef] px-4 py-[7px] text-[14px] font-semibold text-black hover:bg-[#dbdbdb]">{lang === "ar" ? "عرض الملف الشخصي" : "View profile"}</button>}
+            <p dir="auto" className="mt-3 flex items-center gap-1 text-[20px] font-semibold text-[#0c1014]">{conversation.customer}{conversation.verified && <IgVerified size={14} />}</p>
+            <p className="text-[14px] text-[#6a717a]"><span dir="ltr">{String(conversation.handle || "").replace(/^@/, "") || "Instagram"}</span> · Instagram</p>
+            {onViewProfile && <button type="button" onClick={onViewProfile} className="ig-fill mt-4 inline-flex h-8 items-center rounded-[8px] px-4 text-[14px] font-semibold leading-[18px] text-[#0c1014] [--ig-fill:#f0f2f5] [--ig-fill-hover:#dbdfe4]">{lang === "ar" ? "عرض الملف الشخصي" : "View profile"}</button>}
           </div>
         )}
         {loadingMessages && (conversation.messages || []).length === 0 && (
@@ -498,7 +498,7 @@ export default function ChannelChat({
               {dayKey && dayKey !== previousDayKey && (
                 <div className={cn("flex justify-center", isInstagram ? "py-3" : "py-1.5")} aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
                   {/* Instagram prints the day as plain grey text, no pill and no shadow. */}
-                  <span className={cn(isInstagram ? "text-[12px] text-[#737373]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
+                  <span className={cn(isInstagram ? "text-[12px] text-[#6a717a]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>
@@ -721,7 +721,7 @@ export default function ChannelChat({
             )}
           </div>
         ) : isInstagram ? (
-          <div dir="ltr" className="flex h-11 items-center gap-1 rounded-full border border-[#dbdbdb] bg-white px-2 sm:h-12 sm:px-3">
+          <div dir="ltr" className="flex h-[46px] items-center gap-1 rounded-full border border-[#dbdfe4] bg-white px-3">
             <button
               type="button"
               onClick={() => setEmojiPickerOpen((v) => !v)}

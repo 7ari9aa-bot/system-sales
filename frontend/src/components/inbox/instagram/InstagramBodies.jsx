@@ -67,12 +67,12 @@ export function CardBody({ card, kind, lang, preview }) {
   const heading = kind === "story_reply" ? w.storyReply : kind === "story_mention" ? w.storyMention : reel ? w.reel : w.post;
   const isStory = kind === "story_reply" || kind === "story_mention";
   return (
-    <div data-testid={`ig-card-${kind}`} className="w-60 max-w-full overflow-hidden rounded-xl border border-black/10 bg-white text-[#262626]">
-      {preview && <div className="aspect-square w-full bg-[#efefef]">{preview}</div>}
+    <div data-testid={`ig-card-${kind}`} className="w-60 max-w-full overflow-hidden rounded-xl border border-[#0c1014]/10 bg-white text-[#262626]">
+      {preview && <div className="aspect-square w-full bg-[#f3f5f7]">{preview}</div>}
       <div className="space-y-1 px-3 py-2">
-        <div className="text-[12px] font-semibold text-[#737373]">{heading}</div>
+        <div className="text-[12px] font-semibold text-[#6a717a]">{heading}</div>
         {card?.title && <div dir="auto" className="line-clamp-3 break-words text-[13px]">{card.title}</div>}
-        {!card?.url && isStory && <div className="text-[12px] text-[#737373]">{w.storyGone}</div>}
+        {!card?.url && isStory && <div className="text-[12px] text-[#6a717a]">{w.storyGone}</div>}
         {href && <a href={href} target="_blank" rel="noopener noreferrer" className="inline-block text-[13px] font-semibold text-[#0095f6] hover:underline">{w.open}</a>}
       </div>
     </div>

@@ -19,15 +19,15 @@ function ThreadRow({ row, active, lang, onOpen, onChange }) {
   const when = igShortTime(row.lastAt, lang);
   const mutedNow = Boolean(row.mutedUntil) && new Date(row.mutedUntil) > new Date();
   const act = (body) => { setMenuOpen(false); onChange(row, body); };
-  const item = "block w-full px-4 py-3 text-start text-[14px] hover:bg-[#f2f2f2]";
+  const item = "block w-full px-4 py-3 text-start text-[14px] hover:bg-[#f3f5f7]";
   return (
-    <div className={cn("group relative flex items-center", active ? "bg-[#efefef]" : "hover:bg-[#f2f2f2]")}>
+    <div className={cn("group relative mx-2 flex items-center rounded-[12px]", active ? "bg-[#f3f5f7]" : "hover:bg-[#f3f5f7]")}>
       <button type="button" onClick={onOpen} aria-pressed={active} aria-label={row.customer}
-        className="flex min-w-0 flex-1 items-center gap-3 px-6 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]">
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] px-4 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]">
         <IgAvatar src={row.avatarUrl} size={56} ring={row.hasStory} />
         <span className="min-w-0 flex-1">
           <span dir="auto" className={cn("block truncate text-[14px] leading-[18px]", unread ? "font-semibold" : "font-normal")}>{row.customer}</span>
-          <span className={cn("mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-4", unread ? "font-semibold text-black" : "text-[#737373]")}>
+          <span className={cn("mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-4", unread ? "font-semibold text-[#0c1014]" : "text-[#6a717a]")}>
             <span dir="auto" className="truncate">{row.preview}</span>
             {when && <><span aria-hidden="true">·</span><span className="shrink-0">{when}</span></>}
           </span>
@@ -37,7 +37,7 @@ function ThreadRow({ row, active, lang, onOpen, onChange }) {
         {unread && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: IG.blue }} aria-label={isArabic ? "غير مقروءة" : "Unread"} />}
       </button>
       <button type="button" aria-label={isArabic ? "المزيد" : "More"} aria-expanded={menuOpen} data-testid="ig-row-more" onClick={() => setMenuOpen((v) => !v)}
-        className={cn("me-3 shrink-0 rounded-full p-1.5 hover:bg-[#dbdbdb] focus-visible:opacity-100 group-hover:opacity-100", menuOpen ? "opacity-100" : "opacity-0")}><IgMore size={20} /></button>
+        className={cn("me-3 shrink-0 rounded-full p-1.5 hover:bg-[#dbdfe4] focus-visible:opacity-100 group-hover:opacity-100", menuOpen ? "opacity-100" : "opacity-0")}><IgMore size={20} /></button>
       {menuOpen && (
         <>
           <button type="button" aria-label={isArabic ? "إغلاق" : "Close"} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
@@ -58,7 +58,7 @@ function EmptyThread({ lang, requests }) {
   return (
     <div className="grid h-full place-items-center p-8 text-center">
       <div>
-        <span className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-black"><IgMessenger size={48} /></span>
+        <span className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-[#0c1014]"><IgMessenger size={48} /></span>
         <h2 className="mt-4 text-[20px] font-normal">{requests ? (isArabic ? "طلبات المراسلة" : "Message requests") : (isArabic ? "رسائلك" : "Your messages")}</h2>
         <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{requests ? (isArabic ? "افتح طلبًا لترى من يراسلك. ردّك يقبل الطلب وينقله إلى رسائلك." : "Open a request to see who is messaging you. Replying accepts it and moves it to your messages.") : (isArabic ? "اختر محادثة للرد على عملائك." : "Choose a chat to reply to your customers.")}</p>
       </div>
@@ -94,10 +94,10 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
 
   return (
     <div className="flex h-full min-h-0">
-      <section aria-label={isArabic ? "المحادثات" : "Chats"} className={cn("flex min-h-0 w-full shrink-0 flex-col border-e md:w-[397px]", threadId && "hidden md:flex")} style={{ borderColor: IG.border }}>
+      <section aria-label={isArabic ? "المحادثات" : "Chats"} className={cn("flex min-h-0 w-full shrink-0 flex-col border-e md:w-[393px]", threadId && "hidden md:flex")} style={{ borderColor: IG.border }}>
         {showingRequests || showingArchive ? (
           <header className="flex h-[75px] shrink-0 items-center gap-4 px-6">
-            <Link to="/instagram/direct/inbox" aria-label={isArabic ? "رجوع" : "Back"} className="rounded-full p-1 hover:bg-[#f2f2f2]"><IgBack className={isArabic ? "-scale-x-100" : undefined} /></Link>
+            <Link to="/instagram/direct/inbox" aria-label={isArabic ? "رجوع" : "Back"} className="rounded-full p-1 hover:bg-[#f3f5f7]"><IgBack className={isArabic ? "-scale-x-100" : undefined} /></Link>
             <h1 className="text-[20px] font-bold">{showingArchive ? (isArabic ? "المحادثات المؤرشفة" : "Archived chats") : (isArabic ? "طلبات المراسلة" : "Message requests")}</h1>
           </header>
         ) : (
@@ -106,9 +106,9 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
           </header>
         )}
         <div className="shrink-0 px-6 pb-3">
-          <label className="flex h-9 items-center gap-2 rounded-lg px-3" style={{ background: IG.button }}>
-            <IgSearch size={16} className="text-[#737373]" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isArabic ? "بحث" : "Search"} aria-label={isArabic ? "بحث في المحادثات" : "Search chats"} className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#737373]" />
+          <label className="flex h-10 items-center gap-2 rounded-full px-4" style={{ background: IG.hover }}>
+            <IgSearch size={16} className="text-[#6a717a]" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isArabic ? "بحث" : "Search"} aria-label={isArabic ? "بحث في المحادثات" : "Search chats"} className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#6a717a]" />
           </label>
         </div>
         {showingArchive ? null : showingRequests ? (
@@ -119,14 +119,14 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
           <nav aria-label={isArabic ? "مجلدات الرسائل" : "Message folders"} className="flex shrink-0 border-b px-6" style={{ borderColor: IG.border }}>
             {[["primary", "/instagram/direct/inbox", isArabic ? "الأساسية" : "Primary"], ["general", "/instagram/direct/general", isArabic ? "العامة" : "General"], ["requests", "/instagram/direct/requests", isArabic ? "الطلبات" : "Requests"]].map(([id, to, name]) => (
               <Link key={id} to={to} aria-current={folder === id ? "page" : undefined}
-                className={cn("-mb-px flex h-11 flex-1 items-center justify-center border-b text-[14px] font-semibold", folder === id ? "border-black text-black" : "border-transparent text-[#737373] hover:text-black")}>
+                className={cn("-mb-px flex h-11 flex-1 items-center justify-center border-b text-[14px] font-semibold", folder === id ? "border-[#0c1014] text-[#0c1014]" : "border-transparent text-[#6a717a] hover:text-[#0c1014]")}>
                 {name}{id === "requests" && requestCount ? ` (${requestCount})` : ""}
               </Link>
             ))}
           </nav>
         )}
         {!showingArchive && !showingRequests && archivedCount > 0 && (
-          <Link to="/instagram/direct/archived" data-testid="ig-archive-link" className="flex shrink-0 items-center gap-3 px-6 py-3 text-[14px] font-semibold hover:bg-[#f2f2f2]">
+          <Link to="/instagram/direct/archived" data-testid="ig-archive-link" className="flex shrink-0 items-center gap-3 px-6 py-3 text-[14px] font-semibold hover:bg-[#f3f5f7]">
             <IgArchive size={20} /><span className="flex-1">{isArabic ? "المحادثات المؤرشفة" : "Archived chats"}</span><span style={{ color: IG.secondary }}>{archivedCount}</span>
           </Link>
         )}

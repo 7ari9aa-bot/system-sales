@@ -41,8 +41,8 @@ export default function InstagramUserPage() {
           <section className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h1 dir="ltr" className="flex items-center gap-1.5 text-[20px] font-normal">{handle || customer.name}{ig.verified && <IgVerified size={18} label={isArabic ? "موثّق" : "Verified"} />}</h1>
-              {chats[0] && <Link to={`/instagram/direct/t/${encodeURIComponent(chats[0].id)}`} className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdbdb]" style={{ background: IG.button }}>{isArabic ? "مراسلة" : "Message"}</Link>}
-              {handle && <a href={`https://www.instagram.com/${encodeURIComponent(handle)}/`} target="_blank" rel="noreferrer" className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdbdb]" style={{ background: IG.button }}>{isArabic ? "فتح على إنستغرام" : "View on Instagram"}</a>}
+              {chats[0] && <Link to={`/instagram/direct/t/${encodeURIComponent(chats[0].id)}`} className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdfe4]" style={{ background: IG.button }}>{isArabic ? "مراسلة" : "Message"}</Link>}
+              {handle && <a href={`https://www.instagram.com/${encodeURIComponent(handle)}/`} target="_blank" rel="noreferrer" className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdfe4]" style={{ background: IG.button }}>{isArabic ? "فتح على إنستغرام" : "View on Instagram"}</a>}
             </div>
             <ul className="mt-5 flex flex-wrap gap-x-10 gap-y-2 text-[16px]">
               {ig.follower_count != null && <li><span className="font-semibold">{igCount(ig.follower_count, lang)}</span> {isArabic ? "متابِع" : "followers"}</li>}
@@ -68,7 +68,7 @@ export default function InstagramUserPage() {
           {chats.length === 0
             ? <p className="text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "لا توجد محادثات إنستغرام." : "No Instagram conversations."}</p>
             : chats.map((chat) => (
-              <Link key={chat.id} to={`/instagram/direct/t/${encodeURIComponent(chat.id)}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-[14px] hover:bg-[#f2f2f2]">
+              <Link key={chat.id} to={`/instagram/direct/t/${encodeURIComponent(chat.id)}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-[14px] hover:bg-[#f3f5f7]">
                 <span dir="auto" className="truncate">{chat.preview || chat.customer}</span>
                 <span className="shrink-0 text-[12px]" style={{ color: IG.secondary }}>{igShortTime(chat.lastAt, lang)}</span>
               </Link>

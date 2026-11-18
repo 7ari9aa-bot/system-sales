@@ -25,7 +25,7 @@ function Rail({ compact, onCreate }) {
   const { pathname } = useLocation();
   const isArabic = lang === "ar";
   const item = (isActive) => cn(
-    "group relative flex h-12 items-center gap-4 rounded-lg px-3 text-[16px] transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]",
+    "group relative flex h-12 items-center gap-4 rounded-lg px-3 text-[16px] transition-colors hover:bg-[#f3f5f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]",
     compact ? "w-12 justify-center px-0" : "w-12 justify-center px-0 xl:w-full xl:justify-start xl:px-3",
     isActive ? "font-bold" : "font-normal"
   );
@@ -80,7 +80,7 @@ function InstagramShell() {
   const compact = pathname.startsWith("/instagram/direct");
   return (
     <div dir="ltr" className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
-      <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white text-black md:flex-row" style={{ fontFamily: IG.font }}>
+      <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white text-[#0c1014] md:flex-row" style={{ fontFamily: IG.font }}>
         <Rail compact={compact} onCreate={!demoAccount && actions.publish ? () => setCreating(true) : null} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {error && <div role="alert" className="border-b px-4 py-2 text-[13px]" style={{ borderColor: IG.border, color: IG.error }}>{error}</div>}

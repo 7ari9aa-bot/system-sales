@@ -36,7 +36,7 @@ export default function InstagramActivityPage() {
         {postsLoading && items.length === 0 && <p role="status" className="px-6 text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "جارٍ التحميل…" : "Loading…"}</p>}
         {!postsLoading && !postsError && items.length === 0 && (
           <div className="px-6 py-16 text-center">
-            <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-2 border-black"><IgHeart size={32} /></span>
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-2 border-[#0c1014]"><IgHeart size={32} /></span>
             <p className="mt-4 text-[14px]">{isArabic ? "عندما يعلّق أحد على منشوراتك ستراه هنا." : "When someone comments on your posts, you'll see it here."}</p>
           </div>
         )}
@@ -49,7 +49,7 @@ export default function InstagramActivityPage() {
               {list.map(({ comment, post }) => {
                 const waiting = needsAnswer(comment);
                 return (
-                  <Link key={comment.id} to={`/instagram/p/${encodeURIComponent(post.id)}`} data-testid="ig-activity-row" className="flex items-center gap-3 px-6 py-2 hover:bg-[#f2f2f2]">
+                  <Link key={comment.id} to={`/instagram/p/${encodeURIComponent(post.id)}`} data-testid="ig-activity-row" className="flex items-center gap-3 px-6 py-2 hover:bg-[#f3f5f7]">
                     <IgAvatar src={comment.avatarUrl} size={44} />
                     <p className="min-w-0 flex-1 text-[14px] leading-[18px]">
                       <bdi dir="auto" className="font-semibold">{comment.handle || comment.author}</bdi>{" "}
@@ -57,7 +57,7 @@ export default function InstagramActivityPage() {
                       <span style={{ color: IG.secondary }}>{igShortTime(comment.commentedAt, lang)}</span>
                       {waiting && <span className={cn("ms-2 inline-block rounded px-1.5 text-[11px] font-semibold text-white")} style={{ background: IG.blue }}>{isArabic ? "بدون رد" : "Needs reply"}</span>}
                     </p>
-                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-[4px] bg-[#efefef]">{post.mediaUrl && post.mediaType !== "video" && <img src={post.mediaUrl} alt="" className="h-full w-full object-cover" />}</span>
+                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-[4px] bg-[#f3f5f7]">{post.mediaUrl && post.mediaType !== "video" && <img src={post.mediaUrl} alt="" className="h-full w-full object-cover" />}</span>
                   </Link>
                 );
               })}

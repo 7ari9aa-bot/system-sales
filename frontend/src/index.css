@@ -1169,6 +1169,11 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
   }
 }
 
+/* The marketing reset `button{background:none;border:0}` sits outside any cascade layer, so it beats every Tailwind
+   utility on a <button>. Inside the Instagram app, buttons marked with a fill class get their colour back. */
+[data-instagram-app] button.ig-fill { background-color: var(--ig-fill); }
+[data-instagram-app] button.ig-fill:hover { background-color: var(--ig-fill-hover, var(--ig-fill)); }
+
 /* Headings and stat values scale with the viewport instead of truncating. */
 [data-dashboard-theme-scope] main .font-display.text-\[24px\] {
   font-size: clamp(17px, 1.45vw, 24px);

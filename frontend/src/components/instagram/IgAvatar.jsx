@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function IgDefaultAvatar({ className }) {
   return (
     <svg viewBox="0 0 100 100" className={className} aria-hidden="true">
-      <circle cx="50" cy="50" r="50" fill="#dbdbdb" />
+      <circle cx="50" cy="50" r="50" fill="#dbdfe4" />
       <circle cx="50" cy="40" r="17" fill="#fff" />
       <path d="M17 86c5-15 18-23 33-23s28 8 33 23a50 50 0 0 1-66 0Z" fill="#fff" />
     </svg>

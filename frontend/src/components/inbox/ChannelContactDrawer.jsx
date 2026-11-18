@@ -211,7 +211,7 @@ export default function ChannelContactDrawer({
       {isInstagram && (
         <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-card text-[#262626] dark:text-foreground">
           {/* Header */}
-          <div className="h-[60px] border-b border-[#dbdbdb] dark:border-border px-4 flex items-center justify-between shrink-0">
+          <div className="h-[60px] border-b border-[#dbdfe4] dark:border-border px-4 flex items-center justify-between shrink-0">
             <h3 className="text-[15px] font-bold text-[#262626] dark:text-foreground">
               {isAr ? "التفاصيل" : "Details"}
             </h3>
@@ -241,7 +241,7 @@ export default function ChannelContactDrawer({
               const pinnedNow = Boolean(conversation.pinnedAt);
               const unreadNow = Boolean(conversation.markedUnread);
               const archivedNow = Boolean(conversation.archivedAt);
-              const row = "flex w-full items-center justify-between py-3 text-[14px] border-b border-[#dbdbdb] dark:border-border text-start hover:bg-[#fafafa] dark:hover:bg-surface";
+              const row = "flex w-full items-center justify-between py-3 text-[14px] border-b border-[#dbdfe4] dark:border-border text-start hover:bg-[#fafafa] dark:hover:bg-surface";
               return (
                 <div role="group" aria-label={isAr ? "إجراءات المحادثة" : "Chat actions"} data-testid="ig-chat-actions">
                   <button type="button" className={row} data-testid="ig-action-pin" onClick={() => onListStateChange(conversation, { pinned: !pinnedNow })}>
@@ -302,7 +302,7 @@ export default function ChannelContactDrawer({
             </div>
 
             {/* CRM Link */}
-            <div className="pt-4 border-t border-[#dbdbdb] dark:border-border">
+            <div className="pt-4 border-t border-[#dbdfe4] dark:border-border">
               <button
                 type="button"
                 onClick={() => { onClose(); onOpenCustomerProfile?.(conversation); }}

@@ -32,26 +32,26 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
   return (
     <div className={cn("flex flex-col", out ? "items-end" : "items-start")}>
       {m.replyTo && (
-        <div data-testid="ig-quote" className="mb-0.5 max-w-[76%] truncate rounded-xl bg-black/5 px-3 py-1 text-[12px] text-[#737373]" dir="auto">
+        <div data-testid="ig-quote" className="mb-0.5 max-w-[76%] truncate rounded-xl bg-black/5 px-3 py-1 text-[12px] text-[#6a717a]" dir="auto">
           {m.replyTo.available === false ? "…" : m.replyTo.body || m.replyTo.text || "…"}
         </div>
       )}
       <div className={cn("relative max-w-[82%] sm:max-w-[76%]", reactions.length && "mb-3")}>
         <div
           data-testid="ig-bubble"
-          className={cn("text-[14px] leading-[1.45]", bare ? "" : "px-3 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
-          style={bare ? undefined : { background: out ? th?.out || "#4A5DF9" : th?.in || "#F3F5F7", color: out ? th?.outText || "#fff" : th?.inText || "#000", borderRadius: radius }}
+          className={cn("text-[15px] leading-5", bare ? "" : "px-3 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
+          style={bare ? undefined : { background: out ? th?.out || "#4a5df9" : th?.in || "#f3f5f7", color: out ? th?.outText || "#fff" : th?.inText || "#0c1014", borderRadius: radius }}
         >
           {body}
           {caption && <div dir="auto" className="mt-1.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{caption}</div>}
         </div>
         {reactions.length > 0 && (
-          <span data-testid="ig-reactions" className={cn("absolute -bottom-3 flex items-center rounded-full border border-[#dbdbdb] bg-white px-1.5 text-[13px] leading-5 shadow-sm", out ? "end-2" : "start-2")}>
+          <span data-testid="ig-reactions" className={cn("absolute -bottom-3 flex items-center rounded-full border border-[#dbdfe4] bg-white px-1.5 text-[13px] leading-5 shadow-sm", out ? "end-2" : "start-2")}>
             {reactions.join("")}
           </span>
         )}
       </div>
-      {showSeen && out && <span data-testid="ig-seen" className="mt-0.5 px-1 text-[11px] text-[#737373]">{SEEN[lang === "ar" ? "ar" : "en"]}</span>}
+      {showSeen && out && <span data-testid="ig-seen" className="mt-0.5 px-1 text-[11px] text-[#6a717a]">{SEEN[lang === "ar" ? "ar" : "en"]}</span>}
     </div>
   );
 }
