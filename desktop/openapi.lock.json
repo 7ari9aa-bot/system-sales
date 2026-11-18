@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 549,
-    "sha256": "1c0e5f01d4b0c1aeb77425d8b6d9ff979e3200126bf593a5546767e06c015cf1",
+    "operations": 550,
+    "sha256": "e64a6cc6ee0e89be7fdcc2ecd671ecfc85f1ad31646821cd65f87496ad1efa40",
     "typed_operations": 320
   },
   "spec": {
@@ -9892,10 +9892,65 @@
               "title": "External Id",
               "type": "string"
             },
+            "follower_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Follower Count"
+            },
+            "follows_you": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Follows You"
+            },
             "id": {
               "format": "uuid",
               "title": "Id",
               "type": "string"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username"
+            },
+            "verified": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verified"
+            },
+            "you_follow": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "You Follow"
             }
           },
           "required": [
@@ -76487,6 +76542,102 @@
           "summary": "Measure One Slo",
           "tags": [
             "sla"
+          ]
+        }
+      },
+      "/api/v1/social/account": {
+        "get": {
+          "description": "The connected Instagram account as its profile page shows it (name, bio, counts).",
+          "operationId": "get_account_api_v1_social_account_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Account",
+          "tags": [
+            "social"
           ]
         }
       },
