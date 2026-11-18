@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IG, igShortTime } from "@/components/instagram/igTheme";
-import { IgArchive, IgBack, IgMessenger, IgMuted, IgPin, IgSearch } from "@/components/instagram/igIcons";
+import { IgArchive, IgBack, IgMessenger, IgMore, IgMuted, IgPin, IgSearch } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
 import { useInstagramData } from "./useInstagramData";
 
@@ -12,24 +12,44 @@ const folderOf = (row) => {
   return folder === "requests" || folder === "general" ? folder : "primary";
 };
 
-function ThreadRow({ row, active, lang, onOpen }) {
+function ThreadRow({ row, active, lang, onOpen, onChange }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isArabic = lang === "ar";
   const unread = row.unread > 0 || row.markedUnread;
   const when = igShortTime(row.lastAt, lang);
+  const mutedNow = Boolean(row.mutedUntil) && new Date(row.mutedUntil) > new Date();
+  const act = (body) => { setMenuOpen(false); onChange(row, body); };
+  const item = "block w-full px-4 py-3 text-start text-[14px] hover:bg-[#f2f2f2]";
   return (
-    <button type="button" onClick={onOpen} aria-pressed={active} aria-label={row.customer}
-      className={cn("flex w-full items-center gap-3 px-6 py-2 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]", active ? "bg-[#efefef]" : "hover:bg-[#f2f2f2]")}>
-      <IgAvatar src={row.avatarUrl} size={56} ring={row.hasStory} />
-      <span className="min-w-0 flex-1">
-        <span dir="auto" className={cn("block truncate text-[14px] leading-[18px]", unread ? "font-semibold" : "font-normal")}>{row.customer}</span>
-        <span className={cn("mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-4", unread ? "font-semibold text-black" : "text-[#737373]")}>
-          <span dir="auto" className="truncate">{row.preview}</span>
-          {when && <><span aria-hidden="true">·</span><span className="shrink-0">{when}</span></>}
+    <div className={cn("group relative flex items-center", active ? "bg-[#efefef]" : "hover:bg-[#f2f2f2]")}>
+      <button type="button" onClick={onOpen} aria-pressed={active} aria-label={row.customer}
+        className="flex min-w-0 flex-1 items-center gap-3 px-6 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]">
+        <IgAvatar src={row.avatarUrl} size={56} ring={row.hasStory} />
+        <span className="min-w-0 flex-1">
+          <span dir="auto" className={cn("block truncate text-[14px] leading-[18px]", unread ? "font-semibold" : "font-normal")}>{row.customer}</span>
+          <span className={cn("mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-4", unread ? "font-semibold text-black" : "text-[#737373]")}>
+            <span dir="auto" className="truncate">{row.preview}</span>
+            {when && <><span aria-hidden="true">·</span><span className="shrink-0">{when}</span></>}
+          </span>
         </span>
-      </span>
-      {row.pinnedAt && <span aria-label={lang === "ar" ? "مثبّتة" : "Pinned"} style={{ color: IG.secondary }}><IgPin size={16} /></span>}
-      {row.mutedUntil && new Date(row.mutedUntil) > new Date() && <span aria-label={lang === "ar" ? "مكتومة" : "Muted"} style={{ color: IG.secondary }}><IgMuted size={16} /></span>}
-      {unread && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: IG.blue }} aria-label={lang === "ar" ? "غير مقروءة" : "Unread"} />}
-    </button>
+        {row.pinnedAt && <span aria-label={isArabic ? "مثبّتة" : "Pinned"} style={{ color: IG.secondary }}><IgPin size={16} /></span>}
+        {mutedNow && <span aria-label={isArabic ? "مكتومة" : "Muted"} style={{ color: IG.secondary }}><IgMuted size={16} /></span>}
+        {unread && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: IG.blue }} aria-label={isArabic ? "غير مقروءة" : "Unread"} />}
+      </button>
+      <button type="button" aria-label={isArabic ? "المزيد" : "More"} aria-expanded={menuOpen} data-testid="ig-row-more" onClick={() => setMenuOpen((v) => !v)}
+        className={cn("me-3 shrink-0 rounded-full p-1.5 hover:bg-[#dbdbdb] focus-visible:opacity-100 group-hover:opacity-100", menuOpen ? "opacity-100" : "opacity-0")}><IgMore size={20} /></button>
+      {menuOpen && (
+        <>
+          <button type="button" aria-label={isArabic ? "إغلاق" : "Close"} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
+          <div role="menu" data-testid="ig-row-menu" className="absolute end-3 top-12 z-20 w-56 overflow-hidden rounded-xl bg-white py-1 shadow-[0_4px_12px_rgba(0,0,0,.15)]">
+            <button role="menuitem" type="button" className={item} data-testid="ig-row-pin" onClick={() => act({ pinned: !row.pinnedAt })}>{row.pinnedAt ? (isArabic ? "إلغاء التثبيت" : "Unpin") : (isArabic ? "تثبيت" : "Pin")}</button>
+            <button role="menuitem" type="button" className={item} data-testid="ig-row-mute" onClick={() => act({ mute: mutedNow ? "off" : "always" })}>{mutedNow ? (isArabic ? "إلغاء الكتم" : "Unmute") : (isArabic ? "كتم" : "Mute")}</button>
+            <button role="menuitem" type="button" className={item} data-testid="ig-row-unread" onClick={() => act({ marked_unread: !row.markedUnread })}>{row.markedUnread ? (isArabic ? "تعليم كمقروءة" : "Mark as read") : (isArabic ? "تعليم كغير مقروءة" : "Mark as unread")}</button>
+            <button role="menuitem" type="button" className={item} data-testid="ig-row-archive" onClick={() => act({ archived: !row.archivedAt })}>{row.archivedAt ? (isArabic ? "إلغاء الأرشفة" : "Unarchive") : (isArabic ? "أرشفة" : "Archive")}</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -122,7 +142,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
               {query ? (isArabic ? "لا توجد نتائج." : "No results.") : showingArchive ? (isArabic ? "لا توجد محادثات مؤرشفة." : "No archived chats.") : showingRequests ? (isArabic ? "لا توجد طلبات مراسلة." : "No message requests.") : folder === "general" ? (isArabic ? "لا توجد رسائل في العامة." : "No messages in General.") : (isArabic ? "لا توجد رسائل بعد." : "No messages yet.")}
             </p>
           )}
-          {rows.map((row) => <ThreadRow key={row.id} row={row} lang={lang} active={row.id === threadId} onOpen={() => openThread(row)} />)}
+          {rows.map((row) => <ThreadRow key={row.id} row={row} lang={lang} active={row.id === threadId} onOpen={() => openThread(row)} onChange={data.changeListState} />)}
           {inboxCursor && (
             <button type="button" onClick={() => loadMoreConversations()} disabled={loadingMoreInbox} className="mx-6 my-3 text-[14px] font-semibold disabled:opacity-50" style={{ color: IG.blue }}>
               {loadingMoreInbox ? t("common.loading") : (isArabic ? "عرض المزيد" : "Show more")}

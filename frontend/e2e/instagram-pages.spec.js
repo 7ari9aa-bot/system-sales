@@ -275,3 +275,24 @@ test("pin, mute, mark unread and archive reach the API and show in the list; arc
   await page.getByTestId("ig-action-archive").click();
   await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { archived: false } });
 });
+
+// The row's own "..." menu does the same real changes as the info drawer, without opening the chat.
+test("the chat row menu pins and archives without opening the chat", async ({ page }) => {
+  const calls = [];
+  await page.route("**/api/v1/conversations/*/list-state", async (route) => {
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ pinned_at: body.pinned ? iso(0) : null, muted_until: null, archived_at: body.archived ? iso(0) : null, marked_unread: Boolean(body.marked_unread) }) });
+  });
+  await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded" });
+  const list = page.getByRole("region", { name: "Chats" });
+  await expect(list.getByRole("button", { name: "Omar Ali" })).toBeVisible({ timeout: 15_000 });
+  await list.getByTestId("ig-row-more").nth(1).click({ force: true });
+  await expect(page.getByTestId("ig-row-menu")).toBeVisible();
+  await page.getByTestId("ig-row-pin").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ pinned: true });
+  await expect(page).toHaveURL(/\/instagram\/direct\/inbox$/);
+  await list.getByTestId("ig-row-more").first().click({ force: true });
+  await page.getByTestId("ig-row-archive").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ archived: true });
+});
