@@ -1,0 +1,184 @@
+"""Staff routes for the store's own posts and comments (Instagram).
+
+Read needs the Instagram channel to be visible to the user; every action that
+speaks for the store (reply, hide, delete, private reply) needs it to be SENDABLE,
+the same stricter grant a chat reply needs. The platform is called first and our
+row changes only after it accepted, so the screen never shows something that did not happen.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+
+from app.core.errors import ConflictError, PermissionDeniedError
+from app.modules.conversations.models import SocialComment, SocialPost
+from app.modules.conversations.routers._deps import (
+    TenantContext,
+    require_permission,
+)
+from app.modules.conversations.social_service import MAX_REPLY_CHARS, SocialService
+from app.modules.platform.services import channel_access as _channel_access
+
+router = APIRouter(tags=["social"])
+
+_PROVIDER = "instagram"
+
+
+class CommentReplyRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_REPLY_CHARS)
+
+
+class CommentHideRequest(BaseModel):
+    hidden: bool = True
+
+
+class PostCommentsToggleRequest(BaseModel):
+    enabled: bool
+
+
+def _post_out(p: SocialPost) -> dict:
+    return {
+        "id": p.post_id,
+        "caption": p.caption,
+        "media_url": p.media_url,
+        "thumbnail_url": p.thumbnail_url,
+        "media_type": p.media_type,
+        "permalink": p.permalink,
+        "like_count": p.like_count,
+        "comments_count": p.comments_count,
+        "comments_enabled": p.comments_enabled,
+        "posted_at": p.posted_at.isoformat() if p.posted_at else None,
+        "publish_status": p.publish_status,
+    }
+
+
+def _comment_out(c: SocialComment) -> dict:
+    return {
+        "id": c.comment_id,
+        "post_id": c.post_id,
+        "parent_id": c.parent_comment_id,
+        "username": c.username or c.author_name,
+        "body": c.body,
+        "like_count": c.like_count,
+        "commented_at": c.commented_at.isoformat() if c.commented_at else None,
+        "status": c.status,
+        "is_page_reply": c.is_page_reply,
+        "replied_at": c.replied_at.isoformat() if c.replied_at else None,
+        "private_replied_at": c.private_replied_at.isoformat() if c.private_replied_at else None,
+    }
+
+
+async def _credentials(ctx: TenantContext, *, send: bool) -> dict:
+    """The connected Instagram account's credentials, after the channel grants are checked."""
+    allowed = await _channel_access.allowed_providers(
+        ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
+    )
+    if allowed is not None and _PROVIDER not in allowed:
+        raise PermissionDeniedError("channel is not enabled for this user")
+    if send:
+        sendable = await _channel_access.sendable_providers(
+            ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
+        )
+        if sendable is not None and _PROVIDER not in sendable:
+            raise PermissionDeniedError("sending is not enabled for this user on this channel")
+    config = await _channel_access.channel_credentials_config(ctx.session, ctx.tenant_id, _PROVIDER)
+    if not config or not config.get("api_key") or not config.get("account_id"):
+        raise ConflictError("Instagram is not connected")
+    return config
+
+
+@router.get("/social/posts")
+async def list_posts(
+    refresh: bool = False,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+    before: datetime | None = None,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """The store's posts, newest first. `refresh=true` pulls the latest from Instagram first."""
+    if refresh:
+        creds = await _credentials(ctx, send=False)
+        await SocialService.sync_posts(ctx.session, ctx.tenant_id, creds, limit=limit)
+    else:
+        await _credentials(ctx, send=False)
+    posts = await SocialService.list_posts(ctx.session, ctx.tenant_id, limit=limit, before=before)
+    return {"items": [_post_out(p) for p in posts]}
+
+
+@router.get("/social/posts/{post_id}/comments")
+async def list_post_comments(
+    post_id: str,
+    refresh: bool = False,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """A post's comments, oldest first, replies carrying their parent id."""
+    creds = await _credentials(ctx, send=False)
+    if refresh:
+        await SocialService.sync_comments(ctx.session, ctx.tenant_id, creds, post_id)
+    comments = await SocialService.list_comments(ctx.session, ctx.tenant_id, post_id)
+    return {"items": [_comment_out(c) for c in comments]}
+
+
+@router.post("/social/comments/{comment_id}/reply", status_code=201)
+async def reply_to_comment(
+    comment_id: str,
+    body: CommentReplyRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    reply = await SocialService.reply_publicly(
+        ctx.session, ctx.tenant_id, creds, comment_id, body.text, user_id=ctx.user.id
+    )
+    return _comment_out(reply)
+
+
+@router.post("/social/comments/{comment_id}/hide")
+async def hide_comment(
+    comment_id: str,
+    body: CommentHideRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    row = await SocialService.set_hidden(
+        ctx.session, ctx.tenant_id, creds, comment_id, body.hidden, user_id=ctx.user.id
+    )
+    return _comment_out(row)
+
+
+@router.delete("/social/comments/{comment_id}", status_code=204)
+async def delete_comment(
+    comment_id: str,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    await SocialService.delete(ctx.session, ctx.tenant_id, creds, comment_id, user_id=ctx.user.id)
+
+
+@router.post("/social/comments/{comment_id}/private-reply", status_code=201)
+async def private_reply(
+    comment_id: str,
+    body: CommentReplyRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """One private message to the commenter, within 7 days of the comment."""
+    creds = await _credentials(ctx, send=True)
+    message_id = await SocialService.send_private_reply(
+        ctx.session, ctx.tenant_id, creds, comment_id, body.text, user_id=ctx.user.id
+    )
+    return {"message_id": message_id}
+
+
+@router.post("/social/posts/{post_id}/comments-enabled")
+async def toggle_post_comments(
+    post_id: str,
+    body: PostCommentsToggleRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    await SocialService.set_comments_enabled(
+        ctx.session, ctx.tenant_id, creds, post_id, body.enabled
+    )
+    return {"post_id": post_id, "comments_enabled": body.enabled}
