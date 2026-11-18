@@ -887,6 +887,65 @@ class PosService(PosReceiptReads):
         return await svc.value(key, scope="pos_profile", scope_id=pos_session.profile_id)
 
     @staticmethod
+    async def _resolve_restock(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        restock: bool | None,
+    ) -> bool:
+        """The cashier's choice when given, else the shop's ``pos.return_restock_default``."""
+        if restock is not None:
+            return bool(restock)
+        return bool(
+            await PosService._setting(session, tenant_id, "pos.return_restock_default", pos_session)
+        )
+
+    @staticmethod
+    async def _clean_return_reasons(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        lines: list[dict],
+    ) -> dict[UUID, str | None]:
+        """Each line's reason, checked against the owner's ``pos.return_reasons`` list.
+
+        A reason is optional. One that is not on the list is refused: the list is how the owner
+        keeps the reports readable ("size" and "Size " would be two different bars).
+        """
+        allowed = await PosService._setting(session, tenant_id, "pos.return_reasons", pos_session)
+        allowed_set = {str(r) for r in (allowed or [])}
+        reasons: dict[UUID, str | None] = {}
+        for line in lines:
+            raw = line.get("reason")
+            reason = str(raw).strip() if raw is not None else ""
+            if reason and reason not in allowed_set:
+                raise ValidationError(
+                    f"return reason {reason!r} is not one of this shop's reasons "
+                    f"{sorted(allowed_set)} (pos.return_reasons)"
+                )
+            reasons[UUID(str(line["variant_id"]))] = reason or None
+        return reasons
+
+    @staticmethod
+    async def _ensure_within_window(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        issued_at: datetime,
+        *,
+        key: str,
+        fallback_key: str | None = None,
+        what: str,
+    ) -> None:
+        """Refuse when the sale is older than the shop's window. ``0`` on ``key`` means "use
+        ``fallback_key``"; a ``None`` window means no limit."""
+        window = await PosService._setting(session, tenant_id, key, pos_session)
+        if fallback_key is not None and (window is None or int(window) == 0):
+            window = await PosService._setting(session, tenant_id, fallback_key, pos_session)
+        if window is not None and (datetime.now(UTC) - issued_at).days > int(window):
+            raise ConflictError(f"this sale is past the {int(window)}-day {what} window ({key})")
+
+    @staticmethod
     async def _discount_ceiling(
         session: AsyncSession, tenant_id: UUID, profile: PosProfile | None
     ) -> Decimal | None:
@@ -2521,7 +2580,7 @@ class PosService(PosReceiptReads):
         *,
         order_id: UUID,
         lines: list[dict],
-        restock: bool = False,
+        restock: bool | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -2565,11 +2624,16 @@ class PosService(PosReceiptReads):
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
-        window = await PosService._setting(session, tenant_id, "pos.return_max_days", pos_session)
-        if window is not None and (datetime.now(UTC) - receipt.issued_at).days > int(window):
-            raise ConflictError(
-                f"this sale is past the {int(window)}-day return window (pos.return_max_days)"
-            )
+        await PosService._ensure_within_window(
+            session,
+            tenant_id,
+            pos_session,
+            receipt.issued_at,
+            key="pos.return_max_days",
+            what="return",
+        )
+        restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        reasons = await PosService._clean_return_reasons(session, tenant_id, pos_session, lines)
         # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
         # (below); the return itself is recorded on the day that is open NOW. Booking it on the old
@@ -2717,6 +2781,7 @@ class PosService(PosReceiptReads):
                 "quantity": requested[variant_id],
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
+                "reason": reasons.get(variant_id),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -2765,6 +2830,7 @@ class PosService(PosReceiptReads):
                     quantity=entry["quantity"],
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
+                    reason=entry["reason"],
                 )
             )
         await session.flush()
@@ -2812,7 +2878,7 @@ class PosService(PosReceiptReads):
         order_id: UUID,
         return_lines: list[dict],
         new_lines: list[dict],
-        restock: bool = True,
+        restock: bool | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -2856,6 +2922,19 @@ class PosService(PosReceiptReads):
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        await PosService._ensure_within_window(
+            session,
+            tenant_id,
+            pos_session,
+            receipt.issued_at,
+            key="pos.exchange_max_days",
+            fallback_key="pos.return_max_days",
+            what="exchange",
+        )
+        restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        reasons = await PosService._clean_return_reasons(
+            session, tenant_id, pos_session, return_lines
+        )
         # As in return_sale: the original sale may be on an earlier, closed shift. The goods are
         # checked against that sale; the exchange is recorded on the day that is open now.
 
@@ -2993,6 +3072,7 @@ class PosService(PosReceiptReads):
                 "quantity": requested[variant_id],
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
+                "reason": reasons.get(variant_id),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -3078,6 +3158,7 @@ class PosService(PosReceiptReads):
                     quantity=entry["quantity"],
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
+                    reason=entry["reason"],
                 )
             )
         new_receipt = await PosService._issue_receipt(

@@ -94,3 +94,18 @@ def test_every_setting_explains_itself_in_both_languages() -> None:
     for d in list_definitions():
         assert d.label_ar and d.label_en, f"{d.key} is missing a label"
         assert d.description_ar and d.description_en, f"{d.key} is missing a description"
+
+
+def test_settings_with_no_behind_them_stay_out_of_the_registry() -> None:
+    """These were listed but nothing read them (the till records a sale, it takes no payment, and
+    the day/receipt/drawer rules are always on). A switch that moves nothing misleads the owner."""
+    keys = {d.key for d in list_definitions()}
+    for gone in (
+        "pos.default_payment_method",
+        "pos.allowed_payment_methods",
+        "pos.require_session",
+        "pos.opening_float_required",
+        "pos.return_requires_receipt",
+        "pos.deduct_stock_on",
+    ):
+        assert gone not in keys, f"{gone} is back but nothing enforces it"

@@ -288,3 +288,180 @@ async def test_an_explicit_safety_stock_beats_the_shop_default(db, tenant_ctx):
     await SettingsService(db, tenant_ctx.tenant_id).set("inventory.safety_stock_default", 7)
     assert (await _policy(db, tenant_ctx, safety_stock=2)).safety_stock == 2
     assert (await _policy(db, tenant_ctx, safety_stock=0)).safety_stock == 0
+
+
+# ----------------------------------------------------------- pos.exchange_max_days --
+
+
+async def _exchange(db, tenant_ctx, pos_session, order_id, variant, **kw):
+    from app.modules.pos.service import PosService
+
+    replacement = await _sellable_variant(db, tenant_ctx)
+    return await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        return_lines=[{"variant_id": str(variant.id), "quantity": 1, **kw}],
+        new_lines=[{"variant_id": str(replacement.id), "quantity": 1}],
+    )
+
+
+async def test_by_default_an_exchange_follows_the_return_window(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)  # past the 30-day return window
+    with pytest.raises(ConflictError, match="pos.exchange_max_days"):
+        await _exchange(db, tenant_ctx, pos_session, order_id, variant)
+
+
+async def test_a_longer_exchange_window_lets_an_old_sale_be_exchanged(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.exchange_max_days", 60)
+    assert await _exchange(db, tenant_ctx, pos_session, order_id, variant)
+
+
+async def test_the_exchange_window_does_not_loosen_the_return_window(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.exchange_max_days", 60)
+    with pytest.raises(ConflictError, match="pos.return_max_days"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+
+
+# ------------------------------------------------------ pos.return_restock_default --
+
+
+async def _on_hand(db, tenant_ctx, variant):
+    from sqlalchemy import func, select
+
+    from app.modules.inventory.models import InventoryMovement
+
+    return int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(InventoryMovement.quantity), 0)).where(
+                    InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                    InventoryMovement.variant_id == variant.id,
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def _return_one(db, tenant_ctx, pos_session, order_id, variant, **kw):
+    from app.modules.pos.service import PosService
+
+    return await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        **kw,
+    )
+
+
+async def test_a_return_goes_back_on_the_shelf_by_default(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _on_hand(db, tenant_ctx, variant) == before + 1
+
+
+async def test_turning_the_default_off_keeps_a_return_off_the_shelf(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _on_hand(db, tenant_ctx, variant) == before
+
+
+async def test_the_cashiers_explicit_choice_beats_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant, restock=True)
+    assert await _on_hand(db, tenant_ctx, variant) == before + 1
+
+
+# ------------------------------------------------------------ pos.return_reasons --
+
+
+async def _saved_reason(db, order_id):
+    from sqlalchemy import select
+
+    from app.modules.pos.models import PosReturnLine
+
+    return (
+        await db.execute(
+            select(PosReturnLine.reason).where(PosReturnLine.order_id == uuid.UUID(str(order_id)))
+        )
+    ).scalar_one()
+
+
+async def test_a_return_reason_from_the_shops_list_is_saved_on_the_line(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    from app.modules.pos.service import PosService
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "size"}],
+    )
+    assert await _saved_reason(db, order_id) == "size"
+
+
+async def test_a_return_without_a_reason_is_still_accepted(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _saved_reason(db, order_id) is None
+
+
+async def test_a_reason_the_shop_did_not_list_is_refused(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    with pytest.raises(ValidationError, match="pos.return_reasons"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "no such reason"}],
+        )
+
+
+async def test_the_owner_can_replace_the_reason_list(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_reasons", ["too_small"])
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "too_small"}],
+    )
+    assert await _saved_reason(db, order_id) == "too_small"

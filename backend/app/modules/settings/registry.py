@@ -191,6 +191,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
         "pos.allow_hold_cart",  # pos/service.py::hold_cart
         "pos.return_max_days",  # pos/service.py::return_sale
+        "pos.exchange_max_days",  # pos/service.py::exchange
+        "pos.return_restock_default",  # pos/service.py::return_sale, exchange
+        "pos.return_reasons",  # pos/service.py::_clean_return_reason
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
@@ -385,21 +388,6 @@ _reg(
 )
 _reg(
     SettingDef(
-        key="pos.default_payment_method",
-        domain="pos",
-        type=SettingType.ENUM,
-        default="cash",
-        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
-        allowed_values=("cash", "card", "wallet", "bank_transfer"),
-        branch_delegable=True,
-        label_ar="وسيلة التحصيل الافتراضية",
-        label_en="Default Payment Method",
-        description_ar="وسيلة التحصيل المقترحة افتراضياً عند البيع.",
-        description_en="The payment method suggested by default at the till.",
-    )
-)
-_reg(
-    SettingDef(
         key="pos.max_discount_pct",
         domain="pos",
         type=SettingType.NUMBER,
@@ -431,62 +419,6 @@ _reg(
 )
 _reg(
     SettingDef(
-        key="pos.require_session",
-        domain="pos",
-        type=SettingType.BOOL,
-        default=True,
-        scopes=(Scope.TENANT, Scope.BRANCH),
-        branch_delegable=True,
-        label_ar="إلزام بدء الوردية",
-        label_en="Require Session",
-        description_ar="لا يمكن البيع قبل فتح وردية كاشير.",
-        description_en="Sales require an open POS session.",
-    )
-)
-_reg(
-    SettingDef(
-        key="pos.opening_float_required",
-        domain="pos",
-        type=SettingType.BOOL,
-        default=True,
-        scopes=(Scope.TENANT, Scope.BRANCH),
-        branch_delegable=True,
-        label_ar="رصيد بداية الوردية",
-        label_en="Opening Float Required",
-        description_ar="إلزام إدخال رصيد الدرج عند بدء اليوم.",
-        description_en="Require the drawer's opening balance when the day starts.",
-    )
-)
-_reg(
-    SettingDef(
-        key="pos.deduct_stock_on",
-        domain="pos",
-        type=SettingType.ENUM,
-        default="sale",
-        scopes=(Scope.TENANT,),
-        allowed_values=("sale", "confirm", "ship"),
-        label_ar="وقت خصم المخزون",
-        label_en="Deduct Stock On",
-        description_ar="متى تُخصم الكمية من المخزون.",
-        description_en="When inventory is deducted for a sale.",
-    )
-)
-_reg(
-    SettingDef(
-        key="pos.return_requires_receipt",
-        domain="pos",
-        type=SettingType.BOOL,
-        default=False,
-        scopes=(Scope.TENANT, Scope.BRANCH),
-        branch_delegable=True,
-        label_ar="إلزام إيصال المرتجع",
-        label_en="Return Requires Receipt",
-        description_ar="إلزام إحضار إيصال البيع عند المرتجع.",
-        description_en="Require the original sale receipt for a return.",
-    )
-)
-_reg(
-    SettingDef(
         key="pos.return_max_days",
         domain="pos",
         type=SettingType.NUMBER,
@@ -503,19 +435,50 @@ _reg(
 )
 _reg(
     SettingDef(
-        key="pos.allowed_payment_methods",
+        key="pos.exchange_max_days",
         domain="pos",
-        type=SettingType.LIST,
-        default=["cash", "card", "wallet", "bank_transfer"],
-        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        type=SettingType.NUMBER,
+        # 0 = "same as the return window": a shop that never touches this behaves exactly as one
+        # that sets it equal to pos.return_max_days. Before this setting an exchange had NO time
+        # limit at all, so a shop that wants the old behaviour can set it to 365.
+        default=0,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        min_value=0,
+        max_value=365,
         branch_delegable=True,
-        label_ar="وسائل التحصيل المسموحة",
-        label_en="Allowed Payment Methods",
-        description_ar="وسائل التحصيل التي تظهر في الكاشير.",
-        description_en="The payment methods offered at the till.",
+        label_ar="مهلة الاستبدال (أيام)",
+        label_en="Exchange Window (Days)",
+        description_ar="أقصى عدد أيام بعد البيع يُقبل فيها الاستبدال. صفر يعني نفس مهلة المرتجع.",
+        description_en="Most days after a sale an exchange is accepted. 0 = same as returns.",
     )
 )
-
+_reg(
+    SettingDef(
+        key="pos.return_restock_default",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="إرجاع القطعة للرف افتراضياً",
+        label_en="Restock Returned Items by Default",
+        description_ar="القيمة الابتدائية لخيار إرجاع القطعة المرتجعة للمخزون. يغيّرها الكاشير.",
+        description_en="The starting choice for putting a returned item back on the shelf.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.return_reasons",
+        domain="pos",
+        type=SettingType.LIST,
+        default=["size", "defect", "changed_mind", "wrong_item"],
+        scopes=(Scope.TENANT,),
+        label_ar="أسباب المرتجع",
+        label_en="Return Reasons",
+        description_ar="الأسباب التي يختار منها الكاشير عند المرتجع. تُسجَّل مع كل قطعة.",
+        description_en="The reasons a cashier can pick from on a return. Saved on each item.",
+    )
+)
 # ============================== INVENTORY =================================
 #
 # There is deliberately no "allow negative stock" switch here (nor pos.allow_negative_stock_sale).

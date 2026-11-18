@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 548,
-    "sha256": "5930b27cd4a233ab719b15034dfd83dc2a23feb516dc369b3f45ff8ab72845f0",
+    "sha256": "9ab949364f26bcfc373ea52eba5daf4fdbcfab685dfb43021bbf764ed1f92cdb",
     "typed_operations": 320
   },
   "spec": {
@@ -8049,6 +8049,18 @@
               "title": "Quantity",
               "type": "integer"
             },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
             "variant_id": {
               "format": "uuid",
               "title": "Variant Id",
@@ -8079,9 +8091,15 @@
               "type": "string"
             },
             "restock": {
-              "default": true,
-              "title": "Restock",
-              "type": "boolean"
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restock"
             },
             "return_lines": {
               "items": {
@@ -16357,6 +16375,18 @@
               "title": "Quantity",
               "type": "integer"
             },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
             "variant_id": {
               "format": "uuid",
               "title": "Variant Id",
@@ -23705,9 +23735,15 @@
               "type": "string"
             },
             "restock": {
-              "default": false,
-              "title": "Restock",
-              "type": "boolean"
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restock"
             }
           },
           "required": [
