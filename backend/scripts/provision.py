@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -613,10 +614,10 @@ async def seed(conn: asyncpg.Connection) -> None:
 
     # Seed statutory country tax rates with effective dates
     tax_rates_data = [
-        ("EG", 0.1400, "2016-09-08", None, "ضريبة القيمة المضافة", "VAT", True),
-        ("SA", 0.0500, "2018-01-01", "2020-06-30", "ضريبة القيمة المضافة", "VAT", False),
-        ("SA", 0.1500, "2020-07-01", None, "ضريبة القيمة المضافة", "VAT", True),
-        ("AE", 0.0500, "2018-01-01", None, "ضريبة القيمة المضافة", "VAT", True),
+        ("EG", 0.1400, date(2016, 9, 8), None, "ضريبة القيمة المضافة", "VAT", True),
+        ("SA", 0.0500, date(2018, 1, 1), date(2020, 6, 30), "ضريبة القيمة المضافة", "VAT", False),
+        ("SA", 0.1500, date(2020, 7, 1), None, "ضريبة القيمة المضافة", "VAT", True),
+        ("AE", 0.0500, date(2018, 1, 1), None, "ضريبة القيمة المضافة", "VAT", True),
     ]
     for ccode, rate, eff_from, eff_until, lbl_ar, lbl_en, active in tax_rates_data:
         await conn.execute(
@@ -625,7 +626,7 @@ async def seed(conn: asyncpg.Connection) -> None:
                 id, country_code, rate, effective_from, effective_until,
                 label_ar, label_en, is_active
             )
-            VALUES (gen_random_uuid(), $1, $2, $3::date, $4::date, $5, $6, $7)
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (country_code, effective_from) DO NOTHING
             """,
             ccode,

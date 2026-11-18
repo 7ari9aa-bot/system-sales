@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
-import { useTranslation } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 import { buildReceiptEscPos } from "@/cashier/lib/escpos";
 import {
   connectBluetoothPrinter,
@@ -16,7 +16,7 @@ import {
 } from "@/cashier/lib/printerBridge";
 
 export default function PrinterSetupDialog({ open, onOpenChange }) {
-  const { t } = useTranslation();
+  const t = useT();
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");

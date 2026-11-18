@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useTenantUsers } from "@/cashier/api/useTenantUsers";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
-import { useTranslation } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 
 export default function ShiftHandoverDialog({ open, onOpenChange, currentCashierId, pending = false, error = null, onConfirm }) {
-  const { t } = useTranslation();
+  const t = useT();
   const { data: users = [], isLoading } = useTenantUsers();
   const [selectedUserId, setSelectedUserId] = useState("");
 
