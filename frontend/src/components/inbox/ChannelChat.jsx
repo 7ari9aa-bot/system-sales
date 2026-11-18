@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   Paperclip,
+  ImageIcon,
   Smile,
   Mic,
   MoreVertical,
@@ -733,7 +734,7 @@ export default function ChannelChat({
                   title={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
                 >
-                  <Paperclip className="h-[19px] w-[19px]" />
+                  <ImageIcon className="h-[19px] w-[19px]" />
                 </button>
                 <button
                   type="button"
