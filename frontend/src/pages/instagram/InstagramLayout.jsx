@@ -31,12 +31,12 @@ function Rail({ compact, onCreate }) {
   );
   const label = (text) => <span className={cn("truncate", compact ? "sr-only" : "sr-only xl:not-sr-only")}>{text}</span>;
   return (
-    <nav aria-label={isArabic ? "تنقل إنستغرام" : "Instagram navigation"} className={cn("flex h-full shrink-0 flex-col border-e px-3 pb-5 pt-2", compact ? "w-[72px] items-center" : "w-[72px] items-center xl:w-[244px] xl:items-stretch")} style={{ borderColor: IG.border }}>
-      <NavLink to="/instagram/direct/inbox" className={cn("mb-4 flex h-[72px] items-center px-3", compact && "justify-center px-0")} aria-label="Instagram">
+    <nav aria-label={isArabic ? "تنقل إنستغرام" : "Instagram navigation"} className={cn("order-last flex h-12 w-full shrink-0 flex-row items-center border-t px-2 md:order-none md:h-full md:flex-col md:border-e md:border-t-0 md:px-3 md:pb-5 md:pt-2", compact ? "md:w-[72px] md:items-center" : "md:w-[72px] md:items-center xl:w-[244px] xl:items-stretch")} style={{ borderColor: IG.border }}>
+      <NavLink to="/instagram/direct/inbox" className={cn("mb-4 hidden h-[72px] items-center px-3 md:flex", compact && "justify-center px-0")} aria-label="Instagram">
         <IgGlyph size={24} />
         {!compact && <span className="ms-4 hidden text-[22px] font-semibold tracking-[-0.01em] xl:inline" style={{ fontFamily: "'Billabong', 'Grand Hotel', cursive, " + IG.font }}>Instagram</span>}
       </NavLink>
-      <div className="flex flex-1 flex-col gap-1">
+      <div className="flex flex-1 flex-row items-center justify-around gap-1 md:flex-col md:items-stretch md:justify-start">
         <NavLink to="/instagram/direct/inbox" className={({ isActive }) => item(isActive || pathname.startsWith("/instagram/direct"))}>
           {({ isActive }) => <>
             <span className="relative transition-transform group-hover:scale-105"><IgMessenger filled={isActive || pathname.startsWith("/instagram/direct")} /><Badge count={unreadMessages} /></span>
@@ -62,7 +62,7 @@ function Rail({ compact, onCreate }) {
           </>}
         </NavLink>
       </div>
-      <NavLink to="/inbox" className={item(false)}>
+      <NavLink to="/inbox" className={cn(item(false), "hidden md:flex")}>
         <span className="transition-transform group-hover:scale-105"><IgChannels /></span>
         {label(isArabic ? "كل القنوات" : "All channels")}
       </NavLink>
@@ -80,7 +80,7 @@ function InstagramShell() {
   const compact = pathname.startsWith("/instagram/direct");
   return (
     <div dir="ltr" className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
-      <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 min-w-0 overflow-hidden bg-white text-black" style={{ fontFamily: IG.font }}>
+      <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white text-black md:flex-row" style={{ fontFamily: IG.font }}>
         <Rail compact={compact} onCreate={!demoAccount && actions.publish ? () => setCreating(true) : null} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {error && <div role="alert" className="border-b px-4 py-2 text-[13px]" style={{ borderColor: IG.border, color: IG.error }}>{error}</div>}
