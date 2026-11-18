@@ -55,13 +55,13 @@ test("every Instagram message type is drawn, not just text", async ({ page }) =>
   await expect(page.getByTestId("ig-deleted")).toBeVisible();
 });
 
-test("bubbles use Instagram's own colours and 12px corners", async ({ page }) => {
+test("bubbles use Instagram's own colours and 18px corners", async ({ page }) => {
   await open(page);
   const mine = page.getByTestId("ig-bubble").filter({ hasText: "sent you the details" });
   const theirs = page.getByTestId("ig-bubble").filter({ hasText: "hello there" });
   await expect(mine).toBeVisible({ timeout: 15_000 });
   expect(await mine.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(74, 93, 249)");
-  expect(await mine.evaluate((e) => getComputedStyle(e).borderTopLeftRadius)).toBe("12px");
+  expect(await mine.evaluate((e) => getComputedStyle(e).borderTopLeftRadius)).toBe("18px");
   expect(await theirs.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(243, 245, 247)");
 });
 
