@@ -37,7 +37,16 @@ function Field({ def, value, text, error, onChange }) {
   const desc = def.description_ar || def.description_en;
   let control;
   if (def.type === "bool") {
-    control = <Switch checked={Boolean(value)} onCheckedChange={(v) => onChange(v)} aria-label={label} />;
+    // This tab lives on the general settings page, outside .cashier-root, where --primary and --input do not exist:
+    // the switch would be transparent whether on or off. Explicit colours keep on/off readable.
+    control = (
+      <Switch
+        checked={Boolean(value)}
+        onCheckedChange={(v) => onChange(v)}
+        aria-label={label}
+        className="data-[state=checked]:!bg-[#E8761A] data-[state=unchecked]:!bg-slate-300"
+      />
+    );
   } else if (def.type === "list") {
     control = (
       <textarea
@@ -45,7 +54,7 @@ function Field({ def, value, text, error, onChange }) {
         onChange={(e) => onChange(e.target.value)}
         rows={4}
         aria-label={label}
-        placeholder="سبب في كل سطر"
+        placeholder="سبب في كل سطر (مثل: size, defect, changed_mind, wrong_item)"
         className="w-full min-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-[12.5px]"
       />
     );
@@ -54,6 +63,7 @@ function Field({ def, value, text, error, onChange }) {
       <input
         type="text"
         inputMode="decimal"
+        placeholder={def.default === null ? "بدون حد" : undefined}
         value={text}
         onChange={(e) => onChange(e.target.value)}
         aria-label={label}

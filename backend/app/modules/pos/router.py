@@ -872,6 +872,7 @@ async def return_sale(
                 "variant_id": str(line.variant_id),
                 "quantity": line.quantity,
                 "reason": line.reason,
+                "restock": line.restock,
             }
             for line in body.lines
         ],
@@ -897,7 +898,12 @@ async def exchange(
         session_id,
         order_id=body.order_id,
         return_lines=[
-            {"variant_id": str(line.variant_id), "quantity": line.quantity, "reason": line.reason}
+            {
+                "variant_id": str(line.variant_id),
+                "quantity": line.quantity,
+                "reason": line.reason,
+                "restock": line.restock,
+            }
             for line in body.return_lines
         ],
         new_lines=[

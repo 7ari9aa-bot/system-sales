@@ -71,3 +71,17 @@ test("a refusal from the server is shown, not reported as saved", async ({ page 
   await expect(page.getByText("تم حفظ")).toHaveCount(0);
   await expect(page.getByText(/صلاحية/)).toBeVisible();
 });
+
+test("a switch is visibly on or off: this page is outside the cashier theme, so a missing colour would make both look the same", async ({ page }) => {
+  await setup(page);
+  const sw = page.getByRole("switch", { name: "إرجاع القطعة للرف افتراضيًا" });
+  const fill = () => sw.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect(sw).toHaveAttribute("data-state", "checked");
+  const on = await fill();
+  expect(on, "an on switch must have a fill").not.toBe("rgba(0, 0, 0, 0)");
+  await sw.click();
+  await expect(sw).toHaveAttribute("data-state", "unchecked");
+  const off = await fill();
+  expect(off, "an off switch must have a fill").not.toBe("rgba(0, 0, 0, 0)");
+  expect(off, "on and off must not look the same").not.toBe(on);
+});
