@@ -158,27 +158,31 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
             </div>
           ) : (
             <>
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                <article className="mx-auto w-full max-w-[860px] px-4 pb-4 pt-5 sm:px-7">
-                  <div className="overflow-hidden rounded-[10px] border border-[#dbdbdb] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <div className="rounded-full bg-[conic-gradient(from_45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75)] p-[2px]"><img src={selected.accountAvatarUrl || "/fihrist-mark.svg"} alt="" className="h-9 w-9 rounded-full border-2 border-white bg-white object-cover" /></div>
-                      <div className="min-w-0 flex-1"><p dir="ltr" className="truncate text-[14px] font-semibold">{selected.accountName || "fihrist.store"}</p><p className="mt-0.5 text-[12px] text-[#8e8e8e]">{selected.timeLabel}</p></div>
-                      <button type="button" aria-label={isArabic ? "خيارات المنشور" : "Post options"} className="rounded-full p-2 text-[#262626] hover:bg-[#f5f5f5]"><MoreHorizontal className="h-5 w-5" /></button>
-                    </div>
-                    {selected.mediaUrl && <div className="flex max-h-[300px] items-center justify-center overflow-hidden bg-[#f3f3f3] sm:max-h-[360px]"><img src={selected.mediaUrl} alt={isArabic ? "صورة المنشور" : "Post media"} className="max-h-[300px] w-full object-contain sm:max-h-[360px]" /></div>}
-                    <div dir={isArabic ? "rtl" : "ltr"} className="px-4 pb-3 pt-3">
-                      <div className="mb-2 flex items-center gap-4 text-[#262626]"><Heart className="h-[19px] w-[19px]" /><MessageCircle className="h-[19px] w-[19px]" /><Send className="h-[18px] w-[18px]" /></div>
-                      <p className="text-[13px] font-semibold">{Number(selected.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : "likes"}</p>
-                      <p className="mt-2 text-[14px] leading-[1.7]"><bdi dir="auto" className="me-1 font-semibold">{selected.accountName || "fihrist.store"}</bdi><span dir="auto">{selected.text}</span></p>
-                      <div className="mt-3 flex items-center justify-between border-t border-[#efefef] pt-2.5 text-[12px] text-[#8e8e8e]"><span>{isArabic ? "التعليقات" : "Comments"} <b className="font-medium text-[#262626]">{countComments(selected.comments)}</b></span><span>{isArabic ? "الأحدث" : "Most recent"}</span></div>
+              <div className="@container flex min-h-0 flex-1 items-start justify-center overflow-y-auto p-4 sm:p-6">
+                <article dir="ltr" data-testid="ig-post-card" className="grid w-full max-w-[935px] grid-cols-1 overflow-hidden rounded-[4px] border border-[#dbdbdb] bg-white @2xl:h-[min(640px,calc(100dvh-210px))] @2xl:min-h-[420px] @2xl:grid-cols-[minmax(0,1fr)_minmax(320px,405px)]">
+                  <div className="flex max-h-[420px] items-center justify-center overflow-hidden bg-black @2xl:max-h-none">
+                    {selected.mediaUrl ? <img src={selected.mediaUrl} alt={isArabic ? "صورة المنشور" : "Post media"} className="h-full max-h-[420px] w-full object-contain @2xl:max-h-none" /> : <span className="grid h-full min-h-[240px] w-full place-items-center bg-[#fafafa] text-[#8e8e8e]"><ImageIcon className="h-10 w-10" /></span>}
+                  </div>
+                  <div className="flex min-h-0 min-w-0 flex-col border-t border-[#efefef] @2xl:border-s @2xl:border-t-0">
+                    <header className="flex shrink-0 items-center gap-3 border-b border-[#efefef] px-4 py-3.5">
+                      <div className="rounded-full bg-[conic-gradient(from_45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75)] p-[2px]"><img src={selected.accountAvatarUrl || "/fihrist-mark.svg"} alt="" className="h-8 w-8 rounded-full border-2 border-white bg-white object-cover" /></div>
+                      <p dir="ltr" className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-[18px] text-[#262626]">{selected.accountName || "fihrist.store"}</p>
+                      <button type="button" aria-label={isArabic ? "خيارات المنشور" : "Post options"} className="text-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]"><MoreHorizontal className="h-6 w-6" /></button>
+                    </header>
+                    <section aria-label={isArabic ? "تعليقات المنشور" : "Post comments"} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 max-@2xl:max-h-[360px]">
+                      {selected.text ? <div className="mb-5 flex items-start gap-3">
+                        <img src={selected.accountAvatarUrl || "/fihrist-mark.svg"} alt="" className="h-8 w-8 shrink-0 rounded-full border border-[#efefef] bg-white object-cover" />
+                        <div className="min-w-0 flex-1 text-[14px] leading-[18px] text-[#262626]"><bdi dir="auto" className="me-1 font-semibold">{selected.accountName || "fihrist.store"}</bdi><span dir="auto" className="whitespace-pre-wrap break-words [unicode-bidi:isolate]">{selected.text}</span><p className="mt-2 text-[12px] leading-4 text-[#737373]">{selected.timeLabel}</p></div>
+                      </div> : null}
+                      {(selected.comments || []).length ? <div dir={isArabic ? "rtl" : "ltr"} className="space-y-4">{selected.comments.map((comment) => <Comment key={comment.id} comment={comment} isArabic={isArabic} actions={{ hide: onHide && ((c) => runAction(() => onHide(c.id, selected.id, !c.hidden))), remove: onDelete && ((c) => runAction(() => onDelete(c.id, selected.id))), privateReply: onPrivateReply && ((c) => { setPrivateFor(c); setReplyTo(null); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }) }} onReply={() => { setPrivateFor(null); setReplyTo(comment); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }} />)}</div> : <p className="py-8 text-center text-[13px] text-[#8e8e8e]">{isArabic ? "لسه مفيش تعليقات على المنشور ده." : "No comments on this post yet."}</p>}
+                    </section>
+                    <div className="shrink-0 border-t border-[#efefef] px-4 pb-2 pt-3">
+                      <div className="flex items-center gap-4 text-[#262626]"><Heart className="h-6 w-6" /><MessageCircle className="h-6 w-6 -scale-x-100" /><Send className="h-6 w-6" /></div>
+                      <p className="mt-2 text-[14px] font-semibold leading-[18px]">{Number(selected.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : "likes"}</p>
+                      <p className="mt-1 text-[10px] uppercase leading-[14px] tracking-[0.2px] text-[#737373]">{selected.timeLabel}</p>
                     </div>
                   </div>
                 </article>
-
-                <section aria-label={isArabic ? "تعليقات المنشور" : "Post comments"} dir={isArabic ? "rtl" : "ltr"} className="mx-auto w-full max-w-[860px] px-4 pb-5 sm:px-7">
-                  {(selected.comments || []).length ? <div className="space-y-5">{selected.comments.map((comment) => <Comment key={comment.id} comment={comment} isArabic={isArabic} actions={{ hide: onHide && ((c) => runAction(() => onHide(c.id, selected.id, !c.hidden))), remove: onDelete && ((c) => runAction(() => onDelete(c.id, selected.id))), privateReply: onPrivateReply && ((c) => { setPrivateFor(c); setReplyTo(null); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }) }} onReply={() => { setPrivateFor(null); setReplyTo(comment); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }} />)}</div> : <p className="py-8 text-center text-[13px] text-[#8e8e8e]">{isArabic ? "لسه مفيش تعليقات على المنشور ده." : "No comments on this post yet."}</p>}
-                </section>
               </div>
 
               <form onSubmit={submitReply} dir={isArabic ? "rtl" : "ltr"} className="shrink-0 border-t border-[#dbdbdb] bg-white px-4 py-3 sm:px-7">
@@ -239,6 +243,3 @@ function Comment({ comment, isArabic, onReply, actions, nested = false }) {
   );
 }
 
-function countComments(comments = []) {
-  return comments.reduce((sum, comment) => sum + 1 + (comment.replies?.length || 0), 0);
-}
