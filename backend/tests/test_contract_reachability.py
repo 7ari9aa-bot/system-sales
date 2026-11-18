@@ -520,6 +520,14 @@ _READ_CALLS = frozenset({"select", "update", "delete", "insert", "get"})
 #: built. Wiring a reader for one means DELETING its entry here — the positive
 #: assertion then keeps it read.
 TABLES_NEVER_READ: dict[str, str] = {
+    # Supply-chain audit trail: every transfer shipment / receipt and every location move writes one
+    # immutable row (services/transfers.py, locations.py). The history screen that reads them
+    # is not built; the rows are the ledger the quantities are reconciled against.
+    "InventoryLocationMovement": "bin move ledger; history screen not built.",
+    "InventoryTransferShipment": "transfer dispatch record; no reader yet.",
+    "InventoryTransferShipmentLine": "transfer dispatch lines; no reader yet.",
+    "InventoryTransferReceipt": "transfer receiving record; no reader yet.",
+    "InventoryTransferReceiptLine": "transfer receiving lines; no reader yet.",
     # The cashier no longer hands a drawer over; the table is kept as history by decision.
     "PosSessionHandover": "drawer hand-over removed from the cashier; rows kept as history.",
     # The close is a record of the day, not a count: nothing reconciles the drawer any more.

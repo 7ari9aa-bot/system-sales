@@ -3,7 +3,7 @@ import { Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
-import { DatabaseBackup, Printer, Store, Tags, Users, MonitorSmartphone } from "lucide-react";
+import { DatabaseBackup, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/cashier/components/ui/tabs";
 import { Toaster } from "@/cashier/components/ui/sonner";
 import "@/cashier/cashier.css";
@@ -13,6 +13,7 @@ import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarco
 import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
 import UsersSettings from "@/cashier/components/settings/UsersSettings";
 import BackupTab from "@/cashier/components/settings/BackupTab";
+import ShopPolicySettings from "@/cashier/components/settings/ShopPolicySettings";
 
 /** إعدادات الكاشير — البروفايلات والكاشيرات وسماحيات الموظفين.
  *
@@ -565,6 +566,7 @@ function ProfilesAndRegistersTab() {
 // النسخ الاحتياطي) + أجهزة الكاشير والبروفايلات. مكوّنات الكاشير تحتاج ثيمها فتُغلَّف بـ cashier-root.
 const TABS = [
   { value: "shop", label: "بيانات المحل", icon: Store },
+  { value: "policy", label: "سياسة المحل", icon: Undo2 },
   { value: "print", label: "الطباعة والباركود", icon: Printer },
   { value: "lists", label: "الفئات", icon: Tags },
   { value: "users", label: "المستخدمون", icon: Users },
@@ -592,6 +594,7 @@ export default function PosSettings() {
           })}
         </TabsList>
         <TabsContent value="shop" className="mt-4"><ShopProfileForm /></TabsContent>
+        <TabsContent value="policy" className="mt-4"><ShopPolicySettings /></TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
         <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>
         <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>

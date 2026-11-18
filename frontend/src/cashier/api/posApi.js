@@ -200,13 +200,15 @@ export const posApi = {
       }),
       needIntent(intent),
     ),
-  returnSale: async (id, { orderId, lines: l, restock = false }, intent) =>
+  // The shop's own choices for returns (restock default, reasons, windows), resolved for this till.
+  returnPolicy: (id) => api(`/pos/sessions/${seg(id)}/return-policy`),
+  returnSale: async (id, { orderId, lines: l, restock }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/returns`,
-      { order_id: orderId, lines: lines(l, "return line"), restock },
+      compact({ order_id: orderId, lines: lines(l, "return line"), restock }),
       needIntent(intent),
     ),
-  exchange: async (id, { orderId, returnLines, newLines, restock = true }, intent) =>
+  exchange: async (id, { orderId, returnLines, newLines, restock }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/exchanges`,
       compact({

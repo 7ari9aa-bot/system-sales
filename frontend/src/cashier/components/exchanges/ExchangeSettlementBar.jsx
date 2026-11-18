@@ -1,10 +1,11 @@
 import { ArrowLeftRight } from "lucide-react";
 import { fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
+import ReturnReasonSelect from "@/cashier/components/returns/ReturnReasonSelect";
 
 // ملخص الحساب: قيمة المرتجع (تقدير بنفس معادلة الخادم)، إجمالي البدائل (من الخادم)، ثم الفرق.
 // الفرق قيمة للتسجيل فقط: الموجب لصالح المحل والسالب لصالح العميل، ولا يتم تحصيل أو رد أي مبلغ
-export default function ExchangeSettlementBar({ exchangedValue, newValue, difference, loading = false, error = null, restock, onRestockChange }) {
+export default function ExchangeSettlementBar({ exchangedValue, newValue, difference, loading = false, error = null, restock, onRestockChange, reasons, reason, onReasonChange }) {
   const customerPays = difference > 0;
   const even = difference === 0;
 

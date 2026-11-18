@@ -166,6 +166,7 @@ class PoIn(BaseModel):
 
 
 class PoLineOut(BaseModel):
+    id: str | None = None
     variant_id: str
     quantity: int
     unit_cost: str
@@ -210,6 +211,7 @@ async def _po_out(ctx, order) -> PoOut:
         created_by_user_id=_id(order.created_by_user_id),
         lines=[
             PoLineOut(
+                id=str(ln.id),
                 variant_id=str(ln.variant_id),
                 quantity=ln.quantity,
                 unit_cost=_m(ln.unit_cost),

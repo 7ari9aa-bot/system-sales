@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import InsufficientStockError
@@ -102,6 +102,7 @@ class ValuationService:
         variant_id: UUID,
         warehouse_id: UUID,
         quantity: int,
+        allow_partial: bool = False,
     ) -> dict[str, Any]:
         """Deplete cost layers in FIFO order.
 
@@ -132,13 +133,13 @@ class ValuationService:
         )
 
         total_available = sum(lyr.remaining_quantity for lyr in layers)
-        if total_available < quantity:
+        if not allow_partial and total_available < quantity:
             raise InsufficientStockError(
                 f"insufficient cost layers for variant {variant_id}: "
                 f"requested {quantity}, available {total_available}"
             )
 
-        remaining_need = quantity
+        remaining_need = min(quantity, total_available) if allow_partial else quantity
         total_cogs = Decimal("0.0000")
         consumed_layers = []
 
@@ -297,12 +298,14 @@ class ValuationService:
         landed_cost_id: UUID,
         *,
         method: str = "quantity",
-        items: list[dict[str, Any]],
+        items: list[dict[str, Any]] | None = None,
     ) -> list[InventoryLandedCostLine]:
         """Allocate the landed cost total across items.
 
         `method`: 'quantity' (by item units) or 'value' (by units * unit_cost).
         `items`: list of dicts with: `variant_id`, `quantity`, `unit_cost`.
+        If items is omitted and landed cost is linked to a purchase order, items
+        are automatically loaded from the purchase order lines.
         """
         doc = (
             await session.execute(
@@ -318,6 +321,37 @@ class ValuationService:
             raise NotFoundError("landed cost not found")
         if doc.status != "draft":
             raise ConflictError(f"cannot allocate a {doc.status} landed cost")
+
+        if items is None:
+            if doc.purchase_order_id:
+                po_rows = (
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT variant_id, quantity, unit_cost FROM purchase_order_lines "
+                                "WHERE tenant_id = :tenant_id AND purchase_order_id = :po_id"
+                            ),
+                            {"tenant_id": tenant_id, "po_id": doc.purchase_order_id},
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                if not po_rows:
+                    raise ValidationError(
+                        f"purchase order {doc.purchase_order_id} has no lines to allocate"
+                    )
+                items = [
+                    {
+                        "variant_id": row["variant_id"],
+                        "quantity": row["quantity"],
+                        "unit_cost": row["unit_cost"],
+                    }
+                    for row in po_rows
+                ]
+            else:
+                raise ValidationError("must provide items to allocate landed cost")
+
         if not items:
             raise ValidationError("must provide at least one item to allocate landed cost")
 
@@ -440,26 +474,51 @@ class ValuationService:
 
         # Fold allocated landed cost into active layers for each variant in warehouse
         for line in lines:
-            extra_per_unit = (line.amount / Decimal(line.quantity)).quantize(Decimal("0.0001"))
-            q = (
-                select(InventoryCostLayer)
-                .where(
-                    InventoryCostLayer.tenant_id == tenant_id,
-                    InventoryCostLayer.warehouse_id == doc.warehouse_id,
-                    InventoryCostLayer.variant_id == line.variant_id,
-                    InventoryCostLayer.remaining_quantity > 0,
-                )
-                .order_by(InventoryCostLayer.layer_date.desc())
-                .with_for_update()
-            )
+            layers: list[InventoryCostLayer] = []
             if doc.purchase_order_id:
-                # Target layers from this PO if linked
-                pass
+                # First try targeting layers originating from this PO
+                po_q = (
+                    select(InventoryCostLayer)
+                    .where(
+                        InventoryCostLayer.tenant_id == tenant_id,
+                        InventoryCostLayer.warehouse_id == doc.warehouse_id,
+                        InventoryCostLayer.variant_id == line.variant_id,
+                        InventoryCostLayer.remaining_quantity > 0,
+                        InventoryCostLayer.source_type == "purchase_order",
+                        InventoryCostLayer.source_id == doc.purchase_order_id,
+                    )
+                    .order_by(InventoryCostLayer.layer_date.asc())
+                    .with_for_update()
+                )
+                layers = list((await session.execute(po_q)).scalars())
 
-            layers = list((await session.execute(q)).scalars())
-            # Distribute extra cost to available active layers
+            if not layers:
+                # Fall back to FIFO order of active layers for this variant
+                q = (
+                    select(InventoryCostLayer)
+                    .where(
+                        InventoryCostLayer.tenant_id == tenant_id,
+                        InventoryCostLayer.warehouse_id == doc.warehouse_id,
+                        InventoryCostLayer.variant_id == line.variant_id,
+                        InventoryCostLayer.remaining_quantity > 0,
+                    )
+                    .order_by(InventoryCostLayer.layer_date.asc())
+                    .with_for_update()
+                )
+                layers = list((await session.execute(q)).scalars())
+
+            # Distribute extra cost to layers up to line.quantity
+            remaining_qty = line.quantity
             for layer in layers:
+                if remaining_qty <= 0:
+                    break
+                qty_on_layer = min(layer.remaining_quantity, remaining_qty)
+                layer_extra = (
+                    line.amount * Decimal(qty_on_layer) / Decimal(line.quantity)
+                ).quantize(Decimal("0.0001"))
+                extra_per_unit = (layer_extra / Decimal(qty_on_layer)).quantize(Decimal("0.0001"))
                 layer.unit_cost = (layer.unit_cost + extra_per_unit).quantize(Decimal("0.0001"))
+                remaining_qty -= qty_on_layer
 
         doc.status = "posted"
         await session.flush()

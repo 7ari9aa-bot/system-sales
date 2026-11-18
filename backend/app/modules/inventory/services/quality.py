@@ -153,19 +153,21 @@ class QualityInspectionService:
                 if balance.quarantined and balance.quarantined > 0:
                     from_q = min(balance.quarantined, quantity)
                     balance.quarantined -= from_q
-                # Move out of stock
-                await MovementServiceMixin.move(
-                    session,
-                    tenant_id,
-                    variant_id,
-                    inspection.warehouse_id,
-                    direction="out",
-                    quantity=quantity,
-                    reason="damage",
-                    reference_type="quality_inspection",
-                    reference_id=inspection.id,
-                    actor_user_id=user_id,
-                )
+                # Move out of stock if goods were already posted to on_hand
+                if balance.on_hand >= quantity:
+                    await MovementServiceMixin.move(
+                        session,
+                        tenant_id,
+                        variant_id,
+                        inspection.warehouse_id,
+                        direction="out",
+                        quantity=quantity,
+                        reason="damage",
+                        reference_type="quality_inspection",
+                        reference_id=inspection.id,
+                        actor_user_id=user_id,
+                        allow_reserved_breach=True,
+                    )
 
         result = InventoryInspectionResult(
             tenant_id=tenant_id,

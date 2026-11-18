@@ -1,22 +1,27 @@
 import { expect, test } from "@playwright/test";
 
+// Public pages live at /{country}/{lang}/... since the country layer; `/` is the market selector.
+// The auth screens are the SPA's own. The old unprefixed addresses are covered separately below.
 const PUBLIC_ROUTES = [
   "/",
-  "/product",
-  "/conversations",
-  "/context",
-  "/assistant",
-  "/automation",
-  "/pricing",
-  "/security",
-  "/privacy",
-  "/terms",
-  "/contact-sales",
-  "/support",
-  "/solutions",
-  "/en",
-  "/en/pricing",
-  "/en/solutions",
+  "/eg/ar",
+  "/eg/ar/product",
+  "/eg/ar/conversations",
+  "/eg/ar/context",
+  "/eg/ar/assistant",
+  "/eg/ar/automation",
+  "/eg/ar/pricing",
+  "/eg/ar/security",
+  "/eg/ar/privacy",
+  "/eg/ar/terms",
+  "/eg/ar/contact-sales",
+  "/eg/ar/support",
+  "/eg/ar/solutions",
+  "/eg/en",
+  "/eg/en/pricing",
+  "/eg/en/solutions",
+  "/sa/ar/pricing",
+  "/ae/en",
   "/login",
   "/register",
   "/forgot-password",
@@ -36,6 +41,21 @@ test("every public and authentication route survives a production refresh", asyn
   }
 
   expect(pageErrors, "route navigation must not throw in React").toEqual([]);
+});
+
+test("the old unprefixed public addresses redirect permanently to the country site", async ({ request }) => {
+  const moved = {
+    "/pricing": "/eg/ar/pricing",
+    "/solutions/whatsapp-sales-system": "/eg/ar/solutions/whatsapp-sales-system",
+    "/en": "/eg/en",
+    "/en/pricing": "/eg/en/pricing",
+    "/en/blog": "/eg/en/blog",
+  };
+  for (const [from, to] of Object.entries(moved)) {
+    const response = await request.get(from, { maxRedirects: 0 });
+    expect([301, 308], `${from} must redirect permanently`).toContain(response.status());
+    expect(new URL(response.headers().location, "http://x").pathname, from).toBe(to);
+  }
 });
 
 test("login exposes labeled credentials and a working registration link", async ({ page }) => {
@@ -102,7 +122,7 @@ test("an invalid cookie session refreshes once then clears the session", async (
 
 test("login and pricing fit a mobile viewport without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const route of ["/login", "/pricing"]) {
+  for (const route of ["/login", "/eg/ar/pricing", "/eg/en/pricing"]) {
     await page.goto(route, { waitUntil: "domcontentloaded" });
     const widths = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,

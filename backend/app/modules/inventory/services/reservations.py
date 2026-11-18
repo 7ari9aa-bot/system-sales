@@ -4,14 +4,30 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.inventory.models import InventoryReservation
 
 from ._common import _now, check_physical_settlement
 from .balances import BalanceServiceMixin
+from .channel_allocation import ChannelAllocationService
 from .movements import MovementServiceMixin
+from .valuation import ValuationService
+
+
+async def _order_channel(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> str | None:
+    """The sales channel an order came in on, or None when it has none.
+
+    A read of one column, kept as SQL (not an orders import) so inventory takes no new
+    dependency on the orders module.
+    """
+    return (
+        await session.execute(
+            text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
+            {"tid": tenant_id, "oid": order_id},
+        )
+    ).scalar_one_or_none()
 
 
 class InventoryReservationService:
@@ -102,6 +118,19 @@ class InventoryReservationService:
                     balance_after=balance.on_hand,
                     reservation=active_ref.get((variant_id, warehouse_id)),
                 )
+            # allow_partial: a variant with no (or too few) cost layers is sold at the cost the
+            # layers it does have give, never refused; any other failure is a real error and
+            # must reach the caller instead of being swallowed inside the transaction.
+            consumption = await ValuationService.consume_fifo(
+                session,
+                tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                quantity=sold,
+                allow_partial=True,
+            )
+            cost_value = consumption.get("total_cogs")
+
             await MovementServiceMixin._append(
                 session,
                 tenant_id,
@@ -114,10 +143,25 @@ class InventoryReservationService:
                 reference_type="order",
                 reference_id=order_id,
                 actor_user_id=actor_user_id,
+                cost_value=cost_value,
             )
         for reservation in pending:
             reservation.status = "CONVERTED"
             reservation.converted_at = _now()
+
+        # Deduct channel allocations if the order has an associated sales channel
+        order_channel = await _order_channel(session, tenant_id, order_id)
+        if order_channel:
+            for (variant_id, warehouse_id), quantity in demand.items():
+                await ChannelAllocationService.deduct_channel_allocation(
+                    session,
+                    tenant_id,
+                    warehouse_id=warehouse_id,
+                    variant_id=variant_id,
+                    channel=order_channel,
+                    quantity=quantity,
+                )
+
         return len(pending)
 
     @staticmethod
@@ -127,6 +171,30 @@ class InventoryReservationService:
         The balance-level stock release itself stays the caller's job
         (InventoryService.release) — this only flips the durable rows.
         """
+        active_reservations = list(
+            (
+                await session.execute(
+                    select(InventoryReservation).where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.order_id == order_id,
+                        InventoryReservation.status == "ACTIVE",
+                    )
+                )
+            ).scalars()
+        )
+        if active_reservations:
+            channel = await _order_channel(session, tenant_id, order_id)
+            if channel:
+                for res in active_reservations:
+                    await ChannelAllocationService.release_from_channel(
+                        session,
+                        tenant_id,
+                        warehouse_id=res.warehouse_id,
+                        variant_id=res.variant_id,
+                        channel=channel,
+                        quantity=res.quantity,
+                    )
+
         result = await session.execute(
             update(InventoryReservation)
             .where(

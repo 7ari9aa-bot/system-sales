@@ -232,7 +232,28 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 #    branch replaced with two service methods (channel_identity, get_for_tenant). The edge adds
 #    no cycle (conversations already imports customers.service in ConversationService).
 # Measured with the counter in this file, not guessed.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 237
+# 237 -> 240 on 2026-11-18 (settings branch, measured on top of main's 237): +3 deliberate edges.
+# settings router -> identity.deps (permission gate); then:
+# Bumped to 237 when app/modules/settings was introduced (settings router -> identity.deps).
+# 237 -> 238 on 2026-11-18, ONE deliberate edge: pos -> settings.service (SettingsService), in
+# pos/service.py::_discount_ceiling. The discount ceiling a till enforces falls back to the
+# resolved setting `pos.max_discount_pct` when the profile has none of its own. The settings
+# engine owns the inheritance (tenant, branch, warehouse, profile), so pos asks it rather than
+# re-implementing the walk. settings imports nothing from pos, so the edge adds no cycle.
+# 238 -> 239 on 2026-11-18, ONE deliberate edge: orders -> settings.service (SettingsService), in
+# orders/service.py::reservation_ttl. How long a stock hold lasts is now the setting
+# `inventory.reserve_ttl_minutes` (default 15, the old constant). Both places that stamp an
+# expiry (order create, saga reversal) read it through this one function. settings imports
+# nothing from orders, so the edge adds no cycle.
+# 240 -> 242 on 2026-11-18, TWO deliberate edges, both into settings.service (the engine owns the
+# inheritance walk; settings imports nothing from either module, so no cycle): pos ->
+# settings.service in pos/service.py::_setting (hold_cart, return_sale), and purchasing ->
+# settings.service in GoodsReceiptService.create (purchasing.allow_over_receipt).
+# 242 -> 244 on 2026-11-18, TWO more deliberate edges into settings.service (still no cycle):
+# pos/service.py::_resolve_customer (pos.require_customer, the shop-wide default under a till's
+# own switch) and inventory/services/replenishment.py::set_policy
+# (inventory.safety_stock_default, used when a policy states no buffer of its own).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 244
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

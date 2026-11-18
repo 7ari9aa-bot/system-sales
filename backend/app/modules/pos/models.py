@@ -318,6 +318,8 @@ class PosReturnLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
     # What this line actually refunded: the original gross minus this line's
     # share of the order's discount.
     refund_total: Mapped[Decimal] = mapped_column(MONEY)
+    # Why it came back: one of the owner's pos.return_reasons. NULL = none given (or an old return).
+    reason: Mapped[str | None] = mapped_column(String(63), nullable=True)
 
     __table_args__ = (Index("ix_pos_return_lines_tenant_order", "tenant_id", "order_id"),)
 

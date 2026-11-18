@@ -109,16 +109,16 @@ class StocktakeService:
         if scope and isinstance(scope, list):
             v_ids: list[UUID] = []
             for item in scope:
-                if isinstance(item, dict) and "variant_id" in item:
-                    try:
-                        v_ids.append(UUID(str(item["variant_id"])))
-                    except Exception:
-                        pass
-                elif isinstance(item, (str, UUID)):
-                    try:
-                        v_ids.append(UUID(str(item)))
-                    except Exception:
-                        pass
+                raw = item.get("variant_id") if isinstance(item, dict) else item
+                if not isinstance(raw, (str, UUID)):
+                    raise ValidationError(f"stocktake scope entry has no variant id: {item!r}")
+                try:
+                    v_ids.append(UUID(str(raw)))
+                except ValueError:
+                    # Skipping it would silently widen a partial count to the whole warehouse.
+                    raise ValidationError(
+                        f"stocktake scope has an invalid variant id: {raw!r}"
+                    ) from None
             if v_ids:
                 scoped_variants = v_ids
 

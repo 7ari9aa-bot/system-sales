@@ -291,6 +291,11 @@ class HoldCartRequest(BaseModel):
 class ReturnLine(BaseModel):
     variant_id: UUID
     quantity: StrictInt = Field(ge=1, le=100000)
+    # One of the shop's pos.return_reasons; checked against that list when the return is made.
+    reason: str | None = Field(default=None, max_length=63)
+    # This piece's own shelf decision (a jacket back on the rail, a torn one not). None = the
+    # request's choice, else the shop's pos.return_restock_default.
+    restock: bool | None = None
 
 
 class ReturnRequest(BaseModel):
@@ -298,12 +303,15 @@ class ReturnRequest(BaseModel):
 
     order_id: UUID
     lines: list[ReturnLine] = Field(min_length=1)
-    restock: bool = False
+    # None = the shop's pos.return_restock_default (a line can still override it).
+    restock: bool | None = None
 
 
 class ExchangeLine(BaseModel):
     variant_id: UUID
     quantity: StrictInt = Field(ge=1, le=100000)
+    reason: str | None = Field(default=None, max_length=63)
+    restock: bool | None = None  # as on ReturnLine; only meaningful on the returned side
 
 
 class ExchangeRequest(BaseModel):
@@ -313,7 +321,7 @@ class ExchangeRequest(BaseModel):
     order_id: UUID
     return_lines: list[ExchangeLine] = Field(min_length=1)
     new_lines: list[ExchangeLine] = Field(min_length=1)
-    restock: bool = True
+    restock: bool | None = None
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
@@ -416,6 +424,12 @@ async def get_session(session_id: UUID, ctx: PosReadCtx):
         outflow=detail["outflow"],
         expected_now=detail["expected_now"],
     )
+
+
+@router.get("/sessions/{session_id}/return-policy")
+async def return_policy(session_id: UUID, ctx: PosReadCtx):
+    """The shop's return and exchange choices for this till: the screen's starting point."""
+    return await PosService.return_policy(ctx.session, ctx.tenant_id, session_id)
 
 
 @router.post("/sessions/{session_id}/scan")
@@ -854,7 +868,13 @@ async def return_sale(
         session_id,
         order_id=body.order_id,
         lines=[
-            {"variant_id": str(line.variant_id), "quantity": line.quantity} for line in body.lines
+            {
+                "variant_id": str(line.variant_id),
+                "quantity": line.quantity,
+                "reason": line.reason,
+                "restock": line.restock,
+            }
+            for line in body.lines
         ],
         restock=body.restock,
         actor_user_id=ctx.user.id,
@@ -878,7 +898,12 @@ async def exchange(
         session_id,
         order_id=body.order_id,
         return_lines=[
-            {"variant_id": str(line.variant_id), "quantity": line.quantity}
+            {
+                "variant_id": str(line.variant_id),
+                "quantity": line.quantity,
+                "reason": line.reason,
+                "restock": line.restock,
+            }
             for line in body.return_lines
         ],
         new_lines=[

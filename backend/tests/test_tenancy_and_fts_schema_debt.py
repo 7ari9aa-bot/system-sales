@@ -150,18 +150,22 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     ids = {}
     for path in _all_migrations():
         src = path.read_text(encoding="utf-8")
-        # Two template generations coexist here: the current
+        # Three header shapes coexist here (annotated, bare, and a tuple for a merge): the current
         # `revision: str = "..."` / `down_revision: str | None = "..."` and the
         # older quoted/`Union[...]` form Alembic ships in script.py.mako. Both
         # are valid, so the guard must read both — a regex that only matches one
         # reports a fork that does not exist.
-        rev = re.search(r"^revision:\s*\S+\s*=\s*[\"']([^\"']+)[\"']", src, re.M)
-        down = re.search(r"^down_revision:\s*[^=]+=\s*(?:None|[\"']([0-9a-f]{12})[\"'])", src, re.M)
+        rev = re.search(r"^revision(?::[^=\n]+)?\s*=\s*[\"']([^\"']+)[\"']", src, re.M)
+        down = re.search(
+            r"^down_revision(?::[^=\n]+)?\s*=\s*(None|\([^)]*\)|[\"'][0-9a-f]{12}[\"'])", src, re.M
+        )
         assert rev, f"{path.name}: no parseable `revision` assignment"
         assert down, f"{path.name}: no parseable `down_revision` assignment"
-        ids[path.name[:12]] = (rev.group(1), down.group(1) if down.group(1) else None)
+        # A MERGE revision names several parents in a tuple; every one of them is "pointed to".
+        parents = re.findall(r"[0-9a-f]{12}", down.group(1))
+        ids[path.name[:12]] = (rev.group(1), parents)
 
-    roots = {r for r, (_, parent) in ids.items() if parent is None}
+    roots = {r for r, (_, parents) in ids.items() if not parents}
     orphan_roots = roots - {"0b79f7470c1a"}
     assert not orphan_roots, f"extra chain root(s) would fork the history: {orphan_roots}"
 
@@ -186,7 +190,7 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
     # The pin names the COMMITTED head, because CI is what runs the build. A
     # migration file sitting in versions/ uncommitted therefore fails this on
     # purpose: it is a fork nobody has decided about yet.
-    pointed_to = {parent for _, parent in ids.values() if parent}
+    pointed_to = {parent for _, parents in ids.values() for parent in parents}
     tail = set(ids) - pointed_to
     # The INVARIANT is "exactly one head" — not a pinned revision id. The pin
     # moved with every wave (fe2026101401 -> ... -> fe2026101507 -> 1710 ->

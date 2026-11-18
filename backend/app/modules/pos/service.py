@@ -871,6 +871,147 @@ class PosService(PosReceiptReads):
         }
 
     @staticmethod
+    async def _setting(
+        session: AsyncSession, tenant_id: UUID, key: str, pos_session: PosSession
+    ) -> object:
+        """The effective value of ``key`` for the till this shift ran on.
+
+        Resolved down the shop's hierarchy from the shift's profile, so a branch or a single till
+        can differ from the shop. A shift with no profile reads the shop-wide value.
+        """
+        from app.modules.settings.service import SettingsService
+
+        svc = SettingsService(session, tenant_id)
+        if pos_session.profile_id is None:
+            return await svc.value(key)
+        return await svc.value(key, scope="pos_profile", scope_id=pos_session.profile_id)
+
+    @staticmethod
+    async def return_policy(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
+        """What this till's owner decided about returns, for the cashier screen to start from.
+
+        The same three answers the return and exchange paths read themselves, resolved for this
+        shift's till, so the screen's starting point can never disagree with what the server does.
+        """
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        get = lambda key: PosService._setting(session, tenant_id, key, pos_session)  # noqa: E731
+        return_days = await get("pos.return_max_days")
+        exchange_days = await get("pos.exchange_max_days")
+        return {
+            "restock_default": bool(await get("pos.return_restock_default")),
+            "reasons": [str(r) for r in (await get("pos.return_reasons") or [])],
+            "return_max_days": None if return_days is None else int(return_days),
+            # 0 means "same as returns", resolved here so the screen never has to know that rule.
+            "exchange_max_days": (
+                None
+                if return_days is None and not exchange_days
+                else int(exchange_days or return_days)
+            ),
+        }
+
+    @staticmethod
+    async def _resolve_restock(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        restock: bool | None,
+    ) -> bool:
+        """The cashier's choice when given, else the shop's ``pos.return_restock_default``."""
+        if restock is not None:
+            return bool(restock)
+        return bool(
+            await PosService._setting(session, tenant_id, "pos.return_restock_default", pos_session)
+        )
+
+    @staticmethod
+    def _line_restock(lines: list[dict], restock: bool) -> dict[UUID, bool]:
+        """Which returned variants go back on the shelf: the line's own choice, else ``restock``.
+
+        ``restock`` is the request-wide answer (already resolved against the shop's default). A
+        line may override it for its own piece. Two lines for one variant are merged into one
+        quantity later, so they must agree: refusing is better than guessing which one wins.
+        """
+        decided: dict[UUID, bool] = {}
+        for line in lines:
+            variant_id = UUID(str(line["variant_id"]))
+            own = line.get("restock")
+            choice = restock if own is None else bool(own)
+            if variant_id in decided and decided[variant_id] != choice:
+                raise ValidationError(
+                    f"variant {variant_id} is on two return lines with different shelf decisions"
+                )
+            decided[variant_id] = choice
+        return decided
+
+    @staticmethod
+    async def _clean_return_reasons(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        lines: list[dict],
+    ) -> dict[UUID, str | None]:
+        """Each line's reason, checked against the owner's ``pos.return_reasons`` list.
+
+        A reason is optional. One that is not on the list is refused: the list is how the owner
+        keeps the reports readable ("size" and "Size " would be two different bars).
+        """
+        allowed = await PosService._setting(session, tenant_id, "pos.return_reasons", pos_session)
+        allowed_set = {str(r) for r in (allowed or [])}
+        reasons: dict[UUID, str | None] = {}
+        for line in lines:
+            raw = line.get("reason")
+            reason = str(raw).strip() if raw is not None else ""
+            if reason and reason not in allowed_set:
+                raise ValidationError(
+                    f"return reason {reason!r} is not one of this shop's reasons "
+                    f"{sorted(allowed_set)} (pos.return_reasons)"
+                )
+            reasons[UUID(str(line["variant_id"]))] = reason or None
+        return reasons
+
+    @staticmethod
+    async def _ensure_within_window(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        issued_at: datetime,
+        *,
+        key: str,
+        fallback_key: str | None = None,
+        what: str,
+    ) -> None:
+        """Refuse when the sale is older than the shop's window. ``0`` on ``key`` means "use
+        ``fallback_key``"; a ``None`` window means no limit."""
+        window = await PosService._setting(session, tenant_id, key, pos_session)
+        if fallback_key is not None and (window is None or int(window) == 0):
+            window = await PosService._setting(session, tenant_id, fallback_key, pos_session)
+        if window is not None and (datetime.now(UTC) - issued_at).days > int(window):
+            raise ConflictError(f"this sale is past the {int(window)}-day {what} window ({key})")
+
+    @staticmethod
+    async def _discount_ceiling(
+        session: AsyncSession, tenant_id: UUID, profile: PosProfile | None
+    ) -> Decimal | None:
+        """The ceiling in force for this till, or None for no ceiling.
+
+        The profile's own ``max_discount_pct`` is the most specific answer and wins when set, so
+        every ceiling a shop already has keeps meaning exactly what it meant. Only when the
+        profile has none does the setting ``pos.max_discount_pct`` apply, resolved down the
+        shop's hierarchy (tenant, branch, the profile's warehouse, the profile), so an owner can
+        set one rule for the whole shop or one branch without editing every till.
+        """
+        if profile is None:
+            return None
+        if profile.max_discount_pct is not None:
+            return Decimal(profile.max_discount_pct)
+        from app.modules.settings.service import SettingsService
+
+        resolved = await SettingsService(session, tenant_id).value(
+            "pos.max_discount_pct", scope="pos_profile", scope_id=profile.id
+        )
+        return None if resolved is None else Decimal(str(resolved))
+
+    @staticmethod
     async def _ensure_within_discount_ceiling(
         session: AsyncSession,
         tenant_id: UUID,
@@ -885,10 +1026,12 @@ class PosService(PosReceiptReads):
         Measures the discount that really applies, the typed invoice discount PLUS every line
         percentage, as a share of the sale before any discount. Looking at one field alone would
         let a cashier split a discount across the two. No ceiling set (NULL), a till with no
-        profile, or a manager (``pos:override``) means no check, exactly as before the setting.
+        profile with no settings above it, or a manager (``pos:override``) means no check.
         """
-        ceiling = None if profile is None else profile.max_discount_pct
-        if ceiling is None or override:
+        if override:
+            return
+        ceiling = await PosService._discount_ceiling(session, tenant_id, profile)
+        if ceiling is None:
             return
         subtotal, _lines, line_discounts = await PosService._price_lines(session, tenant_id, items)
         if subtotal <= 0:
@@ -1224,7 +1367,14 @@ class PosService(PosReceiptReads):
             return customer_id
         # The till says every sale needs a named customer: a walk-in is not one. Without this the
         # flag was stored and shown but never enforced, and a sale with no customer went through.
-        if profile is not None and profile.require_customer:
+        # A till's own switch wins when it is on; otherwise the shop-wide setting decides, so a
+        # merchant who wants a named customer on every sale sets it once, not on each till.
+        from app.modules.settings.service import SettingsService
+
+        shop_requires = bool(
+            await SettingsService(session, tenant_id).value("pos.require_customer")
+        )
+        if (profile is not None and profile.require_customer) or shop_requires:
             raise ValidationError("this till requires a customer on every sale")
         if profile is not None and profile.default_customer_id is not None:
             return profile.default_customer_id
@@ -2227,6 +2377,8 @@ class PosService(PosReceiptReads):
         )
         if pos_session.status != "OPEN":
             raise ConflictError("carts are held on the open session only")
+        if not await PosService._setting(session, tenant_id, "pos.allow_hold_cart", pos_session):
+            raise ConflictError("holding a cart is turned off for this till (pos.allow_hold_cart)")
         PosService._ensure_session_current(
             pos_session, tz=await PosService._shop_timezone(session, tenant_id)
         )
@@ -2471,7 +2623,7 @@ class PosService(PosReceiptReads):
         *,
         order_id: UUID,
         lines: list[dict],
-        restock: bool = False,
+        restock: bool | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -2515,6 +2667,17 @@ class PosService(PosReceiptReads):
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        await PosService._ensure_within_window(
+            session,
+            tenant_id,
+            pos_session,
+            receipt.issued_at,
+            key="pos.return_max_days",
+            what="return",
+        )
+        restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        shelf = PosService._line_restock(lines, restock)
+        reasons = await PosService._clean_return_reasons(session, tenant_id, pos_session, lines)
         # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
         # (below); the return itself is recorded on the day that is open NOW. Booking it on the old
@@ -2618,7 +2781,8 @@ class PosService(PosReceiptReads):
                     f"{money_cap} unit(s) are already returned"
                 )
 
-        if restock:
+        shelved = {v: q for v, q in requested.items() if shelf.get(v)}
+        if shelved:
             # The shelf cap, separate from the quantity cap: a return that did not restock put
             # nothing back on the shelf, and goods already back cannot come back twice.
             restocked_already = dict(
@@ -2638,7 +2802,7 @@ class PosService(PosReceiptReads):
                     )
                 ).all()
             )
-            for variant_id, quantity in requested.items():
+            for variant_id, quantity in shelved.items():
                 goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
@@ -2662,6 +2826,7 @@ class PosService(PosReceiptReads):
                 "quantity": requested[variant_id],
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
+                "reason": reasons.get(variant_id),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -2674,9 +2839,11 @@ class PosService(PosReceiptReads):
         # never creates a Refund, an OrderPayment or a drawer movement.
 
         restocked = False
-        if restock:
+        if shelved:
             register = await PosService._get_register(session, tenant_id, pos_session.register_id)
             for entry in refund_lines:
+                if not shelf.get(entry["variant_id"]):
+                    continue
                 await InventoryService.move(
                     session,
                     tenant_id,
@@ -2710,6 +2877,7 @@ class PosService(PosReceiptReads):
                     quantity=entry["quantity"],
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
+                    reason=entry["reason"],
                 )
             )
         await session.flush()
@@ -2740,9 +2908,11 @@ class PosService(PosReceiptReads):
                     "variant_id": str(entry["variant_id"]),
                     "quantity": entry["quantity"],
                     "refund_total": str(entry["refund_total"]),
+                    "restocked": bool(shelf.get(entry["variant_id"])),
                 }
                 for entry in refund_lines
             ],
+            # True when at least one piece went back on the shelf; each line says its own.
             "restocked": restocked,
         }
 
@@ -2757,7 +2927,7 @@ class PosService(PosReceiptReads):
         order_id: UUID,
         return_lines: list[dict],
         new_lines: list[dict],
-        restock: bool = True,
+        restock: bool | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -2801,6 +2971,20 @@ class PosService(PosReceiptReads):
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        await PosService._ensure_within_window(
+            session,
+            tenant_id,
+            pos_session,
+            receipt.issued_at,
+            key="pos.exchange_max_days",
+            fallback_key="pos.return_max_days",
+            what="exchange",
+        )
+        restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        shelf = PosService._line_restock(return_lines, restock)
+        reasons = await PosService._clean_return_reasons(
+            session, tenant_id, pos_session, return_lines
+        )
         # As in return_sale: the original sale may be on an earlier, closed shift. The goods are
         # checked against that sale; the exchange is recorded on the day that is open now.
 
@@ -2897,7 +3081,8 @@ class PosService(PosReceiptReads):
                     f"variant {variant_id} was sold {sold_qty} and "
                     f"{money_cap} unit(s) are already returned"
                 )
-        if restock:
+        shelved = {v: q for v, q in requested.items() if shelf.get(v)}
+        if shelved:
             restocked_already = dict(
                 (
                     await session.execute(
@@ -2915,7 +3100,7 @@ class PosService(PosReceiptReads):
                     )
                 ).all()
             )
-            for variant_id, quantity in requested.items():
+            for variant_id, quantity in shelved.items():
                 goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
@@ -2938,6 +3123,7 @@ class PosService(PosReceiptReads):
                 "quantity": requested[variant_id],
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
+                "reason": reasons.get(variant_id),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -2989,8 +3175,10 @@ class PosService(PosReceiptReads):
             session, tenant_id, new_order.id, actor_user_id=actor_user_id
         )
 
-        if restock:
+        if shelved:
             for entry in return_entries:
+                if not shelf.get(entry["variant_id"]):
+                    continue
                 await InventoryService.move(
                     session,
                     tenant_id,
@@ -3023,6 +3211,7 @@ class PosService(PosReceiptReads):
                     quantity=entry["quantity"],
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
+                    reason=entry["reason"],
                 )
             )
         new_receipt = await PosService._issue_receipt(
@@ -3052,7 +3241,7 @@ class PosService(PosReceiptReads):
                 "return_total": str(return_total),
                 "new_total": str(new_grand_total),
                 "net": str(net),
-                "restocked": restock,
+                "restocked": bool(shelved),
                 "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
             producer="pos",
@@ -3065,5 +3254,5 @@ class PosService(PosReceiptReads):
             "return_total": str(return_total),
             "new_total": str(new_grand_total),
             "net": str(net),
-            "restocked": restock,
+            "restocked": bool(shelved),
         }

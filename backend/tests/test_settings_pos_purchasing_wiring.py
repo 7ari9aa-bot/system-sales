@@ -1,0 +1,653 @@
+"""The settings that gate till and goods-receipt behaviour change that behaviour, and only then.
+
+Each case flips ONE setting and checks both directions: the default keeps today's behaviour, the
+override changes it. A switch that moves nothing is what the ``enforced`` flag exists to prevent.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import update
+
+import app.modules.customers.models  # noqa: F401  (pos_held_carts has an FK to customers)
+from app.modules.errors import ConflictError, ValidationError
+from app.modules.settings.service import SettingsService
+from tests._pos_sell import sell as pos_sell
+from tests.test_pos_line_discounts import _customer, _register, _sellable_variant
+
+
+async def _open_day(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    register = await _register(db, tenant_ctx)
+    return await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+
+
+# --------------------------------------------------------------- pos.allow_hold_cart --
+
+
+async def test_a_cart_can_be_held_by_default(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant = await _sellable_variant(db, tenant_ctx)
+    held = await PosService.hold_cart(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert held.id is not None
+
+
+async def test_turning_hold_off_refuses_the_hold(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant = await _sellable_variant(db, tenant_ctx)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.allow_hold_cart", False)
+    with pytest.raises(ConflictError, match="pos.allow_hold_cart"):
+        await PosService.hold_cart(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            items=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+
+
+# -------------------------------------------------------------- pos.return_max_days --
+
+
+async def _sold_order(db, tenant_ctx, pos_session):
+    variant = await _sellable_variant(db, tenant_ctx)
+    customer = await _customer(db, tenant_ctx)
+    result = await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    return variant, result["order_id"]
+
+
+async def _age_receipt(db, order_id, days):
+    from app.modules.pos.models import PosReceipt
+
+    await db.execute(
+        update(PosReceipt)
+        .where(PosReceipt.order_id == order_id, PosReceipt.kind == "sale")
+        .values(issued_at=datetime.now(UTC) - timedelta(days=days))
+    )
+    await db.flush()
+
+
+async def test_a_return_inside_the_window_is_accepted(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 10)
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert out
+
+
+async def test_a_return_past_the_default_window_is_refused(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)  # the default window is 30 days
+    with pytest.raises(ConflictError, match="pos.return_max_days"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+
+
+async def test_widening_the_window_accepts_the_same_old_sale(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_max_days", 60)
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert out
+
+
+# -------------------------------------------------- purchasing.allow_over_receipt --
+
+
+async def _po_and_line(db, tenant_ctx, quantity="10"):
+    from decimal import Decimal
+
+    from app.modules.catalog.models import Product, ProductVariant
+    from app.modules.inventory.models import Warehouse
+    from app.modules.purchasing.service import PurchaseService, SupplierService
+
+    tid = tenant_ctx.tenant_id
+    wh = Warehouse(tenant_id=tid, name="WH-OR", code=f"OR{uuid.uuid4().hex[:5]}", is_active=True)
+    sup = await SupplierService.create(db, tid, name="Over Receipt Co")
+    prod = Product(tenant_id=tid, title="Tee", slug=f"tee-{uuid.uuid4().hex[:8]}", status="active")
+    db.add_all([wh, prod])
+    await db.flush()
+    var = ProductVariant(
+        tenant_id=tid,
+        product_id=prod.id,
+        sku=f"TEE-{uuid.uuid4().hex[:6]}",
+        title="M",
+        price=Decimal("90"),
+    )
+    db.add(var)
+    await db.flush()
+    po = await PurchaseService.create(
+        db,
+        tid,
+        supplier_id=sup.id,
+        warehouse_id=wh.id,
+        lines=[{"variant_id": var.id, "quantity": int(quantity), "unit_cost": "50.00"}],
+    )
+    line = (await PurchaseService._lines_in(db, tid, po.id))[0]
+    return po, line, var
+
+
+def _receipt_line(line, var, qty):
+    return {
+        "purchase_order_line_id": str(line.id),
+        "variant_id": str(var.id),
+        "quantity": qty,
+        "unit_cost": "50.00",
+        "condition": "good",
+    }
+
+
+async def test_over_receipt_is_refused_by_default(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    with pytest.raises(ValidationError, match="remain on the PO line"):
+        await GoodsReceiptService.create(
+            db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 12)]
+        )
+
+
+async def test_allowing_over_receipt_accepts_the_extra_units(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    await SettingsService(db, tenant_ctx.tenant_id).set("purchasing.allow_over_receipt", True)
+    receipt = await GoodsReceiptService.create(
+        db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 12)]
+    )
+    assert receipt.status == "draft"
+
+
+# ------------------------------------------------ purchasing.allow_partial_receipt --
+
+
+async def test_a_partial_receipt_is_accepted_by_default(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    receipt = await GoodsReceiptService.create(
+        db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 4)]
+    )
+    assert receipt.status == "draft"
+
+
+async def test_turning_partial_receipt_off_demands_the_full_remainder(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    await SettingsService(db, tenant_ctx.tenant_id).set("purchasing.allow_partial_receipt", False)
+    with pytest.raises(ValidationError, match="allow_partial_receipt"):
+        await GoodsReceiptService.create(
+            db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 4)]
+        )
+    full = await GoodsReceiptService.create(
+        db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 10)]
+    )
+    assert full.status == "draft"
+
+
+# ------------------------------------------------------------ pos.require_customer --
+
+
+async def _sell_without_customer(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant = await _sellable_variant(db, tenant_ctx)
+    return await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+
+
+async def test_a_walk_in_sale_goes_through_by_default(db, tenant_ctx):
+    assert (await _sell_without_customer(db, tenant_ctx))["order_id"]
+
+
+async def test_the_shop_wide_setting_makes_a_named_customer_mandatory(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.require_customer", True)
+    with pytest.raises(ValidationError, match="requires a customer"):
+        await _sell_without_customer(db, tenant_ctx)
+
+
+# ------------------------------------------------- inventory.safety_stock_default --
+
+
+async def _policy(db, tenant_ctx, **kw):
+    from app.modules.inventory.services.replenishment import ReplenishmentService
+
+    variant = await _sellable_variant(db, tenant_ctx)
+    from app.modules.inventory.models import Warehouse
+
+    wh = Warehouse(
+        tenant_id=tenant_ctx.tenant_id,
+        name="WH-SS",
+        code=f"SS{uuid.uuid4().hex[:5]}",
+        is_active=True,
+    )
+    db.add(wh)
+    await db.flush()
+    return await ReplenishmentService.set_policy(
+        db, tenant_ctx.tenant_id, variant_id=variant.id, warehouse_id=wh.id, min_stock=5, **kw
+    )
+
+
+async def test_a_policy_with_no_safety_stock_gets_zero_by_default(db, tenant_ctx):
+    assert (await _policy(db, tenant_ctx)).safety_stock == 0
+
+
+async def test_a_policy_with_no_safety_stock_takes_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("inventory.safety_stock_default", 7)
+    assert (await _policy(db, tenant_ctx)).safety_stock == 7
+
+
+async def test_an_explicit_safety_stock_beats_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("inventory.safety_stock_default", 7)
+    assert (await _policy(db, tenant_ctx, safety_stock=2)).safety_stock == 2
+    assert (await _policy(db, tenant_ctx, safety_stock=0)).safety_stock == 0
+
+
+# ----------------------------------------------------------- pos.exchange_max_days --
+
+
+async def _exchange(db, tenant_ctx, pos_session, order_id, variant, **kw):
+    from app.modules.pos.service import PosService
+
+    replacement = await _sellable_variant(db, tenant_ctx)
+    return await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        return_lines=[{"variant_id": str(variant.id), "quantity": 1, **kw}],
+        new_lines=[{"variant_id": str(replacement.id), "quantity": 1}],
+    )
+
+
+async def test_by_default_an_exchange_follows_the_return_window(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)  # past the 30-day return window
+    with pytest.raises(ConflictError, match="pos.exchange_max_days"):
+        await _exchange(db, tenant_ctx, pos_session, order_id, variant)
+
+
+async def test_a_longer_exchange_window_lets_an_old_sale_be_exchanged(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.exchange_max_days", 60)
+    assert await _exchange(db, tenant_ctx, pos_session, order_id, variant)
+
+
+async def test_the_exchange_window_does_not_loosen_the_return_window(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _age_receipt(db, order_id, 31)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.exchange_max_days", 60)
+    with pytest.raises(ConflictError, match="pos.return_max_days"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+
+
+# ------------------------------------------------------ pos.return_restock_default --
+
+
+async def _on_hand(db, tenant_ctx, variant):
+    from sqlalchemy import func, select
+
+    from app.modules.inventory.models import InventoryMovement
+
+    return int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(InventoryMovement.quantity), 0)).where(
+                    InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                    InventoryMovement.variant_id == variant.id,
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def _return_one(db, tenant_ctx, pos_session, order_id, variant, **kw):
+    from app.modules.pos.service import PosService
+
+    return await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        **kw,
+    )
+
+
+async def test_a_return_goes_back_on_the_shelf_by_default(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _on_hand(db, tenant_ctx, variant) == before + 1
+
+
+async def test_turning_the_default_off_keeps_a_return_off_the_shelf(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _on_hand(db, tenant_ctx, variant) == before
+
+
+async def test_the_cashiers_explicit_choice_beats_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, variant)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant, restock=True)
+    assert await _on_hand(db, tenant_ctx, variant) == before + 1
+
+
+# ------------------------------------------------------------ pos.return_reasons --
+
+
+async def _saved_reason(db, order_id):
+    from sqlalchemy import select
+
+    from app.modules.pos.models import PosReturnLine
+
+    return (
+        await db.execute(
+            select(PosReturnLine.reason).where(PosReturnLine.order_id == uuid.UUID(str(order_id)))
+        )
+    ).scalar_one()
+
+
+async def test_a_return_reason_from_the_shops_list_is_saved_on_the_line(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    from app.modules.pos.service import PosService
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "size"}],
+    )
+    assert await _saved_reason(db, order_id) == "size"
+
+
+async def test_a_return_without_a_reason_is_still_accepted(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await _return_one(db, tenant_ctx, pos_session, order_id, variant)
+    assert await _saved_reason(db, order_id) is None
+
+
+async def test_a_reason_the_shop_did_not_list_is_refused(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    with pytest.raises(ValidationError, match="pos.return_reasons"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "no such reason"}],
+        )
+
+
+async def test_the_owner_can_replace_the_reason_list(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_reasons", ["too_small"])
+    pos_session = await _open_day(db, tenant_ctx)
+    variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "too_small"}],
+    )
+    assert await _saved_reason(db, order_id) == "too_small"
+
+
+# ----------------------------------------------------------- the cashier's starting point --
+
+
+async def test_return_policy_reports_the_shops_choices(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    settings = SettingsService(db, tenant_ctx.tenant_id)
+    await settings.set("pos.return_restock_default", False)
+    await settings.set("pos.return_reasons", ["too_small", "defect"])
+    await settings.set("pos.return_max_days", 14)
+    pos_session = await _open_day(db, tenant_ctx)
+    policy = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert policy["restock_default"] is False
+    assert policy["reasons"] == ["too_small", "defect"]
+    assert policy["return_max_days"] == 14
+
+
+async def test_return_policy_resolves_exchange_zero_to_the_return_window(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    settings = SettingsService(db, tenant_ctx.tenant_id)
+    await settings.set("pos.return_max_days", 21)
+    pos_session = await _open_day(db, tenant_ctx)
+    same = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert same["exchange_max_days"] == 21  # 0 = same as returns, resolved server-side
+    await settings.set("pos.exchange_max_days", 45)
+    longer = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert longer["exchange_max_days"] == 45
+    assert longer["return_max_days"] == 21
+
+
+# ------------------------------------------------- the shelf decision, piece by piece --
+
+
+async def _sold_two(db, tenant_ctx, pos_session):
+    """One sale of two different pieces (a jacket and a shirt), the way a clothing till rings it."""
+    jacket = await _sellable_variant(db, tenant_ctx)
+    shirt = await _sellable_variant(db, tenant_ctx)
+    customer = await _customer(db, tenant_ctx)
+    result = await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[
+            {"variant_id": str(jacket.id), "quantity": 1},
+            {"variant_id": str(shirt.id), "quantity": 1},
+        ],
+    )
+    return jacket, shirt, result["order_id"]
+
+
+async def _return_lines(db, tenant_ctx, pos_session, order_id, lines, **kw):
+    from app.modules.pos.service import PosService
+
+    return await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(v.id), "quantity": 1, **extra} for v, extra in lines],
+        **kw,
+    )
+
+
+async def test_one_piece_goes_back_on_the_rail_and_the_torn_one_does_not(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    out = await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {"restock": True}), (shirt, {"restock": False})],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+    said = {line["variant_id"]: line["restocked"] for line in out["lines"]}
+    assert said == {str(jacket.id): True, str(shirt.id): False}
+    assert out["restocked"] is True  # at least one piece went back
+
+
+async def test_a_line_without_a_choice_follows_the_request_then_the_shop(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    # The shop says no; the jacket says yes; the shirt says nothing and gets the shop's no.
+    await _return_lines(
+        db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": True}), (shirt, {})]
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+
+
+async def test_a_line_choice_beats_the_whole_request_choice(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {}), (shirt, {"restock": False})],
+        restock=True,
+    )
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+
+
+async def test_nothing_goes_back_when_every_piece_says_no(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    out = await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {"restock": False}), (shirt, {"restock": False})],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before
+    assert out["restocked"] is False
+
+
+async def test_a_piece_kept_off_the_shelf_can_still_be_shelved_by_a_later_return(db, tenant_ctx):
+    """The shelf cap is per piece: returning the torn shirt without restock must not use up the
+    shirt's shelf allowance for a later, honest return of a different unit."""
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    await _return_lines(db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": False})])
+    before = await _on_hand(db, tenant_ctx, jacket)
+    # The jacket's quantity is spent (1 sold, 1 returned), so a second return of it is refused on
+    # quantity, not on the shelf: the off-shelf return did not touch the shelf cap.
+    with pytest.raises(ConflictError, match="already returned"):
+        await _return_lines(db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": True})])
+    assert await _on_hand(db, tenant_ctx, jacket) == before
+
+
+async def test_two_lines_for_one_piece_with_different_decisions_are_refused(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, _shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, jacket)
+    with pytest.raises(ValidationError, match="different shelf decisions"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[
+                {"variant_id": str(jacket.id), "quantity": 1, "restock": True},
+                {"variant_id": str(jacket.id), "quantity": 1, "restock": False},
+            ],
+        )
+    assert await _on_hand(db, tenant_ctx, jacket) == before  # nothing moved
+
+
+async def test_an_exchange_decides_the_shelf_piece_by_piece_too(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    replacement = await _sellable_variant(db, tenant_ctx)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    out = await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        return_lines=[
+            {"variant_id": str(jacket.id), "quantity": 1, "restock": True},
+            {"variant_id": str(shirt.id), "quantity": 1, "restock": False},
+        ],
+        new_lines=[{"variant_id": str(replacement.id), "quantity": 1}],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+    assert out["restocked"] is True

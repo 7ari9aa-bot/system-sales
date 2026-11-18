@@ -45,6 +45,7 @@ InventoryBalance = table(  # noqa: N816
     column("variant_id"),
     column("on_hand"),
     column("reserved"),
+    column("quarantined"),
 )
 VariantStockSetting = table(  # noqa: N816
     "variant_stock_settings",
@@ -117,6 +118,7 @@ class StockViewService:
                 InventoryBalance.c.variant_id.label("variant_id"),
                 func.coalesce(func.sum(InventoryBalance.c.on_hand), 0).label("on_hand"),
                 func.coalesce(func.sum(InventoryBalance.c.reserved), 0).label("reserved"),
+                func.coalesce(func.sum(InventoryBalance.c.quarantined), 0).label("quarantined"),
             )
             .where(InventoryBalance.c.tenant_id == tenant_id)
             .group_by(InventoryBalance.c.variant_id)
@@ -124,6 +126,8 @@ class StockViewService:
         )
         level = func.coalesce(VariantStockSetting.c.reorder_level, 0)
         on_hand = func.coalesce(held.c.on_hand, 0)
+        quarantined = func.coalesce(held.c.quarantined, 0)
+        sellable = func.greatest(0, on_hand - quarantined)
         query = (
             select(
                 ProductVariant,
@@ -131,6 +135,8 @@ class StockViewService:
                 Category.name.label("category_name"),
                 on_hand.label("on_hand"),
                 func.coalesce(held.c.reserved, 0).label("reserved"),
+                quarantined.label("quarantined"),
+                sellable.label("sellable"),
                 level.label("reorder_level"),
                 VariantCost.c.avg_cost.label("avg_cost"),
             )
@@ -215,10 +221,27 @@ class StockViewService:
 
     @staticmethod
     def _row(r, barcode: str | None) -> dict:
-        variant, product, category_name, on_hand, reserved, level, avg_cost = r
-        on_hand, reserved, level = int(on_hand), int(reserved), int(level)
+        (
+            variant,
+            product,
+            category_name,
+            on_hand,
+            reserved,
+            quarantined,
+            sellable,
+            level,
+            avg_cost,
+        ) = r
+        on_hand, reserved, quarantined, sellable, level = (
+            int(on_hand),
+            int(reserved),
+            int(quarantined),
+            int(sellable),
+            int(level),
+        )
         price = Decimal(variant.price)
         cost_value = None if avg_cost is None else to_money(Decimal(avg_cost) * on_hand)
+        available = max(0, sellable - reserved)
         return {
             "variant_id": str(variant.id),
             "product_id": str(product.id),
@@ -231,9 +254,12 @@ class StockViewService:
             "price": str(to_money(price)),
             "avg_cost": None if avg_cost is None else str(avg_cost),
             "on_hand": on_hand,
+            "quarantined": quarantined,
+            "sellable": sellable,
             "reserved": reserved,
+            "available": available,
             "reorder_level": level,
-            "status": stock_status(on_hand, level),
+            "status": stock_status(sellable, level),
             "stock_cost_value": None if cost_value is None else str(cost_value),
             "stock_retail_value": str(to_money(price * on_hand)),
         }

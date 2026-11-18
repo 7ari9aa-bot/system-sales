@@ -48,7 +48,7 @@ class ReplenishmentService:
         warehouse_id: UUID,
         min_stock: int,
         max_stock: int | None = None,
-        safety_stock: int = 0,
+        safety_stock: int | None = None,
         lead_time_days: int = 0,
         moq: int = 1,
         order_multiple: int = 1,
@@ -56,6 +56,14 @@ class ReplenishmentService:
         preferred_supplier_id: UUID | None = None,
     ) -> InventoryPolicy:
         """Upsert the replenishment policy for a variant at a warehouse."""
+        if safety_stock is None:
+            # Not stated for this variant: the shop-wide buffer applies.
+            from app.modules.settings.service import SettingsService
+
+            safety_stock = int(
+                await SettingsService(session, tenant_id).value("inventory.safety_stock_default")
+                or 0
+            )
         if min_stock < 0 or safety_stock < 0 or lead_time_days < 0:
             raise ValidationError("stock quantities and lead time must not be negative")
         if moq <= 0 or order_multiple <= 0 or review_period_days <= 0:

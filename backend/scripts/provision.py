@@ -386,6 +386,10 @@ ACTIONS = ["read", "write"]
 EXTRA_PERMISSIONS = [
     ("ai", "approve", "ai:approve"),
     ("pos", "override", "pos:override"),
+    # Operational settings below tenant level (a branch's discount cap, a warehouse's safety
+    # stock). Deliberately separate from settings:write so a manager can run their branch without
+    # being able to change tenant-wide money rules; see settings/policy.py.
+    ("settings", "branch_write", "settings:branch_write"),
     # What the owner assistant may read about the shop's MONEY. Deliberately not in RESOURCES:
     # the manager is built from RESOURCES x ACTIONS, so listing these there would hand profit and
     # supplier balances to every manager. They start owner-only; the owner grants them on.
@@ -395,14 +399,14 @@ EXTRA_PERMISSIONS = [
 
 ROLE_MATRIX: dict[str, list[str]] = {
     "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS]
-    + ["ai:approve", "pos:override", "finance:read", "purchasing:read"],
+    + ["ai:approve", "pos:override", "finance:read", "purchasing:read", "settings:branch_write"],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES
         for a in ACTIONS
         if not (r in ("settings", "billing") and a == "write")
     ]
-    + ["ai:approve", "pos:override"],
+    + ["ai:approve", "pos:override", "settings:branch_write"],
     "staff": [
         "customers:read",
         "customers:write",

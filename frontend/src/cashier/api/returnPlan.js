@@ -24,6 +24,7 @@ export function returnableLines(saleDetail) {
       alreadyReturned: returned,
       maxQty: Math.max(0, sold - returned),
       returnQty: 0,
+      restock: null, // null = follow the whole return's choice; true/false = this piece's own
     };
   });
 }
@@ -72,19 +73,38 @@ export function estimateRefundMinor(saleDetail, lines) {
 
 export const estimateRefund = (saleDetail, lines) => fromMinor(estimateRefundMinor(saleDetail, lines));
 
+/** This piece's own shelf decision (a jacket back on the rail, a torn shirt not). null clears it. */
+export function setLineRestock(lines, variantId, restock) {
+  return lines.map((l) => (l.variantId === variantId ? { ...l, restock: restock === null ? null : Boolean(restock) } : l));
+}
+
+/** What a line shows in its shelf box: its own choice, else the whole return's. */
+export const lineRestock = (line, wholeRestock) => (line.restock === null || line.restock === undefined ? Boolean(wholeRestock) : line.restock);
+
+/** The wire shape of one picked line: quantity, the reason, and a shelf choice only when the piece has its own. */
+export function wireLine(l, reason) {
+  return {
+    variant_id: l.variantId,
+    quantity: l.returnQty,
+    ...(reason ? { reason } : {}),
+    ...(l.restock === null || l.restock === undefined ? {} : { restock: Boolean(l.restock) }),
+  };
+}
+
 export function setQty(lines, variantId, qty) {
   return lines.map((l) =>
     l.variantId === variantId ? { ...l, returnQty: Math.min(l.maxQty, Math.max(0, Math.trunc(Number(qty)) || 0)) } : l,
   );
 }
 
-export function returnRequest(saleDetail, lines, { restock }) {
+export function returnRequest(saleDetail, lines, { restock, reason } = {}) {
   const picked = lines.filter((l) => l.returnQty > 0);
   if (!picked.length) throw new Error("اختر صنفًا واحدًا على الأقل للاسترجاع");
   return {
     orderId: saleDetail.order.id,
-    lines: picked.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty })),
-    restock: Boolean(restock),
+    lines: picked.map((l) => wireLine(l, reason)),
+    // Only sent once the cashier has a value; otherwise the shop's own default applies on the server.
+    ...(restock === undefined || restock === null ? {} : { restock: Boolean(restock) }),
   };
 }
 

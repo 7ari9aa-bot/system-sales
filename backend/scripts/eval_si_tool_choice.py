@@ -51,6 +51,11 @@ CASES: tuple[Case, ...] = (
     Case("إيه الأكتر مبيعاً عندي؟", ("si_shop",), {"view": "products"}),
     Case("إيه اللي خلص من المخزون؟", ("si_shop",), {"view": "stock"}),
     Case("إيه اللي راكد ومش بيتباع؟", ("si_shop",), {"view": "stock"}),
+    Case(
+        "قيمة المخزون في كل مخزن كام وإيه رأس المال المحبوس في الراكد؟",
+        ("si_shop",),
+        {"view": "inventory_health"},
+    ),
     Case("صرفت كام الشهر ده؟", ("si_finance",), {"report": "expenses"}),
     Case("أنا كسبان ولا خسران؟", ("si_finance",), {"report": "profit"}),
     Case("عليا كام للموردين؟", ("si_finance",), {"report": "purchasing"}),

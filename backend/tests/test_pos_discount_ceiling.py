@@ -174,3 +174,60 @@ async def test_the_owner_can_set_change_and_clear_it(db, tenant_ctx):
         db, tenant_ctx.tenant_id, profile.id, clear_max_discount=True
     )
     assert cleared.max_discount_pct is None
+
+
+# --- the ceiling also comes from the settings engine (pos.max_discount_pct) ------------------
+# A profile's own ceiling is the most specific answer. Only a profile with none falls back to the
+# setting, resolved tenant -> branch -> warehouse -> profile, so one owner rule covers every till.
+
+
+async def _set_ceiling(db, tenant_ctx, value, *, scope="tenant", scope_id=None):
+    from app.modules.settings.service import SettingsService
+
+    await SettingsService(db, tenant_ctx.tenant_id).set(
+        "pos.max_discount_pct", value, scope=scope, scope_id=scope_id
+    )
+
+
+async def test_a_profile_without_a_ceiling_follows_the_shop_wide_setting(db, tenant_ctx):
+    from app.modules.errors import ValidationError
+
+    register, _ = await _till(db, tenant_ctx, ceiling=None)
+    variant = await _sellable_variant(db, tenant_ctx, price="100.00")
+    await _set_ceiling(db, tenant_ctx, 20)
+
+    with pytest.raises(ValidationError, match="20"):
+        await _sell(db, tenant_ctx, register, variant, discount_total="30.00")
+    sold = await _sell(db, tenant_ctx, register, variant, discount_total="20.00")
+    assert sold["grand_total"] == "80.00"
+
+
+async def test_the_profiles_own_ceiling_beats_a_looser_setting(db, tenant_ctx):
+    from app.modules.errors import ValidationError
+
+    register, _ = await _till(db, tenant_ctx, ceiling="10")
+    variant = await _sellable_variant(db, tenant_ctx, price="100.00")
+    await _set_ceiling(db, tenant_ctx, 50)  # looser than the till's own 10
+
+    with pytest.raises(ValidationError, match="10"):
+        await _sell(db, tenant_ctx, register, variant, discount_total="20.00")
+
+
+async def test_a_setting_on_the_profile_scope_beats_the_shop_wide_one(db, tenant_ctx):
+    from app.modules.errors import ValidationError
+
+    register, profile = await _till(db, tenant_ctx, ceiling=None)
+    variant = await _sellable_variant(db, tenant_ctx, price="100.00")
+    await _set_ceiling(db, tenant_ctx, 50)
+    await _set_ceiling(db, tenant_ctx, 5, scope="pos_profile", scope_id=profile.id)
+
+    with pytest.raises(ValidationError, match="5"):
+        await _sell(db, tenant_ctx, register, variant, discount_total="10.00")
+
+
+async def test_a_manager_override_ignores_the_setting_too(db, tenant_ctx):
+    register, _ = await _till(db, tenant_ctx, ceiling=None)
+    variant = await _sellable_variant(db, tenant_ctx, price="100.00")
+    await _set_ceiling(db, tenant_ctx, 5)
+    sold = await _sell(db, tenant_ctx, register, variant, discount_total="40.00", override=True)
+    assert sold["grand_total"] == "60.00"

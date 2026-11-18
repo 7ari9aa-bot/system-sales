@@ -75,6 +75,47 @@ ROOT_MODULES: frozenset[str] = frozenset(
 # Nothing here sits in a path owned by a concurrent agent: each is a feature
 # genuinely awaiting its caller, honestly recorded rather than deleted.
 KNOWN_DEAD_MODULES: dict[str, str] = {
+    # E-invoicing (ZATCA SA, ETA EG, Peppol AE; commit 33b5364f). The provider engines, the
+    # registry and the orchestrating service are built and unit-tested, but no route or worker
+    # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,
+    # onboarding, sandbox to production), not a one-line call. Drop an entry when its caller lands.
+    "app.modules.einvoice.models": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.ports": ("e-invoicing: built, tested; caller lands per country rollout."),
+    "app.modules.einvoice.providers.eta.provider": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.eta.receipt": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.peppol_ae.pint": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.peppol_ae.provider": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.sandbox": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.zatca.crypto": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.zatca.provider": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.zatca.tlv": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.providers.zatca.ubl": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.registry": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
+    "app.modules.einvoice.service": (
+        "e-invoicing: built, tested; caller lands per country rollout."
+    ),
     # Sales Intelligence analytics layer (spec §5-11) — pure, LLM-free
     # contracts and math: the metric contracts, the exact midpoint drivers,
     # the maturity classifier, the number policy, the confidence engine, and

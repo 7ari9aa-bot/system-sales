@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
-import { APP_PATH_PREFIXES } from './src/lib/public-seo-routes.mjs'
+import { APP_PATH_PREFIXES, legacyPublicRedirects } from './src/lib/public-seo-routes.mjs'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,10 +21,18 @@ function productionLikeRouting() {
     configurePreviewServer(server) {
       const dist = path.resolve(dirname, 'dist');
       const appPrefix = new RegExp(`^/(${APP_PATH_PREFIXES.join('|')})(/|$)`);
+      const legacy = new Map(legacyPublicRedirects().map((r) => [r.source, r.destination]));
       server.middlewares.use((req, res, next) => {
         const url = (req.url || '/').split('?')[0];
         if (!['GET', 'HEAD'].includes(req.method || 'GET') || url.startsWith('/api/') || url.startsWith('/auth/')) return next();
         if (path.extname(url) || url.endsWith('/')) return next();
+        const moved = legacy.get(url);
+        if (moved) {
+          res.statusCode = 308;
+          res.setHeader('location', moved);
+          res.end();
+          return;
+        }
         const prerendered = path.join(dist, url, 'index.html');
         if (fs.existsSync(prerendered)) {
           res.setHeader('content-type', 'text/html; charset=utf-8');

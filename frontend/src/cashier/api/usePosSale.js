@@ -411,6 +411,16 @@ export function useShiftProfile(profileId) {
   });
 }
 
+/** What the shop's owner decided about returns for this shift's till: the screen starts from it. */
+export function useReturnPolicy(sessionId) {
+  return useQuery({
+    queryKey: ["cashier", "return-policy", sessionId],
+    enabled: Boolean(sessionId),
+    staleTime: 60_000,
+    queryFn: () => posApi.returnPolicy(sessionId),
+  });
+}
+
 /** Customers matching what the cashier typed (name or phone). Off until there is something to search. */
 export function useCustomerSearch(term) {
   const t = (term ?? "").trim();

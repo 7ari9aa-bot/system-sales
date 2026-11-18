@@ -215,6 +215,24 @@ class SupplierService:
                 )
             )
         ).one()
+        partial_received = (
+            await session.execute(
+                select(
+                    func.coalesce(
+                        func.sum(PurchaseOrderLine.quantity_received * PurchaseOrderLine.unit_cost),
+                        0,
+                    ),
+                    func.count(func.distinct(PurchaseOrder.id)),
+                    func.max(PurchaseOrder.order_date),
+                )
+                .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderLine.purchase_order_id)
+                .where(
+                    PurchaseOrder.tenant_id == tenant_id,
+                    PurchaseOrder.supplier_id == supplier_id,
+                    PurchaseOrder.status == "partially_received",
+                )
+            )
+        ).one()
         paid_rows = (
             await session.execute(
                 select(
@@ -248,17 +266,20 @@ class SupplierService:
                 .where(
                     PurchaseOrder.tenant_id == tenant_id,
                     PurchaseOrder.supplier_id == supplier_id,
-                    PurchaseOrder.status == "received",
+                    PurchaseOrder.status.in_(["received", "partially_received"]),
                 )
             )
         ).scalar_one()
-        total = Decimal(received[0]).quantize(_CENT)
+        dates = [d for d in (received[2], partial_received[2]) if d is not None]
+        last_date = max(dates) if dates else None
+        total = (Decimal(received[0]) + Decimal(partial_received[0])).quantize(_CENT)
+        orders_cnt = int(received[1]) + int(partial_received[1])
         paid = paid.quantize(_CENT)
         credit = Decimal(credit).quantize(_CENT)
         return {
             "total_supplied": total,
-            "orders_count": int(received[1]),
-            "last_order_date": received[2],
+            "orders_count": orders_cnt,
+            "last_order_date": last_date,
             "items_count": int(items),
             "paid": paid,
             "credit_returns": credit,
@@ -562,6 +583,18 @@ class PurchaseService:
                 unit_cost=Decimal(line.unit_cost),
                 purchase_order_id=order.id,
                 on_hand_before=before,
+            )
+            # A receipt without its FIFO layer would later sell at the wrong cost, so a failure
+            # here must fail the whole receipt, not be swallowed.
+            await _inventory().ValuationService.create_cost_layer(
+                session,
+                tenant_id,
+                variant_id=line.variant_id,
+                warehouse_id=order.warehouse_id,
+                quantity=line.quantity,
+                unit_cost=Decimal(line.unit_cost),
+                source_type="purchase_order",
+                source_id=order.id,
             )
         order.status = "received"
         order.received_at = datetime.now(UTC)
@@ -1036,6 +1069,14 @@ class GoodsReceiptService:
             ).scalars()
         )
         po_line_map: dict[UUID, PurchaseOrderLine] = {pl.id: pl for pl in po_lines}
+        from app.modules.settings.service import SettingsService
+
+        over_receipt_allowed = bool(
+            await SettingsService(session, tenant_id).value("purchasing.allow_over_receipt")
+        )
+        partial_allowed = bool(
+            await SettingsService(session, tenant_id).value("purchasing.allow_partial_receipt")
+        )
 
         clean: list[dict] = []
         seen_pol: set[UUID] = set()
@@ -1079,10 +1120,16 @@ class GoodsReceiptService:
 
             already = po_line.quantity_received or 0
             remaining = po_line.quantity - already
-            if qty > remaining:
+            if qty > remaining and not over_receipt_allowed:
                 raise ValidationError(
                     f"line {idx}: receiving {qty} but only {remaining} remain on the PO line "
                     f"(ordered {po_line.quantity}, already received {already})"
+                )
+
+            if qty < remaining and not partial_allowed:
+                raise ValidationError(
+                    f"line {idx}: receiving {qty} of the {remaining} still due, but "
+                    "purchasing.allow_partial_receipt is off: receive the full remaining quantity"
                 )
 
             line_total = (unit_cost * qty).quantize(Decimal("0.0001"))

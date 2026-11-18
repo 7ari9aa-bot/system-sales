@@ -413,37 +413,41 @@ def test_the_currency_read_route_is_still_gated() -> None:
 # ======================================================= the schema ---------
 
 
-def _migration_revisions() -> dict[str, str | None]:
-    """revision -> down_revision for every migration script."""
-    found: dict[str, str | None] = {}
+def _migration_revisions() -> dict[str, tuple[str, ...]]:
+    """revision -> its parents for every migration script (a merge has several)."""
+    found: dict[str, tuple[str, ...]] = {}
     for path in sorted(VERSIONS_DIR.glob("*.py")):
         if path.name.startswith("__"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         revision: str | None = None
-        down: str | None = None
+        parents: tuple[str, ...] = ()
         for node in tree.body:
             if not isinstance(node, ast.AnnAssign | ast.Assign):
                 continue
             value = node.value
-            if not isinstance(value, ast.Constant):
-                continue
             targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
             for target in targets:
                 name = getattr(target, "id", None)
-                if name == "revision":
+                if name == "revision" and isinstance(value, ast.Constant):
                     revision = str(value.value)
-                elif name == "down_revision":
-                    down = None if value.value is None else str(value.value)
+                elif name == "down_revision" and value is not None:
+                    literal = ast.literal_eval(value)
+                    if literal is None:
+                        parents = ()
+                    elif isinstance(literal, str):
+                        parents = (literal,)
+                    else:
+                        parents = tuple(str(p) for p in literal)
         assert revision, f"{path.name} declares no revision id"
-        found[revision] = down
+        found[revision] = parents
     return found
 
 
 def test_exactly_one_migration_head() -> None:
     """`alembic heads` must print one id: two heads abort the deploy."""
     revisions = _migration_revisions()
-    parents = {down for down in revisions.values() if down}
+    parents = {down for downs in revisions.values() for down in downs}
     heads = sorted(r for r in revisions if r not in parents)
     assert len(heads) == 1, f"migration heads: {heads}"
 
@@ -452,7 +456,7 @@ def test_the_tenant_zone_descends_from_the_previous_head() -> None:
     """An applied revision is IMMUTABLE: the new column arrives in a NEW
     revision whose down_revision is the head that existed before it."""
     revisions = _migration_revisions()
-    children = sorted(r for r, down in revisions.items() if down == PREVIOUS_HEAD)
+    children = sorted(r for r, downs in revisions.items() if PREVIOUS_HEAD in downs)
     assert len(children) == 1, f"{PREVIOUS_HEAD} has {len(children)} children: {children}"
     assert f'revision: str = "{children[0]}"' in _zone_migration()
 

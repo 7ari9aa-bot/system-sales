@@ -70,4 +70,23 @@ describe("sendExchange", () => {
     await expect(sendExchange(send, { sleep: async () => {} })).rejects.toThrow(/insufficient/);
     expect(send).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves restock out until chosen and carries the reason on the returned lines", () => {
+    const req = exchangeRequest(sale, back(1), repl, { reason: "defect" });
+    expect("restock" in req).toBe(false);
+    expect(req.returnLines.every((l) => l.reason === "defect")).toBe(true);
+    expect(exchangeRequest(sale, back(1), repl, { restock: false }).restock).toBe(false);
+  });
+
+  it("carries each returned piece's own shelf decision, and none for a piece without one", () => {
+    const lines = [
+      { ...back(1)[0], restock: true },
+      { ...back(1)[0], variantId: "v2", restock: false },
+      { ...back(1)[0], variantId: "v3" },
+    ];
+    const req = exchangeRequest(sale, lines, repl, {});
+    expect(req.returnLines[0].restock).toBe(true);
+    expect(req.returnLines[1].restock).toBe(false);
+    expect("restock" in req.returnLines[2]).toBe(false);
+  });
 });

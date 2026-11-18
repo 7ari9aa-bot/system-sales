@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
+    InventoryCostLayer,
     InventoryTransfer,
     InventoryTransferLine,
     InventoryTransferReceipt,
@@ -31,6 +32,7 @@ from app.modules.inventory.models import (
 from ._common import _now, _positive_int
 from .balances import BalanceServiceMixin
 from .movements import MovementServiceMixin
+from .valuation import ValuationService
 
 
 class TransferServiceMixin:
@@ -193,23 +195,32 @@ class TransferServiceMixin:
 
         # Determine quantities to ship
         to_ship: list[tuple[InventoryTransferLine, int]] = []
-        if lines is None:
+        if not lines:
             # Ship all remaining open quantities
             for tl in t_lines:
                 remaining = tl.quantity - tl.quantity_shipped
                 if remaining > 0:
                     to_ship.append((tl, remaining))
         else:
+            t_by_line_id = {tl.id: tl for tl in t_lines}
             for item in lines:
-                v_id = UUID(str(item["variant_id"]))
+                if "variant_id" in item and item["variant_id"]:
+                    v_id = UUID(str(item["variant_id"]))
+                    if v_id not in t_line_map:
+                        raise ValidationError(f"variant {v_id} is not part of this transfer")
+                    tl = t_line_map[v_id]
+                elif "transfer_line_id" in item and item["transfer_line_id"]:
+                    l_id = UUID(str(item["transfer_line_id"]))
+                    if l_id not in t_by_line_id:
+                        raise ValidationError(f"transfer line {l_id} is not part of this transfer")
+                    tl = t_by_line_id[l_id]
+                else:
+                    raise ValidationError("each line requires variant_id or transfer_line_id")
                 qty = _positive_int(item.get("quantity"))
-                if v_id not in t_line_map:
-                    raise ValidationError(f"variant {v_id} is not part of this transfer")
-                tl = t_line_map[v_id]
                 remaining = tl.quantity - tl.quantity_shipped
                 if qty > remaining:
                     raise ValidationError(
-                        f"cannot ship {qty} of variant {v_id}; only {remaining} remaining"
+                        f"cannot ship {qty} of variant {tl.variant_id}; only {remaining} remaining"
                     )
                 to_ship.append((tl, qty))
 
@@ -230,6 +241,16 @@ class TransferServiceMixin:
 
         # Execute stock movements at source warehouse ONLY
         for pos, (tl, qty) in enumerate(to_ship, start=1):
+            consumption = await ValuationService.consume_fifo(
+                session,
+                tenant_id,
+                variant_id=tl.variant_id,
+                warehouse_id=transfer.from_warehouse_id,
+                quantity=qty,
+                allow_partial=True,
+            )
+            cogs_cost = consumption.get("total_cogs")
+
             await MovementServiceMixin.move(
                 session,
                 tenant_id,
@@ -241,6 +262,7 @@ class TransferServiceMixin:
                 reference_type="inventory_transfer",
                 reference_id=transfer_id,
                 actor_user_id=user_id,
+                cost_value=cogs_cost,
             )
             tl.quantity_shipped += qty
             session.add(
@@ -285,26 +307,36 @@ class TransferServiceMixin:
         t_line_map = {tl.variant_id: tl for tl in t_lines}
 
         to_receive: list[tuple[InventoryTransferLine, int, str]] = []
-        if lines is None:
+        if not lines:
             # Receive all shipped but not yet received quantities as good
             for tl in t_lines:
                 pending = tl.quantity_shipped - tl.quantity_received
                 if pending > 0:
                     to_receive.append((tl, pending, "good"))
         else:
+            t_by_line_id = {tl.id: tl for tl in t_lines}
             for item in lines:
-                v_id = UUID(str(item["variant_id"]))
+                if "variant_id" in item and item["variant_id"]:
+                    v_id = UUID(str(item["variant_id"]))
+                    if v_id not in t_line_map:
+                        raise ValidationError(f"variant {v_id} is not part of this transfer")
+                    tl = t_line_map[v_id]
+                elif "transfer_line_id" in item and item["transfer_line_id"]:
+                    l_id = UUID(str(item["transfer_line_id"]))
+                    if l_id not in t_by_line_id:
+                        raise ValidationError(f"transfer line {l_id} is not part of this transfer")
+                    tl = t_by_line_id[l_id]
+                else:
+                    raise ValidationError("each line requires variant_id or transfer_line_id")
                 qty = _positive_int(item.get("quantity"))
                 cond = str(item.get("condition", "good")).lower()
                 if cond not in ("good", "damaged", "short"):
                     raise ValidationError("condition must be one of ('good', 'damaged', 'short')")
-                if v_id not in t_line_map:
-                    raise ValidationError(f"variant {v_id} is not part of this transfer")
-                tl = t_line_map[v_id]
                 pending = tl.quantity_shipped - tl.quantity_received
                 if qty > pending:
                     raise ValidationError(
-                        f"cannot receive {qty} of variant {v_id}; only {pending} in transit"
+                        f"cannot receive {qty} of variant {tl.variant_id}; "
+                        f"only {pending} in transit"
                     )
                 to_receive.append((tl, qty, cond))
 
@@ -349,6 +381,30 @@ class TransferServiceMixin:
                     reference_id=transfer_id,
                     actor_user_id=user_id,
                 )
+                # The received units carry the cost the source warehouse last held them at.
+                last_cost = (
+                    await session.execute(
+                        select(InventoryCostLayer.unit_cost)
+                        .where(
+                            InventoryCostLayer.tenant_id == tenant_id,
+                            InventoryCostLayer.variant_id == tl.variant_id,
+                            InventoryCostLayer.warehouse_id == transfer.from_warehouse_id,
+                        )
+                        .order_by(InventoryCostLayer.layer_date.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if last_cost is not None:
+                    await ValuationService.create_cost_layer(
+                        session,
+                        tenant_id,
+                        variant_id=tl.variant_id,
+                        warehouse_id=transfer.to_warehouse_id,
+                        quantity=qty,
+                        unit_cost=last_cost,
+                        source_type="transfer",
+                        source_id=transfer.id,
+                    )
             elif cond in ("damaged", "short"):
                 has_exception = True
                 exception_notes.append(f"{cond} {qty} of variant {tl.variant_id}")
