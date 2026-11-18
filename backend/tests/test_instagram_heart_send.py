@@ -100,7 +100,9 @@ async def test_a_heart_is_refused_off_instagram(monkeypatch, channel) -> None:
     assert seen["messages"] == []
 
 
-@pytest.mark.parametrize("extra", [{"body": "hi"}, {"template_name": "t"}, {"media_id": str(uuid.uuid4())}])
+@pytest.mark.parametrize(
+    "extra", [{"body": "hi"}, {"template_name": "t"}, {"media_id": str(uuid.uuid4())}]
+)
 async def test_a_heart_is_sent_alone(monkeypatch, extra) -> None:
     seen = _fakes(monkeypatch, "instagram")
     r = await _post({"heart": True, **extra})
@@ -130,4 +132,6 @@ def test_the_provider_receives_the_heart_sticker() -> None:
         body="\u2764\ufe0f",
         meta={"like_heart": True},
     )
-    assert InstagramAdapter.build_send_payload(out)["message"] == {"attachment": {"type": "like_heart"}}
+    assert InstagramAdapter.build_send_payload(out)["message"] == {
+        "attachment": {"type": "like_heart"}
+    }
