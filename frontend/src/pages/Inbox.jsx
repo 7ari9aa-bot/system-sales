@@ -11,6 +11,7 @@ import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
 import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
+import { useInstagramPosts } from "@/hooks/useInstagramPosts";
 import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/lib/inboxSend";
 import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
@@ -378,6 +379,8 @@ export default function Inbox() {
   const isMessenger = activeChannel === "messenger";
   const isFacebook = activeChannel === "facebook";
   const isInstagram = activeChannel === "instagram";
+  // Real posts and comments for a real account; the demo account keeps its local sample data.
+  const igLive = useInstagramPosts({ enabled: isInstagram && !demoAccount, lang });
   const allConversations = convMap[activeChannel] || [];
   const approvalsByConversation = useMemo(() => {
     const map = new Map();
@@ -783,7 +786,21 @@ export default function Inbox() {
       <div className="flex h-full min-h-0 min-w-0 flex-col">
       {isInstagram && <InstagramModeTabs active={instagramMode} lang={lang} demoMode={demoAccount} onChange={setInstagramMode} />}
       {isInstagram && instagramMode === "comments" ? (
-        <InstagramPostsWorkspace posts={instagramPosts} lang={lang} onReply={addInstagramPageReply} />
+        demoAccount ? (
+          <InstagramPostsWorkspace posts={instagramPosts} lang={lang} onReply={addInstagramPageReply} />
+        ) : (
+          <InstagramPostsWorkspace
+            posts={igLive.posts}
+            lang={lang}
+            loading={igLive.loading}
+            loadError={igLive.error}
+            onRefresh={igLive.refresh}
+            onReply={igLive.reply}
+            onHide={igLive.hide}
+            onDelete={igLive.remove}
+            onPrivateReply={igLive.sendPrivate}
+          />
+        )
       ) : isFacebook ? (
         <FacebookPostsWorkspace posts={facebookPosts} lang={lang} onReply={addFacebookPageReply} onComment={addFacebookPageComment} />
       ) : (

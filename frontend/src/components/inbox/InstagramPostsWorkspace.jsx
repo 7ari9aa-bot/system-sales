@@ -15,13 +15,15 @@ function readPostListPreference(key, fallback) {
   }
 }
 
-export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply }) {
+export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply, onHide, onDelete, onPrivateReply, onRefresh, loading = false, loadError = "" }) {
   const isArabic = lang === "ar";
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState(posts[0]?.id || null);
   const [replyTo, setReplyTo] = useState(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [privateFor, setPrivateFor] = useState(null);
   const [postListWidth, setPostListWidth] = useState(() => {
     const width = Number(readPostListPreference("fihrist.instagramPosts.listWidth", POST_LIST_DEFAULT_WIDTH));
     return Number.isFinite(width) ? Math.min(POST_LIST_MAX_WIDTH, Math.max(POST_LIST_MIN_WIDTH, width)) : POST_LIST_DEFAULT_WIDTH;
@@ -77,15 +79,30 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
   }, [posts, query]);
   const selected = posts.find((post) => post.id === activeId) || visiblePosts[0] || posts[0] || null;
 
-  function submitReply(event) {
+  async function submitReply(event) {
     event.preventDefault();
     const text = draft.trim();
     if (!text || !selected || sending) return;
     setSending(true);
-    onReply?.(replyTo?.id || null, selected.id, text);
-    setDraft("");
-    setReplyTo(null);
-    setSending(false);
+    setActionError("");
+    try {
+      // Private mode DMs the commenter; otherwise a public reply. Either waits for the platform.
+      if (privateFor) await onPrivateReply?.(privateFor.id, selected.id, text);
+      else await onReply?.(replyTo?.id || null, selected.id, text);
+      setDraft("");
+      setReplyTo(null);
+      setPrivateFor(null);
+    } catch (error) {
+      // Keep what was typed: nothing was sent.
+      setActionError(error?.message || (isArabic ? "تعذر الإرسال" : "Could not send"));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function runAction(fn) {
+    setActionError("");
+    try { await fn(); } catch (error) { setActionError(error?.message || (isArabic ? "تعذر تنفيذ الإجراء" : "Action failed")); }
   }
 
   return (
@@ -110,7 +127,9 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
             </label>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {visiblePosts.length === 0 ? <p className="px-5 py-8 text-center text-[13px] text-[#8e8e8e]">{isArabic ? "لا توجد منشورات مطابقة" : "No matching posts"}</p> : visiblePosts.map((post) => {
+            {onRefresh && <div className="flex items-center justify-between border-b border-[#efefef] px-4 py-2 text-[12px] text-[#8e8e8e]"><span data-testid="ig-posts-status">{loading ? (isArabic ? "جارٍ التحديث…" : "Refreshing…") : (isArabic ? `${posts.length} منشور` : `${posts.length} posts`)}</span><button type="button" data-testid="ig-refresh" disabled={loading} onClick={() => onRefresh()} className="font-semibold text-[#0095f6] hover:text-[#00376b] disabled:opacity-40">{isArabic ? "تحديث" : "Refresh"}</button></div>}
+            {loadError && <div role="alert" data-testid="ig-load-error" className="m-3 rounded-lg bg-[#fde8ec] px-3 py-2 text-[12.5px] text-[#7a1230]">{isArabic ? "تعذر تحميل المنشورات: " : "Could not load posts: "}{loadError}</div>}
+            {visiblePosts.length === 0 ? <p data-testid="ig-empty" className="px-5 py-8 text-center text-[13px] leading-[1.7] text-[#8e8e8e]">{loading ? (isArabic ? "جارٍ تحميل المنشورات…" : "Loading posts…") : posts.length === 0 && onRefresh ? (isArabic ? "لا توجد منشورات بعد. لو ربطت الحساب قبل إضافة التعليقات، أعد ربط إنستغرام مرة واحدة لمنح الصلاحيات الجديدة." : "No posts yet. If you connected Instagram before comments were added, reconnect it once to grant the new permissions.") : (isArabic ? "لا توجد منشورات مطابقة" : "No matching posts")}</p> : visiblePosts.map((post) => {
               const active = selected?.id === post.id;
               return (
                 <button key={post.id} type="button" aria-pressed={active} onClick={() => { setActiveId(post.id); setReplyTo(null); }} className={cn("flex w-full items-center gap-3 border-b border-[#f2f2f2] px-3 py-3 text-left transition-colors hover:bg-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]", active && "bg-[#f5f9ff] shadow-[inset_3px_0_0_#0095f6]")}>
@@ -156,17 +175,19 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
                 </article>
 
                 <section aria-label={isArabic ? "تعليقات المنشور" : "Post comments"} dir={isArabic ? "rtl" : "ltr"} className="mx-auto w-full max-w-[860px] px-4 pb-5 sm:px-7">
-                  {(selected.comments || []).length ? <div className="space-y-5">{selected.comments.map((comment) => <Comment key={comment.id} comment={comment} isArabic={isArabic} onReply={() => { setReplyTo(comment); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }} />)}</div> : <p className="py-8 text-center text-[13px] text-[#8e8e8e]">{isArabic ? "لسه مفيش تعليقات على المنشور ده." : "No comments on this post yet."}</p>}
+                  {(selected.comments || []).length ? <div className="space-y-5">{selected.comments.map((comment) => <Comment key={comment.id} comment={comment} isArabic={isArabic} actions={{ hide: onHide && ((c) => runAction(() => onHide(c.id, selected.id, !c.hidden))), remove: onDelete && ((c) => runAction(() => onDelete(c.id, selected.id))), privateReply: onPrivateReply && ((c) => { setPrivateFor(c); setReplyTo(null); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }) }} onReply={() => { setPrivateFor(null); setReplyTo(comment); requestAnimationFrame(() => document.getElementById("instagram-comment-reply")?.focus()); }} />)}</div> : <p className="py-8 text-center text-[13px] text-[#8e8e8e]">{isArabic ? "لسه مفيش تعليقات على المنشور ده." : "No comments on this post yet."}</p>}
                 </section>
               </div>
 
               <form onSubmit={submitReply} dir={isArabic ? "rtl" : "ltr"} className="shrink-0 border-t border-[#dbdbdb] bg-white px-4 py-3 sm:px-7">
                 <div className="mx-auto max-w-[860px]">
+                  {actionError && <div role="alert" data-testid="ig-action-error" className="mb-2 rounded-lg bg-[#fde8ec] px-3 py-2 text-[12.5px] text-[#7a1230]">{actionError}</div>}
+                  {privateFor && <div data-testid="ig-private-banner" className="mb-2 flex items-center justify-between text-[12px] text-[#8e8e8e]"><span>{isArabic ? <>رسالة خاصة إلى <b className="font-semibold text-[#262626]">{privateFor.handle || privateFor.author}</b> (مرة واحدة فقط)</> : <>Private message to <b className="font-semibold text-[#262626]">{privateFor.handle || privateFor.author}</b> (one time only)</>}</span><button type="button" onClick={() => setPrivateFor(null)} className="font-semibold">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
                   {replyTo && <div className="mb-2 flex items-center justify-between text-[12px] text-[#8e8e8e]"><span>{isArabic ? <>الرد على <b className="font-semibold text-[#262626]">{replyTo.author}</b></> : <>Replying to <b className="font-semibold text-[#262626]">{replyTo.handle || replyTo.author}</b></>}</span><button type="button" onClick={() => setReplyTo(null)} className="rounded px-1 text-[#0095f6] hover:underline">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
                   <div className="flex min-h-10 items-center gap-3 rounded-full border border-[#dbdbdb] bg-white px-3 py-1.5 focus-within:border-[#a8a8a8]">
                     <button type="button" disabled aria-label={isArabic ? "إضافة صورة للتعليق غير متاحة في العرض التجريبي" : "Attach media unavailable in demo"} className="shrink-0 text-[#8e8e8e] disabled:opacity-60"><ImageIcon className="h-[17px] w-[17px]" /></button>
                     <textarea id="instagram-comment-reply" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} dir="auto" placeholder={replyTo ? (isArabic ? "اكتب ردك..." : "Write a reply...") : (isArabic ? "أضف تعليقًا..." : "Add a comment...")} className="max-h-24 min-h-6 min-w-0 flex-1 resize-y bg-transparent py-1.5 text-[14px] leading-[1.6] outline-none placeholder:text-[#8e8e8e]" />
-                    <button type="submit" disabled={!draft.trim() || sending} className="shrink-0 px-1 text-[13px] font-semibold text-[#0095f6] hover:text-[#00376b] disabled:cursor-not-allowed disabled:opacity-40">{isArabic ? "نشر" : "Post"}</button>
+                    <button type="submit" disabled={!draft.trim() || sending} className="shrink-0 px-1 text-[13px] font-semibold text-[#0095f6] hover:text-[#00376b] disabled:cursor-not-allowed disabled:opacity-40">{privateFor ? (isArabic ? "إرسال" : "Send") : (isArabic ? "نشر" : "Post")}</button>
                   </div>
                 </div>
               </form>
@@ -182,9 +203,16 @@ function PostThumbnail({ post }) {
   return post.mediaUrl ? <span className="relative grid h-[58px] w-[58px] shrink-0 place-items-center overflow-hidden rounded-md bg-[#f1f1f1]"><img src={post.mediaUrl} alt="" className="h-full w-full object-cover" />{post.mediaType === "video" && <Video className="absolute right-1 top-1 h-3.5 w-3.5 fill-white text-white drop-shadow" />}</span> : <span className="grid h-[58px] w-[58px] shrink-0 place-items-center rounded-md bg-[#fff2f6] text-[#d62976]"><ImageIcon className="h-5 w-5" /></span>;
 }
 
-function Comment({ comment, isArabic, onReply, nested = false }) {
+const PRIVATE_REPLY_MS = 7 * 24 * 3600 * 1000;
+
+function Comment({ comment, isArabic, onReply, actions, nested = false }) {
+  const age = comment.commentedAt ? Date.now() - new Date(comment.commentedAt).getTime() : 0;
+  const canPrivate = !comment.isPage && !comment.privateRepliedAt && age <= PRIVATE_REPLY_MS;
+  const privateTitle = comment.privateRepliedAt
+    ? (isArabic ? "تم إرسال رد خاص لهذا التعليق" : "Private reply already sent")
+    : age > PRIVATE_REPLY_MS ? (isArabic ? "انتهت مهلة الرد الخاص (7 أيام)" : "Private reply window (7 days) has passed") : "";
   return (
-    <div className={cn("flex items-start gap-2.5", nested && "ms-10 border-s border-[#efefef] ps-3")}>
+    <div data-testid="ig-comment" data-hidden={comment.hidden ? "true" : "false"} className={cn("flex items-start gap-2.5", nested && "ms-10 border-s border-[#efefef] ps-3", comment.hidden && "opacity-55")}>
       <img src={comment.avatarUrl || "/fihrist-mark.svg"} alt="" className="mt-0.5 h-9 w-9 shrink-0 rounded-full border border-[#efefef] bg-white object-cover" />
       <div className="min-w-0 flex-1">
         <div className="text-[14px] leading-[1.7] text-[#262626]">
@@ -196,8 +224,12 @@ function Comment({ comment, isArabic, onReply, nested = false }) {
           <span>{comment.timeLabel}</span>{comment.likes > 0 && <span>{comment.likes} {isArabic ? "إعجاب" : "likes"}</span>}
           <button type="button" onClick={onReply} className="font-semibold hover:text-[#262626] focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]">{isArabic ? "رد" : "Reply"}</button>
           {comment.isPage && !comment.isAgent && <span className="text-[#8e8e8e]">{isArabic ? "أنت" : "You"}</span>}
+          {comment.hidden && <span data-testid="ig-hidden-badge" className="text-[#8e8e8e]">{isArabic ? "مخفي" : "Hidden"}</span>}
+          {actions?.privateReply && !comment.isPage && <button type="button" data-testid="ig-private-reply" disabled={!canPrivate} title={privateTitle} onClick={() => actions.privateReply(comment)} className="font-semibold hover:text-[#262626] disabled:cursor-not-allowed disabled:opacity-40">{isArabic ? "رد خاص" : "Private reply"}</button>}
+          {actions?.hide && !comment.isPage && <button type="button" data-testid="ig-hide" onClick={() => actions.hide(comment)} className="font-semibold hover:text-[#262626]">{comment.hidden ? (isArabic ? "إظهار" : "Unhide") : (isArabic ? "إخفاء" : "Hide")}</button>}
+          {actions?.remove && <button type="button" data-testid="ig-delete" onClick={() => { if (window.confirm(isArabic ? "حذف التعليق نهائيًا من إنستغرام؟" : "Delete this comment from Instagram for good?")) actions.remove(comment); }} className="font-semibold text-[#ed4956] hover:opacity-80">{isArabic ? "حذف" : "Delete"}</button>}
         </div>
-        {(comment.replies || []).length > 0 && <div className="mt-3 space-y-3">{comment.replies.map((reply) => <Comment key={reply.id} comment={reply} isArabic={isArabic} nested onReply={onReply} />)}</div>}
+        {(comment.replies || []).length > 0 && <div className="mt-3 space-y-3">{comment.replies.map((reply) => <Comment key={reply.id} comment={reply} isArabic={isArabic} nested onReply={onReply} actions={actions} />)}</div>}
       </div>
       <button type="button" disabled aria-label={isArabic ? "إعجاب غير متاح في العرض التجريبي" : "Like unavailable in demo"} className="mt-1 shrink-0 text-[#8e8e8e] disabled:opacity-60"><Heart className="h-4 w-4" /></button>
     </div>
