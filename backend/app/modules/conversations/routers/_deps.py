@@ -87,7 +87,10 @@ class AssignRequest(BaseModel):
 # explicit set is applied only when the caller lacks ``pii:read``, because
 # ``redact_fields`` with ``fields_to_redact`` redacts UNCONDITIONALLY; the same
 # shape ``customers/router.py:_redact_issue_item`` settled on for the same trap.
-_INBOX_PII_FIELDS = PII_FIELDS | frozenset({"customer_phone"})
+# The handle and the photo identify a person as surely as a phone number does.
+_INBOX_PII_FIELDS = PII_FIELDS | frozenset(
+    {"customer_phone", "customer_handle", "customer_avatar_url"}
+)
 
 
 def _redact_inbox_item(item: dict, *, permission_codes: set[str]) -> dict:

@@ -40,15 +40,24 @@ export const CHANNELS = [
     accent: "#E1306C",
     theme: {
       headerBg: "#ffffff",
-      headerText: "#262626",
+      headerText: "#000000",
       chatBg: "#ffffff",
-      out: "#3797f0",
+      out: "#4A5DF9",
       outText: "#ffffff",
-      in: "#efefef",
-      inText: "#111111",
+      in: "#F3F5F7",
+      inText: "#000000",
       inputBg: "#ffffff",
       inputBorder: "#dbdbdb",
       divider: "#dbdbdb",
+      // Tokens read from Instagram's own production CSS (static.cdninstagram.com):
+      // --ig-outgoing-message-bubble 74,93,249 (flat, NOT a gradient), --ig-incoming-message-bubble
+      // 243,245,247, --ig-primary-text #000, --ig-secondary-text #737373, --ig-separator #dbdbdb.
+      secondaryText: "#737373",
+      darkOut: "#4A5DF9",
+      darkIn: "#25292E",
+      darkBg: "#0C1014",
+      darkText: "#F5F5F5",
+      bubbleRadius: 18, // pill-like corner as drawn by Instagram's own web chat (compared live, 2026-11-18)
       checkmarks: false,
       tail: false,
     },

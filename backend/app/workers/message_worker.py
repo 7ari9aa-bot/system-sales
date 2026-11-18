@@ -192,6 +192,9 @@ class _SendPlan:
     credentials: ProviderCredentials
     outbound: OutboundMessage
     set_channel_message_id: bool  # webchat messages have no provider id
+    # Set by phase 2 when the provider says the channel's token is dead (Instagram 190):
+    # phase 3 then marks the channel as needing a reconnect, so it stops looking healthy.
+    needs_reconnect: bool = False
 
 
 class MessageWorker(StreamWorker):
@@ -675,6 +678,11 @@ class MessageWorker(StreamWorker):
                 meta={
                     **media_meta,
                     **(
+                        {"human_agent": True}
+                        if (message.provider_metadata or {}).get("human_agent")
+                        else {}
+                    ),
+                    **(
                         {
                             "reaction_to_provider_id"
                             if message.content_type == "reaction"
@@ -697,6 +705,8 @@ class MessageWorker(StreamWorker):
             provider_id = await plan.adapter.send(plan.credentials, plan.outbound)
         except Exception as exc:  # noqa: BLE001 — classified below
             logger.exception("outbound.send_failed message=%s", plan.outbound.message_id)
+            failure = getattr(exc, "failure", None)
+            plan.needs_reconnect = getattr(failure, "kind", None) == "reconnect"
             return _classify_send_failure(exc), None, str(exc)[:500]
         return "sent", provider_id, None
 
@@ -756,6 +766,8 @@ class MessageWorker(StreamWorker):
                 session, tenant_id, feature="messages_outbound", quantity=Decimal("1")
             )
         elif status in ("failed", "unknown"):
+            if plan.needs_reconnect:
+                await self._flag_channel_for_reconnect(session, tenant_id, message)
             # Both terminal failures dead-letter the event for MANUAL
             # reconciliation (§130) — and until now that was the whole story:
             # the row said "failed", nobody was told, and a customer who had
@@ -833,6 +845,46 @@ class MessageWorker(StreamWorker):
                 message.id,
                 exc_info=True,
             )
+
+    async def _flag_channel_for_reconnect(self, session, tenant_id: uuid.UUID, message) -> None:
+        """The provider refused our token: show the channel as needing a reconnect.
+
+        Until now a dead Instagram token (error 190) only failed each message, and the channel
+        kept reporting itself as active, so nobody was told to reconnect. Only a live channel is
+        demoted (the same step the verify route takes); one already in another state is left
+        alone. This is a signal: if it cannot be recorded, the failed message is still recorded.
+        """
+        conversation = (
+            await session.execute(
+                select(Conversation).where(
+                    Conversation.tenant_id == tenant_id, Conversation.id == message.conversation_id
+                )
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            return
+        integration = (
+            await session.execute(
+                select(Integration).where(
+                    Integration.tenant_id == tenant_id,
+                    Integration.provider == conversation.channel,
+                    Integration.kind == "channel",
+                )
+            )
+        ).scalar_one_or_none()
+        if integration is None or integration.status not in ("active", "connected"):
+            return
+        integration.status = "reauth_required"
+        config = dict(integration.config or {})
+        connection = dict(config.get("_connection") or {})
+        connection["failure"] = "token_rejected"
+        config["_connection"] = connection
+        integration.config = config
+        logger.warning(
+            "outbound.channel_needs_reconnect tenant=%s provider=%s",
+            tenant_id,
+            conversation.channel,
+        )
 
 
 def _classify_send_failure(exc: Exception) -> str:

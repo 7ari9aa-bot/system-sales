@@ -165,3 +165,39 @@ def test_decision_is_explainable() -> None:
     for conv in (_conv("whatsapp", 1), _conv("whatsapp", 48), _conv("telegram", None)):
         decision = MessagingPolicyService.evaluate(conv, now=NOW)
         assert decision.reason
+
+
+# --- human-agent window (Meta HUMAN_AGENT tag: a person may answer for 7 days) ------------
+
+
+def test_a_person_may_answer_after_24h_inside_the_human_agent_window() -> None:
+    d = MessagingPolicyService.evaluate(_conv("instagram", 72), sender_type="agent", now=NOW)
+    assert d.allowed and d.human_agent and not d.requires_template
+    assert d.window_expires_at == NOW - timedelta(hours=72) + timedelta(days=7)
+
+
+def test_inside_24h_no_tag_is_needed() -> None:
+    d = MessagingPolicyService.evaluate(_conv("instagram", 2), sender_type="agent", now=NOW)
+    assert d.allowed and not d.human_agent
+
+
+def test_an_ai_or_automation_never_gets_the_human_agent_window() -> None:
+    for sender in ("ai", "system", None):
+        d = MessagingPolicyService.evaluate(_conv("instagram", 72), sender_type=sender, now=NOW)
+        assert not d.allowed and d.requires_template and not d.human_agent, sender
+
+
+def test_after_7_days_even_a_person_needs_a_template() -> None:
+    conv = _conv("instagram", 24 * 7 + 1)
+    d = MessagingPolicyService.evaluate(conv, sender_type="agent", now=NOW)
+    assert not d.allowed and d.requires_template
+
+
+def test_whatsapp_has_no_human_agent_window() -> None:
+    d = MessagingPolicyService.evaluate(_conv("whatsapp", 72), sender_type="agent", now=NOW)
+    assert not d.allowed and not d.human_agent
+
+
+def test_a_customer_who_never_wrote_cannot_be_answered_even_by_a_person() -> None:
+    d = MessagingPolicyService.evaluate(_conv("instagram", None), sender_type="agent", now=NOW)
+    assert not d.allowed

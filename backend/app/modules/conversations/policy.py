@@ -48,15 +48,18 @@ class ChannelMessagingPolicy:
     supports_templates: bool
     # The MessageTemplate.provider a template must belong to for this channel.
     template_provider: str | None
+    # A longer window that ONLY a human's reply may use (Meta's HUMAN_AGENT tag: 7 days on
+    # Instagram and Messenger). None => the channel has no such window.
+    human_agent_window_hours: int | None = None
 
 
 # The single source of truth for provider rules. A per-channel conditional
 # anywhere else in the codebase is how these rules silently drift apart.
 CHANNEL_POLICIES: dict[str, ChannelMessagingPolicy] = {
     "whatsapp": ChannelMessagingPolicy("whatsapp", 24, True, "whatsapp"),
-    "messenger": ChannelMessagingPolicy("messenger", 24, True, "messenger"),
-    "facebook": ChannelMessagingPolicy("facebook", 24, True, "messenger"),
-    "instagram": ChannelMessagingPolicy("instagram", 24, True, "instagram"),
+    "messenger": ChannelMessagingPolicy("messenger", 24, True, "messenger", 168),
+    "facebook": ChannelMessagingPolicy("facebook", 24, True, "messenger", 168),
+    "instagram": ChannelMessagingPolicy("instagram", 24, True, "instagram", 168),
     "telegram": ChannelMessagingPolicy("telegram", None, False, None),
     "webchat": ChannelMessagingPolicy("webchat", None, False, None),
     "email": ChannelMessagingPolicy("email", None, False, None),
@@ -81,6 +84,9 @@ class OutboundDecision:
     requires_template: bool
     window_expires_at: datetime | None
     template_name: str | None = None
+    # True when this send is allowed ONLY because a person wrote it and the longer
+    # human-agent window is still open: the provider must be told (HUMAN_AGENT tag).
+    human_agent: bool = False
 
     @property
     def window_open(self) -> bool:
@@ -97,6 +103,7 @@ class MessagingPolicyService:
         template_name: str | None = None,
         template_approved: bool = False,
         template_provider: str | None = None,
+        sender_type: str | None = None,
         now: datetime | None = None,
     ) -> OutboundDecision:
         policy = policy_for(getattr(conversation, "channel", None))
@@ -119,6 +126,27 @@ class MessagingPolicyService:
                 requires_template=False,
                 window_expires_at=expires,
             )
+
+        # Past the standard window, a PERSON may still answer inside the longer
+        # human-agent window. An AI, an automation or a campaign may not: Meta grants the
+        # tag for human replies only, and using it for bots is what gets it revoked.
+        if (
+            sender_type == "agent"
+            and policy.human_agent_window_hours is not None
+            and anchor is not None
+        ):
+            human_expires = anchor + timedelta(hours=policy.human_agent_window_hours)
+            if now < human_expires:
+                return OutboundDecision(
+                    allowed=True,
+                    reason=(
+                        f"past the {policy.window_hours}h window but inside the "
+                        f"{policy.human_agent_window_hours // 24}-day human-agent window"
+                    ),
+                    requires_template=False,
+                    window_expires_at=human_expires,
+                    human_agent=True,
+                )
 
         # Outside the window — or the customer has never written, which is the
         # same situation: only an approved template may reach them.
@@ -175,6 +203,7 @@ class MessagingPolicyService:
         *,
         template_name: str | None = None,
         language: str = "ar",
+        sender_type: str | None = None,
         now: datetime | None = None,
     ) -> OutboundDecision:
         """Load the referenced template (if any) and evaluate against it.
@@ -184,7 +213,7 @@ class MessagingPolicyService:
         the safe default for a name the tenant never registered.
         """
         if not template_name:
-            return MessagingPolicyService.evaluate(conversation, now=now)
+            return MessagingPolicyService.evaluate(conversation, sender_type=sender_type, now=now)
 
         from sqlalchemy import select
 
@@ -205,6 +234,7 @@ class MessagingPolicyService:
             template_name=template_name,
             template_approved=bool(template and template.status == "approved"),
             template_provider=template.provider if template else None,
+            sender_type=sender_type,
             now=now,
         )
 
