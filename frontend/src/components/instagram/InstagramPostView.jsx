@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import IgAvatar from "./IgAvatar";
 import IgComment from "./IgComment";
 import { IG } from "./igTheme";
-import { IgBack, IgClose, IgComment as CommentIcon, IgHeart, IgMore, IgSave, IgShare } from "./igIcons";
+import { IgBack, IgClose, IgComment as CommentIcon, IgEmoji, IgHeart, IgMore, IgSave, IgShare } from "./igIcons";
 import { cn } from "@/lib/utils";
 
 /** Instagram's post modal: picture on one side, caption, comments and the reply box on the other. */
@@ -107,13 +107,14 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
               <span className="ms-auto text-black/40" title={isArabic ? "الحفظ غير متاح عبر واجهة إنستغرام" : "Saving isn't available through Instagram's API"}><IgSave /></span>
             </div>
             <p className="text-[14px] font-semibold">{Number(post.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : post.likes === 1 ? "like" : "likes"}</p>
-            <p className="mt-1 text-[12px]" style={{ color: IG.secondary }}>{post.timeLabel}</p>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.2px]" style={{ color: IG.secondary }}>{post.timeLabel}</p>
           </div>
           <form onSubmit={submit} className="shrink-0 border-t px-4 py-2" style={{ borderColor: IG.separator }}>
             {actionError && <div role="alert" data-testid="ig-action-error" className="mb-2 text-[12px]" style={{ color: IG.error }}>{actionError}</div>}
             {privateFor && <div data-testid="ig-private-banner" className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>رسالة خاصة إلى <b className="text-black">{privateFor.handle || privateFor.author}</b> (مرة واحدة فقط)</> : <>Private message to <b className="text-black">{privateFor.handle || privateFor.author}</b> (one time only)</>}</span><button type="button" onClick={() => setPrivateFor(null)} className="font-semibold text-black">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
             {replyTo && !privateFor && <div className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>الرد على <b className="text-black">{replyTo.handle || replyTo.author}</b></> : <>Replying to <b className="text-black">{replyTo.handle || replyTo.author}</b></>}</span><button type="button" onClick={() => { setReplyTo(null); setDraft(""); }} className="font-semibold text-black">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
             <div className="flex min-h-10 items-center gap-3">
+              <span className="shrink-0 text-black/40" aria-hidden="true"><IgEmoji size={24} /></span>
               <textarea id="instagram-comment-reply" ref={inputRef} rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!canSend}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
                 dir="auto" placeholder={canSend ? (privateFor ? (isArabic ? "اكتب رسالتك..." : "Write a message...") : (isArabic ? "أضف تعليقًا..." : "Add a comment...")) : (isArabic ? "اضغط «رد» تحت تعليق للرد عليه" : "Tap Reply under a comment to answer it")}

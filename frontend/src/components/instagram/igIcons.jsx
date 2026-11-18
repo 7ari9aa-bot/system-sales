@@ -66,3 +66,6 @@ export function IgVerified({ size = 12, label = "Verified" }) {
 
 /** Instagram's "new message" compose icon (pencil over a square). */
 export const IgCompose = (p) => (<Svg {...p}><path d="M12.5 3.5H6a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h11.5a3 3 0 0 0 3-3v-6" /><path d="m17.8 3.2 3 3-8.3 8.3-3.9.9.9-3.9z" /></Svg>);
+
+/** Smiley shown at the start of Instagram's comment box. */
+export const IgEmoji = (p) => (<Svg {...p}><circle cx="12" cy="12" r="9.5" /><path d="M8.5 14.2a4.2 4.2 0 0 0 7 0" /><circle cx="9" cy="9.6" r="0.9" fill="currentColor" stroke="none" /><circle cx="15" cy="9.6" r="0.9" fill="currentColor" stroke="none" /></Svg>);
