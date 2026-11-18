@@ -68,7 +68,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
       <button type="button" onClick={onClose} aria-label={isArabic ? "إغلاق" : "Close"} className="absolute end-4 top-4 hidden text-white md:block"><IgClose size={26} /></button>
       {onPrev && <button type="button" onClick={onPrev} aria-label={isArabic ? "السابق" : "Previous"} className={cn(arrow, "start-4 hidden md:grid")}><IgBack size={16} className={isArabic ? "-scale-x-100" : undefined} /></button>}
       {onNext && <button type="button" onClick={onNext} aria-label={isArabic ? "التالي" : "Next"} className={cn(arrow, "end-4 hidden md:grid")}><IgBack size={16} className={isArabic ? undefined : "-scale-x-100"} /></button>}
-      <article dir={isArabic ? "rtl" : "ltr"} data-testid="ig-post-card" className="flex h-full w-full max-w-[1200px] flex-col overflow-hidden bg-white md:h-[min(90vh,800px)] md:flex-row md:rounded-[4px]" style={{ fontFamily: IG.font }}>
+      <article dir={isArabic ? "rtl" : "ltr"} data-testid="ig-post-card" className="flex h-full w-full max-w-[815px] flex-col overflow-hidden bg-white md:h-[min(90vh,800px)] md:flex-row md:rounded-[4px]" style={{ fontFamily: IG.font }}>
         <header className="flex h-11 shrink-0 items-center border-b px-4 md:hidden" style={{ borderColor: IG.separator }}>
           <button type="button" onClick={onClose} aria-label={isArabic ? "رجوع" : "Back"}><IgBack className={isArabic ? "-scale-x-100" : undefined} /></button>
           <h2 className="flex-1 text-center text-[16px] font-semibold">{isArabic ? "منشور" : "Post"}</h2><span className="w-6" />
@@ -80,9 +80,9 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
               : <img src={post.mediaUrl} alt={isArabic ? "صورة المنشور" : "Post media"} className="max-h-full max-w-full object-contain" />
             : <span className="text-[14px] text-white/70">{isArabic ? "لا توجد صورة" : "No media"}</span>}
         </div>
-        <div className="flex min-h-0 w-full flex-1 flex-col md:w-[405px] md:flex-none md:border-s md:max-w-[500px]" style={{ borderColor: IG.separator }}>
-          <header className="flex h-[60px] shrink-0 items-center gap-3 border-b px-4" style={{ borderColor: IG.separator }}>
-            <IgAvatar src={post.accountAvatarUrl} size={32} ring />
+        <div className="flex min-h-0 w-full flex-1 flex-col md:w-[335px] md:flex-none md:border-s md:max-w-[500px]" style={{ borderColor: IG.separator }}>
+          <header className="flex h-[71px] shrink-0 items-center gap-3 px-4 pt-[7px]">
+            <IgAvatar src={post.accountAvatarUrl} size={32} />
             <p dir="ltr" className="min-w-0 flex-1 truncate text-[14px] font-semibold">{post.accountName || "Instagram"}</p>
             {actions.toggleComments && (
               <div className="relative">
@@ -132,16 +132,16 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
             </div>
           )}
           {actionError && <div role="alert" data-testid="ig-action-error" className="shrink-0 border-t px-4 py-2 text-[12px]" style={{ color: IG.error, borderColor: IG.separator }}>{actionError}</div>}
-          {canSend && <form onSubmit={submit} className="shrink-0 border-t px-4 py-2" style={{ borderColor: IG.separator }}>
+          {canSend && <form onSubmit={submit} className="shrink-0 px-4 py-2">
             {privateFor && <div data-testid="ig-private-banner" className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>رسالة خاصة إلى <b className="text-[#0c1014]">{privateFor.handle || privateFor.author}</b> (مرة واحدة فقط)</> : <>Private message to <b className="text-[#0c1014]">{privateFor.handle || privateFor.author}</b> (one time only)</>}</span><button type="button" onClick={() => setPrivateFor(null)} className="font-semibold text-[#0c1014]">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
             {replyTo && !privateFor && <div className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>الرد على <b className="text-[#0c1014]">{replyTo.handle || replyTo.author}</b></> : <>Replying to <b className="text-[#0c1014]">{replyTo.handle || replyTo.author}</b></>}</span><button type="button" onClick={() => { setReplyTo(null); setDraft(""); }} className="font-semibold text-[#0c1014]">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
-            <div className="flex min-h-10 items-center gap-3">
-              <button type="button" onClick={() => setEmojiOpen((v) => !v)} aria-label={isArabic ? "الرموز التعبيرية" : "Emoji"} aria-expanded={emojiOpen} className="shrink-0 hover:opacity-60 disabled:opacity-30"><IgEmoji size={24} /></button>
+            <div className="flex min-h-10 items-center gap-2 rounded-full bg-[#f3f5f7] ps-4 pe-3" style={{ borderRadius: 38 }}>
               <textarea id="instagram-comment-reply" ref={inputRef} rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} 
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
                 dir="auto" placeholder={privateFor ? (isArabic ? "اكتب رسالتك..." : "Write a message...") : (isArabic ? "أضف تعليقًا..." : "Add a comment...")}
-                className="max-h-20 min-w-0 flex-1 resize-none bg-transparent py-2 text-[14px] outline-none placeholder:text-[#6a717a]" />
-              <button type="submit" disabled={!draft.trim() || sending} className="shrink-0 text-[14px] font-semibold hover:text-[#00376b] disabled:opacity-30" style={{ color: IG.blue }}>{privateFor ? (isArabic ? "إرسال" : "Send") : (isArabic ? "نشر" : "Post")}</button>
+                className="max-h-20 min-w-0 flex-1 resize-none bg-transparent py-[11px] text-[14px] leading-[18px] outline-none placeholder:text-[#6a717a]" />
+              {draft.trim() && <button type="submit" disabled={sending} className="shrink-0 text-[14px] font-semibold hover:text-[#00376b] disabled:opacity-30" style={{ color: IG.blue }}>{privateFor ? (isArabic ? "إرسال" : "Send") : (isArabic ? "نشر" : "Post")}</button>}
+              <button type="button" onClick={() => setEmojiOpen((v) => !v)} aria-label={isArabic ? "الرموز التعبيرية" : "Emoji"} aria-expanded={emojiOpen} className="shrink-0 text-[#6a717a] hover:opacity-60"><IgEmoji size={24} /></button>
             </div>
           </form>}
         </div>
