@@ -26,10 +26,10 @@ function Rail({ compact, onCreate }) {
   const isArabic = lang === "ar";
   const item = (isActive) => cn(
     "group relative flex h-12 items-center gap-4 rounded-lg px-3 text-[16px] transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]",
-    compact ? "w-12 justify-center px-0" : "w-full",
+    compact ? "w-12 justify-center px-0" : "w-12 justify-center px-0 xl:w-full xl:justify-start xl:px-3",
     isActive ? "font-bold" : "font-normal"
   );
-  const label = (text) => <span className={cn("truncate", compact && "sr-only")}>{text}</span>;
+  const label = (text) => <span className={cn("truncate", compact ? "sr-only" : "sr-only xl:not-sr-only")}>{text}</span>;
   return (
     <nav aria-label={isArabic ? "تنقل إنستغرام" : "Instagram navigation"} className={cn("flex h-full shrink-0 flex-col border-e px-3 pb-5 pt-2", compact ? "w-[72px] items-center" : "w-[72px] items-center xl:w-[244px] xl:items-stretch")} style={{ borderColor: IG.border }}>
       <NavLink to="/instagram/direct/inbox" className={cn("mb-4 flex h-[72px] items-center px-3", compact && "justify-center px-0")} aria-label="Instagram">

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import InstagramPostView from "@/components/instagram/InstagramPostView";
 import { IG, igCount } from "@/components/instagram/igTheme";
-import { IgCarousel, IgComment, IgGrid, IgHeart, IgReels } from "@/components/instagram/igIcons";
+import { IgCarousel, IgComment, IgGrid, IgHeart, IgReels, IgVerified } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
 import { useInstagramData } from "./useInstagramData";
 
@@ -44,7 +44,7 @@ export default function InstagramProfilePage({ tab = "posts" }) {
   const open = openIndex >= 0 ? posts[openIndex] : null;
   const close = () => (location.state?.fromProfile ? navigate(-1) : navigate("/instagram/profile"));
   const go = (index) => navigate(`/instagram/p/${encodeURIComponent(posts[index].id)}`, { replace: true, state: location.state });
-  const tabClass = (active) => cn("flex h-[52px] items-center gap-1.5 border-t text-[12px] font-semibold uppercase tracking-[1px]", active ? "-mt-px border-black text-black" : "border-transparent text-[#737373]");
+  const tabClass = (active) => cn("flex h-[52px] w-[60px] items-center justify-center border-t", active ? "-mt-px border-black text-black" : "border-transparent text-[#737373]");
 
   return (
     <div className="h-full overflow-y-auto">
@@ -54,7 +54,7 @@ export default function InstagramProfilePage({ tab = "posts" }) {
           <IgAvatar src={account?.profile_picture_url} size={77} className="md:hidden" />
           <section className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 dir="ltr" className="text-[20px] font-normal">{username || "Instagram"}</h1>
+              <h1 dir="ltr" className="flex items-center gap-1.5 text-[20px] font-normal">{username || "Instagram"}{account?.is_verified && <IgVerified size={18} label={isArabic ? "موثّق" : "Verified"} />}</h1>
               {account?.username && <a href={`https://www.instagram.com/${encodeURIComponent(account.username)}/`} target="_blank" rel="noreferrer" className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdbdb]" style={{ background: IG.button }}>{isArabic ? "فتح على إنستغرام" : "View on Instagram"}</a>}
               {actions.refresh && <button type="button" onClick={() => actions.refresh()} className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdbdb]" style={{ background: IG.button }}>{isArabic ? "تحديث" : "Refresh"}</button>}
             </div>
@@ -74,9 +74,9 @@ export default function InstagramProfilePage({ tab = "posts" }) {
         <ul className="flex justify-around border-t py-3 text-center md:hidden" style={{ borderColor: IG.border }}>
           {[[account?.media_count ?? posts.length, isArabic ? "منشور" : "posts"], [account?.followers_count, isArabic ? "متابِع" : "followers"], [account?.follows_count, isArabic ? "يتابع" : "following"]].map(([v, l]) => v == null ? null : <li key={l} className="text-[14px]" style={{ color: IG.secondary }}><span className="block font-semibold text-black">{igCount(v, lang)}</span>{l}</li>)}
         </ul>
-        <nav aria-label={isArabic ? "أقسام الملف الشخصي" : "Profile tabs"} className="flex justify-center gap-14 border-t" style={{ borderColor: IG.border }}>
-          <Link to="/instagram/profile" aria-current={tab === "posts" ? "page" : undefined} className={tabClass(tab === "posts")}><IgGrid size={12} />{isArabic ? "المنشورات" : "Posts"}</Link>
-          <Link to="/instagram/profile/reels" aria-current={tab === "reels" ? "page" : undefined} className={tabClass(tab === "reels")}><IgReels size={12} />{isArabic ? "ريلز" : "Reels"}</Link>
+        <nav aria-label={isArabic ? "أقسام الملف الشخصي" : "Profile tabs"} className="flex justify-center gap-[60px] border-t" style={{ borderColor: IG.border }}>
+          <Link to="/instagram/profile" aria-current={tab === "posts" ? "page" : undefined} className={tabClass(tab === "posts")}><IgGrid size={24} /><span className="sr-only">{isArabic ? "المنشورات" : "Posts"}</span></Link>
+          <Link to="/instagram/profile/reels" aria-current={tab === "reels" ? "page" : undefined} className={tabClass(tab === "reels")}><IgReels size={24} /><span className="sr-only">{isArabic ? "ريلز" : "Reels"}</span></Link>
         </nav>
         {postsError && <p role="alert" className="py-10 text-center text-[14px]" style={{ color: IG.error }}>{isArabic ? "تعذر تحميل المنشورات." : "Couldn't load posts."} {postsError}</p>}
         {postsLoading && shown.length === 0 && <p role="status" className="py-10 text-center text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "جارٍ التحميل…" : "Loading…"}</p>}
@@ -87,7 +87,7 @@ export default function InstagramProfilePage({ tab = "posts" }) {
             {!demoAccount && <p data-testid="ig-empty" className="mx-auto mt-3 max-w-md text-[14px] leading-[1.7]" style={{ color: IG.secondary }}>{isArabic ? "لا توجد منشورات بعد. لو ربطت الحساب قبل إضافة التعليقات، أعد ربط إنستغرام مرة واحدة لمنح الصلاحيات الجديدة." : "No posts yet. If you connected the account before comments were added, reconnect Instagram once to grant the new permissions."}</p>}
           </div>
         )}
-        <div className="grid grid-cols-3 gap-[3px] pb-10">{shown.map((post) => <Tile key={post.id} post={post} lang={lang} />)}</div>
+        <div className="grid grid-cols-3 gap-px pb-10">{shown.map((post) => <Tile key={post.id} post={post} lang={lang} />)}</div>
       </div>
       {postId && open && (
         <InstagramPostView post={open} lang={lang} actions={actions} onClose={close}
