@@ -85,3 +85,27 @@ test("a photo opens in the viewer", async ({ page }) => {
   await page.getByTestId("ig-image").click();
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 });
+
+// Instagram's Send API lets a business react with a heart only, so the heart is the one reaction offered, and only on
+// what the customer wrote. It goes through /reaction like WhatsApp's, and a second tap withdraws it.
+test("a customer's message can be hearted and un-hearted; our own cannot", async ({ page }) => {
+  await open(page);
+  const calls = [];
+  await page.route("**/api/v1/conversations/c1/messages/*/reaction", async (route) => {
+    calls.push({ id: route.request().url().match(/messages\/([^/]+)\/reaction/)[1], body: route.request().postDataJSON() });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "r1", target_id: "m1", emoji: "❤️" }) });
+  });
+  await page.getByText("Sara Ahmed").first().click();
+  const hello = page.getByTestId("ig-bubble").filter({ hasText: "hello there" });
+  await expect(hello).toBeVisible({ timeout: 15_000 });
+  await hello.hover();
+  const heart = page.getByTestId("ig-react-heart").first();
+  await heart.click({ force: true });
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "m1", body: { emoji: "❤️" } });
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await heart.click({ force: true });
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "m1", body: { emoji: "" } });
+  // our own message offers no reaction
+  const mine = page.getByTestId("ig-bubble").filter({ hasText: "hi! how can I help?" });
+  await expect(mine.locator("xpath=..").getByTestId("ig-react-heart")).toHaveCount(0);
+});

@@ -32,6 +32,7 @@ from app.modules.conversations.gateway.instagram_limits import (
     MAX_QUICK_REPLIES,
     QUICK_REPLY_TITLE_CHARS,
     InstagramFailure,
+    InstagramLimitError,
     check_media,
     check_text,
     classify_instagram_error,
@@ -42,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 # Stored as the body of a reaction row that withdraws the sender's earlier reaction.
 REACTION_REMOVED = "\u2205"
+# Instagram's Send API documents exactly one reaction a business can send: `love`, the heart.
+# (Meta, "Send a message - Instagram Messaging", section "React to a message".)
+SENDABLE_REACTIONS = {"\u2764\ufe0f": "love", "\u2764": "love"}
 
 
 class InstagramProviderError(ExternalProviderError):
@@ -366,6 +370,13 @@ class InstagramAdapter(ChannelAdapter):
         and a shared post carry no free text, so only text and media are measured.
         """
         meta = message.meta or {}
+        if meta.get("reaction_to_provider_id"):
+            emoji = message.body or ""
+            if emoji and emoji != REACTION_REMOVED and emoji not in SENDABLE_REACTIONS:
+                raise InstagramLimitError(
+                    "reaction_not_allowed", "Instagram only lets a business react with a heart"
+                )
+            return
         if (
             meta.get("reaction_to_provider_id")
             or meta.get("like_heart")
@@ -404,7 +415,7 @@ class InstagramAdapter(ChannelAdapter):
             return {
                 "recipient": recipient,
                 "sender_action": "react",
-                "payload": {"message_id": target, "reaction": emoji},
+                "payload": {"message_id": target, "reaction": SENDABLE_REACTIONS[emoji]},
             }
         if message.template_name:
             body: dict[str, Any] = {

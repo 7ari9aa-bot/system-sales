@@ -984,7 +984,7 @@ function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} />;
+    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
   if (isTelegram) {

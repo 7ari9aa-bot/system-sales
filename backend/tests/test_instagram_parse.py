@@ -8,6 +8,7 @@ import pytest
 
 from app.modules.conversations.gateway.base import OutboundMessage
 from app.modules.conversations.gateway.instagram import REACTION_REMOVED, InstagramAdapter
+from app.modules.conversations.gateway.instagram_limits import InstagramLimitError
 
 A = InstagramAdapter()
 
@@ -226,10 +227,19 @@ def test_send_reaction_and_unreaction():
     assert r == {
         "recipient": {"id": "igsid-1"},
         "sender_action": "react",
-        "payload": {"message_id": "m1", "reaction": "\u2764\ufe0f"},
+        "payload": {"message_id": "m1", "reaction": "love"},
     }
     u = A.build_send_payload(_out(body=REACTION_REMOVED, meta={"reaction_to_provider_id": "m1"}))
     assert u["sender_action"] == "unreact" and u["payload"] == {"message_id": "m1"}
+
+
+def test_only_the_heart_can_be_sent_as_a_reaction():
+    # Meta documents `love` as the only reaction a business may send; refuse the rest up front.
+    with pytest.raises(InstagramLimitError) as refused:
+        A.build_send_payload(_out(body="\U0001f602", meta={"reaction_to_provider_id": "m1"}))
+    assert refused.value.code == "reaction_not_allowed"
+    ok = A.build_send_payload(_out(body="\u2764", meta={"reaction_to_provider_id": "m1"}))
+    assert ok["payload"]["reaction"] == "love"
 
 
 def test_quick_replies_are_capped_at_13_and_20_chars():
