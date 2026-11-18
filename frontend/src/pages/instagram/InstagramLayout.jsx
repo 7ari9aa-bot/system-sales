@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { InboxProvider } from "@/pages/inbox/InboxProvider";
+import { InboxProvider, useInbox } from "@/pages/inbox/InboxProvider";
+import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import InstagramNewPostDialog from "@/components/inbox/InstagramNewPostDialog";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IG } from "@/components/instagram/igTheme";
@@ -71,6 +72,7 @@ function Rail({ compact, onCreate }) {
 
 function InstagramShell() {
   const { lang, error, actions, demoAccount } = useInstagramData();
+  const { channels, unreadByChannel, setActiveChannel, activeChannel, t } = useInbox();
   const { pathname } = useLocation();
   const [creating, setCreating] = useState(false);
   const isArabic = lang === "ar";
@@ -83,6 +85,10 @@ function InstagramShell() {
         {error && <div role="alert" className="border-b px-4 py-2 text-[13px]" style={{ borderColor: IG.border, color: IG.error }}>{error}</div>}
         <div className="min-h-0 flex-1"><Outlet /></div>
       </main>
+      {/* The same channel strip as the inbox, so every other channel stays one tap away. */}
+      <aside className="z-10 flex min-h-0 min-w-0 shrink-0 flex-col items-center border-s border-border/80 bg-card" aria-label={t("inbox.title")}>
+        <ChannelSwitcher channels={channels} active={activeChannel} unreadByChannel={unreadByChannel} onSelect={setActiveChannel} />
+      </aside>
       {creating && actions.publish && <InstagramNewPostDialog lang={lang} onPublish={actions.publish} onClose={() => setCreating(false)} />}
     </div>
   );

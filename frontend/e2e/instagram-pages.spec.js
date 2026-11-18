@@ -179,13 +179,25 @@ test("when Instagram refuses the account details, the page still works and says 
   await expect(page.getByRole("alert")).toContainText(/account|الحساب/);
 });
 
-test("on Instagram pages the app sidebar shrinks to its icon strip and leaves the saved choice alone", async ({ page }) => {
+test("the channel strip stays on every Instagram page, and the app sidebar is not forced shut", async ({ page }) => {
   await mock(page);
-  await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  for (const path of ["/instagram/direct/inbox", "/instagram/profile", "/instagram/activity"]) {
+    await page.goto(path, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const strip = page.locator("aside nav").last();
+    await expect(strip.getByRole("button", { name: /whatsapp/i })).toBeVisible({ timeout: 15_000 });
+    await expect(strip.getByRole("button", { name: /instagram/i })).toHaveAttribute("aria-pressed", "true");
+  }
   const sidebar = page.locator("aside").first();
-  await expect(sidebar).toBeVisible({ timeout: 15_000 });
-  expect((await sidebar.boundingBox()).width).toBeLessThan(100);
-  expect(await page.evaluate(() => localStorage.getItem("fihrist:sidebarCollapsed"))).not.toBe("1");
-  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-  await expect.poll(async () => (await page.locator("aside").first().boundingBox())?.width ?? 0, { timeout: 15_000 }).toBeGreaterThan(200);
+  expect((await sidebar.boundingBox()).width).toBeGreaterThan(200);
+});
+
+test("the channel strip takes you from Instagram to another channel", async ({ page }) => {
+  await mock(page);
+  await page.route("**/api/v1/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+    { provider: "instagram", connected: true, enabled_for_me: true, locked: false, lifecycle: "connected", webhook_status: "active", account_name: "shop" },
+    { provider: "whatsapp", connected: true, enabled_for_me: true, locked: false, lifecycle: "connected", webhook_status: "active", account_name: "shop" },
+  ]) }));
+  await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.locator("aside nav").last().getByRole("button", { name: /whatsapp/i }).click();
+  await expect(page).toHaveURL(/\/inbox$/);
 });

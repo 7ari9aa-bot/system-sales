@@ -22,26 +22,21 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem("fihrist:sidebarCollapsed") === "1";
+    return localStorage.getItem("fihrist:collapsed") === "1";
   });
-
-  // Instagram's own menu is the page's navigation, so the app sidebar shrinks to its icon strip there
-  // (it stays one tap away). The saved preference is untouched and applies again everywhere else.
-  const isInstagram = pathname === "/instagram" || pathname.startsWith("/instagram/");
-  const sidebarCollapsed = collapsed || isInstagram;
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev;
-      try { localStorage.setItem("fihrist:sidebarCollapsed", next ? "1" : "0"); } catch {}
+      try { localStorage.setItem("fihrist:collapsed", next ? "1" : "0"); } catch {}
       return next;
     });
   };
 
   return (
     <div data-dashboard-theme-scope className="min-h-screen bg-background">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={sidebarCollapsed} onToggleCollapse={isInstagram ? undefined : toggleCollapsed} />
-      <div className={cn("transition-[padding] duration-300", sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-[248px]")}>
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+      <div className={cn("transition-[padding] duration-300", collapsed ? "lg:pl-[68px]" : "lg:pl-[248px]")}>
         {isDashboardHome ? (
           <Header onMenu={() => setSidebarOpen(true)} />
         ) : (
