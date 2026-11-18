@@ -24,6 +24,12 @@ const VerifyEmail = lazy(() => import('@/pages/VerifyEmail'));
 const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
+const InstagramLayout = lazy(() => import('@/pages/instagram/InstagramLayout'));
+const InstagramDirectPage = lazy(() => import('@/pages/instagram/InstagramDirectPage'));
+const InstagramRequestsPage = lazy(() => import('@/pages/instagram/InstagramRequestsPage'));
+const InstagramCommentsPage = lazy(() => import('@/pages/instagram/InstagramCommentsPage'));
+const InstagramPostsPage = lazy(() => import('@/pages/instagram/InstagramPostsPage'));
+const InstagramProfilePage = lazy(() => import('@/pages/instagram/InstagramProfilePage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
@@ -105,6 +111,17 @@ const DashboardRoutes = () => (
         {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
+        {/* Instagram: one real page per section, so links, back and refresh keep your place. */}
+        <Route path="/instagram" element={<InstagramLayout />}>
+          <Route index element={<Navigate to="direct" replace />} />
+          <Route path="direct" element={<InstagramDirectPage />} />
+          <Route path="direct/:conversationId" element={<InstagramDirectPage />} />
+          <Route path="requests" element={<InstagramRequestsPage />} />
+          <Route path="comments" element={<InstagramCommentsPage />} />
+          <Route path="posts" element={<InstagramPostsPage />} />
+          <Route path="posts/:postId" element={<InstagramPostsPage />} />
+          <Route path="profile/:customerId" element={<InstagramProfilePage />} />
+        </Route>
         <Route path="/customers" element={<Customers />} />
         {/* المنتجات والمخزون انتقلوا للكاشير: الروابط القديمة تحوّل للصفحات الجديدة. */}
         <Route path="/products" element={<Navigate to="/cashier/inventory" replace />} />
@@ -177,7 +194,7 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/supply-chain', '/pos', '/cashier', '/sales',
+  if (['/dashboard', '/inbox', '/instagram', '/customers', '/products', '/inventory', '/supply-chain', '/pos', '/cashier', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/owner', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }

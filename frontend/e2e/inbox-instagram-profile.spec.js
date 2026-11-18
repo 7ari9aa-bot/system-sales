@@ -25,9 +25,7 @@ async function open(page, { first, second, refresh }) {
     if (p.startsWith("/social/")) return send({ items: [] });
     return send({ items: [], next_cursor: null });
   });
-  await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.getByRole("button", { name: "Instagram", exact: true }).click();
-  await page.getByRole("tab", { name: /Direct messages|الرسائل الخاصة/ }).or(page.getByRole("button", { name: /Direct messages|الرسائل الخاصة/ })).first().click();
+  await page.goto("/instagram/direct", { waitUntil: "domcontentloaded", timeout: 30_000 });
   return calls;
 }
 

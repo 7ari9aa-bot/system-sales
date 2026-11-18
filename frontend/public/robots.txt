@@ -7,6 +7,7 @@ Disallow: /api/
 Disallow: /auth/
 Disallow: /dashboard
 Disallow: /inbox
+Disallow: /instagram
 Disallow: /customers
 Disallow: /orders
 Disallow: /products
@@ -45,6 +46,7 @@ Disallow: /api/
 Disallow: /auth/
 Disallow: /dashboard
 Disallow: /inbox
+Disallow: /instagram
 Disallow: /customers
 Disallow: /orders
 Disallow: /products

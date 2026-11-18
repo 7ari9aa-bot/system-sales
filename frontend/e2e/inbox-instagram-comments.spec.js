@@ -46,8 +46,7 @@ async function open(page, api) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
   await page.route("**/api/v1/**", api.handler);
-  await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.getByRole("button", { name: "Instagram", exact: true }).click();
+  await page.goto("/instagram/comments", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("ig-comment").first()).toBeVisible({ timeout: 15_000 });
 }
 
@@ -119,7 +118,6 @@ test("an account with no posts is told how to fix it, not shown a blank page", a
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
   await page.route("**/api/v1/**", api.handler);
-  await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.getByRole("button", { name: "Instagram", exact: true }).click();
+  await page.goto("/instagram/comments", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("ig-empty")).toContainText(/reconnect|أعد ربط/);
 });

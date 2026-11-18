@@ -86,7 +86,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.engage"),
       items: [
-        { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: unread },
+        { to: "/inbox", also: "/instagram", label: t("nav.inbox"), icon: Inbox, badge: unread },
         { to: "/customers", label: t("nav.customers"), icon: Users },
       ],
     },
@@ -160,7 +160,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               )}
               <div className="space-y-0.5">
                 {group.items.map((item) => {
-                  const active = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
+                  const active = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`) || Boolean(item.also && (pathname === item.also || pathname.startsWith(`${item.also}/`)));
                   const Icon = item.icon;
                   const section = new URLSearchParams(search).get("s");
                   return (

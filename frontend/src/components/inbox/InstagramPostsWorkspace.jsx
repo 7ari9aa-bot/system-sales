@@ -16,10 +16,10 @@ function readPostListPreference(key, fallback) {
   }
 }
 
-export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply, onHide, onDelete, onPrivateReply, onRefresh, onPublish, loading = false, loadError = "" }) {
+export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply, onHide, onDelete, onPrivateReply, onRefresh, onPublish, loading = false, loadError = "", initialPostId = null, onSelectPost }) {
   const isArabic = lang === "ar";
   const [query, setQuery] = useState("");
-  const [activeId, setActiveId] = useState(posts[0]?.id || null);
+  const [activeId, setActiveId] = useState(initialPostId || posts[0]?.id || null);
   const [replyTo, setReplyTo] = useState(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -134,7 +134,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
             {visiblePosts.length === 0 ? <p data-testid="ig-empty" className="px-5 py-8 text-center text-[13px] leading-[1.7] text-[#8e8e8e]">{loading ? (isArabic ? "جارٍ تحميل المنشورات…" : "Loading posts…") : posts.length === 0 && onRefresh ? (isArabic ? "لا توجد منشورات بعد. لو ربطت الحساب قبل إضافة التعليقات، أعد ربط إنستغرام مرة واحدة لمنح الصلاحيات الجديدة." : "No posts yet. If you connected Instagram before comments were added, reconnect it once to grant the new permissions.") : (isArabic ? "لا توجد منشورات مطابقة" : "No matching posts")}</p> : visiblePosts.map((post) => {
               const active = selected?.id === post.id;
               return (
-                <button key={post.id} type="button" aria-pressed={active} onClick={() => { setActiveId(post.id); setReplyTo(null); }} className={cn("flex w-full items-center gap-3 border-b border-[#f2f2f2] px-3 py-3 text-left transition-colors hover:bg-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]", active && "bg-[#f5f9ff] shadow-[inset_3px_0_0_#0095f6]")}>
+                <button key={post.id} type="button" aria-pressed={active} onClick={() => { setActiveId(post.id); setReplyTo(null); onSelectPost?.(post.id); }} className={cn("flex w-full items-center gap-3 border-b border-[#f2f2f2] px-3 py-3 text-left transition-colors hover:bg-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0095f6]", active && "bg-[#f5f9ff] shadow-[inset_3px_0_0_#0095f6]")}>
                   <PostThumbnail post={post} />
                   <span className="min-w-0 flex-1">
                     <span dir="auto" className="block line-clamp-2 text-[13px] leading-[1.6] text-[#262626]">{post.text}</span>
