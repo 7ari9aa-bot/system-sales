@@ -113,6 +113,10 @@ function toConversation(row, channel, t) {
     lastCustomerMessageAt: row.last_customer_message_at || null,
     phone: row.customer_phone || "",
     handle,
+    verified: row.customer_verified === true,
+    followerCount: Number.isFinite(row.customer_follower_count) ? row.customer_follower_count : null,
+    followsYou: typeof row.customer_follows_you === "boolean" ? row.customer_follows_you : null,
+    youFollow: typeof row.customer_you_follow === "boolean" ? row.customer_you_follow : null,
     needsProfile: row.channel === "instagram" && (bareNumber || !row.customer_avatar_url),
     lastDirection: row.last_message_direction || null,
     lastContentType: row.last_message_content_type || null,
@@ -618,7 +622,7 @@ export default function Inbox() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null });
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart) });
       if (!result.ok) {
         setError(result.error);
         return false;

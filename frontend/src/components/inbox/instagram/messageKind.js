@@ -16,6 +16,8 @@ export function instagramKind(m) {
   const url = m.mediaUrl || "";
   // The heart Instagram sends for a "like" arrives as a sticker whose text is the heart itself.
   if (type === "sticker" && !url) return "heart";
+  // The heart WE send is stored as a bare heart; Instagram draws it big with no bubble, like the one it receives.
+  if (!url && (type === "text" || !type) && /^\s*(\u2764\ufe0f?|\u2665\ufe0f?)\s*$/u.test(m.text || "")) return "heart";
   if (type === "sticker") return "sticker";
   if (type === "voice" || media === "audio" || (url && AUDIO_EXT.test(url))) return "voice";
   if (type === "video" || media === "video" || (url && VIDEO_EXT.test(url))) return "video";

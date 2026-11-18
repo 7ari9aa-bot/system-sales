@@ -76,6 +76,22 @@ INBOX_PREVIEW_CHARS = 160
 _INBOX_SLA_KIND = "first_response"
 
 
+def _flag(value: str | None) -> bool | None:
+    """A yes/no Instagram told us about a person; None when it never did."""
+    if value is None:
+        return None
+    return str(value).strip().lower() == "true"
+
+
+def _count(value: str | None) -> int | None:
+    """A follower count as a whole number; None when absent or not a number."""
+    try:
+        n = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+
 def _avatar_url(key: str | None) -> str | None:
     """A short-lived link to the copy of the customer's photo that WE stored (never Instagram's)."""
     if not key:
@@ -213,6 +229,10 @@ class InboxQuery:
                 cust.phone AS customer_phone,
                 ident.extra->>'username'   AS customer_handle,
                 ident.extra->>'avatar_key' AS customer_avatar_key,
+                ident.extra->>'verified'       AS customer_verified,
+                ident.extra->>'follower_count' AS customer_follower_count,
+                ident.extra->>'follows_you'    AS customer_follows_you,
+                ident.extra->>'you_follow'     AS customer_you_follow,
                 CASE WHEN lm.deleted THEN NULL
                      ELSE left(lm.body, {INBOX_PREVIEW_CHARS}) END AS last_message_preview,
                 lm.deleted    AS last_message_deleted,
@@ -289,6 +309,10 @@ class InboxQuery:
             "customer_phone": row.customer_phone,
             "customer_handle": row.customer_handle,
             "customer_avatar_url": _avatar_url(row.customer_avatar_key),
+            "customer_verified": _flag(row.customer_verified),
+            "customer_follower_count": _count(row.customer_follower_count),
+            "customer_follows_you": _flag(row.customer_follows_you),
+            "customer_you_follow": _flag(row.customer_you_follow),
             "assignee_user_id": str(row.assignee_user_id) if row.assignee_user_id else None,
             "workspace_id": str(row.workspace_id) if row.workspace_id else None,
             "created_at": _iso(row.created_at),

@@ -147,3 +147,71 @@ async def test_a_storage_failure_never_breaks_the_list(db, tenant_ctx, monkeypat
 
 def test_the_helper_is_the_one_the_query_uses() -> None:
     assert inbox_mod._avatar_url(None) is None
+
+
+async def test_follower_facts_reach_the_list(db, tenant_ctx, signed) -> None:
+    t = tenant_ctx.tenant_id
+    await _chat(
+        db,
+        t,
+        "instagram",
+        "igsid-5",
+        "Sara",
+        {
+            "username": "sara.a",
+            "verified": True,
+            "follower_count": 12500,
+            "follows_you": True,
+            "you_follow": False,
+        },
+    )
+    (item,) = await InboxQuery.page(db, t)
+    assert item["customer_verified"] is True
+    assert item["customer_follower_count"] == 12500
+    assert item["customer_follows_you"] is True
+    assert item["customer_you_follow"] is False
+
+
+async def test_a_chat_Instagram_told_us_nothing_about_has_none_not_false(
+    db, tenant_ctx, signed
+) -> None:
+    t = tenant_ctx.tenant_id
+    await _chat(db, t, "instagram", "igsid-6", "1784140000000006")
+    (item,) = await InboxQuery.page(db, t)
+    for key in (
+        "customer_verified",
+        "customer_follower_count",
+        "customer_follows_you",
+        "customer_you_follow",
+    ):
+        assert item[key] is None, key
+
+
+def test_follower_facts_are_hidden_without_pii_read() -> None:
+    item = {
+        "id": "1",
+        "customer_verified": True,
+        "customer_follower_count": 12500,
+        "customer_follows_you": True,
+        "customer_you_follow": False,
+    }
+    seen = _redact_inbox_item(item, permission_codes={"conversations:read"})
+    for key in ("customer_verified", "customer_follower_count", "customer_follows_you"):
+        assert seen[key] != item[key], key
+    assert _redact_inbox_item(item, permission_codes={"pii:read"}) == item
+
+
+@pytest.mark.parametrize(
+    ("raw", "flag"),
+    [("true", True), ("True", True), ("false", False), ("", False), (None, None)],
+)
+def test_flag_reads_a_stored_yes_no(raw, flag) -> None:
+    assert inbox_mod._flag(raw) is flag
+
+
+@pytest.mark.parametrize(
+    ("raw", "count"),
+    [("12500", 12500), ("0", 0), ("-4", None), ("abc", None), ("", None), (None, None)],
+)
+def test_count_reads_a_stored_number(raw, count) -> None:
+    assert inbox_mod._count(raw) == count

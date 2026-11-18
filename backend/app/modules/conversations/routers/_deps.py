@@ -50,6 +50,9 @@ class SendMessageRequest(BaseModel):
     # An upload from POST /conversations/{id}/media. `body` then becomes its
     # caption (images, videos and documents only).
     media_id: uuid.UUID | None = None
+    # Instagram's heart sticker (the button that replaces Send on an empty box).
+    # It has no text and no file, so it is its own kind of send.
+    heart: bool = False
 
 
 class ReadSignalRequest(BaseModel):
@@ -89,7 +92,15 @@ class AssignRequest(BaseModel):
 # shape ``customers/router.py:_redact_issue_item`` settled on for the same trap.
 # The handle and the photo identify a person as surely as a phone number does.
 _INBOX_PII_FIELDS = PII_FIELDS | frozenset(
-    {"customer_phone", "customer_handle", "customer_avatar_url"}
+    {
+        "customer_phone",
+        "customer_handle",
+        "customer_avatar_url",
+        "customer_verified",
+        "customer_follower_count",
+        "customer_follows_you",
+        "customer_you_follow",
+    }
 )
 
 

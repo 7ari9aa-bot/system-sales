@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { InstagramProfileFacts, VerifiedBadge } from "./instagram/InstagramProfileFacts";
 import {
   X,
   Phone,
@@ -232,8 +233,9 @@ export default function ChannelContactDrawer({
             <div className="text-center space-y-2 py-3">
               <ConversationAvatar conversation={conversation} className="h-20 w-20 mx-auto text-[22px] ring-2 ring-primary/20 ring-offset-2" />
               <div>
-                <h4 className="text-[16px] font-bold leading-tight">{customerName}</h4>
+                <h4 className="text-[16px] font-bold leading-tight">{customerName}{conversation.verified && <> <VerifiedBadge lang={isAr ? "ar" : "en"} /></>}</h4>
                 <div className="text-[13px] text-[#8e8e8e] mt-0.5">{handle}</div>
+                <InstagramProfileFacts conversation={conversation} lang={isAr ? "ar" : "en"} />
               </div>
             </div>
 
