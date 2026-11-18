@@ -67,9 +67,21 @@ describe("returnRequest", () => {
     const req = returnRequest(s, setQty(returnableLines(s), "v1", 2), { restock: true });
     expect(req).toEqual({ orderId: "o1", lines: [{ variant_id: "v1", quantity: 2 }], restock: true });
   });
-  it("restock defaults to an explicit boolean", () => {
+  it("leaves restock out until the cashier chooses, so the shop's own default applies", () => {
     const s = sale();
-    expect(returnRequest(s, setQty(returnableLines(s), "v1", 1), {}).restock).toBe(false);
+    const req = returnRequest(s, setQty(returnableLines(s), "v1", 1), {});
+    expect("restock" in req).toBe(false);
+  });
+  it("sends an explicit no-restock when the cashier chose it", () => {
+    const s = sale();
+    expect(returnRequest(s, setQty(returnableLines(s), "v1", 1), { restock: false }).restock).toBe(false);
+  });
+  it("puts the chosen reason on every returned line, and none when there is no reason", () => {
+    const s = sale();
+    const picked = setQty(returnableLines(s), "v1", 1);
+    expect(returnRequest(s, picked, { reason: "size" }).lines[0].reason).toBe("size");
+    expect("reason" in returnRequest(s, picked, {}).lines[0]).toBe(false);
+    expect("reason" in returnRequest(s, picked, { reason: null }).lines[0]).toBe(false);
   });
   it("refuses an empty return", () => {
     expect(() => returnRequest(sale(), returnableLines(sale()), { restock: false })).toThrow();

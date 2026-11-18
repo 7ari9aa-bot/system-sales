@@ -78,13 +78,14 @@ export function setQty(lines, variantId, qty) {
   );
 }
 
-export function returnRequest(saleDetail, lines, { restock }) {
+export function returnRequest(saleDetail, lines, { restock, reason } = {}) {
   const picked = lines.filter((l) => l.returnQty > 0);
   if (!picked.length) throw new Error("اختر صنفًا واحدًا على الأقل للاسترجاع");
   return {
     orderId: saleDetail.order.id,
-    lines: picked.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty })),
-    restock: Boolean(restock),
+    lines: picked.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty, ...(reason ? { reason } : {}) })),
+    // Only sent once the cashier has a value; otherwise the shop's own default applies on the server.
+    ...(restock === undefined || restock === null ? {} : { restock: Boolean(restock) }),
   };
 }
 

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 548,
-    "sha256": "9ab949364f26bcfc373ea52eba5daf4fdbcfab685dfb43021bbf764ed1f92cdb",
+    "operations": 549,
+    "sha256": "012dcdc81d3923854884d7af28221f69f2686766e81789e698cdc6ffc0df4f15",
     "typed_operations": 320
   },
   "spec": {
@@ -68629,6 +68629,112 @@
             }
           },
           "summary": "Get Session Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/return-policy": {
+        "get": {
+          "description": "The shop's return and exchange choices for this till: the screen's starting point.",
+          "operationId": "return_policy_api_v1_pos_sessions__session_id__return_policy_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Return Policy",
           "tags": [
             "pos"
           ]

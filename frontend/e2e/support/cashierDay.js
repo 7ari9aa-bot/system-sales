@@ -9,6 +9,8 @@ export async function mockCashierDay(page) {
     if (u.includes("/auth/me")) return r.fulfill({ json: { id: "u1", email: "t@e.com", full_name: "T", role: "owner" } });
     if (/\/pos\/registers$/.test(u.split("?")[0])) return r.fulfill({ json: [{ id: "r1", name: "Main", code: "MAIN", is_active: true }] });
     if (u.includes("/working-session")) return r.fulfill({ json: { started: true, session: { id: "s1", register_id: "r1", status: "OPEN", opening_float: "100.00", opened_at: "2026-10-26T08:00:00Z" } } });
+    // The shop's own return choices: with reasons set, the return and exchange bars carry the picker.
+    if (/\/return-policy/.test(u)) return r.fulfill({ json: { restock_default: false, reasons: ["size", "defect", "changed_mind", "wrong_item"], return_max_days: 30, exchange_max_days: 30 } });
     if (/\/pos\/receipts\/search/.test(u)) return r.fulfill({ json: [{ ...RECEIPT.receipt, order_number: "ORD-1", total: "3000.00" }] });
     if (/\/pos\/receipts\/[^/?]+/.test(u)) return r.fulfill({ json: RECEIPT });
     if (/\/pos\/sessions\/[^/]+\/receipts/.test(u)) return r.fulfill({ json: [{ ...RECEIPT.receipt, order_number: "ORD-1", total: "3000.00" }] });

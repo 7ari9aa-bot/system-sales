@@ -15,7 +15,7 @@ import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
-import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales } from "@/cashier/api/usePosSale";
+import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales } from "@/cashier/api/usePosSale";
 import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 
 const asInvoice = (d) => ({
@@ -45,7 +45,12 @@ function ReturnScreen({ session }) {
   const [lines, setLines] = useState([]);
   const [term, setTerm] = useState("");
   const [error, setError] = useState("");
-  const [restock, setRestock] = useState(true);
+  // null = the cashier has not touched it: the box shows the shop's own default, and the server
+  // applies that same default, so what is shown is what happens.
+  const [restockChoice, setRestock] = useState(null);
+  const [reason, setReason] = useState(null);
+  const policy = useReturnPolicy(session.id).data;
+  const restock = restockChoice ?? policy?.restock_default ?? true;
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const intentRef = useRef(null); // one intent per deliberate return: a retry after a network drop replays, never double-refunds
@@ -77,7 +82,7 @@ function ReturnScreen({ session }) {
 
   // A return with other quantities (or the restock switch flipped) is another return: it must never
   // reuse the key of an earlier, failed attempt, or the server would replay that attempt's answer.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), restock]);
+  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), restockChoice, reason]);
   useEffect(() => {
     if (intentFor.current !== fingerprint) {
       intentRef.current = null;
@@ -96,6 +101,8 @@ function ReturnScreen({ session }) {
   function resetDraft() {
     setInvoice(null);
     setLines([]);
+    setRestock(null);
+    setReason(null);
     setTerm("");
     setError("");
     intentRef.current = null;
@@ -120,7 +127,7 @@ function ReturnScreen({ session }) {
     if (!canComplete || busy) return;
     setBusy(true);
     try {
-      const req = returnRequest(invoice.detail, lines, { restock });
+      const req = returnRequest(invoice.detail, lines, { restock: restockChoice ?? undefined, reason });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.returnSale(session.id, req, intentRef.current));
       toast.success(`تم تسجيل المرتجع ${res.receipt_number}. قيمة المرتجع ${fmtMoney(Number(res.refunded_total))}`);
@@ -180,7 +187,7 @@ function ReturnScreen({ session }) {
         </div>
         <div className="flex min-h-0 flex-col gap-1.5">
           <ReturnItemsTable lines={pickedLines} totals={totals} onQty={setLineQty} onQtyStep={step} onRemove={(l) => cancelLine(l.key)} minRows={fillRows} />
-          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={setRestock} />
+          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={setRestock} reasons={policy?.reasons} reason={reason} onReasonChange={setReason} />
         </div>
       </div>
       <div ref={actionsRef}>

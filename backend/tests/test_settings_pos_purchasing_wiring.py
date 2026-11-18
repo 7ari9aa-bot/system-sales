@@ -465,3 +465,34 @@ async def test_the_owner_can_replace_the_reason_list(db, tenant_ctx):
         lines=[{"variant_id": str(variant.id), "quantity": 1, "reason": "too_small"}],
     )
     assert await _saved_reason(db, order_id) == "too_small"
+
+
+# ----------------------------------------------------------- the cashier's starting point --
+
+
+async def test_return_policy_reports_the_shops_choices(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    settings = SettingsService(db, tenant_ctx.tenant_id)
+    await settings.set("pos.return_restock_default", False)
+    await settings.set("pos.return_reasons", ["too_small", "defect"])
+    await settings.set("pos.return_max_days", 14)
+    pos_session = await _open_day(db, tenant_ctx)
+    policy = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert policy["restock_default"] is False
+    assert policy["reasons"] == ["too_small", "defect"]
+    assert policy["return_max_days"] == 14
+
+
+async def test_return_policy_resolves_exchange_zero_to_the_return_window(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    settings = SettingsService(db, tenant_ctx.tenant_id)
+    await settings.set("pos.return_max_days", 21)
+    pos_session = await _open_day(db, tenant_ctx)
+    same = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert same["exchange_max_days"] == 21  # 0 = same as returns, resolved server-side
+    await settings.set("pos.exchange_max_days", 45)
+    longer = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
+    assert longer["exchange_max_days"] == 45
+    assert longer["return_max_days"] == 21

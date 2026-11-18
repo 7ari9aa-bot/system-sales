@@ -422,6 +422,12 @@ async def get_session(session_id: UUID, ctx: PosReadCtx):
     )
 
 
+@router.get("/sessions/{session_id}/return-policy")
+async def return_policy(session_id: UUID, ctx: PosReadCtx):
+    """The shop's return and exchange choices for this till: the screen's starting point."""
+    return await PosService.return_policy(ctx.session, ctx.tenant_id, session_id)
+
+
 @router.post("/sessions/{session_id}/scan")
 async def scan(session_id: UUID, body: ScanRequest, ctx: PosWriteCtx, override: OverrideDep):
     """§179: a code resolves to one variant, priced — the till's entry point."""

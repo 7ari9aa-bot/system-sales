@@ -887,6 +887,29 @@ class PosService(PosReceiptReads):
         return await svc.value(key, scope="pos_profile", scope_id=pos_session.profile_id)
 
     @staticmethod
+    async def return_policy(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
+        """What this till's owner decided about returns, for the cashier screen to start from.
+
+        The same three answers the return and exchange paths read themselves, resolved for this
+        shift's till, so the screen's starting point can never disagree with what the server does.
+        """
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        get = lambda key: PosService._setting(session, tenant_id, key, pos_session)  # noqa: E731
+        return_days = await get("pos.return_max_days")
+        exchange_days = await get("pos.exchange_max_days")
+        return {
+            "restock_default": bool(await get("pos.return_restock_default")),
+            "reasons": [str(r) for r in (await get("pos.return_reasons") or [])],
+            "return_max_days": None if return_days is None else int(return_days),
+            # 0 means "same as returns", resolved here so the screen never has to know that rule.
+            "exchange_max_days": (
+                None
+                if return_days is None and not exchange_days
+                else int(exchange_days or return_days)
+            ),
+        }
+
+    @staticmethod
     async def _resolve_restock(
         session: AsyncSession,
         tenant_id: UUID,

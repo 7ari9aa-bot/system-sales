@@ -70,4 +70,11 @@ describe("sendExchange", () => {
     await expect(sendExchange(send, { sleep: async () => {} })).rejects.toThrow(/insufficient/);
     expect(send).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves restock out until chosen and carries the reason on the returned lines", () => {
+    const req = exchangeRequest(sale, back(1), repl, { reason: "defect" });
+    expect("restock" in req).toBe(false);
+    expect(req.returnLines.every((l) => l.reason === "defect")).toBe(true);
+    expect(exchangeRequest(sale, back(1), repl, { restock: false }).restock).toBe(false);
+  });
 });

@@ -16,7 +16,7 @@ import { fmtMoney } from "@/cashier/lib/format";
 import { fromMinor, toMinor } from "@/cashier/api/money";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
-import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
+import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
@@ -54,7 +54,10 @@ function ExchangeScreen({ session }) {
   const [term, setTerm] = useState("");
   const [error, setError] = useState("");
   const [termError, setTermError] = useState("");
-  const [restock, setRestock] = useState(true);
+  const [restockChoice, setRestock] = useState(null); // null = the shop's own default (shown and applied)
+  const [reason, setReason] = useState(null);
+  const policy = useReturnPolicy(session.id).data;
+  const restock = restockChoice ?? policy?.restock_default ?? true;
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null); // cancel
   const intentRef = useRef(null); // one intent per deliberate exchange (+ its payment): a retry replays, never double-charges
@@ -92,7 +95,7 @@ function ExchangeScreen({ session }) {
   const canComplete = !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy;
 
   // A new draft (different lines / quantities) must never reuse the intent of an earlier attempt.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), newLines.map((l) => [l.variantId, l.qty]), restock]);
+  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), newLines.map((l) => [l.variantId, l.qty]), restockChoice, reason]);
   useEffect(() => {
     if (intentFor.current !== fingerprint) {
       intentRef.current = null;
@@ -110,6 +113,8 @@ function ExchangeScreen({ session }) {
   function resetDraft() {
     setInvoice(null);
     setLines([]);
+    setRestock(null);
+    setReason(null);
     setNewLines([]);
     setInvoiceTerm("");
     setTerm("");
@@ -161,7 +166,7 @@ function ExchangeScreen({ session }) {
     if (busy) return;
     setBusy(true);
     try {
-      const req = exchangeRequest(invoice.detail, lines, newLines, { restock });
+      const req = exchangeRequest(invoice.detail, lines, newLines, { restock: restockChoice ?? undefined, reason });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
       const net = Number(res.net);
@@ -250,6 +255,9 @@ function ExchangeScreen({ session }) {
             error={quote.error}
             restock={restock}
             onRestockChange={setRestock}
+            reasons={policy?.reasons}
+            reason={reason}
+            onReasonChange={setReason}
           />
         </div>
       </div>

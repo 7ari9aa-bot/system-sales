@@ -1,8 +1,9 @@
 import { fmtMoney } from "@/cashier/lib/format";
+import ReturnReasonSelect from "@/cashier/components/returns/ReturnReasonSelect";
 
 // ملخص أسفل جدول المرتجع. الخادم يرد المبلغ على طريقة الدفع الأصلية للفاتورة (لا نختارها هنا)،
 // والقيمة المعروضة تقدير بنفس معادلة الخادم، والنهائي يأتي منه بعد الاعتماد.
-export default function ReturnSettlementBar({ value, restock, onRestockChange }) {
+export default function ReturnSettlementBar({ value, restock, onRestockChange, reasons, reason, onReasonChange }) {
   return (
     <div className="flex min-h-[68px] shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-1 rounded-lg border border-border bg-card px-3 py-1.5">
       <div className="text-center">
@@ -14,6 +15,8 @@ export default function ReturnSettlementBar({ value, restock, onRestockChange })
         <input type="checkbox" checked={restock} onChange={(e) => onRestockChange(e.target.checked)} className="h-4 w-4 accent-[#F97316]" />
         إرجاع القطع للرف (المخزون)
       </label>
+
+      <ReturnReasonSelect reasons={reasons} value={reason} onChange={onReasonChange} />
 
       <p className="max-w-[230px] text-center text-[11px] text-muted-foreground">قيمة المرتجع تُسجَّل على الفاتورة فقط ولا يُرد أي مبلغ من هنا</p>
 

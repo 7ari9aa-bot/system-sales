@@ -15,15 +15,15 @@ export function settlementKind(diffMinor) {
   return diffMinor > 0 ? "pay" : diffMinor < 0 ? "refund" : "even";
 }
 
-export function exchangeRequest(saleDetail, returnLines, newLines, { restock = true } = {}) {
+export function exchangeRequest(saleDetail, returnLines, newLines, { restock, reason } = {}) {
   const back = returnLines.filter((l) => l.returnQty > 0);
   if (!back.length) throw new Error("اختر صنفًا واحدًا على الأقل لإرجاعه");
   if (!newLines.length) throw new Error("اختر صنفًا بديلًا واحدًا على الأقل");
   return {
     orderId: saleDetail.order.id,
-    returnLines: back.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty })),
+    returnLines: back.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty, ...(reason ? { reason } : {}) })),
     newLines: newLines.map((l) => ({ variant_id: l.variantId, quantity: l.qty })),
-    restock: Boolean(restock),
+    ...(restock === undefined || restock === null ? {} : { restock: Boolean(restock) }),
   };
 }
 
