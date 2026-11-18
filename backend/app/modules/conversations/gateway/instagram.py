@@ -6,6 +6,7 @@ WhatsApp adapter but with Instagram-specific endpoints and payload shapes.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -542,6 +543,98 @@ class InstagramAdapter(ChannelAdapter):
             params={"comment_enabled": "true" if enabled else "false"},
             _client=_client,
         )
+
+    # ---- publishing (photo / carousel; Reels are deliberately not here yet) ----
+    # Instagram builds a post in steps: a "container" per picture, a parent container for a
+    # carousel, wait until Instagram has fetched the pictures, then publish. A container
+    # that is never published expires on its own after 24 hours.
+    CAROUSEL_MIN = 2
+    CAROUSEL_MAX = 10
+    PUBLISH_POLL_SECONDS = 2.0
+    PUBLISH_POLL_TRIES = 15
+
+    @staticmethod
+    def check_publishable(image_urls: list[str], caption: str | None) -> None:
+        """Refuse what Instagram would refuse, before spending a call on it."""
+        if not image_urls:
+            raise ValueError("a post needs at least one picture")
+        if len(image_urls) > InstagramAdapter.CAROUSEL_MAX:
+            raise ValueError(f"a post holds at most {InstagramAdapter.CAROUSEL_MAX} pictures")
+        for url in image_urls:
+            # Instagram downloads the picture itself, so it must be a public web address.
+            if not isinstance(url, str) or not url.startswith("https://"):
+                raise ValueError("every picture must be a public https link")
+        if caption is not None and len(caption) > 2200:
+            raise ValueError("a caption is at most 2,200 characters")
+
+    async def _wait_until_ready(
+        self,
+        credentials: ProviderCredentials,
+        container_id: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        """Publishing a container Instagram is still fetching fails, so wait for FINISHED."""
+        for _ in range(self.PUBLISH_POLL_TRIES):
+            data = await self._graph(
+                "GET", container_id, credentials, params={"fields": "status_code"}, _client=_client
+            )
+            status = data.get("status_code")
+            if status == "FINISHED":
+                return
+            if status in ("ERROR", "EXPIRED"):
+                raise ExternalProviderError(f"instagram refused the picture ({status})")
+            await asyncio.sleep(self.PUBLISH_POLL_SECONDS)
+        raise ExternalProviderError("instagram took too long to fetch the pictures")
+
+    async def publish_post(
+        self,
+        credentials: ProviderCredentials,
+        image_urls: list[str],
+        caption: str | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """Publish one picture, or 2-10 as a carousel. Returns the new post's media id."""
+        self.check_publishable(image_urls, caption)
+        _, account_id = self._creds(credentials)
+        if len(image_urls) == 1:
+            params: dict[str, Any] = {"image_url": image_urls[0]}
+            if caption:
+                params["caption"] = caption
+            made = await self._graph(
+                "POST", f"{account_id}/media", credentials, params=params, _client=_client
+            )
+            container = str(made["id"])
+        else:
+            if len(image_urls) < self.CAROUSEL_MIN:
+                raise ValueError(f"a carousel needs at least {self.CAROUSEL_MIN} pictures")
+            children: list[str] = []
+            for url in image_urls:
+                child = await self._graph(
+                    "POST",
+                    f"{account_id}/media",
+                    credentials,
+                    params={"image_url": url, "is_carousel_item": "true"},
+                    _client=_client,
+                )
+                children.append(str(child["id"]))
+            for child_id in children:
+                await self._wait_until_ready(credentials, child_id, _client)
+            params = {"media_type": "CAROUSEL", "children": ",".join(children)}
+            if caption:
+                params["caption"] = caption
+            made = await self._graph(
+                "POST", f"{account_id}/media", credentials, params=params, _client=_client
+            )
+            container = str(made["id"])
+        await self._wait_until_ready(credentials, container, _client)
+        done = await self._graph(
+            "POST",
+            f"{account_id}/media_publish",
+            credentials,
+            params={"creation_id": container},
+            _client=_client,
+        )
+        return str(done["id"])
 
     @staticmethod
     def build_private_reply(comment_id: str, text: str) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 534,
-    "sha256": "ac15f12a74d5a4d1a961ad38fa6628b30104d4f57b36f32541469b6dc75c055c",
+    "operations": 535,
+    "sha256": "1d2a7387f5152f197ad62209d504f674c81d6150d7abaf7ebd44d721732506d5",
     "typed_operations": 309
   },
   "spec": {
@@ -15218,6 +15218,37 @@
             "publish"
           ],
           "title": "PublishIn",
+          "type": "object"
+        },
+        "PublishPostRequest": {
+          "description": "One picture, or 2-10 for a carousel. Each picture is a base64 JPEG.",
+          "properties": {
+            "caption": {
+              "anyOf": [
+                {
+                  "maxLength": 2200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Caption"
+            },
+            "pictures": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "title": "Pictures",
+              "type": "array"
+            }
+          },
+          "required": [
+            "pictures"
+          ],
+          "title": "PublishPostRequest",
           "type": "object"
         },
         "QuoteRequest": {
@@ -74517,6 +74548,110 @@
             }
           },
           "summary": "List Posts",
+          "tags": [
+            "social"
+          ]
+        },
+        "post": {
+          "description": "Publish a photo (1 picture) or a carousel (2-10) to the store's Instagram.\n\nInstagram accepts JPEG only and allows 100 API posts per account per 24 hours.\nThe post is recorded here only after Instagram accepted it.",
+          "operationId": "publish_post_api_v1_social_posts_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishPostRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Publish Post",
           "tags": [
             "social"
           ]

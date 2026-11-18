@@ -12,6 +12,7 @@ The rules that come from the platform, not from us:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,12 +22,17 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.storage import FetchedMedia, get_storage
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.models import SocialComment, SocialPost
 
 PRIVATE_REPLY_WINDOW = timedelta(days=7)
 MAX_REPLY_CHARS = 2200  # Instagram's comment length limit
 PLATFORM = "instagram"
+logger = logging.getLogger(__name__)
+MAX_PICTURE_BYTES = 8 * 1024 * 1024  # Instagram's own limit for a picture
+PICTURE_LINK_SECONDS = 15 * 60  # Instagram fetches each picture once, right away
+_JPEG_START = b"\xff\xd8\xff"
 
 
 def _parse_time(value: Any) -> datetime:
@@ -54,6 +60,75 @@ def _clean_text(text: str) -> str:
 
 
 class SocialService:
+    # ---------- publishing ----------
+
+    @staticmethod
+    def check_pictures(pictures: list[bytes]) -> None:
+        """Refuse what Instagram would refuse, before a single byte is stored.
+
+        Instagram publishes JPEG only. The type is read from the file's own first
+        bytes, never from the name or the header the browser sent.
+        """
+        if not pictures:
+            raise ValidationError("add at least one picture")
+        if len(pictures) > instagram_adapter.CAROUSEL_MAX:
+            raise ValidationError(f"a post holds at most {instagram_adapter.CAROUSEL_MAX} pictures")
+        for i, data in enumerate(pictures, start=1):
+            if not data.startswith(_JPEG_START):
+                raise ValidationError(f"picture {i} is not a JPEG; Instagram accepts JPEG only")
+            if len(data) > MAX_PICTURE_BYTES:
+                raise ValidationError(f"picture {i} is larger than 8 MB")
+
+    @staticmethod
+    async def publish_post(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        credentials: dict,
+        pictures: list[bytes],
+        caption: str | None,
+    ) -> str:
+        """Publish a photo or a carousel, then pull it into our list. Returns the media id.
+
+        The pictures wait in private storage only long enough for Instagram to fetch
+        them (a short-lived link), and are removed afterwards whatever happens.
+        """
+        SocialService.check_pictures(pictures)
+        caption = (caption or "").strip() or None
+        if caption and len(caption) > 2200:
+            raise ValidationError("a caption is at most 2,200 characters")
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so a post cannot be published yet")
+        keys: list[str] = []
+        try:
+            links: list[str] = []
+            for data in pictures:
+                stored = await storage.store(
+                    FetchedMedia(data=data, content_type="image/jpeg", checksum=""),
+                    prefix=f"social-outbox/{tenant_id}",
+                )
+                if not stored.storage_key:
+                    raise ConflictError("a picture could not be stored for publishing")
+                keys.append(stored.storage_key)
+                links.append(
+                    storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+                )
+            media_id = await instagram_adapter.publish_post(credentials, links, caption)
+        except ValueError as exc:  # the adapter's own early refusals
+            raise ValidationError(str(exc)) from exc
+        finally:
+            if keys:
+                try:
+                    await storage.delete_objects(keys)
+                except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
+                    logger.warning("social.publish.cleanup_failed", extra={"count": len(keys)})
+        # Show it right away; if the refresh hiccups the post is still live on Instagram.
+        try:
+            await SocialService.sync_posts(session, tenant_id, credentials, limit=5)
+        except Exception:  # noqa: BLE001
+            logger.warning("social.publish.sync_failed")
+        return media_id
+
     # ---------- reading ----------
 
     @staticmethod

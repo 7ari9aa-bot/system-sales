@@ -8,19 +8,25 @@ row changes only after it accepted, so the screen never shows something that did
 
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.core.errors import ConflictError, PermissionDeniedError
+from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
 from app.modules.conversations.models import SocialComment, SocialPost
 from app.modules.conversations.routers._deps import (
     TenantContext,
     require_permission,
 )
-from app.modules.conversations.social_service import MAX_REPLY_CHARS, SocialService
+from app.modules.conversations.social_service import (
+    MAX_PICTURE_BYTES,
+    MAX_REPLY_CHARS,
+    SocialService,
+)
 from app.modules.platform.services import channel_access as _channel_access
 
 router = APIRouter(tags=["social"])
@@ -38,6 +44,25 @@ class CommentHideRequest(BaseModel):
 
 class PostCommentsToggleRequest(BaseModel):
     enabled: bool
+
+
+class PublishPostRequest(BaseModel):
+    """One picture, or 2-10 for a carousel. Each picture is a base64 JPEG."""
+
+    pictures: list[str] = Field(min_length=1, max_length=10)
+    caption: str | None = Field(default=None, max_length=2200)
+
+
+def _decode_picture(value: str, number: int) -> bytes:
+    # Refuse an oversized one before decoding it: base64 is ~4/3 of the real size.
+    if len(value) > (MAX_PICTURE_BYTES * 4) // 3 + 8:
+        raise ValidationError(f"picture {number} is larger than 8 MB")
+    if value.startswith("data:"):  # a browser data URL: keep only the payload
+        value = value.partition(",")[2]
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValidationError(f"picture {number} is not valid base64") from exc
 
 
 def _post_out(p: SocialPost) -> dict:
@@ -182,3 +207,21 @@ async def toggle_post_comments(
         ctx.session, ctx.tenant_id, creds, post_id, body.enabled
     )
     return {"post_id": post_id, "comments_enabled": body.enabled}
+
+
+@router.post("/social/posts", status_code=201)
+async def publish_post(
+    body: PublishPostRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Publish a photo (1 picture) or a carousel (2-10) to the store's Instagram.
+
+    Instagram accepts JPEG only and allows 100 API posts per account per 24 hours.
+    The post is recorded here only after Instagram accepted it.
+    """
+    creds = await _credentials(ctx, send=True)
+    pictures = [_decode_picture(v, i) for i, v in enumerate(body.pictures, start=1)]
+    media_id = await SocialService.publish_post(
+        ctx.session, ctx.tenant_id, creds, pictures, body.caption
+    )
+    return {"post_id": media_id}
