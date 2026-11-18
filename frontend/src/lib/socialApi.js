@@ -1,4 +1,4 @@
-// Instagram posts and comments from the backend, shaped for InstagramPostsWorkspace.
+// Instagram posts and comments from the backend, shaped for the Instagram pages.
 import { api } from "@/lib/api";
 
 const rel = (iso, lang) => {

@@ -5,8 +5,6 @@ import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import ChatList from "@/components/inbox/whatsapp/ChatList";
 import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
-import InstagramModeTabs from "@/components/inbox/InstagramModeTabs";
-import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace";
 import { cn } from "@/lib/utils";
 import { CHAT_LIST_MIN_WIDTH, CHAT_LIST_MAX_WIDTH, useInbox } from "./InboxProvider";
 
@@ -17,7 +15,6 @@ export default function InboxWorkspace({ embedded = false }) {
     activeChannel,
     addFacebookPageComment,
     addFacebookPageReply,
-    addInstagramPageReply,
     approvalLoadError,
     changeListState,
     channel,
@@ -28,7 +25,6 @@ export default function InboxWorkspace({ embedded = false }) {
     conversations,
     current,
     decideApproval,
-    demoAccount,
     error,
     facebookPosts,
     filter,
@@ -38,7 +34,6 @@ export default function InboxWorkspace({ embedded = false }) {
     handleResizePointerDown,
     handleResizePointerMove,
     handleSend,
-    igLive,
     inboxCursor,
     inboxLoadError,
     inboxMoreError,
@@ -46,8 +41,6 @@ export default function InboxWorkspace({ embedded = false }) {
     instagramAccountIdentity,
     instagramFolder,
     instagramFolders,
-    instagramMode,
-    instagramPosts,
     isFacebook,
     isInstagram,
     isMessenger,
@@ -77,7 +70,6 @@ export default function InboxWorkspace({ embedded = false }) {
     setFilter,
     setInboxRetryAttempt,
     setInstagramFolder,
-    setInstagramMode,
     setMessageRetryAttempt,
     setMessengerThemes,
     setMobileChatOpen,
@@ -106,25 +98,7 @@ export default function InboxWorkspace({ embedded = false }) {
 
       <div dir="ltr" className={embedded ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden"}>
       <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {!embedded && isInstagram && <InstagramModeTabs active={instagramMode} lang={lang} demoMode={demoAccount} onChange={setInstagramMode} />}
-      {!embedded && isInstagram && instagramMode === "comments" ? (
-        demoAccount ? (
-          <InstagramPostsWorkspace posts={instagramPosts} lang={lang} onReply={addInstagramPageReply} />
-        ) : (
-          <InstagramPostsWorkspace
-            posts={igLive.posts}
-            lang={lang}
-            loading={igLive.loading}
-            loadError={igLive.error}
-            onRefresh={igLive.refresh}
-            onPublish={igLive.publish}
-            onReply={igLive.reply}
-            onHide={igLive.hide}
-            onDelete={igLive.remove}
-            onPrivateReply={igLive.sendPrivate}
-          />
-        )
-      ) : isFacebook ? (
+      {isFacebook ? (
         <FacebookPostsWorkspace posts={facebookPosts} lang={lang} onReply={addFacebookPageReply} onComment={addFacebookPageComment} />
       ) : (
       <div

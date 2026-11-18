@@ -26,10 +26,9 @@ const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
 const InstagramLayout = lazy(() => import('@/pages/instagram/InstagramLayout'));
 const InstagramDirectPage = lazy(() => import('@/pages/instagram/InstagramDirectPage'));
-const InstagramRequestsPage = lazy(() => import('@/pages/instagram/InstagramRequestsPage'));
-const InstagramCommentsPage = lazy(() => import('@/pages/instagram/InstagramCommentsPage'));
-const InstagramPostsPage = lazy(() => import('@/pages/instagram/InstagramPostsPage'));
+const InstagramActivityPage = lazy(() => import('@/pages/instagram/InstagramActivityPage'));
 const InstagramProfilePage = lazy(() => import('@/pages/instagram/InstagramProfilePage'));
+const InstagramUserPage = lazy(() => import('@/pages/instagram/InstagramUserPage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
@@ -113,14 +112,19 @@ const DashboardRoutes = () => (
         <Route path="/inbox" element={<Inbox />} />
         {/* Instagram: one real page per section, so links, back and refresh keep your place. */}
         <Route path="/instagram" element={<InstagramLayout />}>
-          <Route index element={<Navigate to="direct" replace />} />
-          <Route path="direct" element={<InstagramDirectPage />} />
-          <Route path="direct/:conversationId" element={<InstagramDirectPage />} />
-          <Route path="requests" element={<InstagramRequestsPage />} />
-          <Route path="comments" element={<InstagramCommentsPage />} />
-          <Route path="posts" element={<InstagramPostsPage />} />
-          <Route path="posts/:postId" element={<InstagramPostsPage />} />
-          <Route path="profile/:customerId" element={<InstagramProfilePage />} />
+          {/* Same addresses as instagram.com, under /instagram. */}
+          <Route index element={<Navigate to="direct/inbox" replace />} />
+          <Route path="direct" element={<Navigate to="/instagram/direct/inbox" replace />} />
+          <Route path="direct/inbox" element={<InstagramDirectPage />} />
+          <Route path="direct/general" element={<InstagramDirectPage folder="general" />} />
+          <Route path="direct/requests" element={<InstagramDirectPage folder="requests" />} />
+          <Route path="direct/t/:threadId" element={<InstagramDirectPage />} />
+          <Route path="activity" element={<InstagramActivityPage />} />
+          <Route path="profile" element={<InstagramProfilePage />} />
+          <Route path="profile/reels" element={<InstagramProfilePage tab="reels" />} />
+          <Route path="p/:postId" element={<InstagramProfilePage />} />
+          <Route path="u/:customerId" element={<InstagramUserPage />} />
+          <Route path="*" element={<Navigate to="/instagram/direct/inbox" replace />} />
         </Route>
         <Route path="/customers" element={<Customers />} />
         {/* المنتجات والمخزون انتقلوا للكاشير: الروابط القديمة تحوّل للصفحات الجديدة. */}

@@ -25,7 +25,7 @@ async function open(page, { first, second, refresh }) {
     if (p.startsWith("/social/")) return send({ items: [] });
     return send({ items: [], next_cursor: null });
   });
-  await page.goto("/instagram/direct", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
   return calls;
 }
 

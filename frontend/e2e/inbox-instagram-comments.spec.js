@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// The Comments tab on a REAL account: it must show what the platform returned, wait for the platform
+// Comments in the post view on a REAL account: it must show what the platform returned, wait for the platform
 // before claiming anything was sent, and say so out loud when something fails.
 const ORIGIN = process.env.BASE_URL || "http://127.0.0.1:4173";
 const T0 = new Date(Date.now() - 3600e3).toISOString();
@@ -42,11 +42,13 @@ const POST = { id: "p1", caption: "new shoes", media_type: "IMAGE", media_url: "
 const C1 = { id: "c1", post_id: "p1", parent_id: null, username: "sara", body: "how much?", status: "visible", is_page_reply: false, commented_at: T0, like_count: 1 };
 const C2 = { id: "c2", post_id: "p1", parent_id: null, username: "omar", body: "too late", status: "visible", is_page_reply: false, commented_at: OLD, like_count: 0 };
 
+const menu = async (page, n = 0) => { await page.getByRole("button", { name: /Comment options|خيارات التعليق/ }).nth(n).click(); };
+
 async function open(page, api) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
   await page.route("**/api/v1/**", api.handler);
-  await page.goto("/instagram/comments", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.goto("/instagram/p/p1", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("ig-comment").first()).toBeVisible({ timeout: 15_000 });
 }
 
@@ -78,9 +80,11 @@ test("a reply that fails keeps what was typed and says so", async ({ page }) => 
 test("hiding marks the comment and can be undone", async ({ page }) => {
   const api = makeApi({ posts: [POST], comments: [C1] });
   await open(page, api);
+  await menu(page);
   await page.getByTestId("ig-hide").click();
   await expect(page.getByTestId("ig-hidden-badge")).toBeVisible();
   await expect(page.getByTestId("ig-comment").first()).toHaveAttribute("data-hidden", "true");
+  await menu(page);
   await page.getByTestId("ig-hide").click();
   await expect(page.getByTestId("ig-hidden-badge")).toHaveCount(0);
   expect(api.calls.map((c) => c.body.hidden)).toEqual([true, false]);
@@ -90,9 +94,11 @@ test("deleting asks first, and removes the comment only after Instagram agreed",
   const api = makeApi({ posts: [POST], comments: [C1] });
   await open(page, api);
   page.once("dialog", (d) => d.dismiss());
+  await menu(page);
   await page.getByTestId("ig-delete").click();
   expect(api.calls).toHaveLength(0);
   page.once("dialog", (d) => d.accept());
+  await menu(page);
   await page.getByTestId("ig-delete").click();
   await expect(page.getByText("how much?")).toHaveCount(0);
   expect(api.calls).toEqual([{ key: "delete", id: "c1", body: null }]);
@@ -102,6 +108,8 @@ test("a private reply is one-shot and blocked after 7 days", async ({ page }) =>
   const api = makeApi({ posts: [POST], comments: [C1, C2] });
   await open(page, api);
   const buttons = page.getByTestId("ig-private-reply");
+  await menu(page, 0);
+  await menu(page, 1);
   await expect(buttons.nth(1)).toBeDisabled(); // the 9-day-old comment
   await buttons.nth(0).click();
   await expect(page.getByTestId("ig-private-banner")).toContainText("sara");
@@ -118,6 +126,6 @@ test("an account with no posts is told how to fix it, not shown a blank page", a
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
   await page.route("**/api/v1/**", api.handler);
-  await page.goto("/instagram/comments", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("ig-empty")).toContainText(/reconnect|أعد ربط/);
 });

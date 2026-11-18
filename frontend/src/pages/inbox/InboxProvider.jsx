@@ -145,7 +145,7 @@ export function InboxProvider({ children }) {
   const [storedChannel, setStoredChannel] = useState("whatsapp");
   const activeChannel = forcedChannel || storedChannel;
   const setActiveChannel = (id) => {
-    if (id === "instagram" && !forcedChannel) { setStoredChannel("instagram"); navigate("/instagram/direct"); return; }
+    if (id === "instagram" && !forcedChannel) { setStoredChannel("instagram"); navigate("/instagram/direct/inbox"); return; }
     if (forcedChannel && id !== "instagram") { setStoredChannel(id); navigate("/inbox"); return; }
     setStoredChannel(id);
   };
@@ -177,13 +177,13 @@ export function InboxProvider({ children }) {
   const resizePointerRef = useRef(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [localActiveId, setLocalActiveId] = useState(null);
-  const urlConversationId = (location.pathname.match(/^\/instagram\/direct\/([^/]+)/) || [])[1] || null;
+  const urlConversationId = (location.pathname.match(/^\/instagram\/direct\/t\/([^/]+)/) || [])[1] || null;
   const activeId = urlConversationId || localActiveId;
   const setActiveId = (id) => {
     setLocalActiveId(id);
     // On the Instagram pages the open chat lives in the address, so back/refresh keep your place.
     if (forcedChannel && location.pathname.startsWith("/instagram/direct")) {
-      navigate(id ? `/instagram/direct/${encodeURIComponent(id)}` : "/instagram/direct");
+      navigate(id ? `/instagram/direct/t/${encodeURIComponent(id)}` : "/instagram/direct/inbox");
     }
   };
   const [instagramFolder, setInstagramFolder] = useState("primary");
@@ -458,9 +458,13 @@ export function InboxProvider({ children }) {
   // WhatsApp lists are ordered pinned-first and hide archived chats, so the
   // fallback "first row" must be the first row the person can actually see.
   const currentPool = isWhatsApp ? visibleWhatsAppRows : visibleConversations;
-  const current = currentPool.find((conversation) => conversation.id === activeId)
-    || (isWhatsApp ? conversations.find((conversation) => conversation.id === activeId) : null)
-    || currentPool[0] || null;
+  // On the Instagram pages the open chat comes from the address only: no address, no chat,
+  // and a chat in another folder (General, Requests) is still the one that opens.
+  const current = forcedChannel
+    ? (activeId ? conversations.find((conversation) => conversation.id === activeId) || null : null)
+    : currentPool.find((conversation) => conversation.id === activeId)
+      || (isWhatsApp ? conversations.find((conversation) => conversation.id === activeId) : null)
+      || currentPool[0] || null;
   activeMessageRequestRef.current = { conversationId: current?.id ?? null, channelId: activeChannel };
   const pendingApproval = current?.approval || null;
   const connectedCount = channels.filter((item) => item.connected).length;

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { IgDefaultAvatar } from "@/components/instagram/IgAvatar";
 
 // WhatsApp's default avatar is a grey disc with a person, never a coloured tile with
 // initials (those read as bright patches in dark mode and as white-on-pastel in light).
@@ -14,6 +15,7 @@ function PersonGlyph() {
 export default function ConversationAvatar({ conversation, className, initialsClassName }) {
   const [imageFailed, setImageFailed] = useState(false);
   const isWhatsApp = conversation?.channel === "whatsapp";
+  const isInstagram = conversation?.channel === "instagram";
   const imageUrl = conversation?.avatarUrl || conversation?.profileImageUrl || conversation?.avatar || "";
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function ConversationAvatar({ conversation, className, initialsCl
       className={cn("relative grid shrink-0 place-items-center overflow-hidden rounded-full font-semibold", className)}
       style={isWhatsApp ? { background: "var(--wa-avatar-bg)", color: "var(--wa-avatar-fg)" } : { background: conversation?.color || "#d9e2e9", color: "#fff" }}
     >
-      {isWhatsApp ? <PersonGlyph /> : <span className={initialsClassName}>{conversation?.initials || "—"}</span>}
+      {isInstagram ? <IgDefaultAvatar className="h-full w-full" /> : isWhatsApp ? <PersonGlyph /> : <span className={initialsClassName}>{conversation?.initials || "—"}</span>}
       {imageUrl && !imageFailed && (
         <img
           src={imageUrl}

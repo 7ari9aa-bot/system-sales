@@ -29,8 +29,8 @@ async function open(page, { failFirst = false } = {}) {
     if (p === "/social/posts") return send({ items: [POST] });
     return send({ items: [], next_cursor: null });
   });
-  await page.goto("/instagram/comments", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.getByTestId("ig-new-post-button").click();
+  await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.getByRole("button", { name: /^(Create|إنشاء)$/ }).click();
   await expect(page.getByTestId("ig-new-post")).toBeVisible({ timeout: 15_000 });
   return sent;
 }
