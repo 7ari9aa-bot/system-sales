@@ -683,6 +683,11 @@ class MessageWorker(StreamWorker):
                         else {}
                     ),
                     **(
+                        {"like_heart": True}
+                        if (message.provider_metadata or {}).get("like_heart")
+                        else {}
+                    ),
+                    **(
                         {
                             "reaction_to_provider_id"
                             if message.content_type == "reaction"

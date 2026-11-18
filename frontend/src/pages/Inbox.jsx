@@ -618,7 +618,7 @@ export default function Inbox() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null });
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart) });
       if (!result.ok) {
         setError(result.error);
         return false;

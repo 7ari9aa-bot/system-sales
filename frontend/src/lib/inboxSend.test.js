@@ -330,3 +330,22 @@ describe("uploadMedia", () => {
     expect(await uploadMedia("c1", f, { api })).toMatchObject({ ok: false, aborted: true, error: "" });
   });
 });
+
+describe("sendReply with a heart", () => {
+  it("posts heart:true and never the text, even when the screen passes the heart as text", async () => {
+    const { sendReply } = await import("./inboxSend");
+    const api = vi.fn().mockResolvedValue({ id: "m9", status: "queued" });
+    const r = await sendReply("c1", "\u2764\ufe0f", { api, heart: true });
+    expect(r.ok).toBe(true);
+    expect(api).toHaveBeenCalledWith("/conversations/c1/messages", expect.objectContaining({ body: { heart: true } }));
+  });
+
+  it("a heart and a plain send are different intentions (different keys)", async () => {
+    const { sendReply } = await import("./inboxSend");
+    const keys = [];
+    const api = vi.fn().mockImplementation(async (_p, o) => { keys.push(o.headers["Idempotency-Key"]); throw Object.assign(new Error("x"), { status: 400 }); });
+    await sendReply("c2", "\u2764\ufe0f", { api, heart: true });
+    await sendReply("c2", "\u2764\ufe0f", { api });
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+});

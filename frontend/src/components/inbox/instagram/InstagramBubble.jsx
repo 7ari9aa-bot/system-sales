@@ -1,12 +1,13 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { instagramKind } from "./messageKind";
+import { InstagramMessageActions } from "./InstagramMessageActions";
 import { AudioBody, CardBody, DeletedBody, FileBody, HeartBody, ImageBody, StickerBody, UnsupportedBody, VideoBody } from "./InstagramBodies";
 
 const SEEN = { en: "Seen", ar: "تمت المشاهدة" };
 
 // Instagram draws an outgoing "Seen" once, under the newest message we sent, never a tick on each.
-export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage }) {
+export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage, mine = "", onReply, onReact, onCopy }) {
   const out = m.side === "out";
   const kind = instagramKind(m);
   const bare = kind === "heart" || kind === "sticker"; // these float with no bubble around them
@@ -28,6 +29,7 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
     body = <CardBody card={m.card} kind={kind} lang={lang} preview={preview} />;
   } else body = <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{text}</span>;
 
+  const live = !m.deleted && kind !== "deleted" && !m.unsaved && !m.failed;
   const reactions = Array.isArray(m.reactions) ? m.reactions.filter(Boolean) : [];
   return (
     <div className={cn("flex flex-col", out ? "items-end" : "items-start")}>
@@ -36,6 +38,7 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
           {m.replyTo.available === false ? "…" : m.replyTo.body || m.replyTo.text || "…"}
         </div>
       )}
+      <div className={cn("group/ig flex max-w-full items-center gap-1", out ? "flex-row-reverse" : "flex-row")}>
       <div className={cn("relative max-w-[82%] sm:max-w-[76%]", reactions.length && "mb-3")}>
         <div
           data-testid="ig-bubble"
@@ -50,6 +53,8 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
             {reactions.join("")}
           </span>
         )}
+      </div>
+      {live && <InstagramMessageActions m={m} lang={lang} mine={mine} onReply={onReply} onReact={onReact} onCopy={onCopy} />}
       </div>
       {showSeen && out && <span data-testid="ig-seen" className="mt-0.5 px-1 text-[11px] text-[#737373]">{SEEN[lang === "ar" ? "ar" : "en"]}</span>}
     </div>

@@ -17,6 +17,7 @@ import {
   Palette,
   Play,
   Pause,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
@@ -38,6 +39,7 @@ import { checkFile } from "./whatsapp/attachments";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
+import { InstagramReplyBar } from "./instagram/InstagramReplyBar";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
@@ -221,6 +223,13 @@ export default function ChannelChat({
       setEmojiPickerOpen(false);
       setAttachmentMenuOpen(false);
     }
+  }
+
+  // Instagram's heart: a send of its own (no text, no file), offered while the box is empty.
+  async function sendHeart() {
+    if (sending || uploading || !conversation) return;
+    const sent = await onSend?.(conversation.id, "\u2764\ufe0f", { heart: true });
+    if (sent !== false) setReplyingTo(null);
   }
 
   // A file was picked: check it here so a wrong one is refused before any upload.
@@ -706,6 +715,8 @@ export default function ChannelChat({
             )}
           </div>
         ) : isInstagram ? (
+          <>
+          <InstagramReplyBar replyingTo={replyingTo} customerName={conversation.customer} lang={lang} onCancel={() => setReplyingTo(null)} />
           <div dir="ltr" className="flex h-11 items-center gap-1 rounded-full border border-[#dbdbdb] bg-white px-2 sm:h-12 sm:px-3">
             <button
               type="button"
@@ -746,6 +757,17 @@ export default function ChannelChat({
                 >
                   <Mic className="h-[19px] w-[19px]" />
                 </button>
+                <button
+                  type="button"
+                  data-testid="ig-send-heart"
+                  onClick={() => { void sendHeart(); }}
+                  disabled={sending || uploading}
+                  aria-label={lang === "ar" ? "إرسال قلب" : "Send a heart"}
+                  title={lang === "ar" ? "إرسال قلب" : "Send a heart"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+                >
+                  <Heart className="h-[19px] w-[19px]" />
+                </button>
               </div>
             ) : (
               <button
@@ -760,6 +782,7 @@ export default function ChannelChat({
               </button>
             )}
           </div>
+          </>
         ) : isMessenger ? (
           <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
             <button
@@ -968,7 +991,19 @@ function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} />;
+    return (
+      <InstagramBubble
+        m={m}
+        th={th}
+        lang={_lang}
+        showSeen={showSeen}
+        onOpenImage={onOpenImage}
+        mine={m.myReaction || ""}
+        onReply={onReply}
+        onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined}
+        onCopy={(msg) => { void navigator.clipboard?.writeText(msg.text || ""); }}
+      />
+    );
   }
 
   if (isTelegram) {

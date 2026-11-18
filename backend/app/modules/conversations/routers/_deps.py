@@ -50,6 +50,9 @@ class SendMessageRequest(BaseModel):
     # An upload from POST /conversations/{id}/media. `body` then becomes its
     # caption (images, videos and documents only).
     media_id: uuid.UUID | None = None
+    # Instagram's heart sticker (the button that replaces Send on an empty box).
+    # It has no text and no file, so it is its own kind of send.
+    heart: bool = False
 
 
 class ReadSignalRequest(BaseModel):

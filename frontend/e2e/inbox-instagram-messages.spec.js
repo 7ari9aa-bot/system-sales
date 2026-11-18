@@ -87,3 +87,80 @@ test("a photo opens in the viewer", async ({ page }) => {
   await page.getByTestId("ig-image").click();
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 });
+
+const rowOf = (page, text) => page.getByTestId("ig-bubble").filter({ hasText: text }).locator("xpath=ancestor::div[contains(@class,'group/ig')]");
+
+test("hovering a message offers react, reply and more; a reaction is sent to the server", async ({ page }) => {
+  await open(page);
+  const reactions = [];
+  await page.route("**/api/v1/conversations/c1/messages/m1/reaction", async (r) => {
+    reactions.push(r.request().postDataJSON());
+    await r.fulfill({ status: 201, contentType: "application/json", body: "{}" });
+  });
+  const row = rowOf(page, "hello there");
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.hover();
+  await expect(row.getByTestId("ig-react")).toBeVisible();
+  await expect(row.getByTestId("ig-reply")).toBeVisible();
+  await row.getByTestId("ig-react").click();
+  await expect(page.getByTestId("ig-reaction-strip").getByRole("menuitem")).toHaveCount(6);
+  await page.getByTestId("ig-reaction-strip").getByRole("menuitem", { name: "😂" }).click();
+  await expect.poll(() => reactions.length).toBe(1);
+  expect(reactions[0]).toEqual({ emoji: "😂" });
+  await expect(page.getByTestId("ig-reactions")).toContainText("😂");
+});
+
+test("Reply shows the Replying-to bar and the send carries the quoted message", async ({ page }) => {
+  await open(page);
+  const sends = [];
+  await page.route("**/api/v1/conversations/c1/messages", async (r) => {
+    if (r.request().method() !== "POST") return r.fallback();
+    sends.push(r.request().postDataJSON());
+    await r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "n1", status: "queued" }) });
+  });
+  const row = rowOf(page, "hello there");
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.hover();
+  await row.getByTestId("ig-reply").click();
+  const bar = page.getByTestId("ig-replying-to");
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText("hello there");
+  await page.getByRole("textbox").last().fill("yes we are open");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sends.length).toBe(1);
+  expect(sends[0]).toMatchObject({ body: "yes we are open", reply_to_message_id: "m1" });
+  await expect(bar).toBeHidden();
+});
+
+test("Cancel removes the Replying-to bar", async ({ page }) => {
+  await open(page);
+  const row = rowOf(page, "hello there");
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.hover();
+  await row.getByTestId("ig-reply").click();
+  await page.getByTestId("ig-cancel-reply").click();
+  await expect(page.getByTestId("ig-replying-to")).toBeHidden();
+});
+
+test("the heart button sends a heart alone and disappears once you type", async ({ page }) => {
+  await open(page);
+  const sends = [];
+  await page.route("**/api/v1/conversations/c1/messages", async (r) => {
+    if (r.request().method() !== "POST") return r.fallback();
+    sends.push(r.request().postDataJSON());
+    await r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "n2", status: "queued" }) });
+  });
+  const heart = page.getByTestId("ig-send-heart");
+  await expect(heart).toBeVisible({ timeout: 15_000 });
+  await heart.click();
+  await expect.poll(() => sends.length).toBe(1);
+  expect(sends[0]).toEqual({ heart: true });
+  await page.getByRole("textbox").last().fill("hi");
+  await expect(heart).toBeHidden();
+});
+
+test("a deleted message offers no actions", async ({ page }) => {
+  await open(page);
+  await expect(page.getByTestId("ig-deleted")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("ig-deleted").locator("xpath=ancestor::div[contains(@class,'group/ig')]").getByTestId("ig-actions")).toHaveCount(0);
+});

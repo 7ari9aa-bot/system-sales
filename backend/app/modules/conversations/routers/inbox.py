@@ -404,7 +404,12 @@ async def send_message(
     await _ensure_channel_send(ctx, conversation)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
-    if not body.body and not body.template_name and body.media_id is None:
+    if body.heart:
+        if conversation.channel != "instagram":
+            raise ValidationError("a heart can only be sent on Instagram")
+        if body.body or body.template_name or body.media_id is not None:
+            raise ValidationError("a heart is sent alone")
+    elif not body.body and not body.template_name and body.media_id is None:
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
         raise ValidationError("a template cannot carry an uploaded file")
@@ -429,7 +434,10 @@ async def send_message(
             raise NotFoundError("quoted message not found")
 
     media = None
-    caption = body.body
+    # The heart is stored as the heart itself, so the thread shows it and every
+    # "needs some content" rule downstream stays true; the gateway sends it as
+    # Instagram's heart sticker because of the like_heart mark.
+    caption = "\u2764\ufe0f" if body.heart else body.body
     media_kwargs: dict = {}
     if body.media_id is not None:
         media = await OutboundMediaService.claim(
@@ -458,6 +466,7 @@ async def send_message(
         template_vars=body.template_vars,
         reply_to_message_id=body.reply_to_message_id,
         **media_kwargs,
+        **({"provider_metadata": {"like_heart": True}} if body.heart else {}),
     )
     if media is not None:
         await OutboundMediaService.attach(ctx.session, media, message)
