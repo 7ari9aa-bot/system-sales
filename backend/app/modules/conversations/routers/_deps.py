@@ -92,7 +92,15 @@ class AssignRequest(BaseModel):
 # shape ``customers/router.py:_redact_issue_item`` settled on for the same trap.
 # The handle and the photo identify a person as surely as a phone number does.
 _INBOX_PII_FIELDS = PII_FIELDS | frozenset(
-    {"customer_phone", "customer_handle", "customer_avatar_url"}
+    {
+        "customer_phone",
+        "customer_handle",
+        "customer_avatar_url",
+        "customer_verified",
+        "customer_follower_count",
+        "customer_follows_you",
+        "customer_you_follow",
+    }
 )
 
 

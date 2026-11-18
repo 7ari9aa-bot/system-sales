@@ -40,6 +40,7 @@ import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
 import { InstagramReplyBar } from "./instagram/InstagramReplyBar";
+import { VerifiedBadge } from "./instagram/InstagramProfileFacts";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
@@ -351,7 +352,7 @@ export default function ChannelChat({
           )}
           <div className="flex-1 min-w-0 text-start">
             <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-semibold text-[color:var(--wa-text)]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>
-              {conversation.customer}
+              {conversation.customer}{isInstagram && conversation.verified && <> <VerifiedBadge lang={lang} /></>}
             </div>
             {!isMessenger && (
               <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
