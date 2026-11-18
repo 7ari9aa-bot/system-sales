@@ -18,7 +18,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
@@ -26,7 +25,6 @@ from app.core.storage import get_storage
 from app.modules.conversations.gateway.base import ProviderCredentials
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.media import check_media_policy
-from app.modules.customers.models import Customer, CustomerIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +32,13 @@ REFRESH_AFTER = timedelta(days=7)
 RETRY_AFTER = timedelta(hours=6)  # a refused or failed read is not retried on every message
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
 _AVATAR_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})  # never svg, never gif
+
+
+def _customers():
+    """The customers module's service, imported on first use (a module-scope import would cycle)."""
+    from app.modules.customers.service import CustomerService
+
+    return CustomerService
 
 
 def looks_like_an_id(name: str | None) -> bool:
@@ -60,7 +65,7 @@ class CustomerProfileService:
     async def enrich_instagram(
         session: AsyncSession,
         tenant_id: uuid.UUID,
-        customer: Customer,
+        customer: Any,
         credentials: dict,
         *,
         now: datetime | None = None,
@@ -69,15 +74,9 @@ class CustomerProfileService:
         """Fill in the customer's profile. Returns True when something was learned. Never raises."""
         now = now or datetime.now(UTC)
         try:
-            identity = (
-                await session.execute(
-                    select(CustomerIdentity).where(
-                        CustomerIdentity.tenant_id == tenant_id,
-                        CustomerIdentity.customer_id == customer.id,
-                        CustomerIdentity.channel == "instagram",
-                    )
-                )
-            ).scalar_one_or_none()
+            identity = await _customers().channel_identity(
+                session, tenant_id, customer.id, "instagram"
+            )
             if identity is None or not needs_refresh(identity.extra, now):
                 return False
             extra = dict(identity.extra or {})
@@ -113,6 +112,22 @@ class CustomerProfileService:
         except Exception:  # noqa: BLE001 - enrichment is a courtesy, the message must still land
             logger.warning("instagram profile enrichment failed", exc_info=True)
             return False
+
+    @staticmethod
+    async def enrich_instagram_for(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        credentials: dict,
+        **kwargs: Any,
+    ) -> bool | None:
+        """`enrich_instagram` for a customer known only by id; None when it is not this tenant's."""
+        customer = await _customers().get_for_tenant(session, tenant_id, customer_id)
+        if customer is None:
+            return None
+        return await CustomerProfileService.enrich_instagram(
+            session, tenant_id, customer, credentials, **kwargs
+        )
 
     @staticmethod
     async def _copy_avatar(url: str | None, storage: Any = None) -> str | None:

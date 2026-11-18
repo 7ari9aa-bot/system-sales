@@ -202,7 +202,11 @@ class ConversationService:
         decision = None
         if direction == "outbound":
             decision = await MessagingPolicyService.evaluate_for_conversation(
-                session, tenant_id, conversation, template_name=template_name
+                session,
+                tenant_id,
+                conversation,
+                template_name=template_name,
+                sender_type=sender_type,
             )
             if not decision.allowed:
                 raise OutboundBlockedError(
@@ -258,7 +262,12 @@ class ConversationService:
             # §155 canonical columns.
             content_type=content_type,
             reply_to_message_id=reply_to_message_id,
-            provider_metadata=provider_metadata or {},
+            provider_metadata={
+                **(provider_metadata or {}),
+                # The send is legal only because a person wrote it inside the longer window,
+                # so the worker must tag it HUMAN_AGENT or the provider will refuse it.
+                **({"human_agent": True} if decision is not None and decision.human_agent else {}),
+            },
             template_name=template_name,
             template_vars=template_vars or {},
             status="received" if direction == "inbound" else "queued",

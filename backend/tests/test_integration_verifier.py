@@ -28,7 +28,7 @@ from app.modules.platform.integration_verifier import (
             "instagram",
             {"api_key": "ig-secret"},
             {"account_id": "234567890"},
-            "/v26.0/234567890",
+            "/v27.0/234567890",  # Instagram is pinned to its own version, not the shared one
             {"id": "234567890", "username": "shop"},
             {"account_id": "234567890"},
             "shop",

@@ -53,6 +53,11 @@ async def _sendable_channels(ctx: TenantContext) -> set[str] | None:
     )
 
 
+async def _channel_config(ctx: TenantContext, provider: str) -> dict | None:
+    """The tenant's saved credentials for one connected channel (None when not connected)."""
+    return await _channel_access.channel_credentials_config(ctx.session, ctx.tenant_id, provider)
+
+
 async def _ensure_channel_access(ctx: TenantContext, conversation) -> None:
     allowed = await _allowed_channels(ctx)
     if allowed is not None and conversation.channel not in allowed:
@@ -678,23 +683,21 @@ async def refresh_customer_profile(
     never raises for a refusal, and does not touch the webhook or the message pipeline.
     """
     from app.modules.conversations.customer_profile import CustomerProfileService
-    from app.modules.customers.models import Customer
 
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     await _ensure_channel_access(ctx, conversation)
     if conversation.channel != "instagram" or conversation.customer_id is None:
         return {"updated": False, "reason": "not_instagram"}
-    customer = await ctx.session.get(Customer, conversation.customer_id)
-    if customer is None or customer.tenant_id != ctx.tenant_id:
-        return {"updated": False, "reason": "no_customer"}
     config = await _channel_access.channel_credentials_config(
         ctx.session, ctx.tenant_id, "instagram"
     )
     if not config or not config.get("api_key"):
         return {"updated": False, "reason": "not_connected"}
-    updated = await CustomerProfileService.enrich_instagram(
-        ctx.session, ctx.tenant_id, customer, config
+    updated = await CustomerProfileService.enrich_instagram_for(
+        ctx.session, ctx.tenant_id, conversation.customer_id, config
     )
+    if updated is None:
+        return {"updated": False, "reason": "no_customer"}
     return {"updated": updated}
 
 

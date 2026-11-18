@@ -661,6 +661,29 @@ class CustomerService:
         )
 
     @staticmethod
+    async def channel_identity(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID, channel: str
+    ) -> CustomerIdentity | None:
+        """The customer's identity row on one channel, or None. Never crosses tenants."""
+        return (
+            await session.execute(
+                select(CustomerIdentity).where(
+                    CustomerIdentity.tenant_id == tenant_id,
+                    CustomerIdentity.customer_id == customer_id,
+                    CustomerIdentity.channel == channel,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def get_for_tenant(
+        session: AsyncSession, tenant_id: UUID, customer_id: UUID
+    ) -> Customer | None:
+        """The customer when it is this tenant's, else None (no raise: the caller decides)."""
+        customer = await session.get(Customer, customer_id)
+        return customer if customer is not None and customer.tenant_id == tenant_id else None
+
+    @staticmethod
     async def find_by_identity(
         session: AsyncSession, tenant_id: UUID, channel: str, external_id: str
     ) -> Customer | None:

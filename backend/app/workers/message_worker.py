@@ -675,6 +675,11 @@ class MessageWorker(StreamWorker):
                 meta={
                     **media_meta,
                     **(
+                        {"human_agent": True}
+                        if (message.provider_metadata or {}).get("human_agent")
+                        else {}
+                    ),
+                    **(
                         {
                             "reaction_to_provider_id"
                             if message.content_type == "reaction"

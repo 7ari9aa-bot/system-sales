@@ -17,6 +17,17 @@ import httpx
 from app.core.circuit_breaker import PROVIDER_INSTAGRAM, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
+from app.core.instagram_version import INSTAGRAM_API_VERSION
+from app.modules.conversations.gateway.instagram_limits import (
+    MAX_QUICK_REPLIES,
+    QUICK_REPLY_TITLE_CHARS,
+    InstagramFailure,
+    InstagramLimitError,
+    check_media,
+    check_text,
+    classify_instagram_error,
+    media_kind,
+)
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     InboundComment,
@@ -34,6 +45,28 @@ logger = logging.getLogger(__name__)
 REACTION_REMOVED = "\u2205"
 
 
+class InstagramProviderError(ExternalProviderError):
+    """A Graph refusal that carries what to do about it (see `instagram_limits`).
+
+    It IS an ExternalProviderError, so every caller that already catches that keeps working;
+    the ones that care (the send worker, the inbox) read `.failure` instead of parsing text.
+    """
+
+    def __init__(self, message: str, failure: InstagramFailure) -> None:
+        super().__init__(message)
+        self.failure = failure
+        self.retryable = failure.retryable
+
+
+def _refusal(context: str, status: int | None, data: Any) -> InstagramProviderError:
+    """Build the error for a refused Graph call, classified from Meta's own error object."""
+    failure = classify_instagram_error(data if isinstance(data, dict) else str(data))
+    if failure.kind == "unknown" and status is not None:
+        failure = classify_instagram_error(f"HTTP {status} {data}")
+    head = f"{context} failed: HTTP {status}" if status is not None else f"{context} failed"
+    return InstagramProviderError(f"{head} [{failure.kind}] - {str(data)[:200]}", failure)
+
+
 class InstagramAdapter(ChannelAdapter):
     """Instagram messaging adapter via Meta Graph API.
 
@@ -44,7 +77,7 @@ class InstagramAdapter(ChannelAdapter):
     name = "instagram"  # ChannelAdapter registry key
     channel = "instagram"
 
-    def __init__(self, *, api_version: str = "v21.0"):
+    def __init__(self, *, api_version: str = INSTAGRAM_API_VERSION):
         # All secrets live in settings, read per call — a constructor-injected
         # secret can only go stale (the removed per-instance `verify_webhook`
         # verified nothing for exactly that reason).
@@ -235,15 +268,27 @@ class InstagramAdapter(ChannelAdapter):
             raw=payload,
         )
 
-    # Instagram attachment types the Send API accepts, and the size caps Meta documents.
-    _MEDIA_KINDS = {
-        "image": "image",
-        "video": "video",
-        "audio": "audio",
-        "voice": "audio",
-        "file": "file",
-        "document": "file",
-    }
+    @classmethod
+    def check_outbound(cls, message: OutboundMessage) -> None:
+        """Refuse what Instagram would refuse, before spending a call on it.
+
+        Raises InstagramLimitError (a ValueError) naming the rule broken. A reaction, a heart
+        and a shared post carry no free text, so only text and media are measured.
+        """
+        meta = message.meta or {}
+        if meta.get("reaction_to_provider_id") or meta.get("like_heart") or meta.get(
+            "share_media_id"
+        ):
+            return
+        if message.media_url:
+            check_media(
+                message.media_url,
+                media_kind(meta.get("media_type")),
+                meta.get("media_size_bytes"),
+            )
+            return
+        if not message.template_name:
+            check_text(message.body)
 
     @classmethod
     def build_send_payload(cls, message: OutboundMessage) -> dict[str, Any]:
@@ -254,6 +299,7 @@ class InstagramAdapter(ChannelAdapter):
         template, optionally quoting an earlier message.
         """
         recipient = {"id": message.customer_ref}
+        cls.check_outbound(message)
         target = message.meta.get("reaction_to_provider_id")
         if target:
             emoji = message.body or ""
@@ -285,11 +331,15 @@ class InstagramAdapter(ChannelAdapter):
                 }
             }
         elif message.media_url:
-            kind = cls._MEDIA_KINDS.get(str(message.meta.get("media_type", "image")), "image")
+            kind = media_kind(message.meta.get("media_type"))
             body = {"attachment": {"type": kind, "payload": {"url": message.media_url}}}
         else:
             body = {"text": message.body or ""}
         payload: dict[str, Any] = {"recipient": recipient, "message": body}
+        if message.meta.get("human_agent"):
+            # A person's reply after the 24h window, inside the 7-day human-agent window.
+            payload["messaging_type"] = "MESSAGE_TAG"
+            payload["tag"] = "HUMAN_AGENT"
         reply_to = message.meta.get("reply_to_provider_id")
         if reply_to:
             # Verified: reply_to sits at the ROOT of the request, beside "message".
@@ -299,10 +349,10 @@ class InstagramAdapter(ChannelAdapter):
             body["quick_replies"] = [
                 {
                     "content_type": "text",
-                    "title": str(q.get("title", ""))[:20],
+                    "title": str(q.get("title", ""))[:QUICK_REPLY_TITLE_CHARS],
                     "payload": str(q.get("payload", q.get("title", ""))),
                 }
-                for q in quick[:13]
+                for q in quick[:MAX_QUICK_REPLIES]
             ]
         return payload
 
@@ -337,9 +387,7 @@ class InstagramAdapter(ChannelAdapter):
                     resp = await client.post(url, headers=headers, json=body)
             data = parse_provider_body(resp, "instagram sender action")
             if resp.status_code not in (200, 201):
-                raise ExternalProviderError(
-                    f"instagram {action} failed: HTTP {resp.status_code} — {str(data)[:200]}"
-                )
+                raise _refusal(f"instagram {action}", resp.status_code, data)
 
         await get_breaker(PROVIDER_INSTAGRAM).call(_post)
 
@@ -376,9 +424,9 @@ class InstagramAdapter(ChannelAdapter):
             # record a rejecting provider as a SUCCESS and never open the breaker.
             data = parse_provider_body(resp, "instagram send")
             if resp.status_code not in (200, 201):
-                raise ExternalProviderError(
-                    f"instagram send failed: HTTP {resp.status_code} — {str(data)[:200]}"
-                )
+                raise _refusal("instagram send", resp.status_code, data)
+            if "error" in data:
+                raise _refusal("instagram send", resp.status_code, data)
             return str(data.get("message_id", ""))
 
         # §47/G-13: the outbound call goes through the process-wide
@@ -433,13 +481,9 @@ class InstagramAdapter(ChannelAdapter):
                     )
             data = parse_provider_body(resp, f"instagram {method} {path}")
             if resp.status_code not in (200, 201):
-                raise ExternalProviderError(
-                    f"instagram {method} {path} failed: HTTP {resp.status_code} - {str(data)[:200]}"
-                )
+                raise _refusal(f"instagram {method} {path}", resp.status_code, data)
             if "error" in data:
-                raise ExternalProviderError(
-                    f"instagram {method} {path} failed: {str(data['error'])[:200]}"
-                )
+                raise _refusal(f"instagram {method} {path}", resp.status_code, data)
             return data
 
         return await get_breaker(PROVIDER_INSTAGRAM).call(_call)

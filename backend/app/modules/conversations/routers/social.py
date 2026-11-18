@@ -22,12 +22,16 @@ from app.modules.conversations.routers._deps import (
     TenantContext,
     require_permission,
 )
+from app.modules.conversations.routers.inbox import (
+    _allowed_channels,
+    _channel_config,
+    _sendable_channels,
+)
 from app.modules.conversations.social_service import (
     MAX_PICTURE_BYTES,
     MAX_REPLY_CHARS,
     SocialService,
 )
-from app.modules.platform.services import channel_access as _channel_access
 
 router = APIRouter(tags=["social"])
 
@@ -99,18 +103,14 @@ def _comment_out(c: SocialComment) -> dict:
 
 async def _credentials(ctx: TenantContext, *, send: bool) -> dict:
     """The connected Instagram account's credentials, after the channel grants are checked."""
-    allowed = await _channel_access.allowed_providers(
-        ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
-    )
+    allowed = await _allowed_channels(ctx)
     if allowed is not None and _PROVIDER not in allowed:
         raise PermissionDeniedError("channel is not enabled for this user")
     if send:
-        sendable = await _channel_access.sendable_providers(
-            ctx.session, ctx.tenant_id, ctx.user.id, ctx.role_code
-        )
+        sendable = await _sendable_channels(ctx)
         if sendable is not None and _PROVIDER not in sendable:
             raise PermissionDeniedError("sending is not enabled for this user on this channel")
-    config = await _channel_access.channel_credentials_config(ctx.session, ctx.tenant_id, _PROVIDER)
+    config = await _channel_config(ctx, _PROVIDER)
     if not config or not config.get("api_key") or not config.get("account_id"):
         raise ConflictError("Instagram is not connected")
     return config
