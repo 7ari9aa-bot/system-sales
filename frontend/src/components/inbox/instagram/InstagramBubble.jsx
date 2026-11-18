@@ -10,7 +10,7 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
   const out = m.side === "out";
   const kind = instagramKind(m);
   const bare = kind === "heart" || kind === "sticker"; // these float with no bubble around them
-  const radius = th?.bubbleRadius ?? 12;
+  const radius = th?.bubbleRadius ?? 18;
   const text = String(m.text || "").trim();
   const caption = kind === "text" || kind === "deleted" || kind === "unsupported" || kind === "heart" || kind === "sticker" ? "" : text;
 
@@ -39,7 +39,7 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
       <div className={cn("relative max-w-[82%] sm:max-w-[76%]", reactions.length && "mb-3")}>
         <div
           data-testid="ig-bubble"
-          className={cn("text-[14px] leading-[1.45]", bare ? "" : "px-3.5 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
+          className={cn("text-[14px] leading-[1.45]", bare ? "" : "px-3 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
           style={bare ? undefined : { background: out ? th?.out || "#4A5DF9" : th?.in || "#F3F5F7", color: out ? th?.outText || "#fff" : th?.inText || "#000", borderRadius: radius }}
         >
           {body}

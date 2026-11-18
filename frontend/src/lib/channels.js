@@ -57,7 +57,7 @@ export const CHANNELS = [
       darkIn: "#25292E",
       darkBg: "#0C1014",
       darkText: "#F5F5F5",
-      bubbleRadius: 12,
+      bubbleRadius: 18, // pill-like corner as drawn by Instagram's own web chat (compared live, 2026-11-18)
       checkmarks: false,
       tail: false,
     },

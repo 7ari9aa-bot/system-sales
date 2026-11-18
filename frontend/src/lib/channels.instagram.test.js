@@ -8,10 +8,10 @@ describe("the Instagram theme uses Instagram's real colours", () => {
     expect(ig.out.toLowerCase()).toBe("#4a5df9");
     expect(ig.in.toLowerCase()).toBe("#f3f5f7");
   });
-  it("keeps the dark values and the 12px bubble corner", () => {
+  it("keeps the dark values and the 18px bubble corner", () => {
     expect(ig.darkIn.toLowerCase()).toBe("#25292e");
     expect(ig.darkBg.toLowerCase()).toBe("#0c1014");
-    expect(ig.bubbleRadius).toBe(12);
+    expect(ig.bubbleRadius).toBe(18);
   });
   it("uses black primary and #737373 secondary text", () => {
     expect(ig.headerText).toBe("#000000");

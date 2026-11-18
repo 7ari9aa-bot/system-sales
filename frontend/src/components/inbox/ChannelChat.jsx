@@ -120,20 +120,20 @@ export default function ChannelChat({
 
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
+  const isInstagram = channel.id === "instagram";
 
-  // "typing…" on the customer's phone while an agent writes a WhatsApp reply. One
+  // "typing…" on the customer's phone while an agent writes a WhatsApp or Instagram reply. One
   // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
   // while there is text: it is a courtesy, so a failure is silent.
   const typingSentAtRef = useRef(null);
   useEffect(() => {
-    if (!isWhatsApp || !supportsReadSignal(conversation)) return;
+    if (!(isWhatsApp || isInstagram) || !supportsReadSignal(conversation)) return;
     if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
     typingSentAtRef.current = Date.now();
     api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});
-  }, [text, isWhatsApp, conversation?.id, conversation?.lastCustomerMessageAt]);
+  }, [text, isWhatsApp, isInstagram, conversation?.id, conversation?.lastCustomerMessageAt]);
   // A different chat starts its own 20s clock.
   useEffect(() => { typingSentAtRef.current = null; }, [conversation?.id]);
-  const isInstagram = channel.id === "instagram";
   const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";
   const messengerTheme = MESSENGER_CHAT_THEMES.find((theme) => theme.id === messengerThemeId) || MESSENGER_CHAT_THEMES[0];
@@ -481,8 +481,9 @@ export default function ChannelChat({
           return (
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
-                <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
-                  <span className={cn("rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isTelegram && !isMessenger && !isInstagram && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]")}>
+                <div className={cn("flex justify-center", isInstagram ? "py-3" : "py-1.5")} aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
+                  {/* Instagram prints the day as plain grey text, no pill and no shadow. */}
+                  <span className={cn(isInstagram ? "text-[12px] text-[#737373]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>

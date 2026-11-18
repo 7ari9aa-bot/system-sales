@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { InstagramBubble } from "./InstagramBubble";
 import { instagramKind, safeHttps } from "./messageKind";
 
-const th = { out: "#4A5DF9", outText: "#ffffff", in: "#F3F5F7", inText: "#000000", bubbleRadius: 12 };
+const th = { out: "#4A5DF9", outText: "#ffffff", in: "#F3F5F7", inText: "#000000", bubbleRadius: 18 };
 const msg = (over = {}) => ({ id: "1", side: "in", text: "", contentType: "text", mediaUrl: null, mediaType: null, card: null, reactions: [], ...over });
 const html = (m, props = {}) => renderToStaticMarkup(<InstagramBubble m={msg(m)} th={th} lang="en" {...props} />);
 
@@ -33,10 +33,10 @@ describe("instagramKind", () => {
 });
 
 describe("InstagramBubble", () => {
-  test("our message is Instagram blue with 12px corners, theirs is grey", () => {
+  test("our message is Instagram blue with 18px corners, theirs is grey", () => {
     const mine = html({ side: "out", text: "hello" });
     expect(mine).toMatch(/background:\s*#4A5DF9|background:rgb\(74, 93, 249\)/i);
-    expect(mine).toContain("border-radius:12px");
+    expect(mine).toContain("border-radius:18px");
     expect(html({ text: "hello" })).toMatch(/background:\s*#F3F5F7|background:rgb\(243, 245, 247\)/i);
   });
 

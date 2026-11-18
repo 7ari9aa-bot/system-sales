@@ -648,7 +648,9 @@ async def send_read_signal(
     body: ReadSignalRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    """Show the customer the blue ticks (and, while we type, "typing…") on WhatsApp.
+    """Show the customer we read their chat (blue ticks, Seen) and, while we type, "typing…".
+
+    WhatsApp and Instagram.
 
     This is separate from ``/read``, which only clears OUR unread badge. It needs
     the same rights as sending, because the customer sees it as the business acting.
@@ -665,7 +667,7 @@ async def send_read_signal(
         conversation,
         typing=body.typing,
         load_channel_config=lambda: _channel_access.channel_credentials_config(
-            ctx.session, ctx.tenant_id, "whatsapp"
+            ctx.session, ctx.tenant_id, conversation.channel
         ),
     )
     return {"sent": result.sent, "skipped": result.skipped}
