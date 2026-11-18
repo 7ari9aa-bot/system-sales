@@ -63,3 +63,6 @@ export function IgVerified({ size = 12, label = "Verified" }) {
     </svg>
   );
 }
+
+/** Instagram's "new message" compose icon (pencil over a square). */
+export const IgCompose = (p) => (<Svg {...p}><path d="M12.5 3.5H6a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h11.5a3 3 0 0 0 3-3v-6" /><path d="m17.8 3.2 3 3-8.3 8.3-3.9.9.9-3.9z" /></Svg>);

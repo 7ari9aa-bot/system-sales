@@ -29,8 +29,8 @@ export default function InstagramActivityPage() {
   const ageOf = (item) => Date.now() - new Date(item.comment.commentedAt || 0).getTime();
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[600px] py-6">
+    <div className="flex h-full min-h-0">
+      <div className="h-full w-full shrink-0 overflow-y-auto border-e py-6 md:w-[397px]" style={{ borderColor: IG.border }}>
         <h1 className="px-6 pb-4 text-[24px] font-bold">{isArabic ? "الإشعارات" : "Notifications"}</h1>
         {postsError && <p role="alert" className="px-6 text-[14px]" style={{ color: IG.error }}>{postsError}</p>}
         {postsLoading && items.length === 0 && <p role="status" className="px-6 text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "جارٍ التحميل…" : "Loading…"}</p>}
@@ -65,6 +65,7 @@ export default function InstagramActivityPage() {
           );
         })}
       </div>
+      <div className="hidden min-w-0 flex-1 md:block" aria-hidden="true" />
     </div>
   );
 }

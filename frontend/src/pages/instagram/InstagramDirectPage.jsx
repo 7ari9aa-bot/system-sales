@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IG, igShortTime } from "@/components/instagram/igTheme";
-import { IgBack, IgChevronDown, IgMessenger, IgSearch } from "@/components/instagram/igIcons";
+import { IgBack, IgChevronDown, IgCompose, IgMessenger, IgSearch } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
 import { useInstagramData } from "./useInstagramData";
 
@@ -39,6 +39,7 @@ function EmptyThread({ lang }) {
         <span className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-black"><IgMessenger size={48} /></span>
         <h2 className="mt-4 text-[20px] font-normal">{isArabic ? "رسائلك" : "Your messages"}</h2>
         <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "اختر محادثة للرد على عملائك." : "Choose a chat to reply to your customers."}</p>
+        <span aria-disabled="true" title={isArabic ? "إنستغرام لا يسمح ببدء محادثة جديدة" : "Instagram doesn't let shops start new chats"} className="mt-4 inline-block rounded-lg px-4 py-[7px] text-[14px] font-semibold text-white opacity-60" style={{ background: IG.blue }}>{isArabic ? "إرسال رسالة" : "Send message"}</span>
       </div>
     </div>
   );
@@ -77,7 +78,10 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
           </header>
         ) : (
           <header className="shrink-0 px-6 pb-3 pt-9">
-            <h1 className="flex items-center gap-1 text-[20px] font-bold"><span dir="ltr" className="truncate">{username || "Instagram"}</span><IgChevronDown size={20} /></h1>
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="flex min-w-0 items-center gap-1 text-[20px] font-bold"><span dir="ltr" className="truncate">{username || "Instagram"}</span><IgChevronDown size={20} /></h1>
+              <span className="text-black/40" title={isArabic ? "إنستغرام لا يسمح ببدء محادثة جديدة، يمكنك الرد على من يراسلك" : "Instagram doesn't let shops start new chats, you can reply to people who message you"}><IgCompose size={24} /></span>
+            </div>
           </header>
         )}
         <div className="shrink-0 px-6 pb-3">
