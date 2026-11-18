@@ -36,6 +36,7 @@ import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { InstagramBubble } from "./instagram/InstagramBubble";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
@@ -156,6 +157,13 @@ export default function ChannelChat({
   const visibleMessages = (isWhatsApp || isInstagram || isMessenger || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
     : allMessages;
+  // Instagram marks only the newest message WE sent as "Seen"; a search never changes which one it is.
+  const lastSentId = (() => {
+    for (let i = allMessages.length - 1; i >= 0; i -= 1) {
+      if (allMessages[i].side === "out" && allMessages[i].senderType !== "system") return allMessages[i].id;
+    }
+    return null;
+  })();
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -491,6 +499,7 @@ export default function ChannelChat({
                 onReply={setReplyingTo}
                 onReact={onReact}
                 onOpenImage={setViewerId}
+                showSeen={isInstagram && m.status === "read" && m.id === lastSentId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -879,7 +888,7 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
-      {viewerId && isWhatsApp && (
+      {viewerId && (isWhatsApp || isInstagram) && (
         <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
       )}
     </div>
@@ -887,7 +896,7 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
+function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -954,6 +963,10 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
         onCopy={(msg) => { void navigator.clipboard?.writeText(msg.text || ""); }}
         onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined}
       >{media}</WhatsAppBubble>;
+  }
+
+  if (_isInstagram) {
+    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} />;
   }
 
   if (isTelegram) {

@@ -69,6 +69,7 @@ function toMessage(message) {
     mediaUrl: message.media_url,
     mediaType: message.media_type,
     contentType: message.content_type || "text",
+    card: message.card || null,
     edited: Boolean(message.edited),
     deleted: Boolean(message.deleted),
     replyTo: message.reply_to || null,

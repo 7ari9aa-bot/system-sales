@@ -265,6 +265,7 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 # The name an agent's document was sent under (None for inbound media).
                 "filename": None if m.deleted else (m.provider_metadata or {}).get("filename"),
                 "content_type": m.content_type,
+                "card": None if m.deleted else _present_card(m),
                 "status": m.status,
                 "edited": bool(m.edited),
                 "deleted": bool(m.deleted),
@@ -276,6 +277,35 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
             }
         )
     return items
+
+
+_CARD_KEYS = ("share", "story_reply", "story_mention")
+
+
+def _present_card(m) -> dict | None:
+    """The shared post, the story someone replied to, or the story that mentioned us.
+
+    Instagram sends these as links, not files. Only the three known shapes leave here, with a
+    web link (https) and a short title: the raw webhook body never reaches the browser.
+    """
+    payload = m.payload if isinstance(m.payload, dict) else {}
+    raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
+    ig = raw.get("_ig") if isinstance(raw.get("_ig"), dict) else {}
+    for key in _CARD_KEYS:
+        data = ig.get(key)
+        if isinstance(
+            data, str
+        ):  # a reply-to-story arrives as {"story": {"url": ...}} or a bare url
+            data = {"url": data}
+        if not isinstance(data, dict):
+            continue
+        url = data.get("url")
+        url = url if isinstance(url, str) and url.startswith("https://") else None
+        title = data.get("title")
+        title = title[:200] if isinstance(title, str) and title.strip() else None
+        kind = data.get("kind") if key == "share" and isinstance(data.get("kind"), str) else key
+        return {"type": key, "kind": kind, "url": url, "title": title}
+    return None
 
 
 def _provider_order(m) -> tuple:
