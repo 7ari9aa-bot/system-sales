@@ -34,7 +34,7 @@ function Tile({ post, lang }) {
 
 /** /instagram/profile, /instagram/profile/reels and /instagram/p/:postId (a post opened over the grid). */
 export default function InstagramProfilePage({ tab = "posts" }) {
-  const { lang, account, accountError, username, posts, postsLoading, postsError, actions, demoAccount } = useInstagramData();
+  const { lang, account, accountError, username, posts, postsLoading, postsError, actions, threads, demoAccount } = useInstagramData();
   const { postId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -90,7 +90,7 @@ export default function InstagramProfilePage({ tab = "posts" }) {
         <div className="grid grid-cols-3 gap-px pb-10">{shown.map((post) => <Tile key={post.id} post={post} lang={lang} />)}</div>
       </div>
       {postId && open && (
-        <InstagramPostView post={open} lang={lang} actions={actions} onClose={close}
+        <InstagramPostView post={open} lang={lang} actions={actions} threads={threads} onClose={close}
           onPrev={openIndex > 0 ? () => go(openIndex - 1) : undefined}
           onNext={openIndex < posts.length - 1 ? () => go(openIndex + 1) : undefined} />
       )}

@@ -12,6 +12,7 @@ import {
   ImageIcon,
   Smile,
   Mic,
+  Heart,
   MoreVertical,
   Send,
   Palette,
@@ -641,7 +642,7 @@ export default function ChannelChat({
             onError={(message) => setAttachError(message)}
             onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false, audioUrl: URL.createObjectURL(file) }); }}
           />
-        ) : isRecordingVoice ? (
+        ) : isRecordingVoice && !isInstagram ? (
           <ChannelVoiceRecorder
             isRecording={isRecordingVoice}
             onCancel={() => setIsRecordingVoice(false)}
@@ -754,12 +755,14 @@ export default function ChannelChat({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsRecordingVoice(true)}
-                  aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Voice note"}
-                  title={lang === "ar" ? "تسجيل رسالة صوتية" : "Voice note"}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
+                  data-testid="ig-send-heart"
+                  onClick={() => { void onSend?.(conversation.id, "", { heart: true }); }}
+                  disabled={sending}
+                  aria-label={lang === "ar" ? "إرسال قلب" : "Send a heart"}
+                  title={lang === "ar" ? "إرسال قلب" : "Send a heart"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors disabled:opacity-50"
                 >
-                  <Mic className="h-[19px] w-[19px]" />
+                  <Heart className="h-[19px] w-[19px]" />
                 </button>
               </div>
             ) : (

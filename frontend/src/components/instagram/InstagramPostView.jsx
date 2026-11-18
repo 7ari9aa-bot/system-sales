@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import IgAvatar from "./IgAvatar";
 import IgComment from "./IgComment";
+import IgSharePanel from "./IgSharePanel";
 import { IG } from "./igTheme";
 import { IgBack, IgClose, IgComment as CommentIcon, IgEmoji, IgMore, IgShare } from "./igIcons";
 import { cn } from "@/lib/utils";
@@ -8,7 +9,7 @@ import { cn } from "@/lib/utils";
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤩", "😢", "😡", "👍", "🙏", "👏", "🔥", "❤️", "💯", "🎉", "✨"];
 
 /** Instagram's post modal: picture on one side, caption, comments and the reply box on the other. */
-export default function InstagramPostView({ post, lang = "ar", actions = {}, onClose, onPrev, onNext }) {
+export default function InstagramPostView({ post, lang = "ar", actions = {}, threads = [], onClose, onPrev, onNext }) {
   const isArabic = lang === "ar";
   const [replyTo, setReplyTo] = useState(null);
   const [privateFor, setPrivateFor] = useState(null);
@@ -17,6 +18,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
   const [sending, setSending] = useState(false);
   const [actionError, setActionError] = useState("");
   const [postMenu, setPostMenu] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -119,9 +121,11 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
           <div className="shrink-0 border-t px-4 pb-2 pt-1.5" style={{ borderColor: IG.separator }}>
             <div className="flex items-center gap-4 py-1.5">
               <button type="button" onClick={focus} aria-label={isArabic ? "تعليق" : "Comment"} className="hover:opacity-60"><CommentIcon className={isArabic ? "-scale-x-100" : undefined} /></button>
-              {post.permalink
-                ? <a href={post.permalink} target="_blank" rel="noreferrer" aria-label={isArabic ? "مشاركة" : "Share"} className="hover:opacity-60"><IgShare /></a>
-                : null}
+              {actions.sharePost
+                ? <button type="button" data-testid="ig-share" onClick={() => setShareOpen(true)} aria-label={isArabic ? "مشاركة" : "Share"} className="hover:opacity-60"><IgShare /></button>
+                : post.permalink
+                  ? <a href={post.permalink} target="_blank" rel="noreferrer" aria-label={isArabic ? "فتح على إنستغرام" : "Open on Instagram"} className="hover:opacity-60"><IgShare /></a>
+                  : null}
             </div>
             <p className="text-[14px] font-semibold">{Number(post.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : post.likes === 1 ? "like" : "likes"}</p>
             <p className="mt-1 text-[10px] uppercase tracking-[0.2px]" style={{ color: IG.secondary }}>{post.timeLabel}</p>
@@ -146,6 +150,10 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
           </form>}
         </div>
       </article>
+      {shareOpen && actions.sharePost && (
+        <IgSharePanel threads={threads} lang={lang} onClose={() => setShareOpen(false)} onSend={(conversationId) => actions.sharePost(conversationId, post)} />
+      )}
+
     </div>
   );
 }

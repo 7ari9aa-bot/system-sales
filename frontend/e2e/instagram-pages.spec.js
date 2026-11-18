@@ -296,3 +296,27 @@ test("the chat row menu pins and archives without opening the chat", async ({ pa
   await page.getByTestId("ig-row-archive").click();
   await expect.poll(() => calls.at(-1)).toEqual({ archived: true });
 });
+
+// Instagram's Share sheet: pick a chat and the post goes into it as a card (the Send API's MEDIA_SHARE).
+test("a post can be shared into a chat from the post window", async ({ page }) => {
+  const sent = [];
+  await page.route("**/api/v1/conversations/*/messages", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    sent.push({ chat: route.request().url().match(/conversations\/([^/]+)\/messages/)[1], body: route.request().postDataJSON() });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "n1", status: "queued", created_at: iso(0) }) });
+  });
+  await page.goto("/instagram/p/p1", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("ig-share").click();
+  const panel = page.getByTestId("ig-share-panel");
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  // only chats a shop can talk into: not requests, general or archived ones
+  await expect(panel.getByText("Sara Ahmed")).toBeVisible();
+  await expect(panel.getByText("Mona Zaki")).toHaveCount(0);
+  await expect(panel.getByText("Hana Gad")).toHaveCount(0);
+  await panel.getByPlaceholder("Search").fill("omar");
+  await expect(panel.getByText("Sara Ahmed")).toHaveCount(0);
+  await panel.getByTestId("ig-share-send").click();
+  await expect.poll(() => sent.at(-1)).toEqual({ chat: "c2", body: { instagram_share_post_id: "p1" } });
+  await expect(panel.getByText("Sent")).toBeVisible();
+  await page.keyboard.press("Escape");
+});

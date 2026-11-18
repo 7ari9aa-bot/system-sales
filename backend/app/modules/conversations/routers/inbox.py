@@ -404,7 +404,15 @@ async def send_message(
     await _ensure_channel_send(ctx, conversation)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
-    if not body.body and not body.template_name and body.media_id is None:
+    instagram_extra = body.instagram_heart or bool(body.instagram_share_post_id)
+    if instagram_extra:
+        if conversation.channel != "instagram":
+            raise ValidationError("a heart or a shared post can only be sent on Instagram")
+        if body.instagram_heart and body.instagram_share_post_id:
+            raise ValidationError("send either a heart or a post, not both")
+        if body.body or body.template_name or body.media_id is not None:
+            raise ValidationError("a heart or a shared post carries nothing else")
+    if not body.body and not body.template_name and body.media_id is None and not instagram_extra:
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
         raise ValidationError("a template cannot carry an uploaded file")
@@ -431,6 +439,19 @@ async def send_message(
     media = None
     caption = body.body
     media_kwargs: dict = {}
+    if body.instagram_heart:
+        # Stored like an incoming heart (a sticker holding the heart): both look the same.
+        caption = "\u2764\ufe0f"
+        media_kwargs = {"content_type": "sticker", "provider_metadata": {"instagram_heart": True}}
+    elif body.instagram_share_post_id:
+        post_id = body.instagram_share_post_id.strip()
+        if not post_id.isdigit():
+            raise ValidationError("not an Instagram post id")
+        caption = None
+        media_kwargs = {
+            "content_type": "share",
+            "provider_metadata": {"instagram_share_post_id": post_id},
+        }
     if body.media_id is not None:
         media = await OutboundMediaService.claim(
             ctx.session, ctx.tenant_id, media_id=body.media_id, conversation_id=conversation_id

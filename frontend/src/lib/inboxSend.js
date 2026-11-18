@@ -22,17 +22,20 @@ export const TIMEOUT_MESSAGE =
   "Sending took too long. It may have gone through: check the conversation before sending again.";
 
 /** @returns {Promise<{ok: true, sent: object|null} | {ok: false, error: string}>} */
-export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null, mediaId = null } = {}) {
+export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null, mediaId = null, heart = false, sharePostId = null } = {}) {
   const slot = `send:${conversationId}`;
   // Which message is being answered, and which uploaded file goes with it, are
   // part of the intention: the same words with a different file (or as a reply
   // to a different message) must be a new send, not a replay.
-  const key = intents.take(slot, { text, replyToId, mediaId });
+  const key = intents.take(slot, { text, replyToId, mediaId, heart, sharePostId });
   try {
     const body = {};
     if (text) body.body = text;
     if (replyToId) body.reply_to_message_id = replyToId;
     if (mediaId) body.media_id = mediaId;
+    // Instagram only: the heart sticker, or one of the shop's own posts, sent as a card.
+    if (heart) body.instagram_heart = true;
+    if (sharePostId) body.instagram_share_post_id = String(sharePostId);
     const sent = await api(`/conversations/${conversationId}/messages`, {
       method: "POST",
       body,

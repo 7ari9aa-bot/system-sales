@@ -50,6 +50,10 @@ class SendMessageRequest(BaseModel):
     # An upload from POST /conversations/{id}/media. `body` then becomes its
     # caption (images, videos and documents only).
     media_id: uuid.UUID | None = None
+    # Instagram only: send the heart sticker, or one of the shop's own posts (its media id) as a
+    # card. Neither carries free text, so neither needs `body`.
+    instagram_heart: bool = False
+    instagram_share_post_id: str | None = Field(default=None, max_length=64)
 
 
 class ReadSignalRequest(BaseModel):

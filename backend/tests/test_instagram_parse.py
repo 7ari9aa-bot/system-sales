@@ -365,3 +365,22 @@ def test_a_delivery_for_one_account_is_returned_untouched():
     p = _msg({"mid": "m", "text": "hi"})
     assert A.split_by_account(p) == [p]
     assert A.split_by_account({}) == [{}]
+
+
+def test_heart_and_share_request_fields_default_off_and_cap_the_post_id():
+    from pydantic import ValidationError
+
+    from app.modules.conversations.routers._deps import SendMessageRequest
+
+    plain = SendMessageRequest(body="hi")
+    assert plain.instagram_heart is False and plain.instagram_share_post_id is None
+    assert SendMessageRequest(instagram_heart=True).instagram_heart is True
+    assert SendMessageRequest(instagram_share_post_id="17900000000000001").instagram_share_post_id
+    with pytest.raises(ValidationError):
+        SendMessageRequest(instagram_share_post_id="1" * 65)
+
+
+def test_a_shared_post_without_an_id_is_not_sent_as_text():
+    # An empty id must fall through to the plain-text branch, never become a card with no post.
+    p = A.build_send_payload(_out(body="", meta={"share_media_id": ""}))
+    assert "attachment" not in p["message"]

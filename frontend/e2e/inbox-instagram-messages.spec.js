@@ -109,3 +109,25 @@ test("a customer's message can be hearted and un-hearted; our own cannot", async
   const mine = page.getByTestId("ig-bubble").filter({ hasText: "hi! how can I help?" });
   await expect(mine.locator("xpath=..").getByTestId("ig-react-heart")).toHaveCount(0);
 });
+
+// Instagram has a heart where WhatsApp has a microphone. The old microphone recorded, threw the recording away and sent
+// the text "voice message (0:07)", so it is gone; the heart is a real Send API message (`like_heart`).
+test("the composer offers a heart, not a microphone, and the heart is sent as a heart", async ({ page }) => {
+  await open(page);
+  const sent = [];
+  await page.route("**/api/v1/conversations/c1/messages", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "new1", status: "queued", created_at: new Date().toISOString() }) });
+  });
+  await page.getByText("Sara Ahmed").first().click();
+  await expect(page.getByTestId("ig-send-heart")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /Voice note|تسجيل رسالة صوتية/ })).toHaveCount(0);
+  await page.getByTestId("ig-send-heart").click();
+  await expect.poll(() => sent.at(-1)).toEqual({ instagram_heart: true });
+  // it shows at once as the same heart an incoming one draws
+  await expect(page.getByTestId("ig-heart")).toHaveCount(2);
+  // typing text swaps the heart for Send, like Instagram
+  await page.getByRole("textbox").last().fill("hello");
+  await expect(page.getByTestId("ig-send-heart")).toHaveCount(0);
+});

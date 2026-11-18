@@ -678,6 +678,20 @@ class MessageWorker(StreamWorker):
                 meta={
                     **media_meta,
                     **(
+                        {"like_heart": True}
+                        if (message.provider_metadata or {}).get("instagram_heart")
+                        else {}
+                    ),
+                    **(
+                        {
+                            "share_media_id": (message.provider_metadata or {})[
+                                "instagram_share_post_id"
+                            ]
+                        }
+                        if (message.provider_metadata or {}).get("instagram_share_post_id")
+                        else {}
+                    ),
+                    **(
                         {"human_agent": True}
                         if (message.provider_metadata or {}).get("human_agent")
                         else {}

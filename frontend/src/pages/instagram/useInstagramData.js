@@ -44,6 +44,8 @@ export function useInstagramData() {
     : { reply: igLive.reply, hide: igLive.hide, remove: igLive.remove, sendPrivate: igLive.sendPrivate, publish: igLive.publish, refresh: igLive.refresh, toggleComments: igLive.toggleComments, canComment: false };
 
   const threads = convMap.instagram || [];
+  // Sending one of the shop's posts into a chat (a card the customer can open). Real accounts only: the demo has no Instagram.
+  const sharePost = demoAccount ? undefined : (conversationId, post) => inbox.handleSend(conversationId, "", { sharePostId: post.id, sharedPost: post });
   const unreadMessages = threads.reduce((sum, row) => sum + (row.unread > 0 || row.markedUnread ? 1 : 0), 0);
   const unanswered = posts.reduce((sum, post) => sum + (post.comments || []).filter(needsAnswer).length, 0);
 
@@ -56,7 +58,7 @@ export function useInstagramData() {
     posts,
     postsLoading: !demoAccount && igLive.loading,
     postsError: !demoAccount ? igLive.error : "",
-    actions,
+    actions: sharePost ? { ...actions, sharePost } : actions,
     threads,
     unreadMessages,
     unanswered,

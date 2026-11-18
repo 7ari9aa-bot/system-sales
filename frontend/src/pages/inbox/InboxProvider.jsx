@@ -646,7 +646,7 @@ export function InboxProvider({ children }) {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null });
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null });
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -669,7 +669,13 @@ export function InboxProvider({ children }) {
         unsaved: !sent?.id,
         side: "out",
         ...sentFile,
-        text,
+        // The heart is stored like an incoming one (a sticker holding the heart) so it draws the same.
+        ...(opts.heart ? { contentType: "sticker" } : {}),
+        // A shared post shows at once as the same card an incoming one draws, until the list reloads from the server.
+        ...(opts.sharePostId && opts.sharedPost
+          ? { contentType: "share", card: { type: "share", kind: "ig_post", url: opts.sharedPost.permalink || null, title: opts.sharedPost.caption || null } }
+          : {}),
+        text: opts.heart ? "\u2764\ufe0f" : text,
         time: displayTime(createdAt),
         createdAt,
         status: sent?.status || "queued",
@@ -684,7 +690,7 @@ export function InboxProvider({ children }) {
             }
           : null,
       };
-      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, text || opts.filename || ""));
+      setConvMap((previous) => appendLocalMessage(previous, channelId, conversationId, localMessage, opts.heart ? "\u2764\ufe0f" : text || opts.filename || opts.sharedPost?.caption || ""));
       return true;
     } finally {
       setSending(false);
