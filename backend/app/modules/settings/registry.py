@@ -72,8 +72,10 @@ class SettingDef:
         min_value: For ``number`` type: inclusive minimum.
         max_value: For ``number`` type: inclusive maximum.
         max_length: For ``string`` type: maximum character length.
-        permission: The permission code required to change this setting.
+        permission: The permission code required to change this setting at TENANT level.
                     Default "settings:write".
+        branch_delegable: True when a ``settings:branch_write`` holder may set it at a
+                scope below tenant. Enforced by ``policy.authorize_write``.
         audit: Whether changes to this setting are recorded in the audit
                log (all changes are recorded in settings_history regardless).
         label_ar: Arabic display label for the UI.
@@ -92,11 +94,25 @@ class SettingDef:
     max_value: float | None = None
     max_length: int | None = None
     permission: str = "settings:write"
+    # May a holder of settings:branch_write (a manager) set this key below tenant level?
+    # Money rules, tax identity and anything that changes how stock is valued stay owner-only.
+    branch_delegable: bool = False
     audit: bool = False
     label_ar: str = ""
     label_en: str = ""
     description_ar: str = ""
     description_en: str = ""
+
+    @property
+    def enforced(self) -> bool:
+        """Does any code outside the settings module act on this key yet?
+
+        The registry was written ahead of the code that reads it. A key that is stored and shown
+        but never read is a switch wired to nothing: the owner flips it and the shop behaves
+        the same. The UI uses this to mark such keys "not active yet" instead of implying they
+        work. ``ENFORCED_KEYS`` is kept honest by tests/test_settings_enforced_keys.py.
+        """
+        return self.key in ENFORCED_KEYS
 
     def validate(self, value: Any) -> Any:
         """Validate and coerce a proposed value. Raises ValueError on bad input."""
@@ -154,6 +170,17 @@ class SettingDef:
 # ---------------------------------------------------------------------------
 
 _DEFINITIONS: list[SettingDef] = []
+
+
+# Keys some module outside app/modules/settings actually reads, and where. Add a key here in the
+# same commit that wires it; the guard test fails if a listed key is not read, or a read key is
+# not listed.
+ENFORCED_KEYS: frozenset[str] = frozenset(
+    {
+        "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
+        "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
+    }
+)
 
 
 def _reg(d: SettingDef) -> SettingDef:
@@ -220,6 +247,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=31,
+        branch_delegable=True,
         label_ar="رقم الهاتف",
         label_en="Phone",
     )
@@ -232,6 +260,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=320,
+        branch_delegable=True,
         label_ar="البريد الإلكتروني",
         label_en="Email",
     )
@@ -256,6 +285,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=255,
+        branch_delegable=True,
         label_ar="العنوان",
         label_en="Address Line 1",
     )
@@ -268,6 +298,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=127,
+        branch_delegable=True,
         label_ar="المدينة",
         label_en="City",
     )
@@ -280,6 +311,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=15,
+        branch_delegable=True,
         label_ar="الرمز البريدي",
         label_en="Postal Code",
     )
@@ -306,6 +338,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        branch_delegable=True,
         label_ar="العميل إلزامي",
         label_en="Require Customer",
         description_ar="هل يجب تحديد عميل قبل إتمام البيع؟",
@@ -320,6 +353,7 @@ _reg(
         default="cash",
         scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
         allowed_values=("cash", "card", "wallet", "bank_transfer"),
+        branch_delegable=True,
         label_ar="وسيلة التحصيل الافتراضية",
         label_en="Default Payment Method",
     )
@@ -334,6 +368,7 @@ _reg(
         min_value=0,
         max_value=100,
         audit=True,
+        branch_delegable=True,
         label_ar="الحد الأقصى للخصم %",
         label_en="Max Discount %",
         description_ar="أقصى خصم يمكن للكاشير تطبيقه (% من الإجمالي).",
@@ -347,6 +382,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.POS_PROFILE),
+        branch_delegable=True,
         label_ar="تعليق الفاتورة",
         label_en="Allow Hold Cart",
     )
@@ -358,6 +394,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
         label_ar="إلزام بدء الوردية",
         label_en="Require Session",
         description_ar="لا يمكن البيع قبل فتح وردية كاشير.",
@@ -371,19 +408,9 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
         label_ar="رصيد بداية الوردية",
         label_en="Opening Float Required",
-    )
-)
-_reg(
-    SettingDef(
-        key="pos.allow_negative_stock_sale",
-        domain="pos",
-        type=SettingType.BOOL,
-        default=False,
-        scopes=(Scope.TENANT, Scope.WAREHOUSE),
-        label_ar="السماح بالبيع من مخزون سالب",
-        label_en="Allow Negative Stock Sale",
     )
 )
 _reg(
@@ -407,6 +434,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
         label_ar="إلزام إيصال المرتجع",
         label_en="Return Requires Receipt",
     )
@@ -420,6 +448,7 @@ _reg(
         scopes=(Scope.TENANT, Scope.BRANCH),
         min_value=0,
         max_value=365,
+        branch_delegable=True,
         label_ar="مهلة المرتجع (أيام)",
         label_en="Return Window (Days)",
     )
@@ -431,24 +460,18 @@ _reg(
         type=SettingType.LIST,
         default=["cash", "card", "wallet", "bank_transfer"],
         scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        branch_delegable=True,
         label_ar="وسائل التحصيل المسموحة",
         label_en="Allowed Payment Methods",
     )
 )
 
 # ============================== INVENTORY =================================
+#
+# There is deliberately no "allow negative stock" switch here (nor pos.allow_negative_stock_sale).
+# The inventory ledger invariant is that on-hand never goes below zero; a per-shop toggle would
+# let one tenant break it. Add one only together with the ledger change that makes it safe.
 
-_reg(
-    SettingDef(
-        key="inventory.allow_negative",
-        domain="inventory",
-        type=SettingType.BOOL,
-        default=False,
-        scopes=(Scope.TENANT, Scope.WAREHOUSE),
-        label_ar="السماح بمخزون سالب",
-        label_en="Allow Negative Stock",
-    )
-)
 _reg(
     SettingDef(
         key="inventory.auto_reserve",
@@ -465,7 +488,10 @@ _reg(
         key="inventory.reserve_ttl_minutes",
         domain="inventory",
         type=SettingType.NUMBER,
-        default=1440,
+        # 15 is what the order flow has always used (orders.service._RESERVATION_TTL). The default
+        # must equal the behaviour a shop already has: a shop that never touches this setting must
+        # not wake up holding abandoned carts for a day.
+        default=15,
         scopes=(Scope.TENANT,),
         min_value=5,
         max_value=43200,
@@ -491,6 +517,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
+        branch_delegable=True,
         label_ar="تفعيل مواقع التخزين",
         label_en="Track Warehouse Locations",
     )
@@ -502,6 +529,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
+        branch_delegable=True,
         label_ar="الفحص عند الاستلام",
         label_en="Quality Check on Receipt",
         description_ar="هل البضاعة تحتاج فحص قبل دخول المخزون القابل للبيع؟",
@@ -515,6 +543,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
+        branch_delegable=True,
         label_ar="اعتماد الجرد",
         label_en="Stocktake Requires Approval",
     )
@@ -528,6 +557,7 @@ _reg(
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
         min_value=0,
         max_value=1000000,
+        branch_delegable=True,
         label_ar="مخزون الأمان الافتراضي",
         label_en="Default Safety Stock",
     )
@@ -616,6 +646,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT, Scope.CHANNEL),
+        branch_delegable=True,
         label_ar="السماح بالطلب المسبق",
         label_en="Allow Backorder",
     )
@@ -643,6 +674,7 @@ _reg(
         default="80mm",
         scopes=(Scope.TENANT, Scope.REGISTER),
         allowed_values=("58mm", "80mm", "a4"),
+        branch_delegable=True,
         label_ar="عرض الورق",
         label_en="Paper Width",
     )
@@ -654,6 +686,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.REGISTER),
+        branch_delegable=True,
         label_ar="إظهار الشعار",
         label_en="Show Logo",
     )
@@ -666,6 +699,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=500,
+        branch_delegable=True,
         label_ar="نص أعلى الإيصال",
         label_en="Receipt Header Text",
     )
@@ -678,6 +712,7 @@ _reg(
         default="",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=500,
+        branch_delegable=True,
         label_ar="نص أسفل الإيصال",
         label_en="Receipt Footer Text",
     )
@@ -691,6 +726,7 @@ _reg(
         scopes=(Scope.TENANT, Scope.REGISTER),
         min_value=1,
         max_value=5,
+        branch_delegable=True,
         label_ar="عدد نسخ الطباعة",
         label_en="Print Copies",
     )
@@ -726,6 +762,7 @@ _reg(
         default="INV",
         scopes=(Scope.TENANT, Scope.BRANCH),
         max_length=15,
+        branch_delegable=True,
         label_ar="بادئة رقم الفاتورة",
         label_en="Invoice Number Prefix",
     )
@@ -740,6 +777,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
+        branch_delegable=True,
         label_ar="تنبيه نقص المخزون",
         label_en="Low Stock Alert",
     )
@@ -751,6 +789,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT, Scope.USER),
+        branch_delegable=True,
         label_ar="تنبيه طلب جديد",
         label_en="New Order Notification",
     )

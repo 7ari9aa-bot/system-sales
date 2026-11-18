@@ -90,6 +90,15 @@ _NUMBER_ATTEMPTS = 2
 # completes (abandoned cart) — the maintenance worker flips it to EXPIRED.
 _RESERVATION_TTL = timedelta(minutes=15)
 
+
+async def reservation_ttl(session: AsyncSession, tenant_id: UUID) -> timedelta:
+    """How long a hold lasts for this shop: the setting, defaulting to the 15 minutes above."""
+    from app.modules.settings.service import SettingsService
+
+    minutes = await SettingsService(session, tenant_id).value("inventory.reserve_ttl_minutes")
+    return timedelta(minutes=int(minutes))
+
+
 # §139: order saga state machine — the cross-service fulfillment saga.
 # created -> (paid and stock_reserved, in either order) -> fulfilled, and then
 # either cancelled or returned.
@@ -631,7 +640,7 @@ class OrderService:
 
         # §140: durable reservation rows next to the balance hold — one per
         # line, expiring in 15 minutes unless the order completes.
-        expires_at = _now() + _RESERVATION_TTL
+        expires_at = _now() + await reservation_ttl(session, tenant_id)
         for variant, quantity, _price, _pct in prepared:
             await InventoryService.create_reservation(
                 session,

@@ -11,8 +11,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.modules.errors import NotFoundError
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.errors import NotFoundError, PermissionDeniedError
+from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.presets import PRESETS
 from app.modules.settings.registry import (
     Scope,
@@ -37,7 +37,27 @@ from app.modules.settings.service import ResolvedSetting, SettingsService
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
-SettingsWriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+
+
+class _AnySettingsPermission:
+    """Door for the write routes: any settings permission gets in.
+
+    The door is deliberately wide. WHICH key may be written at WHICH scope by WHOM is decided
+    per setting by ``SettingsService`` (``policy.authorize_write``), so a manager holding only
+    ``settings:branch_write`` reaches a branch-level write and is refused a tenant-level one,
+    and a cashier can still save their own preference. Gating on ``settings:write`` alone would
+    lock the manager out before the per-key rule ever ran.
+    """
+
+    _CODES = ("settings:write", "settings:branch_write", "settings:read")
+
+    async def __call__(self, ctx: TenantCtxDep) -> TenantContext:
+        if not any(code in ctx.permission_codes for code in self._CODES):
+            raise PermissionDeniedError("missing permission: settings:read")
+        return ctx
+
+
+SettingsWriteCtx = Annotated[TenantContext, Depends(_AnySettingsPermission())]
 
 
 def _def_to_out(d: SettingDef) -> SettingDefOut:
@@ -53,6 +73,7 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         max_length=d.max_length,
         permission=d.permission,
         audit=d.audit,
+        enforced=d.enforced,
         label_ar=d.label_ar,
         label_en=d.label_en,
         description_ar=d.description_ar,
@@ -101,10 +122,10 @@ async def list_setting_domains(ctx: SettingsReadCtx) -> list[str]:
 @router.get("/effective", response_model=dict[str, ResolvedSettingOut])
 async def resolve_effective_settings(
     ctx: SettingsReadCtx,
-    scope: str = Query(default="tenant"),
-    scope_id: uuid.UUID | None = Query(default=None),
-    domain: str | None = Query(default=None),
-    keys: str | None = Query(default=None),
+    scope: Annotated[str, Query()] = "tenant",
+    scope_id: Annotated[uuid.UUID | None, Query()] = None,
+    domain: Annotated[str | None, Query()] = None,
+    keys: Annotated[str | None, Query()] = None,
 ) -> dict[str, ResolvedSettingOut]:
     """Resolve effective settings at the given scope with inheritance."""
     svc = SettingsService(ctx.session, ctx.tenant_id)
@@ -127,8 +148,8 @@ async def resolve_effective_settings(
 async def resolve_effective_setting(
     key: str,
     ctx: SettingsReadCtx,
-    scope: str = Query(default="tenant"),
-    scope_id: uuid.UUID | None = Query(default=None),
+    scope: Annotated[str, Query()] = "tenant",
+    scope_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ResolvedSettingOut:
     """Resolve a single setting to its effective value."""
     try:
@@ -149,9 +170,9 @@ async def resolve_effective_setting(
 @router.get("/overrides", response_model=list[TenantSettingOut])
 async def list_overrides(
     ctx: SettingsReadCtx,
-    scope: str | None = Query(default=None),
-    scope_id: uuid.UUID | None = Query(default=None),
-    domain: str | None = Query(default=None),
+    scope: Annotated[str | None, Query()] = None,
+    scope_id: Annotated[uuid.UUID | None, Query()] = None,
+    domain: Annotated[str | None, Query()] = None,
 ) -> list[TenantSettingOut]:
     """List explicitly configured overrides for this tenant."""
     svc = SettingsService(ctx.session, ctx.tenant_id)
@@ -190,6 +211,7 @@ async def set_setting(
         scope_id=body.scope_id,
         user_id=ctx.user.id,
         reason=body.reason,
+        permissions=ctx.permission_codes,
     )
     return TenantSettingOut(
         id=row.id,
@@ -214,6 +236,7 @@ async def bulk_set_settings(
         scope_id=body.scope_id,
         user_id=ctx.user.id,
         reason=body.reason,
+        permissions=ctx.permission_codes,
     )
     return [
         TenantSettingOut(
@@ -247,6 +270,7 @@ async def reset_setting(
         scope_id=body.scope_id,
         user_id=ctx.user.id,
         reason=body.reason,
+        permissions=ctx.permission_codes,
     )
     return {"deleted": deleted}
 
@@ -270,9 +294,13 @@ async def apply_preset(
     """Apply a business-type preset to the tenant scope."""
     if preset_name not in PRESETS:
         raise NotFoundError(f"preset {preset_name!r} not found")
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("applying a preset requires settings:write")
 
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    applied = await svc.apply_preset(preset_name, user_id=ctx.user.id)
+    applied = await svc.apply_preset(
+        preset_name, user_id=ctx.user.id, permissions=ctx.permission_codes
+    )
     return {
         "preset": preset_name,
         "applied_count": len(applied),
@@ -287,7 +315,7 @@ async def apply_preset(
 @router.get("/history", response_model=list[SettingHistoryOut])
 async def get_settings_history(
     ctx: SettingsReadCtx,
-    key: str | None = Query(default=None),
+    key: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[SettingHistoryOut]:
     """Return the audit log of settings changes, newest first."""

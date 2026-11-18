@@ -1,34 +1,52 @@
-"""Settings service — resolve, read, write, and audit configuration values.
+"""Settings service: resolve, read, write, and audit configuration values.
 
 This is the ONLY writer of ``tenant_settings`` and ``tenant_settings_history``.
-Every caller — routers, services, workers — goes through here. The service
-never commits; the caller owns the transaction (AGENTS.md rule 6).
+Every caller (routers, services, workers) goes through here. The service never
+commits; the caller owns the transaction (AGENTS.md rule 6).
 
-The resolver walks the inheritance chain at read time:
-  register → pos_profile → warehouse → branch → tenant → default
+The resolver walks the inheritance chain at read time. The chain is read from the
+database (``scope_graph``), never supplied by the caller:
 
-A value at a lower scope overrides a higher one. When no override exists
-at any scope, the registry's factory default is returned. The response
-always says WHETHER the returned value is inherited or explicitly set.
+    register -> pos_profile -> warehouse -> branch -> tenant -> registry default
+
+A value at a lower scope overrides a higher one. When no override exists at any
+scope, the registry default is returned. The response always says WHERE the value
+came from and whether it is inherited.
+
+Writes
+------
+* the key must exist in the registry and allow the scope;
+* the scope entity must be a row of this tenant (``scope_graph``);
+* the caller must be allowed to write that key at that scope (``policy``);
+* the value is validated and coerced by the definition;
+* one row is appended to ``tenant_settings_history`` and, for keys declared
+  ``audit=True``, one row to the central ``audit_logs`` as well.
+
+A write that changes nothing (same value) records nothing.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import write_audit_row
+from app.core.errors import ValidationError
 from app.modules.settings.models import TenantSetting, TenantSettingHistory
+from app.modules.settings.policy import authorize_write
 from app.modules.settings.registry import (
-    SCOPE_PARENT,
     Scope,
     SettingDef,
     get_definition,
     list_definitions,
 )
+from app.modules.settings.scope_graph import ScopeLink, require_scope_entity, resolve_chain
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,11 +55,37 @@ class ResolvedSetting:
 
     key: str
     value: Any
-    scope: str  # the scope where the value was found
+    scope: str  # the scope where the value was found ("default" = registry default)
     scope_id: uuid.UUID | None
-    is_inherited: bool  # True if the value comes from a parent scope
+    is_inherited: bool  # True if the value comes from a parent scope or the default
     is_default: bool  # True if the value is the registry default
     definition: SettingDef
+
+
+def _s(value: uuid.UUID | None) -> str | None:
+    return None if value is None else str(value)
+
+
+def _scope(scope: Scope | str) -> Scope:
+    try:
+        return Scope(scope) if isinstance(scope, str) else scope
+    except ValueError:
+        raise ValidationError(f"unknown scope {scope!r}") from None
+
+
+def _definition(key: str) -> SettingDef:
+    try:
+        return get_definition(key)
+    except KeyError:
+        raise ValidationError(f"unknown setting {key!r}") from None
+
+
+def _validate(defn: SettingDef, value: Any) -> Any:
+    """Run the definition's validation; a bad value is a 400, never a 500."""
+    try:
+        return defn.validate(value)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from None
 
 
 class SettingsService:
@@ -61,38 +105,72 @@ class SettingsService:
         *,
         scope: Scope | str = Scope.TENANT,
         scope_id: uuid.UUID | None = None,
-        # Parent scope ids for walking up the chain.
-        # Map of scope → scope_id: e.g. {branch: wks_id, warehouse: wh_id}
-        scope_chain: dict[str, uuid.UUID] | None = None,
     ) -> ResolvedSetting:
-        """Resolve one setting to its effective value at the given scope.
+        """Resolve one setting to its effective value at the given scope."""
+        return (await self.resolve_many([key], scope=scope, scope_id=scope_id))[key]
 
-        Walks up: requested scope → parent → … → tenant → default.
-        """
-        defn = get_definition(key)
-        scope_enum = Scope(scope) if isinstance(scope, str) else scope
+    async def resolve_many(
+        self,
+        keys: list[str],
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+    ) -> dict[str, ResolvedSetting]:
+        """Resolve several settings with one chain lookup and one override query."""
+        scope_enum = _scope(scope)
+        defs = {k: _definition(k) for k in keys}
+        chain = await resolve_chain(self._session, self._tenant_id, scope_enum, scope_id)
+        rows = await self._load_overrides(list(defs), chain)
 
-        # Build the lookup chain: from the requested scope up to tenant.
-        chain = self._build_chain(scope_enum, scope_id, scope_chain)
+        out: dict[str, ResolvedSetting] = {}
+        for key, defn in defs.items():
+            out[key] = self._pick(key, defn, chain, rows)
+        return out
 
-        # Query all overrides for this key in one round trip.
-        rows = await self._load_overrides(key, chain)
+    async def resolve_domain(
+        self,
+        domain: str,
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+    ) -> dict[str, ResolvedSetting]:
+        """Resolve all settings in a domain (e.g. 'pos')."""
+        keys = [d.key for d in list_definitions(domain=domain)]
+        return await self.resolve_many(keys, scope=scope, scope_id=scope_id)
 
-        # Walk the chain from most-specific to least-specific.
-        for s, sid in chain:
-            row = rows.get((s.value, sid))
+    async def value(
+        self,
+        key: str,
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+    ) -> Any:
+        """The effective value only. The call operational code makes."""
+        return (await self.resolve(key, scope=scope, scope_id=scope_id)).value
+
+    @staticmethod
+    def _pick(
+        key: str,
+        defn: SettingDef,
+        chain: list[ScopeLink],
+        rows: dict[tuple[str, str, uuid.UUID | None], TenantSetting],
+    ) -> ResolvedSetting:
+        requested = chain[0]
+        for link in chain:
+            # A scope the key does not allow can never hold an override for it.
+            if not defn.scope_allowed(link.scope):
+                continue
+            row = rows.get((key, link.scope.value, link.scope_id))
             if row is not None:
                 return ResolvedSetting(
                     key=key,
                     value=row.value.get("v"),
-                    scope=s.value,
-                    scope_id=sid,
-                    is_inherited=(s != scope_enum or sid != scope_id),
+                    scope=link.scope.value,
+                    scope_id=link.scope_id,
+                    is_inherited=link != requested,
                     is_default=False,
                     definition=defn,
                 )
-
-        # No override at any scope: return the factory default.
         return ResolvedSetting(
             key=key,
             value=defn.default,
@@ -101,66 +179,6 @@ class SettingsService:
             is_inherited=True,
             is_default=True,
             definition=defn,
-        )
-
-    async def resolve_many(
-        self,
-        keys: list[str],
-        *,
-        scope: Scope | str = Scope.TENANT,
-        scope_id: uuid.UUID | None = None,
-        scope_chain: dict[str, uuid.UUID] | None = None,
-    ) -> dict[str, ResolvedSetting]:
-        """Resolve multiple settings in one call (one DB round trip)."""
-        scope_enum = Scope(scope) if isinstance(scope, str) else scope
-        chain = self._build_chain(scope_enum, scope_id, scope_chain)
-
-        # Load all overrides for all requested keys.
-        all_rows = await self._load_overrides_many(keys, chain)
-
-        results: dict[str, ResolvedSetting] = {}
-        for key in keys:
-            defn = get_definition(key)
-            found = False
-            for s, sid in chain:
-                row = all_rows.get((key, s.value, sid))
-                if row is not None:
-                    results[key] = ResolvedSetting(
-                        key=key,
-                        value=row.value.get("v"),
-                        scope=s.value,
-                        scope_id=sid,
-                        is_inherited=(s != scope_enum or sid != scope_id),
-                        is_default=False,
-                        definition=defn,
-                    )
-                    found = True
-                    break
-            if not found:
-                results[key] = ResolvedSetting(
-                    key=key,
-                    value=defn.default,
-                    scope="default",
-                    scope_id=None,
-                    is_inherited=True,
-                    is_default=True,
-                    definition=defn,
-                )
-        return results
-
-    async def resolve_domain(
-        self,
-        domain: str,
-        *,
-        scope: Scope | str = Scope.TENANT,
-        scope_id: uuid.UUID | None = None,
-        scope_chain: dict[str, uuid.UUID] | None = None,
-    ) -> dict[str, ResolvedSetting]:
-        """Resolve all settings in a domain (e.g. 'pos')."""
-        defs = list_definitions(domain=domain)
-        keys = [d.key for d in defs]
-        return await self.resolve_many(
-            keys, scope=scope, scope_id=scope_id, scope_chain=scope_chain
         )
 
     # ------------------------------------------------------------------
@@ -176,57 +194,73 @@ class SettingsService:
         scope_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
+        permissions: Collection[str] | None = None,
     ) -> TenantSetting:
-        """Set one setting at the given scope. Creates or updates the override."""
-        defn = get_definition(key)
-        scope_enum = Scope(scope) if isinstance(scope, str) else scope
+        """Set one setting at the given scope. Creates or updates the override.
+
+        ``permissions`` is the caller's permission codes. ``None`` means an internal
+        caller that already holds owner rights (presets applied at signup, workers).
+        """
+        defn = _definition(key)
+        scope_enum = _scope(scope)
 
         if not defn.scope_allowed(scope_enum):
-            raise ValueError(
+            raise ValidationError(
                 f"{key}: scope {scope_enum.value!r} not allowed "
                 f"(allowed: {[s.value for s in defn.scopes]})"
             )
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+        self._authorize(defn, scope_enum, scope_id, user_id, permissions)
 
-        validated = defn.validate(value)
+        validated = _validate(defn, value)
+        new_value = {"v": validated}
 
-        # Upsert: find existing or create.
-        existing = await self._find_override(key, scope_enum.value, scope_id)
-        old_value = existing.value if existing else None
-
-        if existing:
-            existing.value = {"v": validated}
+        # Lock the existing row (if any) so two concurrent writers serialise and the
+        # history's "old value" is the value this write really replaced.
+        existing = await self._find_override(key, scope_enum.value, scope_id, for_update=True)
+        if existing is not None:
+            if existing.value == new_value:
+                return existing  # nothing changed, nothing to record
+            old_value = existing.value
+            existing.value = new_value
             existing.updated_by = user_id
-            self._session.add(existing)
             row = existing
+            await self._session.flush()
         else:
-            row = TenantSetting(
-                tenant_id=self._tenant_id,
-                key=key,
-                scope=scope_enum.value,
-                scope_id=scope_id,
-                value={"v": validated},
-                updated_by=user_id,
+            old_value = None
+            # ON CONFLICT closes the race where two requests both saw "no row": the
+            # loser updates the winner's row instead of failing on the unique key.
+            stmt = (
+                pg_insert(TenantSetting)
+                .values(
+                    tenant_id=self._tenant_id,
+                    key=key,
+                    scope=scope_enum.value,
+                    scope_id=scope_id,
+                    value=new_value,
+                    updated_by=user_id,
+                )
+                .on_conflict_do_update(
+                    constraint="uq_tenant_settings_key_scope",
+                    set_={"value": new_value, "updated_by": user_id},
+                )
+                .returning(TenantSetting.id)
             )
-            self._session.add(row)
+            row_id = (await self._session.execute(stmt)).scalar_one()
+            row = await self._session.get(TenantSetting, row_id, populate_existing=True)
+            assert row is not None  # just written in this transaction
 
-        await self._session.flush()
-
-        # Audit trail.
-        history = TenantSettingHistory(
-            tenant_id=self._tenant_id,
-            setting_id=row.id,
-            key=key,
-            scope=scope_enum.value,
+        await self._record(
+            defn,
+            row_id=row.id,
+            scope=scope_enum,
             scope_id=scope_id,
-            old_value=old_value,
-            new_value={"v": validated},
+            old=old_value,
+            new=new_value,
             action="set",
-            changed_by=user_id,
-            change_reason=reason,
+            user_id=user_id,
+            reason=reason,
         )
-        self._session.add(history)
-        await self._session.flush()
-
         return row
 
     async def reset(
@@ -237,35 +271,36 @@ class SettingsService:
         scope_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
+        permissions: Collection[str] | None = None,
     ) -> bool:
         """Remove an override, reverting the scope to its inherited value.
 
         Returns True if an override was removed, False if none existed.
         """
-        scope_enum = Scope(scope) if isinstance(scope, str) else scope
-        existing = await self._find_override(key, scope_enum.value, scope_id)
+        defn = _definition(key)
+        scope_enum = _scope(scope)
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+        self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+
+        existing = await self._find_override(key, scope_enum.value, scope_id, for_update=True)
         if existing is None:
             return False
 
         old_value = existing.value
-
-        # Audit trail BEFORE delete, so the setting_id is still valid.
-        history = TenantSettingHistory(
-            tenant_id=self._tenant_id,
-            setting_id=existing.id,
-            key=key,
-            scope=scope_enum.value,
+        # History first, while the setting id is still valid; the FK is SET NULL
+        # so the history row survives the delete below.
+        await self._record(
+            defn,
+            row_id=existing.id,
+            scope=scope_enum,
             scope_id=scope_id,
-            old_value=old_value,
-            new_value=None,
+            old=old_value,
+            new=None,
             action="reset",
-            changed_by=user_id,
-            change_reason=reason,
+            user_id=user_id,
+            reason=reason,
         )
-        self._session.add(history)
-        await self._session.flush()
-
-        await self._session.delete(existing)
+        await self._session.execute(delete(TenantSetting).where(TenantSetting.id == existing.id))
         await self._session.flush()
         return True
 
@@ -277,19 +312,40 @@ class SettingsService:
         scope_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
+        permissions: Collection[str] | None = None,
     ) -> list[TenantSetting]:
-        """Set multiple settings at once. All-or-nothing within the caller's transaction."""
+        """Set several settings. All-or-nothing: every key is checked before any write.
+
+        The caller owns the transaction, so a failure part-way would roll back anyway;
+        validating first means the error names the bad key without touching the database.
+        """
+        scope_enum = _scope(scope)
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+        checked: dict[str, SettingDef] = {}
+        for key, value in settings.items():
+            defn = _definition(key)
+            if not defn.scope_allowed(scope_enum):
+                raise ValidationError(
+                    f"{key}: scope {scope_enum.value!r} not allowed "
+                    f"(allowed: {[s.value for s in defn.scopes]})"
+                )
+            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+            _validate(defn, value)
+            checked[key] = defn
+
         results = []
         for key, value in settings.items():
-            row = await self.set(
-                key,
-                value,
-                scope=scope,
-                scope_id=scope_id,
-                user_id=user_id,
-                reason=reason,
+            results.append(
+                await self.set(
+                    key,
+                    value,
+                    scope=scope_enum,
+                    scope_id=scope_id,
+                    user_id=user_id,
+                    reason=reason,
+                    permissions=permissions,
+                )
             )
-            results.append(row)
         return results
 
     # ------------------------------------------------------------------
@@ -304,19 +360,14 @@ class SettingsService:
         domain: str | None = None,
     ) -> list[TenantSetting]:
         """List all explicit overrides, optionally filtered by scope/domain."""
-        stmt = select(TenantSetting).where(
-            TenantSetting.tenant_id == self._tenant_id,
-        )
+        stmt = select(TenantSetting).where(TenantSetting.tenant_id == self._tenant_id)
         if scope is not None:
-            scope_val = Scope(scope).value if isinstance(scope, str) else scope.value
-            stmt = stmt.where(TenantSetting.scope == scope_val)
+            stmt = stmt.where(TenantSetting.scope == _scope(scope).value)
         if scope_id is not None:
             stmt = stmt.where(TenantSetting.scope_id == scope_id)
         if domain is not None:
-            prefix = f"{domain}."
-            stmt = stmt.where(TenantSetting.key.startswith(prefix))
-        stmt = stmt.order_by(TenantSetting.key)
-        result = await self._session.execute(stmt)
+            stmt = stmt.where(TenantSetting.key.startswith(f"{domain}."))
+        result = await self._session.execute(stmt.order_by(TenantSetting.key))
         return list(result.scalars().all())
 
     async def history(
@@ -326,14 +377,11 @@ class SettingsService:
         limit: int = 50,
     ) -> list[TenantSettingHistory]:
         """Return the change history, newest first."""
-        stmt = select(TenantSettingHistory).where(
-            TenantSettingHistory.tenant_id == self._tenant_id,
-        )
+        stmt = select(TenantSettingHistory).where(TenantSettingHistory.tenant_id == self._tenant_id)
         if key is not None:
             stmt = stmt.where(TenantSettingHistory.key == key)
         stmt = stmt.order_by(TenantSettingHistory.created_at.desc()).limit(limit)
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        return list((await self._session.execute(stmt)).scalars().all())
 
     # ------------------------------------------------------------------
     # PRESETS: apply a business-type preset
@@ -344,95 +392,124 @@ class SettingsService:
         preset_name: str,
         *,
         user_id: uuid.UUID | None = None,
+        permissions: Collection[str] | None = None,
     ) -> list[TenantSetting]:
-        """Apply a named preset (physical_retail, ecommerce, omnichannel,
-        enterprise). Returns the settings that were created/updated.
-        """
+        """Apply a named preset at tenant scope. Returns the rows now holding its values."""
         from app.modules.settings.presets import PRESETS
 
         preset = PRESETS.get(preset_name)
         if preset is None:
-            raise ValueError(f"Unknown preset: {preset_name!r}")
-
+            raise ValidationError(f"unknown preset {preset_name!r}")
         return await self.bulk_set(
             preset,
             scope=Scope.TENANT,
             user_id=user_id,
             reason=f"preset:{preset_name}",
+            permissions=permissions,
         )
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_chain(
-        self,
+    @staticmethod
+    def _authorize(
+        defn: SettingDef,
         scope: Scope,
         scope_id: uuid.UUID | None,
-        scope_chain: dict[str, uuid.UUID] | None,
-    ) -> list[tuple[Scope, uuid.UUID | None]]:
-        """Build the inheritance chain from scope up to tenant."""
-        chain: list[tuple[Scope, uuid.UUID | None]] = []
-        sc = scope_chain or {}
+        user_id: uuid.UUID | None,
+        permissions: Collection[str] | None,
+    ) -> None:
+        if permissions is None:
+            return  # internal caller
+        authorize_write(defn, scope, scope_id, permissions=permissions, user_id=user_id)
 
-        current_scope = scope
-        current_id = scope_id
-        while current_scope is not None:
-            chain.append((current_scope, current_id))
-            parent = SCOPE_PARENT.get(current_scope)
-            if parent is None:
-                break
-            current_scope = parent
-            current_id = sc.get(parent.value) if parent != Scope.TENANT else None
-
-        return chain
+    async def _record(
+        self,
+        defn: SettingDef,
+        *,
+        row_id: uuid.UUID,
+        scope: Scope,
+        scope_id: uuid.UUID | None,
+        old: dict | None,
+        new: dict | None,
+        action: str,
+        user_id: uuid.UUID | None,
+        reason: str | None,
+    ) -> None:
+        """Append to the settings history and, for audited keys, to ``audit_logs``."""
+        self._session.add(
+            TenantSettingHistory(
+                tenant_id=self._tenant_id,
+                setting_id=row_id,
+                key=defn.key,
+                scope=scope.value,
+                scope_id=scope_id,
+                old_value=old,
+                new_value=new,
+                action=action,
+                changed_by=user_id,
+                change_reason=reason,
+                # clock_timestamp(), not the column default now(): now() is frozen for the whole
+                # transaction, so a preset or a bulk save wrote every row with the same instant
+                # and the history came back in arbitrary order.
+                created_at=func.clock_timestamp(),
+            )
+        )
+        await self._session.flush()
+        if defn.audit:
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                user_id,
+                f"settings.{action}",
+                "tenant_setting",
+                # audit_logs.resource_id is varchar(64): the row id, not "key@scope:uuid".
+                str(row_id),
+                # The key and scope travel in the payload so the row reads on its own,
+                # even after a reset deleted the setting it points at.
+                before={
+                    "key": defn.key,
+                    "scope": scope.value,
+                    "scope_id": _s(scope_id),
+                    "value": old,
+                },
+                after={
+                    "key": defn.key,
+                    "scope": scope.value,
+                    "scope_id": _s(scope_id),
+                    "value": new,
+                },
+            )
 
     async def _load_overrides(
-        self, key: str, chain: list[tuple[Scope, uuid.UUID | None]]
-    ) -> dict[tuple[str, uuid.UUID | None], TenantSetting]:
-        """Load all overrides for one key along the chain."""
-        if not chain:
-            return {}
-
-        stmt = select(TenantSetting).where(
-            TenantSetting.tenant_id == self._tenant_id,
-            TenantSetting.key == key,
-        )
-        result = await self._session.execute(stmt)
-        rows = result.scalars().all()
-
-        return {(r.scope, r.scope_id): r for r in rows}
-
-    async def _load_overrides_many(
-        self,
-        keys: list[str],
-        chain: list[tuple[Scope, uuid.UUID | None]],
+        self, keys: list[str], chain: list[ScopeLink]
     ) -> dict[tuple[str, str, uuid.UUID | None], TenantSetting]:
-        """Load all overrides for multiple keys along the chain."""
-        if not chain or not keys:
+        """Load the overrides for ``keys`` at exactly the scopes on ``chain``."""
+        if not keys:
             return {}
-
+        wanted = {(link.scope.value, link.scope_id) for link in chain}
         stmt = select(TenantSetting).where(
             TenantSetting.tenant_id == self._tenant_id,
             TenantSetting.key.in_(keys),
+            TenantSetting.scope.in_({s for s, _ in wanted}),
         )
-        result = await self._session.execute(stmt)
-        rows = result.scalars().all()
-
-        return {(r.key, r.scope, r.scope_id): r for r in rows}
+        rows = (await self._session.execute(stmt)).scalars().all()
+        # Keep only rows that sit exactly on the chain: a branch override for a
+        # DIFFERENT branch must never leak into this branch's answer.
+        return {(r.key, r.scope, r.scope_id): r for r in rows if (r.scope, r.scope_id) in wanted}
 
     async def _find_override(
-        self, key: str, scope: str, scope_id: uuid.UUID | None
+        self, key: str, scope: str, scope_id: uuid.UUID | None, *, for_update: bool = False
     ) -> TenantSetting | None:
-        """Find an existing override row."""
         stmt = select(TenantSetting).where(
             TenantSetting.tenant_id == self._tenant_id,
             TenantSetting.key == key,
             TenantSetting.scope == scope,
+            TenantSetting.scope_id.is_(None)
+            if scope_id is None
+            else TenantSetting.scope_id == scope_id,
         )
-        if scope_id is not None:
-            stmt = stmt.where(TenantSetting.scope_id == scope_id)
-        else:
-            stmt = stmt.where(TenantSetting.scope_id.is_(None))
-        result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await self._session.execute(stmt)).scalar_one_or_none()

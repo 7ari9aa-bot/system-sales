@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
+    InventoryCostLayer,
     InventoryTransfer,
     InventoryTransferLine,
     InventoryTransferReceipt,
@@ -31,6 +32,7 @@ from app.modules.inventory.models import (
 from ._common import _now, _positive_int
 from .balances import BalanceServiceMixin
 from .movements import MovementServiceMixin
+from .valuation import ValuationService
 
 
 class TransferServiceMixin:
@@ -239,21 +241,15 @@ class TransferServiceMixin:
 
         # Execute stock movements at source warehouse ONLY
         for pos, (tl, qty) in enumerate(to_ship, start=1):
-            cogs_cost = None
-            try:
-                from app.modules.inventory.services.valuation import ValuationService
-
-                consumption = await ValuationService.consume_fifo(
-                    session,
-                    tenant_id,
-                    variant_id=tl.variant_id,
-                    warehouse_id=transfer.from_warehouse_id,
-                    quantity=qty,
-                    allow_partial=True,
-                )
-                cogs_cost = consumption.get("total_cogs")
-            except Exception:
-                cogs_cost = None
+            consumption = await ValuationService.consume_fifo(
+                session,
+                tenant_id,
+                variant_id=tl.variant_id,
+                warehouse_id=transfer.from_warehouse_id,
+                quantity=qty,
+                allow_partial=True,
+            )
+            cogs_cost = consumption.get("total_cogs")
 
             await MovementServiceMixin.move(
                 session,
@@ -385,35 +381,30 @@ class TransferServiceMixin:
                     reference_id=transfer_id,
                     actor_user_id=user_id,
                 )
-                try:
-                    from app.modules.inventory.models import InventoryCostLayer
-                    from app.modules.inventory.services.valuation import ValuationService
-
-                    last_layer = (
-                        await session.execute(
-                            select(InventoryCostLayer.unit_cost)
-                            .where(
-                                InventoryCostLayer.tenant_id == tenant_id,
-                                InventoryCostLayer.variant_id == tl.variant_id,
-                                InventoryCostLayer.warehouse_id == transfer.from_warehouse_id,
-                            )
-                            .order_by(InventoryCostLayer.layer_date.desc())
-                            .limit(1)
+                # The received units carry the cost the source warehouse last held them at.
+                last_cost = (
+                    await session.execute(
+                        select(InventoryCostLayer.unit_cost)
+                        .where(
+                            InventoryCostLayer.tenant_id == tenant_id,
+                            InventoryCostLayer.variant_id == tl.variant_id,
+                            InventoryCostLayer.warehouse_id == transfer.from_warehouse_id,
                         )
-                    ).scalar_one_or_none()
-                    if last_layer is not None:
-                        await ValuationService.create_cost_layer(
-                            session,
-                            tenant_id,
-                            variant_id=tl.variant_id,
-                            warehouse_id=transfer.to_warehouse_id,
-                            quantity=qty,
-                            unit_cost=last_layer,
-                            source_type="transfer",
-                            source_id=transfer.id,
-                        )
-                except Exception:
-                    pass
+                        .order_by(InventoryCostLayer.layer_date.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if last_cost is not None:
+                    await ValuationService.create_cost_layer(
+                        session,
+                        tenant_id,
+                        variant_id=tl.variant_id,
+                        warehouse_id=transfer.to_warehouse_id,
+                        quantity=qty,
+                        unit_cost=last_cost,
+                        source_type="transfer",
+                        source_id=transfer.id,
+                    )
             elif cond in ("damaged", "short"):
                 has_exception = True
                 exception_notes.append(f"{cond} {qty} of variant {tl.variant_id}")

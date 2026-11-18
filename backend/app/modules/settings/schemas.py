@@ -22,6 +22,8 @@ class SettingDefOut(BaseModel):
     max_length: int | None = None
     permission: str
     audit: bool
+    # False = stored and shown, but nothing reads it yet: changing it changes no behaviour.
+    enforced: bool
     label_ar: str
     label_en: str
     description_ar: str

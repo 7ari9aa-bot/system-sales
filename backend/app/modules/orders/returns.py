@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.saga import Saga, SagaManager, SagaStatus, SagaStepHandler
 from app.modules.errors import ConflictError, ValidationError
 from app.modules.orders.models import Order, OrderItem, OrderStatusHistory
-from app.modules.orders.service import _RESERVATION_TTL, OrderService, _now
+from app.modules.orders.service import OrderService, _now, reservation_ttl
 
 #: The saga type registered on :class:`app.core.saga.SagaManager`.
 RETURN_SAGA_TYPE = "order_return"
@@ -186,7 +186,7 @@ class RestockReturnedLines(SagaStepHandler):
                 warehouse_id=warehouse_id,
                 order_id=saga.aggregate_id,
                 quantity=int(line["quantity"]),
-                expires_at=_now() + _RESERVATION_TTL,
+                expires_at=_now() + await reservation_ttl(session, tenant_id),
             )
         return {"reversed": True}
 

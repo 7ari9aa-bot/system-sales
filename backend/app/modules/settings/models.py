@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import (
+    CheckConstraint,
     ForeignKey,
     Index,
     String,
@@ -64,14 +65,20 @@ class TenantSetting(TenantMixin, TimestampMixin, IdMixin, Base):
     )
 
     __table_args__ = (
-        # At most one override per (tenant, key, scope, scope_id).
-        # COALESCE handles the NULL scope_id for tenant-level settings.
+        # At most one override per (tenant, key, scope, scope_id), NULL included.
         UniqueConstraint(
             "tenant_id",
             "key",
             "scope",
             "scope_id",
             name="uq_tenant_settings_key_scope",
+            # NULL scope_id (tenant level) must collide with itself.
+            postgresql_nulls_not_distinct=True,
+        ),
+        # Tenant level has no scope id; every other scope must name its entity.
+        CheckConstraint(
+            "(scope = 'tenant') = (scope_id IS NULL)",
+            name="ck_tenant_settings_scope_id",
         ),
         Index("ix_tenant_settings_tenant_key", "tenant_id", "key"),
         Index("ix_tenant_settings_tenant_scope", "tenant_id", "scope", "scope_id"),

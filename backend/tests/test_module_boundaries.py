@@ -224,7 +224,17 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # the ledger write goes through the worker, outside this counter's scan.
 # 235 -> 236 on 2026-11-16: imports module imports identity.deps and catalog.
 # Bumped to 237 when app/modules/settings was introduced (settings router -> identity.deps).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 237
+# 237 -> 238 on 2026-11-18, ONE deliberate edge: pos -> settings.service (SettingsService), in
+# pos/service.py::_discount_ceiling. The discount ceiling a till enforces falls back to the
+# resolved setting `pos.max_discount_pct` when the profile has none of its own. The settings
+# engine owns the inheritance (tenant, branch, warehouse, profile), so pos asks it rather than
+# re-implementing the walk. settings imports nothing from pos, so the edge adds no cycle.
+# 238 -> 239 on 2026-11-18, ONE deliberate edge: orders -> settings.service (SettingsService), in
+# orders/service.py::reservation_ttl. How long a stock hold lasts is now the setting
+# `inventory.reserve_ttl_minutes` (default 15, the old constant). Both places that stamp an
+# expiry (order create, saga reversal) read it through this one function. settings imports
+# nothing from orders, so the edge adds no cycle.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 239
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

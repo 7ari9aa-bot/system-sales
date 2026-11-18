@@ -871,6 +871,29 @@ class PosService(PosReceiptReads):
         }
 
     @staticmethod
+    async def _discount_ceiling(
+        session: AsyncSession, tenant_id: UUID, profile: PosProfile | None
+    ) -> Decimal | None:
+        """The ceiling in force for this till, or None for no ceiling.
+
+        The profile's own ``max_discount_pct`` is the most specific answer and wins when set, so
+        every ceiling a shop already has keeps meaning exactly what it meant. Only when the
+        profile has none does the setting ``pos.max_discount_pct`` apply, resolved down the
+        shop's hierarchy (tenant, branch, the profile's warehouse, the profile), so an owner can
+        set one rule for the whole shop or one branch without editing every till.
+        """
+        if profile is None:
+            return None
+        if profile.max_discount_pct is not None:
+            return Decimal(profile.max_discount_pct)
+        from app.modules.settings.service import SettingsService
+
+        resolved = await SettingsService(session, tenant_id).value(
+            "pos.max_discount_pct", scope="pos_profile", scope_id=profile.id
+        )
+        return None if resolved is None else Decimal(str(resolved))
+
+    @staticmethod
     async def _ensure_within_discount_ceiling(
         session: AsyncSession,
         tenant_id: UUID,
@@ -885,10 +908,12 @@ class PosService(PosReceiptReads):
         Measures the discount that really applies, the typed invoice discount PLUS every line
         percentage, as a share of the sale before any discount. Looking at one field alone would
         let a cashier split a discount across the two. No ceiling set (NULL), a till with no
-        profile, or a manager (``pos:override``) means no check, exactly as before the setting.
+        profile with no settings above it, or a manager (``pos:override``) means no check.
         """
-        ceiling = None if profile is None else profile.max_discount_pct
-        if ceiling is None or override:
+        if override:
+            return
+        ceiling = await PosService._discount_ceiling(session, tenant_id, profile)
+        if ceiling is None:
             return
         subtotal, _lines, line_discounts = await PosService._price_lines(session, tenant_id, items)
         if subtotal <= 0:

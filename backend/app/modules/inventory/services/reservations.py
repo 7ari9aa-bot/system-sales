@@ -4,14 +4,30 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.inventory.models import InventoryReservation
 
 from ._common import _now, check_physical_settlement
 from .balances import BalanceServiceMixin
+from .channel_allocation import ChannelAllocationService
 from .movements import MovementServiceMixin
+from .valuation import ValuationService
+
+
+async def _order_channel(session: AsyncSession, tenant_id: UUID, order_id: UUID) -> str | None:
+    """The sales channel an order came in on, or None when it has none.
+
+    A read of one column, kept as SQL (not an orders import) so inventory takes no new
+    dependency on the orders module.
+    """
+    return (
+        await session.execute(
+            text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
+            {"tid": tenant_id, "oid": order_id},
+        )
+    ).scalar_one_or_none()
 
 
 class InventoryReservationService:
@@ -102,21 +118,18 @@ class InventoryReservationService:
                     balance_after=balance.on_hand,
                     reservation=active_ref.get((variant_id, warehouse_id)),
                 )
-            cost_value = None
-            try:
-                from app.modules.inventory.services.valuation import ValuationService
-
-                consumption = await ValuationService.consume_fifo(
-                    session,
-                    tenant_id,
-                    variant_id=variant_id,
-                    warehouse_id=warehouse_id,
-                    quantity=sold,
-                    allow_partial=True,
-                )
-                cost_value = consumption.get("total_cogs")
-            except Exception:
-                cost_value = None
+            # allow_partial: a variant with no (or too few) cost layers is sold at the cost the
+            # layers it does have give, never refused; any other failure is a real error and
+            # must reach the caller instead of being swallowed inside the transaction.
+            consumption = await ValuationService.consume_fifo(
+                session,
+                tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                quantity=sold,
+                allow_partial=True,
+            )
+            cost_value = consumption.get("total_cogs")
 
             await MovementServiceMixin._append(
                 session,
@@ -137,31 +150,17 @@ class InventoryReservationService:
             reservation.converted_at = _now()
 
         # Deduct channel allocations if the order has an associated sales channel
-        try:
-            from sqlalchemy import text
-
-            order_channel = (
-                await session.execute(
-                    text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
-                    {"tid": tenant_id, "oid": order_id},
+        order_channel = await _order_channel(session, tenant_id, order_id)
+        if order_channel:
+            for (variant_id, warehouse_id), quantity in demand.items():
+                await ChannelAllocationService.deduct_channel_allocation(
+                    session,
+                    tenant_id,
+                    warehouse_id=warehouse_id,
+                    variant_id=variant_id,
+                    channel=order_channel,
+                    quantity=quantity,
                 )
-            ).scalar_one_or_none()
-            if order_channel:
-                from app.modules.inventory.services.channel_allocation import (
-                    ChannelAllocationService,
-                )
-
-                for (variant_id, warehouse_id), quantity in demand.items():
-                    await ChannelAllocationService.deduct_channel_allocation(
-                        session,
-                        tenant_id,
-                        warehouse_id=warehouse_id,
-                        variant_id=variant_id,
-                        channel=order_channel,
-                        quantity=quantity,
-                    )
-        except Exception:
-            pass
 
         return len(pending)
 
@@ -184,31 +183,17 @@ class InventoryReservationService:
             ).scalars()
         )
         if active_reservations:
-            try:
-                from sqlalchemy import text
-
-                channel = (
-                    await session.execute(
-                        text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
-                        {"tid": tenant_id, "oid": order_id},
+            channel = await _order_channel(session, tenant_id, order_id)
+            if channel:
+                for res in active_reservations:
+                    await ChannelAllocationService.release_from_channel(
+                        session,
+                        tenant_id,
+                        warehouse_id=res.warehouse_id,
+                        variant_id=res.variant_id,
+                        channel=channel,
+                        quantity=res.quantity,
                     )
-                ).scalar_one_or_none()
-                if channel:
-                    from app.modules.inventory.services.channel_allocation import (
-                        ChannelAllocationService,
-                    )
-
-                    for res in active_reservations:
-                        await ChannelAllocationService.release_from_channel(
-                            session,
-                            tenant_id,
-                            warehouse_id=res.warehouse_id,
-                            variant_id=res.variant_id,
-                            channel=channel,
-                            quantity=res.quantity,
-                        )
-            except Exception:
-                pass
 
         result = await session.execute(
             update(InventoryReservation)

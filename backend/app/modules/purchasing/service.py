@@ -584,19 +584,18 @@ class PurchaseService:
                 purchase_order_id=order.id,
                 on_hand_before=before,
             )
-            try:
-                await _inventory().ValuationService.create_cost_layer(
-                    session,
-                    tenant_id,
-                    variant_id=line.variant_id,
-                    warehouse_id=order.warehouse_id,
-                    quantity=line.quantity,
-                    unit_cost=Decimal(line.unit_cost),
-                    source_type="purchase_order",
-                    source_id=order.id,
-                )
-            except Exception:
-                pass
+            # A receipt without its FIFO layer would later sell at the wrong cost, so a failure
+            # here must fail the whole receipt, not be swallowed.
+            await _inventory().ValuationService.create_cost_layer(
+                session,
+                tenant_id,
+                variant_id=line.variant_id,
+                warehouse_id=order.warehouse_id,
+                quantity=line.quantity,
+                unit_cost=Decimal(line.unit_cost),
+                source_type="purchase_order",
+                source_id=order.id,
+            )
         order.status = "received"
         order.received_at = datetime.now(UTC)
         await session.flush()

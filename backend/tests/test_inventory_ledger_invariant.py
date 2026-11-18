@@ -285,6 +285,9 @@ async def test_a_drifted_position_refuses_the_capture_instead_of_hiding_it(
         direction="out",
         quantity=8,
         reason="damage",
+        # Drift is only reachable on purpose now: a plain damage write-off that would cut
+        # into reserved stock is refused (see the test below).
+        allow_reserved_breach=True,
     )
     balance = await _balance(db, tenant_id, variant.id, wh.id)
     assert (balance.on_hand, balance.reserved) == (2, 3)
@@ -336,6 +339,9 @@ async def test_restocking_the_drift_lets_the_same_capture_settle(
         direction="out",
         quantity=8,
         reason="damage",
+        # Drift is only reachable on purpose now: a plain damage write-off that would cut
+        # into reserved stock is refused (see the test below).
+        allow_reserved_breach=True,
     )
 
     await _restock(db, tenant_id, variant.id, wh.id, 3)
@@ -354,3 +360,32 @@ async def test_restocking_the_drift_lets_the_same_capture_settle(
         )
     ).scalar_one()
     assert reservation.status == "CONVERTED"
+
+
+async def test_a_write_off_cannot_cut_into_reserved_stock_by_default(
+    db: AsyncSession, tenant_ctx
+) -> None:
+    """The drift the two tests above need used to be one ordinary `damage` away. Writing off
+    8 of 10 while 3 are held for an order would leave the order unfulfillable, so the move is
+    refused and the shelf, the hold and the ledger stay exactly as they were."""
+    tenant_id = tenant_ctx.tenant_id
+    wh = await _warehouse(db, tenant_id)
+    variant = await _variant(db, tenant_id)
+    await _restock(db, tenant_id, variant.id, wh.id, 10)
+    await _order(db, tenant_id, variant.id, wh.id, 3)
+    before = await _rows(db, variant.id, wh.id)
+
+    from app.modules.orders.errors import InsufficientStockError
+
+    with pytest.raises(InsufficientStockError, match="reserved for orders"):
+        await InventoryService.move(
+            db, tenant_id, variant.id, wh.id, direction="out", quantity=8, reason="damage"
+        )
+
+    balance = await _balance(db, tenant_id, variant.id, wh.id)
+    assert (balance.on_hand, balance.reserved) == (10, 3)
+    assert len(await _rows(db, variant.id, wh.id)) == len(before)
+    # what is NOT reserved can still be written off
+    await InventoryService.move(
+        db, tenant_id, variant.id, wh.id, direction="out", quantity=7, reason="damage"
+    )

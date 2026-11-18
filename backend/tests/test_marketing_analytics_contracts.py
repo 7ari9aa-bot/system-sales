@@ -129,6 +129,18 @@ RATIO_FIELDS = frozenset({"budget_roas", "spend_roas", "weight", "conversion_rat
 #: actually matters instead: the money rule must survive inside the union, which
 #: means one arm is a string carrying the money pattern.
 POLYMORPHIC_MONEY = frozenset({("MetricValueOut", "value")})
+#: Fields that are NAMED like money but are not money. A setting's value is whatever JSON the
+#: key's type says: a flag, a count, a percentage, a list of payment methods, text. Which one is
+#: published beside it (``definition.type``), and the one setting that is an amount
+#: (``pos.opening_float``) is a number of currency units the till is opened with, validated by
+#: the registry, not a ledger figure. Renaming the field would break the published contract.
+NOT_MONEY = frozenset(
+    {
+        ("ResolvedSettingOut", "value"),
+        ("SetSettingRequest", "value"),
+        ("TenantSettingOut", "value"),
+    }
+)
 MONEY_PATTERN = r"^-?\d+\.\d{2}$"
 
 
@@ -481,6 +493,8 @@ def test_the_published_money_fields_are_strings_everywhere() -> None:
     for name, entry in components.items():
         for field, spec in (entry.get("properties") or {}).items():
             types = {arm.get("type") for arm in spec.get("anyOf", [spec])}
+            if (name, field) in NOT_MONEY:
+                continue
             if (name, field) in POLYMORPHIC_MONEY:
                 found_money.add(f"{name}.{field}")
                 arms = spec.get("anyOf", [spec])

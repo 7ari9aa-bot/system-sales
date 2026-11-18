@@ -12,6 +12,11 @@ they want after. The names match the onboarding wizard choices:
 
 from __future__ import annotations
 
+# NOTE (needs a product decision): ecommerce, omnichannel and enterprise set
+# ``inventory.reserve_ttl_minutes`` to 1440 (24 h). That is now a real behaviour, not a label:
+# applying the preset makes an unpaid order hold stock for a day, where the order flow has always
+# held it for 15 minutes. It suits cash-on-delivery, and starves stock for card checkout. The
+# registry default is 15 so a shop that applies no preset is unchanged.
 PRESETS: dict[str, dict[str, object]] = {
     # ---- Preset 1: محل أرضي ------------------------------------------
     "physical_retail": {
@@ -25,7 +30,6 @@ PRESETS: dict[str, dict[str, object]] = {
         "pos.return_requires_receipt": False,
         "pos.return_max_days": 30,
         "pos.allowed_payment_methods": ["cash", "card"],
-        "inventory.allow_negative": False,
         "inventory.auto_reserve": False,
         "inventory.fifo_enabled": False,
         "inventory.track_locations": False,
@@ -42,7 +46,6 @@ PRESETS: dict[str, dict[str, object]] = {
         "pos.require_customer": True,
         "pos.require_session": False,
         "pos.deduct_stock_on": "confirm",
-        "inventory.allow_negative": False,
         "inventory.auto_reserve": True,
         "inventory.reserve_ttl_minutes": 1440,
         "inventory.fifo_enabled": True,
@@ -62,7 +65,6 @@ PRESETS: dict[str, dict[str, object]] = {
         "pos.require_session": True,
         "pos.opening_float_required": True,
         "pos.deduct_stock_on": "sale",
-        "inventory.allow_negative": False,
         "inventory.auto_reserve": True,
         "inventory.reserve_ttl_minutes": 1440,
         "inventory.fifo_enabled": True,
@@ -86,7 +88,6 @@ PRESETS: dict[str, dict[str, object]] = {
         "pos.deduct_stock_on": "sale",
         "pos.return_requires_receipt": True,
         "pos.return_max_days": 14,
-        "inventory.allow_negative": False,
         "inventory.auto_reserve": True,
         "inventory.reserve_ttl_minutes": 1440,
         "inventory.fifo_enabled": True,

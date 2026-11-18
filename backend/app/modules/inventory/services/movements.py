@@ -121,7 +121,6 @@ class MovementServiceMixin:
         reference_id: UUID | None = None,
         actor_user_id: UUID | None = None,
         cost_value: Decimal | None = None,
-        allow_reserved_breach: bool = False,
     ) -> InventoryMovement:
         """Append one ledger row (the single writer of the append-only ledger)."""
         check_movement_shape(direction, reason)

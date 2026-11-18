@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 539,
-    "sha256": "a1ec0444bce6a4564a39145fd33ddeb7c974d569db38f6940aea8352ebdf9bd6",
+    "sha256": "92b893210186e09b3ed5a6cbb88e97d22dd965a3a2fc12eb91aad455c19984e8",
     "typed_operations": 320
   },
   "spec": {
@@ -18207,6 +18207,10 @@
               "title": "Domain",
               "type": "string"
             },
+            "enforced": {
+              "title": "Enforced",
+              "type": "boolean"
+            },
             "key": {
               "title": "Key",
               "type": "string"
@@ -18276,6 +18280,7 @@
             "scopes",
             "permission",
             "audit",
+            "enforced",
             "label_ar",
             "label_en",
             "description_ar",
