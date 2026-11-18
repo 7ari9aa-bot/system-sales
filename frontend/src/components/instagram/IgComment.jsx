@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import IgAvatar from "./IgAvatar";
-import { IgHeart, IgMore } from "./igIcons";
+import { IgMore } from "./igIcons";
 import { cn } from "@/lib/utils";
 
 const PRIVATE_REPLY_MS = 7 * 24 * 3600 * 1000;
@@ -21,13 +21,13 @@ export default function IgComment({ comment, isArabic, onReply, actions, pageAva
       <div className={cn("flex items-start gap-3", comment.hidden && "opacity-55")}>
         <IgAvatar src={comment.isPage ? pageAvatar : comment.avatarUrl} size={32} />
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] leading-[18px]">
-            <bdi dir="auto" className="me-1 font-semibold">{comment.handle || comment.author}</bdi>
-            <span dir="auto" className="whitespace-pre-wrap break-words [unicode-bidi:isolate]">{comment.text}</span>
-            {comment.isAgent && <span className="ms-1.5 text-[11px] font-semibold text-[#6a717a]">· {isArabic ? "رد تلقائي" : "Auto reply"}</span>}
+          <div className="flex items-baseline gap-2 text-[14px] leading-[18px]">
+            <bdi dir="auto" className="font-semibold">{comment.handle || comment.author}</bdi>
+            <span className="font-normal text-[#6a717a]">{comment.timeLabel}</span>
+            {comment.isAgent && <span className="text-[12px] font-semibold text-[#6a717a]">· {isArabic ? "رد تلقائي" : "Auto reply"}</span>}
           </div>
+          <div dir="auto" className="whitespace-pre-wrap break-words text-[14px] leading-[18px] [unicode-bidi:isolate]">{comment.text}</div>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] font-semibold leading-4 text-[#6a717a]">
-            <span className="font-normal">{comment.timeLabel}</span>
             {comment.likes > 0 && <span>{comment.likes} {isArabic ? "إعجاب" : comment.likes === 1 ? "like" : "likes"}</span>}
             <button type="button" onClick={onReply} className="hover:text-[#0c1014] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]">{isArabic ? "رد" : "Reply"}</button>
             {comment.isPage && !comment.isAgent && <span className="font-normal">{isArabic ? "أنت" : "You"}</span>}
@@ -46,7 +46,6 @@ export default function IgComment({ comment, isArabic, onReply, actions, pageAva
             </div>
           )}
         </div>
-        <span className="mt-1 shrink-0 text-[#6a717a]" title={isArabic ? "الإعجاب بالتعليقات غير متاح عبر واجهة إنستغرام" : "Liking comments isn't available through Instagram's API"}><IgHeart size={12} /></span>
       </div>
       {replies.length > 0 && (
         <div className="ms-[44px] mt-4">

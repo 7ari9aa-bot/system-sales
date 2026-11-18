@@ -154,3 +154,20 @@ test("commenting can be turned off and on for a post, and a refusal is shown", a
   await expect.poll(() => api.calls.filter((c) => c.key === "comments-enabled").length).toBe(3);
   expect(api.calls.filter((c) => c.key === "comments-enabled")[2].body).toEqual({ enabled: true });
 });
+
+// Measured on instagram.com: name and time share one line (14px), the text sits under them, Reply is 12px, and there is no
+// like heart on a comment because the API cannot like one.
+test("a comment is laid out like Instagram's, with no decorative heart", async ({ page }) => {
+  const api = makeApi({ posts: [POST], comments: [C1] });
+  await open(page, api);
+  const first = page.getByTestId("ig-comment").first();
+  // no heart: the API cannot like a comment, so no icon drawn with the heart path may sit on one
+  await expect(first.locator('svg path[d^="M16.8 3.5c-2 0-3.7"]')).toHaveCount(0);
+  const m = await first.evaluate((el) => {
+    const bdi = el.querySelector("bdi").getBoundingClientRect();
+    const time = el.querySelector("bdi + span").getBoundingClientRect();
+    const replyBtn = [...el.querySelectorAll("button")].find((b) => /^(Reply|رد)$/.test(b.textContent.trim()));
+    return { sameLine: Math.abs(bdi.y - time.y) < 4, replyBelow: replyBtn.getBoundingClientRect().y > bdi.y + 18, replySize: getComputedStyle(replyBtn).fontSize };
+  });
+  expect(m).toEqual({ sameLine: true, replyBelow: true, replySize: "12px" });
+});
