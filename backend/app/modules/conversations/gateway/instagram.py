@@ -387,5 +387,184 @@ class InstagramAdapter(ChannelAdapter):
         # job, not the adapter's.
         return await get_breaker(PROVIDER_INSTAGRAM).call(_post)
 
+    # ---------- posts and comments (the store's own content) ----------
+    #
+    # Endpoints and fields are the ones Meta documents for comment moderation and
+    # private replies (pages updated Oct 2026). A commenter arrives as an id and a
+    # username only: Instagram gives no photo or follower data for a commenter.
+
+    _MEDIA_FIELDS = (
+        "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,"
+        "timestamp,like_count,comments_count"
+    )
+    _COMMENT_FIELDS = "id,text,username,timestamp,like_count,hidden,parent_id,from"
+
+    @staticmethod
+    def _creds(credentials: ProviderCredentials) -> tuple[str, str]:
+        token = credentials.get("api_key")
+        account_id = credentials.get("account_id")
+        if not token or not account_id:
+            raise ExternalProviderError("instagram integration missing api_key or account_id")
+        return str(token), str(account_id)
+
+    async def _graph(
+        self,
+        method: str,
+        path: str,
+        credentials: ProviderCredentials,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        """One Graph call, inside the breaker. A rejection is a provider FAILURE."""
+        token, _ = self._creds(credentials)
+        url = f"{self._base}/{path.lstrip('/')}"
+        headers = {"Authorization": f"Bearer {token}"}
+
+        async def _call() -> dict[str, Any]:
+            if _client is not None:
+                resp = await _client.request(method, url, headers=headers, params=params, json=json)
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.request(
+                        method, url, headers=headers, params=params, json=json
+                    )
+            data = parse_provider_body(resp, f"instagram {method} {path}")
+            if resp.status_code not in (200, 201):
+                raise ExternalProviderError(
+                    f"instagram {method} {path} failed: HTTP {resp.status_code} - {str(data)[:200]}"
+                )
+            if "error" in data:
+                raise ExternalProviderError(
+                    f"instagram {method} {path} failed: {str(data['error'])[:200]}"
+                )
+            return data
+
+        return await get_breaker(PROVIDER_INSTAGRAM).call(_call)
+
+    async def list_media(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        limit: int = 25,
+        after: str | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        """The store's posts, newest first: {"items": [...], "next": cursor|None}."""
+        _, account_id = self._creds(credentials)
+        params: dict[str, Any] = {"fields": self._MEDIA_FIELDS, "limit": max(1, min(limit, 50))}
+        if after:
+            params["after"] = after
+        data = await self._graph(
+            "GET", f"{account_id}/media", credentials, params=params, _client=_client
+        )
+        return {
+            "items": data.get("data") or [],
+            "next": ((data.get("paging") or {}).get("cursors") or {}).get("after")
+            if (data.get("paging") or {}).get("next")
+            else None,
+        }
+
+    async def list_comments(
+        self,
+        credentials: ProviderCredentials,
+        media_id: str,
+        *,
+        limit: int = 50,
+        after: str | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        """Top-level comments of one post, each with its replies inline."""
+        params: dict[str, Any] = {
+            "fields": f"{self._COMMENT_FIELDS},replies{{{self._COMMENT_FIELDS}}}",
+            "limit": max(1, min(limit, 100)),
+        }
+        if after:
+            params["after"] = after
+        data = await self._graph(
+            "GET", f"{media_id}/comments", credentials, params=params, _client=_client
+        )
+        return {
+            "items": data.get("data") or [],
+            "next": ((data.get("paging") or {}).get("cursors") or {}).get("after")
+            if (data.get("paging") or {}).get("next")
+            else None,
+        }
+
+    async def reply_to_comment(
+        self,
+        credentials: ProviderCredentials,
+        comment_id: str,
+        text: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """A public reply under a comment. Returns the new comment id."""
+        data = await self._graph(
+            "POST", f"{comment_id}/replies", credentials, params={"message": text}, _client=_client
+        )
+        return str(data.get("id", ""))
+
+    async def set_comment_hidden(
+        self,
+        credentials: ProviderCredentials,
+        comment_id: str,
+        hidden: bool,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        await self._graph(
+            "POST",
+            comment_id,
+            credentials,
+            params={"hide": "true" if hidden else "false"},
+            _client=_client,
+        )
+
+    async def delete_comment(
+        self,
+        credentials: ProviderCredentials,
+        comment_id: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        await self._graph("DELETE", comment_id, credentials, _client=_client)
+
+    async def set_comments_enabled(
+        self,
+        credentials: ProviderCredentials,
+        media_id: str,
+        enabled: bool,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        await self._graph(
+            "POST",
+            media_id,
+            credentials,
+            params={"comment_enabled": "true" if enabled else "false"},
+            _client=_client,
+        )
+
+    @staticmethod
+    def build_private_reply(comment_id: str, text: str) -> dict[str, Any]:
+        """A DM to someone who commented. One per comment, within 7 days of it."""
+        return {"recipient": {"comment_id": comment_id}, "message": {"text": text}}
+
+    async def send_private_reply(
+        self,
+        credentials: ProviderCredentials,
+        comment_id: str,
+        text: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """Returns the DM's provider message id (the customer's thread starts here)."""
+        _, account_id = self._creds(credentials)
+        data = await self._graph(
+            "POST",
+            f"{account_id}/messages",
+            credentials,
+            json=self.build_private_reply(comment_id, text),
+            _client=_client,
+        )
+        return str(data.get("message_id", ""))
+
 
 instagram_adapter = InstagramAdapter()
