@@ -6,13 +6,13 @@ test("English home is English, self-canonical and linked to its Arabic twin", as
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  const response = await page.goto("/en", { waitUntil: "domcontentloaded" });
+  const response = await page.goto("/eg/en", { waitUntil: "domcontentloaded" });
   expect(response?.status()).toBe(200);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("h1")).toContainText("From customer conversation to");
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `${ORIGIN}/en`);
-  await expect(page.locator('link[rel="alternate"][hreflang="ar"]')).toHaveAttribute("href", `${ORIGIN}/`);
-  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute("href", `${ORIGIN}/en`);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `${ORIGIN}/eg/en`);
+  await expect(page.locator('link[rel="alternate"][hreflang="ar-EG"]')).toHaveAttribute("href", `${ORIGIN}/eg/ar`);
+  await expect(page.locator('link[rel="alternate"][hreflang="en-EG"]')).toHaveAttribute("href", `${ORIGIN}/eg/en`);
   await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute("href", `${ORIGIN}/`);
 
   // A saved Arabic preference must not override the URL.
@@ -20,23 +20,33 @@ test("English home is English, self-canonical and linked to its Arabic twin", as
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 
-  // Marketing links stay inside /en, app links are untouched.
+  // Marketing links stay inside /eg/en, app links are untouched.
   const hrefs = await page.locator("header a[href], footer a[href]").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
-  expect(hrefs).toContain("/en/pricing");
+  expect(hrefs).toContain("/eg/en/pricing");
   expect(hrefs).toContain("/login");
-  expect(hrefs.filter((h) => ["/pricing", "/product", "/security"].includes(h))).toEqual([]);
+  expect(hrefs.filter((h) => /^\/(en|pricing|product|security)(\/|$)/.test(h))).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
 
-test("language switch moves to the matching page in the other language", async ({ page }) => {
-  await page.goto("/en/solutions/whatsapp-sales-system", { waitUntil: "domcontentloaded" });
+test("a Saudi page keeps its visitor in Saudi Arabia", async ({ page }) => {
+  await page.goto("/sa/en/pricing", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `${ORIGIN}/sa/en/pricing`);
+  const hrefs = await page.locator("header a[href], footer a[href]").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
+  expect(hrefs).toContain("/sa/en/pricing");
+  expect(hrefs.filter((h) => h.startsWith("/eg/"))).toEqual([]);
+
   await page.getByTestId("button-toggle-language").click();
-  await expect(page).toHaveURL(/\/solutions\/whatsapp-sales-system$/);
-  await expect(page).not.toHaveURL(/\/en\//);
+  await expect(page).toHaveURL(/\/sa\/ar\/pricing$/);
+});
+
+test("language switch moves to the matching page in the other language", async ({ page }) => {
+  await page.goto("/eg/en/solutions/whatsapp-sales-system", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("button-toggle-language").click();
+  await expect(page).toHaveURL(/\/eg\/ar\/solutions\/whatsapp-sales-system$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");
 
   await page.getByTestId("button-toggle-language").click();
-  await expect(page).toHaveURL(/\/en\/solutions\/whatsapp-sales-system$/);
+  await expect(page).toHaveURL(/\/eg\/en\/solutions\/whatsapp-sales-system$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
@@ -46,7 +56,7 @@ test("every keyword landing page renders a distinct H1, FAQ and FAQ schema in bo
     "pos-cashier-system", "sales-crm-for-stores", "order-management-system",
   ];
   const headings = new Set();
-  for (const prefix of ["", "/en"]) {
+  for (const prefix of ["/eg/ar", "/eg/en"]) {
     for (const slug of slugs) {
       const response = await page.goto(`${prefix}/solutions/${slug}`, { waitUntil: "domcontentloaded" });
       expect(response?.status(), `${prefix}/solutions/${slug}`).toBe(200);
@@ -60,7 +70,7 @@ test("every keyword landing page renders a distinct H1, FAQ and FAQ schema in bo
 });
 
 test("blog index and articles render in both languages with FAQ and schema", async ({ page }) => {
-  for (const [prefix, lang] of [["", "ar"], ["/en", "en"]]) {
+  for (const [prefix, lang] of [["/eg/ar", "ar"], ["/eg/en", "en"]]) {
     const index = await page.goto(`${prefix}/blog`, { waitUntil: "domcontentloaded" });
     expect(index?.status()).toBe(200);
     await expect(page.locator("html")).toHaveAttribute("lang", lang);
@@ -74,5 +84,5 @@ test("blog index and articles render in both languages with FAQ and schema", asy
     expect(schemas).toContain('"Article"');
     expect(schemas).toContain('"FAQPage"');
   }
-  expect((await page.goto("/blog/unknown-post"))?.status()).toBe(404);
+  expect((await page.goto("/eg/ar/blog/unknown-post"))?.status()).toBe(404);
 });

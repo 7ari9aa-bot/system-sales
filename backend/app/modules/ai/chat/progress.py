@@ -75,6 +75,7 @@ TOOL_STEP_BY: dict[str, tuple[str, dict[str, str]]] = {
         {
             "products": "sales",
             "stock": "stock",
+            "inventory_health": "stock",
             "cashier": "cashier",
             "order": "orders",
             "customer": "customers",

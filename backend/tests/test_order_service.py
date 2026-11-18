@@ -611,9 +611,10 @@ async def test_checkout_reserves_in_variant_id_order(db: AsyncSession, tenant_ct
     calls: list[uuid.UUID] = []
     real_reserve = InventoryService.reserve
 
-    async def spy(session, tid, variant_id, warehouse_id, quantity):
+    async def spy(session, tid, variant_id, warehouse_id, quantity, **kwargs):
+        # reserve() grew keyword options (e.g. `channel`); record the order, forward everything.
         calls.append(variant_id)
-        return await real_reserve(session, tid, variant_id, warehouse_id, quantity)
+        return await real_reserve(session, tid, variant_id, warehouse_id, quantity, **kwargs)
 
     monkeypatch.setattr(InventoryService, "reserve", staticmethod(spy))
 

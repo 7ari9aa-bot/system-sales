@@ -243,6 +243,35 @@ export function routeForPath(pathname) {
 
 export const PUBLIC_PATHS = ALL_LOCALIZED_ROUTES.map((r) => r.path);
 
+/**
+ * The site used to live at `/pricing` (Arabic) and `/en/pricing` (English). Since the country layer
+ * every public page lives at `/{country}/{lang}/...`, and no file exists at the old address, so a
+ * bookmark, a crawler or a refresh on an old link would answer 404 and the pages Google indexed
+ * would drop out. One permanent redirect per old address, derived from the route table itself so
+ * a page added later is covered without a second list to forget.
+ *
+ * `/` is the market selector now, and `/en` is the English home of the default market.
+ */
+export function legacyPublicRedirects() {
+  const redirects = [];
+  for (const route of PUBLIC_SEO_ROUTES) {
+    if (route.path === '/') continue;
+    redirects.push({
+      source: route.path,
+      destination: buildLocalizedRoute(DEFAULT_COUNTRY, 'ar', route.path),
+    });
+  }
+  redirects.push({ source: '/en', destination: buildLocalizedRoute(DEFAULT_COUNTRY, 'en', '/') });
+  for (const route of PUBLIC_SEO_ROUTES) {
+    if (route.path === '/') continue;
+    redirects.push({
+      source: `/en${route.path}`,
+      destination: buildLocalizedRoute(DEFAULT_COUNTRY, 'en', route.path),
+    });
+  }
+  return redirects;
+}
+
 export const APP_PATH_PREFIXES = [
   'dashboard', 'inbox', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
   'sales-assistant', 'marketing', 'ai', 'analytics', 'owner', 'usage', 'website', 'settings',

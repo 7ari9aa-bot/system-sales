@@ -47,9 +47,10 @@ def test_crm_routes_are_mounted() -> None:
 
 
 def test_warehouse_route_is_not_duplicated() -> None:
-    """Only the catalog read-only list may expose /warehouses."""
-    paths = [p for p in create_app().openapi()["paths"] if p.endswith("/warehouses")]
-    assert paths == ["/api/v1/warehouses"]
+    """/warehouses is exposed by exactly two modules: the catalog read-only list and the inventory
+    supply-chain screen (which also manages locations under it). A third one is a duplicate."""
+    paths = sorted(p for p in create_app().openapi()["paths"] if p.endswith("/warehouses"))
+    assert paths == ["/api/v1/inventory/warehouses", "/api/v1/warehouses"]
 
 
 # ------------------------------------------- service validation (no DB) ----

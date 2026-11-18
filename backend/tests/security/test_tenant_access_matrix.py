@@ -80,6 +80,9 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # (fd2026100411 rows are possession-scoped), and the resend endpoint
         # answers a uniform neutral 202 for every address, so neither route
         # reads tenant-scoped data or binds a GUC.
+        # Public price list for the marketing site (billing/markets.py): read-only, same for every
+        # visitor, keyed by country, and it touches no tenant-scoped table, so no tenant is bound.
+        "GET /api/v1/public/markets/{country}",
         "POST /api/v1/auth/verify-email",
         "POST /api/v1/auth/resend-verification",
         # Website Platform bridge (modules/catalog/website_platform.py): the

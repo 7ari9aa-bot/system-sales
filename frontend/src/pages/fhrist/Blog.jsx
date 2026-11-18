@@ -4,17 +4,19 @@ import { c, tx, DetailHero, SectionIntro, FeatureGrid, Button } from '@/componen
 import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
 import { SOLUTIONS } from '@/lib/solutions-content'
 import { localizePath } from '@/lib/locale-paths'
+import { useCountry } from '@/lib/CountryContext'
 
-const cardFor = (slug, post, locale) => ({
+const cardFor = (slug, post, locale, country) => ({
   icon: BookOpen,
   title: post.h1,
   body: post.description,
-  href: localizePath(`/blog/${slug}`, locale),
+  href: localizePath(`/blog/${slug}`, locale, country),
 })
 
 /** /blog : the article index. */
 export function BlogIndex({ locale }) {
-  const items = Object.entries(BLOG_POSTS).map(([slug, post]) => cardFor(slug, post, locale))
+  const { country } = useCountry()
+  const items = Object.entries(BLOG_POSTS).map(([slug, post]) => cardFor(slug, post, locale, country))
   return (
     <>
       <DetailHero
@@ -23,7 +25,7 @@ export function BlogIndex({ locale }) {
         title={BLOG_INDEX.h1}
         body={BLOG_INDEX.lede}
         icon={BookOpen}
-        ctaHref={localizePath('/solutions', locale)}
+        ctaHref={localizePath('/solutions', locale, country)}
         ctaLabel={c('استعرض الحلول', 'Explore solutions')}
       />
       <section className="section section-features">
@@ -45,9 +47,10 @@ const renderBlock = (block, index, locale) => {
 
 /** /blog/:slug : one article. */
 export default function BlogPost({ slug, locale }) {
+  const { country } = useCountry()
   const post = BLOG_POSTS[slug]
   if (!post) return null
-  const related = (post.related || []).filter((key) => BLOG_POSTS[key]).map((key) => cardFor(key, BLOG_POSTS[key], locale))
+  const related = (post.related || []).filter((key) => BLOG_POSTS[key]).map((key) => cardFor(key, BLOG_POSTS[key], locale, country))
   const solution = SOLUTIONS[post.solution]
   return (
     <>
@@ -57,7 +60,7 @@ export default function BlogPost({ slug, locale }) {
         title={post.h1}
         body={post.lede}
         icon={BookOpen}
-        ctaHref={localizePath('/contact-sales', locale)}
+        ctaHref={localizePath('/contact-sales', locale, country)}
         ctaLabel={c('تواصل مع المبيعات', 'Contact sales')}
       />
       <article className="section">
@@ -76,7 +79,7 @@ export default function BlogPost({ slug, locale }) {
           )}
           {solution && (
             <p className="post-cta">
-              <Button href={localizePath(`/solutions/${post.solution}`, locale)} kind="secondary">
+              <Button href={localizePath(`/solutions/${post.solution}`, locale, country)} kind="secondary">
                 {tx(solution.kicker, locale)}
               </Button>
             </p>

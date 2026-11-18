@@ -92,7 +92,7 @@ function updateDocument(template, route, markup, title, description, schemas, pu
   html = setMeta(html, 'name', 'twitter:description', description);
   const jsonLd = schemas.map((schema) => `<script type="application/ld+json">${JSON.stringify(schema).replaceAll('<', '\\u003c')}</script>`).join('\n    ');
   html = html.replace(/<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/i, () => jsonLd);
-  html = replaceRoot(html, isEn ? localizeHtmlString(markup, 'en') : markup);
+  html = replaceRoot(html, localizeHtmlString(markup, route.locale, route.country));
   return html;
 }
 
@@ -145,9 +145,12 @@ async function main() {
       assert.ok(html.includes(escapeAttribute(description)), `Description is missing: ${route.path}`);
       assert.ok(html.includes('hreflang="x-default"'), `hreflang is missing: ${route.path}`);
       assert.ok(!html.includes('/src/main.jsx'), `Unbuilt development entry remains in ${route.path}`);
-      if (route.locale === 'en') {
-        assert.ok(!/href="\/(product|pricing|conversations|security)"/.test(html), `English page links to an Arabic path: ${route.path}`);
-      }
+      // Every internal public link stays inside this page's own country and language.
+      const ownPrefix = `/${route.country}/${route.locale}`;
+      const strays = [...html.matchAll(/<a\b[^>]*?\shref="(\/[^"]*)"/g)]
+        .map((m) => m[1])
+        .filter((href) => /^\/(product|pricing|conversations|context|assistant|automation|security|privacy|terms|contact-sales|support|solutions|blog|en)(\/|$|[?#])/.test(href));
+      assert.deepEqual(strays, [], `${route.path} links outside ${ownPrefix}`);
 
       const outputPath = route.path === '/'
         ? indexPath

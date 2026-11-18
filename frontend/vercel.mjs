@@ -1,4 +1,4 @@
-import { APP_PATH_PREFIXES } from "./src/lib/public-seo-routes.mjs";
+import { APP_PATH_PREFIXES, legacyPublicRedirects } from "./src/lib/public-seo-routes.mjs";
 
 const PRODUCTION_API_ORIGIN = "https://p01--system-sales--smkyc4wjfbtq.code.run";
 
@@ -103,6 +103,9 @@ export function createVercelConfig({
       },
     ],
     rewrites,
+    // The pre-country addresses (/pricing, /en/pricing...) moved under /{country}/{lang}/. A
+    // permanent redirect keeps old bookmarks and indexed links alive instead of a 404.
+    redirects: legacyPublicRedirects().map((r) => ({ ...r, permanent: true })),
     // Unknown paths get the static 404 page with a real 404 status.
     // (Vercel only applies this after files and rewrites have been tried.)
   };

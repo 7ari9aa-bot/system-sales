@@ -211,8 +211,8 @@ function App() {
   const setLocale = (next) => {
     if (next === locale) return
     try { window.localStorage.setItem('fh_locale', next); window.localStorage.setItem('fihrist.locale', next) } catch {}
-    const { basePath } = resolveLocalizedPath(window.location.pathname)
-    window.location.assign(`${localizePath(basePath, next)}${window.location.search}${window.location.hash}`)
+    const { basePath, country } = resolveLocalizedPath(window.location.pathname)
+    window.location.assign(`${localizePath(basePath, next, country ?? undefined)}${window.location.search}${window.location.hash}`)
   }
   const [theme, setTheme] = useState(() => {
     try {
@@ -261,7 +261,7 @@ function App() {
     setMetaContent('meta[property="og:url"]', canonicalUrl)
     setMetaContent('meta[property="og:locale"]', locale === 'ar' ? 'ar_EG' : 'en_US')
     // Keep every link on the page inside the current language.
-    localizeHtmlLinks(document.getElementById('root'), locale)
+    localizeHtmlLinks(document.getElementById('root'), locale, resolveLocalizedPath(window.location.pathname).country ?? undefined)
   }, [locale, theme, page])
 
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }

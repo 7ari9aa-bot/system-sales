@@ -4,6 +4,7 @@ import {
   APP_PATH_PREFIXES,
   PUBLIC_SEO_ROUTES,
   SOLUTION_SLUGS,
+  legacyPublicRedirects,
   resolveLocalizedPath,
   routeForPath,
 } from './public-seo-routes.mjs';
@@ -74,16 +75,35 @@ describe('public SEO routes (country-aware marketing)', () => {
     expect(MARKETS.sa.taxRate).toBe(0.15);
   });
 
-  it('localizes only public marketing links', () => {
-    expect(localizePath('/pricing', 'en')).toBe('/en/pricing');
-    expect(localizePath('/', 'en')).toBe('/en');
-    expect(localizePath('/pricing?x=1#a', 'en')).toBe('/en/pricing?x=1#a');
+  it('localizes only public marketing links, inside the visitor\'s own country', () => {
+    expect(localizePath('/pricing', 'en')).toBe('/eg/en/pricing');
+    expect(localizePath('/pricing', 'ar')).toBe('/eg/ar/pricing');
+    expect(localizePath('/', 'en')).toBe('/eg/en');
+    expect(localizePath('/pricing?x=1#a', 'en')).toBe('/eg/en/pricing?x=1#a');
+    expect(localizePath('/pricing', 'en', 'sa')).toBe('/sa/en/pricing');
+    expect(localizePath('/blog/x', 'ar', 'sa')).toBe('/sa/ar/blog/x');
     expect(localizePath('/login', 'en')).toBe('/login');
-    expect(localizePath('/dashboard', 'en')).toBe('/dashboard');
-    expect(localizePath('/pricing', 'ar')).toBe('/pricing');
-    expect(localizePath('/en/pricing', 'en')).toBe('/en/pricing');
-    expect(localizeHtmlString('<a class="x" href="/product">p</a><a href="/login">l</a>', 'en'))
-      .toBe('<a class="x" href="/en/product">p</a><a href="/login">l</a>');
+    expect(localizePath('/dashboard', 'en', 'sa')).toBe('/dashboard');
+    // An old English address keeps its meaning; a prefixed one is left alone.
+    expect(localizePath('/en/pricing', 'ar')).toBe('/eg/en/pricing');
+    expect(localizePath('/sa/ar/pricing', 'en')).toBe('/sa/ar/pricing');
+    expect(localizeHtmlString('<a class="x" href="/product">p</a><a href="/login">l</a>', 'en', 'sa'))
+      .toBe('<a class="x" href="/sa/en/product">p</a><a href="/login">l</a>');
+  });
+
+  it('redirects every old public address permanently to the default market', () => {
+    const redirects = legacyPublicRedirects();
+    const bySource = new Map(redirects.map((r) => [r.source, r.destination]));
+    expect(bySource.get('/pricing')).toBe('/eg/ar/pricing');
+    expect(bySource.get('/en')).toBe('/eg/en');
+    expect(bySource.get('/en/solutions/unified-inbox')).toBe('/eg/en/solutions/unified-inbox');
+    expect(bySource.has('/')).toBe(false); // `/` is the market selector now
+    for (const route of PUBLIC_SEO_ROUTES.filter((r) => r.path !== '/')) {
+      expect(bySource.has(route.path), route.path).toBe(true);
+      expect(bySource.has(`/en${route.path}`), `/en${route.path}`).toBe(true);
+    }
+    expect(new Set(redirects.map((r) => r.source)).size).toBe(redirects.length);
+    expect(createVercelConfig({ environment: 'production' }).redirects.every((r) => r.permanent)).toBe(true);
   });
 });
 
