@@ -244,7 +244,7 @@ export function routeForPath(pathname) {
 export const PUBLIC_PATHS = ALL_LOCALIZED_ROUTES.map((r) => r.path);
 
 export const APP_PATH_PREFIXES = [
-  'dashboard', 'inbox', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
+  'dashboard', 'inbox', 'instagram', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
   'sales-assistant', 'marketing', 'ai', 'analytics', 'owner', 'usage', 'website', 'settings',
   'orders', 'login', 'register', 'forgot-password', 'reset-password', 'verify-email',
   'accept-invitation',

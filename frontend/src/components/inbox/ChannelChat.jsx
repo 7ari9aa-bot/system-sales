@@ -38,6 +38,8 @@ import { checkFile } from "./whatsapp/attachments";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
+import IgAvatar from "@/components/instagram/IgAvatar";
+import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
@@ -70,6 +72,7 @@ export default function ChannelChat({
   pinnedCount = 0,
   onApprove,
   onDecline,
+  onViewProfile,
 }) {
   const [text, setText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -310,6 +313,9 @@ export default function ChannelChat({
         className={cn("relative flex items-center gap-3 px-4 shrink-0", isWhatsApp ? "h-[60px] px-4" : isTelegram ? "h-[66px] px-5" : isInstagram ? "h-[64px] px-4" : isMessenger ? "h-16 px-5" : "h-14")}
         style={isApp ? { background: "hsl(var(--card))", borderBottom: "1px solid hsl(var(--border))" } : { background: th.headerBg, color: th.headerText, borderBottom: (isWhatsApp || isTelegram || isInstagram || isMessenger) ? "1px solid " + th.divider : undefined }}
       >
+        {isInstagram && onBack && (
+          <button type="button" onClick={onBack} aria-label={lang === "ar" ? "رجوع" : "Back"} className="grid h-9 w-9 shrink-0 place-items-center rounded-full md:hidden"><IgBack className="rtl:-scale-x-100" /></button>
+        )}
         {(isWhatsApp || isMessenger) && onBack && (
           <button
             type="button"
@@ -346,7 +352,7 @@ export default function ChannelChat({
             </div>
             {!isMessenger && (
               <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
-                {isTelegram ? "bot" : channel.name}
+                {isTelegram ? "bot" : isInstagram ? (String(conversation.handle || "").replace(/^@/, "") || channel.name) : channel.name}
               </div>
             )}
           </div>
@@ -383,10 +389,11 @@ export default function ChannelChat({
         <button
           type="button"
           onClick={() => setContactDrawerOpen(true)}
-          title={lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/5 text-muted-foreground transition-colors"
+          title={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
+          aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : undefined}
+          className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors", isInstagram ? "text-black hover:opacity-60" : "hover:bg-black/5 text-muted-foreground")}
         >
-          <MoreVertical className="h-[18px] w-[18px]" />
+          {isInstagram ? <IgInfo /> : <MoreVertical className="h-[18px] w-[18px]" />}
         </button>
       </div>
 
@@ -455,6 +462,14 @@ export default function ChannelChat({
         style={messageBackgroundStyle}
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
+        {isInstagram && !hasOlderMessages && !loadingMessages && !searchQuery.trim() && (
+          <div data-testid="ig-thread-intro" className="flex flex-col items-center px-4 pb-6 pt-8 text-center">
+            <IgAvatar src={conversation.avatarUrl} size={96} />
+            <p dir="auto" className="mt-3 flex items-center gap-1 text-[20px] font-semibold text-black">{conversation.customer}{conversation.verified && <IgVerified size={14} />}</p>
+            <p className="text-[14px] text-[#737373]"><span dir="ltr">{String(conversation.handle || "").replace(/^@/, "") || "Instagram"}</span> · Instagram</p>
+            {onViewProfile && <button type="button" onClick={onViewProfile} className="mt-4 rounded-lg bg-[#efefef] px-4 py-[7px] text-[14px] font-semibold text-black hover:bg-[#dbdbdb]">{lang === "ar" ? "عرض الملف الشخصي" : "View profile"}</button>}
+          </div>
+        )}
         {loadingMessages && (conversation.messages || []).length === 0 && (
           <div className="py-10 text-center text-[12.5px] text-muted-foreground">{t("common.loading")}</div>
         )}

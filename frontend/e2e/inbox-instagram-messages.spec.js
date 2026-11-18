@@ -36,9 +36,7 @@ async function open(page) {
     if (p === "/ai/agents") return send([]);
     return send({ items: [], next_cursor: null });
   });
-  await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  await page.getByRole("button", { name: "Instagram", exact: true }).click();
-  await page.getByRole("tab", { name: /Direct messages|الرسائل الخاصة/ }).click();
+  await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.getByText("Sara Ahmed").first().click();
 }
 

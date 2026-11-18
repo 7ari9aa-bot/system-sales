@@ -145,6 +145,12 @@ class IdentityOut(BaseModel):
     id: UUID
     channel: str
     external_id: str
+    # Instagram only, filled once the profile was read (None = not known, never a guess).
+    username: str | None = None
+    verified: bool | None = None
+    follower_count: int | None = None
+    follows_you: bool | None = None
+    you_follow: bool | None = None
 
 
 class AddressOut(BaseModel):

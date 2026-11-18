@@ -795,6 +795,43 @@ class InstagramAdapter(ChannelAdapter):
         )
         return str(data.get("message_id", ""))
 
+    # ---------- the store's own account (its profile page) ----------
+
+    _ACCOUNT_FIELDS = (
+        "username,name,profile_picture_url,followers_count,follows_count,media_count,"
+        "biography,website"
+    )
+
+    async def get_account(
+        self,
+        credentials: ProviderCredentials,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        """The connected account's public profile, as Instagram shows it on its own page.
+
+        `profile_picture_url` is a short-lived CDN link: show it, never store it.
+        A field Meta leaves out comes back None, never a guess.
+        """
+        _, account_id = self._creds(credentials)
+        data = await self._graph(
+            "GET", account_id, credentials, params={"fields": self._ACCOUNT_FIELDS}, _client=_client
+        )
+
+        def count(key: str) -> int | None:
+            value = data.get(key)
+            return int(value) if isinstance(value, int | float) else None
+
+        return {
+            "username": (data.get("username") or "").strip() or None,
+            "name": (data.get("name") or "").strip() or None,
+            "profile_picture_url": data.get("profile_picture_url") or None,
+            "followers_count": count("followers_count"),
+            "follows_count": count("follows_count"),
+            "media_count": count("media_count"),
+            "biography": data.get("biography") or None,
+            "website": data.get("website") or None,
+        }
+
     # ---------- who the customer is ----------
 
     _PROFILE_FIELDS = (

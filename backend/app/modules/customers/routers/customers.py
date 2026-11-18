@@ -114,6 +114,23 @@ async def resolve_contact_issue(
     return _redact_issue_item(item, ctx)
 
 
+def _identity_out(identity) -> dict:
+    """An identity plus what its channel told us about the person (Instagram profile)."""
+    extra = identity.extra if isinstance(getattr(identity, "extra", None), dict) else {}
+    out = {"id": str(identity.id), "channel": identity.channel, "external_id": identity.external_id}
+    for key, kind in (
+        ("username", str),
+        ("verified", bool),
+        ("follower_count", int),
+        ("follows_you", bool),
+        ("you_follow", bool),
+    ):
+        value = extra.get(key)
+        if isinstance(value, kind) and not (kind is int and isinstance(value, bool)):
+            out[key] = value
+    return out
+
+
 @router.get("/customers/{customer_id}", response_model=schemas.CustomerDetail)
 async def get_customer(ctx: ReadCtx, customer_id: UUID, response: Response):
     customer = await CustomerService.get(ctx.session, ctx.tenant_id, customer_id)
@@ -138,10 +155,7 @@ async def get_customer(ctx: ReadCtx, customer_id: UUID, response: Response):
         "created_at": customer.created_at.isoformat() if customer.created_at else None,
         "updated_at": customer.updated_at.isoformat() if customer.updated_at else None,
         "tags": [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags],
-        "identities": [
-            {"id": str(i.id), "channel": i.channel, "external_id": i.external_id}
-            for i in identities
-        ],
+        "identities": [_identity_out(i) for i in identities],
         "addresses": [
             {
                 "id": str(a.id),

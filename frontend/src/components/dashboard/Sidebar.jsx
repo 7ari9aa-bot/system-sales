@@ -86,7 +86,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
     {
       section: t("nav.engage"),
       items: [
-        { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: unread },
+        { to: "/inbox", also: "/instagram", label: t("nav.inbox"), icon: Inbox, badge: unread },
         { to: "/customers", label: t("nav.customers"), icon: Users },
       ],
     },
@@ -138,7 +138,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               <div className="text-[11px] text-muted-foreground tracking-wide uppercase whitespace-nowrap truncate">{t("app.tagline")}</div>
             </div>
           </div>
-          <button
+          {onToggleCollapse && <button
             type="button"
             onClick={onToggleCollapse}
             title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
@@ -146,7 +146,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
             className={cn("hidden lg:grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sidebar-border hover:bg-sidebar-accent text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", collapsed ? "h-7 w-7" : "ml-auto")}
           >
             <PanelLeft className={cn("h-[18px] w-[18px] transition-transform", collapsed && "rotate-180")} />
-          </button>
+          </button>}
         </div>
 
         {/* Nav */}
@@ -160,7 +160,7 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
               )}
               <div className="space-y-0.5">
                 {group.items.map((item) => {
-                  const active = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
+                  const active = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`) || Boolean(item.also && (pathname === item.also || pathname.startsWith(`${item.also}/`)));
                   const Icon = item.icon;
                   const section = new URLSearchParams(search).get("s");
                   return (

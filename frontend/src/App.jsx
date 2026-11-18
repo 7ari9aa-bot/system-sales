@@ -24,6 +24,11 @@ const VerifyEmail = lazy(() => import('@/pages/VerifyEmail'));
 const AcceptInvitation = lazy(() => import('@/pages/AcceptInvitation'));
 const Home = lazy(() => import('@/pages/Home'));
 const Inbox = lazy(() => import('@/pages/Inbox'));
+const InstagramLayout = lazy(() => import('@/pages/instagram/InstagramLayout'));
+const InstagramDirectPage = lazy(() => import('@/pages/instagram/InstagramDirectPage'));
+const InstagramActivityPage = lazy(() => import('@/pages/instagram/InstagramActivityPage'));
+const InstagramProfilePage = lazy(() => import('@/pages/instagram/InstagramProfilePage'));
+const InstagramUserPage = lazy(() => import('@/pages/instagram/InstagramUserPage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
@@ -105,6 +110,22 @@ const DashboardRoutes = () => (
         {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />
+        {/* Instagram: one real page per section, so links, back and refresh keep your place. */}
+        <Route path="/instagram" element={<InstagramLayout />}>
+          {/* Same addresses as instagram.com, under /instagram. */}
+          <Route index element={<Navigate to="direct/inbox" replace />} />
+          <Route path="direct" element={<Navigate to="/instagram/direct/inbox" replace />} />
+          <Route path="direct/inbox" element={<InstagramDirectPage />} />
+          <Route path="direct/general" element={<InstagramDirectPage folder="general" />} />
+          <Route path="direct/requests" element={<InstagramDirectPage folder="requests" />} />
+          <Route path="direct/t/:threadId" element={<InstagramDirectPage />} />
+          <Route path="activity" element={<InstagramActivityPage />} />
+          <Route path="profile" element={<InstagramProfilePage />} />
+          <Route path="profile/reels" element={<InstagramProfilePage tab="reels" />} />
+          <Route path="p/:postId" element={<InstagramProfilePage />} />
+          <Route path="u/:customerId" element={<InstagramUserPage />} />
+          <Route path="*" element={<Navigate to="/instagram/direct/inbox" replace />} />
+        </Route>
         <Route path="/customers" element={<Customers />} />
         {/* المنتجات والمخزون انتقلوا للكاشير: الروابط القديمة تحوّل للصفحات الجديدة. */}
         <Route path="/products" element={<Navigate to="/cashier/inventory" replace />} />
@@ -177,7 +198,7 @@ function PathRouter() {
   const location = useLocation();
   const path = location.pathname;
   const under = (base) => path === base || path.startsWith(`${base}/`);
-  if (['/dashboard', '/inbox', '/customers', '/products', '/inventory', '/supply-chain', '/pos', '/cashier', '/sales',
+  if (['/dashboard', '/inbox', '/instagram', '/customers', '/products', '/inventory', '/supply-chain', '/pos', '/cashier', '/sales',
     '/sales-assistant', '/marketing', '/ai', '/analytics', '/owner', '/usage', '/website', '/settings'].some(under)) {
     return <DashboardRoutes />;
   }

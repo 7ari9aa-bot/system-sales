@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
+from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.models import SocialComment, SocialPost
 from app.modules.conversations.routers._deps import (
     TenantContext,
@@ -114,6 +115,15 @@ async def _credentials(ctx: TenantContext, *, send: bool) -> dict:
     if not config or not config.get("api_key") or not config.get("account_id"):
         raise ConflictError("Instagram is not connected")
     return config
+
+
+@router.get("/social/account")
+async def get_account(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """The connected Instagram account as its profile page shows it (name, bio, counts)."""
+    creds = await _credentials(ctx, send=False)
+    return await instagram_adapter.get_account(creds)
 
 
 @router.get("/social/posts")
