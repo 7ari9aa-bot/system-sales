@@ -294,7 +294,14 @@ class WarehouseLocationService:
 
         # From location
         if from_location_id:
-            await WarehouseLocationService.get_location(session, tenant_id, from_location_id)
+            from_loc = await WarehouseLocationService.get_location(
+                session, tenant_id, from_location_id
+            )
+            if from_loc.warehouse_id != warehouse_id:
+                raise ValidationError(
+                    f"source location {from_location_id} belongs to warehouse "
+                    f"{from_loc.warehouse_id}, not {warehouse_id}"
+                )
             from_bal = await WarehouseLocationService._locked_location_balance(
                 session,
                 tenant_id,
@@ -312,6 +319,11 @@ class WarehouseLocationService:
         # To location
         if to_location_id:
             to_loc = await WarehouseLocationService.get_location(session, tenant_id, to_location_id)
+            if to_loc.warehouse_id != warehouse_id:
+                raise ValidationError(
+                    f"destination location {to_location_id} belongs to warehouse "
+                    f"{to_loc.warehouse_id}, not {warehouse_id}"
+                )
             to_bal = await WarehouseLocationService._locked_location_balance(
                 session,
                 tenant_id,

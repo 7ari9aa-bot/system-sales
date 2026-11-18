@@ -46,6 +46,7 @@ class MovementServiceMixin:
         reference_id: UUID | None = None,
         actor_user_id: UUID | None = None,
         cost_value: Decimal | None = None,
+        allow_reserved_breach: bool = False,
     ) -> InventoryMovement:
         """Apply a stock movement and append its ledger row.
 
@@ -79,6 +80,12 @@ class MovementServiceMixin:
                 raise InsufficientStockError(
                     f"insufficient stock for variant {variant_id} in warehouse "
                     f"{warehouse_id}: on_hand={balance.on_hand}, out={quantity}"
+                )
+            if reason != "sale" and not allow_reserved_breach and new_on_hand < balance.reserved:
+                raise InsufficientStockError(
+                    f"cannot move {quantity} units out for {reason}: "
+                    f"{balance.reserved} units are reserved for orders "
+                    f"(available unreserved={balance.on_hand - balance.reserved})"
                 )
         else:  # adjust — set the absolute position
             new_on_hand = quantity
@@ -114,6 +121,7 @@ class MovementServiceMixin:
         reference_id: UUID | None = None,
         actor_user_id: UUID | None = None,
         cost_value: Decimal | None = None,
+        allow_reserved_breach: bool = False,
     ) -> InventoryMovement:
         """Append one ledger row (the single writer of the append-only ledger)."""
         check_movement_shape(direction, reason)

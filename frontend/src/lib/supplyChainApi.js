@@ -9,6 +9,7 @@ export const supplyChainApi = {
   createLocation: (warehouseId, body) =>
     api(`/inventory/warehouses/${warehouseId}/locations`, { method: "POST", body }),
   relocate: (body) => api("/inventory/relocate", { method: "POST", body }),
+  putaway: (body) => api("/inventory/putaway", { method: "POST", body }),
 
   // Goods Receipts
   listReceiptsForPo: (orderId) => api(`/purchase-orders/${orderId}/receipts`),
@@ -55,6 +56,8 @@ export const supplyChainApi = {
   getValuation: (warehouseId = "") =>
     api(`/inventory/valuation${warehouseId ? `?warehouse_id=${warehouseId}` : ""}`),
   createLandedCost: (body) => api("/inventory/landed-costs", { method: "POST", body }),
+  allocateLandedCost: (costId, body = {}) =>
+    api(`/inventory/landed-costs/${costId}/allocate`, { method: "POST", body }),
   postLandedCost: (costId) => api(`/inventory/landed-costs/${costId}/post`, { method: "POST" }),
 
   // Traceability

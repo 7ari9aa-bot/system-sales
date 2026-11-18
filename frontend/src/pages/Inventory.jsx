@@ -168,7 +168,8 @@ export default function InventoryPage() {
 
         // Extract variants
         const vars = [];
-        (catRes?.items || []).forEach((prod) => {
+        const productList = Array.isArray(catRes) ? catRes : (catRes?.items || []);
+        productList.forEach((prod) => {
           (prod.variants || []).forEach((v) => {
             vars.push({
               id: v.id,
@@ -322,7 +323,6 @@ export default function InventoryPage() {
       await supplyChainApi.shipTransfer(trId, {
         carrier: "الناقل الداخلي",
         tracking_number: `TRK-${Date.now().toString().slice(-6)}`,
-        lines: [],
       });
       toast.success(isAr ? "تم شحن ونقل البضاعة بنجاح." : "Transfer shipped successfully.");
       setRefreshIndex((n) => n + 1);
@@ -333,7 +333,7 @@ export default function InventoryPage() {
 
   async function handleReceiveTransfer(trId) {
     try {
-      await supplyChainApi.receiveTransfer(trId, { lines: [] });
+      await supplyChainApi.receiveTransfer(trId, {});
       toast.success(
         isAr ? "تم استلام التحويل وإيداع البضاعة بالمخزن." : "Transfer received successfully.",
       );

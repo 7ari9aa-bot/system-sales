@@ -102,6 +102,22 @@ class InventoryReservationService:
                     balance_after=balance.on_hand,
                     reservation=active_ref.get((variant_id, warehouse_id)),
                 )
+            cost_value = None
+            try:
+                from app.modules.inventory.services.valuation import ValuationService
+
+                consumption = await ValuationService.consume_fifo(
+                    session,
+                    tenant_id,
+                    variant_id=variant_id,
+                    warehouse_id=warehouse_id,
+                    quantity=sold,
+                    allow_partial=True,
+                )
+                cost_value = consumption.get("total_cogs")
+            except Exception:
+                cost_value = None
+
             await MovementServiceMixin._append(
                 session,
                 tenant_id,
@@ -114,10 +130,39 @@ class InventoryReservationService:
                 reference_type="order",
                 reference_id=order_id,
                 actor_user_id=actor_user_id,
+                cost_value=cost_value,
             )
         for reservation in pending:
             reservation.status = "CONVERTED"
             reservation.converted_at = _now()
+
+        # Deduct channel allocations if the order has an associated sales channel
+        try:
+            from sqlalchemy import text
+
+            order_channel = (
+                await session.execute(
+                    text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
+                    {"tid": tenant_id, "oid": order_id},
+                )
+            ).scalar_one_or_none()
+            if order_channel:
+                from app.modules.inventory.services.channel_allocation import (
+                    ChannelAllocationService,
+                )
+
+                for (variant_id, warehouse_id), quantity in demand.items():
+                    await ChannelAllocationService.deduct_channel_allocation(
+                        session,
+                        tenant_id,
+                        warehouse_id=warehouse_id,
+                        variant_id=variant_id,
+                        channel=order_channel,
+                        quantity=quantity,
+                    )
+        except Exception:
+            pass
+
         return len(pending)
 
     @staticmethod
@@ -127,6 +172,44 @@ class InventoryReservationService:
         The balance-level stock release itself stays the caller's job
         (InventoryService.release) — this only flips the durable rows.
         """
+        active_reservations = list(
+            (
+                await session.execute(
+                    select(InventoryReservation).where(
+                        InventoryReservation.tenant_id == tenant_id,
+                        InventoryReservation.order_id == order_id,
+                        InventoryReservation.status == "ACTIVE",
+                    )
+                )
+            ).scalars()
+        )
+        if active_reservations:
+            try:
+                from sqlalchemy import text
+
+                channel = (
+                    await session.execute(
+                        text("SELECT channel FROM orders WHERE tenant_id = :tid AND id = :oid"),
+                        {"tid": tenant_id, "oid": order_id},
+                    )
+                ).scalar_one_or_none()
+                if channel:
+                    from app.modules.inventory.services.channel_allocation import (
+                        ChannelAllocationService,
+                    )
+
+                    for res in active_reservations:
+                        await ChannelAllocationService.release_from_channel(
+                            session,
+                            tenant_id,
+                            warehouse_id=res.warehouse_id,
+                            variant_id=res.variant_id,
+                            channel=channel,
+                            quantity=res.quantity,
+                        )
+            except Exception:
+                pass
+
         result = await session.execute(
             update(InventoryReservation)
             .where(

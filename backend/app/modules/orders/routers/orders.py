@@ -36,6 +36,8 @@ class ReturnRequest(BaseModel):
 class OrderItemRequest(BaseModel):
     variant_id: uuid.UUID
     quantity: int = Field(gt=0)
+    serial_codes: list[str] | None = None
+    lot_id: uuid.UUID | None = None
 
 
 class CreateOrderRequest(BaseModel):

@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.inventory.reconciliation import InventoryReconciliationService
 from app.modules.inventory.service import (
@@ -280,6 +281,13 @@ async def create_warehouse_location(
     )
 
 
+class PutawayRequest(BaseModel):
+    variant_id: uuid.UUID
+    warehouse_id: uuid.UUID
+    to_location_id: uuid.UUID
+    quantity: int = Field(gt=0)
+
+
 @router.post("/relocate", status_code=201)
 async def relocate_stock(
     body: RelocateRequest,
@@ -293,7 +301,24 @@ async def relocate_stock(
         from_location_id=body.from_location_id,
         to_location_id=body.to_location_id,
         quantity=body.quantity,
-        actor_user_id=ctx.user.id,
+        user_id=ctx.user.id,
+    )
+    return {"id": str(mov.id), "quantity": mov.quantity}
+
+
+@router.post("/putaway", status_code=201)
+async def putaway_stock(
+    body: PutawayRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    mov = await WarehouseLocationService.putaway(
+        ctx.session,
+        ctx.tenant_id,
+        warehouse_id=body.warehouse_id,
+        variant_id=body.variant_id,
+        to_location_id=body.to_location_id,
+        quantity=body.quantity,
+        user_id=ctx.user.id,
     )
     return {"id": str(mov.id), "quantity": mov.quantity}
 
@@ -400,23 +425,30 @@ class TransferCreateRequest(BaseModel):
 
 
 class TransferShipLineIn(BaseModel):
-    transfer_line_id: uuid.UUID
+    transfer_line_id: uuid.UUID | None = None
+    variant_id: uuid.UUID | None = None
     quantity: int = Field(gt=0)
 
 
 class TransferShipRequest(BaseModel):
-    lines: list[TransferShipLineIn]
+    lines: list[TransferShipLineIn] | None = None
     carrier: str | None = Field(default=None, max_length=255)
     tracking_number: str | None = Field(default=None, max_length=255)
+    tracking_ref: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class TransferReceiveLineIn(BaseModel):
-    transfer_line_id: uuid.UUID
+    transfer_line_id: uuid.UUID | None = None
+    variant_id: uuid.UUID | None = None
     quantity: int = Field(gt=0)
+    condition: str = Field(default="good", pattern="^(good|damaged|short)$")
 
 
 class TransferReceiveRequest(BaseModel):
-    lines: list[TransferReceiveLineIn]
+    lines: list[TransferReceiveLineIn] | None = None
+    shipment_id: uuid.UUID | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 @router.get("/transfers")
@@ -482,14 +514,18 @@ async def ship_transfer(
     body: TransferShipRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
+    lines_payload = (
+        [ln.model_dump(mode="json", exclude_none=True) for ln in body.lines] if body.lines else None
+    )
     sh = await InventoryService.ship_transfer(
         ctx.session,
         ctx.tenant_id,
         transfer_id=transfer_id,
-        lines=[ln.model_dump(mode="json") for ln in body.lines],
+        lines=lines_payload,
         carrier=body.carrier,
-        tracking_number=body.tracking_number,
-        actor_user_id=ctx.user.id,
+        tracking_ref=body.tracking_ref or body.tracking_number,
+        note=body.note,
+        user_id=ctx.user.id,
     )
     return {"shipment_id": str(sh.id), "transfer_id": str(transfer_id)}
 
@@ -500,12 +536,17 @@ async def receive_transfer(
     body: TransferReceiveRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
+    lines_payload = (
+        [ln.model_dump(mode="json", exclude_none=True) for ln in body.lines] if body.lines else None
+    )
     rc = await InventoryService.receive_transfer(
         ctx.session,
         ctx.tenant_id,
         transfer_id=transfer_id,
-        lines=[ln.model_dump(mode="json") for ln in body.lines],
-        actor_user_id=ctx.user.id,
+        lines=lines_payload,
+        shipment_id=body.shipment_id,
+        note=body.note,
+        user_id=ctx.user.id,
     )
     return {"receipt_id": str(rc.id), "transfer_id": str(transfer_id)}
 
@@ -521,9 +562,15 @@ class StocktakeCreateRequest(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
-class StocktakeCountRequest(BaseModel):
+class StocktakeCountLineIn(BaseModel):
     variant_id: uuid.UUID
     counted_quantity: int = Field(ge=0)
+
+
+class StocktakeCountRequest(BaseModel):
+    variant_id: uuid.UUID | None = None
+    counted_quantity: int | None = Field(default=None, ge=0)
+    counts: list[StocktakeCountLineIn] | None = None
 
 
 @router.get("/stocktakes")
@@ -533,35 +580,12 @@ async def list_stocktakes(
     status: str | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ):
-    rows = await StocktakeService.list_stocktakes(
-        ctx.session, ctx.tenant_id, warehouse_id=warehouse_id, status=status, limit=limit
-    )
-    return [
-        {
-            "id": str(s.id),
-            "stocktake_number": s.stocktake_number,
-            "warehouse_id": str(s.warehouse_id),
-            "kind": s.kind,
-            "status": s.status,
-            "is_blind": s.is_blind,
-            "created_at": s.created_at.isoformat(),
-        }
-        for s in rows
-    ]
+    return await StocktakeService.list_recent(ctx.session, ctx.tenant_id, limit=limit)
 
 
 @router.get("/stocktakes/{stocktake_id}")
 async def get_stocktake(stocktake_id: uuid.UUID, ctx: TenantCtxDep):
-    st = await StocktakeService.get_stocktake(ctx.session, ctx.tenant_id, stocktake_id)
-    return {
-        "id": str(st.id),
-        "stocktake_number": st.stocktake_number,
-        "warehouse_id": str(st.warehouse_id),
-        "kind": st.kind,
-        "status": st.status,
-        "is_blind": st.is_blind,
-        "created_at": st.created_at.isoformat(),
-    }
+    return await StocktakeService.detail(ctx.session, ctx.tenant_id, stocktake_id=stocktake_id)
 
 
 @router.post("/stocktakes", status_code=201)
@@ -569,17 +593,18 @@ async def create_stocktake(
     body: StocktakeCreateRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
-    st = await StocktakeService.create_stocktake(
+    pct = int(body.variance_threshold_percent) if body.variance_threshold_percent else 10
+    st = await StocktakeService.open(
         ctx.session,
         ctx.tenant_id,
         warehouse_id=body.warehouse_id,
         kind=body.kind,
-        is_blind=body.is_blind,
-        variance_threshold_percent=body.variance_threshold_percent,
+        blind=body.is_blind,
+        recount_threshold_pct=pct,
+        user_id=ctx.user.id,
         note=body.note,
-        created_by_user_id=ctx.user.id,
     )
-    return {"id": str(st.id), "stocktake_number": st.stocktake_number, "status": st.status}
+    return {"id": str(st.id), "status": st.status, "warehouse_id": str(st.warehouse_id)}
 
 
 @router.post("/stocktakes/{stocktake_id}/count")
@@ -588,18 +613,28 @@ async def record_stocktake_count(
     body: StocktakeCountRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
-    line = await StocktakeService.record_count(
+    counts: list[dict] = []
+    if body.counts:
+        counts = [
+            {"variant_id": str(c.variant_id), "counted_qty": c.counted_quantity}
+            for c in body.counts
+        ]
+    elif body.variant_id is not None and body.counted_quantity is not None:
+        counts = [{"variant_id": str(body.variant_id), "counted_qty": body.counted_quantity}]
+    else:
+        raise ValidationError("must provide counted line or counts list")
+
+    written = await StocktakeService.record_counts(
         ctx.session,
         ctx.tenant_id,
         stocktake_id=stocktake_id,
-        variant_id=body.variant_id,
-        counted_quantity=body.counted_quantity,
-        counter_user_id=ctx.user.id,
+        counts=counts,
+        user_id=ctx.user.id,
     )
     return {
-        "line_id": str(line.id),
-        "variant_id": str(line.variant_id),
-        "counted": line.counted_quantity,
+        "ok": True,
+        "written": written,
+        "stocktake_id": str(stocktake_id),
     }
 
 
@@ -608,13 +643,13 @@ async def complete_stocktake(
     stocktake_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
-    st = await StocktakeService.reconcile_stocktake(
+    res = await StocktakeService.approve(
         ctx.session,
         ctx.tenant_id,
         stocktake_id=stocktake_id,
-        actor_user_id=ctx.user.id,
+        user_id=ctx.user.id,
     )
-    return {"id": str(st.id), "status": st.status}
+    return res
 
 
 # ------------------------------------------------ replenishment engine ----
@@ -744,7 +779,10 @@ async def approve_reorder_suggestion(
     sug = await ReplenishmentService.approve_suggestion(
         ctx.session, ctx.tenant_id, suggestion_id=suggestion_id
     )
-    return {"id": str(sug.id), "status": sug.status}
+    return {
+        "id": str(sug.id),
+        "status": sug.status,
+    }
 
 
 @router.post("/replenishment/suggestions/{suggestion_id}/dismiss")
@@ -803,6 +841,37 @@ async def create_landed_cost(
     }
 
 
+class LandedCostAllocateItemIn(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    unit_cost: Decimal | None = None
+
+
+class LandedCostAllocateRequest(BaseModel):
+    method: str = Field(default="quantity", pattern="^(quantity|value)$")
+    items: list[LandedCostAllocateItemIn] | None = None
+
+
+@router.post("/landed-costs/{cost_id}/allocate")
+async def allocate_landed_cost(
+    cost_id: uuid.UUID,
+    body: LandedCostAllocateRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    items = [item.model_dump(mode="json") for item in body.items] if body.items else None
+    lines = await ValuationService.allocate_landed_cost(
+        ctx.session,
+        ctx.tenant_id,
+        landed_cost_id=cost_id,
+        method=body.method,
+        items=items,
+    )
+    return {
+        "landed_cost_id": str(cost_id),
+        "allocated_lines": len(lines),
+    }
+
+
 @router.post("/landed-costs/{cost_id}/post")
 async def post_landed_cost(
     cost_id: uuid.UUID,
@@ -828,8 +897,10 @@ class LotCreateRequest(BaseModel):
 
 
 class SerialsRegisterRequest(BaseModel):
-    warehouse_id: uuid.UUID
-    serial_numbers: list[str]
+    warehouse_id: uuid.UUID | None = None
+    serial_numbers: list[str] = Field(default_factory=list)
+    serial_codes: list[str] = Field(default_factory=list)
+    lot_id: uuid.UUID | None = None
 
 
 @router.get("/variants/{variant_id}/tracking-policy")
@@ -903,15 +974,17 @@ async def list_variant_serials(
     ctx: TenantCtxDep,
     warehouse_id: uuid.UUID | None = None,
     status: str | None = None,
+    lot_id: uuid.UUID | None = None,
 ):
     rows = await TraceabilityService.list_serials(
-        ctx.session, ctx.tenant_id, variant_id=variant_id, warehouse_id=warehouse_id, status=status
+        ctx.session, ctx.tenant_id, variant_id=variant_id, status=status, lot_id=lot_id
     )
     return [
         {
             "id": str(s.id),
-            "serial_number": s.serial_number,
-            "warehouse_id": str(s.warehouse_id),
+            "serial_code": s.serial_code,
+            "serial_number": s.serial_code,
+            "lot_id": str(s.lot_id) if s.lot_id else None,
             "status": s.status,
         }
         for s in rows
@@ -924,14 +997,26 @@ async def register_variant_serials(
     body: SerialsRegisterRequest,
     ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
+    codes = body.serial_codes or body.serial_numbers
     serials = await TraceabilityService.register_serials(
         ctx.session,
         ctx.tenant_id,
         variant_id=variant_id,
-        warehouse_id=body.warehouse_id,
-        serial_numbers=body.serial_numbers,
+        serial_codes=codes,
+        lot_id=body.lot_id,
     )
-    return {"registered_count": len(serials)}
+    return {
+        "registered_count": len(serials),
+        "serials": [
+            {
+                "id": str(s.id),
+                "serial_code": s.serial_code,
+                "serial_number": s.serial_code,
+                "status": s.status,
+            }
+            for s in serials
+        ],
+    }
 
 
 # ------------------------------------------------ reports ----
@@ -1047,7 +1132,7 @@ async def list_channel_allocations(
 @router.post("/channel-allocations", response_model=ChannelAllocationOut, status_code=201)
 async def set_channel_allocation(
     body: ChannelAllocationIn,
-    ctx: TenantCtxDep,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
     alloc = await ChannelAllocationService.set_allocation(
         ctx.session,
@@ -1070,7 +1155,7 @@ async def set_channel_allocation(
 @router.delete("/channel-allocations/{allocation_id}", status_code=200)
 async def delete_channel_allocation(
     allocation_id: uuid.UUID,
-    ctx: TenantCtxDep,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
     await ChannelAllocationService.delete_allocation(
         ctx.session,
@@ -1154,7 +1239,7 @@ async def get_checkout_traceability(
 async def mark_serials_sold(
     variant_id: uuid.UUID,
     body: MarkSerialsRequest,
-    ctx: TenantCtxDep,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
     for code in body.serial_codes:
         await TraceabilityService.update_serial_status(
@@ -1171,7 +1256,7 @@ async def mark_serials_sold(
 async def mark_serials_returned(
     variant_id: uuid.UUID,
     body: MarkSerialsRequest,
-    ctx: TenantCtxDep,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
 ):
     for code in body.serial_codes:
         await TraceabilityService.update_serial_status(

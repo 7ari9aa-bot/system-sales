@@ -222,7 +222,9 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # no cycle (imports reads identity, nothing in identity reads imports) and the module's other
 # files add NO cross-module import: the shop-state lookup is raw SQL (imports/lookup.py) and
 # the ledger write goes through the worker, outside this counter's scan.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 235
+# 235 -> 236 on 2026-11-16: imports module imports identity.deps and catalog.
+# Bumped to 237 when app/modules/settings was introduced (settings router -> identity.deps).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 237
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

@@ -25,3 +25,4 @@ from app.modules.pos import models as pos  # noqa: F401
 from app.modules.privacy import models as privacy  # noqa: F401
 from app.modules.purchasing import models as purchasing  # noqa: F401
 from app.modules.segments.service import Segment  # noqa: F401  (model lives in service.py)
+from app.modules.settings import models as settings  # noqa: F401

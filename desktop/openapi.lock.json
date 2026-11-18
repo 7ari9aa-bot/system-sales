@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 526,
-    "sha256": "90414a4616779869653ccbb4302cad6dc64749084399a931abd44a5b4ed48cb6",
-    "typed_operations": 309
+    "operations": 539,
+    "sha256": "a1ec0444bce6a4564a39145fd33ddeb7c974d569db38f6940aea8352ebdf9bd6",
+    "typed_operations": 320
   },
   "spec": {
     "components": {
@@ -2725,6 +2725,51 @@
             "action"
           ],
           "title": "BreakGlassValidateRequest",
+          "type": "object"
+        },
+        "BulkSetSettingsRequest": {
+          "description": "Payload to update multiple settings at once at a specific scope.",
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "scope": {
+              "default": "tenant",
+              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "settings": {
+              "additionalProperties": true,
+              "title": "Settings",
+              "type": "object"
+            }
+          },
+          "required": [
+            "settings"
+          ],
+          "title": "BulkSetSettingsRequest",
           "type": "object"
         },
         "BusinessCalendarList": {
@@ -10894,6 +10939,67 @@
           "title": "KpiBlock",
           "type": "object"
         },
+        "LandedCostAllocateItemIn": {
+          "properties": {
+            "quantity": {
+              "exclusiveMinimum": 0.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "unit_cost": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit Cost"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "quantity"
+          ],
+          "title": "LandedCostAllocateItemIn",
+          "type": "object"
+        },
+        "LandedCostAllocateRequest": {
+          "properties": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/LandedCostAllocateItemIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Items"
+            },
+            "method": {
+              "default": "quantity",
+              "pattern": "^(quantity|value)$",
+              "title": "Method",
+              "type": "string"
+            }
+          },
+          "title": "LandedCostAllocateRequest",
+          "type": "object"
+        },
         "LandedCostCreateRequest": {
           "properties": {
             "note": {
@@ -13209,10 +13315,36 @@
         },
         "OrderItemRequest": {
           "properties": {
+            "lot_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            },
             "quantity": {
               "exclusiveMinimum": 0.0,
               "title": "Quantity",
               "type": "integer"
+            },
+            "serial_codes": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Serial Codes"
             },
             "variant_id": {
               "format": "uuid",
@@ -14568,6 +14700,17 @@
         },
         "PoLineOut": {
           "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id"
+            },
             "line_total": {
               "title": "Line Total",
               "type": "string"
@@ -15181,6 +15324,38 @@
           "title": "PublishIn",
           "type": "object"
         },
+        "PutawayRequest": {
+          "properties": {
+            "quantity": {
+              "exclusiveMinimum": 0.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "to_location_id": {
+              "format": "uuid",
+              "title": "To Location Id",
+              "type": "string"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            },
+            "warehouse_id": {
+              "format": "uuid",
+              "title": "Warehouse Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "warehouse_id",
+            "to_location_id",
+            "quantity"
+          ],
+          "title": "PutawayRequest",
+          "type": "object"
+        },
         "QuoteRequest": {
           "properties": {
             "discount_total": {
@@ -15679,6 +15854,43 @@
           "title": "ResendVerificationRequest",
           "type": "object"
         },
+        "ResetSettingRequest": {
+          "description": "Payload to remove an override and revert to inherited value.",
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "scope": {
+              "default": "tenant",
+              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            }
+          },
+          "title": "ResetSettingRequest",
+          "type": "object"
+        },
         "ResolveFindingRequest": {
           "properties": {
             "note": {
@@ -15695,6 +15907,55 @@
             }
           },
           "title": "ResolveFindingRequest",
+          "type": "object"
+        },
+        "ResolvedSettingOut": {
+          "description": "The resolved effective value of a setting with inheritance details.",
+          "properties": {
+            "definition": {
+              "$ref": "#/components/schemas/SettingDefOut"
+            },
+            "is_default": {
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "is_inherited": {
+              "title": "Is Inherited",
+              "type": "boolean"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "value": {
+              "title": "Value"
+            }
+          },
+          "required": [
+            "key",
+            "value",
+            "scope",
+            "is_inherited",
+            "is_default",
+            "definition"
+          ],
+          "title": "ResolvedSettingOut",
           "type": "object"
         },
         "RetentionPolicyChoice": {
@@ -17642,6 +17903,25 @@
         },
         "SerialsRegisterRequest": {
           "properties": {
+            "lot_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lot Id"
+            },
+            "serial_codes": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Serial Codes",
+              "type": "array"
+            },
             "serial_numbers": {
               "items": {
                 "type": "string"
@@ -17650,15 +17930,18 @@
               "type": "array"
             },
             "warehouse_id": {
-              "format": "uuid",
-              "title": "Warehouse Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
             }
           },
-          "required": [
-            "warehouse_id",
-            "serial_numbers"
-          ],
           "title": "SerialsRegisterRequest",
           "type": "object"
         },
@@ -17828,6 +18111,49 @@
           "title": "SetPriceRequest",
           "type": "object"
         },
+        "SetSettingRequest": {
+          "description": "Payload to create or update an override at a specific scope.",
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "scope": {
+              "default": "tenant",
+              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "value": {
+              "title": "Value"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "SetSettingRequest",
+          "type": "object"
+        },
         "SetVariantOptionsRequest": {
           "description": "§179/P2: replace-all — one value per option axis on the variant.",
           "properties": {
@@ -17843,6 +18169,207 @@
             "option_values"
           ],
           "title": "SetVariantOptionsRequest",
+          "type": "object"
+        },
+        "SettingDefOut": {
+          "description": "Metadata describing a single setting definition.",
+          "properties": {
+            "allowed_values": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Allowed Values"
+            },
+            "audit": {
+              "title": "Audit",
+              "type": "boolean"
+            },
+            "default": {
+              "title": "Default"
+            },
+            "description_ar": {
+              "title": "Description Ar",
+              "type": "string"
+            },
+            "description_en": {
+              "title": "Description En",
+              "type": "string"
+            },
+            "domain": {
+              "title": "Domain",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "label_ar": {
+              "title": "Label Ar",
+              "type": "string"
+            },
+            "label_en": {
+              "title": "Label En",
+              "type": "string"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Length"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Value"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Value"
+            },
+            "permission": {
+              "title": "Permission",
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Scopes",
+              "type": "array"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "domain",
+            "type",
+            "default",
+            "scopes",
+            "permission",
+            "audit",
+            "label_ar",
+            "label_en",
+            "description_ar",
+            "description_en"
+          ],
+          "title": "SettingDefOut",
+          "type": "object"
+        },
+        "SettingHistoryOut": {
+          "description": "Audit log entry for a configuration change.",
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "change_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Reason"
+            },
+            "changed_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed By"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "new_value": {
+              "title": "New Value"
+            },
+            "old_value": {
+              "title": "Old Value"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "setting_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Setting Id"
+            }
+          },
+          "required": [
+            "id",
+            "key",
+            "scope",
+            "action",
+            "created_at"
+          ],
+          "title": "SettingHistoryOut",
           "type": "object"
         },
         "ShipmentCreateRequest": {
@@ -18303,7 +18830,7 @@
           "title": "StocktakeCount",
           "type": "object"
         },
-        "StocktakeCountRequest": {
+        "StocktakeCountLineIn": {
           "properties": {
             "counted_quantity": {
               "minimum": 0.0,
@@ -18320,6 +18847,50 @@
             "variant_id",
             "counted_quantity"
           ],
+          "title": "StocktakeCountLineIn",
+          "type": "object"
+        },
+        "StocktakeCountRequest": {
+          "properties": {
+            "counted_quantity": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Quantity"
+            },
+            "counts": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StocktakeCountLineIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counts"
+            },
+            "variant_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
+            }
+          },
           "title": "StocktakeCountRequest",
           "type": "object"
         },
@@ -19704,6 +20275,59 @@
             "is_active"
           ],
           "title": "TenantRowOut",
+          "type": "object"
+        },
+        "TenantSettingOut": {
+          "description": "Raw override record from the database.",
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "value": {
+              "title": "Value"
+            }
+          },
+          "required": [
+            "id",
+            "key",
+            "scope",
+            "value"
+          ],
+          "title": "TenantSettingOut",
           "type": "object"
         },
         "TenantStatusOut": {
@@ -21102,19 +21726,43 @@
         },
         "TransferReceiveLineIn": {
           "properties": {
+            "condition": {
+              "default": "good",
+              "pattern": "^(good|damaged|short)$",
+              "title": "Condition",
+              "type": "string"
+            },
             "quantity": {
               "exclusiveMinimum": 0.0,
               "title": "Quantity",
               "type": "integer"
             },
             "transfer_line_id": {
-              "format": "uuid",
-              "title": "Transfer Line Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Transfer Line Id"
+            },
+            "variant_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
             }
           },
           "required": [
-            "transfer_line_id",
             "quantity"
           ],
           "title": "TransferReceiveLineIn",
@@ -21123,16 +21771,44 @@
         "TransferReceiveRequest": {
           "properties": {
             "lines": {
-              "items": {
-                "$ref": "#/components/schemas/TransferReceiveLineIn"
-              },
-              "title": "Lines",
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/TransferReceiveLineIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lines"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "shipment_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shipment Id"
             }
           },
-          "required": [
-            "lines"
-          ],
           "title": "TransferReceiveRequest",
           "type": "object"
         },
@@ -21144,13 +21820,31 @@
               "type": "integer"
             },
             "transfer_line_id": {
-              "format": "uuid",
-              "title": "Transfer Line Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Transfer Line Id"
+            },
+            "variant_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
             }
           },
           "required": [
-            "transfer_line_id",
             "quantity"
           ],
           "title": "TransferShipLineIn",
@@ -21171,11 +21865,30 @@
               "title": "Carrier"
             },
             "lines": {
-              "items": {
-                "$ref": "#/components/schemas/TransferShipLineIn"
-              },
-              "title": "Lines",
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/TransferShipLineIn"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lines"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
             },
             "tracking_number": {
               "anyOf": [
@@ -21188,11 +21901,20 @@
                 }
               ],
               "title": "Tracking Number"
+            },
+            "tracking_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tracking Ref"
             }
           },
-          "required": [
-            "lines"
-          ],
           "title": "TransferShipRequest",
           "type": "object"
         },
@@ -46681,6 +47403,121 @@
           ]
         }
       },
+      "/api/v1/inventory/landed-costs/{cost_id}/allocate": {
+        "post": {
+          "operationId": "allocate_landed_cost_api_v1_inventory_landed_costs__cost_id__allocate_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "cost_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Cost Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandedCostAllocateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Allocate Landed Cost",
+          "tags": [
+            "inventory"
+          ]
+        }
+      },
       "/api/v1/inventory/landed-costs/{cost_id}/post": {
         "post": {
           "operationId": "post_landed_cost_api_v1_inventory_landed_costs__cost_id__post_post",
@@ -47042,6 +47879,111 @@
             }
           },
           "summary": "Record Movement",
+          "tags": [
+            "inventory"
+          ]
+        }
+      },
+      "/api/v1/inventory/putaway": {
+        "post": {
+          "operationId": "putaway_stock_api_v1_inventory_putaway_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutawayRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Putaway Stock",
           "tags": [
             "inventory"
           ]
@@ -50145,6 +51087,23 @@
                   }
                 ],
                 "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "lot_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Lot Id"
               }
             },
             {
@@ -72862,6 +73821,1362 @@
           "summary": "Update Segment",
           "tags": [
             "segments"
+          ]
+        }
+      },
+      "/api/v1/settings/bulk": {
+        "post": {
+          "description": "Set multiple setting overrides at once at a specific scope.",
+          "operationId": "bulk_set_settings_api_v1_settings_bulk_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkSetSettingsRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/TenantSettingOut"
+                    },
+                    "title": "Response Bulk Set Settings Api V1 Settings Bulk Post",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Bulk Set Settings",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/definitions": {
+        "get": {
+          "description": "List setting metadata from the registry, optionally filtered by domain.",
+          "operationId": "list_setting_definitions_api_v1_settings_definitions_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "domain",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Domain"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SettingDefOut"
+                    },
+                    "title": "Response List Setting Definitions Api V1 Settings Definitions Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Setting Definitions",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/domains": {
+        "get": {
+          "description": "Return all known setting domain names.",
+          "operationId": "list_setting_domains_api_v1_settings_domains_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "title": "Response List Setting Domains Api V1 Settings Domains Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Setting Domains",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/effective": {
+        "get": {
+          "description": "Resolve effective settings at the given scope with inheritance.",
+          "operationId": "resolve_effective_settings_api_v1_settings_effective_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "scope",
+              "required": false,
+              "schema": {
+                "default": "tenant",
+                "title": "Scope",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "scope_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Scope Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "domain",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Domain"
+              }
+            },
+            {
+              "in": "query",
+              "name": "keys",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Keys"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/ResolvedSettingOut"
+                    },
+                    "title": "Response Resolve Effective Settings Api V1 Settings Effective Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Resolve Effective Settings",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/effective/{key}": {
+        "get": {
+          "description": "Resolve a single setting to its effective value.",
+          "operationId": "resolve_effective_setting_api_v1_settings_effective__key__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "key",
+              "required": true,
+              "schema": {
+                "title": "Key",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "scope",
+              "required": false,
+              "schema": {
+                "default": "tenant",
+                "title": "Scope",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "scope_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Scope Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ResolvedSettingOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Resolve Effective Setting",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/history": {
+        "get": {
+          "description": "Return the audit log of settings changes, newest first.",
+          "operationId": "get_settings_history_api_v1_settings_history_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Key"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SettingHistoryOut"
+                    },
+                    "title": "Response Get Settings History Api V1 Settings History Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Settings History",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/overrides": {
+        "get": {
+          "description": "List explicitly configured overrides for this tenant.",
+          "operationId": "list_overrides_api_v1_settings_overrides_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "scope",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Scope"
+              }
+            },
+            {
+              "in": "query",
+              "name": "scope_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Scope Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "domain",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Domain"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/TenantSettingOut"
+                    },
+                    "title": "Response List Overrides Api V1 Settings Overrides Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Overrides",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/presets": {
+        "get": {
+          "description": "List available business configuration presets and their default keys.",
+          "operationId": "list_presets_api_v1_settings_presets_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Response List Presets Api V1 Settings Presets Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Presets",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/presets/{preset_name}": {
+        "post": {
+          "description": "Apply a business-type preset to the tenant scope.",
+          "operationId": "apply_preset_api_v1_settings_presets__preset_name__post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "preset_name",
+              "required": true,
+              "schema": {
+                "title": "Preset Name",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Apply Preset Api V1 Settings Presets  Preset Name  Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Apply Preset",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/{key}": {
+        "delete": {
+          "description": "Revert a setting at the given scope to its inherited value.",
+          "operationId": "reset_setting_api_v1_settings__key__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "key",
+              "required": true,
+              "schema": {
+                "title": "Key",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetSettingRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "type": "boolean"
+                    },
+                    "title": "Response Reset Setting Api V1 Settings  Key  Delete",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reset Setting",
+          "tags": [
+            "settings"
+          ]
+        },
+        "put": {
+          "description": "Create or update a setting override at a specific scope.",
+          "operationId": "set_setting_api_v1_settings__key__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "key",
+              "required": true,
+              "schema": {
+                "title": "Key",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetSettingRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TenantSettingOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Setting",
+          "tags": [
+            "settings"
           ]
         }
       },

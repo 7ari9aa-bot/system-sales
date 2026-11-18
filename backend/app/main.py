@@ -113,6 +113,7 @@ from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
 from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
+from app.modules.settings.router import router as settings_router
 
 
 @asynccontextmanager
@@ -503,6 +504,7 @@ def create_app() -> FastAPI:
         expenses_router,
         imports_router,
         purchasing_router,
+        settings_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)
