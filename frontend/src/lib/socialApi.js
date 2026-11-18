@@ -91,3 +91,34 @@ export const privateReply = (commentId, text) =>
   api(`/social/comments/${enc(commentId)}/private-reply`, { method: "POST", body: { text } });
 export const setPostCommentsEnabled = (postId, enabled) =>
   api(`/social/posts/${enc(postId)}/comments-enabled`, { method: "POST", body: { enabled } });
+
+// Publishing: Instagram takes JPEG only, 1 picture or 2-10 as a carousel, 8 MB each, caption up to 2,200.
+export const PUBLISH_LIMITS = { maxPictures: 10, maxBytes: 8 * 1024 * 1024, maxCaption: 2200 };
+
+/** Why these files cannot be published, or "" when they can. Checked before anything is uploaded. */
+export function publishProblem(files, caption = "", lang = "ar") {
+  const ar = lang === "ar";
+  if (!files.length) return ar ? "أضف صورة واحدة على الأقل" : "Add at least one picture";
+  if (files.length > PUBLISH_LIMITS.maxPictures) return ar ? "الحد الأقصى 10 صور في المنشور" : "A post holds at most 10 pictures";
+  for (let i = 0; i < files.length; i += 1) {
+    const f = files[i];
+    if (!/^image\/jpe?g$/i.test(f.type || "")) return ar ? `الصورة ${i + 1} ليست JPEG. إنستغرام يقبل JPEG فقط` : `Picture ${i + 1} is not a JPEG. Instagram accepts JPEG only`;
+    if (f.size > PUBLISH_LIMITS.maxBytes) return ar ? `الصورة ${i + 1} أكبر من 8 ميغابايت` : `Picture ${i + 1} is larger than 8 MB`;
+  }
+  if ((caption || "").length > PUBLISH_LIMITS.maxCaption) return ar ? "النص أطول من 2200 حرف" : "The caption is longer than 2,200 characters";
+  return "";
+}
+
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(new Error("could not read the picture"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function publishPost(files, caption) {
+  const pictures = await Promise.all(files.map(toBase64));
+  return api("/social/posts", { method: "POST", body: { pictures, caption: (caption || "").trim() || null } });
+}

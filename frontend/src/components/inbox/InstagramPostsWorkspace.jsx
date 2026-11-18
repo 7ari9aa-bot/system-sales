@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Heart, Image as ImageIcon, MessageCircle, MoreHorizontal, Send, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, Image as ImageIcon, MessageCircle, MoreHorizontal, Plus, Send, Video } from "lucide-react";
+import InstagramNewPostDialog from "./InstagramNewPostDialog";
 import { cn } from "@/lib/utils";
 
 const POST_LIST_MIN_WIDTH = 260;
@@ -15,7 +16,7 @@ function readPostListPreference(key, fallback) {
   }
 }
 
-export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply, onHide, onDelete, onPrivateReply, onRefresh, loading = false, loadError = "" }) {
+export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onReply, onHide, onDelete, onPrivateReply, onRefresh, onPublish, loading = false, loadError = "" }) {
   const isArabic = lang === "ar";
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState(posts[0]?.id || null);
@@ -24,6 +25,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
   const [sending, setSending] = useState(false);
   const [actionError, setActionError] = useState("");
   const [privateFor, setPrivateFor] = useState(null);
+  const [composing, setComposing] = useState(false);
   const [postListWidth, setPostListWidth] = useState(() => {
     const width = Number(readPostListPreference("fihrist.instagramPosts.listWidth", POST_LIST_DEFAULT_WIDTH));
     return Number.isFinite(width) ? Math.min(POST_LIST_MAX_WIDTH, Math.max(POST_LIST_MIN_WIDTH, width)) : POST_LIST_DEFAULT_WIDTH;
@@ -119,7 +121,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
                 <h1 className="text-[17px] font-semibold tracking-[-0.02em]">{isArabic ? "منشورات الصفحة" : "Page posts"}</h1>
                 <p className="mt-1 text-[12px] text-[#8e8e8e]">{isArabic ? `${posts.length} منشورات · أحدث التفاعلات` : `${posts.length} posts · Latest activity`}</p>
               </div>
-              <div className="flex items-center gap-1.5"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#fff2f6] text-[#d62976]"><MessageCircle className="h-[17px] w-[17px]" /></span><button type="button" onClick={() => setPostListCollapsed(true)} aria-label={isArabic ? "طي قائمة المنشورات" : "Collapse post list"} title={isArabic ? "طي قائمة المنشورات" : "Collapse post list"} className="hidden h-8 w-8 place-items-center rounded-full text-[#8e8e8e] hover:bg-[#f5f5f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6] lg:grid"><ChevronLeft className="h-4 w-4" /></button></div>
+              <div className="flex items-center gap-1.5">{onPublish && <button type="button" data-testid="ig-new-post-button" onClick={() => setComposing(true)} aria-label={isArabic ? "منشور جديد" : "New post"} title={isArabic ? "منشور جديد" : "New post"} className="grid h-9 w-9 place-items-center rounded-full bg-[#0095f6] text-white hover:bg-[#1877f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6]/50"><Plus className="h-[18px] w-[18px]" /></button>}<span className="grid h-9 w-9 place-items-center rounded-full bg-[#fff2f6] text-[#d62976]"><MessageCircle className="h-[17px] w-[17px]" /></span><button type="button" onClick={() => setPostListCollapsed(true)} aria-label={isArabic ? "طي قائمة المنشورات" : "Collapse post list"} title={isArabic ? "طي قائمة المنشورات" : "Collapse post list"} className="hidden h-8 w-8 place-items-center rounded-full text-[#8e8e8e] hover:bg-[#f5f5f5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6] lg:grid"><ChevronLeft className="h-4 w-4" /></button></div>
             </div>
             <label className="mt-3 flex h-9 items-center gap-2 rounded-lg bg-[#efefef] px-3 text-[#8e8e8e] focus-within:ring-2 focus-within:ring-[#0095f6]/30">
               <MessageCircle className="h-4 w-4 shrink-0" />
@@ -195,6 +197,7 @@ export default function InstagramPostsWorkspace({ posts = [], lang = "ar", onRep
           )}
         </main>
       </div>
+      {composing && onPublish && <InstagramNewPostDialog lang={lang} onPublish={onPublish} onClose={() => setComposing(false)} />}
     </section>
   );
 }

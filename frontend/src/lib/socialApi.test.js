@@ -37,3 +37,23 @@ describe("posts", () => {
     expect(toWorkspacePost({ id: "p", comments_enabled: false }, []).commentsEnabled).toBe(false);
   });
 });
+
+import { publishProblem } from "@/lib/socialApi";
+
+describe("publishProblem", () => {
+  const jpg = (size = 100) => ({ type: "image/jpeg", size });
+  it("accepts 1 to 10 JPEGs", () => {
+    expect(publishProblem([jpg()], "hi", "en")).toBe("");
+    expect(publishProblem(Array.from({ length: 10 }, () => jpg()), "", "en")).toBe("");
+  });
+  it("refuses none, too many, a PNG, a big file and a long caption, naming which picture", () => {
+    expect(publishProblem([], "", "en")).toMatch(/at least one/);
+    expect(publishProblem(Array.from({ length: 11 }, () => jpg()), "", "en")).toMatch(/at most 10/);
+    expect(publishProblem([jpg(), { type: "image/png", size: 5 }], "", "en")).toMatch(/Picture 2 is not a JPEG/);
+    expect(publishProblem([jpg(9 * 1024 * 1024)], "", "en")).toMatch(/Picture 1 is larger than 8 MB/);
+    expect(publishProblem([jpg()], "x".repeat(2201), "en")).toMatch(/2,200/);
+  });
+  it("says it in Arabic too", () => {
+    expect(publishProblem([], "", "ar")).toMatch(/صورة/);
+  });
+});

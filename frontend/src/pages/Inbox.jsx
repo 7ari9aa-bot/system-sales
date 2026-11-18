@@ -805,6 +805,7 @@ export default function Inbox() {
             loading={igLive.loading}
             loadError={igLive.error}
             onRefresh={igLive.refresh}
+            onPublish={igLive.publish}
             onReply={igLive.reply}
             onHide={igLive.hide}
             onDelete={igLive.remove}
