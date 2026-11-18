@@ -245,7 +245,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # `inventory.reserve_ttl_minutes` (default 15, the old constant). Both places that stamp an
 # expiry (order create, saga reversal) read it through this one function. settings imports
 # nothing from orders, so the edge adds no cycle.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 240
+# 240 -> 242 on 2026-11-18, TWO deliberate edges, both into settings.service (the engine owns the
+# inheritance walk; settings imports nothing from either module, so no cycle): pos ->
+# settings.service in pos/service.py::_setting (hold_cart, return_sale), and purchasing ->
+# settings.service in GoodsReceiptService.create (purchasing.allow_over_receipt).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 242
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

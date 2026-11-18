@@ -871,6 +871,22 @@ class PosService(PosReceiptReads):
         }
 
     @staticmethod
+    async def _setting(
+        session: AsyncSession, tenant_id: UUID, key: str, pos_session: PosSession
+    ) -> object:
+        """The effective value of ``key`` for the till this shift ran on.
+
+        Resolved down the shop's hierarchy from the shift's profile, so a branch or a single till
+        can differ from the shop. A shift with no profile reads the shop-wide value.
+        """
+        from app.modules.settings.service import SettingsService
+
+        svc = SettingsService(session, tenant_id)
+        if pos_session.profile_id is None:
+            return await svc.value(key)
+        return await svc.value(key, scope="pos_profile", scope_id=pos_session.profile_id)
+
+    @staticmethod
     async def _discount_ceiling(
         session: AsyncSession, tenant_id: UUID, profile: PosProfile | None
     ) -> Decimal | None:
@@ -2252,6 +2268,8 @@ class PosService(PosReceiptReads):
         )
         if pos_session.status != "OPEN":
             raise ConflictError("carts are held on the open session only")
+        if not await PosService._setting(session, tenant_id, "pos.allow_hold_cart", pos_session):
+            raise ConflictError("holding a cart is turned off for this till (pos.allow_hold_cart)")
         PosService._ensure_session_current(
             pos_session, tz=await PosService._shop_timezone(session, tenant_id)
         )
@@ -2540,6 +2558,11 @@ class PosService(PosReceiptReads):
         ).scalar_one_or_none()
         if receipt is None:
             raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        window = await PosService._setting(session, tenant_id, "pos.return_max_days", pos_session)
+        if window is not None and (datetime.now(UTC) - receipt.issued_at).days > int(window):
+            raise ConflictError(
+                f"this sale is past the {int(window)}-day return window (pos.return_max_days)"
+            )
         # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
         # (below); the return itself is recorded on the day that is open NOW. Booking it on the old

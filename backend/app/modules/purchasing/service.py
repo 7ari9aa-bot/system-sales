@@ -1069,6 +1069,11 @@ class GoodsReceiptService:
             ).scalars()
         )
         po_line_map: dict[UUID, PurchaseOrderLine] = {pl.id: pl for pl in po_lines}
+        from app.modules.settings.service import SettingsService
+
+        over_receipt_allowed = bool(
+            await SettingsService(session, tenant_id).value("purchasing.allow_over_receipt")
+        )
 
         clean: list[dict] = []
         seen_pol: set[UUID] = set()
@@ -1112,7 +1117,7 @@ class GoodsReceiptService:
 
             already = po_line.quantity_received or 0
             remaining = po_line.quantity - already
-            if qty > remaining:
+            if qty > remaining and not over_receipt_allowed:
                 raise ValidationError(
                     f"line {idx}: receiving {qty} but only {remaining} remain on the PO line "
                     f"(ordered {po_line.quantity}, already received {already})"

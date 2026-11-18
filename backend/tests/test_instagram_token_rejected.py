@@ -107,6 +107,16 @@ async def _instagram_message(db, tenant_id, status: str):
     conversation = await ConversationService.get_or_create(
         db, tenant_id, customer_id=customer.id, channel="instagram"
     )
+    # The customer wrote first: Instagram only lets a shop answer inside the 24h window that
+    # their last inbound message opens, and the send policy refuses an outbound outside it.
+    await ConversationService.add_message(
+        db,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="hello",
+    )
     message = await ConversationService.add_message(
         db,
         tenant_id,

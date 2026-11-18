@@ -179,6 +179,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
     {
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
+        "pos.allow_hold_cart",  # pos/service.py::hold_cart
+        "pos.return_max_days",  # pos/service.py::return_sale
+        "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
     }
 )
 
