@@ -142,7 +142,44 @@ class InstagramAdapter(ChannelAdapter):
         signed envelope — the shared Meta change parser handles both."""
         return parse_meta_comment_changes(payload)
 
-    def parse_inbound(self, payload: dict) -> list[InboundMessage]:
+    @staticmethod
+    def account_ids(payload: dict) -> list[str]:
+        """Every Instagram account named by an entry, in order, without repeats.
+
+        Meta may batch entries for several accounts into one signed POST, while the tenant is
+        resolved once, from the first entry.
+        """
+        seen: list[str] = []
+        for entry in payload.get("entry", []) or []:
+            if isinstance(entry, dict) and entry.get("id") is not None:
+                key = str(entry["id"])
+                if key not in seen:
+                    seen.append(key)
+        return seen
+
+    @classmethod
+    def split_by_account(cls, payload: dict) -> list[dict]:
+        """One payload per Instagram account named in a delivery.
+
+        Messages, read receipts and comments are all parsed from the whole envelope, so the only
+        way to keep a second account's traffic out of the first tenant is to hand each account its
+        own envelope. A delivery for one account (the usual case) is returned untouched.
+        """
+        accounts = cls.account_ids(payload)
+        if len(accounts) <= 1:
+            return [payload]
+        entries = payload.get("entry") or []
+        return [
+            {
+                **payload,
+                "entry": [e for e in entries if isinstance(e, dict) and str(e.get("id")) == acct],
+            }
+            for acct in accounts
+        ]
+
+    def parse_inbound(
+        self, payload: dict, *, account_id: str | None = None
+    ) -> list[InboundMessage]:
         """Parse a Meta webhook payload into canonical InboundMessages.
 
         Handles every inbound shape the Instagram Messaging webhook documents:
@@ -150,52 +187,106 @@ class InstagramAdapter(ChannelAdapter):
         replies and mentions, stickers (a "like" heart), reactions, edits and
         unsends. Echoes (messages the business sent from the Instagram app
         itself) are skipped: they are not customer messages.
+
+        Only entries that belong to ``account_id`` are read (default: the account the tenant was
+        resolved from, ``entry[0].id``). An entry for any other account is skipped, never
+        ingested under a tenant it does not belong to.
         """
+        keep = account_id if account_id is not None else self.resolve_tenant_key(payload)
         out: list[InboundMessage] = []
         for entry in payload.get("entry", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            if keep is not None and entry.get("id") is not None and str(entry["id"]) != keep:
+                logger.warning(
+                    "instagram.entry_for_other_account skipped=%s resolved=%s",
+                    entry.get("id"),
+                    keep,
+                )
+                continue
             for event in entry.get("messaging", []) or []:
-                parsed = self._parse_event(event, payload)
-                if parsed is not None:
-                    out.append(parsed)
+                out.extend(self._parse_event(event, payload))
         return out
 
-    def _parse_event(self, event: dict, payload: dict) -> InboundMessage | None:
+    def _parse_event(self, event: dict, payload: dict) -> list[InboundMessage]:
+        """One webhook event -> its messages. Usually one; an album is one per picture."""
         sender = event.get("sender") or {}
         recipient = event.get("recipient") or {}
 
         reaction = event.get("reaction")
         if isinstance(reaction, dict):
-            return self._parse_reaction(event, reaction, sender, recipient, payload)
+            parsed = self._parse_reaction(event, reaction, sender, recipient, payload)
+            return [parsed] if parsed is not None else []
 
         message = event.get("message")
         if not isinstance(message, dict) or not message:
-            return None
+            return []
         if message.get("is_echo"):
-            return None
+            return []
 
         mid = message.get("mid")
         text = message.get("text")
         reply_to = (message.get("reply_to") or {}).get("mid")
-        body, media_url, media_type, content_type = text, None, None, "text"
-        extra: dict[str, Any] = {}
 
         if message.get("is_deleted"):
             # An unsend: the row is kept, the body is cleared by the caller.
-            content_type = "deleted"
-            body = None
-        else:
-            attachments = message.get("attachments") or []
-            if attachments:
-                body, media_url, media_type, content_type, extra = self._parse_attachment(
-                    attachments[0], text, message
+            return [
+                self._build(
+                    sender, recipient, payload, mid, None, None, None, "deleted", reply_to, {}
                 )
-            elif (message.get("reply_to") or {}).get("story"):
-                extra["story_reply"] = message["reply_to"]["story"]
+            ]
 
+        attachments = [a for a in (message.get("attachments") or []) if isinstance(a, dict)]
+        if not attachments:
+            extra: dict[str, Any] = {}
+            if (message.get("reply_to") or {}).get("story"):
+                extra["story_reply"] = message["reply_to"]["story"]
+            return [
+                self._build(
+                    sender, recipient, payload, mid, text, None, None, "text", reply_to, extra
+                )
+            ]
+
+        # An album arrives as ONE message with several attachments. Each becomes its own message so
+        # none is lost: the first keeps the provider id and the caption, the rest get a stable
+        # suffixed id (so a retried delivery still dedupes) and no caption.
+        out: list[InboundMessage] = []
+        for index, att in enumerate(attachments):
+            body, media_url, media_type, content_type, extra = self._parse_attachment(
+                att, text if index == 0 else None, message
+            )
+            out.append(
+                self._build(
+                    sender,
+                    recipient,
+                    payload,
+                    mid if index == 0 or not mid else f"{mid}#{index}",
+                    body,
+                    media_url,
+                    media_type,
+                    content_type,
+                    reply_to,
+                    extra,
+                )
+            )
+        return out
+
+    @staticmethod
+    def _build(
+        sender: dict,
+        recipient: dict,
+        payload: dict,
+        mid: str | None,
+        body: str | None,
+        media_url: str | None,
+        media_type: str | None,
+        content_type: str,
+        reply_to: str | None,
+        extra: dict[str, Any],
+    ) -> InboundMessage:
+        extra = dict(extra)
         if reply_to:
             extra["reply_to_provider_id"] = reply_to
-        raw = payload if not extra else {**payload, "_ig": extra}
-
         return InboundMessage(
             channel="instagram",
             channel_message_id=mid,
@@ -207,7 +298,7 @@ class InstagramAdapter(ChannelAdapter):
             content_type=content_type,
             reply_to_message_id=reply_to,
             conversation_ref=str(recipient.get("id", "")),
-            raw=raw,
+            raw=payload if not extra else {**payload, "_ig": extra},
         )
 
     @staticmethod

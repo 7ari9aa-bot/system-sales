@@ -75,6 +75,25 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
         raise HTTPException(status_code=422, detail="payload must be a JSON object")
     payload["_query"] = dict(request.query_params)
 
+    # One signed delivery can name several accounts (Meta batches entries). The tenant is resolved
+    # per account, so each gets an envelope of its own; otherwise a second account's messages would
+    # be filed under the first one's tenant. Adapters without the hook are single-account.
+    splitter = getattr(adapter, "split_by_account", None)
+    parts = splitter(payload) if callable(splitter) else [payload]
+    if len(parts) <= 1:
+        return await _ingest_one(session, channel, adapter, parts[0] if parts else payload, raw)
+
+    results = [
+        await _ingest_one(
+            session, channel, adapter, part, json.dumps(part, sort_keys=True).encode()
+        )
+        for part in parts
+    ]
+    return {"ok": True, "queued": any(r.get("queued") for r in results), "accounts": len(parts)}
+
+
+async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes) -> dict:
+    """Tenant -> health -> replay guard -> durable row -> outbox, for one account's envelope."""
     tenant_key = adapter.resolve_tenant_key(payload)
     tenant_id = await IngestService.resolve_tenant(session, channel, tenant_key)
 

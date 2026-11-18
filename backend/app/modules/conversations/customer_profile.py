@@ -34,7 +34,7 @@ MAX_AVATAR_BYTES = 2 * 1024 * 1024
 _AVATAR_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})  # never svg, never gif
 
 
-def _customers():
+def customers():
     """The customers module's service, imported on first use (a module-scope import would cycle)."""
     from app.modules.customers.service import CustomerService
 
@@ -74,7 +74,7 @@ class CustomerProfileService:
         """Fill in the customer's profile. Returns True when something was learned. Never raises."""
         now = now or datetime.now(UTC)
         try:
-            identity = await _customers().channel_identity(
+            identity = await customers().channel_identity(
                 session, tenant_id, customer.id, "instagram"
             )
             if identity is None or not needs_refresh(identity.extra, now):
@@ -122,7 +122,7 @@ class CustomerProfileService:
         **kwargs: Any,
     ) -> bool | None:
         """`enrich_instagram` for a customer known only by id; None when it is not this tenant's."""
-        customer = await _customers().get_for_tenant(session, tenant_id, customer_id)
+        customer = await customers().get_for_tenant(session, tenant_id, customer_id)
         if customer is None:
             return None
         return await CustomerProfileService.enrich_instagram(

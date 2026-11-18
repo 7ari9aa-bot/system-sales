@@ -170,15 +170,10 @@ class ReadSignalService:
         session: AsyncSession, tenant_id: uuid.UUID, conversation
     ) -> str | None:
         """The Instagram-scoped id the thread is addressed by (the same one a send uses)."""
-        from app.modules.customers.models import CustomerIdentity
+        from app.modules.conversations.customer_profile import customers
 
-        row = (
-            await session.execute(
-                select(CustomerIdentity.external_id).where(
-                    CustomerIdentity.tenant_id == tenant_id,
-                    CustomerIdentity.customer_id == conversation.customer_id,
-                    CustomerIdentity.channel == "instagram",
-                )
-            )
-        ).scalar_one_or_none()
+        identity = await customers().channel_identity(
+            session, tenant_id, conversation.customer_id, "instagram"
+        )
+        row = identity.external_id if identity is not None else None
         return str(row) if row else None

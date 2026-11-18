@@ -5,20 +5,20 @@
 ## الـ Callback
 
 ```
-https://api-production-8f51.up.railway.app/api/v1/webhooks/instagram
+https://fihrist.world/api/v1/webhooks/instagram
 ```
 
-## رمز التحقق (متظبط على Railway ✓)
+## رمز التحقق (متظبط على Northflank ✓)
 
 ```
-INSTAGRAM_VERIFY_TOKEN = <VERIFY_TOKEN>  (القيمة على Railway فقط)
+INSTAGRAM_VERIFY_TOKEN = <VERIFY_TOKEN>  (القيمة على Northflank فقط)
 ```
 
-## سر التوقيع (ناقص — من Meta)
+## سر التوقيع (متظبط ✓)
 
 | المتغير | الحالة | المصدر |
 |---|---|---|
-| `INSTAGRAM_APP_SECRET` | ❌ غير متظبط | Meta → App Settings → Basic → App Secret |
+| `INSTAGRAM_APP_SECRET` | ✅ متظبط على Northflank (تحقق 2026-11-18: توقيع غلط بيرجع 403) | Meta → App Settings → Basic → App Secret |
 
 ## حسم المستأجر
 
