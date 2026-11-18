@@ -80,6 +80,19 @@ META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من ا�
 
 ملاحظة: القيمتان `META_APP_ID` و`META_APP_SECRET` مشتركتان بين كل قنوات ميتا.
 
+## سابعًا: ظهرت عبارة «App not active» في نافذة فيسبوك
+
+هذه الرسالة تأتي من ميتا نفسها، قبل أي رمز تفويض، وتعني أن **التطبيق** (App ID) غير مفعّل. لا علاقة لها بالكود ولا بحساب صاحب المتجر، فلن تُحل بإعادة المحاولة ولا بتغيير الإعدادات في لوحتنا. الصفحة تعرض بعدها «لم يُرجع فيسبوك رمز التفويض» لأن النافذة أُغلقت بلا رمز.
+
+الأسباب المعتادة، وكلها تُفحص في لوحة مطوّري ميتا للتطبيق نفسه:
+
+1. التطبيق في وضع **Development** وصاحب الحساب ليس عليه دور (Admin/Developer/Tester). أضف الحساب من App roles.
+2. التطبيق **معطّل أو مقيّد** من ميتا (تنبيه في أعلى لوحة التطبيق، أو رسالة في Alerts / App Review). أكمل ما تطلبه ثم أعد التفعيل.
+3. نقص في **التحقق من النشاط التجاري** أو الاستخدام المسموح (Data Use Checkup) أو سياسة الخصوصية. ميتا توقف التطبيق حتى تُستكمل.
+4. التطبيق **محذوف أو يخص حسابًا آخر** وأن `META_APP_ID` على الخادم يشير إلى تطبيق غير هذا. قارن القيمة بما في صفحة Settings > Basic.
+
+تأكد أخيرًا أن `META_APP_ID` على الخادم هو نفسه تطبيق الـ Live الذي تعمل عليه.
+
 ---
 
 # Meta channels setup guide — Messenger and Instagram
@@ -151,3 +164,16 @@ The WhatsApp button on the channels page opens **Meta's own popup** (not a redir
 - Server: `GET /oauth/access_token` (no redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → verify → store.
 
 `META_APP_ID` and `META_APP_SECRET` are shared across all Meta channels.
+
+## 7. "App not active" appears in the Facebook window
+
+This message comes from Meta itself, before any authorization code, and means the **app** (App ID) is switched off. It is not a code bug and not the store owner's account, so retrying will not help and nothing in our settings page can fix it. The page then shows "Facebook returned no authorization code" because the window closed without a code.
+
+Common causes, all checked in the Meta developer console for that app:
+
+1. The app is in **Development** mode and the account has no role on it (Admin/Developer/Tester). Add it under App roles.
+2. Meta **disabled or restricted** the app (a banner on the app dashboard, or in Alerts / App Review). Complete what it asks, then reactivate.
+3. A missing **business verification**, Data Use Checkup or privacy policy. Meta pauses the app until they are done.
+4. The app is **deleted or belongs to another account**, or `META_APP_ID` on the server points at a different app. Compare it with Settings > Basic.
+
+Finally, make sure `META_APP_ID` on the server is the same live app you are working in.

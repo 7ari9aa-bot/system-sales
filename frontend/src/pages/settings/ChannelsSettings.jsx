@@ -331,7 +331,7 @@ export default function ChannelsSettings() {
           (response) => {
             const code = response?.authResponse?.code;
             if (code) resolveCode(code);
-            else rejectCode(new Error(isAr ? "لم يُرجع فيسبوك رمز التفويض. أعد المحاولة." : "Facebook returned no authorization code. Try again."));
+            else rejectCode(new Error(isAr ? "لم يُرجع فيسبوك رمز التفويض. إن ظهرت في نافذة فيسبوك عبارة \"App not active\" فتطبيق ميتا نفسه غير مفعّل، وعلى مالك التطبيق إعادة تفعيله من لوحة مطوّري ميتا (انظر docs/META_SETUP.md). غير ذلك أعد المحاولة." : "Facebook returned no authorization code. If the Facebook window said \"App not active\", the Meta app itself is switched off: its owner must reactivate it in the Meta developer console (see docs/META_SETUP.md). Otherwise try again."));
           },
           {
             config_id: configId,
