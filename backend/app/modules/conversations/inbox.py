@@ -76,6 +76,18 @@ INBOX_PREVIEW_CHARS = 160
 _INBOX_SLA_KIND = "first_response"
 
 
+def _avatar_url(key: str | None) -> str | None:
+    """A short-lived link to the copy of the customer's photo that WE stored (never Instagram's)."""
+    if not key:
+        return None
+    try:
+        from app.core.storage import get_storage
+
+        return get_storage().signed_url(key)
+    except Exception:  # noqa: BLE001 - a missing photo must never break the inbox list
+        return None
+
+
 class InboxQuery:
     """The §137 read side of the staff inbox. Read-only: it never writes.
 
@@ -199,6 +211,8 @@ class InboxQuery:
                 c.marked_unread,
                 cust.name  AS customer_name,
                 cust.phone AS customer_phone,
+                ident.extra->>'username'   AS customer_handle,
+                ident.extra->>'avatar_key' AS customer_avatar_key,
                 CASE WHEN lm.deleted THEN NULL
                      ELSE left(lm.body, {INBOX_PREVIEW_CHARS}) END AS last_message_preview,
                 lm.deleted    AS last_message_deleted,
@@ -214,6 +228,11 @@ class InboxQuery:
               LEFT JOIN customers cust
                 ON cust.id = c.customer_id
                AND cust.tenant_id = c.tenant_id
+              LEFT JOIN customer_identities ident
+                ON ident.tenant_id = c.tenant_id
+               AND ident.customer_id = c.customer_id
+               AND ident.channel = c.channel
+               AND c.channel = 'instagram'
               LEFT JOIN LATERAL (
                     SELECT m.body, m.content_type, m.direction, m.sender_type, m.status,
                            m.created_at, m.deleted
@@ -268,6 +287,8 @@ class InboxQuery:
             "customer_id": str(row.customer_id) if row.customer_id else None,
             "customer_name": row.customer_name,
             "customer_phone": row.customer_phone,
+            "customer_handle": row.customer_handle,
+            "customer_avatar_url": _avatar_url(row.customer_avatar_key),
             "assignee_user_id": str(row.assignee_user_id) if row.assignee_user_id else None,
             "workspace_id": str(row.workspace_id) if row.workspace_id else None,
             "created_at": _iso(row.created_at),
