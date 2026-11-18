@@ -69,3 +69,13 @@ export const IgCompose = (p) => (<Svg {...p}><path d="M12.5 3.5H6a3 3 0 0 0-3 3V
 
 /** Smiley shown at the start of Instagram's comment box. */
 export const IgEmoji = (p) => (<Svg {...p}><circle cx="12" cy="12" r="9.5" /><path d="M8.5 14.2a4.2 4.2 0 0 0 7 0" /><circle cx="9" cy="9.6" r="0.9" fill="currentColor" stroke="none" /><circle cx="15" cy="9.6" r="0.9" fill="currentColor" stroke="none" /></Svg>);
+
+export const IgPin = (p) => (
+  <Svg {...p}><path d="m15.5 3 5.5 5.5-3 .8-3.6 3.6.4 4.1-1.4 1.4-4-4L4 20.2 3.8 20l5.3-5.3-4-4 1.4-1.4 4.1.4 3.6-3.6Z" /></Svg>
+);
+export const IgMuted = (p) => (
+  <Svg {...p}><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="m16 9 5 6M21 9l-5 6" /></Svg>
+);
+export const IgArchive = (p) => (
+  <Svg {...p}><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11h14V8M10 12h4" /></Svg>
+);

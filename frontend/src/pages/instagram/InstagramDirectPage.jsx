@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IG, igShortTime } from "@/components/instagram/igTheme";
-import { IgBack, IgMessenger, IgSearch } from "@/components/instagram/igIcons";
+import { IgArchive, IgBack, IgMessenger, IgMuted, IgPin, IgSearch } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
 import { useInstagramData } from "./useInstagramData";
 
@@ -26,6 +26,8 @@ function ThreadRow({ row, active, lang, onOpen }) {
           {when && <><span aria-hidden="true">·</span><span className="shrink-0">{when}</span></>}
         </span>
       </span>
+      {row.pinnedAt && <span aria-label={lang === "ar" ? "مثبّتة" : "Pinned"} style={{ color: IG.secondary }}><IgPin size={16} /></span>}
+      {row.mutedUntil && new Date(row.mutedUntil) > new Date() && <span aria-label={lang === "ar" ? "مكتومة" : "Muted"} style={{ color: IG.secondary }}><IgMuted size={16} /></span>}
       {unread && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: IG.blue }} aria-label={lang === "ar" ? "غير مقروءة" : "Unread"} />}
     </button>
   );
@@ -54,26 +56,29 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
   const isArabic = lang === "ar";
   const open = threadId ? threads.find((row) => row.id === threadId) || null : null;
   const folder = open ? folderOf(open) : routeFolder;
+  const archivedOpen = Boolean(open?.archivedAt);
   const showingRequests = folder === "requests";
   const requestCount = threads.filter((row) => folderOf(row) === "requests" && !row.archivedAt).length;
 
+  const archivedCount = threads.filter((row) => row.archivedAt).length;
+  const showingArchive = routeFolder === "archived" || archivedOpen;
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return threads
-      .filter((row) => !row.archivedAt && folderOf(row) === folder)
+      .filter((row) => (showingArchive ? Boolean(row.archivedAt) : !row.archivedAt && folderOf(row) === folder))
       .filter((row) => !needle || `${row.customer} ${row.handle}`.toLocaleLowerCase().includes(needle))
-      .sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
-  }, [threads, query, folder]);
+      .sort((a, b) => (Boolean(b.pinnedAt) - Boolean(a.pinnedAt)) || (new Date(b.lastAt || 0) - new Date(a.lastAt || 0)));
+  }, [threads, query, folder, showingArchive]);
 
   const openThread = (row) => selectConversation(row);
 
   return (
     <div className="flex h-full min-h-0">
       <section aria-label={isArabic ? "المحادثات" : "Chats"} className={cn("flex min-h-0 w-full shrink-0 flex-col border-e md:w-[397px]", threadId && "hidden md:flex")} style={{ borderColor: IG.border }}>
-        {showingRequests ? (
+        {showingRequests || showingArchive ? (
           <header className="flex h-[75px] shrink-0 items-center gap-4 px-6">
             <Link to="/instagram/direct/inbox" aria-label={isArabic ? "رجوع" : "Back"} className="rounded-full p-1 hover:bg-[#f2f2f2]"><IgBack className={isArabic ? "-scale-x-100" : undefined} /></Link>
-            <h1 className="text-[20px] font-bold">{isArabic ? "طلبات المراسلة" : "Message requests"}</h1>
+            <h1 className="text-[20px] font-bold">{showingArchive ? (isArabic ? "المحادثات المؤرشفة" : "Archived chats") : (isArabic ? "طلبات المراسلة" : "Message requests")}</h1>
           </header>
         ) : (
           <header className="shrink-0 px-6 pb-3 pt-9">
@@ -86,7 +91,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isArabic ? "بحث" : "Search"} aria-label={isArabic ? "بحث في المحادثات" : "Search chats"} className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#737373]" />
           </label>
         </div>
-        {showingRequests ? (
+        {showingArchive ? null : showingRequests ? (
           <p className="shrink-0 px-6 pb-3 text-[12px] leading-4" style={{ color: IG.secondary }}>
             {isArabic ? "هذه الرسائل من أشخاص قمت بتقييدهم أو لا تتابعهم. لن يعرفوا أنك شاهدت طلبهم حتى تسمح لهم بمراسلتك." : "These messages are from people you've restricted or don't follow. They won't know you viewed their request until you allow them to message you."}
           </p>
@@ -100,6 +105,11 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
             ))}
           </nav>
         )}
+        {!showingArchive && !showingRequests && archivedCount > 0 && (
+          <Link to="/instagram/direct/archived" data-testid="ig-archive-link" className="flex shrink-0 items-center gap-3 px-6 py-3 text-[14px] font-semibold hover:bg-[#f2f2f2]">
+            <IgArchive size={20} /><span className="flex-1">{isArabic ? "المحادثات المؤرشفة" : "Archived chats"}</span><span style={{ color: IG.secondary }}>{archivedCount}</span>
+          </Link>
+        )}
         <div className="min-h-0 flex-1 overflow-y-auto pb-4">
           {loadingInbox && rows.length === 0 && <p role="status" className="px-6 py-4 text-[14px]" style={{ color: IG.secondary }}>{t("common.loading")}</p>}
           {inboxLoadError && (
@@ -109,7 +119,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
           )}
           {!loadingInbox && !inboxLoadError && rows.length === 0 && (
             <p className="px-6 py-10 text-center text-[14px]" style={{ color: IG.secondary }}>
-              {query ? (isArabic ? "لا توجد نتائج." : "No results.") : showingRequests ? (isArabic ? "لا توجد طلبات مراسلة." : "No message requests.") : folder === "general" ? (isArabic ? "لا توجد رسائل في العامة." : "No messages in General.") : (isArabic ? "لا توجد رسائل بعد." : "No messages yet.")}
+              {query ? (isArabic ? "لا توجد نتائج." : "No results.") : showingArchive ? (isArabic ? "لا توجد محادثات مؤرشفة." : "No archived chats.") : showingRequests ? (isArabic ? "لا توجد طلبات مراسلة." : "No message requests.") : folder === "general" ? (isArabic ? "لا توجد رسائل في العامة." : "No messages in General.") : (isArabic ? "لا توجد رسائل بعد." : "No messages yet.")}
             </p>
           )}
           {rows.map((row) => <ThreadRow key={row.id} row={row} lang={lang} active={row.id === threadId} onOpen={() => openThread(row)} />)}
@@ -122,7 +132,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
       </section>
       <div className={cn("min-h-0 min-w-0 flex-1 flex-col", threadId ? "flex" : "hidden md:flex")}>
         {threadId && open && current?.id === open.id
-          ? <InstagramThread data={data} onBack={() => navigate(folder === "requests" ? "/instagram/direct/requests" : folder === "general" ? "/instagram/direct/general" : "/instagram/direct/inbox")} />
+          ? <InstagramThread data={data} onBack={() => navigate(showingArchive ? "/instagram/direct/archived" : folder === "requests" ? "/instagram/direct/requests" : folder === "general" ? "/instagram/direct/general" : "/instagram/direct/inbox")} />
           : threadId && !loadingInbox && !open
             ? <p role="alert" className="m-auto p-8 text-center text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "هذه المحادثة غير موجودة." : "This chat isn't available."} <Link className="font-semibold" style={{ color: IG.blue }} to="/instagram/direct/inbox">{isArabic ? "رجوع للرسائل" : "Back to messages"}</Link></p>
             : <EmptyThread lang={lang} requests={showingRequests} />}

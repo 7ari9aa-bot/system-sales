@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import IgAvatar from "./IgAvatar";
 import IgComment from "./IgComment";
 import { IG } from "./igTheme";
-import { IgBack, IgClose, IgComment as CommentIcon, IgEmoji, IgShare } from "./igIcons";
+import { IgBack, IgClose, IgComment as CommentIcon, IgEmoji, IgMore, IgShare } from "./igIcons";
 import { cn } from "@/lib/utils";
 
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤩", "😢", "😡", "👍", "🙏", "👏", "🔥", "❤️", "💯", "🎉", "✨"];
@@ -16,6 +16,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [postMenu, setPostMenu] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onPrev, onNext, isArabic]);
 
-  useEffect(() => { setReplyTo(null); setPrivateFor(null); setDraft(""); setActionError(""); }, [post?.id]);
+  useEffect(() => { setReplyTo(null); setPrivateFor(null); setDraft(""); setActionError(""); setPostMenu(false); }, [post?.id]);
 
   if (!post) return null;
   const canSend = Boolean(privateFor || replyTo || actions.canComment);
@@ -83,6 +84,21 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
           <header className="flex h-[60px] shrink-0 items-center gap-3 border-b px-4" style={{ borderColor: IG.separator }}>
             <IgAvatar src={post.accountAvatarUrl} size={32} ring />
             <p dir="ltr" className="min-w-0 flex-1 truncate text-[14px] font-semibold">{post.accountName || "Instagram"}</p>
+            {actions.toggleComments && (
+              <div className="relative">
+                <button type="button" aria-label={isArabic ? "خيارات المنشور" : "Post options"} aria-expanded={postMenu} onClick={() => setPostMenu((v) => !v)} className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f2f2]"><IgMore size={24} /></button>
+                {postMenu && (
+                  <div role="menu" className="absolute end-0 top-9 z-10 w-64 overflow-hidden rounded-xl bg-white text-[14px] shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
+                    <button type="button" role="menuitem" data-testid="ig-toggle-comments" onClick={async () => {
+                      setPostMenu(false); setActionError("");
+                      try { await actions.toggleComments(post.id, post.commentsEnabled === false); } catch (error) { setActionError(error?.message || (isArabic ? "تعذر تغيير إعداد التعليقات" : "Couldn't change commenting")); }
+                    }} className="block w-full px-4 py-3 text-start hover:bg-[#f2f2f2]">
+                      {post.commentsEnabled === false ? (isArabic ? "تشغيل التعليقات" : "Turn on commenting") : (isArabic ? "إيقاف التعليقات" : "Turn off commenting")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </header>
           <section aria-label={isArabic ? "تعليقات المنشور" : "Post comments"} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {post.text && (
@@ -95,6 +111,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
                 </div>
               </div>
             )}
+            {post.commentsEnabled === false && <p className="text-center text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "تم إيقاف التعليقات على هذا المنشور." : "Commenting has been turned off for this post."}</p>}
             {(post.comments || []).length
               ? post.comments.map((comment) => <IgComment key={comment.id} comment={comment} isArabic={isArabic} actions={commentActions} pageAvatar={post.accountAvatarUrl} onReply={() => { setPrivateFor(null); setReplyTo(comment); setDraft((d) => d || `@${comment.handle || comment.author} `); focus(); }} />)
               : <div className="grid min-h-[200px] place-items-center text-center"><div><p className="text-[24px] font-bold">{isArabic ? "لا توجد تعليقات بعد." : "No comments yet."}</p><p className="mt-2 text-[14px]">{isArabic ? "عندما يعلّق أحد ستراه هنا." : "When someone comments, you'll see it here."}</p></div></div>}
@@ -114,8 +131,8 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, onC
               {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => { setDraft((d) => d + emoji); focus(); }} className="grid h-9 place-items-center rounded hover:bg-[#f2f2f2]">{emoji}</button>)}
             </div>
           )}
+          {actionError && <div role="alert" data-testid="ig-action-error" className="shrink-0 border-t px-4 py-2 text-[12px]" style={{ color: IG.error, borderColor: IG.separator }}>{actionError}</div>}
           {canSend && <form onSubmit={submit} className="shrink-0 border-t px-4 py-2" style={{ borderColor: IG.separator }}>
-            {actionError && <div role="alert" data-testid="ig-action-error" className="mb-2 text-[12px]" style={{ color: IG.error }}>{actionError}</div>}
             {privateFor && <div data-testid="ig-private-banner" className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>رسالة خاصة إلى <b className="text-black">{privateFor.handle || privateFor.author}</b> (مرة واحدة فقط)</> : <>Private message to <b className="text-black">{privateFor.handle || privateFor.author}</b> (one time only)</>}</span><button type="button" onClick={() => setPrivateFor(null)} className="font-semibold text-black">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
             {replyTo && !privateFor && <div className="mb-2 flex items-center justify-between text-[12px]" style={{ color: IG.secondary }}><span>{isArabic ? <>الرد على <b className="text-black">{replyTo.handle || replyTo.author}</b></> : <>Replying to <b className="text-black">{replyTo.handle || replyTo.author}</b></>}</span><button type="button" onClick={() => { setReplyTo(null); setDraft(""); }} className="font-semibold text-black">{isArabic ? "إلغاء" : "Cancel"}</button></div>}
             <div className="flex min-h-10 items-center gap-3">

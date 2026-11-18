@@ -208,3 +208,70 @@ test("the channel strip takes you from Instagram to another channel", async ({ p
   await page.locator("aside nav").last().getByRole("button", { name: /whatsapp/i }).click();
   await expect(page).toHaveURL(/\/inbox$/);
 });
+
+// Pin, mute, archive and "mark unread" are real store-wide flags saved through /list-state. Each button must
+// send exactly that change, and the list must show it (pinned first, mute badge, an archive you can come back from).
+test("pin, mute, mark unread and archive reach the API and show in the list; archived chats can be restored", async ({ page }) => {
+  const calls = [];
+  const flags = {};
+  await page.route("**/api/v1/**", async (route) => {
+    const u = new URL(route.request().url());
+    const p = u.pathname.replace("/api/v1", "");
+    const send = (d, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(d) });
+    const m = p.match(/^\/conversations\/(c\d)\/list-state$/);
+    if (m) {
+      const body = route.request().postDataJSON();
+      calls.push({ id: m[1], body });
+      const f = (flags[m[1]] ||= { pinned_at: null, muted_until: null, archived_at: null, marked_unread: false });
+      if ("pinned" in body) f.pinned_at = body.pinned ? iso(0) : null;
+      if ("archived" in body) f.archived_at = body.archived ? iso(0) : null;
+      if ("marked_unread" in body) f.marked_unread = body.marked_unread;
+      if (body.mute) f.muted_until = body.mute === "off" ? null : new Date(Date.now() + 8 * 3600e3).toISOString();
+      return send(f);
+    }
+    if (p === "/inbox") {
+      const all = ROWS.map((r) => ({ ...r, ...(flags[r.id] || {}) }));
+      return send({ items: all.filter((r) => Boolean(r.archived_at) === (u.searchParams.get("archived") === "true")), next_cursor: null });
+    }
+    return route.fallback();
+  });
+  await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded" });
+  const list = page.getByRole("region", { name: "Chats" });
+  const names = async () => (await list.getByRole("button").allTextContents()).map((t) => t.trim().split("\n")[0]);
+  await expect(list.getByRole("button", { name: "Omar Ali" })).toBeVisible({ timeout: 15_000 });
+
+  // open Omar, pin him: he jumps above Sara and shows the pin
+  await list.getByRole("button", { name: "Omar Ali" }).click();
+  await page.getByRole("button", { name: "Conversation information" }).click();
+  await page.getByTestId("ig-action-pin").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { pinned: true } });
+  await expect(list.getByRole("button", { name: "Omar Ali" }).getByLabel("Pinned")).toBeVisible();
+  expect((await names())[0]).toMatch(/Omar Ali/);
+
+  // mute for a week: badge appears; the button turns into "Unmute"
+  await page.getByTestId("ig-action-mute-1w").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { mute: "1w" } });
+  await expect(list.getByRole("button", { name: "Omar Ali" }).getByLabel("Muted")).toBeVisible();
+  await expect(page.getByTestId("ig-action-unmute")).toBeVisible();
+  await page.getByTestId("ig-action-unmute").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { mute: "off" } });
+  await expect(list.getByRole("button", { name: "Omar Ali" }).getByLabel("Muted")).toHaveCount(0);
+
+  // mark unread: sends the flag, the drawer closes and the row shows the unread dot
+  await page.getByTestId("ig-action-unread").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { marked_unread: true } });
+  await expect(list.getByRole("button", { name: "Omar Ali" }).getByLabel("Unread")).toBeVisible();
+  await page.getByRole("button", { name: "Conversation information" }).click();
+
+  // archive: leaves the list, the Archived chats link appears with a count, and he can be restored from there
+  await page.getByTestId("ig-action-archive").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { archived: true } });
+  await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("region", { name: "Chats" }).getByRole("button", { name: "Omar Ali" })).toHaveCount(0);
+  await page.getByTestId("ig-archive-link").click();
+  await expect(page).toHaveURL(/\/instagram\/direct\/archived$/);
+  await page.getByRole("region", { name: "Chats" }).getByRole("button", { name: "Omar Ali" }).click();
+  await page.getByRole("button", { name: "Conversation information" }).click();
+  await page.getByTestId("ig-action-archive").click();
+  await expect.poll(() => calls.at(-1)).toEqual({ id: "c2", body: { archived: false } });
+});

@@ -118,6 +118,7 @@ const DashboardRoutes = () => (
           <Route path="direct/inbox" element={<InstagramDirectPage />} />
           <Route path="direct/general" element={<InstagramDirectPage folder="general" />} />
           <Route path="direct/requests" element={<InstagramDirectPage folder="requests" />} />
+          <Route path="direct/archived" element={<InstagramDirectPage folder="archived" />} />
           <Route path="direct/t/:threadId" element={<InstagramDirectPage />} />
           <Route path="activity" element={<InstagramActivityPage />} />
           <Route path="profile" element={<InstagramProfilePage />} />

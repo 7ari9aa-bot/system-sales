@@ -41,7 +41,7 @@ export function useInstagramData() {
 
   const actions = demoAccount
     ? { reply: addInstagramPageReply, canComment: true }
-    : { reply: igLive.reply, hide: igLive.hide, remove: igLive.remove, sendPrivate: igLive.sendPrivate, publish: igLive.publish, refresh: igLive.refresh, canComment: false };
+    : { reply: igLive.reply, hide: igLive.hide, remove: igLive.remove, sendPrivate: igLive.sendPrivate, publish: igLive.publish, refresh: igLive.refresh, toggleComments: igLive.toggleComments, canComment: false };
 
   const threads = convMap.instagram || [];
   const unreadMessages = threads.reduce((sum, row) => sum + (row.unread > 0 || row.markedUnread ? 1 : 0), 0);

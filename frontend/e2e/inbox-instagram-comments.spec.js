@@ -18,7 +18,13 @@ function makeApi({ posts, comments, failNext = {} }) {
     if (p === "/channels/status") return send([{ provider: "instagram", connected: true, enabled_for_me: true, locked: false, lifecycle: "connected", webhook_status: "active", account_name: "shop" }]);
     if (p === "/inbox") return send({ items: [], next_cursor: null });
     if (p === "/social/posts") return send({ items: posts });
-    let m = p.match(/^\/social\/posts\/([^/]+)\/comments$/);
+    let m = p.match(/^\/social\/posts\/([^/]+)\/comments-enabled$/);
+    if (m) {
+      calls.push({ key: "comments-enabled", id: m[1], body: req.postDataJSON?.() ?? null });
+      if (state.failNext["comments-enabled"]) { delete state.failNext["comments-enabled"]; return send({ detail: "Instagram said no" }, 502); }
+      return send({ post_id: m[1], comments_enabled: req.postDataJSON().enabled });
+    }
+    m = p.match(/^\/social\/posts\/([^/]+)\/comments$/);
     if (m) return send({ items: state.comments.filter((c) => c.post_id === m[1]) });
     m = p.match(/^\/social\/comments\/([^/]+)(\/(reply|hide|private-reply))?$/);
     if (m) {
@@ -128,4 +134,23 @@ test("an account with no posts is told how to fix it, not shown a blank page", a
   await page.route("**/api/v1/**", api.handler);
   await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await expect(page.getByTestId("ig-empty")).toContainText(/reconnect|أعد ربط/);
+});
+
+test("commenting can be turned off and on for a post, and a refusal is shown", async ({ page }) => {
+  const api = makeApi({ posts: [POST], comments: [C1], failNext: { "comments-enabled": true } });
+  await open(page, api);
+  const options = page.getByRole("button", { name: /Post options|خيارات المنشور/ });
+  await options.click();
+  await page.getByTestId("ig-toggle-comments").click();
+  await expect(page.getByTestId("ig-action-error")).toBeVisible();
+  await options.click();
+  await page.getByTestId("ig-toggle-comments").click();
+  await expect.poll(() => api.calls.filter((c) => c.key === "comments-enabled").length).toBe(2);
+  expect(api.calls.filter((c) => c.key === "comments-enabled")[1]).toMatchObject({ id: "p1", body: { enabled: false } });
+  await expect(page.getByText(/Commenting has been turned off|تم إيقاف التعليقات/)).toBeVisible();
+  await options.click();
+  await expect(page.getByTestId("ig-toggle-comments")).toHaveText(/Turn on commenting|تشغيل التعليقات/);
+  await page.getByTestId("ig-toggle-comments").click();
+  await expect.poll(() => api.calls.filter((c) => c.key === "comments-enabled").length).toBe(3);
+  expect(api.calls.filter((c) => c.key === "comments-enabled")[2].body).toEqual({ enabled: true });
 });

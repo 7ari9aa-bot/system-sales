@@ -886,6 +886,7 @@ export default function ChannelChat({
         channel={channel}
         conversation={conversation}
         lang={lang}
+        onListStateChange={isInstagram ? (row, body) => onListStateChange?.(row, body) : undefined}
         onOpenCustomerProfile={() => {
           setCustomer360Record({
             id: conversation.customer_id || conversation.id,

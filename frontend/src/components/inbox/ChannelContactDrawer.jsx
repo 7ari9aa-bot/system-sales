@@ -24,9 +24,9 @@ export default function ChannelContactDrawer({
   conversation,
   lang = "ar",
   onOpenCustomerProfile,
+  onListStateChange,
 }) {
   const [activeMediaTab, setActiveMediaTab] = useState("media"); // media | docs | links
-  const [muted, setMuted] = useState(false);
   const [starred, setStarred] = useState(false);
 
   if (!isOpen || !conversation) return null;
@@ -237,17 +237,41 @@ export default function ChannelContactDrawer({
               </div>
             </div>
 
-            {/* Mute Messages */}
-            <div className="flex items-center justify-between py-2 border-b border-[#dbdbdb] dark:border-border">
-              <span className="text-[13.5px] font-medium">{isAr ? "كتم الرسائل" : "Mute messages"}</span>
-              <button
-                type="button"
-                onClick={() => setMuted(!muted)}
-                className={cn("w-10 h-5 rounded-full p-0.5 transition-colors", muted ? "bg-[#0095f6]" : "bg-[#dbdbdb] dark:bg-surface")}
-              >
-                <div className={cn("w-4 h-4 rounded-full bg-white transition-transform", muted && "translate-x-5")} />
-              </button>
-            </div>
+            {/* Real conversation flags, saved for the whole store through /list-state */}
+            {onListStateChange && (() => {
+              const mutedNow = Boolean(conversation.mutedUntil) && new Date(conversation.mutedUntil) > new Date();
+              const pinnedNow = Boolean(conversation.pinnedAt);
+              const unreadNow = Boolean(conversation.markedUnread);
+              const archivedNow = Boolean(conversation.archivedAt);
+              const row = "flex w-full items-center justify-between py-3 text-[14px] border-b border-[#dbdbdb] dark:border-border text-start hover:bg-[#fafafa] dark:hover:bg-surface";
+              return (
+                <div role="group" aria-label={isAr ? "إجراءات المحادثة" : "Chat actions"} data-testid="ig-chat-actions">
+                  <button type="button" className={row} data-testid="ig-action-pin" onClick={() => onListStateChange(conversation, { pinned: !pinnedNow })}>
+                    <span>{pinnedNow ? (isAr ? "إلغاء التثبيت" : "Unpin chat") : (isAr ? "تثبيت المحادثة" : "Pin chat")}</span>
+                  </button>
+                  {mutedNow ? (
+                    <button type="button" className={row} data-testid="ig-action-unmute" onClick={() => onListStateChange(conversation, { mute: "off" })}>
+                      <span>{isAr ? "إلغاء كتم الرسائل" : "Unmute messages"}</span>
+                    </button>
+                  ) : (
+                    <div className={cn(row, "flex-wrap gap-y-2")}>
+                      <span>{isAr ? "كتم الرسائل" : "Mute messages"}</span>
+                      <span className="flex gap-2 text-[12px] font-semibold text-[#0095f6]">
+                        <button type="button" data-testid="ig-action-mute-8h" onClick={() => onListStateChange(conversation, { mute: "8h" })}>{isAr ? "8 ساعات" : "8 hours"}</button>
+                        <button type="button" data-testid="ig-action-mute-1w" onClick={() => onListStateChange(conversation, { mute: "1w" })}>{isAr ? "أسبوع" : "1 week"}</button>
+                        <button type="button" data-testid="ig-action-mute-always" onClick={() => onListStateChange(conversation, { mute: "always" })}>{isAr ? "دائمًا" : "Always"}</button>
+                      </span>
+                    </div>
+                  )}
+                  <button type="button" className={row} data-testid="ig-action-unread" onClick={() => { onListStateChange(conversation, { marked_unread: !unreadNow }); if (!unreadNow) onClose(); }}>
+                    <span>{unreadNow ? (isAr ? "تعليم كمقروءة" : "Mark as read") : (isAr ? "تعليم كغير مقروءة" : "Mark as unread")}</span>
+                  </button>
+                  <button type="button" className={row} data-testid="ig-action-archive" onClick={() => { onListStateChange(conversation, { archived: !archivedNow }); if (!archivedNow) onClose(); }}>
+                    <span>{archivedNow ? (isAr ? "إلغاء الأرشفة" : "Unarchive chat") : (isAr ? "أرشفة المحادثة" : "Archive chat")}</span>
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Members in chat */}
             <div className="space-y-3">
