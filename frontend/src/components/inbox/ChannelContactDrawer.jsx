@@ -5,11 +5,9 @@ import {
   Lock,
   Star,
   Clock,
-  ShieldAlert,
   ChevronRight,
   ExternalLink,
   Image as ImageIcon,
-  Palette,
   Sparkles,
   User,
 } from "lucide-react";
@@ -341,24 +339,6 @@ export default function ChannelContactDrawer({
               <ConversationAvatar conversation={conversation} className="h-20 w-20 mx-auto text-[22px]" />
               <h4 className="text-[17px] font-bold">{customerName}</h4>
               <div className="text-[12px] text-[#65676b]">Messenger Contact</div>
-            </div>
-
-            {/* Customize Chat */}
-            <div className="space-y-2 border-t border-[#e4e6eb] dark:border-border pt-3">
-              <div className="text-[12px] font-semibold text-[#65676b] uppercase">{isAr ? "تخصيص المحادثة" : "Customize chat"}</div>
-              <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#f0f2f5] dark:hover:bg-surface cursor-pointer">
-                <Palette className="h-4 w-4 text-[#0084ff]" />
-                <span className="text-[13px] font-medium">{isAr ? "تغيير الثيم" : "Change theme"}</span>
-              </div>
-            </div>
-
-            {/* Privacy & Support */}
-            <div className="space-y-2 border-t border-[#e4e6eb] dark:border-border pt-3">
-              <div className="text-[12px] font-semibold text-[#65676b] uppercase">{isAr ? "الخصوصية والمساعدة" : "Privacy & Support"}</div>
-              <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#f0f2f5] dark:hover:bg-surface cursor-pointer text-destructive">
-                <ShieldAlert className="h-4 w-4" />
-                <span className="text-[13px] font-medium">{isAr ? "حظر المستخدم" : "Block"}</span>
-              </div>
             </div>
 
             {/* CRM Link */}
