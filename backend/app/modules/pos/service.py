@@ -924,6 +924,26 @@ class PosService(PosReceiptReads):
         )
 
     @staticmethod
+    def _line_restock(lines: list[dict], restock: bool) -> dict[UUID, bool]:
+        """Which returned variants go back on the shelf: the line's own choice, else ``restock``.
+
+        ``restock`` is the request-wide answer (already resolved against the shop's default). A
+        line may override it for its own piece. Two lines for one variant are merged into one
+        quantity later, so they must agree: refusing is better than guessing which one wins.
+        """
+        decided: dict[UUID, bool] = {}
+        for line in lines:
+            variant_id = UUID(str(line["variant_id"]))
+            own = line.get("restock")
+            choice = restock if own is None else bool(own)
+            if variant_id in decided and decided[variant_id] != choice:
+                raise ValidationError(
+                    f"variant {variant_id} is on two return lines with different shelf decisions"
+                )
+            decided[variant_id] = choice
+        return decided
+
+    @staticmethod
     async def _clean_return_reasons(
         session: AsyncSession,
         tenant_id: UUID,
@@ -2656,6 +2676,7 @@ class PosService(PosReceiptReads):
             what="return",
         )
         restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        shelf = PosService._line_restock(lines, restock)
         reasons = await PosService._clean_return_reasons(session, tenant_id, pos_session, lines)
         # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
@@ -2760,7 +2781,8 @@ class PosService(PosReceiptReads):
                     f"{money_cap} unit(s) are already returned"
                 )
 
-        if restock:
+        shelved = {v: q for v, q in requested.items() if shelf.get(v)}
+        if shelved:
             # The shelf cap, separate from the quantity cap: a return that did not restock put
             # nothing back on the shelf, and goods already back cannot come back twice.
             restocked_already = dict(
@@ -2780,7 +2802,7 @@ class PosService(PosReceiptReads):
                     )
                 ).all()
             )
-            for variant_id, quantity in requested.items():
+            for variant_id, quantity in shelved.items():
                 goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
@@ -2817,9 +2839,11 @@ class PosService(PosReceiptReads):
         # never creates a Refund, an OrderPayment or a drawer movement.
 
         restocked = False
-        if restock:
+        if shelved:
             register = await PosService._get_register(session, tenant_id, pos_session.register_id)
             for entry in refund_lines:
+                if not shelf.get(entry["variant_id"]):
+                    continue
                 await InventoryService.move(
                     session,
                     tenant_id,
@@ -2884,9 +2908,11 @@ class PosService(PosReceiptReads):
                     "variant_id": str(entry["variant_id"]),
                     "quantity": entry["quantity"],
                     "refund_total": str(entry["refund_total"]),
+                    "restocked": bool(shelf.get(entry["variant_id"])),
                 }
                 for entry in refund_lines
             ],
+            # True when at least one piece went back on the shelf; each line says its own.
             "restocked": restocked,
         }
 
@@ -2955,6 +2981,7 @@ class PosService(PosReceiptReads):
             what="exchange",
         )
         restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
+        shelf = PosService._line_restock(return_lines, restock)
         reasons = await PosService._clean_return_reasons(
             session, tenant_id, pos_session, return_lines
         )
@@ -3054,7 +3081,8 @@ class PosService(PosReceiptReads):
                     f"variant {variant_id} was sold {sold_qty} and "
                     f"{money_cap} unit(s) are already returned"
                 )
-        if restock:
+        shelved = {v: q for v, q in requested.items() if shelf.get(v)}
+        if shelved:
             restocked_already = dict(
                 (
                     await session.execute(
@@ -3072,7 +3100,7 @@ class PosService(PosReceiptReads):
                     )
                 ).all()
             )
-            for variant_id, quantity in requested.items():
+            for variant_id, quantity in shelved.items():
                 goods_cap = sold[variant_id]["quantity"] - int(restocked_already.get(variant_id, 0))
                 if quantity > goods_cap:
                     raise ConflictError(
@@ -3147,8 +3175,10 @@ class PosService(PosReceiptReads):
             session, tenant_id, new_order.id, actor_user_id=actor_user_id
         )
 
-        if restock:
+        if shelved:
             for entry in return_entries:
+                if not shelf.get(entry["variant_id"]):
+                    continue
                 await InventoryService.move(
                     session,
                     tenant_id,
@@ -3211,7 +3241,7 @@ class PosService(PosReceiptReads):
                 "return_total": str(return_total),
                 "new_total": str(new_grand_total),
                 "net": str(net),
-                "restocked": restock,
+                "restocked": bool(shelved),
                 "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
             producer="pos",
@@ -3224,5 +3254,5 @@ class PosService(PosReceiptReads):
             "return_total": str(return_total),
             "new_total": str(new_grand_total),
             "net": str(net),
-            "restocked": restock,
+            "restocked": bool(shelved),
         }

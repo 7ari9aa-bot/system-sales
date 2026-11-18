@@ -496,3 +496,158 @@ async def test_return_policy_resolves_exchange_zero_to_the_return_window(db, ten
     longer = await PosService.return_policy(db, tenant_ctx.tenant_id, pos_session.id)
     assert longer["exchange_max_days"] == 45
     assert longer["return_max_days"] == 21
+
+
+# ------------------------------------------------- the shelf decision, piece by piece --
+
+
+async def _sold_two(db, tenant_ctx, pos_session):
+    """One sale of two different pieces (a jacket and a shirt), the way a clothing till rings it."""
+    jacket = await _sellable_variant(db, tenant_ctx)
+    shirt = await _sellable_variant(db, tenant_ctx)
+    customer = await _customer(db, tenant_ctx)
+    result = await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[
+            {"variant_id": str(jacket.id), "quantity": 1},
+            {"variant_id": str(shirt.id), "quantity": 1},
+        ],
+    )
+    return jacket, shirt, result["order_id"]
+
+
+async def _return_lines(db, tenant_ctx, pos_session, order_id, lines, **kw):
+    from app.modules.pos.service import PosService
+
+    return await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        lines=[{"variant_id": str(v.id), "quantity": 1, **extra} for v, extra in lines],
+        **kw,
+    )
+
+
+async def test_one_piece_goes_back_on_the_rail_and_the_torn_one_does_not(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    out = await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {"restock": True}), (shirt, {"restock": False})],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+    said = {line["variant_id"]: line["restocked"] for line in out["lines"]}
+    assert said == {str(jacket.id): True, str(shirt.id): False}
+    assert out["restocked"] is True  # at least one piece went back
+
+
+async def test_a_line_without_a_choice_follows_the_request_then_the_shop(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_restock_default", False)
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    # The shop says no; the jacket says yes; the shirt says nothing and gets the shop's no.
+    await _return_lines(
+        db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": True}), (shirt, {})]
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+
+
+async def test_a_line_choice_beats_the_whole_request_choice(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {}), (shirt, {"restock": False})],
+        restock=True,
+    )
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+
+
+async def test_nothing_goes_back_when_every_piece_says_no(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    out = await _return_lines(
+        db,
+        tenant_ctx,
+        pos_session,
+        order_id,
+        [(jacket, {"restock": False}), (shirt, {"restock": False})],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before
+    assert out["restocked"] is False
+
+
+async def test_a_piece_kept_off_the_shelf_can_still_be_shelved_by_a_later_return(db, tenant_ctx):
+    """The shelf cap is per piece: returning the torn shirt without restock must not use up the
+    shirt's shelf allowance for a later, honest return of a different unit."""
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    await _return_lines(db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": False})])
+    before = await _on_hand(db, tenant_ctx, jacket)
+    # The jacket's quantity is spent (1 sold, 1 returned), so a second return of it is refused on
+    # quantity, not on the shelf: the off-shelf return did not touch the shelf cap.
+    with pytest.raises(ConflictError, match="already returned"):
+        await _return_lines(db, tenant_ctx, pos_session, order_id, [(jacket, {"restock": True})])
+    assert await _on_hand(db, tenant_ctx, jacket) == before
+
+
+async def test_two_lines_for_one_piece_with_different_decisions_are_refused(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, _shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    before = await _on_hand(db, tenant_ctx, jacket)
+    with pytest.raises(ValidationError, match="different shelf decisions"):
+        await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=uuid.UUID(str(order_id)),
+            lines=[
+                {"variant_id": str(jacket.id), "quantity": 1, "restock": True},
+                {"variant_id": str(jacket.id), "quantity": 1, "restock": False},
+            ],
+        )
+    assert await _on_hand(db, tenant_ctx, jacket) == before  # nothing moved
+
+
+async def test_an_exchange_decides_the_shelf_piece_by_piece_too(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    pos_session = await _open_day(db, tenant_ctx)
+    jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
+    replacement = await _sellable_variant(db, tenant_ctx)
+    jacket_before = await _on_hand(db, tenant_ctx, jacket)
+    shirt_before = await _on_hand(db, tenant_ctx, shirt)
+    out = await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=uuid.UUID(str(order_id)),
+        return_lines=[
+            {"variant_id": str(jacket.id), "quantity": 1, "restock": True},
+            {"variant_id": str(shirt.id), "quantity": 1, "restock": False},
+        ],
+        new_lines=[{"variant_id": str(replacement.id), "quantity": 1}],
+    )
+    assert await _on_hand(db, tenant_ctx, jacket) == jacket_before + 1
+    assert await _on_hand(db, tenant_ctx, shirt) == shirt_before
+    assert out["restocked"] is True

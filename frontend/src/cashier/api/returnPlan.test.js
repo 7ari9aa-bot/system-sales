@@ -3,7 +3,7 @@ import { newIntent, posApi } from "./posApi";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
 import { api } from "@/lib/api";
-import { sendReturn, tableLine, estimateRefund, estimateRefundMinor, returnErrorMessage, returnRequest, returnableLines, setQty } from "./returnPlan";
+import { sendReturn, tableLine, estimateRefund, estimateRefundMinor, returnErrorMessage, returnRequest, returnableLines, setQty, setLineRestock, lineRestock } from "./returnPlan";
 
 const sale = (over = {}) => ({
   order: { id: "o1", grand_total: "340.00", discount_total: "20.00" },
@@ -82,6 +82,22 @@ describe("returnRequest", () => {
     expect(returnRequest(s, picked, { reason: "size" }).lines[0].reason).toBe("size");
     expect("reason" in returnRequest(s, picked, {}).lines[0]).toBe(false);
     expect("reason" in returnRequest(s, picked, { reason: null }).lines[0]).toBe(false);
+  });
+  it("a piece with no shelf choice of its own sends none, so the whole return's choice applies", () => {
+    const s = sale();
+    const req = returnRequest(s, setQty(returnableLines(s), "v1", 1), { restock: true });
+    expect("restock" in req.lines[0]).toBe(false);
+  });
+  it("a piece with its own shelf choice sends it on its line, including an explicit no", () => {
+    const s = sale();
+    const picked = setLineRestock(setQty(returnableLines(s), "v1", 1), "v1", false);
+    expect(returnRequest(s, picked, { restock: true }).lines[0].restock).toBe(false);
+    expect(returnRequest(s, setLineRestock(picked, "v1", true), {}).lines[0].restock).toBe(true);
+  });
+  it("clearing a piece's choice sends nothing for it again", () => {
+    const s = sale();
+    const picked = setLineRestock(setLineRestock(setQty(returnableLines(s), "v1", 1), "v1", false), "v1", null);
+    expect("restock" in returnRequest(s, picked, {}).lines[0]).toBe(false);
   });
   it("refuses an empty return", () => {
     expect(() => returnRequest(sale(), returnableLines(sale()), { restock: false })).toThrow();
@@ -174,4 +190,16 @@ describe("estimateRefundMinor with per-item discounts (report example)", () => {
     const d = { order: { discount_total: "0.00" }, lines: [{ variant_id: "C", title: "C", quantity: 3, unit_price: "33.33", discount_pct: "0.00", returned_qty: 0 }] };
     expect(estimateRefund(d, pick(d, "C", 2))).toBe("66.66");
   });
+
+});
+
+describe("lineRestock", () => {
+  it("shows the piece's own choice, else the whole return's", () => {
+    expect(lineRestock({ restock: null }, true)).toBe(true);
+    expect(lineRestock({ restock: null }, false)).toBe(false);
+    expect(lineRestock({}, true)).toBe(true);
+    expect(lineRestock({ restock: false }, true)).toBe(false);
+    expect(lineRestock({ restock: true }, false)).toBe(true);
+  });
+
 });

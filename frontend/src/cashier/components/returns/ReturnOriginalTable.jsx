@@ -4,13 +4,14 @@ import QtyStepper from "@/cashier/components/exchanges/QtyStepper";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
+import { lineRestock } from "@/cashier/api/returnPlan";
 
 const HCELL = "border border-slate-700 bg-slate-800 px-2 py-1.5 text-[12px] text-slate-50";
 const CELL = "border border-border px-2 py-0.5";
 const MIN_ROWS = 3;
 
 // جدول الفاتورة الأصلية: المباع وما سبق استرجاعه والمتاح، مع عمود «إرجاع» لنقل القطعة إلى جدول المرتجع.
-export default function ReturnOriginalTable({ invoice, lines, onStart, onQty, onQtyStep, onCancel, totals, minRows = MIN_ROWS }) {
+export default function ReturnOriginalTable({ invoice, lines, onStart, onQty, onQtyStep, onCancel, onRestock, wholeRestock = true, totals, minRows = MIN_ROWS }) {
   const rows = Array.from({ length: Math.max(minRows, lines.length) }, (_, index) => lines[index] ?? null);
   const pickedCount = lines.filter((l) => l.returnQty > 0).length;
 
@@ -145,6 +146,19 @@ export default function ReturnOriginalTable({ invoice, lines, onStart, onQty, on
                           </Button>
                         </div>
                         <span className="num text-[10px] font-semibold text-rose-600">{fmtMoney(line.unitNet * line.returnQty)}</span>
+                        {onRestock && (
+                          // Each piece's own shelf decision: a jacket back on the rail, a torn shirt not.
+                          <label className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold text-foreground/80">
+                            <input
+                              type="checkbox"
+                              checked={lineRestock(line, wholeRestock)}
+                              onChange={(e) => onRestock(line.key, e.target.checked)}
+                              aria-label={`إرجاع ${line.name} للرف`}
+                              className="h-3 w-3 accent-[#F97316]"
+                            />
+                            للرف
+                          </label>
+                        )}
                       </div>
                     )}
                   </td>

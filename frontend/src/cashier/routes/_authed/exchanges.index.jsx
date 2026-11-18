@@ -18,7 +18,7 @@ import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
-import { estimateRefund, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
+import { estimateRefund, returnableLines, sendReturn, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
 import { differenceMinor, exchangeErrorMessage, exchangeRequest } from "@/cashier/api/exchangePlan";
 
@@ -95,7 +95,7 @@ function ExchangeScreen({ session }) {
   const canComplete = !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy;
 
   // A new draft (different lines / quantities) must never reuse the intent of an earlier attempt.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), newLines.map((l) => [l.variantId, l.qty]), restockChoice, reason]);
+  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty, l.restock]), newLines.map((l) => [l.variantId, l.qty]), restockChoice, reason]);
   useEffect(() => {
     if (intentFor.current !== fingerprint) {
       intentRef.current = null;
@@ -136,6 +136,7 @@ function ExchangeScreen({ session }) {
   }
   const start = (k) => setLines((p) => setQty(p, k, 1));
   const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
+  const setPieceRestock = (k, v) => setLines((p) => setLineRestock(p, k, v));
   const setLineQty = (k, v) => setLines((p) => setQty(p, k, Math.max(1, Number(v) || 1)));
   const step = (k, d) => setLines((p) => setQty(p, k, Math.max(1, (p.find((l) => l.variantId === k)?.returnQty ?? 1) + d)));
 
@@ -228,7 +229,7 @@ function ExchangeScreen({ session }) {
       {salesQuery.isError ? <p role="alert" className="text-xs font-semibold text-rose-600">تعذّر تحميل فواتير الوردية</p> : null}
       <div ref={gridRef} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 2xl:grid-cols-2 2xl:grid-rows-1">
         <div className="flex min-h-0 flex-col gap-1.5">
-          <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} totals={backTotals} minRows={fillRows} />
+          <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} onRestock={setPieceRestock} wholeRestock={restock} totals={backTotals} minRows={fillRows} />
           <ReturnTotalsBar totals={backTotals} />
         </div>
         <div className="flex min-h-0 flex-col gap-1.5">
@@ -254,7 +255,7 @@ function ExchangeScreen({ session }) {
             loading={newLines.length > 0 && quote.loading}
             error={quote.error}
             restock={restock}
-            onRestockChange={setRestock}
+            onRestockChange={(v) => { setRestock(v); setLines((p) => p.map((l) => ({ ...l, restock: null }))); }}
             reasons={policy?.reasons}
             reason={reason}
             onReasonChange={setReason}

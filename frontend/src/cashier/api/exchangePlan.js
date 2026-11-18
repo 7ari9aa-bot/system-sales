@@ -4,7 +4,7 @@
  * price with NO discount) and the value difference is only shown, never charged or refunded.
  */
 import { toMinor } from "./money";
-import { estimateRefundMinor } from "./returnPlan";
+import { estimateRefundMinor, wireLine } from "./returnPlan";
 
 /** difference = replacement total - estimated return value (cents). Replacement total is the backend quote. */
 export function differenceMinor(saleDetail, returnLines, newTotal) {
@@ -21,7 +21,7 @@ export function exchangeRequest(saleDetail, returnLines, newLines, { restock, re
   if (!newLines.length) throw new Error("اختر صنفًا بديلًا واحدًا على الأقل");
   return {
     orderId: saleDetail.order.id,
-    returnLines: back.map((l) => ({ variant_id: l.variantId, quantity: l.returnQty, ...(reason ? { reason } : {}) })),
+    returnLines: back.map((l) => wireLine(l, reason)),
     newLines: newLines.map((l) => ({ variant_id: l.variantId, quantity: l.qty })),
     ...(restock === undefined || restock === null ? {} : { restock: Boolean(restock) }),
   };

@@ -293,6 +293,9 @@ class ReturnLine(BaseModel):
     quantity: StrictInt = Field(ge=1, le=100000)
     # One of the shop's pos.return_reasons; checked against that list when the return is made.
     reason: str | None = Field(default=None, max_length=63)
+    # This piece's own shelf decision (a jacket back on the rail, a torn one not). None = the
+    # request's choice, else the shop's pos.return_restock_default.
+    restock: bool | None = None
 
 
 class ReturnRequest(BaseModel):
@@ -308,6 +311,7 @@ class ExchangeLine(BaseModel):
     variant_id: UUID
     quantity: StrictInt = Field(ge=1, le=100000)
     reason: str | None = Field(default=None, max_length=63)
+    restock: bool | None = None  # as on ReturnLine; only meaningful on the returned side
 
 
 class ExchangeRequest(BaseModel):

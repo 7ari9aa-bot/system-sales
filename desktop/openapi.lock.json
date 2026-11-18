@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 549,
-    "sha256": "012dcdc81d3923854884d7af28221f69f2686766e81789e698cdc6ffc0df4f15",
+    "sha256": "1c0e5f01d4b0c1aeb77425d8b6d9ff979e3200126bf593a5546767e06c015cf1",
     "typed_operations": 320
   },
   "spec": {
@@ -8060,6 +8060,17 @@
                 }
               ],
               "title": "Reason"
+            },
+            "restock": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restock"
             },
             "variant_id": {
               "format": "uuid",
@@ -16386,6 +16397,17 @@
                 }
               ],
               "title": "Reason"
+            },
+            "restock": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restock"
             },
             "variant_id": {
               "format": "uuid",

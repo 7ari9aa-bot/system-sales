@@ -16,7 +16,7 @@ import { fmtMoney } from "@/cashier/lib/format";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales } from "@/cashier/api/usePosSale";
-import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setQty, tableLine } from "@/cashier/api/returnPlan";
+import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
 
 const asInvoice = (d) => ({
   id: d.receipt.id,
@@ -82,7 +82,7 @@ function ReturnScreen({ session }) {
 
   // A return with other quantities (or the restock switch flipped) is another return: it must never
   // reuse the key of an earlier, failed attempt, or the server would replay that attempt's answer.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty]), restockChoice, reason]);
+  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty, l.restock]), restockChoice, reason]);
   useEffect(() => {
     if (intentFor.current !== fingerprint) {
       intentRef.current = null;
@@ -120,6 +120,7 @@ function ReturnScreen({ session }) {
   }
   const start = (k) => setLines((p) => setQty(p, k, 1));
   const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
+  const setPieceRestock = (k, v) => setLines((p) => setLineRestock(p, k, v));
   const setLineQty = (k, v) => setLines((p) => setQty(p, k, Math.max(1, Number(v) || 1)));
   const step = (k, d) => setLines((p) => setQty(p, k, Math.max(1, (p.find((l) => l.variantId === k)?.returnQty ?? 1) + d)));
 
@@ -182,12 +183,12 @@ function ReturnScreen({ session }) {
       {salesQuery.isError ? <p role="alert" className="text-xs font-semibold text-rose-600">تعذّر تحميل فواتير الوردية</p> : null}
       <div ref={gridRef} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-2 2xl:grid-cols-2 2xl:grid-rows-1">
         <div className="flex min-h-0 flex-col gap-1.5">
-          <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} totals={totals} minRows={fillRows} />
+          <ReturnOriginalTable invoice={invoice} lines={tableLines} onStart={start} onQty={setLineQty} onQtyStep={step} onCancel={cancelLine} onRestock={setPieceRestock} wholeRestock={restock} totals={totals} minRows={fillRows} />
           <ReturnTotalsBar totals={totals} />
         </div>
         <div className="flex min-h-0 flex-col gap-1.5">
           <ReturnItemsTable lines={pickedLines} totals={totals} onQty={setLineQty} onQtyStep={step} onRemove={(l) => cancelLine(l.key)} minRows={fillRows} />
-          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={setRestock} reasons={policy?.reasons} reason={reason} onReasonChange={setReason} />
+          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={(v) => { setRestock(v); setLines((p) => p.map((l) => ({ ...l, restock: null }))); }} reasons={policy?.reasons} reason={reason} onReasonChange={setReason} />
         </div>
       </div>
       <div ref={actionsRef}>
