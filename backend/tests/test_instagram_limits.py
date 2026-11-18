@@ -7,9 +7,9 @@ import pytest
 
 from app.core.circuit_breaker import reset_breakers
 from app.core.errors import ExternalProviderError
+from app.core.instagram_version import INSTAGRAM_API_VERSION
 from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
 from app.modules.conversations.gateway.instagram import InstagramAdapter, InstagramProviderError
-from app.core.instagram_version import INSTAGRAM_API_VERSION
 from app.modules.conversations.gateway.instagram_limits import (
     LIMIT,
     MAX_TEXT_BYTES,

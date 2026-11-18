@@ -188,7 +188,8 @@ def test_an_ai_or_automation_never_gets_the_human_agent_window() -> None:
 
 
 def test_after_7_days_even_a_person_needs_a_template() -> None:
-    d = MessagingPolicyService.evaluate(_conv("instagram", 24 * 7 + 1), sender_type="agent", now=NOW)
+    conv = _conv("instagram", 24 * 7 + 1)
+    d = MessagingPolicyService.evaluate(conv, sender_type="agent", now=NOW)
     assert not d.allowed and d.requires_template
 
 

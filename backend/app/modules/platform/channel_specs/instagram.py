@@ -17,7 +17,6 @@ from app.modules.platform.channel_specs.base import (
     required_text,
 )
 
-
 #: Verifying an account, sending and moderating comments all read the same version.
 INSTAGRAM_GRAPH_BASE = f"https://graph.facebook.com/{INSTAGRAM_API_VERSION}"
 

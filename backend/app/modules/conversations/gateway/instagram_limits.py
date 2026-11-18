@@ -188,7 +188,10 @@ def _numbers(error: Any, text: str) -> tuple[int | None, int | None]:
         m = _SUBCODE_IN_TEXT.search(text)
         subcode = int(m.group(1)) if m else None
     try:
-        return (int(code) if code is not None else None, int(subcode) if subcode is not None else None)
+        return (
+            int(code) if code is not None else None,
+            int(subcode) if subcode is not None else None,
+        )
     except (TypeError, ValueError):
         return None, None
 

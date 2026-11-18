@@ -18,16 +18,6 @@ from app.core.circuit_breaker import PROVIDER_INSTAGRAM, get_breaker
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError
 from app.core.instagram_version import INSTAGRAM_API_VERSION
-from app.modules.conversations.gateway.instagram_limits import (
-    MAX_QUICK_REPLIES,
-    QUICK_REPLY_TITLE_CHARS,
-    InstagramFailure,
-    InstagramLimitError,
-    check_media,
-    check_text,
-    classify_instagram_error,
-    media_kind,
-)
 from app.modules.conversations.gateway.base import (
     ChannelAdapter,
     InboundComment,
@@ -37,6 +27,15 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_meta_comment_changes,
     parse_provider_body,
+)
+from app.modules.conversations.gateway.instagram_limits import (
+    MAX_QUICK_REPLIES,
+    QUICK_REPLY_TITLE_CHARS,
+    InstagramFailure,
+    check_media,
+    check_text,
+    classify_instagram_error,
+    media_kind,
 )
 
 logger = logging.getLogger(__name__)
@@ -276,8 +275,10 @@ class InstagramAdapter(ChannelAdapter):
         and a shared post carry no free text, so only text and media are measured.
         """
         meta = message.meta or {}
-        if meta.get("reaction_to_provider_id") or meta.get("like_heart") or meta.get(
-            "share_media_id"
+        if (
+            meta.get("reaction_to_provider_id")
+            or meta.get("like_heart")
+            or meta.get("share_media_id")
         ):
             return
         if message.media_url:

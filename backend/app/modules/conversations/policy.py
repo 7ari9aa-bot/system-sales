@@ -213,9 +213,7 @@ class MessagingPolicyService:
         the safe default for a name the tenant never registered.
         """
         if not template_name:
-            return MessagingPolicyService.evaluate(
-                conversation, sender_type=sender_type, now=now
-            )
+            return MessagingPolicyService.evaluate(conversation, sender_type=sender_type, now=now)
 
         from sqlalchemy import select
 
