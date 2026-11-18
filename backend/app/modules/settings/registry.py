@@ -216,6 +216,8 @@ _reg(
         max_length=255,
         label_ar="الاسم القانوني",
         label_en="Legal Name",
+        description_ar="الاسم المسجّل رسمياً للمنشأة كما يظهر في الفواتير والمستندات الرسمية.",
+        description_en="The officially registered name, shown on invoices and legal documents.",
     )
 )
 _reg(
@@ -228,6 +230,8 @@ _reg(
         max_length=255,
         label_ar="الاسم التجاري",
         label_en="Trade Name",
+        description_ar="الاسم الذي يعرفه به العملاء إن اختلف عن الاسم القانوني.",
+        description_en="The name customers know you by, when it differs from the legal name.",
     )
 )
 _reg(
@@ -241,6 +245,8 @@ _reg(
         audit=True,
         label_ar="الرقم الضريبي",
         label_en="Tax ID",
+        description_ar="رقم التسجيل الضريبي للمنشأة.",
+        description_en="The business's tax registration number.",
     )
 )
 _reg(
@@ -253,6 +259,8 @@ _reg(
         max_length=63,
         label_ar="السجل التجاري",
         label_en="Commercial Register",
+        description_ar="رقم السجل التجاري للمنشأة.",
+        description_en="The business's commercial register number.",
     )
 )
 _reg(
@@ -266,6 +274,8 @@ _reg(
         branch_delegable=True,
         label_ar="رقم الهاتف",
         label_en="Phone",
+        description_ar="رقم هاتف المنشأة للتواصل.",
+        description_en="The business's contact phone number.",
     )
 )
 _reg(
@@ -279,6 +289,8 @@ _reg(
         branch_delegable=True,
         label_ar="البريد الإلكتروني",
         label_en="Email",
+        description_ar="البريد الإلكتروني الرسمي للمنشأة.",
+        description_en="The business's official email address.",
     )
 )
 _reg(
@@ -291,6 +303,8 @@ _reg(
         max_length=255,
         label_ar="الموقع الإلكتروني",
         label_en="Website",
+        description_ar="عنوان موقع المنشأة على الإنترنت.",
+        description_en="The business's website address.",
     )
 )
 _reg(
@@ -304,6 +318,8 @@ _reg(
         branch_delegable=True,
         label_ar="العنوان",
         label_en="Address Line 1",
+        description_ar="عنوان المنشأة: الشارع والمبنى.",
+        description_en="The business's street address.",
     )
 )
 _reg(
@@ -317,6 +333,8 @@ _reg(
         branch_delegable=True,
         label_ar="المدينة",
         label_en="City",
+        description_ar="المدينة التي تقع فيها المنشأة.",
+        description_en="The city where the business is located.",
     )
 )
 _reg(
@@ -330,6 +348,8 @@ _reg(
         branch_delegable=True,
         label_ar="الرمز البريدي",
         label_en="Postal Code",
+        description_ar="الرمز البريدي لعنوان المنشأة.",
+        description_en="The postal code of the business's address.",
     )
 )
 _reg(
@@ -342,6 +362,8 @@ _reg(
         allowed_values=("retail", "fnb", "services", "wholesale"),
         label_ar="نوع النشاط",
         label_en="Business Type",
+        description_ar="نوع النشاط، ويحدد الإعدادات التي تظهر لك: تجزئة، مطاعم، خدمات، أو جملة.",
+        description_en="The kind of business. It decides which settings you see.",
     )
 )
 
@@ -372,6 +394,8 @@ _reg(
         branch_delegable=True,
         label_ar="وسيلة التحصيل الافتراضية",
         label_en="Default Payment Method",
+        description_ar="وسيلة التحصيل المقترحة افتراضياً عند البيع.",
+        description_en="The payment method suggested by default at the till.",
     )
 )
 _reg(
@@ -401,6 +425,8 @@ _reg(
         branch_delegable=True,
         label_ar="تعليق الفاتورة",
         label_en="Allow Hold Cart",
+        description_ar="السماح بتعليق فاتورة وإكمالها لاحقاً.",
+        description_en="Lets the cashier park a cart and finish it later.",
     )
 )
 _reg(
@@ -427,6 +453,8 @@ _reg(
         branch_delegable=True,
         label_ar="رصيد بداية الوردية",
         label_en="Opening Float Required",
+        description_ar="إلزام إدخال رصيد الدرج عند بدء اليوم.",
+        description_en="Require the drawer's opening balance when the day starts.",
     )
 )
 _reg(
@@ -453,6 +481,8 @@ _reg(
         branch_delegable=True,
         label_ar="إلزام إيصال المرتجع",
         label_en="Return Requires Receipt",
+        description_ar="إلزام إحضار إيصال البيع عند المرتجع.",
+        description_en="Require the original sale receipt for a return.",
     )
 )
 _reg(
@@ -467,6 +497,8 @@ _reg(
         branch_delegable=True,
         label_ar="مهلة المرتجع (أيام)",
         label_en="Return Window (Days)",
+        description_ar="أقصى عدد أيام بعد البيع يُقبل فيها المرتجع.",
+        description_en="The most days after a sale that a return is still accepted.",
     )
 )
 _reg(
@@ -479,6 +511,8 @@ _reg(
         branch_delegable=True,
         label_ar="وسائل التحصيل المسموحة",
         label_en="Allowed Payment Methods",
+        description_ar="وسائل التحصيل التي تظهر في الكاشير.",
+        description_en="The payment methods offered at the till.",
     )
 )
 
@@ -497,6 +531,8 @@ _reg(
         scopes=(Scope.TENANT,),
         label_ar="حجز تلقائي للطلبات",
         label_en="Auto Reserve for Orders",
+        description_ar="حجز مخزون الطلب تلقائياً عند إنشائه.",
+        description_en="Reserve an order's stock automatically when it is created.",
     )
 )
 _reg(
@@ -513,6 +549,8 @@ _reg(
         max_value=43200,
         label_ar="مدة الحجز (دقائق)",
         label_en="Reservation TTL (Minutes)",
+        description_ar="المدة بالدقائق التي يُحجز فيها مخزون طلب غير مدفوع قبل أن يُفرج عنه.",
+        description_en="How many minutes an unpaid order holds its stock before it is released.",
     )
 )
 _reg(
@@ -525,6 +563,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="تفعيل FIFO",
         label_en="Enable FIFO Costing",
+        description_ar="تقييم تكلفة البضاعة المباعة بالأقدم دخولاً أولاً (FIFO).",
+        description_en="Value cost of goods sold oldest-first (FIFO).",
     )
 )
 _reg(
@@ -538,6 +578,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="تفعيل مواقع التخزين",
         label_en="Track Warehouse Locations",
+        description_ar="تتبّع مكان كل صنف داخل المستودع (رف، ممر، صندوق).",
+        description_en="Track where each item sits inside a warehouse (shelf, aisle, bin).",
     )
 )
 _reg(
@@ -566,6 +608,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="اعتماد الجرد",
         label_en="Stocktake Requires Approval",
+        description_ar="لا يُطبَّق الجرد على الأرصدة إلا بعد اعتماد مسؤول.",
+        description_en="A stocktake changes balances only after a manager approves it.",
     )
 )
 _reg(
@@ -581,6 +625,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="مخزون الأمان الافتراضي",
         label_en="Default Safety Stock",
+        description_ar="مخزون الأمان المعتمد لصنف لم يُحدَّد له مخزون أمان خاص.",
+        description_en="The safety buffer used for an item that states none of its own.",
     )
 )
 
@@ -596,6 +642,8 @@ _reg(
         audit=True,
         label_ar="اعتماد أمر الشراء",
         label_en="PO Requires Approval",
+        description_ar="إلزام اعتماد أمر الشراء قبل إرساله للمورد.",
+        description_en="Require a purchase order to be approved before it goes to the supplier.",
     )
 )
 _reg(
@@ -608,6 +656,8 @@ _reg(
         min_value=0,
         label_ar="حد مبلغ الاعتماد",
         label_en="Approval Threshold Amount",
+        description_ar="المبلغ الذي يلزم اعتماد أمر الشراء إذا تجاوزه.",
+        description_en="The amount above which a purchase order needs approval.",
     )
 )
 _reg(
@@ -619,6 +669,8 @@ _reg(
         scopes=(Scope.TENANT,),
         label_ar="السماح بالاستلام الجزئي",
         label_en="Allow Partial Receipt",
+        description_ar="السماح باستلام جزء من كمية أمر الشراء، وإلا يلزم استلام المتبقي كاملاً.",
+        description_en="Allow receiving part of an order; if off, receive the full remainder.",
     )
 )
 _reg(
@@ -631,6 +683,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="السماح باستلام أكثر من المطلوب",
         label_en="Allow Over Receipt",
+        description_ar="السماح باستلام كمية أكبر من المطلوبة في أمر الشراء.",
+        description_en="Allow receiving more than the purchase order asked for.",
     )
 )
 _reg(
@@ -659,6 +713,8 @@ _reg(
         allowed_values=("create", "confirm"),
         label_ar="وقت حجز المخزون",
         label_en="Reserve Stock On",
+        description_ar="اللحظة التي يُحجز فيها مخزون الطلب: عند إنشائه أو عند تأكيده.",
+        description_en="When an order's stock is reserved: on creation or on confirmation.",
     )
 )
 _reg(
@@ -672,6 +728,8 @@ _reg(
         segments=("retail", "fnb", "wholesale"),
         label_ar="السماح بالطلب المسبق",
         label_en="Allow Backorder",
+        description_ar="قبول طلب صنف رصيده غير كافٍ على أن يُوفَّر لاحقاً.",
+        description_en="Accept an order for an item without enough stock, to be fulfilled later.",
     )
 )
 _reg(
@@ -684,6 +742,8 @@ _reg(
         allowed_values=("confirm", "ship", "deliver"),
         label_ar="وقت خصم مخزون الطلبات",
         label_en="Deduct Stock On (Orders)",
+        description_ar="اللحظة التي يُخصم فيها مخزون الطلب: التأكيد أو الشحن أو التسليم.",
+        description_en="When an order's stock is deducted: on confirmation, shipping or delivery.",
     )
 )
 
@@ -700,6 +760,8 @@ _reg(
         branch_delegable=True,
         label_ar="عرض الورق",
         label_en="Paper Width",
+        description_ar="عرض ورق الطباعة: 58 أو 80 مم أو A4.",
+        description_en="Receipt paper width: 58mm, 80mm or A4.",
     )
 )
 _reg(
@@ -712,6 +774,8 @@ _reg(
         branch_delegable=True,
         label_ar="إظهار الشعار",
         label_en="Show Logo",
+        description_ar="إظهار شعار المنشأة أعلى الإيصال.",
+        description_en="Show the business logo at the top of the receipt.",
     )
 )
 _reg(
@@ -725,6 +789,8 @@ _reg(
         branch_delegable=True,
         label_ar="نص أعلى الإيصال",
         label_en="Receipt Header Text",
+        description_ar="نص حر يُطبع أعلى الإيصال.",
+        description_en="Free text printed at the top of the receipt.",
     )
 )
 _reg(
@@ -738,6 +804,8 @@ _reg(
         branch_delegable=True,
         label_ar="نص أسفل الإيصال",
         label_en="Receipt Footer Text",
+        description_ar="نص حر يُطبع أسفل الإيصال، مثل شكر العميل أو سياسة الاستبدال.",
+        description_en="Free text printed at the bottom of the receipt (thanks, return policy).",
     )
 )
 _reg(
@@ -752,6 +820,8 @@ _reg(
         branch_delegable=True,
         label_ar="عدد نسخ الطباعة",
         label_en="Print Copies",
+        description_ar="عدد النسخ المطبوعة من كل إيصال.",
+        description_en="How many copies of each receipt are printed.",
     )
 )
 _reg(
@@ -763,6 +833,8 @@ _reg(
         scopes=(Scope.TENANT,),
         label_ar="تفصيل الضريبة على الإيصال",
         label_en="Show Tax Detail",
+        description_ar="إظهار تفصيل الضريبة في الإيصال.",
+        description_en="Show the tax breakdown on the receipt.",
     )
 )
 _reg(
@@ -775,6 +847,8 @@ _reg(
         allowed_values=("code128", "ean13", "upc_a", "qr"),
         label_ar="صيغة الباركود",
         label_en="Barcode Format",
+        description_ar="صيغة الباركود المطبوع على الإيصال والملصقات.",
+        description_en="The barcode format printed on receipts and labels.",
     )
 )
 _reg(
@@ -788,6 +862,8 @@ _reg(
         branch_delegable=True,
         label_ar="بادئة رقم الفاتورة",
         label_en="Invoice Number Prefix",
+        description_ar="حروف تسبق رقم الفاتورة، مثل INV.",
+        description_en="Letters placed before the invoice number, such as INV.",
     )
 )
 
@@ -803,6 +879,8 @@ _reg(
         branch_delegable=True,
         label_ar="تنبيه نقص المخزون",
         label_en="Low Stock Alert",
+        description_ar="تنبيهك عندما ينخفض رصيد صنف عن حده الأدنى.",
+        description_en="Alert you when an item's stock falls below its minimum.",
     )
 )
 _reg(
@@ -815,6 +893,8 @@ _reg(
         branch_delegable=True,
         label_ar="تنبيه طلب جديد",
         label_en="New Order Notification",
+        description_ar="تنبيهك عند وصول طلب جديد.",
+        description_en="Alert you when a new order arrives.",
     )
 )
 

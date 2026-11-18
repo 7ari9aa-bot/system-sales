@@ -76,3 +76,21 @@ def test_the_default_for_an_unfiltered_call_is_unchanged() -> None:
 def test_a_definition_defaults_to_every_segment() -> None:
     d = SettingDef(key="x.y", domain="x", type=SettingType.BOOL, default=True)
     assert d.segments == ()
+
+
+def test_no_two_settings_share_a_description() -> None:
+    """A copy-pasted description tells the merchant the wrong thing about a setting."""
+    seen: dict[str, str] = {}
+    for d in list_definitions():
+        for text in (d.description_en, d.description_ar):
+            if not text:
+                continue
+            assert text not in seen, f"{d.key} repeats the description of {seen[text]}: {text!r}"
+            seen[text] = d.key
+
+
+def test_every_setting_explains_itself_in_both_languages() -> None:
+    """The settings screen shows the description; a blank one leaves only a bare name."""
+    for d in list_definitions():
+        assert d.label_ar and d.label_en, f"{d.key} is missing a label"
+        assert d.description_ar and d.description_en, f"{d.key} is missing a description"
