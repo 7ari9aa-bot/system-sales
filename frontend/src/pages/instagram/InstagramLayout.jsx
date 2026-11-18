@@ -79,14 +79,16 @@ function InstagramShell() {
   // Like instagram.com, the rail folds to icons while a chat is open.
   const compact = pathname.startsWith("/instagram/direct");
   return (
-    <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 overflow-hidden bg-white text-black" style={{ fontFamily: IG.font }}>
-      <Rail compact={compact} onCreate={!demoAccount && actions.publish ? () => setCreating(true) : null} />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {error && <div role="alert" className="border-b px-4 py-2 text-[13px]" style={{ borderColor: IG.border, color: IG.error }}>{error}</div>}
-        <div className="min-h-0 flex-1"><Outlet /></div>
-      </main>
-      {/* The same channel strip as the inbox, so every other channel stays one tap away. */}
-      <aside className="z-10 flex min-h-0 min-w-0 shrink-0 flex-col items-center border-s border-border/80 bg-card" aria-label={t("inbox.title")}>
+    <div dir="ltr" className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_52px] overflow-hidden">
+      <div dir={isArabic ? "rtl" : "ltr"} data-testid="instagram-app" data-instagram-app="" className="flex h-full min-h-0 min-w-0 overflow-hidden bg-white text-black" style={{ fontFamily: IG.font }}>
+        <Rail compact={compact} onCreate={!demoAccount && actions.publish ? () => setCreating(true) : null} />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {error && <div role="alert" className="border-b px-4 py-2 text-[13px]" style={{ borderColor: IG.border, color: IG.error }}>{error}</div>}
+          <div className="min-h-0 flex-1"><Outlet /></div>
+        </main>
+      </div>
+      {/* Same channel strip as the inbox, pinned to the physical right edge whatever the language direction. */}
+      <aside className="z-10 flex min-h-0 min-w-0 flex-col items-center border-l border-border/80 bg-card" aria-label={t("inbox.title")}>
         <ChannelSwitcher channels={channels} active={activeChannel} unreadByChannel={unreadByChannel} onSelect={setActiveChannel} />
       </aside>
       {creating && actions.publish && <InstagramNewPostDialog lang={lang} onPublish={actions.publish} onClose={() => setCreating(false)} />}

@@ -187,6 +187,13 @@ test("the channel strip stays on every Instagram page, and the app sidebar is no
     await expect(strip.getByRole("button", { name: /whatsapp/i })).toBeVisible({ timeout: 15_000 });
     await expect(strip.getByRole("button", { name: /instagram/i })).toHaveAttribute("aria-pressed", "true");
   }
+  for (const lang of ["ar", "en"]) {
+    await page.addInitScript((l) => localStorage.setItem("lang", l), lang);
+    await page.goto("/instagram/direct/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const box = await page.locator("aside nav").last().boundingBox();
+    const viewport = page.viewportSize();
+    expect(box.x + box.width).toBeGreaterThan(viewport.width - 4);
+  }
   const sidebar = page.locator("aside").first();
   expect((await sidebar.boundingBox()).width).toBeGreaterThan(200);
 });
