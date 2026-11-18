@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 548,
-    "sha256": "9d3339619a2f63a65ce6676aa704d4a8f6c6660b341c46b6225c45053f8de767",
+    "sha256": "167e00fd2697d090059a2427053dbb3d8b8fcb9676992f4055df7db4ac9fb6ac",
     "typed_operations": 320
   },
   "spec": {
@@ -18335,6 +18335,14 @@
                 "type": "string"
               },
               "title": "Scopes",
+              "type": "array"
+            },
+            "segments": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Segments",
               "type": "array"
             },
             "type": {
@@ -74119,7 +74127,7 @@
       },
       "/api/v1/settings/definitions": {
         "get": {
-          "description": "List setting metadata from the registry, optionally filtered by domain.",
+          "description": "List setting metadata, optionally for one domain and/or one business segment.",
           "operationId": "list_setting_definitions_api_v1_settings_definitions_get",
           "parameters": [
             {
@@ -74136,6 +74144,22 @@
                   }
                 ],
                 "title": "Domain"
+              }
+            },
+            {
+              "in": "query",
+              "name": "segment",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Segment"
               }
             },
             {

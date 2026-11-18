@@ -1,0 +1,78 @@
+"""Business segments: each kind of shop sees the settings that mean something to it.
+
+The platform serves retail, food and beverage, services and wholesale. A setting names the segments
+it applies to; naming none means everyone. Narrowing only changes what the settings screen lists,
+never what a key resolves to, so code that reads a setting never has to know the segment.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.modules.settings.registry import (
+    SEGMENTS,
+    SettingDef,
+    SettingType,
+    get_definition,
+    list_definitions,
+)
+
+
+def test_every_segment_a_setting_names_is_a_known_one() -> None:
+    for d in list_definitions():
+        assert set(d.segments) <= set(SEGMENTS), f"{d.key} names an unknown segment: {d.segments}"
+
+
+def test_business_type_choices_are_exactly_the_segments() -> None:
+    """The segment list and the ``business.type`` choices must never drift apart."""
+    assert set(get_definition("business.type").allowed_values or ()) == set(SEGMENTS)
+
+
+def test_no_segment_is_left_with_nothing_to_configure() -> None:
+    for seg in SEGMENTS:
+        assert list_definitions(segment=seg), f"segment {seg} sees no settings at all"
+
+
+def test_a_setting_naming_no_segment_is_shown_to_every_segment() -> None:
+    shared = get_definition("pos.max_discount_pct")
+    assert shared.segments == ()
+    for seg in SEGMENTS:
+        assert shared in list_definitions(segment=seg)
+
+
+def test_services_do_not_see_shelf_stock_settings() -> None:
+    services = {d.key for d in list_definitions(segment="services")}
+    assert "inventory.fifo_enabled" not in services
+    assert "orders.allow_backorder" not in services
+    assert "purchasing.allow_over_receipt" not in services
+    # ...but still see what any business has: identity, printing, notifications.
+    assert {"business.legal_name", "print.paper_width", "notifications.order_received"} <= services
+
+
+@pytest.mark.parametrize("seg", ["retail", "fnb", "wholesale"])
+def test_goods_segments_see_the_shelf_stock_settings(seg: str) -> None:
+    keys = {d.key for d in list_definitions(segment=seg)}
+    assert {"inventory.fifo_enabled", "orders.allow_backorder"} <= keys
+
+
+def test_segment_and_domain_filters_combine() -> None:
+    services = {d.key for d in list_definitions(domain="inventory", segment="services")}
+    retail = {d.key for d in list_definitions(domain="inventory", segment="retail")}
+    assert services < retail  # services see strictly fewer inventory keys, never more
+    assert "inventory.fifo_enabled" in retail - services
+
+
+def test_a_hidden_setting_still_resolves_to_its_default() -> None:
+    """Hiding a key from a segment's screen must not make it unreadable to the code."""
+    hidden = get_definition("inventory.fifo_enabled")
+    assert "services" not in hidden.segments
+    assert hidden.default is True
+
+
+def test_the_default_for_an_unfiltered_call_is_unchanged() -> None:
+    assert len(list_definitions()) == len({d.key for d in list_definitions()})
+
+
+def test_a_definition_defaults_to_every_segment() -> None:
+    d = SettingDef(key="x.y", domain="x", type=SettingType.BOOL, default=True)
+    assert d.segments == ()

@@ -11,10 +11,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.modules.errors import NotFoundError, PermissionDeniedError
+from app.modules.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.presets import PRESETS
 from app.modules.settings.registry import (
+    SEGMENTS,
     Scope,
     SettingDef,
     get_definition,
@@ -74,6 +75,7 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         permission=d.permission,
         audit=d.audit,
         enforced=d.enforced,
+        segments=list(d.segments),
         label_ar=d.label_ar,
         label_en=d.label_en,
         description_ar=d.description_ar,
@@ -102,9 +104,12 @@ def _resolved_to_out(r: ResolvedSetting) -> ResolvedSettingOut:
 async def list_setting_definitions(
     ctx: SettingsReadCtx,
     domain: str | None = None,
+    segment: str | None = None,
 ) -> list[SettingDefOut]:
-    """List setting metadata from the registry, optionally filtered by domain."""
-    defs = list_definitions(domain=domain)
+    """List setting metadata, optionally for one domain and/or one business segment."""
+    if segment is not None and segment not in SEGMENTS:
+        raise ValidationError(f"unknown segment {segment!r}; expected one of {list(SEGMENTS)}")
+    defs = list_definitions(domain=domain, segment=segment)
     return [_def_to_out(d) for d in defs]
 
 

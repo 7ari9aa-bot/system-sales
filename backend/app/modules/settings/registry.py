@@ -43,6 +43,12 @@ class Scope(enum.StrEnum):
     USER = "user"
 
 
+# The business segments (``business.type``) a setting can belong to. The platform serves many kinds
+# of shop and each sees only the settings that mean something to it: a restaurant has no use for
+# FIFO costing of shelf stock, a services business no use for a till's return window. ``()`` on a
+# definition means "every segment", so a key is shared until someone narrows it on purpose.
+SEGMENTS: tuple[str, ...] = ("retail", "fnb", "services", "wholesale")
+
 # The inheritance chain: each scope inherits from its parent.
 # Branches inherit from tenant, warehouses from branch, etc.
 SCOPE_PARENT: dict[Scope, Scope | None] = {
@@ -98,6 +104,10 @@ class SettingDef:
     # Money rules, tax identity and anything that changes how stock is valued stay owner-only.
     branch_delegable: bool = False
     audit: bool = False
+    # Which business segments this setting applies to; () = all of them. Only narrows what the
+    # settings screen shows: a hidden key still resolves to its default, so code that reads it
+    # never has to know the segment.
+    segments: tuple[str, ...] = ()
     label_ar: str = ""
     label_en: str = ""
     description_ar: str = ""
@@ -509,6 +519,7 @@ _reg(
         type=SettingType.BOOL,
         default=True,
         scopes=(Scope.TENANT,),
+        segments=("retail", "fnb", "wholesale"),
         label_ar="تفعيل FIFO",
         label_en="Enable FIFO Costing",
     )
@@ -521,6 +532,7 @@ _reg(
         default=False,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
         branch_delegable=True,
+        segments=("retail", "fnb", "wholesale"),
         label_ar="تفعيل مواقع التخزين",
         label_en="Track Warehouse Locations",
     )
@@ -533,6 +545,7 @@ _reg(
         default=False,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
         branch_delegable=True,
+        segments=("retail", "fnb", "wholesale"),
         label_ar="الفحص عند الاستلام",
         label_en="Quality Check on Receipt",
         description_ar="هل البضاعة تحتاج فحص قبل دخول المخزون القابل للبيع؟",
@@ -547,6 +560,7 @@ _reg(
         default=True,
         scopes=(Scope.TENANT, Scope.WAREHOUSE),
         branch_delegable=True,
+        segments=("retail", "fnb", "wholesale"),
         label_ar="اعتماد الجرد",
         label_en="Stocktake Requires Approval",
     )
@@ -561,6 +575,7 @@ _reg(
         min_value=0,
         max_value=1000000,
         branch_delegable=True,
+        segments=("retail", "fnb", "wholesale"),
         label_ar="مخزون الأمان الافتراضي",
         label_en="Default Safety Stock",
     )
@@ -610,6 +625,7 @@ _reg(
         type=SettingType.BOOL,
         default=False,
         scopes=(Scope.TENANT,),
+        segments=("retail", "fnb", "wholesale"),
         label_ar="السماح باستلام أكثر من المطلوب",
         label_en="Allow Over Receipt",
     )
@@ -650,6 +666,7 @@ _reg(
         default=False,
         scopes=(Scope.TENANT, Scope.CHANNEL),
         branch_delegable=True,
+        segments=("retail", "fnb", "wholesale"),
         label_ar="السماح بالطلب المسبق",
         label_en="Allow Backorder",
     )
@@ -813,11 +830,17 @@ def get_definition(key: str) -> SettingDef:
         raise KeyError(f"Unknown setting key: {key!r}") from None
 
 
-def list_definitions(*, domain: str | None = None) -> list[SettingDef]:
-    """Return all definitions, optionally filtered by domain."""
-    if domain is None:
-        return list(_DEFINITIONS)
-    return [d for d in _DEFINITIONS if d.domain == domain]
+def list_definitions(*, domain: str | None = None, segment: str | None = None) -> list[SettingDef]:
+    """Return all definitions, optionally for one domain and/or one business segment.
+
+    A segment keeps the keys that name it AND every key that names none (those apply to everyone).
+    """
+    result = list(_DEFINITIONS)
+    if domain is not None:
+        result = [d for d in result if d.domain == domain]
+    if segment is not None:
+        result = [d for d in result if not d.segments or segment in d.segments]
+    return result
 
 
 def domains() -> list[str]:

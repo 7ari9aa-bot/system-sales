@@ -24,6 +24,8 @@ class SettingDefOut(BaseModel):
     audit: bool
     # False = stored and shown, but nothing reads it yet: changing it changes no behaviour.
     enforced: bool
+    # Business segments this applies to; empty = every segment.
+    segments: list[str] = []
     label_ar: str
     label_en: str
     description_ar: str
