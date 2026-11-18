@@ -12,6 +12,7 @@ import InstagramPostsWorkspace from "@/components/inbox/InstagramPostsWorkspace"
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
 import { useInstagramPosts } from "@/hooks/useInstagramPosts";
+import { useProfileBackfill } from "@/hooks/useProfileBackfill";
 import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/lib/inboxSend";
 import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
@@ -86,7 +87,12 @@ function toConversation(row, channel, t) {
       : status === "closed"
         ? "resolved"
         : "waiting";
-  const customer = row.customer_name || row.customer_phone || row.customer_id || "—";
+  // Instagram names a customer only by a number until the profile is read: a real name wins,
+  // then the @handle, and the bare number is the last resort.
+  const bareNumber = /^\d{8,}$/.test(String(row.customer_name || "").trim());
+  const handle = row.customer_handle ? `@${String(row.customer_handle).replace(/^@/, "")}` : "";
+  const customer =
+    (!bareNumber && row.customer_name) || handle || row.customer_name || row.customer_phone || row.customer_id || "—";
   return {
     id: row.id,
     customer,
@@ -105,6 +111,8 @@ function toConversation(row, channel, t) {
     lastAt: row.last_message_at || null,
     lastCustomerMessageAt: row.last_customer_message_at || null,
     phone: row.customer_phone || "",
+    handle,
+    needsProfile: row.channel === "instagram" && (bareNumber || !row.customer_avatar_url),
     lastDirection: row.last_message_direction || null,
     lastContentType: row.last_message_content_type || null,
     lastStatus: row.last_message_status || null,
@@ -381,6 +389,7 @@ export default function Inbox() {
   const isInstagram = activeChannel === "instagram";
   // Real posts and comments for a real account; the demo account keeps its local sample data.
   const igLive = useInstagramPosts({ enabled: isInstagram && !demoAccount, lang });
+  useProfileBackfill({ rows: convMap.instagram, enabled: isInstagram && !demoAccount, reload: reloadInbox });
   const allConversations = convMap[activeChannel] || [];
   const approvalsByConversation = useMemo(() => {
     const map = new Map();
