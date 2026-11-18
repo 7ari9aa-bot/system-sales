@@ -222,7 +222,18 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # no cycle (imports reads identity, nothing in identity reads imports) and the module's other
 # files add NO cross-module import: the shop-state lookup is raw SQL (imports/lookup.py) and
 # the ledger write goes through the worker, outside this counter's scan.
-# 235 -> 236 on 2026-11-16: imports module imports identity.deps and catalog.
+# 235 -> 237 on 2026-11-18. One of the two is a correction, one is a deliberate edge:
+#  * +1 CORRECTION: main already measured 236 (the 2026-11-01 inbox -> platform.services edge
+#    above was never added to this number), so this test was failing on main before this branch.
+#  * +1 DELIBERATE: conversations.customer_profile -> customers.service (function scope, through
+#    one `_customers()` accessor). Reading and updating a customer's Instagram identity belongs to
+#    CustomerService (it already owns channel identities); the profile enricher used to import
+#    the customers TABLES at module scope (3 sites: Customer, CustomerIdentity x2), which this
+#    branch replaced with two service methods (channel_identity, get_for_tenant). The edge adds
+#    no cycle (conversations already imports customers.service in ConversationService).
+# Measured with the counter in this file, not guessed.
+# 237 -> 240 on 2026-11-18 (settings branch, measured on top of main's 237): +3 deliberate edges.
+# settings router -> identity.deps (permission gate); then:
 # Bumped to 237 when app/modules/settings was introduced (settings router -> identity.deps).
 # 237 -> 238 on 2026-11-18, ONE deliberate edge: pos -> settings.service (SettingsService), in
 # pos/service.py::_discount_ceiling. The discount ceiling a till enforces falls back to the
@@ -234,7 +245,7 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # `inventory.reserve_ttl_minutes` (default 15, the old constant). Both places that stamp an
 # expiry (order create, saga reversal) read it through this one function. settings imports
 # nothing from orders, so the edge adds no cycle.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 239
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 240
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

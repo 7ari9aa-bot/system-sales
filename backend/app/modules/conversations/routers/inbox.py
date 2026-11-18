@@ -53,6 +53,11 @@ async def _sendable_channels(ctx: TenantContext) -> set[str] | None:
     )
 
 
+async def _channel_config(ctx: TenantContext, provider: str) -> dict | None:
+    """The tenant's saved credentials for one connected channel (None when not connected)."""
+    return await _channel_access.channel_credentials_config(ctx.session, ctx.tenant_id, provider)
+
+
 async def _ensure_channel_access(ctx: TenantContext, conversation) -> None:
     allowed = await _allowed_channels(ctx)
     if allowed is not None and conversation.channel not in allowed:
@@ -265,6 +270,7 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 # The name an agent's document was sent under (None for inbound media).
                 "filename": None if m.deleted else (m.provider_metadata or {}).get("filename"),
                 "content_type": m.content_type,
+                "card": None if m.deleted else _present_card(m),
                 "status": m.status,
                 "edited": bool(m.edited),
                 "deleted": bool(m.deleted),
@@ -276,6 +282,35 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
             }
         )
     return items
+
+
+_CARD_KEYS = ("share", "story_reply", "story_mention")
+
+
+def _present_card(m) -> dict | None:
+    """The shared post, the story someone replied to, or the story that mentioned us.
+
+    Instagram sends these as links, not files. Only the three known shapes leave here, with a
+    web link (https) and a short title: the raw webhook body never reaches the browser.
+    """
+    payload = m.payload if isinstance(m.payload, dict) else {}
+    raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
+    ig = raw.get("_ig") if isinstance(raw.get("_ig"), dict) else {}
+    for key in _CARD_KEYS:
+        data = ig.get(key)
+        if isinstance(
+            data, str
+        ):  # a reply-to-story arrives as {"story": {"url": ...}} or a bare url
+            data = {"url": data}
+        if not isinstance(data, dict):
+            continue
+        url = data.get("url")
+        url = url if isinstance(url, str) and url.startswith("https://") else None
+        title = data.get("title")
+        title = title[:200] if isinstance(title, str) and title.strip() else None
+        kind = data.get("kind") if key == "share" and isinstance(data.get("kind"), str) else key
+        return {"type": key, "kind": kind, "url": url, "title": title}
+    return None
 
 
 def _provider_order(m) -> tuple:
@@ -613,7 +648,9 @@ async def send_read_signal(
     body: ReadSignalRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    """Show the customer the blue ticks (and, while we type, "typing…") on WhatsApp.
+    """Show the customer we read their chat (blue ticks, Seen) and, while we type, "typing…".
+
+    WhatsApp and Instagram.
 
     This is separate from ``/read``, which only clears OUR unread badge. It needs
     the same rights as sending, because the customer sees it as the business acting.
@@ -630,10 +667,40 @@ async def send_read_signal(
         conversation,
         typing=body.typing,
         load_channel_config=lambda: _channel_access.channel_credentials_config(
-            ctx.session, ctx.tenant_id, "whatsapp"
+            ctx.session, ctx.tenant_id, conversation.channel
         ),
     )
     return {"sent": result.sent, "skipped": result.skipped}
+
+
+@router.post("/conversations/{conversation_id}/refresh-profile")
+async def refresh_customer_profile(
+    conversation_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """Learn who an Instagram customer is (name, @handle, photo) when the chat does not show it yet.
+
+    Meant to be called in the background when a chat row is a bare number or has no photo. It is
+    rate-limited by what is already known (a week after a success, six hours after a refusal),
+    never raises for a refusal, and does not touch the webhook or the message pipeline.
+    """
+    from app.modules.conversations.customer_profile import CustomerProfileService
+
+    conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
+    await _ensure_channel_access(ctx, conversation)
+    if conversation.channel != "instagram" or conversation.customer_id is None:
+        return {"updated": False, "reason": "not_instagram"}
+    config = await _channel_access.channel_credentials_config(
+        ctx.session, ctx.tenant_id, "instagram"
+    )
+    if not config or not config.get("api_key"):
+        return {"updated": False, "reason": "not_connected"}
+    updated = await CustomerProfileService.enrich_instagram_for(
+        ctx.session, ctx.tenant_id, conversation.customer_id, config
+    )
+    if updated is None:
+        return {"updated": False, "reason": "no_customer"}
+    return {"updated": updated}
 
 
 @router.post("/conversations/messages/reconcile")

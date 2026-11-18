@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   Paperclip,
+  ImageIcon,
   Smile,
   Mic,
   MoreVertical,
@@ -36,6 +37,7 @@ import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { InstagramBubble } from "./instagram/InstagramBubble";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
 import { api } from "@/lib/api";
 import { readSignalBody, shouldSignalTyping, supportsReadSignal } from "./whatsapp/readSignal";
@@ -118,20 +120,20 @@ export default function ChannelChat({
 
   const isApp = channel.theme === "app";
   const isWhatsApp = channel.id === "whatsapp";
+  const isInstagram = channel.id === "instagram";
 
-  // "typing…" on the customer's phone while an agent writes a WhatsApp reply. One
+  // "typing…" on the customer's phone while an agent writes a WhatsApp or Instagram reply. One
   // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
   // while there is text: it is a courtesy, so a failure is silent.
   const typingSentAtRef = useRef(null);
   useEffect(() => {
-    if (!isWhatsApp || !supportsReadSignal(conversation)) return;
+    if (!(isWhatsApp || isInstagram) || !supportsReadSignal(conversation)) return;
     if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
     typingSentAtRef.current = Date.now();
     api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});
-  }, [text, isWhatsApp, conversation?.id, conversation?.lastCustomerMessageAt]);
+  }, [text, isWhatsApp, isInstagram, conversation?.id, conversation?.lastCustomerMessageAt]);
   // A different chat starts its own 20s clock.
   useEffect(() => { typingSentAtRef.current = null; }, [conversation?.id]);
-  const isInstagram = channel.id === "instagram";
   const isMessenger = channel.id === "messenger";
   const isTelegram = channel.id === "telegram";
   const messengerTheme = MESSENGER_CHAT_THEMES.find((theme) => theme.id === messengerThemeId) || MESSENGER_CHAT_THEMES[0];
@@ -156,6 +158,13 @@ export default function ChannelChat({
   const visibleMessages = (isWhatsApp || isInstagram || isMessenger || isTelegram) && searchQuery.trim()
     ? allMessages.filter((message) => String(message.text || "").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
     : allMessages;
+  // Instagram marks only the newest message WE sent as "Seen"; a search never changes which one it is.
+  const lastSentId = (() => {
+    for (let i = allMessages.length - 1; i >= 0; i -= 1) {
+      if (allMessages[i].side === "out" && allMessages[i].senderType !== "system") return allMessages[i].id;
+    }
+    return null;
+  })();
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -472,8 +481,9 @@ export default function ChannelChat({
           return (
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
-                <div className="flex justify-center py-1.5" aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
-                  <span className={cn("rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isTelegram && !isMessenger && !isInstagram && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium", isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]")}>
+                <div className={cn("flex justify-center", isInstagram ? "py-3" : "py-1.5")} aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
+                  {/* Instagram prints the day as plain grey text, no pill and no shadow. */}
+                  <span className={cn(isInstagram ? "text-[12px] text-[#737373]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
                     {formatWhatsAppDay(m.createdAt, lang, t)}
                   </span>
                 </div>
@@ -491,6 +501,7 @@ export default function ChannelChat({
                 onReply={setReplyingTo}
                 onReact={onReact}
                 onOpenImage={setViewerId}
+                showSeen={isInstagram && m.status === "read" && m.id === lastSentId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -724,7 +735,7 @@ export default function ChannelChat({
                   title={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
                 >
-                  <Paperclip className="h-[19px] w-[19px]" />
+                  <ImageIcon className="h-[19px] w-[19px]" />
                 </button>
                 <button
                   type="button"
@@ -879,7 +890,7 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
-      {viewerId && isWhatsApp && (
+      {viewerId && (isWhatsApp || isInstagram) && (
         <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
       )}
     </div>
@@ -887,7 +898,7 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
+function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -956,6 +967,10 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
       >{media}</WhatsAppBubble>;
   }
 
+  if (_isInstagram) {
+    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} />;
+  }
+
   if (isTelegram) {
     return (
       <div className={cn("flex", out ? "justify-end" : "justify-start")}>
@@ -985,7 +1000,7 @@ function Bubble({ m, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMes
   return (
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div
-        className={cn("max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%]", out ? "rounded-br-sm" : "rounded-bl-sm")}
+        className={cn("max-w-[82%] px-3.5 py-2 text-[14px] leading-[1.45] sm:max-w-[76%]", _isInstagram ? "rounded-[12px]" : cn("rounded-[18px]", out ? "rounded-br-sm" : "rounded-bl-sm"))}
         style={{ background: out ? th?.out || "#0084ff" : th?.in || "#f0f0f0", color: out ? th?.outText || "#fff" : th?.inText || "#111" }}
       >
         {isAudio ? (

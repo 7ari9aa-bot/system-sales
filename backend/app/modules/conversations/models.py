@@ -463,6 +463,15 @@ class SocialComment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )
+    # Moderation. A page reply is the store answering in public (it is also a row
+    # here, so the thread reads in order); the three timestamps record what the
+    # merchant did, and `moderated_by` who did it.
+    username: Mapped[str | None] = mapped_column(String(255))
+    is_page_reply: Mapped[bool] = mapped_column(default=False, server_default="false")
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    private_replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    moderated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
     __table_args__ = (
         UniqueConstraint(
@@ -473,4 +482,38 @@ class SocialComment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
         ),
         Index("ix_social_comments_tenant_platform_time", "tenant_id", "platform", "commented_at"),
         Index("ix_social_comments_tenant_post", "tenant_id", "post_id"),
+    )
+
+
+class SocialPost(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """One of the store's own posts on facebook/instagram.
+
+    Either synced from the platform (`publish_status` NULL) or published from
+    the inbox (draft -> publishing -> published | failed). Comments reference it
+    by (platform, post_id) so the thread always has its post beside it.
+    """
+
+    __tablename__ = "social_posts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    platform: Mapped[str] = mapped_column(String(31), nullable=False)
+    post_id: Mapped[str] = mapped_column(String(127), nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    media_url: Mapped[str | None] = mapped_column(Text)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text)
+    media_type: Mapped[str | None] = mapped_column(String(24))
+    permalink: Mapped[str | None] = mapped_column(Text)
+    like_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    comments_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    comments_enabled: Mapped[bool] = mapped_column(default=True, server_default="true")
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    publish_status: Mapped[str | None] = mapped_column(String(15))
+    publish_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "platform", "post_id", name="uq_social_posts_tenant_platform_post"
+        ),
+        Index("ix_social_posts_tenant_platform_time", "tenant_id", "platform", "posted_at"),
     )

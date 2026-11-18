@@ -1,13 +1,13 @@
-// Blue ticks and "typing…" on the CUSTOMER's phone.
+// Blue ticks / Seen and "typing…" on the CUSTOMER's phone (WhatsApp and Instagram).
 //
-// Opening a chat tells WhatsApp the customer's messages were read. Typing tells it
+// Opening a chat tells the channel the customer's messages were read. Typing tells it
 // we are writing a reply; Meta clears that after 25 seconds, so one signal per 20
 // seconds keeps it alive without a request per keystroke. Both are courtesies:
 // they never block the agent and a failure is silent.
 
 import { replyWindow } from "./replyWindow";
 
-/** Meta drops the indicator after 25s; refresh a little earlier than that. */
+/** Meta drops the indicator after 25s (WhatsApp and Instagram alike); refresh a little earlier. */
 export const TYPING_REFRESH_MS = 20000;
 
 /** True when a typing signal may go out right now. */
@@ -21,6 +21,9 @@ export function shouldSignalTyping({ text, lastSentAt, now = Date.now(), lastCus
 /** The request body for the server route. */
 export const readSignalBody = (typing) => ({ typing: Boolean(typing) });
 
-/** Only WhatsApp has these signals, and only for a chat that is really open. */
+const SIGNAL_CHANNELS = ["whatsapp", "instagram"];
+
+/** Only WhatsApp and Instagram have these signals, and only for a chat that is really open. */
 export const supportsReadSignal = (conversation) =>
-  Boolean(conversation?.id) && (conversation.channel === "whatsapp" || conversation.channelId === "whatsapp");
+  Boolean(conversation?.id) &&
+  (SIGNAL_CHANNELS.includes(conversation.channel) || SIGNAL_CHANNELS.includes(conversation.channelId));

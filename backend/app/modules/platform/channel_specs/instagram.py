@@ -7,8 +7,8 @@ from typing import Any
 import httpx
 
 from app.core.errors import ValidationError
+from app.core.instagram_version import INSTAGRAM_API_VERSION
 from app.modules.platform.channel_specs.base import (
-    GRAPH_BASE,
     ConnectionSpec,
     FieldSpec,
     VerifiedChannel,
@@ -16,6 +16,9 @@ from app.modules.platform.channel_specs.base import (
     numeric_id,
     required_text,
 )
+
+#: Verifying an account, sending and moderating comments all read the same version.
+INSTAGRAM_GRAPH_BASE = f"https://graph.facebook.com/{INSTAGRAM_API_VERSION}"
 
 
 class InstagramConnectionSpec(ConnectionSpec):
@@ -56,7 +59,7 @@ class InstagramConnectionSpec(ConnectionSpec):
             data = await graph_get(
                 http,
                 provider_label="Instagram",
-                url=f"{GRAPH_BASE}/{account_id}",
+                url=f"{INSTAGRAM_GRAPH_BASE}/{account_id}",
                 token=token,
                 params={"fields": "id,username"},
             )

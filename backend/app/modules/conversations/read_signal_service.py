@@ -1,11 +1,13 @@
-"""Tell a WhatsApp customer we read their message, and that we are typing.
+"""Tell a WhatsApp or Instagram customer we read their message, and that we are typing.
 
-Both ride ONE Cloud API request (``status: read`` + ``typing_indicator``). They are
-courtesies: a failure here must never stop an agent from working, so the route
-reports it as ``sent: false`` instead of raising.
+On WhatsApp both ride ONE Cloud API request (``status: read`` + ``typing_indicator``).
+On Instagram they are two separate sender actions (``mark_seen`` and ``typing_on``), and
+they need no message id: Instagram marks the whole thread. They are courtesies: a
+failure here must never stop an agent from working, so the route reports it as
+``sent: false`` instead of raising.
 
 Rules, because a wrong signal is visible on the customer's phone:
-* WhatsApp only. Other channels have their own (or no) equivalent.
+* WhatsApp and Instagram only. Other channels have their own (or no) equivalent.
 * Only about the customer's NEWEST inbound message, and only one that came from
   the provider (it needs the provider's own id).
 * Only inside the customer-service window; outside it nothing can be answered.
@@ -90,10 +92,18 @@ class ReadSignalService:
         It is a loader and not a value so the credentials are read, and the read audited, only
         AFTER every check above that can stop the signal. A chat opened outside the 24h window
         must not leave a "credentials read" row behind."""
-        if conversation.channel != "whatsapp":
+        if conversation.channel not in ("whatsapp", "instagram"):
             return ReadSignalResult(False, "channel")
         if not MessagingPolicyService.evaluate(conversation).allowed:
             return ReadSignalResult(False, "window_closed")
+        if conversation.channel == "instagram":
+            return await ReadSignalService._send_instagram(
+                session,
+                tenant_id,
+                conversation,
+                typing=typing,
+                load_channel_config=load_channel_config,
+            )
         provider_id = await ReadSignalService.latest_inbound_provider_id(
             session, tenant_id, conversation.id
         )
@@ -115,3 +125,55 @@ class ReadSignalService:
             )
             return ReadSignalResult(False, "provider_error")
         return ReadSignalResult(True)
+
+    @staticmethod
+    async def _send_instagram(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        conversation,
+        *,
+        typing: bool,
+        load_channel_config: Callable[[], Awaitable[dict | None]] | None,
+    ) -> ReadSignalResult:
+        """Instagram: ``mark_seen`` when a chat is opened, ``typing_on`` while the agent writes.
+
+        Needs the customer's page-scoped id (what the thread is addressed by), not a message
+        id, but still only fires when the customer has written something we received.
+        """
+        if not await ReadSignalService.latest_inbound_provider_id(
+            session, tenant_id, conversation.id
+        ):
+            return ReadSignalResult(False, "no_message")
+        adapter = get_adapter("instagram")
+        if adapter is None or not hasattr(adapter, "send_sender_action"):
+            return ReadSignalResult(False, "unsupported")
+        channel_config = await load_channel_config() if load_channel_config else None
+        if channel_config is None:
+            return ReadSignalResult(False, "not_connected")
+        customer_ref = await ReadSignalService._customer_ref(session, tenant_id, conversation)
+        if not customer_ref:
+            return ReadSignalResult(False, "no_customer")
+        credentials = ProviderCredentials(config=channel_config)
+        try:
+            await adapter.send_sender_action(credentials, customer_ref, "mark_seen")
+            if typing:
+                await adapter.send_sender_action(credentials, customer_ref, "typing_on")
+        except Exception as exc:  # noqa: BLE001 - a courtesy signal never blocks the agent
+            logger.warning(
+                "instagram.read_signal_failed conversation=%s err=%s", conversation.id, exc
+            )
+            return ReadSignalResult(False, "provider_error")
+        return ReadSignalResult(True)
+
+    @staticmethod
+    async def _customer_ref(
+        session: AsyncSession, tenant_id: uuid.UUID, conversation
+    ) -> str | None:
+        """The Instagram-scoped id the thread is addressed by (the same one a send uses)."""
+        from app.modules.conversations.customer_profile import customers
+
+        identity = await customers().channel_identity(
+            session, tenant_id, conversation.customer_id, "instagram"
+        )
+        row = identity.external_id if identity is not None else None
+        return str(row) if row else None

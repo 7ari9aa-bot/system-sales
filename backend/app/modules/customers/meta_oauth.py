@@ -51,8 +51,25 @@ _GRAPH = f"https://graph.facebook.com/{_META_VERSION}"
 _MESSENGER_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
 _INSTAGRAM_SCOPES = (
     "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,"
-    "instagram_basic,instagram_manage_messages"
+    "instagram_basic,instagram_manage_messages,"
+    # Posts and comments from the inbox: read and moderate comments, answer one in
+    # private, and publish a post. A store connected before this must reconnect once
+    # to grant them; the DM scopes above are unchanged, so existing chats keep working.
+    "instagram_manage_comments,instagram_content_publish"
 )
+# Webhook fields the page subscription asks for, per channel. Instagram comments are
+# delivered on the linked PAGE's subscription, so without `comments` a connected store
+# never receives one (the parser and the table exist, nothing would arrive).
+_BASE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,messaging_referrals,message_deliveries"
+_SUBSCRIBED_FIELDS = {
+    "instagram": _BASE_SUBSCRIBED_FIELDS + ",comments,message_reactions,messaging_seen",
+}
+
+
+def subscribed_fields(provider: str) -> str:
+    return _SUBSCRIBED_FIELDS.get(provider, _BASE_SUBSCRIBED_FIELDS)
+
+
 # A Facebook connection is the same page-messaging grant as Messenger — the
 # page-scoped token IS the credential; the provider value only names the row.
 _META_PROVIDERS = ("messenger", "instagram", "facebook")
@@ -341,9 +358,7 @@ async def _meta_exchange_and_connect(
         await http.post(
             f"{_GRAPH}/{page['id']}/subscribed_apps",
             params={
-                "subscribed_fields": (
-                    "messages,messaging_postbacks,messaging_referrals,message_deliveries"
-                ),
+                "subscribed_fields": subscribed_fields(provider),
                 "access_token": page_token,
             },
         )
