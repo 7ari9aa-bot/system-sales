@@ -31,14 +31,14 @@ function ThreadRow({ row, active, lang, onOpen }) {
   );
 }
 
-function EmptyThread({ lang }) {
+function EmptyThread({ lang, requests }) {
   const isArabic = lang === "ar";
   return (
     <div className="grid h-full place-items-center p-8 text-center">
       <div>
         <span className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-black"><IgMessenger size={48} /></span>
-        <h2 className="mt-4 text-[20px] font-normal">{isArabic ? "رسائلك" : "Your messages"}</h2>
-        <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "اختر محادثة للرد على عملائك." : "Choose a chat to reply to your customers."}</p>
+        <h2 className="mt-4 text-[20px] font-normal">{requests ? (isArabic ? "طلبات المراسلة" : "Message requests") : (isArabic ? "رسائلك" : "Your messages")}</h2>
+        <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{requests ? (isArabic ? "افتح طلبًا لترى من يراسلك. ردّك يقبل الطلب وينقله إلى رسائلك." : "Open a request to see who is messaging you. Replying accepts it and moves it to your messages.") : (isArabic ? "اختر محادثة للرد على عملائك." : "Choose a chat to reply to your customers.")}</p>
       </div>
     </div>
   );
@@ -73,7 +73,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
         {showingRequests ? (
           <header className="flex h-[75px] shrink-0 items-center gap-4 px-6">
             <Link to="/instagram/direct/inbox" aria-label={isArabic ? "رجوع" : "Back"} className="rounded-full p-1 hover:bg-[#f2f2f2]"><IgBack className={isArabic ? "-scale-x-100" : undefined} /></Link>
-            <h1 className="text-[16px] font-bold">{isArabic ? "طلبات المراسلة" : "Message requests"}</h1>
+            <h1 className="text-[20px] font-bold">{isArabic ? "طلبات المراسلة" : "Message requests"}</h1>
           </header>
         ) : (
           <header className="shrink-0 px-6 pb-3 pt-9">
@@ -88,7 +88,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
         </div>
         {showingRequests ? (
           <p className="shrink-0 px-6 pb-3 text-[12px] leading-4" style={{ color: IG.secondary }}>
-            {isArabic ? "افتح المحادثة لتعرف من يراسلك. ردّك يقبل الطلب وينقله إلى رسائلك." : "Open a chat to see who's messaging you. Replying accepts the request and moves it to your messages."}
+            {isArabic ? "هذه الرسائل من أشخاص قمت بتقييدهم أو لا تتابعهم. لن يعرفوا أنك شاهدت طلبهم حتى تسمح لهم بمراسلتك." : "These messages are from people you've restricted or don't follow. They won't know you viewed their request until you allow them to message you."}
           </p>
         ) : (
           <nav aria-label={isArabic ? "مجلدات الرسائل" : "Message folders"} className="flex shrink-0 border-b px-6" style={{ borderColor: IG.border }}>
@@ -125,7 +125,7 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
           ? <InstagramThread data={data} onBack={() => navigate(folder === "requests" ? "/instagram/direct/requests" : folder === "general" ? "/instagram/direct/general" : "/instagram/direct/inbox")} />
           : threadId && !loadingInbox && !open
             ? <p role="alert" className="m-auto p-8 text-center text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "هذه المحادثة غير موجودة." : "This chat isn't available."} <Link className="font-semibold" style={{ color: IG.blue }} to="/instagram/direct/inbox">{isArabic ? "رجوع للرسائل" : "Back to messages"}</Link></p>
-            : <EmptyThread lang={lang} />}
+            : <EmptyThread lang={lang} requests={showingRequests} />}
       </div>
     </div>
   );
