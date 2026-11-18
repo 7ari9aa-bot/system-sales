@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.core.storage import get_storage
+from app.modules.conversations.gateway.base import ProviderCredentials
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.media import check_media_policy
 from app.modules.customers.models import Customer, CustomerIdentity
@@ -80,7 +81,12 @@ class CustomerProfileService:
             if identity is None or not needs_refresh(identity.extra, now):
                 return False
             extra = dict(identity.extra or {})
-            profile = await instagram_adapter.get_user_profile(credentials, identity.external_id)
+            creds = (
+                credentials
+                if isinstance(credentials, ProviderCredentials)
+                else ProviderCredentials(config=credentials)
+            )
+            profile = await instagram_adapter.get_user_profile(creds, identity.external_id)
             extra["profile_at"] = now.isoformat()
             if profile is None:
                 extra["profile_ok"] = False

@@ -210,3 +210,36 @@ async def test_a_pass_through_photo_is_not_kept_because_its_link_expires(
         db, t, c, CREDS, now=T0, storage=FakeStorage(durable=False)
     )
     assert "avatar_key" not in (await _identity(db, t)).extra
+
+
+async def test_the_real_gateway_accepts_what_the_service_passes(
+    db, tenant_ctx, monkeypatch
+) -> None:
+    """No fake adapter: the service swallows errors, so prove the real call works."""
+    import httpx
+
+    from app.modules.conversations.gateway.instagram import InstagramAdapter
+
+    t = tenant_ctx.tenant_id
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json={"name": "Sara Ahmed", "username": "sara.a"})
+
+    real = InstagramAdapter()
+    original = real.get_user_profile
+
+    async def over_mock_transport(creds, igsid, _client=None):
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        return await original(creds, igsid, _client=client)
+
+    monkeypatch.setattr(real, "get_user_profile", over_mock_transport)
+    monkeypatch.setattr(cp, "instagram_adapter", real)
+    c = await _customer(db, t)
+    creds = {"api_key": "tok", "account_id": "ig1"}  # the plain dict the endpoint passes
+    assert await CustomerProfileService.enrich_instagram(db, t, c, creds, now=T0) is True
+    assert len(seen) == 1 and seen[0].url.path.endswith("/igsid-1")
+    assert seen[0].headers["authorization"] == "Bearer tok"
+    assert "tok" not in str(seen[0].url)  # the token travels in the header, never the URL
+    assert c.name == "Sara Ahmed"

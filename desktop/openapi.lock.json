@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 533,
-    "sha256": "574ddf0c0b4934d492b3254a6bfd8c6e2f3796be3bddd7bf7ff75d87d2c6dfb8",
+    "operations": 534,
+    "sha256": "ac15f12a74d5a4d1a961ad38fa6628b30104d4f57b36f32541469b6dc75c055c",
     "typed_operations": 309
   },
   "spec": {
@@ -35669,6 +35669,112 @@
             }
           },
           "summary": "Send Read Signal",
+          "tags": [
+            "inbox"
+          ]
+        }
+      },
+      "/api/v1/conversations/{conversation_id}/refresh-profile": {
+        "post": {
+          "description": "Learn who an Instagram customer is (name, @handle, photo) when the chat does not show it yet.\n\nMeant to be called in the background when a chat row is a bare number or has no photo. It is\nrate-limited by what is already known (a week after a success, six hours after a refusal),\nnever raises for a refusal, and does not touch the webhook or the message pipeline.",
+          "operationId": "refresh_customer_profile_api_v1_conversations__conversation_id__refresh_profile_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "conversation_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Conversation Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Refresh Customer Profile",
           "tags": [
             "inbox"
           ]
