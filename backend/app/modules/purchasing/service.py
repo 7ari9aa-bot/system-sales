@@ -1074,6 +1074,9 @@ class GoodsReceiptService:
         over_receipt_allowed = bool(
             await SettingsService(session, tenant_id).value("purchasing.allow_over_receipt")
         )
+        partial_allowed = bool(
+            await SettingsService(session, tenant_id).value("purchasing.allow_partial_receipt")
+        )
 
         clean: list[dict] = []
         seen_pol: set[UUID] = set()
@@ -1121,6 +1124,12 @@ class GoodsReceiptService:
                 raise ValidationError(
                     f"line {idx}: receiving {qty} but only {remaining} remain on the PO line "
                     f"(ordered {po_line.quantity}, already received {already})"
+                )
+
+            if qty < remaining and not partial_allowed:
+                raise ValidationError(
+                    f"line {idx}: receiving {qty} of the {remaining} still due, but "
+                    "purchasing.allow_partial_receipt is off: receive the full remaining quantity"
                 )
 
             line_total = (unit_cost * qty).quantize(Decimal("0.0001"))

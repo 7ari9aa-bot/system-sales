@@ -1265,7 +1265,14 @@ class PosService(PosReceiptReads):
             return customer_id
         # The till says every sale needs a named customer: a walk-in is not one. Without this the
         # flag was stored and shown but never enforced, and a sale with no customer went through.
-        if profile is not None and profile.require_customer:
+        # A till's own switch wins when it is on; otherwise the shop-wide setting decides, so a
+        # merchant who wants a named customer on every sale sets it once, not on each till.
+        from app.modules.settings.service import SettingsService
+
+        shop_requires = bool(
+            await SettingsService(session, tenant_id).value("pos.require_customer")
+        )
+        if (profile is not None and profile.require_customer) or shop_requires:
             raise ValidationError("this till requires a customer on every sale")
         if profile is not None and profile.default_customer_id is not None:
             return profile.default_customer_id

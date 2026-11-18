@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 548,
-    "sha256": "167e00fd2697d090059a2427053dbb3d8b8fcb9676992f4055df7db4ac9fb6ac",
+    "sha256": "5930b27cd4a233ab719b15034dfd83dc2a23feb516dc369b3f45ff8ab72845f0",
     "typed_operations": 320
   },
   "spec": {
@@ -15031,10 +15031,16 @@
               "type": "integer"
             },
             "safety_stock": {
-              "default": 0,
-              "minimum": 0.0,
-              "title": "Safety Stock",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Safety Stock"
             },
             "variant_id": {
               "format": "uuid",

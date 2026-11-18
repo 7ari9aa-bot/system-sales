@@ -192,6 +192,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.allow_hold_cart",  # pos/service.py::hold_cart
         "pos.return_max_days",  # pos/service.py::return_sale
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
+        "pos.require_customer",  # pos/service.py::_resolve_customer
+        "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
+        "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
     }
 )
 

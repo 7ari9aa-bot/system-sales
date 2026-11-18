@@ -660,7 +660,8 @@ class PolicySetRequest(BaseModel):
     warehouse_id: uuid.UUID
     min_stock: int = Field(ge=0)
     max_stock: int | None = Field(default=None, ge=0)
-    safety_stock: int = Field(default=0, ge=0)
+    # None = the shop-wide default (inventory.safety_stock_default).
+    safety_stock: int | None = Field(default=None, ge=0)
     lead_time_days: int = Field(default=0, ge=0)
     moq: int = Field(default=1, gt=0)
     order_multiple: int = Field(default=1, gt=0)

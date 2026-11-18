@@ -199,3 +199,92 @@ async def test_allowing_over_receipt_accepts_the_extra_units(db, tenant_ctx):
         db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 12)]
     )
     assert receipt.status == "draft"
+
+
+# ------------------------------------------------ purchasing.allow_partial_receipt --
+
+
+async def test_a_partial_receipt_is_accepted_by_default(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    receipt = await GoodsReceiptService.create(
+        db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 4)]
+    )
+    assert receipt.status == "draft"
+
+
+async def test_turning_partial_receipt_off_demands_the_full_remainder(db, tenant_ctx):
+    from app.modules.purchasing.service import GoodsReceiptService
+
+    po, line, var = await _po_and_line(db, tenant_ctx, "10")
+    await SettingsService(db, tenant_ctx.tenant_id).set("purchasing.allow_partial_receipt", False)
+    with pytest.raises(ValidationError, match="allow_partial_receipt"):
+        await GoodsReceiptService.create(
+            db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 4)]
+        )
+    full = await GoodsReceiptService.create(
+        db, tenant_ctx.tenant_id, purchase_order_id=po.id, lines=[_receipt_line(line, var, 10)]
+    )
+    assert full.status == "draft"
+
+
+# ------------------------------------------------------------ pos.require_customer --
+
+
+async def _sell_without_customer(db, tenant_ctx):
+    pos_session = await _open_day(db, tenant_ctx)
+    variant = await _sellable_variant(db, tenant_ctx)
+    return await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+
+
+async def test_a_walk_in_sale_goes_through_by_default(db, tenant_ctx):
+    assert (await _sell_without_customer(db, tenant_ctx))["order_id"]
+
+
+async def test_the_shop_wide_setting_makes_a_named_customer_mandatory(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.require_customer", True)
+    with pytest.raises(ValidationError, match="requires a customer"):
+        await _sell_without_customer(db, tenant_ctx)
+
+
+# ------------------------------------------------- inventory.safety_stock_default --
+
+
+async def _policy(db, tenant_ctx, **kw):
+    from app.modules.inventory.services.replenishment import ReplenishmentService
+
+    variant = await _sellable_variant(db, tenant_ctx)
+    from app.modules.inventory.models import Warehouse
+
+    wh = Warehouse(
+        tenant_id=tenant_ctx.tenant_id,
+        name="WH-SS",
+        code=f"SS{uuid.uuid4().hex[:5]}",
+        is_active=True,
+    )
+    db.add(wh)
+    await db.flush()
+    return await ReplenishmentService.set_policy(
+        db, tenant_ctx.tenant_id, variant_id=variant.id, warehouse_id=wh.id, min_stock=5, **kw
+    )
+
+
+async def test_a_policy_with_no_safety_stock_gets_zero_by_default(db, tenant_ctx):
+    assert (await _policy(db, tenant_ctx)).safety_stock == 0
+
+
+async def test_a_policy_with_no_safety_stock_takes_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("inventory.safety_stock_default", 7)
+    assert (await _policy(db, tenant_ctx)).safety_stock == 7
+
+
+async def test_an_explicit_safety_stock_beats_the_shop_default(db, tenant_ctx):
+    await SettingsService(db, tenant_ctx.tenant_id).set("inventory.safety_stock_default", 7)
+    assert (await _policy(db, tenant_ctx, safety_stock=2)).safety_stock == 2
+    assert (await _policy(db, tenant_ctx, safety_stock=0)).safety_stock == 0

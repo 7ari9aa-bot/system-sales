@@ -249,7 +249,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # inheritance walk; settings imports nothing from either module, so no cycle): pos ->
 # settings.service in pos/service.py::_setting (hold_cart, return_sale), and purchasing ->
 # settings.service in GoodsReceiptService.create (purchasing.allow_over_receipt).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 242
+# 242 -> 244 on 2026-11-18, TWO more deliberate edges into settings.service (still no cycle):
+# pos/service.py::_resolve_customer (pos.require_customer, the shop-wide default under a till's
+# own switch) and inventory/services/replenishment.py::set_policy
+# (inventory.safety_stock_default, used when a policy states no buffer of its own).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 244
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
