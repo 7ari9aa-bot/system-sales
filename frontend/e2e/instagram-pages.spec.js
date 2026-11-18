@@ -178,3 +178,14 @@ test("when Instagram refuses the account details, the page still works and says 
   await expect(page.getByTestId("ig-grid-tile")).toHaveCount(3, { timeout: 15_000 });
   await expect(page.getByRole("alert")).toContainText(/account|الحساب/);
 });
+
+test("on Instagram pages the app sidebar shrinks to its icon strip and leaves the saved choice alone", async ({ page }) => {
+  await mock(page);
+  await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const sidebar = page.locator("aside").first();
+  await expect(sidebar).toBeVisible({ timeout: 15_000 });
+  expect((await sidebar.boundingBox()).width).toBeLessThan(100);
+  expect(await page.evaluate(() => localStorage.getItem("fihrist:sidebarCollapsed"))).not.toBe("1");
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  await expect.poll(async () => (await page.locator("aside").first().boundingBox())?.width ?? 0, { timeout: 15_000 }).toBeGreaterThan(200);
+});
