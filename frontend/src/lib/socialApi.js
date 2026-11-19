@@ -128,3 +128,12 @@ export async function fetchPostInsights(postId) {
   const data = await api(`/social/posts/${encodeURIComponent(postId)}/insights`);
   return data?.metrics || {};
 }
+
+/** The questions customers can tap to start a chat (Instagram "Ice Breakers"). */
+export async function fetchIceBreakers() {
+  return (await api("/social/ice-breakers")).questions || [];
+}
+
+export async function saveIceBreakers(questions) {
+  return (await api("/social/ice-breakers", { method: "PUT", body: { questions } })).questions || [];
+}

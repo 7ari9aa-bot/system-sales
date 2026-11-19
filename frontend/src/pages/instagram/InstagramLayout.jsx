@@ -5,7 +5,7 @@ import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import InstagramNewPostDialog from "@/components/inbox/InstagramNewPostDialog";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IG } from "@/components/instagram/igTheme";
-import { IgChannels, IgCreate, IgGlyph, IgHeart, IgMessenger } from "@/components/instagram/igIcons";
+import { IgChannels, IgCreate, IgGlyph, IgHeart, IgMessenger, IgSettings } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
 import { useInstagramData } from "./useInstagramData";
 
@@ -62,6 +62,12 @@ function Rail({ compact, onCreate }) {
           </>}
         </NavLink>
       </div>
+      <NavLink to="/instagram/settings" className={({ isActive }) => cn(item(isActive), "hidden md:flex")}>
+        {({ isActive }) => <>
+          <span className="transition-transform group-hover:scale-105"><IgSettings className={isActive ? "stroke-[2.6]" : undefined} /></span>
+          {label(isArabic ? "الإعدادات" : "Settings")}
+        </>}
+      </NavLink>
       <NavLink to="/inbox" className={cn(item(false), "hidden md:flex")}>
         <span className="transition-transform group-hover:scale-105"><IgChannels /></span>
         {label(isArabic ? "كل القنوات" : "All channels")}

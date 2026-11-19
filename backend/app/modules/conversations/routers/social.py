@@ -162,6 +162,35 @@ async def list_post_comments(
     return {"items": [_comment_out(c) for c in comments]}
 
 
+class IceBreakersRequest(BaseModel):
+    """The questions customers can tap to start a chat. An empty list removes them."""
+
+    questions: list[str] = Field(default_factory=list, max_length=10)
+
+
+@router.get("/social/ice-breakers")
+async def get_ice_breakers(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """The questions currently offered to customers who open a chat."""
+    creds = await _credentials(ctx, send=False)
+    return {"questions": await instagram_adapter.get_ice_breakers(creds)}
+
+
+@router.put("/social/ice-breakers")
+async def put_ice_breakers(
+    body: IceBreakersRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Replace the questions customers can tap (up to 4). Instagram shows them on mobile only."""
+    creds = await _credentials(ctx, send=True)
+    try:
+        questions = await instagram_adapter.set_ice_breakers(creds, body.questions)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return {"questions": questions}
+
+
 @router.get("/social/posts/{post_id}/insights")
 async def post_insights(
     post_id: str,

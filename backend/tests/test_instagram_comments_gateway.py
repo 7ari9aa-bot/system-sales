@@ -218,3 +218,59 @@ async def test_media_insights_ask_for_lifetime_numbers_and_keep_zero_apart_from_
 async def test_media_insights_with_nothing_yet_is_all_none_not_zero():
     out = await A.get_media_insights(CREDS, "m1", "REELS", _client=_client({"data": []}))
     assert set(out.values()) == {None}
+
+
+async def test_ice_breakers_are_set_for_the_default_language_on_the_account():
+    seen: list = []
+    out = await A.set_ice_breakers(
+        CREDS, [" Hours? ", "Delivery?"], _client=_client({"result": "success"}, seen=seen)
+    )
+    assert out == ["Hours?", "Delivery?"]
+    req = seen[0]
+    assert req.method == "POST" and req.url.path.endswith("/me/messenger_profile")
+    assert req.url.params["platform"] == "instagram"
+    body = json.loads(req.content)
+    (block,) = body["ice_breakers"]
+    assert block["locale"] == "default"  # Meta: a default locale is REQUIRED
+    assert [c["question"] for c in block["call_to_actions"]] == ["Hours?", "Delivery?"]
+
+
+async def test_setting_no_questions_removes_them_instead_of_sending_an_empty_list():
+    seen: list = []
+    assert (
+        await A.set_ice_breakers(
+            CREDS, ["  ", ""], _client=_client({"result": "success"}, seen=seen)
+        )
+        == []
+    )
+    assert seen[0].method == "DELETE"
+    assert json.loads(seen[0].content) == {"fields": ["ice_breakers"]}
+
+
+@pytest.mark.parametrize(
+    ("questions", "why"),
+    [(["a", "b", "c", "d", "e"], "at most 4"), (["Hours?", " Hours? "], "differ")],
+)
+async def test_too_many_or_repeated_questions_are_refused_before_any_call(questions, why):
+    seen: list = []
+    with pytest.raises(ValueError, match=why):
+        await A.set_ice_breakers(CREDS, questions, _client=_client({}, seen=seen))
+    assert seen == []
+
+
+async def test_reading_ice_breakers_returns_the_default_language_only():
+    reply = {
+        "data": [
+            {
+                "ice_breakers": [
+                    {"locale": "en_GB", "call_to_actions": [{"question": "Hello?"}]},
+                    {
+                        "locale": "default",
+                        "call_to_actions": [{"question": "Hours?"}, {"question": "Delivery?"}],
+                    },
+                ]
+            }
+        ]
+    }
+    assert await A.get_ice_breakers(CREDS, _client=_client(reply)) == ["Hours?", "Delivery?"]
+    assert await A.get_ice_breakers(CREDS, _client=_client({"data": []})) == []

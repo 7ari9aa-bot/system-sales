@@ -202,3 +202,57 @@ test("a failed insights request is reported, and the post still works", async ({
   await expect(page.getByTestId("ig-insights-error")).toBeVisible();
   await expect(page.getByTestId("ig-comment").first()).toBeVisible();
 });
+
+// Ice breakers: an account-wide setting, up to 4 questions, shown on mobile only. Saved as typed, minus blanks.
+async function openSettings(page, { asked = ["Hours?"], failPut = false } = {}) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
+  const puts = [];
+  const api = makeApi({ posts: [POST], comments: [C1] });
+  await page.route("**/api/v1/**", async (route) => {
+    const req = route.request();
+    const p = new URL(req.url()).pathname.replace("/api/v1", "");
+    if (p === "/social/ice-breakers") {
+      if (req.method() === "PUT") {
+        puts.push(req.postDataJSON());
+        if (failPut) return route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ detail: "Instagram said no" }) });
+        asked = req.postDataJSON().questions;
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ questions: asked }) });
+    }
+    return api.handler(route);
+  });
+  await page.goto("/instagram/settings", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  return puts;
+}
+
+test("ice breakers load, cap at four, refuse repeats and save without blanks", async ({ page }) => {
+  const puts = await openSettings(page);
+  const inputs = page.getByTestId("ig-ice-input");
+  await expect(inputs).toHaveCount(1, { timeout: 15_000 });
+  await expect(inputs.first()).toHaveValue("Hours?");
+  await expect(page.getByText(/mobile app, not on desktop|الموبايل فقط/)).toBeVisible();
+  await expect(page.getByTestId("ig-ice-save")).toBeDisabled(); // nothing changed yet
+  for (let i = 0; i < 5; i += 1) { if (await page.getByTestId("ig-ice-add").count()) await page.getByTestId("ig-ice-add").click(); }
+  await expect(inputs).toHaveCount(4);
+  await expect(page.getByTestId("ig-ice-add")).toHaveCount(0);
+  await inputs.nth(1).fill("Hours?");
+  await expect(page.getByRole("alert")).toContainText(/differ|مختلفة/);
+  await expect(page.getByTestId("ig-ice-save")).toBeDisabled();
+  await inputs.nth(1).fill("Delivery?");
+  await inputs.nth(2).fill("   "); // blank: not sent
+  await page.getByTestId("ig-ice-save").click();
+  await expect.poll(() => puts.at(-1)).toEqual({ questions: ["Hours?", "Delivery?"] });
+  await expect(page.getByTestId("ig-ice-done")).toBeVisible();
+  await expect(inputs).toHaveCount(2); // shows what Instagram now has
+});
+
+test("a refused ice breaker save is reported and keeps what was typed", async ({ page }) => {
+  await openSettings(page, { failPut: true });
+  const inputs = page.getByTestId("ig-ice-input");
+  await expect(inputs).toHaveCount(1, { timeout: 15_000 });
+  await inputs.first().fill("Hours today?");
+  await page.getByTestId("ig-ice-save").click();
+  await expect(page.getByTestId("ig-ice-error")).toBeVisible();
+  await expect(inputs.first()).toHaveValue("Hours today?");
+});

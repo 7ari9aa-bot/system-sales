@@ -29,6 +29,7 @@ const InstagramDirectPage = lazy(() => import('@/pages/instagram/InstagramDirect
 const InstagramActivityPage = lazy(() => import('@/pages/instagram/InstagramActivityPage'));
 const InstagramProfilePage = lazy(() => import('@/pages/instagram/InstagramProfilePage'));
 const InstagramUserPage = lazy(() => import('@/pages/instagram/InstagramUserPage'));
+const InstagramSettingsPage = lazy(() => import('@/pages/instagram/InstagramSettingsPage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
@@ -121,6 +122,7 @@ const DashboardRoutes = () => (
           <Route path="direct/archived" element={<InstagramDirectPage folder="archived" />} />
           <Route path="direct/t/:threadId" element={<InstagramDirectPage />} />
           <Route path="activity" element={<InstagramActivityPage />} />
+          <Route path="settings" element={<InstagramSettingsPage />} />
           <Route path="profile" element={<InstagramProfilePage />} />
           <Route path="profile/reels" element={<InstagramProfilePage tab="reels" />} />
           <Route path="p/:postId" element={<InstagramProfilePage />} />

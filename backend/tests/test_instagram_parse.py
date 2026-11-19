@@ -111,6 +111,37 @@ def test_unknown_attachment_is_unsupported_not_dropped():
     assert m.content_type == "unsupported"
 
 
+def test_an_ice_breaker_tap_becomes_the_question_the_customer_asked():
+    event = {
+        "sender": {"id": "igsid-1"},
+        "recipient": {"id": "ig-biz-1"},
+        "timestamp": 1502905976377,
+        "postback": {"title": "What are your opening hours?", "payload": "HOURS"},
+    }
+    (m,) = A.parse_inbound(_wrap(event))
+    assert (m.body, m.content_type, m.customer_ref) == (
+        "What are your opening hours?",
+        "text",
+        "igsid-1",
+    )
+    assert m.raw["_ig"]["postback_payload"] == "HOURS"
+    # Meta resends an event it thinks was missed: the same tap must be the same message
+    (again,) = A.parse_inbound(_wrap(event))
+    assert again.channel_message_id == m.channel_message_id
+    # a different tap, or the same question later, is a different message
+    other = {**event, "timestamp": 1502905999999}
+    assert A.parse_inbound(_wrap(other))[0].channel_message_id != m.channel_message_id
+
+
+def test_a_postback_with_no_title_is_dropped_not_shown_empty():
+    bad = {
+        "sender": {"id": "igsid-1"},
+        "recipient": {"id": "ig-biz-1"},
+        "postback": {"payload": "X"},
+    }
+    assert A.parse_inbound(_wrap(bad)) == []
+
+
 def test_reaction_and_unreaction():
     (r,) = A.parse_inbound(
         _wrap(

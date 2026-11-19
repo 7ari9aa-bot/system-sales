@@ -217,6 +217,11 @@ class InstagramAdapter(ChannelAdapter):
         sender = event.get("sender") or {}
         recipient = event.get("recipient") or {}
 
+        postback = event.get("postback")
+        if isinstance(postback, dict):
+            parsed_postback = self._parse_postback(event, postback, sender, recipient, payload)
+            return [parsed_postback] if parsed_postback is not None else []
+
         reaction = event.get("reaction")
         if isinstance(reaction, dict):
             parsed = self._parse_reaction(event, reaction, sender, recipient, payload)
@@ -339,6 +344,32 @@ class InstagramAdapter(ChannelAdapter):
         if att_type == "reel_reply" or att_type == "story_reply":
             return text, url, None, "story_reply", {"story_reply": {"url": url}}
         return text, None, None, ("text" if text else "unsupported"), {}
+
+    @staticmethod
+    def _parse_postback(
+        event: dict, postback: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        """A tap on an Ice Breaker question or a Persistent Menu item.
+
+        Instagram sends the question's title and our payload, with no message id. It reads as the
+        customer asking that question, so it becomes a text message with the title. Meta resends an
+        event it thinks was missed, so the id is made from who, when and what: the same tap twice
+        is one message.
+        """
+        title = str(postback.get("title") or "").strip()
+        if not title or not sender.get("id"):
+            return None
+        stamp = event.get("timestamp") or ""
+        key = f"postback:{sender.get('id')}:{stamp}:{postback.get('payload') or ''}"
+        return InboundMessage(
+            channel="instagram",
+            channel_message_id=key,
+            customer_ref=str(sender.get("id", "")),
+            body=title,
+            content_type="text",
+            conversation_ref=str(recipient.get("id", "")),
+            raw={**payload, "_ig": {"postback_payload": postback.get("payload")}},
+        )
 
     @staticmethod
     def _parse_reaction(
@@ -861,6 +892,79 @@ class InstagramAdapter(ChannelAdapter):
             "biography": data.get("biography") or None,
             "website": data.get("website") or None,
         }
+
+    # ---------- ice breakers: the questions a customer can tap to start a chat ----------
+    # An account-wide setting (not a message). Meta: at most 4 questions, a `default` locale is
+    # required, and they are not shown on desktop. It publishes no length limit for a question, so
+    # none is invented here: if Meta refuses one, its reason is shown as it is.
+    ICE_BREAKERS_MAX = 4
+
+    @classmethod
+    def check_ice_breakers(cls, questions: list[str]) -> list[str]:
+        """The cleaned list, or ValueError naming what Instagram would refuse."""
+        cleaned = [q.strip() for q in questions if q and q.strip()]
+        if len(cleaned) > cls.ICE_BREAKERS_MAX:
+            raise ValueError(f"at most {cls.ICE_BREAKERS_MAX} questions")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("questions must differ from each other")
+        return cleaned
+
+    async def get_ice_breakers(
+        self, credentials: ProviderCredentials, _client: httpx.AsyncClient | None = None
+    ) -> list[str]:
+        """The questions now set for the default language, in order. Empty when none are set."""
+        data = await self._graph(
+            "GET",
+            "me/messenger_profile",
+            credentials,
+            params={"fields": "ice_breakers", "platform": "instagram"},
+            _client=_client,
+        )
+        for entry in data.get("data") or []:
+            for block in entry.get("ice_breakers") or [entry]:
+                if block.get("locale") == "default":
+                    return [
+                        str(c.get("question")).strip()
+                        for c in block.get("call_to_actions") or []
+                        if c.get("question")
+                    ]
+        return []
+
+    async def set_ice_breakers(
+        self,
+        credentials: ProviderCredentials,
+        questions: list[str],
+        _client: httpx.AsyncClient | None = None,
+    ) -> list[str]:
+        """Replace the questions (an empty list removes them). Returns what is now set."""
+        cleaned = self.check_ice_breakers(questions)
+        if not cleaned:
+            await self._graph(
+                "DELETE",
+                "me/messenger_profile",
+                credentials,
+                params={"platform": "instagram"},
+                json={"fields": ["ice_breakers"]},
+                _client=_client,
+            )
+            return []
+        await self._graph(
+            "POST",
+            "me/messenger_profile",
+            credentials,
+            params={"platform": "instagram"},
+            json={
+                "platform": "instagram",
+                "ice_breakers": [
+                    {
+                        "call_to_actions": [{"question": q, "payload": q} for q in cleaned],
+                        "locale": "default",
+                    }
+                ],
+            },
+            _client=_client,
+        )
+        return cleaned
 
     # ---------- how a post performed ----------
     # One metric a kind of post does not have makes Instagram refuse the WHOLE request, so each
