@@ -11,7 +11,7 @@ export default function DashboardLayout() {
   const { pathname } = useLocation();
   const { lang } = useI18n();
   const isDashboardHome = pathname === "/dashboard";
-  const isInbox = pathname === "/inbox" || pathname === "/instagram" || pathname.startsWith("/instagram/");
+  const isInbox = pathname === "/inbox" || pathname === "/instagram" || pathname.startsWith("/instagram/") || pathname === "/facebook" || pathname.startsWith("/facebook/");
   // The assistant is a full-screen chat workspace (like ChatGPT): the page never scrolls, the thread
   // sidebar and the conversation each scroll on their own, edge to edge.
   const isAssistant = pathname === "/sales-assistant";

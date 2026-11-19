@@ -273,7 +273,7 @@ export function legacyPublicRedirects() {
 }
 
 export const APP_PATH_PREFIXES = [
-  'dashboard', 'inbox', 'instagram', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
+  'dashboard', 'inbox', 'instagram', 'facebook', 'customers', 'products', 'inventory', 'pos', 'cashier', 'sales',
   'sales-assistant', 'marketing', 'ai', 'analytics', 'owner', 'usage', 'website', 'settings',
   'orders', 'login', 'register', 'forgot-password', 'reset-password', 'verify-email',
   'accept-invitation',

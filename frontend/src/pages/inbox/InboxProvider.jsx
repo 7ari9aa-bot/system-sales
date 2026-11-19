@@ -142,12 +142,13 @@ export function InboxProvider({ children }) {
   const demoAccount = String(user?.email || "").toLowerCase() === "dmin@revenueosapp.com";
   const location = useLocation();
   const navigate = useNavigate();
-  const forcedChannel = location.pathname.startsWith("/instagram") ? "instagram" : null;
+  const forcedChannel = location.pathname.startsWith("/instagram") ? "instagram" : location.pathname.startsWith("/facebook") ? "facebook" : null;
   const [storedChannel, setStoredChannel] = useState("whatsapp");
   const activeChannel = forcedChannel || storedChannel;
   const setActiveChannel = (id) => {
-    if (id === "instagram" && !forcedChannel) { setStoredChannel("instagram"); navigate("/instagram/direct/inbox"); return; }
-    if (forcedChannel && id !== "instagram") { setStoredChannel(id); navigate("/inbox"); return; }
+    if (id === "instagram" && forcedChannel !== "instagram") { setStoredChannel("instagram"); navigate("/instagram/direct/inbox"); return; }
+    if (id === "facebook" && forcedChannel !== "facebook") { setStoredChannel("facebook"); navigate("/facebook/posts"); return; }
+    if (forcedChannel && id !== forcedChannel) { setStoredChannel(id); navigate("/inbox"); return; }
     setStoredChannel(id);
   };
   const [facebookPosts, setFacebookPosts] = useState([]);
