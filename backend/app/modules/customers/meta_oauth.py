@@ -15,18 +15,22 @@ back on the settings page with an explicit marker — never a bare error page.
 
 from __future__ import annotations
 
+import json
 import logging
+import secrets as py_secrets
 import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, ExternalProviderError, ValidationError
-from app.core.secrets import encrypt_credentials_dict
+from app.core.redis import get_redis
+from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
 from app.modules.customers.meta_scopes import (
     FACEBOOK_SCOPES,
@@ -223,6 +227,92 @@ async def _subscribe_page_to_app(
         )
 
 
+class PageChoiceRequired(Exception):
+    """The owner ticked several Pages: the connect pauses until they pick one.
+
+    Carries the parked ticket and the choices (id and name only — never a token)."""
+
+    def __init__(self, ticket: str, choices: list[dict]) -> None:
+        super().__init__("page_choice_required")
+        self.ticket = ticket
+        self.choices = choices
+
+
+#: How long the owner has to pick a Page. Matches the state token's window.
+_PAGE_CHOICE_TTL_SECONDS = _META_STATE_TTL_SECONDS
+
+
+def _page_choice_key(ticket: str) -> str:
+    return f"meta_oauth:page_choice:{ticket}"
+
+
+def _messaging_pages(all_pages: list[dict]) -> list[dict]:
+    """The Pages this operator can run messaging on (all of them when Meta lists no tasks)."""
+    pages = [
+        page
+        for page in all_pages
+        if not page.get("tasks")
+        or "MESSAGING" in (page.get("tasks") or [])
+        or "MANAGE" in (page.get("tasks") or [])
+    ]
+    return pages or all_pages
+
+
+def _page_choices(pages: list[dict]) -> list[dict]:
+    """What the browser may see about a Page: its id and name, nothing secret."""
+    return [{"id": str(page["id"]), "name": str(page.get("name") or page["id"])} for page in pages]
+
+
+async def _park_page_choice(
+    *,
+    tenant_id: uuid.UUID,
+    user_id: str,
+    provider: str,
+    user_token: str,
+    expires_in,
+    granted,
+    config_id: str,
+    page_ids: list[str],
+) -> str:
+    """Keep the long-lived user token server-side, encrypted, while the owner picks a Page.
+
+    Only an opaque one-time ticket goes to the browser. The Page tokens are not stored at all:
+    they are listed again from the user token when the choice comes back."""
+    ticket = py_secrets.token_urlsafe(24)
+    sealed = encrypt_credentials_dict(
+        {
+            "user_token": user_token,
+            "expires_in": expires_in,
+            "granted": granted,
+            "config_id": config_id,
+        }
+    )
+    payload = json.dumps(
+        {
+            "tenant_id": str(tenant_id),
+            "user_id": user_id,
+            "provider": provider,
+            "page_ids": page_ids,
+            "sealed": sealed,
+        }
+    )
+    await get_redis().set(_page_choice_key(ticket), payload, ex=_PAGE_CHOICE_TTL_SECONDS)
+    return ticket
+
+
+async def _take_page_choice(ticket: str) -> dict | None:
+    """Read AND remove a parked choice in one step, so a ticket works once."""
+    raw = await get_redis().getdel(_page_choice_key(ticket))
+    if raw is None:
+        return None
+    try:
+        parked = json.loads(raw)
+    except ValueError:
+        return None
+    parked["secrets"] = decrypt_credentials_dict(parked.pop("sealed", {}))
+    return parked
+
+
 async def _meta_exchange_and_connect(
     session: AsyncSession, code: str, state_payload: dict
 ) -> tuple[str, str]:
@@ -232,11 +322,6 @@ async def _meta_exchange_and_connect(
     redirects the browser with meta_error instead of a bare 500.
     """
     from app.core.db import bind_tenant
-    from app.modules.billing.service import EntitlementService
-    from app.modules.customers.routers.integrations import (
-        _activate_verified_channel,
-        _verification_metadata,
-    )
 
     provider = state_payload["provider"]
     tenant_id = uuid.UUID(state_payload["tenant_id"])
@@ -339,111 +424,141 @@ async def _meta_exchange_and_connect(
                 "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."  # noqa: E501
             )
 
-        pages = [
-            page
-            for page in all_pages
-            if not page.get("tasks")
-            or "MESSAGING" in (page.get("tasks") or [])
-            or "MANAGE" in (page.get("tasks") or [])
-        ]
-        if not pages:
-            pages = all_pages
-        page = pages[0]
+        pages = _messaging_pages(all_pages)
         if len(pages) > 1:
-            # The connect dialog lets the owner tick several Pages; one channel holds one.
-            _logger.warning(
-                "meta_oauth.several_pages connected=%s available=%d", page.get("id"), len(pages)
-            )
-
-        # 4) Credentials + routing identity per gateway contract:
-        #    - the webhook routes inbound by config.account_id;
-        #    - the Instagram gateway SENDS against the IG business account
-        #      (/{ig-id}/messages with the PAGE token), so that id must ride
-        #      the encrypted credentials too.
-        page_token = page["access_token"]
-        if provider == "facebook":
-            # The Facebook spec verifies the PASTED page id against the token
-            # (same anti-mismatch guard as WhatsApp), so the flow hands it the
-            # page's own id and the spec's credential key.
-            config = {"page_id": str(page["id"])}
-            credentials = {"page_access_token": page_token}
-        else:
-            config = {"account_id": str(page["id"])}
-            credentials = {"api_key": page_token}
-        if provider == "instagram":
-            ig_account = page.get("instagram_business_account") or {}
-            ig_id = str(ig_account.get("id") or "")
-            if not ig_id:
-                page_title = page.get("name") or str(page.get("id") or "المحددة")
-                raise ValidationError(
-                    f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."  # noqa: E501
-                )
-            config["account_id"] = ig_id
-            credentials["account_id"] = ig_id
-
-        verified = await verify_channel_credentials(provider, credentials, config, client=http)
-
-        # A channel that cannot receive provider webhooks is not connected.
-        await _subscribe_page_to_app(
-            http, page_id=str(page["id"]), page_token=page_token, provider=provider
-        )
-
-        from app.core.meta_tokens import token_expiry
-
-        credentials["_meta"] = {
-            "source_access_token": user_token,
-            "page_id": str(page["id"]),
-            "expires_at": token_expiry(expires_in),
-            "refreshable": bool(_config_id and expires_in),
-        }
-
-        existing = (
-            await session.execute(
-                select(Integration).where(
-                    Integration.tenant_id == tenant_id,
-                    Integration.provider == provider,
-                    Integration.kind == "channel",
-                )
-            )
-        ).scalar_one_or_none()
-        if existing is not None and existing.status == "disabled":
-            raise ValidationError(
-                "This channel was permanently disabled and cannot be reconnected."
-            )
-        if existing is None:
-            await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
-
-        verified_at = datetime.now(UTC).isoformat()
-        connection_meta = _verification_metadata(
-            verified_at=verified_at, display_name=verified.display_name
-        )
-        connection_meta["granted_scopes"] = granted
-        integration_config = {
-            **verified.identity_config,
-            "_connection": connection_meta,
-        }
-        encrypted = encrypt_credentials_dict(credentials)
-        if existing is None:
-            integration = Integration(
-                id=uuid.uuid4(),
+            # One channel holds one Page and the owner ticked several: ask which, instead of
+            # silently taking the first. Nothing is stored yet — the choice finishes the connect.
+            ticket = await _park_page_choice(
                 tenant_id=tenant_id,
+                user_id=str(state_payload.get("sub") or ""),
                 provider=provider,
-                kind="channel",
-                config=integration_config,
-                credentials=encrypted,
-                status="pending",
+                user_token=user_token,
+                expires_in=expires_in,
+                granted=granted,
+                config_id=_config_id,
+                page_ids=[str(p["id"]) for p in pages],
             )
-            _activate_verified_channel(integration)
-            session.add(integration)
-        else:
-            _activate_verified_channel(existing)
-            existing.config = integration_config
-            existing.credentials = encrypted
-            integration = existing
-        await session.flush()
+            raise PageChoiceRequired(ticket, _page_choices(pages))
+        return await _connect_page(
+            session,
+            http,
+            page=pages[0],
+            provider=provider,
+            tenant_id=tenant_id,
+            user_token=user_token,
+            expires_in=expires_in,
+            granted=granted,
+            config_id=_config_id,
+        )
 
-        display_name = verified.display_name or str(page.get("name") or page["id"])
-        return provider, display_name
+
+async def _connect_page(
+    session: AsyncSession,
+    http: httpx.AsyncClient,
+    *,
+    page: dict,
+    provider: str,
+    tenant_id: uuid.UUID,
+    user_token: str,
+    expires_in,
+    granted,
+    config_id: str,
+) -> tuple[str, str]:
+    """Store the channel for ONE chosen Page (credentials, webhook subscription, activation)."""
+    from app.modules.billing.service import EntitlementService
+    from app.modules.customers.routers.integrations import (
+        _activate_verified_channel,
+        _verification_metadata,
+    )
+
+    _config_id = config_id
+    # 4) Credentials + routing identity per gateway contract:
+    #    - the webhook routes inbound by config.account_id;
+    #    - the Instagram gateway SENDS against the IG business account
+    #      (/{ig-id}/messages with the PAGE token), so that id must ride
+    #      the encrypted credentials too.
+    page_token = page["access_token"]
+    if provider == "facebook":
+        # The Facebook spec verifies the PASTED page id against the token
+        # (same anti-mismatch guard as WhatsApp), so the flow hands it the
+        # page's own id and the spec's credential key.
+        config = {"page_id": str(page["id"])}
+        credentials = {"page_access_token": page_token}
+    else:
+        config = {"account_id": str(page["id"])}
+        credentials = {"api_key": page_token}
+    if provider == "instagram":
+        ig_account = page.get("instagram_business_account") or {}
+        ig_id = str(ig_account.get("id") or "")
+        if not ig_id:
+            page_title = page.get("name") or str(page.get("id") or "المحددة")
+            raise ValidationError(
+                f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."  # noqa: E501
+            )
+        config["account_id"] = ig_id
+        credentials["account_id"] = ig_id
+
+    verified = await verify_channel_credentials(provider, credentials, config, client=http)
+
+    # A channel that cannot receive provider webhooks is not connected.
+    await _subscribe_page_to_app(
+        http, page_id=str(page["id"]), page_token=page_token, provider=provider
+    )
+
+    from app.core.meta_tokens import token_expiry
+
+    credentials["_meta"] = {
+        "source_access_token": user_token,
+        "page_id": str(page["id"]),
+        "expires_at": token_expiry(expires_in),
+        "refreshable": bool(_config_id and expires_in),
+    }
+
+    existing = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == provider,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "disabled":
+        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
+    if existing is None:
+        await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
+
+    verified_at = datetime.now(UTC).isoformat()
+    connection_meta = _verification_metadata(
+        verified_at=verified_at, display_name=verified.display_name
+    )
+    connection_meta["granted_scopes"] = granted
+    integration_config = {
+        **verified.identity_config,
+        "_connection": connection_meta,
+    }
+    encrypted = encrypt_credentials_dict(credentials)
+    if existing is None:
+        integration = Integration(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            provider=provider,
+            kind="channel",
+            config=integration_config,
+            credentials=encrypted,
+            status="pending",
+        )
+        _activate_verified_channel(integration)
+        session.add(integration)
+    else:
+        _activate_verified_channel(existing)
+        existing.config = integration_config
+        existing.credentials = encrypted
+        integration = existing
+    await session.flush()
+
+    display_name = verified.display_name or str(page.get("name") or page["id"])
+    return provider, display_name
 
 
 def _popup_html(result: dict, frontend_origin: str) -> str:
@@ -463,9 +578,16 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
     safe_origin = _json.dumps(frontend_origin)
 
     is_connected = "connected" in result
+    is_choosing = "choose" in result
     error_val = result.get("error", "")
 
-    if is_connected:
+    if is_choosing:
+        title_text = "اختر الصفحة"
+        subtitle_text = "عدنا إلى صفحة الإعدادات لتختار الصفحة التي تريد ربطها."
+        card_class = "success"
+        icon_html = '<svg class="icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'  # noqa: E501
+        action_html = '<p class="hint">سيتم إغلاق هذه النافذة تلقائيًا...</p>'
+    elif is_connected:
         raw_val = result["connected"]
         sep = raw_val.find(":")
         page_name = raw_val[sep + 1 :] if sep != -1 else raw_val
@@ -504,7 +626,9 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
     esc_title = _html.escape(title_text)
     esc_subtitle = _html.escape(subtitle_text)
 
-    auto_close_js = "setTimeout(function(){ window.close(); }, 1400);" if is_connected else ""
+    auto_close_js = (
+        "setTimeout(function(){ window.close(); }, 1400);" if is_connected or is_choosing else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -626,6 +750,65 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
 </body></html>"""
 
 
+class MetaOAuthPageChoiceIn(BaseModel):
+    ticket: str = Field(min_length=16, max_length=128)
+    page_id: str = Field(min_length=1, max_length=64, pattern=r"^[0-9]+$")
+
+
+@meta_oauth_router.post("/integrations/meta/oauth/choose-page")
+async def meta_oauth_choose_page(
+    body: MetaOAuthPageChoiceIn,
+    session: DbSession,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Finish a connect that paused to ask which Page: store the channel for the chosen one.
+
+    The ticket was parked for THIS tenant and user, works once, and only the Pages it was
+    parked with can be chosen — a forged page id cannot reach another Page the user manages."""
+    from app.core.db import bind_tenant
+
+    parked = await _take_page_choice(body.ticket)
+    if parked is None:
+        raise ValidationError("This choice expired. Press connect again.")
+    if parked["tenant_id"] != str(ctx.tenant_id) or parked["user_id"] != str(ctx.user.id):
+        raise ValidationError("This choice was not started by you. Press connect again.")
+    if body.page_id not in parked["page_ids"]:
+        raise ValidationError("That Page was not one of the choices. Press connect again.")
+
+    provider = parked["provider"]
+    secrets = parked["secrets"]
+    await bind_tenant(session, ctx.tenant_id)
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(8.0, connect=3.0), follow_redirects=False
+    ) as http:
+        # Page tokens are never parked: list the Pages again from the user token.
+        accounts = (
+            await http.get(
+                f"{_GRAPH}/me/accounts",
+                params={"fields": _PAGE_FIELDS, "access_token": secrets["user_token"]},
+            )
+        ).json()
+        failure = _meta_graph_error(accounts, step="page listing")
+        if failure:
+            _logger.warning("meta_oauth.choose_accounts_failed %s", failure)
+            raise ValidationError(failure[:200])
+        page = next((p for p in accounts.get("data", []) if str(p.get("id")) == body.page_id), None)
+        if page is None:
+            raise ValidationError("Meta no longer lists that Page for your account.")
+        provider, display_name = await _connect_page(
+            session,
+            http,
+            page=page,
+            provider=provider,
+            tenant_id=ctx.tenant_id,
+            user_token=secrets["user_token"],
+            expires_in=secrets.get("expires_in"),
+            granted=secrets.get("granted"),
+            config_id=secrets.get("config_id") or "",
+        )
+    return {"connected": f"{provider}:{display_name}"}
+
+
 @meta_oauth_router.get("/integrations/meta/oauth/callback", include_in_schema=False)
 async def meta_oauth_callback(
     request: Request,
@@ -651,12 +834,14 @@ async def meta_oauth_callback(
 
     frontend = get_settings().frontend_public_url.rstrip("/")
 
-    def _back(marker: str, value: str):
+    def _back(marker: str, value: str, extra: dict | None = None):
         result = {"type": "META_OAUTH_RESULT"}
         if marker == "connected":
             result["connected"] = value
         else:
             result["error"] = value
+        if extra:
+            result.update(extra)
         return HTMLResponse(_popup_html(result, frontend))
 
     # Meta redirects here with error params when the DIALOG failed
@@ -687,6 +872,13 @@ async def meta_oauth_callback(
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))
         connected_provider, page_name = await _meta_exchange_and_connect(session, code, payload)
+    except PageChoiceRequired as choice:
+        await session.rollback()
+        return _back(
+            "choose",
+            provider,
+            {"choose": {"ticket": choice.ticket, "provider": provider, "pages": choice.choices}},
+        )
     except DomainError as exc:
         await session.rollback()
         return _back("error", f"{provider}:{str(exc)[:120]}")

@@ -2,6 +2,7 @@ import React from "react";
 import { Copy, Loader2, LinkIcon, ShieldCheck, Unplug } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import FacebookRelinkNotice, { facebookNeedsRelink } from "@/pages/settings/FacebookRelinkNotice";
+import MetaPageChoiceDialog from "@/pages/settings/MetaPageChoiceDialog";
 import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
@@ -236,6 +237,10 @@ export default function ChannelsSettings() {
   const metaPollTimerRef = React.useRef(null);
   const metaTimeoutRef = React.useRef(null);
   const [formError, setFormError] = React.useState("");
+  // The owner ticked several Pages: the connect waits here for the one to use.
+  const [pageChoice, setPageChoice] = React.useState(null);
+  const [pageChoiceBusy, setPageChoiceBusy] = React.useState(false);
+  const [pageChoiceError, setPageChoiceError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [copiedTarget, setCopiedTarget] = React.useState("");
 
@@ -252,6 +257,38 @@ export default function ChannelsSettings() {
   }, []);
 
   React.useEffect(() => () => clearMetaConnectTimers(true), [clearMetaConnectTimers]);
+
+  async function choosePage(pageId) {
+    if (!pageChoice) return;
+    setPageChoiceBusy(true);
+    setPageChoiceError("");
+    try {
+      const result = await api("/integrations/meta/oauth/choose-page", {
+        method: "POST",
+        body: { ticket: pageChoice.ticket, page_id: pageId },
+      });
+      const connected = String(result?.connected || "");
+      const pageName = connected.includes(":") ? connected.slice(connected.indexOf(":") + 1) : connected;
+      setPageChoice(null);
+      setNotice(
+        isAr
+          ? `تم ربط صفحة ${pageName || "فيسبوك"} بنجاح.`
+          : `Connected the page ${pageName || "Facebook"} successfully.`
+      );
+      setFormError("");
+      void reload().catch(() => {});
+    } catch (chooseError) {
+      // The ticket works once, so a refusal means pressing connect again; say so plainly.
+      setPageChoiceError(chooseError?.message || (isAr ? "تعذر ربط الصفحة. اضغط ربط من جديد." : "Could not connect that Page. Press connect again."));
+    } finally {
+      setPageChoiceBusy(false);
+    }
+  }
+
+  function cancelPageChoice() {
+    setPageChoice(null);
+    setPageChoiceError("");
+  }
 
   // Load Meta's config and SDK before the operator presses Connect. FB.login
   // opens Meta's consent popup, so waiting for network/SDK work inside the
@@ -293,7 +330,18 @@ export default function ChannelsSettings() {
     function handleResult(data) {
       if (!data || data.type !== META_OAUTH_RESULT) return;
       clearMetaConnectTimers(true);
-      const { connected, error: oauthError } = data;
+      const { connected, error: oauthError, choose } = data;
+      if (choose && typeof choose.ticket === "string" && Array.isArray(choose.pages) && choose.pages.length > 1) {
+        setPageChoice({
+          ticket: choose.ticket,
+          provider: choose.provider,
+          pages: choose.pages.map((page) => ({ id: String(page.id), name: String(page.name || page.id) })),
+        });
+        setPageChoiceError("");
+        setFormError("");
+        setMetaConnecting("");
+        return;
+      }
       if (connected) {
         const sep = connected.indexOf(":");
         const pageName = sep === -1 ? connected : connected.slice(sep + 1);
@@ -730,6 +778,16 @@ export default function ChannelsSettings() {
 
   return (
     <SettingsShell title={t("channels.title")} subtitle={t("channels.subtitle")}>
+      {pageChoice ? (
+        <MetaPageChoiceDialog
+          choice={pageChoice}
+          isAr={isAr}
+          busy={pageChoiceBusy}
+          error={pageChoiceError}
+          onChoose={choosePage}
+          onCancel={cancelPageChoice}
+        />
+      ) : null}
       <SettingCard>
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
         {formError && !editingId && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{formError}</div>}

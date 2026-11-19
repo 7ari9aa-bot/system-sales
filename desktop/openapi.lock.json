@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 571,
-    "sha256": "b9ae7774f6fd4f6b3c067ba34296ab484460ce7cee9d8ed08caa0f2af240e499",
+    "operations": 572,
+    "sha256": "607165a0c998c008ad583233c35a715a39499f8eefad6be4035ebfb68b68de9e",
     "typed_operations": 320
   },
   "spec": {
@@ -12494,6 +12494,29 @@
           "title": "MessageSendRequest",
           "type": "object"
         },
+        "MetaOAuthPageChoiceIn": {
+          "properties": {
+            "page_id": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[0-9]+$",
+              "title": "Page Id",
+              "type": "string"
+            },
+            "ticket": {
+              "maxLength": 128,
+              "minLength": 16,
+              "title": "Ticket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ticket",
+            "page_id"
+          ],
+          "title": "MetaOAuthPageChoiceIn",
+          "type": "object"
+        },
         "MetaOAuthStartOut": {
           "description": "P8 contract for GET /integrations/meta/oauth/start: the ONLY field the\nfrontend consumes is the Meta-owned dialog URL it navigates to.",
           "properties": {
@@ -23533,14 +23556,16 @@
               "type": "string"
             },
             "phone_number_id": {
-              "maxLength": 64,
-              "minLength": 3,
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^[0-9]+$",
               "title": "Phone Number Id",
               "type": "string"
             },
             "waba_id": {
-              "maxLength": 64,
-              "minLength": 3,
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^[0-9]+$",
               "title": "Waba Id",
               "type": "string"
             }
@@ -48156,6 +48181,112 @@
             }
           },
           "summary": "Connect Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/meta/oauth/choose-page": {
+        "post": {
+          "description": "Finish a connect that paused to ask which Page: store the channel for the chosen one.\n\nThe ticket was parked for THIS tenant and user, works once, and only the Pages it was\nparked with can be chosen — a forged page id cannot reach another Page the user manages.",
+          "operationId": "meta_oauth_choose_page_api_v1_integrations_meta_oauth_choose_page_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaOAuthPageChoiceIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Meta Oauth Choose Page",
           "tags": [
             "platform"
           ]

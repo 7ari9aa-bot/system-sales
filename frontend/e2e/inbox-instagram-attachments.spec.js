@@ -98,7 +98,7 @@ test("the photo button no longer opens the old menu with its dead Contact and Po
   await expect(page.getByText("Contact", { exact: true })).toHaveCount(0);
 });
 
-test("Messenger's attachment menu keeps its real rows and no longer sends a made-up contact or poll", async ({ page }) => {
+test("Messenger's attachment menu offers only what it can send: no camera, contact or poll", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().addCookies([{ name: "csrf_token", value: "x", url: new URL(ORIGIN).origin }]);
   const sent = [];
@@ -120,7 +120,9 @@ test("Messenger's attachment menu keeps its real rows and no longer sends a made
   const menu = page.getByRole("menu");
   await expect(menu.getByText("Document")).toBeVisible({ timeout: 10_000 });
   await expect(menu.getByText("Photos & videos")).toBeVisible();
-  await expect(menu.getByText("Camera")).toBeVisible();
+  // "Camera" used to sit here but opened the very same picker as "Photos & videos", so it was a
+  // second button for one action. Only rows that do something of their own are kept.
+  await expect(menu.getByText("Camera")).toHaveCount(0);
   await expect(menu.getByText("Contact", { exact: true })).toHaveCount(0);
   await expect(menu.getByText("Poll", { exact: true })).toHaveCount(0);
   expect(sent).toHaveLength(0);

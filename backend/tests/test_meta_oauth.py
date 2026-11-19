@@ -703,38 +703,38 @@ async def test_messenger_connect_does_not_need_the_page_permissions(
 async def test_a_refused_page_subscription_fails_the_connect() -> None:
     """A Page Meta will not deliver webhooks for must not be stored as connected."""
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def refuse(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"error": {"message": "(#200) Permissions error"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(refuse)) as http:
         with pytest.raises(ExternalProviderError):
-            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="facebook")
+            await _subscribe_page_to_app(http, page_id="1", page_token="t", provider="facebook")
 
 
 async def test_a_subscription_that_does_not_say_success_fails_the_connect() -> None:
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def odd(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"success": False})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(odd)) as http:
         with pytest.raises(ExternalProviderError):
-            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="messenger")
+            await _subscribe_page_to_app(http, page_id="1", page_token="t", provider="messenger")
 
 
 async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -> None:
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(down)) as http:
         with pytest.raises(ExternalProviderError):
-            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="instagram")
+            await _subscribe_page_to_app(http, page_id="1", page_token="t", provider="instagram")
 
 
 @pytest.mark.parametrize(
@@ -742,7 +742,7 @@ async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -
     [("facebook", "feed"), ("instagram", "comments"), ("messenger", "messages")],
 )
 async def test_the_subscription_asks_for_the_channels_own_fields(provider, field) -> None:
-    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
 
     seen: dict[str, str] = {}
 
@@ -751,6 +751,6 @@ async def test_the_subscription_asks_for_the_channels_own_fields(provider, field
         return httpx.Response(200, json={"success": True})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as http:
-        await _subscribe_page_webhook(http, page_id="1", page_token="tok", provider=provider)
+        await _subscribe_page_to_app(http, page_id="1", page_token="tok", provider=provider)
     assert field in seen["subscribed_fields"].split(",")
     assert seen["access_token"] == "tok"
