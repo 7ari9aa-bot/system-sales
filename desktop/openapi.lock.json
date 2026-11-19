@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 550,
-    "sha256": "e64a6cc6ee0e89be7fdcc2ecd671ecfc85f1ad31646821cd65f87496ad1efa40",
+    "operations": 553,
+    "sha256": "2c5098cac1bdba08291f2e264ab25d4b59162d75ea7f20cd67a8c8e38fb9f1cb",
     "typed_operations": 320
   },
   "spec": {
@@ -9882,6 +9882,21 @@
           "title": "HoldCartRequest",
           "type": "object"
         },
+        "IceBreakersRequest": {
+          "description": "The questions customers can tap to start a chat. An empty list removes them.",
+          "properties": {
+            "questions": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "title": "Questions",
+              "type": "array"
+            }
+          },
+          "title": "IceBreakersRequest",
+          "type": "object"
+        },
         "IdentityOut": {
           "properties": {
             "channel": {
@@ -18025,6 +18040,38 @@
                 }
               ],
               "title": "Body"
+            },
+            "instagram_heart": {
+              "default": false,
+              "title": "Instagram Heart",
+              "type": "boolean"
+            },
+            "instagram_quick_replies": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 13,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instagram Quick Replies"
+            },
+            "instagram_share_post_id": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instagram Share Post Id"
             },
             "media_id": {
               "anyOf": [
@@ -77083,6 +77130,206 @@
           ]
         }
       },
+      "/api/v1/social/ice-breakers": {
+        "get": {
+          "description": "The questions currently offered to customers who open a chat.",
+          "operationId": "get_ice_breakers_api_v1_social_ice_breakers_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Ice Breakers",
+          "tags": [
+            "social"
+          ]
+        },
+        "put": {
+          "description": "Replace the questions customers can tap (up to 4). Instagram shows them on mobile only.",
+          "operationId": "put_ice_breakers_api_v1_social_ice_breakers_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IceBreakersRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Put Ice Breakers",
+          "tags": [
+            "social"
+          ]
+        }
+      },
       "/api/v1/social/posts": {
         "get": {
           "description": "The store's posts, newest first. `refresh=true` pulls the latest from Instagram first.",
@@ -77218,7 +77465,7 @@
           ]
         },
         "post": {
-          "description": "Publish a photo (1 picture) or a carousel (2-10) to the store's Instagram.\n\nInstagram accepts JPEG only and allows 100 API posts per account per 24 hours.\nThe post is recorded here only after Instagram accepted it.",
+          "description": "Publish a photo (1 picture) or a carousel (2-10) to the store's Instagram.\n\nInstagram accepts JPEG only and caps API posts per account per day (it answers with a\nclear limit error when that is passed, which is shown as is).\nThe post is recorded here only after Instagram accepted it.",
           "operationId": "publish_post_api_v1_social_posts_post",
           "parameters": [
             {
@@ -77546,6 +77793,111 @@
             }
           },
           "summary": "Toggle Post Comments",
+          "tags": [
+            "social"
+          ]
+        }
+      },
+      "/api/v1/social/posts/{post_id}/insights": {
+        "get": {
+          "description": "How one post performed (reach, views, likes, ...). A number not produced yet is null.",
+          "operationId": "post_insights_api_v1_social_posts__post_id__insights_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "post_id",
+              "required": true,
+              "schema": {
+                "title": "Post Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Post Insights",
           "tags": [
             "social"
           ]
