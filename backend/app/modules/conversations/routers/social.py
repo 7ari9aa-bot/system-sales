@@ -245,7 +245,8 @@ async def publish_post(
 ):
     """Publish a photo (1 picture) or a carousel (2-10) to the store's Instagram.
 
-    Instagram accepts JPEG only and allows 100 API posts per account per 24 hours.
+    Instagram accepts JPEG only and caps API posts per account per day (it answers with a
+    clear limit error when that is passed, which is shown as is).
     The post is recorded here only after Instagram accepted it.
     """
     creds = await _credentials(ctx, send=True)
