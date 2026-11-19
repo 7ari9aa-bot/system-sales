@@ -195,6 +195,107 @@ def test_whatsapp_location_contact_buttons_list_and_reaction_types():
     assert by_id["wamid.unk"].content_type == "unsupported"
 
 
+def test_whatsapp_batch_is_partitioned_per_phone_number():
+    payload = {
+        "entry": [
+            {
+                "id": "WABA-1",
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "PHONE-1"},
+                            "messages": [
+                                {
+                                    "id": "wamid.1",
+                                    "from": "1001",
+                                    "type": "text",
+                                    "text": {"body": "one"},
+                                }
+                            ],
+                        }
+                    }
+                ],
+            },
+            {
+                "id": "WABA-2",
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "PHONE-2"},
+                            "messages": [
+                                {
+                                    "id": "wamid.2",
+                                    "from": "1002",
+                                    "type": "text",
+                                    "text": {"body": "two"},
+                                }
+                            ],
+                        }
+                    }
+                ],
+            },
+        ]
+    }
+
+    partitions = whatsapp_adapter.partition_payloads(payload)
+
+    assert [key for key, _ in partitions] == ["PHONE-1", "PHONE-2"]
+    assert [
+        [message.channel_message_id for message in whatsapp_adapter.parse_inbound(partition)]
+        for _, partition in partitions
+    ] == [["wamid.1"], ["wamid.2"]]
+
+
+def test_whatsapp_partition_keeps_unattributed_changes_out_of_known_tenant():
+    changes = [
+        {"value": {"metadata": {"phone_number_id": "PHONE-1"}, "messages": []}},
+        {"value": {"messages": [{"from": "unknown-account"}]}},
+    ]
+    payload = {"entry": [{"changes": changes}]}
+
+    partitions = dict(whatsapp_adapter.partition_payloads(payload))
+
+    assert partitions["PHONE-1"]["entry"][0]["changes"] == [changes[0]]
+    assert partitions[None]["entry"][0]["changes"] == [changes[1]]
+
+
+def test_messenger_and_instagram_parse_every_message_in_a_batch():
+    from app.modules.conversations.gateway.instagram import instagram_adapter
+    from app.modules.conversations.gateway.messenger import messenger_adapter
+
+    def event(message_id, sender, account):
+        return {
+            "sender": {"id": sender},
+            "recipient": {"id": account},
+            "message": {"mid": message_id, "text": "hello"},
+        }
+
+    messenger = messenger_adapter.parse_inbound(
+        {
+            "entry": [
+                {
+                    "id": "PAGE-1",
+                    "messaging": [event("m1", "u1", "PAGE-1"), event("m2", "u2", "PAGE-1")],
+                }
+            ]
+        }
+    )
+    instagram_payload = {
+        "entry": [
+            {"id": "IG-1", "messaging": [event("i1", "u1", "IG-1")]},
+            {"id": "IG-2", "messaging": [event("i2", "u2", "IG-2")]},
+        ]
+    }
+    instagram = instagram_adapter.parse_inbound(instagram_payload)
+
+    assert [message.channel_message_id for message in messenger] == ["m1", "m2"]
+    assert [key for key, _ in instagram_adapter.partition_payloads(instagram_payload)] == [
+        "IG-1",
+        "IG-2",
+    ]
+    assert [message.channel_message_id for message in instagram] == ["i1", "i2"]
+
+
 def test_whatsapp_reply_context_sets_reply_to_message_id():
     """§155 threading: context.id (the quoted wamid) rides on the message."""
     messages = whatsapp_adapter.parse_inbound(

@@ -33,7 +33,7 @@ import httpx
 
 from app.core.errors import ExternalProviderError, ValidationError
 
-GRAPH_BASE = "https://graph.facebook.com/v26.0"
+GRAPH_BASE = "https://graph.facebook.com/v27.0"
 TELEGRAM_BASE = "https://api.telegram.org"
 
 _NUMERIC_ID = re.compile(r"^[0-9]{1,32}$")

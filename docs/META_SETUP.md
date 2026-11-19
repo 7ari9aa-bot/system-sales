@@ -55,12 +55,11 @@ FRONTEND_PUBLIC_URL     عنوان لوحة التحكم، وعليه يهبط �
 
 ## سادسًا: واتساب — زر الربط بنقرة واحدة (Embedded Signup)
 
-زر واتساب في صفحة القنوات يفتح **نافذة ميتا نفسها** (Popup وليس تحويلًا): صاحب المتجر يسجّل بحسابه، ينشئ أو يختار حساب WhatsApp Business والرقم، وميتا ترجّع للخادم `code` + `waba_id` + `phone_number_id`. الخادم يبادل الكود برمز أعمال، **يشترك في الـWABA** (بدونها لا تصل أي رسالة واردة)، يتحقق من الرقم، ثم يحفظ القناة.
+زر واتساب في صفحة القنوات يفتح **نافذة ميتا نفسها** (Popup وليس تحويلًا): صاحب المتجر يسجّل بحسابه، ينشئ أو يختار حساب WhatsApp Business والرقم، وميتا ترجّع للخادم `code` + `messaging_account_ids` + `phone_number_id` في Embedded Signup v5. الخادم يبادل الكود برمز أعمال، **يشترك في حساب المراسلة** (بدونها لا تصل أي رسالة واردة)، يتحقق من الرقم، ثم يحفظ القناة.
 
 ### الإعداد في Meta Developer Console
 1. من قائمة المنتجات أضف **Facebook Login for Business**.
-2. من **Configurations** اضغط **Create from template** واختر قالب
-   **WhatsApp Embedded Signup Configuration** (المزوّدون يسمونه أحيانًا "With 60 Expiration Token").
+2. من **Configurations** أنشئ إعداد **Facebook Login for Business** جديدًا، واختر **Embedded Signup** ثم منتج **Cloud API**. لا تستخدم إعداد Embedded Signup v2/v3 القديم؛ دعم الإصدارين انتهى في 15 أكتوبر 2026. الإعداد الجديد يستخدم تجربة v4 أو أحدث، ويختار التطبيق v5 عبر قيمة `extras.version`.
 3. انسخ **Configuration ID** الناتج → هذا هو `META_WHATSAPP_CONFIG_ID` (وهو **مختلف** عن إعداد ماسنجر).
 4. من **Settings** أضف نطاق لوحة التحكم إلى **Allowed Domains for the JavaScript SDK**
    (بدونها يرفض المتصفح فتح النافذة).
@@ -70,6 +69,12 @@ FRONTEND_PUBLIC_URL     عنوان لوحة التحكم، وعليه يهبط �
 META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من الخطوة 3)
 ```
 
+عند اختيار **System User Access Token** بصلاحية 60 يوم في إعداد Business Login، يجدد الخادم
+التوكن تلقائيًا قبل انتهائه بسبعة أيام عبر مهمة مجدولة كل 6 ساعات. احرص على تشغيل عامل
+`scheduler` في بيئة الإنتاج؛ بدون العامل لن تعمل عملية التجديد. الاتصالات القديمة بواتساب
+تحاول تسجيل نفسها للتجديد في أول دورة مجدولة، أما اتصالات Facebook/Instagram/Messenger القديمة
+التي لا تحتوي على التوكن الأساسي فتحتاج إعادة ربط واحدة لحفظ بيانات التجديد.
+
 ### الصلاحيات المطلوبة
 `whatsapp_business_management` و`whatsapp_business_messaging` — ووضع التطوير يكفي للاختبار بحساب له دور عليه.
 
@@ -77,8 +82,8 @@ META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من ا�
 نافذة ميتا تضيف الرقم وتتحقق منه بكود OTP، لكن الرقم لا يرسل ولا يستقبل إلا بعد **تسجيله** بنداء API (لا يمكن من WhatsApp Manager ولا من لوحة التطبيق). الخادم يفعل ذلك تلقائيًا بعد الاشتراك في الـWABA: يقرأ حالة الرقم، فإن كانت `CONNECTED` تركه كما هو، وإلا سجّله برقم سري من 6 أرقام يولّده بنفسه ويحفظه **مشفّرًا** (للتحقق الثنائي، ويلزم لتغيير الرقم السري أو حذف الرقم لاحقًا). ميتا تسمح بـ10 محاولات تسجيل كل 72 ساعة ثم تقفل الرقم (الخطأ `133016`)، لذلك لا يعيد الخادم المحاولة.
 
 ### ما يحدث تقنيًا (للمرجع)
-- الواجهة تحمّل Facebook JS SDK ثم `FB.login` بـ `config_id` و`response_type: "code"` و`override_default_response_type: true` و`extras: { featureType: "", sessionInfoVersion: "3" }`.
-- ميتا ترسل حدث `WA_EMBEDDED_SIGNUP` بنوع `FINISH` إلى نافذة الصفحة، ويحتوي `data` على `waba_id` و`phone_number_id` و`business_id`.
+- الواجهة تحمّل Facebook JS SDK قبل النقرة، ثم `FB.login` بـ `config_id` و`response_type: "code"` و`override_default_response_type: true` و`extras: { version: "v5" }`. يُعطّل مسار ترحيل أرقام تطبيق WhatsApp Business في الإعداد الحالي لأن المنتج يدعم Cloud API.
+- ميتا ترسل حدث `WA_EMBEDDED_SIGNUP` بنوع `FINISH` إلى نافذة الصفحة، ويحتوي `data` على `messaging_account_ids` و`phone_number_id` و`business_id`. يمرر التطبيق أول Messaging Account إلى الخادم على أنه `waba_id` للتوافق مع واجهاته الحالية.
 - الخادم: `GET /oauth/access_token` (بدون redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → تحقق ثم حفظ.
 
 ملاحظة: القيمتان `META_APP_ID` و`META_APP_SECRET` مشتركتان بين كل قنوات ميتا.
@@ -150,21 +155,27 @@ FRONTEND_PUBLIC_URL     dashboard origin the callback redirects back to
 
 ## 6. WhatsApp — one-click connect (Embedded Signup)
 
-The WhatsApp button on the channels page opens **Meta's own popup** (not a redirect): the store owner signs in, creates or selects the WhatsApp Business account and number, and Meta returns `code` + `waba_id` + `phone_number_id`. The server exchanges the code for a business token, **subscribes the app to the WABA** (without it no inbound message ever arrives), verifies the number, and stores the channel.
+The WhatsApp button on the channels page opens **Meta's own popup** (not a redirect): the store owner signs in, creates or selects the WhatsApp Business account and number, and Embedded Signup v5 returns `code` + `messaging_account_ids` + `phone_number_id`. The server exchanges the code for a business token, **subscribes the app to the messaging account** (without it no inbound message ever arrives), verifies the number, and stores the channel.
 
 ### Console setup
 1. Add the **Facebook Login for Business** product.
-2. **Configurations → Create from template → "WhatsApp Embedded Signup Configuration"**.
+2. Create a new **Facebook Login for Business** configuration, choose **Embedded Signup**, and select **Cloud API**. Do not use the old Embedded Signup v2/v3 configuration; Meta deprecated those versions on October 15, 2026. The new configuration uses the v4-or-later flow, while the app selects v5 through `extras.version`.
 3. Copy the generated **Configuration ID** → `META_WHATSAPP_CONFIG_ID` (it is NOT the same as the Messenger configuration).
 4. Under **Settings**, add the dashboard domain to **Allowed Domains for the JavaScript SDK**.
 
 ### Permissions
 `whatsapp_business_management` and `whatsapp_business_messaging`; development mode is enough to test with an account that holds a role on the app.
 
+For **System User Access Token** with a 60-day expiry, the scheduler renews the token seven days
+before expiry via Meta's refresh endpoint every six hours. Keep the production `scheduler` worker
+running. Existing WhatsApp connections are enrolled on the next sweep; older Facebook, Instagram,
+and Messenger connections need one reconnect because their original user/system token was not
+stored.
+
 ### Technical reference
-- The page loads the Facebook JS SDK, then `FB.login` with `config_id`, `response_type: "code"`, `override_default_response_type: true`, `extras: { featureType: "", sessionInfoVersion: "3" }`.
-- Meta posts `WA_EMBEDDED_SIGNUP` / `FINISH` to the page window with `data = { waba_id, phone_number_id, business_id }`.
-- Server: `GET /oauth/access_token` (no redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → verify → store.
+- The page preloads the Facebook JS SDK, then calls `FB.login` with `config_id`, `response_type: "code"`, `override_default_response_type: true`, and `extras: { version: "v5" }`. WhatsApp Business app onboarding is explicitly disabled because the product currently connects Cloud API numbers.
+- Meta posts `WA_EMBEDDED_SIGNUP` / `FINISH` to the page window with `data = { messaging_account_ids, phone_number_id, business_id }`. The first messaging account ID is passed to the existing backend `waba_id` field.
+- Server: `GET /oauth/access_token` (no redirect_uri) → `POST /{messaging_account_id}/subscribed_apps` → verify phone number → store.
 
 `META_APP_ID` and `META_APP_SECRET` are shared across all Meta channels.
 

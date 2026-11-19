@@ -41,27 +41,74 @@ const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
 const META_OAUTH_RESULT = "META_OAUTH_RESULT";
 
 export function loadFacebookSdk(appId, version, isAr) {
-  if (window.FB) return Promise.resolve(window.FB);
   return new Promise((resolve, reject) => {
-    window.fbAsyncInit = function () {
-      window.FB.init({ appId, cookie: true, xfbml: true, version });
+    const configKey = `${appId}:${version}`;
+    const init = () => {
+      if (!window.FB) {
+        reject(new Error(isAr ? "لم تكتمل تهيئة Facebook SDK." : "Facebook SDK did not initialize."));
+        return;
+      }
+      if (window.__fihristMetaSdkConfig !== configKey) {
+        try {
+          window.FB.init({ appId, cookie: true, xfbml: true, version });
+          window.__fihristMetaSdkConfig = configKey;
+        } catch {
+          reject(new Error(isAr ? "تعذرت تهيئة Facebook SDK." : "Could not initialize Facebook SDK."));
+          return;
+        }
+      }
       resolve(window.FB);
     };
-    const script = document.createElement("script");
-    script.src = "https://connect.facebook.net/en_US/sdk.js";
-    script.async = true;
-    script.defer = true;
-    script.crossOrigin = "anonymous";
-    script.onerror = () =>
+
+    if (window.FB) {
+      init();
+      return;
+    }
+
+    const script = document.querySelector?.("script[data-fihrist-meta-sdk]") || document.createElement("script");
+    const setTimer = window.setTimeout?.bind(window) || setTimeout;
+    const clearTimer = window.clearTimeout?.bind(window) || clearTimeout;
+    const timer = setTimer(() => {
+      reject(new Error(isAr ? "انتهت مهلة تحميل Facebook SDK. أعد المحاولة." : "Facebook SDK timed out. Try again."));
+    }, 15_000);
+    window.fbAsyncInit = () => {
+      clearTimer(timer);
+      init();
+    };
+    script.onerror = () => {
+      clearTimer(timer);
       reject(
         new Error(
           isAr
             ? "تعذر تحميل Facebook SDK — إذا كنت تستخدم مانع إعلانات (AdBlocker) يرجى إيقافه مؤقتًا لهذه الصفحة ثم إعادة المحاولة."
             : "Could not load the Facebook SDK — if using an AdBlocker, please disable it for this page and retry."
         )
-      );
-    document.body.appendChild(script);
+      )
+    };
+    if (!script.src) {
+      script.src = "https://connect.facebook.net/en_US/sdk.js";
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = "anonymous";
+      if (script.dataset) script.dataset.fihristMetaSdk = "true";
+      document.body.appendChild(script);
+    }
   });
+}
+
+export function isMetaSdkOrigin(origin) {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return (
+      protocol === "https:" &&
+      (hostname === "facebook.com" ||
+        hostname.endsWith(".facebook.com") ||
+        hostname === "fb.com" ||
+        hostname.endsWith(".fb.com"))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Map channel connect or OAuth error strings to actionable sentences. */
@@ -88,6 +135,20 @@ function friendlyChannelError(raw, isAr) {
       : "Could not reach Telegram to verify the connection. Please try again.";
   }
   return friendlyMetaError(detail, isAr);
+}
+
+export function isMetaOAuthPopupMessage(event, popup, origin) {
+  return event?.origin === origin && event?.source === popup;
+}
+
+export function extractWhatsAppSignupIds(session) {
+  const messagingAccountIds = Array.isArray(session?.messaging_account_ids)
+    ? session.messaging_account_ids
+    : [];
+  return {
+    wabaId: String(session?.waba_id || session?.wabaId || messagingAccountIds[0] || ""),
+    phoneNumberId: String(session?.phone_number_id || session?.phoneNumberId || ""),
+  };
 }
 
 /** Map the marker the OAuth callback appended onto a sentence the operator can act on. */
@@ -167,6 +228,9 @@ export default function ChannelsSettings() {
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
   const [metaConnecting, setMetaConnecting] = React.useState("");
+  const [whatsappSdkLoading, setWhatsappSdkLoading] = React.useState(true);
+  const [whatsappSdkError, setWhatsappSdkError] = React.useState("");
+  const whatsappSignupRef = React.useRef(null);
   const metaPopupRef = React.useRef(null);
   const metaPollTimerRef = React.useRef(null);
   const metaTimeoutRef = React.useRef(null);
@@ -187,6 +251,41 @@ export default function ChannelsSettings() {
   }, []);
 
   React.useEffect(() => () => clearMetaConnectTimers(true), [clearMetaConnectTimers]);
+
+  // Load Meta's config and SDK before the operator presses Connect. FB.login
+  // opens Meta's consent popup, so waiting for network/SDK work inside the
+  // click handler loses the browser's short-lived user activation.
+  React.useEffect(() => {
+    let mounted = true;
+    setWhatsappSdkLoading(true);
+    void api("/integrations/whatsapp/embedded-signup/start")
+      .then(async (config) => {
+        if (!config?.app_id || !config?.config_id) {
+          throw new Error(
+            "WhatsApp connect is not configured on the server: set META_WHATSAPP_CONFIG_ID (see docs/META_SETUP.md)."
+          );
+        }
+        const fb = await loadFacebookSdk(config.app_id, config.graph_version || "v27.0", isAr);
+        return { fb, configId: config.config_id };
+      })
+      .then((prepared) => {
+        if (!mounted) return;
+        whatsappSignupRef.current = prepared;
+        setWhatsappSdkError("");
+      })
+      .catch((prepareError) => {
+        if (!mounted) return;
+        whatsappSignupRef.current = null;
+        setWhatsappSdkError(prepareError?.message || "Could not prepare WhatsApp signup.");
+      })
+      .finally(() => {
+        if (mounted) setWhatsappSdkLoading(false);
+      });
+    return () => {
+      mounted = false;
+      whatsappSignupRef.current = null;
+    };
+  }, [isAr]);
 
   // Listen for Meta OAuth popup results (postMessage / BroadcastChannel / storage).
   React.useEffect(() => {
@@ -215,6 +314,7 @@ export default function ChannelsSettings() {
     }
 
     function onMessage(event) {
+      if (!isMetaOAuthPopupMessage(event, metaPopupRef.current, window.location.origin)) return;
       handleResult(event.data);
     }
 
@@ -224,7 +324,7 @@ export default function ChannelsSettings() {
           const parsed = JSON.parse(event.newValue);
           localStorage.removeItem("meta_oauth_result");
           handleResult(parsed);
-        } catch (_) {}
+        } catch {}
       }
     }
 
@@ -232,7 +332,7 @@ export default function ChannelsSettings() {
     try {
       bc = new BroadcastChannel("meta_oauth");
       bc.onmessage = (event) => handleResult(event.data);
-    } catch (_) {}
+    } catch {}
 
     window.addEventListener("message", onMessage);
     window.addEventListener("storage", onStorage);
@@ -274,38 +374,35 @@ export default function ChannelsSettings() {
   /** Connect WhatsApp via Embedded Signup (JS SDK popup). */
   async function connectWhatsApp(channel) {
     if (metaConnecting) return;
+    const prepared = whatsappSignupRef.current;
+    if (!prepared) {
+      setFormError(whatsappSdkError || (isAr ? "تعذر تجهيز نافذة ربط واتساب. أعد تحميل الصفحة ثم حاول مجددًا." : "WhatsApp signup is not ready. Reload the page and try again."));
+      return;
+    }
     setMetaConnecting(channel.id);
     setFormError("");
     setNotice("");
     try {
-      const { app_id: appId, config_id: configId, graph_version: version } = await api(
-        "/integrations/whatsapp/embedded-signup/start"
-      );
-      if (!appId || !configId) {
-        throw new Error(
-          isAr
-            ? "ربط واتساب غير مُعد على الخادم: اضبط META_WHATSAPP_CONFIG_ID (انظر docs/META_SETUP.md)."
-            : "WhatsApp connect is not configured on the server: set META_WHATSAPP_CONFIG_ID (see docs/META_SETUP.md)."
-        );
-      }
-      const fb = await loadFacebookSdk(appId, version || "v26.0", isAr);
+      const { fb, configId } = prepared;
 
       let resolveCode;
       let rejectCode;
+      let cleanupSignup = () => {};
       const codePromise = new Promise((resolve, reject) => {
         resolveCode = resolve;
-        rejectCode = reject;
+        rejectCode = (error) => {
+          cleanupSignup();
+          reject(error);
+        };
       });
       const sessionPromise = new Promise((resolve, reject) => {
         const timer = window.setTimeout(() => {
-          window.removeEventListener("message", onMessage);
+          cleanupSignup();
           reject(new Error(isAr ? "انتهت مدة الربط. أعد المحاولة." : "The signup timed out. Try again."));
         }, 10 * 60 * 1000);
 
         function onMessage(event) {
-          if (!event.origin || (!event.origin.endsWith("facebook.com") && !event.origin.endsWith("fb.com"))) {
-            return;
-          }
+          if (!isMetaSdkOrigin(event.origin)) return;
           let payload;
           try {
             payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
@@ -314,18 +411,27 @@ export default function ChannelsSettings() {
           }
           if (payload?.type !== WA_SIGNUP_EVENT) return;
           if (payload.event === "CANCEL" || payload.event === "ERROR") {
-            window.clearTimeout(timer);
-            window.removeEventListener("message", onMessage);
+            cleanupSignup();
             reject(new Error(isAr ? "أُلغيت عملية الربط قبل اكتمالها." : "The signup was cancelled before it completed."));
             return;
           }
-          if (payload.event === "FINISH" || payload.event === "FINISH_ONLY_WABA") {
-            window.clearTimeout(timer);
-            window.removeEventListener("message", onMessage);
+          if (payload.event === "FINISH") {
+            cleanupSignup();
             resolve(payload.data || {});
+          } else if (payload.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
+            cleanupSignup();
+            reject(new Error(
+              isAr
+                ? "هذا الرقم مربوط حاليًا بتطبيق WhatsApp Business. افصل التطبيق أو أعد المحاولة برقم مؤهل لـCloud API."
+                : "This number is connected to the WhatsApp Business app. Disconnect it or retry with a number eligible for Cloud API."
+            ));
           }
         }
 
+        cleanupSignup = () => {
+          window.clearTimeout(timer);
+          window.removeEventListener("message", onMessage);
+        };
         window.addEventListener("message", onMessage);
         fb.login(
           (response) => {
@@ -337,14 +443,23 @@ export default function ChannelsSettings() {
             config_id: configId,
             response_type: "code",
             override_default_response_type: true,
-            extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+            extras: {
+              setup: {},
+              version: "v5",
+              features: [{ name: "whatsapp_business_app_onboarding", enabled: false }],
+            },
           }
         );
       });
 
-      const [authCode, session] = await Promise.all([codePromise, sessionPromise]);
-      const wabaId = String(session.waba_id || session.wabaId || "");
-      const phoneNumberId = String(session.phone_number_id || session.phoneNumberId || "");
+      let authCode;
+      let session;
+      try {
+        [authCode, session] = await Promise.all([codePromise, sessionPromise]);
+      } finally {
+        cleanupSignup();
+      }
+      const { wabaId, phoneNumberId } = extractWhatsAppSignupIds(session);
       if (!wabaId || !phoneNumberId) {
         throw new Error(
           isAr
@@ -717,12 +832,16 @@ export default function ChannelsSettings() {
                           <button
                             type="button"
                             onClick={() => handleConnect(channel)}
-                            disabled={saving || Boolean(metaConnecting)}
+                            disabled={saving || Boolean(metaConnecting) || (channel.id === "whatsapp" && whatsappSdkLoading)}
                             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                           >
-                            {isConnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LinkIcon className="h-3.5 w-3.5" />}
+                            {isConnecting || (channel.id === "whatsapp" && whatsappSdkLoading)
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <LinkIcon className="h-3.5 w-3.5" />}
                             {isConnecting
                               ? (isAr ? "جارٍ الربط…" : "Connecting…")
+                              : channel.id === "whatsapp" && whatsappSdkLoading
+                              ? (isAr ? "جارٍ تجهيز واتساب…" : "Preparing WhatsApp…")
                               : channel.connected || needsAttention || needsVerification
                               ? (isAr ? "إعادة ربط" : "Reconnect")
                               : (isAr ? "ربط" : "Connect")}

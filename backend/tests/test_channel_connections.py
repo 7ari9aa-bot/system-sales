@@ -74,7 +74,7 @@ async def test_facebook_verification_rejects_a_mismatched_page_id() -> None:
     assert spec is not None
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/v26.0/999"
+        assert request.url.path == "/v27.0/999"
         return httpx.Response(200, json={"id": "111", "name": "Other Page"})
 
     async with _meta_client(handler) as client:

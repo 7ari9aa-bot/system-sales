@@ -14,7 +14,7 @@ tenant, different product — so it gets its own file.
 
 Meta console prerequisites (docs/META_SETUP.md §WhatsApp):
   * Facebook Login for Business enabled, with a configuration created from the
-    "WhatsApp Embedded Signup Configuration" template → META_WHATSAPP_CONFIG_ID
+    Embedded Signup flow and Cloud API product → META_WHATSAPP_CONFIG_ID
   * the dashboard origin listed under Allowed Domains for the JavaScript SDK
 """
 
@@ -40,7 +40,7 @@ whatsapp_signup_router = APIRouter()
 
 #: Same pinned Graph release as the OAuth flow — one version for both dialogs
 #: and calls, so the app's configuration and our requests never disagree.
-_GRAPH_VERSION = "v26.0"
+_GRAPH_VERSION = "v27.0"
 _GRAPH = f"https://graph.facebook.com/{_GRAPH_VERSION}"
 
 
@@ -56,8 +56,8 @@ class WhatsAppSignupCompleteBody(BaseModel):
     """What the JS SDK popup hands back, plus the two ids from its session."""
 
     code: str = Field(min_length=8, max_length=4096)
-    waba_id: str = Field(min_length=3, max_length=64)
-    phone_number_id: str = Field(min_length=3, max_length=64)
+    waba_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
+    phone_number_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
 
 
 class WhatsAppSignupCompleteOut(BaseModel):
@@ -93,8 +93,8 @@ def _whatsapp_config() -> tuple[str, str, str]:
         ]
         raise ValidationError(
             "WhatsApp Embedded Signup is not fully configured on this server — "
-            f"set {', '.join(missing)} (create the configuration from Meta's "
-            "'WhatsApp Embedded Signup Configuration' template; see docs/META_SETUP.md)."
+            f"set {', '.join(missing)} (create a Facebook Login for Business "
+            "Embedded Signup configuration with the Cloud API product; see docs/META_SETUP.md)."
         )
     return app_id, app_secret, config_id
 
@@ -118,7 +118,7 @@ async def whatsapp_signup_start(
 
 async def _exchange_code_for_token(
     http: httpx.AsyncClient, *, app_id: str, app_secret: str, code: str
-) -> str:
+) -> tuple[str, str | None]:
     """code → business token. Embedded Signup sends NO redirect_uri."""
     try:
         response = await http.get(
@@ -133,31 +133,38 @@ async def _exchange_code_for_token(
         raise ExternalProviderError(
             "Could not reach Meta to complete the WhatsApp connection. Try again."
         ) from None
-    if response.status_code >= 500 or response.status_code == 429:
+    if response.status_code == 429 or response.status_code >= 500:
         raise ExternalProviderError("Meta is temporarily unavailable. Try again.", retryable=True)
     try:
         payload = response.json()
     except ValueError:
         raise ExternalProviderError("Meta returned an invalid token response.") from None
-    if not isinstance(payload, dict) or payload.get("error"):
+    if not response.is_success or not isinstance(payload, dict) or payload.get("error"):
         raise ValidationError("Meta rejected the WhatsApp authorization code. Press connect again.")
     token = payload.get("access_token")
     if not isinstance(token, str) or not token:
         raise ValidationError(
             "Meta returned no access token for this WhatsApp signup. Press connect again."
         )
-    return token
+    from app.core.meta_tokens import token_expiry
+
+    return token, token_expiry(payload.get("expires_in"))
 
 
 async def _phone_display_name(
     http: httpx.AsyncClient, *, phone_number_id: str, token: str
 ) -> str | None:
     """The verified business name / display number, for the settings UI."""
-    response = await http.get(
-        f"{_GRAPH}/{phone_number_id}",
-        params={"fields": "display_phone_number,verified_name"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    try:
+        response = await http.get(
+            f"{_GRAPH}/{phone_number_id}",
+            params={"fields": "display_phone_number,verified_name"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    except httpx.RequestError:
+        # This is presentation metadata only; a transient failure must not
+        # discard an otherwise valid customer authorization.
+        return None
     if response.is_error:
         return None
     try:
@@ -167,6 +174,67 @@ async def _phone_display_name(
     if not isinstance(payload, dict):
         return None
     return str(payload.get("verified_name") or payload.get("display_phone_number") or "") or None
+
+
+async def _verify_phone_belongs_to_waba(
+    http: httpx.AsyncClient, *, waba_id: str, phone_number_id: str, token: str
+) -> None:
+    """Reject a tampered or inconsistent signup before subscribing/storing it."""
+    params = {"fields": "id", "limit": "100"}
+    for _page in range(100):
+        try:
+            response = await http.get(
+                f"{_GRAPH}/{waba_id}/phone_numbers",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.RequestError:
+            raise ExternalProviderError(
+                "Could not verify that this WhatsApp number belongs to the selected business. "
+                "Try again."
+            ) from None
+        if response.status_code == 429 or response.status_code >= 500:
+            raise ExternalProviderError(
+                "Meta is temporarily unavailable while verifying the WhatsApp number.",
+                retryable=True,
+            )
+        try:
+            payload = response.json()
+        except ValueError:
+            raise ExternalProviderError(
+                "Meta returned an invalid WhatsApp account response."
+            ) from None
+        if not response.is_success or not isinstance(payload, dict) or payload.get("error"):
+            raise ValidationError(
+                "Meta could not verify the selected WhatsApp business account. "
+                "Reopen signup and try again."
+            )
+        phone_numbers = payload.get("data")
+        if not isinstance(phone_numbers, list):
+            raise ExternalProviderError("Meta returned an invalid WhatsApp number list.")
+        if any(
+            isinstance(number, dict) and str(number.get("id") or "") == phone_number_id
+            for number in phone_numbers
+        ):
+            return
+        paging = payload.get("paging") or {}
+        if not isinstance(paging, dict):
+            raise ExternalProviderError("Meta returned an invalid WhatsApp number cursor.")
+        cursors = paging.get("cursors") or {}
+        if not isinstance(cursors, dict):
+            raise ExternalProviderError("Meta returned an invalid WhatsApp number cursor.")
+        after = cursors.get("after")
+        if not paging.get("next"):
+            break
+        if not isinstance(after, str) or not after:
+            raise ExternalProviderError("Meta returned an invalid WhatsApp number cursor.")
+        params["after"] = after
+    else:
+        raise ExternalProviderError("Meta returned too many WhatsApp number pages to verify.")
+
+    raise ValidationError(
+        "The selected WhatsApp number does not belong to the selected business account."
+    )
 
 
 async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token: str) -> None:
@@ -185,7 +253,22 @@ async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token
         raise ExternalProviderError(
             "Could not subscribe the WhatsApp account to this app. Try again."
         ) from None
-    if response.is_error:
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ExternalProviderError(
+            "Meta is temporarily unavailable while setting up WhatsApp webhooks.",
+            retryable=True,
+        )
+    try:
+        payload = response.json()
+    except ValueError:
+        raise ExternalProviderError(
+            "Meta returned an invalid webhook subscription response."
+        ) from None
+    if (
+        not response.is_success
+        or not isinstance(payload, dict)
+        or payload.get("success") is not True
+    ):
         raise ExternalProviderError(
             "Meta refused the WhatsApp webhook subscription — check the app's "
             "whatsapp_business_messaging permission, then retry.",
@@ -279,15 +362,25 @@ async def whatsapp_signup_complete(
     app_id, app_secret, _config_id = _whatsapp_config()
     tenant_id = ctx.tenant_id
 
+    existing = (
+        await session.execute(_select_integration(tenant_id, "whatsapp"))
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "disabled":
+        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
+    if existing is None:
+        await EntitlementService.ensure_channel_allowed(session, tenant_id, "whatsapp")
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False
     ) as http:
-        token = await _exchange_code_for_token(
+        token, token_expires_at = await _exchange_code_for_token(
             http, app_id=app_id, app_secret=app_secret, code=body.code
         )
-        await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
-        registration_pin = await _register_phone_number(
-            http, phone_number_id=body.phone_number_id, token=token
+        await _verify_phone_belongs_to_waba(
+            http,
+            waba_id=body.waba_id,
+            phone_number_id=body.phone_number_id,
+            token=token,
         )
         display_name = await _phone_display_name(
             http, phone_number_id=body.phone_number_id, token=token
@@ -300,14 +393,13 @@ async def whatsapp_signup_complete(
             {"phone_number_id": body.phone_number_id},
             client=http,
         )
-
-    existing = (
-        await session.execute(_select_integration(tenant_id, "whatsapp"))
-    ).scalar_one_or_none()
-    if existing is not None and existing.status == "disabled":
-        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
-    if existing is None:
-        await EntitlementService.ensure_channel_allowed(session, tenant_id, "whatsapp")
+        # Subscribe only after the business credential and chosen phone have
+        # passed verification. Otherwise a failed connect leaves an orphaned
+        # webhook subscription on the customer's account.
+        await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
+        registration_pin = await _register_phone_number(
+            http, phone_number_id=body.phone_number_id, token=token
+        )
 
     verified_at = datetime.now(UTC).isoformat()
     integration_config = {
@@ -320,6 +412,10 @@ async def whatsapp_signup_complete(
         ),
     }
     secrets_to_store = {"access_token": token}
+    secrets_to_store["_meta"] = {
+        "expires_at": token_expires_at,
+        "refreshable": bool(_config_id and token_expires_at),
+    }
     if registration_pin:
         # Needed to change the PIN or delete the number later; never shown, never logged.
         secrets_to_store["registration_pin"] = registration_pin

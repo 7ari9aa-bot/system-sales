@@ -53,7 +53,7 @@ API / automation creates an outbound Message
   -> MessageWorker claims queued Message
   -> policy and consent checks
   -> decrypt tenant integration credentials
-  -> POST https://graph.facebook.com/v21.0/{phone_number_id}/messages
+  -> POST https://graph.facebook.com/v27.0/{phone_number_id}/messages
   -> persist provider id and delivery attempt
 ```
 

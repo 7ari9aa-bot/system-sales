@@ -33,8 +33,10 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
+from app.core.db import bind_tenant
 from app.core.secrets import encrypt_credentials_dict
 from app.main import create_app
+from app.modules.identity.models import Tenant
 from app.modules.platform.models import Integration, WebhookEvent
 
 CHANNEL_SECRET = "test-app-secret"
@@ -237,3 +239,125 @@ async def test_an_attributed_delivery_persists_one_durable_ingress_event(
     assert len(rows) == 1, "the byte-identical replay must not create a second row"
     assert rows[0].signature_valid is True
     assert rows[0].processing_status == "pending"
+
+
+@pytest.mark.usefixtures("_whatsapp_secret")
+async def test_one_meta_batch_is_split_and_queued_under_each_phone_tenant(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+) -> None:
+    """A batched signed webhook must never mix two merchants' messages."""
+    import app.modules.conversations.router as cr
+
+    other = Tenant(slug=f"other-{uuid.uuid4().hex[:8]}", name="Other Tenant")
+    db.add(other)
+    await db.flush()
+    db.add(
+        Integration(
+            id=uuid.uuid4(),
+            tenant_id=tenant_ctx.tenant_id,
+            provider="whatsapp",
+            kind="channel",
+            status="active",
+            config={"phone_number_id": "201000000001"},
+            credentials=encrypt_credentials_dict({"access_token": "t1"}),
+        )
+    )
+    await db.flush()
+    await bind_tenant(db, other.id)
+    db.add(
+        Integration(
+            id=uuid.uuid4(),
+            tenant_id=other.id,
+            provider="whatsapp",
+            kind="channel",
+            status="active",
+            config={"phone_number_id": "201000000002"},
+            credentials=encrypt_credentials_dict({"access_token": "t2"}),
+        )
+    )
+    await db.flush()
+    await bind_tenant(db, tenant_ctx.tenant_id)
+
+    async def _resolve(_session, _channel, phone_id):
+        return {
+            "201000000001": tenant_ctx.tenant_id,
+            "201000000002": other.id,
+        }.get(phone_id)
+
+    adapter = cr.get_adapter("whatsapp")
+    monkeypatch.setattr(cr, "get_adapter", lambda _channel: adapter)
+    monkeypatch.setattr(
+        "app.modules.conversations.routers.webhooks.IngestService.resolve_tenant", _resolve
+    )
+    monkeypatch.setattr(
+        "app.modules.conversations.gateway.whatsapp.whatsapp_adapter.check_signature",
+        lambda _headers, _body: True,
+    )
+
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "201000000001"},
+                            "messages": [
+                                {
+                                    "id": "wamid.tenant1",
+                                    "from": "1001",
+                                    "type": "text",
+                                    "text": {"body": "one"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "201000000002"},
+                            "messages": [
+                                {
+                                    "id": "wamid.tenant2",
+                                    "from": "1002",
+                                    "type": "text",
+                                    "text": {"body": "two"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+        ]
+    }
+    raw = json.dumps(payload).encode()
+    response = await cr.channel_webhook("whatsapp", _FakeRequest(raw), db)
+
+    assert response == {"ok": True, "queued": True}
+    for tenant_id, expected_phone in (
+        (tenant_ctx.tenant_id, "201000000001"),
+        (other.id, "201000000002"),
+    ):
+        await bind_tenant(db, tenant_id)
+        row = (
+            await db.execute(
+                select(WebhookEvent).where(
+                    WebhookEvent.tenant_id == tenant_id,
+                    WebhookEvent.provider == "whatsapp",
+                )
+            )
+        ).scalar_one()
+        changes = row.payload["entry"][0]["changes"]
+        assert changes[0]["value"]["metadata"]["phone_number_id"] == expected_phone
+
+
+class _FakeRequest:
+    def __init__(self, raw: bytes) -> None:
+        self._raw = raw
+        self.headers = {"x-hub-signature-256": "test"}
+        self.query_params: dict[str, str] = {}
+
+    async def body(self) -> bytes:
+        return self._raw

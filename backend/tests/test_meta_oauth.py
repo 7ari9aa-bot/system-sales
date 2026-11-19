@@ -14,11 +14,14 @@ import json
 import re
 
 import httpx
+import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.core.errors import ExternalProviderError
 from app.core.secrets import decrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
 from app.main import create_app
+from app.modules.customers import meta_oauth
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import Integration
 
@@ -82,7 +85,12 @@ def _graph_handler(
         if "/oauth/access_token" in url:
             if params.get("grant_type") == "fb_exchange_token":
                 return httpx.Response(
-                    200, json={"access_token": LONG_LIVED_TOKEN, "token_type": "bearer"}
+                    200,
+                    json={
+                        "access_token": LONG_LIVED_TOKEN,
+                        "token_type": "bearer",
+                        "expires_in": 5_183_944,
+                    },
                 )
             if fail_exchange:
                 return httpx.Response(400, json={"error": {"message": "bad code", "code": 100}})
@@ -122,6 +130,21 @@ def _graph_handler(
         return httpx.Response(404, json={"error": f"unexpected graph call: {url[:160]}"})
 
     return handler
+
+
+async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
+    ) as client:
+        await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+        )
+    ) as client:
+        with pytest.raises(ExternalProviderError, match="webhook subscription"):
+            await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
 
 
 def _patch_graph(monkeypatch, handler) -> list[str]:
@@ -204,7 +227,7 @@ async def test_start_returns_the_meta_dialog_url(db, tenant_ctx, monkeypatch):
     from urllib.parse import quote
 
     # One pinned version for the dialog (the changelog's current one).
-    assert "/v26.0/dialog/oauth?" in url
+    assert "/v27.0/dialog/oauth?" in url
     assert f"client_id={APP_ID}" in url
     # The redirect_uri rides the query URL-ENCODED — the raw assertion would
     # fail on the // and the callback registration requires the encoded form.
@@ -311,6 +334,35 @@ async def test_callback_exchanges_for_a_long_lived_token(
     assert f"access_token={LONG_LIVED_TOKEN}" in listing
     row = (await db.execute(sa_select_integration())).scalar_one()
     assert decrypt_credentials_dict(row.credentials)["api_key"] == PAGE_TOKEN
+
+
+async def test_business_login_uses_expiring_system_user_refresh_contract(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    _config_patch(monkeypatch, config_id="business-login-config")
+    calls: list[str] = []
+    _patch_graph(monkeypatch, _graph_handler(calls, long_lived=True))
+    state = create_oauth_state_token(
+        str(tenant_ctx.user.id),
+        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
+    )
+    app = _app(db, tenant_ctx)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        response = await c.get(
+            "/api/v1/integrations/meta/oauth/callback",
+            params={"code": "auth-code-1", "state": state},
+            follow_redirects=False,
+        )
+
+    assert "connected" in _popup_result(response)
+    exchange = next(u for u in calls if "fb_exchange_token" in u)
+    assert "set_token_expires_in_60_days=true" in exchange
+    row = (await db.execute(sa_select_integration())).scalar_one()
+    stored = decrypt_credentials_dict(row.credentials)
+    assert stored["_meta"]["refreshable"] is True
+    assert stored["_meta"]["source_access_token"] == LONG_LIVED_TOKEN
+    assert stored["_meta"]["page_id"] == PAGE_ID
+    assert stored["_meta"]["expires_at"]
 
 
 async def test_callback_connects_instagram_via_the_ig_account(

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import DomainError, ValidationError
+from app.core.errors import DomainError, ExternalProviderError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
 from app.modules.customers.schemas import MetaOAuthStartOut
@@ -39,7 +39,7 @@ _logger = logging.getLogger(__name__)
 #: One version pinned for BOTH the login dialog and the Graph calls — the
 #: dialog URL and the API MUST match what the app's configuration expects
 #: (current version per developers.facebook.com/docs/graph-api/changelog).
-_META_VERSION = "v26.0"
+_META_VERSION = "v27.0"
 _GRAPH = f"https://graph.facebook.com/{_META_VERSION}"
 
 #: Scopes the operator grants on the Meta dialog, per channel provider.
@@ -176,6 +176,38 @@ def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     return f"{step} failed ({code}): {message}" if code else f"{step} failed: {message}"
 
 
+async def _subscribe_page_to_app(http, *, page_id: str, page_token: str) -> None:
+    """Fail the connection if the page cannot receive this app's webhooks."""
+    import httpx
+
+    try:
+        response = await http.post(
+            f"{_GRAPH}/{page_id}/subscribed_apps",
+            params={
+                "subscribed_fields": (
+                    "messages,messaging_postbacks,messaging_referrals,message_deliveries"
+                ),
+                "access_token": page_token,
+            },
+        )
+    except httpx.RequestError:
+        raise ExternalProviderError(
+            "Could not configure the Meta page webhook subscription. Try again."
+        ) from None
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ExternalProviderError(
+            "Meta is temporarily unavailable while configuring page webhooks.", retryable=True
+        )
+    try:
+        payload = response.json()
+    except ValueError:
+        raise ExternalProviderError("Meta returned an invalid page webhook response.") from None
+    if response.is_error or not isinstance(payload, dict) or payload.get("success") is not True:
+        raise ExternalProviderError(
+            "Meta refused the page webhook subscription. Check the app's messaging permissions."
+        )
+
+
 async def _meta_exchange_and_connect(
     session: AsyncSession, code: str, state_payload: dict
 ) -> tuple[str, str]:
@@ -232,16 +264,22 @@ async def _meta_exchange_and_connect(
         #    minted from a long-lived user token does not expire. Tokens
         #    that do not expire (system-user access tokens from a business
         #    config_id) carry no expires_in and skip the exchange.
+        expires_in = swap.get("expires_in")
         if swap.get("expires_in"):
+            exchange_params = {
+                "grant_type": "fb_exchange_token",
+                "client_id": app_id,
+                "client_secret": app_secret,
+                "fb_exchange_token": user_token,
+            }
+            if _config_id:
+                # Business Login system-user tokens support the rolling
+                # 60-day refresh contract documented by Meta.
+                exchange_params["set_token_expires_in_60_days"] = "true"
             long_lived = (
                 await http.get(
                     f"{_GRAPH}/oauth/access_token",
-                    params={
-                        "grant_type": "fb_exchange_token",
-                        "client_id": app_id,
-                        "client_secret": app_secret,
-                        "fb_exchange_token": user_token,
-                    },
+                    params=exchange_params,
                 )
             ).json()
             long_token = long_lived.get("access_token")
@@ -252,6 +290,7 @@ async def _meta_exchange_and_connect(
                     (failure or "Meta refused the long-lived token exchange.")[:200]
                 )
             user_token = long_token
+            expires_in = long_lived.get("expires_in", expires_in)
 
         # 3) Pages the operator manages, WITH their page tokens.
         accounts = (
@@ -310,6 +349,18 @@ async def _meta_exchange_and_connect(
 
         verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
+        # A channel that cannot receive provider webhooks is not connected.
+        await _subscribe_page_to_app(http, page_id=str(page["id"]), page_token=page_token)
+
+        from app.core.meta_tokens import token_expiry
+
+        credentials["_meta"] = {
+            "source_access_token": user_token,
+            "page_id": str(page["id"]),
+            "expires_at": token_expiry(expires_in),
+            "refreshable": bool(_config_id and expires_in),
+        }
+
         existing = (
             await session.execute(
                 select(Integration).where(
@@ -353,15 +404,6 @@ async def _meta_exchange_and_connect(
             integration = existing
         await session.flush()
 
-        # The page-level webhook subscription: Meta delivers per PAGE, not
-        # per app — the same fields the manual subscription flow selects.
-        await http.post(
-            f"{_GRAPH}/{page['id']}/subscribed_apps",
-            params={
-                "subscribed_fields": subscribed_fields(provider),
-                "access_token": page_token,
-            },
-        )
         display_name = verified.display_name or str(page.get("name") or page["id"])
         return provider, display_name
 

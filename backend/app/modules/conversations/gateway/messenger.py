@@ -40,7 +40,7 @@ class MessengerAdapter(ChannelAdapter):
     name = "messenger"  # ChannelAdapter registry key
     channel = "messenger"
 
-    def __init__(self, *, api_version: str = "v21.0"):
+    def __init__(self, *, api_version: str = "v27.0"):
         # All secrets live in settings, read per call — a constructor-injected
         # secret can only go stale (the removed per-instance `verify_webhook`
         # verified nothing for exactly that reason).
@@ -78,6 +78,24 @@ class MessengerAdapter(ChannelAdapter):
         except (KeyError, IndexError, TypeError):
             return None
 
+    def partition_payloads(self, payload: dict) -> list[tuple[str | None, dict]]:
+        """Keep each page's events under the tenant that owns that page."""
+        grouped: dict[str, list[dict]] = {}
+        for entry in payload.get("entry", []) or []:
+            account_id = str(entry.get("id") or "").strip()
+            if account_id:
+                grouped.setdefault(account_id, []).append(entry)
+        return [
+            (
+                account_id,
+                {
+                    **{key: value for key, value in payload.items() if key != "entry"},
+                    "entry": entries,
+                },
+            )
+            for account_id, entries in grouped.items()
+        ]
+
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
         # Meta delivery/read receipts arrive as messaging[0].delivery|read —
         # inbound-only for now; the generic status path handles the rest.
@@ -95,15 +113,14 @@ class MessengerAdapter(ChannelAdapter):
         ``None`` this used to return on an empty envelope crashed the hot path
         instead of yielding zero messages.
         """
-        entries = payload.get("entry", [])
-        if not entries:
-            return []
+        entries = payload.get("entry", []) or []
+        messages: list[InboundMessage] = []
+        for entry in entries:
+            for event in entry.get("messaging", []) or []:
+                messages.extend(self._parse_message_event(event, payload))
+        return messages
 
-        messaging = entries[0].get("messaging", [])
-        if not messaging:
-            return []
-
-        event = messaging[0]
+    def _parse_message_event(self, event: dict, payload: dict) -> list[InboundMessage]:
         sender = event.get("sender", {})
         recipient = event.get("recipient", {})
         message = event.get("message", {})

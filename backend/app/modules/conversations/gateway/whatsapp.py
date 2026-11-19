@@ -24,7 +24,7 @@ from app.modules.conversations.gateway.base import (
     parse_provider_body,
 )
 
-GRAPH_BASE = "https://graph.facebook.com/v21.0"
+GRAPH_BASE = "https://graph.facebook.com/v27.0"
 
 # §155: provider media type → canonical Message.content_type. The model
 # supports text | image | voice | video | file | location | contact | buttons
@@ -86,6 +86,36 @@ class WhatsAppAdapter:
             return payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
         except (KeyError, IndexError, TypeError):
             return None
+
+    def partition_payloads(self, payload: dict) -> list[tuple[str | None, dict]]:
+        """Split a Meta envelope by phone number before tenant attribution.
+
+        Meta may batch changes for several phone numbers in one signed
+        envelope. Each partition is processed under the tenant that owns that
+        phone number, so a batch can never write one merchant's message into
+        another merchant's inbox.
+        """
+        grouped: dict[str | None, list[dict]] = {}
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                value = change.get("value") or {}
+                metadata = value.get("metadata") or {}
+                phone_number_id = str(metadata.get("phone_number_id") or "").strip()
+                grouped.setdefault(phone_number_id or None, []).append(change)
+
+        if len(grouped) == 1 and next(iter(grouped)) is not None:
+            return [(next(iter(grouped)), payload)]
+
+        return [
+            (
+                phone_number_id,
+                {
+                    **{key: value for key, value in payload.items() if key != "entry"},
+                    "entry": [{"changes": changes}],
+                },
+            )
+            for phone_number_id, changes in grouped.items()
+        ]
 
     # ---------- normalization ----------
 

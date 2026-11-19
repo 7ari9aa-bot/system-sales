@@ -55,6 +55,8 @@ def test_completion_payload_is_validated_before_any_provider_call() -> None:
         WhatsAppSignupCompleteBody(code="short", waba_id="1", phone_number_id="2")
     body = WhatsAppSignupCompleteBody(code="AQD" + "x" * 20, waba_id="123", phone_number_id="456")
     assert body.waba_id == "123"
+    with pytest.raises(ValueError):
+        WhatsAppSignupCompleteBody(code="AQD" + "x" * 20, waba_id="../../me", phone_number_id="456")
 
 
 async def test_code_exchange_reports_a_rejected_code_as_a_refusal() -> None:
@@ -89,11 +91,82 @@ async def test_a_refused_waba_subscription_fails_the_connect() -> None:
             await signup._subscribe_app_to_waba(client, waba_id="1", token="t")
 
 
+async def test_a_graph_error_body_cannot_be_mistaken_for_a_successful_subscription() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+        )
+    ) as client:
+        with pytest.raises(ExternalProviderError, match="webhook subscription"):
+            await signup._subscribe_app_to_waba(client, waba_id="1", token="t")
+
+
 async def test_a_successful_subscription_passes() -> None:
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
     ) as client:
         await signup._subscribe_app_to_waba(client, waba_id="1", token="t")
+
+
+async def test_signup_rejects_a_phone_number_from_a_different_waba() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"data": [{"id": "other-phone"}]})
+        )
+    ) as client:
+        with pytest.raises(ValidationError, match="does not belong"):
+            await signup._verify_phone_belongs_to_waba(
+                client, waba_id="123", phone_number_id="456", token="t"
+            )
+
+
+async def test_signup_accepts_a_phone_number_in_its_selected_waba() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"data": [{"id": "456"}]})
+        )
+    ) as client:
+        await signup._verify_phone_belongs_to_waba(
+            client, waba_id="123", phone_number_id="456", token="t"
+        )
+
+
+async def test_signup_searches_paginated_phone_number_lists() -> None:
+    calls = 0
+
+    def respond(_request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": "first-page-phone"}],
+                    "paging": {
+                        "next": "https://graph.facebook.com/next",
+                        "cursors": {"after": "cursor"},
+                    },
+                },
+            )
+        return httpx.Response(200, json={"data": [{"id": "456"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        await signup._verify_phone_belongs_to_waba(
+            client, waba_id="123", phone_number_id="456", token="t"
+        )
+    assert calls == 2
+
+
+async def test_phone_membership_does_not_accept_a_redirect_body_as_success() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(302, json={"data": [{"id": "456"}]})
+        )
+    ) as client:
+        with pytest.raises(ValidationError):
+            await signup._verify_phone_belongs_to_waba(
+                client, waba_id="123", phone_number_id="456", token="t"
+            )
 
 
 def test_the_signup_config_id_is_its_own_setting() -> None:

@@ -132,6 +132,12 @@ async def _sweep_vision_product_indexing() -> int:
     return await sweep_unindexed_product_images()
 
 
+async def _refresh_meta_channel_tokens() -> int:
+    from app.workers.meta_token_refresh import sweep_expiring_tokens
+
+    return await sweep_expiring_tokens()
+
+
 GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
     "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
@@ -144,6 +150,10 @@ GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     # only-missing selection doubles as backfill, reconciliation, and the
     # model-change re-index.
     "vision.product_indexing": (timedelta(hours=1), _sweep_vision_product_indexing),
+    # Meta system-user tokens expire after 60 days when the business login
+    # configuration requests expiring tokens. Renew ahead of time so channel
+    # owners do not have to repeat OAuth every two months.
+    "meta.channel_token_refresh": (timedelta(hours=6), _refresh_meta_channel_tokens),
 }
 
 
