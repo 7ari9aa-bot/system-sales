@@ -122,3 +122,9 @@ export async function publishPost(files, caption) {
   const pictures = await Promise.all(files.map(toBase64));
   return api("/social/posts", { method: "POST", body: { pictures, caption: (caption || "").trim() || null } });
 }
+
+/** How one post performed. A number Instagram has not produced yet is null, which is not the same as 0. */
+export async function fetchPostInsights(postId) {
+  const data = await api(`/social/posts/${encodeURIComponent(postId)}/insights`);
+  return data?.metrics || {};
+}

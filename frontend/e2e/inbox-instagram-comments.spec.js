@@ -6,9 +6,9 @@ const ORIGIN = process.env.BASE_URL || "http://127.0.0.1:4173";
 const T0 = new Date(Date.now() - 3600e3).toISOString();
 const OLD = new Date(Date.now() - 9 * 24 * 3600e3).toISOString();
 
-function makeApi({ posts, comments, failNext = {} }) {
+function makeApi({ posts, comments, failNext = {}, insights }) {
   const calls = [];
-  const state = { comments: structuredClone(comments), failNext: { ...failNext } };
+  const state = { comments: structuredClone(comments), failNext: { ...failNext }, insights: insights ?? null };
   const handler = async (route) => {
     const req = route.request();
     const u = new URL(req.url());
@@ -26,6 +26,12 @@ function makeApi({ posts, comments, failNext = {} }) {
     }
     m = p.match(/^\/social\/posts\/([^/]+)\/comments$/);
     if (m) return send({ items: state.comments.filter((c) => c.post_id === m[1]) });
+    m = p.match(/^\/social\/posts\/([^/]+)\/insights$/);
+    if (m) {
+      // a read, not an action: it stays out of `calls`, which the tests use to check what was changed
+      if (state.failNext.insights) return send({ detail: "Instagram said no" }, 502);
+      return send({ post_id: m[1], metrics: state.insights ?? { reach: 120, views: 340, saved: 0, shares: null, total_interactions: 18 } });
+    }
     m = p.match(/^\/social\/comments\/([^/]+)(\/(reply|hide|private-reply))?$/);
     if (m) {
       const [, id, , action] = m;
@@ -170,4 +176,29 @@ test("a comment is laid out like Instagram's, with no decorative heart", async (
     return { sameLine: Math.abs(bdi.y - time.y) < 4, replyBelow: replyBtn.getBoundingClientRect().y > bdi.y + 18, replySize: getComputedStyle(replyBtn).fontSize };
   });
   expect(m).toEqual({ sameLine: true, replyBelow: true, replySize: "12px" });
+});
+
+// Instagram's own numbers for a post. A real zero is shown as 0; a number Instagram has not produced yet is a dash.
+test("post insights show real numbers, keep zero apart from no data, and say when they are not there yet", async ({ page }) => {
+  const api = makeApi({ posts: [POST], comments: [C1] });
+  await open(page, api);
+  await expect(page.getByTestId("ig-insights")).toBeVisible();
+  await expect(page.getByTestId("ig-insight-reach")).toHaveText("120");
+  await expect(page.getByTestId("ig-insight-saved")).toHaveText("0");
+  await expect(page.getByTestId("ig-insight-shares")).toHaveText("—");
+  await expect(page.getByTestId("ig-insights")).not.toContainText(/up to 48 hours|48 ساعة/);
+});
+
+test("a post with no insights yet says so instead of showing zeros", async ({ page }) => {
+  const api = makeApi({ posts: [POST], comments: [C1], insights: { reach: null, views: null, saved: null, shares: null, total_interactions: null } });
+  await open(page, api);
+  await expect(page.getByTestId("ig-insights")).toContainText(/up to 48 hours|48 ساعة/);
+  await expect(page.getByTestId("ig-insight-reach")).toHaveText("—");
+});
+
+test("a failed insights request is reported, and the post still works", async ({ page }) => {
+  const api = makeApi({ posts: [POST], comments: [C1], failNext: { insights: true } });
+  await open(page, api);
+  await expect(page.getByTestId("ig-insights-error")).toBeVisible();
+  await expect(page.getByTestId("ig-comment").first()).toBeVisible();
 });

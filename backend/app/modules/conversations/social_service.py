@@ -166,6 +166,21 @@ class SocialService:
         return list(rows.scalars().all())
 
     @staticmethod
+    async def get_post(
+        session: AsyncSession, tenant_id: uuid.UUID, post_id: str
+    ) -> SocialPost | None:
+        """One of this shop's posts by its Instagram media id (never another shop's)."""
+        return (
+            await session.execute(
+                select(SocialPost).where(
+                    SocialPost.tenant_id == tenant_id,
+                    SocialPost.platform == PLATFORM,
+                    SocialPost.post_id == post_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def get_comment(
         session: AsyncSession, tenant_id: uuid.UUID, comment_id: str
     ) -> SocialComment:

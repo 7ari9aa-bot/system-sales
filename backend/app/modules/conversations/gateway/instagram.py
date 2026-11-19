@@ -862,6 +862,59 @@ class InstagramAdapter(ChannelAdapter):
             "website": data.get("website") or None,
         }
 
+    # ---------- how a post performed ----------
+    # One metric a kind of post does not have makes Instagram refuse the WHOLE request, so each
+    # kind asks only for its own (Meta, "Instagram Media Insights", metrics table).
+    _INSIGHT_METRICS_FEED = (
+        "reach",
+        "views",
+        "likes",
+        "comments",
+        "saved",
+        "shares",
+        "total_interactions",
+    )
+    _INSIGHT_METRICS_REELS = _INSIGHT_METRICS_FEED
+    _INSIGHT_METRICS_STORY = ("reach", "views", "shares", "replies", "total_interactions")
+
+    @classmethod
+    def insight_metrics(cls, media_type: str | None) -> tuple[str, ...]:
+        """The metrics Instagram has for this kind of post (a carousel counts as a feed post)."""
+        kind = (media_type or "").upper()
+        if kind == "REELS":
+            return cls._INSIGHT_METRICS_REELS
+        if kind == "STORY":
+            return cls._INSIGHT_METRICS_STORY
+        return cls._INSIGHT_METRICS_FEED
+
+    async def get_media_insights(
+        self,
+        credentials: ProviderCredentials,
+        media_id: str,
+        media_type: str | None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, int | None]:
+        """How one post performed, as {metric: number}. A metric left out is None, never 0.
+
+        Instagram answers with an EMPTY list when it has no data yet (it can lag by up to 48 hours),
+        so "no data" and "zero" stay different things.
+        """
+        metrics = self.insight_metrics(media_type)
+        data = await self._graph(
+            "GET",
+            f"{media_id}/insights",
+            credentials,
+            params={"metric": ",".join(metrics), "period": "lifetime"},
+            _client=_client,
+        )
+        found: dict[str, int | None] = dict.fromkeys(metrics)
+        for item in data.get("data") or []:
+            name = item.get("name")
+            values = item.get("values") or []
+            if name in found and values and isinstance(values[0].get("value"), int | float):
+                found[name] = int(values[0]["value"])
+        return found
+
     # ---------- who the customer is ----------
 
     _PROFILE_FIELDS = (

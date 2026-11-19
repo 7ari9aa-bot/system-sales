@@ -180,3 +180,41 @@ async def test_a_real_outage_still_raises():
         await A.get_user_profile(
             CREDS, "i", _client=_client({"error": {"message": "boom"}}, status=500)
         )
+
+
+def test_each_kind_of_post_asks_only_for_its_own_metrics():
+    # Instagram refuses the WHOLE request if one metric does not exist for that kind of post.
+    assert "replies" in A.insight_metrics("STORY") and "saved" not in A.insight_metrics("STORY")
+    assert "saved" in A.insight_metrics("REELS") and "replies" not in A.insight_metrics("REELS")
+    assert (
+        A.insight_metrics("CAROUSEL_ALBUM") == A.insight_metrics("IMAGE") == A.insight_metrics(None)
+    )
+    # `impressions` was retired for posts made after 2 July 2024
+    assert all("impressions" not in A.insight_metrics(k) for k in ("IMAGE", "REELS", "STORY"))
+
+
+async def test_media_insights_ask_for_lifetime_numbers_and_keep_zero_apart_from_no_data():
+    seen: list = []
+    c = _client(
+        {
+            "data": [
+                {"name": "reach", "values": [{"value": 120}]},
+                {"name": "likes", "values": [{"value": 0}]},
+                {"name": "saved", "values": []},
+            ]
+        },
+        seen=seen,
+    )
+    out = await A.get_media_insights(CREDS, "m1", "IMAGE", _client=c)
+    assert seen[0].url.path.endswith("/m1/insights")
+    assert seen[0].url.params["period"] == "lifetime"
+    assert seen[0].url.params["metric"] == ",".join(A.insight_metrics("IMAGE"))
+    assert out["reach"] == 120
+    assert out["likes"] == 0  # a real zero
+    assert out["saved"] is None  # present but empty: no data yet
+    assert out["shares"] is None  # absent: no data yet
+
+
+async def test_media_insights_with_nothing_yet_is_all_none_not_zero():
+    out = await A.get_media_insights(CREDS, "m1", "REELS", _client=_client({"data": []}))
+    assert set(out.values()) == {None}

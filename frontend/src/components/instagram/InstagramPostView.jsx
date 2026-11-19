@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import IgAvatar from "./IgAvatar";
 import IgComment from "./IgComment";
+import IgInsights from "./IgInsights";
 import IgSharePanel from "./IgSharePanel";
 import { IG } from "./igTheme";
 import { IgBack, IgClose, IgComment as CommentIcon, IgEmoji, IgMore, IgShare } from "./igIcons";
@@ -128,6 +129,7 @@ export default function InstagramPostView({ post, lang = "ar", actions = {}, thr
                   : null}
             </div>
             <p className="text-[14px] font-semibold">{Number(post.likes || 0).toLocaleString(isArabic ? "ar-EG" : "en-US")} {isArabic ? "إعجاب" : post.likes === 1 ? "like" : "likes"}</p>
+            {actions.refresh && <IgInsights postId={post.id} lang={lang} />}
             <p className="mt-1 text-[10px] uppercase tracking-[0.2px]" style={{ color: IG.secondary }}>{post.timeLabel}</p>
           </div>
           {emojiOpen && (

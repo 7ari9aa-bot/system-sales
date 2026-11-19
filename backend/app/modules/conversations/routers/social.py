@@ -16,7 +16,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.modules.conversations.gateway.instagram import instagram_adapter
 from app.modules.conversations.models import SocialComment, SocialPost
 from app.modules.conversations.routers._deps import (
@@ -155,6 +160,20 @@ async def list_post_comments(
         await SocialService.sync_comments(ctx.session, ctx.tenant_id, creds, post_id)
     comments = await SocialService.list_comments(ctx.session, ctx.tenant_id, post_id)
     return {"items": [_comment_out(c) for c in comments]}
+
+
+@router.get("/social/posts/{post_id}/insights")
+async def post_insights(
+    post_id: str,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """How one post performed (reach, views, likes, ...). A number not produced yet is null."""
+    creds = await _credentials(ctx, send=False)
+    post = await SocialService.get_post(ctx.session, ctx.tenant_id, post_id)
+    if post is None:
+        raise NotFoundError("post not found")
+    metrics = await instagram_adapter.get_media_insights(creds, post.post_id, post.media_type)
+    return {"post_id": post.post_id, "metrics": metrics}
 
 
 @router.post("/social/comments/{comment_id}/reply", status_code=201)
