@@ -33,7 +33,16 @@ async def _status(method: str, path: str, size: int) -> int:
     return next(m["status"] for m in sent if m["type"] == "http.response.start")
 
 
-@pytest.mark.parametrize("size_mb", [2, 12, 60])
+def test_the_limit_holds_the_largest_post_the_publish_screen_allows():
+    # 10 pictures of 8 MB, each sent as base64 (4/3 of its size) inside one JSON body.
+    from app.modules.conversations.gateway.instagram import InstagramAdapter
+    from app.modules.conversations.social_service import MAX_PICTURE_BYTES
+
+    largest = InstagramAdapter.CAROUSEL_MAX * (-(-MAX_PICTURE_BYTES // 3) * 4 + 20) + 200
+    assert largest <= MAX_SOCIAL_POST_BYTES
+
+
+@pytest.mark.parametrize("size_mb", [2, 12, 60, 107])
 async def test_a_real_photo_post_is_not_refused_as_too_large(size_mb):
     # A phone photo is 2-6 MB and base64 adds a third; under 1 MiB every one of these was a 413.
     assert await _status("POST", "/api/v1/social/posts", size_mb * MB) == 200

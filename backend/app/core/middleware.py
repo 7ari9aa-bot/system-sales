@@ -109,9 +109,10 @@ _IMPORT_UPLOAD_PATH = re.compile(r"^/imports/sessions$")
 # largest kind WhatsApp carries that we accept (a document).
 MAX_CONVERSATION_MEDIA_UPLOAD_BYTES = 25 * 1024 * 1024
 _CONVERSATION_MEDIA_UPLOAD_PATH = re.compile(r"^/conversations/[0-9a-fA-F-]{36}/media$")
-# A post for Instagram: up to 10 JPEGs sent as base64 inside one JSON body (4/3 of the file size).
-# Under the 1 MiB default every real photo was refused with 413. 80 MiB holds ten 6 MB photos.
-MAX_SOCIAL_POST_BYTES = 80 * 1024 * 1024
+# A post for Instagram: up to 10 JPEGs of 8 MB sent as base64 inside one JSON body (4/3 of the file
+# size), about 107 MiB. Under the 1 MiB default every real photo was refused with 413. 112 MiB holds
+# the largest post the publish screen allows; tests/test_body_limit_social_posts.py checks that.
+MAX_SOCIAL_POST_BYTES = 112 * 1024 * 1024
 _SOCIAL_POST_PATH = re.compile(r"^/social/posts$")
 
 # A path segment that looks like an id (uuid or integer) is collapsed so the
