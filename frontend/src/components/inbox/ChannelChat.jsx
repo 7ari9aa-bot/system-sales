@@ -26,6 +26,7 @@ import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
 import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
+import IgQuickReplies, { quickReplyProblem } from "@/components/inbox/instagram/IgQuickReplies";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import ImageViewer from "./whatsapp/ImageViewer";
 import { galleryOf } from "./whatsapp/mediaGallery";
@@ -85,6 +86,8 @@ export default function ChannelChat({
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   // WhatsApp only: the file the agent picked (or the voice note just recorded),
   // shown in a preview until Send uploads it and sends the message.
@@ -218,8 +221,13 @@ export default function ChannelChat({
   async function submitMessage() {
     const body = text.trim();
     if (!body || sending || !conversation) return;
-    const sent = await onSend?.(conversation.id, body, replyingTo ? { replyTo: replyingTo } : undefined);
+    const buttons = isInstagram ? quickReplies.map((t) => t.trim()).filter(Boolean) : [];
+    if (isInstagram && quickReplies.length && quickReplyProblem(quickReplies, lang)) return;
+    const opts = { ...(replyingTo ? { replyTo: replyingTo } : {}), ...(buttons.length ? { quickReplies: buttons } : {}) };
+    const sent = await onSend?.(conversation.id, body, Object.keys(opts).length ? opts : undefined);
     if (sent !== false) {
+      setQuickReplies([]);
+      setQuickOpen(false);
       setText("");
       setReplyingTo(null);
       setEmojiPickerOpen(false);
@@ -722,6 +730,8 @@ export default function ChannelChat({
             )}
           </div>
         ) : isInstagram ? (
+          <>
+          {quickOpen && <IgQuickReplies items={quickReplies} onChange={setQuickReplies} onClose={() => setQuickOpen(false)} lang={lang} />}
           <div dir="ltr" className="flex h-[46px] items-center gap-1 rounded-full border border-[#dbdfe4] bg-white px-3">
             <button
               type="button"
@@ -766,18 +776,30 @@ export default function ChannelChat({
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => { void submitMessage(); }}
-                disabled={sending}
-                aria-label={t("inbox.send")}
-                title={t("inbox.send")}
-                className="shrink-0 px-2 text-[13px] font-semibold text-[#0095f6] hover:opacity-80 disabled:opacity-50"
-              >
-                {lang === "ar" ? "إرسال" : "Send"}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  data-testid="ig-quick-toggle"
+                  aria-pressed={quickOpen}
+                  onClick={() => { if (!quickOpen && !quickReplies.length) setQuickReplies([""]); setQuickOpen((v) => !v); }}
+                  className={cn("shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold hover:bg-[#f3f5f7]", quickReplies.some((q) => q.trim()) ? "text-[#0095f6]" : "text-[#6a717a]")}
+                >
+                  {lang === "ar" ? "أزرار" : "Buttons"}{quickReplies.filter((q) => q.trim()).length ? ` (${quickReplies.filter((q) => q.trim()).length})` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void submitMessage(); }}
+                  disabled={sending || Boolean(quickReplyProblem(quickReplies, lang))}
+                  aria-label={t("inbox.send")}
+                  title={quickReplyProblem(quickReplies, lang) || t("inbox.send")}
+                  className="shrink-0 px-2 text-[13px] font-semibold text-[#0095f6] hover:opacity-80 disabled:opacity-50"
+                >
+                  {lang === "ar" ? "إرسال" : "Send"}
+                </button>
+              </div>
             )}
           </div>
+          </>
         ) : isMessenger ? (
           <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
             <button

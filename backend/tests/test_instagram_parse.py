@@ -242,13 +242,29 @@ def test_only_the_heart_can_be_sent_as_a_reaction():
     assert ok["payload"]["reaction"] == "love"
 
 
-def test_quick_replies_are_capped_at_13_and_20_chars():
-    q = [{"title": "x" * 40, "payload": f"p{i}"} for i in range(20)]
+def test_quick_replies_go_out_as_documented():
+    q = [{"title": "Yes", "payload": "y"}, {"title": "No"}]
     p = A.build_send_payload(_out(body="pick", meta={"quick_replies": q}))
-    assert (
-        len(p["message"]["quick_replies"]) == 13
-        and len(p["message"]["quick_replies"][0]["title"]) == 20
-    )
+    assert p["message"]["quick_replies"] == [
+        {"content_type": "text", "title": "Yes", "payload": "y"},
+        {"content_type": "text", "title": "No", "payload": "No"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("replies", "body", "code"),
+    [
+        ([{"title": "x"}] * 14, "pick", "too_many_quick_replies"),
+        ([{"title": "x" * 21}], "pick", "quick_reply_too_long"),
+        ([{"title": "  "}], "pick", "quick_reply_empty"),
+        ([{"title": "ok"}], "", "quick_replies_need_text"),
+    ],
+)
+def test_quick_replies_are_refused_not_silently_cut(replies, body, code):
+    # Meta allows 13 buttons of 20 characters; cutting one quietly sends what nobody wrote.
+    with pytest.raises(InstagramLimitError) as refused:
+        A.build_send_payload(_out(body=body, meta={"quick_replies": replies}))
+    assert refused.value.code == code
 
 
 def test_sender_actions_only_allow_the_three_documented():
@@ -384,3 +400,14 @@ def test_a_shared_post_without_an_id_is_not_sent_as_text():
     # An empty id must fall through to the plain-text branch, never become a card with no post.
     p = A.build_send_payload(_out(body="", meta={"share_media_id": ""}))
     assert "attachment" not in p["message"]
+
+
+def test_quick_replies_field_is_off_by_default_and_capped_at_13():
+    from pydantic import ValidationError
+
+    from app.modules.conversations.routers._deps import SendMessageRequest
+
+    assert SendMessageRequest(body="hi").instagram_quick_replies is None
+    assert SendMessageRequest(body="hi", instagram_quick_replies=["a", "b"]).instagram_quick_replies
+    with pytest.raises(ValidationError):
+        SendMessageRequest(body="hi", instagram_quick_replies=["x"] * 14)

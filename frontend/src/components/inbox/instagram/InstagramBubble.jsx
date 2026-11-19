@@ -63,6 +63,11 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
           </span>
         )}
       </div>
+      {Array.isArray(m.quickReplies) && m.quickReplies.length > 0 && (
+        <div data-testid="ig-quick-sent" className={cn("mt-1 flex max-w-[82%] flex-wrap gap-1.5 sm:max-w-[76%]", out ? "justify-end" : "justify-start")}>
+          {m.quickReplies.map((title) => <span key={title} dir="auto" className="rounded-full border border-[#dbdfe4] px-3 py-1 text-[13px] font-semibold text-[#4a5df9]">{title}</span>)}
+        </div>
+      )}
       {showSeen && out && <span data-testid="ig-seen" className="mt-0.5 px-1 text-[11px] text-[#6a717a]">{SEEN[lang === "ar" ? "ar" : "en"]}</span>}
     </div>
   );

@@ -392,6 +392,25 @@ class InstagramAdapter(ChannelAdapter):
             return
         if not message.template_name:
             check_text(message.body)
+        quick = meta.get("quick_replies")
+        if quick:
+            if not message.body:
+                raise InstagramLimitError(
+                    "quick_replies_need_text", "quick replies must come with a text message"
+                )
+            if len(quick) > MAX_QUICK_REPLIES:
+                raise InstagramLimitError(
+                    "too_many_quick_replies", f"at most {MAX_QUICK_REPLIES} quick replies"
+                )
+            for q in quick:
+                title = str((q or {}).get("title", "")).strip()
+                if not title:
+                    raise InstagramLimitError("quick_reply_empty", "a quick reply needs a title")
+                if len(title) > QUICK_REPLY_TITLE_CHARS:
+                    raise InstagramLimitError(
+                        "quick_reply_too_long",
+                        f"a quick reply title is at most {QUICK_REPLY_TITLE_CHARS} characters",
+                    )
 
     @classmethod
     def build_send_payload(cls, message: OutboundMessage) -> dict[str, Any]:
@@ -452,10 +471,10 @@ class InstagramAdapter(ChannelAdapter):
             body["quick_replies"] = [
                 {
                     "content_type": "text",
-                    "title": str(q.get("title", ""))[:QUICK_REPLY_TITLE_CHARS],
-                    "payload": str(q.get("payload", q.get("title", ""))),
+                    "title": str(q["title"]).strip(),
+                    "payload": str(q.get("payload") or str(q["title"]).strip()),
                 }
-                for q in quick[:MAX_QUICK_REPLIES]
+                for q in quick
             ]
         return payload
 

@@ -692,6 +692,18 @@ class MessageWorker(StreamWorker):
                         else {}
                     ),
                     **(
+                        {
+                            "quick_replies": [
+                                {"title": t, "payload": t}
+                                for t in (message.provider_metadata or {})[
+                                    "instagram_quick_replies"
+                                ]
+                            ]
+                        }
+                        if (message.provider_metadata or {}).get("instagram_quick_replies")
+                        else {}
+                    ),
+                    **(
                         {"human_agent": True}
                         if (message.provider_metadata or {}).get("human_agent")
                         else {}

@@ -279,12 +279,19 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "reactions": [e for e in (reactions.get(m.id) or {}).values() if e],
                 # What WE reacted with, so the menu can offer to withdraw it.
                 "my_reaction": (reactions.get(m.id) or {}).get("outbound") or "",
+                # The tap-to-reply buttons we sent under this message (Instagram).
+                "quick_replies": [] if m.deleted else _quick_replies(m),
             }
         )
     return items
 
 
 _CARD_KEYS = ("share", "story_reply", "story_mention")
+
+
+def _quick_replies(m) -> list[str]:
+    raw = (m.provider_metadata or {}).get("instagram_quick_replies")
+    return [t for t in raw if isinstance(t, str)] if isinstance(raw, list) else []
 
 
 def _present_card(m) -> dict | None:
@@ -412,6 +419,18 @@ async def send_message(
             raise ValidationError("send either a heart or a post, not both")
         if body.body or body.template_name or body.media_id is not None:
             raise ValidationError("a heart or a shared post carries nothing else")
+    quick_replies = [t.strip() for t in (body.instagram_quick_replies or []) if t and t.strip()]
+    if body.instagram_quick_replies is not None:
+        if conversation.channel != "instagram":
+            raise ValidationError("quick replies can only be sent on Instagram")
+        if not quick_replies:
+            raise ValidationError("a quick reply needs a title")
+        if not body.body or body.media_id is not None or body.template_name or instagram_extra:
+            raise ValidationError("quick replies go under a plain text message")
+        if any(len(t) > 20 for t in quick_replies):
+            raise ValidationError("a quick reply is at most 20 characters")
+        if len(set(quick_replies)) != len(quick_replies):
+            raise ValidationError("quick replies must be different from each other")
     if not body.body and not body.template_name and body.media_id is None and not instagram_extra:
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
@@ -452,6 +471,8 @@ async def send_message(
             "content_type": "share",
             "provider_metadata": {"instagram_share_post_id": post_id},
         }
+    elif quick_replies:
+        media_kwargs = {"provider_metadata": {"instagram_quick_replies": quick_replies}}
     if body.media_id is not None:
         media = await OutboundMediaService.claim(
             ctx.session, ctx.tenant_id, media_id=body.media_id, conversation_id=conversation_id

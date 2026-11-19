@@ -68,6 +68,7 @@ function toMessage(message) {
     replyTo: message.reply_to || null,
     reactions: Array.isArray(message.reactions) ? message.reactions : [],
     myReaction: message.my_reaction || "",
+    quickReplies: Array.isArray(message.quick_replies) ? message.quick_replies : [],
   };
 }
 
@@ -646,7 +647,7 @@ export function InboxProvider({ children }) {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null });
+      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null, quickReplies: opts.quickReplies || null });
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -670,6 +671,7 @@ export function InboxProvider({ children }) {
         side: "out",
         ...sentFile,
         // The heart is stored like an incoming one (a sticker holding the heart) so it draws the same.
+        ...(opts.quickReplies?.length ? { quickReplies: opts.quickReplies } : {}),
         ...(opts.heart ? { contentType: "sticker" } : {}),
         // A shared post shows at once as the same card an incoming one draws, until the list reloads from the server.
         ...(opts.sharePostId && opts.sharedPost

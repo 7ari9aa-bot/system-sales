@@ -131,3 +131,40 @@ test("the composer offers a heart, not a microphone, and the heart is sent as a 
   await page.getByRole("textbox").last().fill("hello");
   await expect(page.getByTestId("ig-send-heart")).toHaveCount(0);
 });
+
+// Instagram lets a text message carry up to 13 tap-to-reply buttons of 20 characters, and does not show them on desktop.
+test("quick reply buttons go with the text, are capped, and say they are mobile only", async ({ page }) => {
+  await open(page);
+  const sent = [];
+  await page.route("**/api/v1/conversations/c1/messages", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ id: "q1", status: "queued", created_at: new Date().toISOString() }) });
+  });
+  await page.getByText("Sara Ahmed").first().click();
+  await expect(page.getByTestId("ig-send-heart")).toBeVisible({ timeout: 15_000 });
+  // no text, no buttons: Instagram only accepts buttons under a text message
+  await expect(page.getByTestId("ig-quick-toggle")).toHaveCount(0);
+  await page.getByRole("textbox").last().fill("Pick one");
+  await page.getByTestId("ig-quick-toggle").click();
+  const panel = page.getByTestId("ig-quick-panel");
+  await expect(panel).toContainText(/mobile app, not on desktop|الموبايل فقط/);
+  await panel.getByTestId("ig-quick-input").first().fill("x".repeat(30));
+  await expect(panel.getByTestId("ig-quick-input").first()).toHaveValue("x".repeat(20));
+  for (let i = 0; i < 20; i += 1) { if (await panel.getByTestId("ig-quick-add").count()) await panel.getByTestId("ig-quick-add").click(); }
+  await expect(panel.getByTestId("ig-quick-input")).toHaveCount(13);
+  await expect(panel.getByTestId("ig-quick-add")).toHaveCount(0);
+  // buttons left empty are simply not sent; a repeated title blocks Send, with the reason in its tooltip
+  await expect(page.getByRole("button", { name: /^Send$|^إرسال$/ })).toBeEnabled();
+  for (let i = 12; i >= 2; i -= 1) await panel.getByRole("button", { name: /Remove button|حذف الزر/ }).nth(i).click();
+  await panel.getByTestId("ig-quick-input").nth(0).fill("Yes");
+  await panel.getByTestId("ig-quick-input").nth(1).fill("Yes");
+  await expect(page.getByRole("button", { name: /^Send$|^إرسال$/ })).toBeDisabled();
+  await panel.getByTestId("ig-quick-input").nth(1).fill("No");
+  await page.getByRole("button", { name: /^Send$|^إرسال$/ }).click();
+  await expect.poll(() => sent.at(-1)).toEqual({ body: "Pick one", instagram_quick_replies: ["Yes", "No"] });
+  await expect(page.getByTestId("ig-quick-panel")).toHaveCount(0);
+  // the buttons we sent show under that message, so the agent can see what the customer was offered
+  await expect(page.getByTestId("ig-quick-sent")).toContainText("Yes");
+  await expect(page.getByTestId("ig-quick-sent")).toContainText("No");
+});

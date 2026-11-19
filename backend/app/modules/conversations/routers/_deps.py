@@ -54,6 +54,8 @@ class SendMessageRequest(BaseModel):
     # card. Neither carries free text, so neither needs `body`.
     instagram_heart: bool = False
     instagram_share_post_id: str | None = Field(default=None, max_length=64)
+    # Instagram only: up to 13 tap-to-reply buttons under a TEXT message (Meta: 20 characters each).
+    instagram_quick_replies: list[str] | None = Field(default=None, max_length=13)
 
 
 class ReadSignalRequest(BaseModel):
