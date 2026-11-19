@@ -109,6 +109,10 @@ _IMPORT_UPLOAD_PATH = re.compile(r"^/imports/sessions$")
 # largest kind WhatsApp carries that we accept (a document).
 MAX_CONVERSATION_MEDIA_UPLOAD_BYTES = 25 * 1024 * 1024
 _CONVERSATION_MEDIA_UPLOAD_PATH = re.compile(r"^/conversations/[0-9a-fA-F-]{36}/media$")
+# A post for Instagram: up to 10 JPEGs sent as base64 inside one JSON body (4/3 of the file size).
+# Under the 1 MiB default every real photo was refused with 413. 80 MiB holds ten 6 MB photos.
+MAX_SOCIAL_POST_BYTES = 80 * 1024 * 1024
+_SOCIAL_POST_PATH = re.compile(r"^/social/posts$")
 
 # A path segment that looks like an id (uuid or integer) is collapsed so the
 # endpoint tier keys a route shape, not one key per row.
@@ -415,6 +419,8 @@ class BodySizeLimitMiddleware:
             route_path
         ):
             max_bytes = MAX_CONVERSATION_MEDIA_UPLOAD_BYTES
+        elif scope.get("method") == "POST" and _SOCIAL_POST_PATH.fullmatch(route_path):
+            max_bytes = MAX_SOCIAL_POST_BYTES
 
         declared = _header(scope, b"content-length")
         if declared is not None:
