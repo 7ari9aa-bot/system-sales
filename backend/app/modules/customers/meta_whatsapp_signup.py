@@ -21,6 +21,7 @@ Meta console prerequisites (docs/META_SETUP.md §WhatsApp):
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
 from datetime import UTC, datetime
 
@@ -192,6 +193,70 @@ async def _subscribe_app_to_waba(http: httpx.AsyncClient, *, waba_id: str, token
         )
 
 
+async def _phone_status(http: httpx.AsyncClient, *, phone_number_id: str, token: str) -> str | None:
+    """The number's connection status (``CONNECTED`` is the only one that can send and receive)."""
+    try:
+        response = await http.get(
+            f"{_GRAPH}/{phone_number_id}",
+            params={"fields": "status"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        payload = response.json() if not response.is_error else None
+    except (httpx.RequestError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    status = payload.get("status")
+    return str(status).upper() if status else None
+
+
+async def _register_phone_number(
+    http: httpx.AsyncClient, *, phone_number_id: str, token: str
+) -> str | None:
+    """Register the verified number with Cloud API; return the PIN we set (None if not needed).
+
+    Meta: a number only sends and receives once it is registered, and registering is an API call
+    (WhatsApp Manager and the App Dashboard cannot do it). The call needs a 6-digit two-step PIN.
+    For a number without one it becomes the number's new PIN, so we generate it and keep it
+    (encrypted) for the owner to recover the number later.
+
+    A number that is already CONNECTED is left alone: registering again would burn one of the 10
+    attempts Meta allows per 72 hours (error 133016 then locks the number for 72 hours) and would
+    pointlessly re-set a working number. Never retried, for the same reason.
+    """
+    if await _phone_status(http, phone_number_id=phone_number_id, token=token) == "CONNECTED":
+        return None
+    pin = f"{secrets.randbelow(1_000_000):06d}"
+    try:
+        response = await http.post(
+            f"{_GRAPH}/{phone_number_id}/register",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"messaging_product": "whatsapp", "pin": pin},
+        )
+    except httpx.RequestError:
+        raise ExternalProviderError(
+            "Could not reach Meta to register the WhatsApp number. Press connect again."
+        ) from None
+    if response.is_error:
+        code = None
+        try:
+            code = (response.json().get("error") or {}).get("code")
+        except (ValueError, AttributeError):
+            pass
+        if code == 133016:
+            raise ExternalProviderError(
+                "Meta stopped registering this number after too many attempts. "
+                "Wait 72 hours, then connect again.",
+                retryable=False,
+            )
+        raise ExternalProviderError(
+            "Meta refused to register this WhatsApp number. Finish verifying the number in the "
+            "Facebook window, then connect again.",
+            retryable=False,
+        )
+    return pin
+
+
 @whatsapp_signup_router.post(
     "/integrations/whatsapp/embedded-signup/complete",
     response_model=WhatsAppSignupCompleteOut,
@@ -221,6 +286,9 @@ async def whatsapp_signup_complete(
             http, app_id=app_id, app_secret=app_secret, code=body.code
         )
         await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
+        registration_pin = await _register_phone_number(
+            http, phone_number_id=body.phone_number_id, token=token
+        )
         display_name = await _phone_display_name(
             http, phone_number_id=body.phone_number_id, token=token
         )
@@ -251,7 +319,11 @@ async def whatsapp_signup_complete(
             verified_at=verified_at, display_name=display_name or verified.display_name
         ),
     }
-    encrypted = encrypt_credentials_dict({"access_token": token})
+    secrets_to_store = {"access_token": token}
+    if registration_pin:
+        # Needed to change the PIN or delete the number later; never shown, never logged.
+        secrets_to_store["registration_pin"] = registration_pin
+    encrypted = encrypt_credentials_dict(secrets_to_store)
 
     if existing is None:
         integration = Integration(
