@@ -173,7 +173,9 @@ def test_the_signup_config_id_is_its_own_setting() -> None:
     """A page-messaging configuration id cannot open the WhatsApp popup."""
     s = get_settings()
     assert hasattr(s, "meta_whatsapp_config_id")
-    assert s.meta_whatsapp_config_id != s.meta_oauth_config_id or s.meta_whatsapp_config_id == ""
+    assert (
+        s.meta_whatsapp_config_id != s.meta_instagram_config_id or s.meta_whatsapp_config_id == ""
+    )
 
 
 # --- registering the number: Meta only lets a REGISTERED number send and receive -----------------
@@ -270,3 +272,16 @@ async def test_an_unreachable_meta_is_a_clear_error_not_a_stack_trace() -> None:
     async with _meta(handler) as client:
         with pytest.raises(ExternalProviderError, match="Could not reach Meta"):
             await signup._register_phone_number(client, phone_number_id="5", token="t")
+
+
+async def test_a_network_failure_reading_the_display_name_does_not_fail_the_signup() -> None:
+    """The name is cosmetic; the owner already finished Meta's popup."""
+    import httpx
+
+    from app.modules.customers.meta_whatsapp_signup import _phone_display_name
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(down)) as http:
+        assert await _phone_display_name(http, phone_number_id="1", token="t") is None

@@ -2,8 +2,8 @@ import React, { useRef } from "react";
 import {
   FileText,
   Image as ImageIcon,
-  Camera,
 } from "lucide-react";
+import { ACCEPT } from "@/components/inbox/channelAttachments";
 import { cn } from "@/lib/utils";
 
 export default function ChannelAttachmentMenu({
@@ -42,13 +42,6 @@ export default function ChannelAttachmentMenu({
       icon: ImageIcon,
       onClick: () => fileInputRef.current?.click(),
     },
-    {
-      id: "camera",
-      title: isAr ? "كاميرا" : "Camera",
-      color: "bg-[#d3396d] hover:bg-[#c22e5f]",
-      icon: Camera,
-      onClick: () => fileInputRef.current?.click(),
-    },
   ];
 
   return (
@@ -64,7 +57,7 @@ export default function ChannelAttachmentMenu({
       <input
         type="file"
         ref={docInputRef}
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
+        accept={ACCEPT[_channelId] ?? ""}
         className="hidden"
         onChange={(e) => handleFileInputChange(e, "document")}
       />

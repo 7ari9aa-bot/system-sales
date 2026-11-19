@@ -47,6 +47,7 @@ export function useFacebookData() {
     postsLoading: live.loading,
     postsError: live.error,
     unanswered,
+    threads,
     unreadMessages,
     canAct: enabled,
   };

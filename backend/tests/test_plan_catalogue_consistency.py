@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
-CHANNELS = {"whatsapp", "instagram", "messenger", "telegram", "webchat"}
+CHANNELS = {"whatsapp", "instagram", "messenger", "facebook", "telegram", "webchat"}
 
 
 def _seed_plans() -> dict[str, dict]:
@@ -41,7 +41,13 @@ def test_basic_and_business_match_between_the_migration_and_the_seed() -> None:
         expected = dict(seed[code])
         if expected["channels"] == "*":
             continue
-        assert features == expected, code
+        # fe2026111901 later gave every plan that carries Messenger the Facebook channel too, on a
+        # migrated database; the seed lists it from the start. Compare what that migration leaves.
+        migrated = dict(features)
+        if "messenger" in migrated["channels"] and "facebook" not in migrated["channels"]:
+            migrated["channels"] = [*migrated["channels"], "facebook"]
+        assert sorted(migrated.pop("channels")) == sorted(expected.pop("channels")), code
+        assert migrated == expected, code
 
 
 def test_every_channel_a_plan_names_is_a_real_channel() -> None:

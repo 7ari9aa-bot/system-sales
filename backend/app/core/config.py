@@ -242,11 +242,11 @@ class Settings(BaseSettings):
     meta_app_id: str = ""
     meta_app_secret: str = ""
     meta_oauth_redirect_uri: str = ""
-    # Optional. Set ONLY for a Business-type app using Facebook Login for
-    # Business: the dashboard configuration id replaces the scope list on the
-    # login dialog (developers.facebook.com/docs/facebook-login/facebook-
-    # login-for-business). Leave empty for classic Consumer-type apps.
-    meta_oauth_config_id: str = ""
+    # Instagram's own Facebook Login for Business configuration id: it
+    # replaces the scope list on the login dialog for Instagram ONLY.
+    # Facebook and Messenger keep requesting their scope lists directly, so
+    # one configuration can never narrow the other channels' permissions.
+    meta_instagram_config_id: str = ""
     # WhatsApp Embedded Signup uses its OWN Facebook Login for Business
     # configuration with the Embedded Signup login variation and Cloud API
     # product — a page-messaging config id cannot open it.

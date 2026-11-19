@@ -10,7 +10,7 @@ import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/li
 import { previewLine } from "@/lib/inboxPreview";
 import { useI18n, useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { isDemoConversation, loadDemoFacebookPosts, loadDemoInbox, loadDemoInstagramPosts, saveDemoFacebookPosts, saveDemoInstagramPosts, saveDemoInbox } from "@/lib/inboxDemoData";
+import { isDemoConversation, loadDemoInbox, loadDemoInstagramPosts, saveDemoInstagramPosts, saveDemoInbox } from "@/lib/inboxDemoData";
 
 
 const INBOX_PAGE_SIZE = 50;
@@ -151,7 +151,6 @@ export function InboxProvider({ children }) {
     if (forcedChannel && id !== forcedChannel) { setStoredChannel(id); navigate("/inbox"); return; }
     setStoredChannel(id);
   };
-  const [facebookPosts, setFacebookPosts] = useState([]);
   const [instagramPosts, setInstagramPosts] = useState([]);
   const [instagramMode, setInstagramMode] = useState("comments");
   const [chatListWidth, setChatListWidth] = useState(() => {
@@ -298,10 +297,6 @@ export function InboxProvider({ children }) {
 
   useEffect(() => {
     if (demoAccount) setConvMap(loadDemoInbox());
-  }, [demoAccount]);
-
-  useEffect(() => {
-    setFacebookPosts(demoAccount ? loadDemoFacebookPosts() : []);
   }, [demoAccount]);
 
   useEffect(() => {
@@ -738,51 +733,6 @@ export function InboxProvider({ children }) {
     }
   }
 
-  function addFacebookPageReply(commentId, text) {
-    if (!demoAccount) return;
-    setFacebookPosts((previous) => {
-      const createdAt = new Date();
-      const timeLabel = lang === "ar" ? "الآن" : "Just now";
-      const updated = previous.map((post) => ({
-        ...post,
-        comments: (post.comments || []).map((comment) => comment.id === commentId
-          ? { ...comment, replies: [...(comment.replies || []), {
-            id: `demo:facebook-reply:${createdAt.getTime()}`,
-            author: post.pageName,
-            avatarUrl: post.pageAvatarUrl || "/fihrist-mark.svg",
-            timeLabel,
-            text,
-            isPage: true,
-          }] }
-          : comment),
-      }));
-      saveDemoFacebookPosts(updated);
-      return updated;
-    });
-  }
-
-  function addFacebookPageComment(postId, text) {
-    if (!demoAccount) return;
-    setFacebookPosts((previous) => {
-      const createdAt = new Date();
-      const updated = previous.map((post) => post.id === postId ? {
-        ...post,
-        comments: [...(post.comments || []), {
-          id: `demo:facebook-comment:${createdAt.getTime()}`,
-          author: post.pageName,
-          avatarUrl: post.pageAvatarUrl || "/fihrist-mark.svg",
-          timeLabel: lang === "ar" ? "الآن" : "Just now",
-          text,
-          likes: 0,
-          replies: [],
-          isPage: true,
-        }],
-      } : post);
-      saveDemoFacebookPosts(updated);
-      return updated;
-    });
-  }
-
   function addInstagramPageReply(commentId, postId, text) {
     if (!demoAccount) return;
     setInstagramPosts((previous) => {
@@ -822,7 +772,6 @@ export function InboxProvider({ children }) {
     demoAccount,
     activeChannel,
     setActiveChannel,
-    facebookPosts,
     instagramPosts,
     instagramMode,
     setInstagramMode,
@@ -896,8 +845,6 @@ export function InboxProvider({ children }) {
     handleSend,
     handleReact,
     decideApproval,
-    addFacebookPageReply,
-    addFacebookPageComment,
     addInstagramPageReply,
   };
   return <InboxContext.Provider value={value}>{children}</InboxContext.Provider>;

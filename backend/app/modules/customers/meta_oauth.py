@@ -20,6 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import DomainError, ExternalProviderError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
+from app.modules.customers.meta_scopes import (
+    FACEBOOK_SCOPES,
+    MESSENGER_SCOPES,
+    granted_scopes_from_permissions,
+    missing_facebook_scopes,
+)
 from app.modules.customers.schemas import MetaOAuthStartOut
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.integration_verifier import verify_channel_credentials
@@ -48,7 +55,7 @@ _GRAPH = f"https://graph.facebook.com/{_META_VERSION}"
 #: linked IG business account (developers.facebook.com/docs/permissions —
 #: there is NO `instagram_messaging` permission; requesting one that does
 #: not exist makes Meta reject the whole dialog).
-_MESSENGER_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
+_MESSENGER_SCOPES = MESSENGER_SCOPES
 _INSTAGRAM_SCOPES = (
     "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,"
     "instagram_basic,instagram_manage_messages,"
@@ -63,6 +70,9 @@ _INSTAGRAM_SCOPES = (
 _BASE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,messaging_referrals,message_deliveries"
 _SUBSCRIBED_FIELDS = {
     "instagram": _BASE_SUBSCRIBED_FIELDS + ",comments,message_reactions,messaging_seen",
+    # Facebook Page comments are delivered on the Page's `feed` field; without it a
+    # connected Page only ever gets its Messenger traffic.
+    "facebook": _BASE_SUBSCRIBED_FIELDS + ",feed",
 }
 
 
@@ -96,7 +106,7 @@ def _meta_config() -> tuple[str, str, str, str]:
     app_id = s.meta_app_id.strip()
     app_secret = s.meta_app_secret.strip()
     redirect_uri = s.meta_oauth_redirect_uri_effective
-    config_id = s.meta_oauth_config_id.strip()
+    config_id = s.meta_instagram_config_id.strip()
     if not (app_id and app_secret and redirect_uri):
         raise ValidationError(
             "Meta OAuth is not configured on this server — set META_APP_ID, "
@@ -111,10 +121,12 @@ def _build_authorize_url(
 ) -> str:
     """Meta's login dialog URL, per the manual-flow documentation.
 
-    With a config_id (Facebook Login for Business, Business-type apps) the
-    configuration id REPLACES the scope list; classic apps request the
-    scope list directly. `response_type=code` is the server-side grant in
-    both variants.
+    With a config_id (Facebook Login for Business) the configuration id
+    REPLACES the scope list; without one the scope list is requested
+    directly. Only Instagram has a configuration of its own, so the id is
+    ignored for Facebook and Messenger: one configuration must never narrow
+    another channel's permissions. `response_type=code` is the server-side
+    grant in both variants.
     """
     params: dict[str, str] = {
         "client_id": app_id,
@@ -122,7 +134,7 @@ def _build_authorize_url(
         "state": state,
         "response_type": "code",
     }
-    if config_id:
+    if config_id and provider == "instagram":
         params["config_id"] = config_id
         # Documented requirement for the authorization-code grant with a
         # business configuration (system-user / long-lived tokens).
@@ -130,7 +142,9 @@ def _build_authorize_url(
     else:
         if provider == "instagram":
             params["scope"] = _INSTAGRAM_SCOPES
-        else:  # messenger + facebook: the same page-messaging grant
+        elif provider == "facebook":
+            params["scope"] = FACEBOOK_SCOPES
+        else:  # messenger: the page-messaging grant only
             params["scope"] = _MESSENGER_SCOPES
     return f"https://www.facebook.com/{_META_VERSION}/dialog/oauth?{urlencode(params)}"
 
@@ -176,17 +190,18 @@ def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     return f"{step} failed ({code}): {message}" if code else f"{step} failed: {message}"
 
 
-async def _subscribe_page_to_app(http, *, page_id: str, page_token: str) -> None:
-    """Fail the connection if the page cannot receive this app's webhooks."""
-    import httpx
+async def _subscribe_page_to_app(
+    http, *, page_id: str, page_token: str, provider: str = "messenger"
+) -> None:
+    """Fail the connection if the page cannot receive this app's webhooks.
 
+    The fields are the channel's own: a Facebook Page also needs `feed` for its comments and
+    an Instagram account `comments`, which the base messaging fields alone never deliver."""
     try:
         response = await http.post(
             f"{_GRAPH}/{page_id}/subscribed_apps",
             params={
-                "subscribed_fields": (
-                    "messages,messaging_postbacks,messaging_referrals,message_deliveries"
-                ),
+                "subscribed_fields": subscribed_fields(provider),
                 "access_token": page_token,
             },
         )
@@ -216,8 +231,6 @@ async def _meta_exchange_and_connect(
     Returns (provider, display_name); raises on every failure so the callback
     redirects the browser with meta_error instead of a bare 500.
     """
-    import httpx
-
     from app.core.db import bind_tenant
     from app.modules.billing.service import EntitlementService
     from app.modules.customers.routers.integrations import (
@@ -292,6 +305,22 @@ async def _meta_exchange_and_connect(
             user_token = long_token
             expires_in = long_lived.get("expires_in", expires_in)
 
+        # 2b) What the owner actually ticked. The dialog lets them untick a single permission and
+        #     still continue, and a Facebook channel without posting or comment rights would show
+        #     as connected and then fail on its first post. Refuse it here, naming what is missing.
+        permissions = (
+            await http.get(f"{_GRAPH}/me/permissions", params={"access_token": user_token})
+        ).json()
+        granted = granted_scopes_from_permissions(permissions)
+        if provider == "facebook":
+            lacking = missing_facebook_scopes(granted)
+            if lacking:
+                _logger.warning("meta_oauth.facebook_scopes_missing %s", ",".join(lacking))
+                raise ValidationError(
+                    "لم تُمنح كل صلاحيات فيسبوك المطلوبة للنشر والتعليقات والإحصاءات "
+                    f"({', '.join(lacking)}). أعد الربط وفعّل كل الصلاحيات في نافذة فيسبوك."
+                )
+
         # 3) Pages the operator manages, WITH their page tokens.
         accounts = (
             await http.get(
@@ -320,6 +349,11 @@ async def _meta_exchange_and_connect(
         if not pages:
             pages = all_pages
         page = pages[0]
+        if len(pages) > 1:
+            # The connect dialog lets the owner tick several Pages; one channel holds one.
+            _logger.warning(
+                "meta_oauth.several_pages connected=%s available=%d", page.get("id"), len(pages)
+            )
 
         # 4) Credentials + routing identity per gateway contract:
         #    - the webhook routes inbound by config.account_id;
@@ -350,7 +384,9 @@ async def _meta_exchange_and_connect(
         verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
         # A channel that cannot receive provider webhooks is not connected.
-        await _subscribe_page_to_app(http, page_id=str(page["id"]), page_token=page_token)
+        await _subscribe_page_to_app(
+            http, page_id=str(page["id"]), page_token=page_token, provider=provider
+        )
 
         from app.core.meta_tokens import token_expiry
 
@@ -378,11 +414,13 @@ async def _meta_exchange_and_connect(
             await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
 
         verified_at = datetime.now(UTC).isoformat()
+        connection_meta = _verification_metadata(
+            verified_at=verified_at, display_name=verified.display_name
+        )
+        connection_meta["granted_scopes"] = granted
         integration_config = {
             **verified.identity_config,
-            "_connection": _verification_metadata(
-                verified_at=verified_at, display_name=verified.display_name
-            ),
+            "_connection": connection_meta,
         }
         encrypted = encrypt_credentials_dict(credentials)
         if existing is None:

@@ -330,3 +330,21 @@ describe("uploadMedia", () => {
     expect(await uploadMedia("c1", f, { api })).toMatchObject({ ok: false, aborted: true, error: "" });
   });
 });
+
+describe("uploadMedia sends the type the screen accepted the file under", () => {
+  const sent = async (file, mimeOf) => {
+    let seen;
+    await uploadMedia("c1", file, { api: async (_p, o) => { seen = o; return { media_id: "m" }; }, mimeOf });
+    return seen.contentType;
+  };
+  it("keeps a real type as it is", async () => {
+    expect(await sent({ name: "a.png", type: "image/png" }, () => "application/pdf")).toBe("image/png");
+  });
+  it("uses the inferred type when the browser left it empty or generic", async () => {
+    expect(await sent({ name: "a.pdf", type: "" }, () => "application/pdf")).toBe("application/pdf");
+    expect(await sent({ name: "a.m4a", type: "application/octet-stream" }, () => "audio/mp4")).toBe("audio/mp4");
+  });
+  it("falls back to a generic type when nothing can be inferred, as before", async () => {
+    expect(await sent({ name: "a", type: "" }, null)).toBe("application/octet-stream");
+  });
+});

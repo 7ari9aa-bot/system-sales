@@ -60,13 +60,17 @@ export async function sendReply(conversationId, text, { api = defaultApi, intent
  *
  * @returns {Promise<{ok: true, media: {media_id: string, kind: string, filename: string, size: number}} | {ok: false, error: string}>}
  */
-export async function uploadMedia(conversationId, file, { api = defaultApi, asSticker = false, signal } = {}) {
+export async function uploadMedia(conversationId, file, { api = defaultApi, asSticker = false, signal, mimeOf = null } = {}) {
   try {
+    // A browser often leaves a file's type empty (a .pdf, an .m4a). The server judges by the type
+    // it is sent, so a file the screen accepted by its extension is sent under that type.
+    const declared = String(file.type || "").trim();
+    const type = declared && declared !== "application/octet-stream" ? declared : (mimeOf?.(file) || declared);
     const media = await api(`/conversations/${conversationId}/media`, {
       method: "POST",
       body: file,
       rawBody: true,
-      contentType: file.type || "application/octet-stream",
+      contentType: type || "application/octet-stream",
       headers: {
         "X-Filename": encodeURIComponent(file.name || "file"),
         ...(asSticker ? { "X-As-Sticker": "true" } : {}),

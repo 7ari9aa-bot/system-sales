@@ -377,6 +377,8 @@ class IntegrationOut(BaseModel):
     # The webchat/Telegram routing identifiers are public by design. Provider
     # credentials and all other configuration stay server-side.
     public_key: str | None = None
+    # Facebook only: Page permissions this connection lacks; non-empty means "connect again".
+    missing_scopes: list[str] = []
 
 
 class IntegrationUpserted(BaseModel):

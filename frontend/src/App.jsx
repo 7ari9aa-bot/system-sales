@@ -35,6 +35,7 @@ const FacebookPostsPage = lazy(() => import('@/pages/facebook/FacebookPostsPage'
 const FacebookMessagesPage = lazy(() => import('@/pages/facebook/FacebookMessagesPage'));
 const FacebookActivityPage = lazy(() => import('@/pages/facebook/FacebookActivityPage'));
 const FacebookInsightsPage = lazy(() => import('@/pages/facebook/FacebookInsightsPage'));
+const FacebookReelsPage = lazy(() => import('@/pages/facebook/FacebookReelsPage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
@@ -142,6 +143,7 @@ const DashboardRoutes = () => (
           <Route path="messages" element={<FacebookMessagesPage />} />
           <Route path="messages/:threadId" element={<FacebookMessagesPage />} />
           <Route path="activity" element={<FacebookActivityPage />} />
+          <Route path="reels" element={<FacebookReelsPage />} />
           <Route path="insights" element={<FacebookInsightsPage />} />
           <Route path="*" element={<Navigate to="/facebook/posts" replace />} />
         </Route>

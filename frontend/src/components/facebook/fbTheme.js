@@ -1,7 +1,8 @@
 // Facebook's own web palette, in one place so every Facebook page matches.
 export const FB = {
-  font: 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  bg: "#f0f2f5",
+  // Measured on facebook.com: the page font and background.
+  font: '"Segoe UI Historic", "Segoe UI", Helvetica, Arial, sans-serif',
+  bg: "#f2f4f7",
   card: "#ffffff",
   text: "#050505",
   text2: "#65676b",

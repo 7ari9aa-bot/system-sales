@@ -6,14 +6,17 @@ needs it SENDABLE (the grant a chat reply needs). Meta is called first, our row 
 
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
-from app.modules.conversations.facebook_service import FacebookService
+from app.modules.conversations.facebook_service import MAX_PICTURE_BYTES, FacebookService
+from app.modules.conversations.gateway import facebook_video
 from app.modules.conversations.gateway.facebook_pages import facebook_pages
 from app.modules.conversations.routers._deps import TenantContext, require_permission
 from app.modules.conversations.routers.inbox import (
@@ -41,12 +44,26 @@ class LikeRequest(BaseModel):
 
 
 class PublishRequest(BaseModel):
-    """Text, a link, or one picture (public https link); `schedule_at` schedules it."""
+    """Text, a link, or one picture; `schedule_at` schedules it.
+
+    The picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public
+    https link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.
+    """
 
     message: str | None = Field(default=None, max_length=63206)
     link: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     photo_url: str | None = Field(default=None, max_length=2000, pattern=r"^https://")
+    picture: str | None = Field(default=None, max_length=(MAX_PICTURE_BYTES * 4) // 3 + 200)
     schedule_at: datetime | None = None
+
+
+def _decode_picture(value: str) -> bytes:
+    if value.startswith("data:"):  # a browser data URL: keep only the payload
+        value = value.partition(",")[2]
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValidationError("the picture is not valid base64") from exc
 
 
 class EditRequest(BaseModel):
@@ -121,17 +138,146 @@ async def list_scheduled(ctx: TenantContext = Depends(require_permission("conver
 async def publish_post(
     body: PublishRequest, ctx: TenantContext = Depends(require_permission("conversations:write"))
 ):
+    if body.picture and body.photo_url:
+        raise ValidationError("send a picture file or a picture link, not both")
+    if body.picture and body.link:
+        raise ValidationError("a post carries a picture or a link, not both")
     creds = await _credentials(ctx, send=True)
-    post_id = await FacebookService.publish(
+    if body.picture:
+        post_id = await FacebookService.publish_picture(
+            ctx.session,
+            ctx.tenant_id,
+            creds,
+            picture=_decode_picture(body.picture),
+            message=body.message,
+            schedule_at=body.schedule_at,
+        )
+    else:
+        post_id = await FacebookService.publish(
+            ctx.session,
+            ctx.tenant_id,
+            creds,
+            message=body.message,
+            link=body.link,
+            photo_url=body.photo_url,
+            schedule_at=body.schedule_at,
+        )
+    return {"id": post_id, "scheduled": body.schedule_at is not None}
+
+
+async def _read_body(request: Request, limit: int, what: str) -> bytes:
+    """The raw file the screen sent, refused as soon as it passes `limit`."""
+    chunks = bytearray()
+    async for chunk in request.stream():
+        chunks.extend(chunk)
+        if len(chunks) > limit:
+            raise ValidationError(
+                f"the {what} is too large", details={"reason": "too_large", "max_bytes": limit}
+            )
+    return bytes(chunks)
+
+
+def _header_text(request: Request, name: str) -> str | None:
+    """A text the screen sent in a header, percent-encoded so Arabic survives."""
+    from urllib.parse import unquote
+
+    raw = request.headers.get(name)
+    return unquote(raw).strip() or None if raw else None
+
+
+@router.post("/facebook/reels", status_code=201)
+async def publish_reel(
+    request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))
+):
+    """Publish a Reel. The raw mp4 is the body; text, title and time travel in headers.
+
+    `X-Description`, `X-Title` (percent-encoded), `X-Schedule-At` (ISO time, 10 minutes to 29
+    days away) and `X-AI-Generated: true` are all optional.
+    """
+    creds = await _credentials(ctx, send=True)
+    video = await _read_body(request, facebook_video.MAX_VIDEO_BYTES, "video")
+    schedule_at = None
+    if raw := request.headers.get("x-schedule-at"):
+        try:
+            schedule_at = datetime.fromisoformat(raw)
+        except ValueError as exc:
+            raise ValidationError("the schedule time is not a valid date") from exc
+    video_id = await FacebookService.publish_reel(
         ctx.session,
         ctx.tenant_id,
         creds,
-        message=body.message,
-        link=body.link,
-        photo_url=body.photo_url,
-        schedule_at=body.schedule_at,
+        video=video,
+        description=_header_text(request, "x-description"),
+        title=_header_text(request, "x-title"),
+        schedule_at=schedule_at,
+        is_ai_generated=request.headers.get("x-ai-generated", "").lower() == "true",
     )
-    return {"id": post_id, "scheduled": body.schedule_at is not None}
+    return {"id": video_id, "scheduled": schedule_at is not None}
+
+
+@router.post("/facebook/stories", status_code=201)
+async def publish_story(
+    request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))
+):
+    """Publish a Story: the raw file is the body, and its Content-Type says video or picture."""
+    creds = await _credentials(ctx, send=True)
+    kind = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if kind == "video/mp4":
+        video = await _read_body(request, facebook_video.MAX_VIDEO_BYTES, "video")
+        story_id = await FacebookService.publish_story(
+            ctx.session, ctx.tenant_id, creds, video=video
+        )
+    elif kind.startswith("image/"):
+        photo = await _read_body(request, facebook_video.MAX_STORY_PHOTO_BYTES, "picture")
+        story_id = await FacebookService.publish_story(
+            ctx.session, ctx.tenant_id, creds, photo=photo
+        )
+    else:
+        raise ValidationError("a Story is an mp4 video or a picture")
+    return {"id": story_id}
+
+
+@router.get("/facebook/reels")
+async def list_reels(
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+    after: str | None = None,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    page = await facebook_pages.list_reels(
+        await _credentials(ctx, send=False), limit=limit, after=after
+    )
+    return {
+        "items": [
+            {
+                "id": r.get("id"),
+                "description": r.get("description"),
+                "title": r.get("title"),
+                "picture": r.get("picture"),
+                "permalink": r.get("permalink_url"),
+                "length": r.get("length"),
+                "updated_at": r.get("updated_time"),
+            }
+            for r in page["items"]
+        ],
+        "next": page["next"],
+    }
+
+
+@router.get("/facebook/stories")
+async def list_stories(ctx: TenantContext = Depends(require_permission("conversations:read"))):
+    stories = await facebook_pages.list_stories(await _credentials(ctx, send=False))
+    return {
+        "items": [
+            {
+                "id": s.get("post_id"),
+                "status": s.get("status"),
+                "type": s.get("media_type"),
+                "url": s.get("url"),
+                "created_at": s.get("creation_time"),
+            }
+            for s in stories
+        ]
+    }
 
 
 @router.patch("/facebook/posts/{post_id}")

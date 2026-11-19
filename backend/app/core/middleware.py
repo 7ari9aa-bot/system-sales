@@ -114,6 +114,15 @@ _CONVERSATION_MEDIA_UPLOAD_PATH = re.compile(r"^/conversations/[0-9a-fA-F-]{36}/
 # the largest post the publish screen allows; tests/test_body_limit_social_posts.py checks that.
 MAX_SOCIAL_POST_BYTES = 112 * 1024 * 1024
 _SOCIAL_POST_PATH = re.compile(r"^/social/posts$")
+# A post for a Facebook Page: one picture of up to 4 MB as base64 inside the JSON body (4/3 of the
+# file), so about 5.4 MiB plus the text. Under the 1 MiB default every real photo was a 413.
+MAX_FACEBOOK_POST_BYTES = 8 * 1024 * 1024
+_FACEBOOK_POST_PATH = re.compile(r"^/facebook/posts$")
+# A Reel or a Story for a Facebook Page: the raw file is the body (no base64), so this is also the
+# exact file limit. It is the video ceiling facebook_video.MAX_VIDEO_BYTES (Meta states none, so a
+# ceiling of ours keeps one request from filling memory); tests check the two stay equal.
+MAX_FACEBOOK_VIDEO_UPLOAD_BYTES = 200 * 1024 * 1024
+_FACEBOOK_VIDEO_PATH = re.compile(r"^/facebook/(reels|stories)$")
 
 # A path segment that looks like an id (uuid or integer) is collapsed so the
 # endpoint tier keys a route shape, not one key per row.
@@ -422,6 +431,10 @@ class BodySizeLimitMiddleware:
             max_bytes = MAX_CONVERSATION_MEDIA_UPLOAD_BYTES
         elif scope.get("method") == "POST" and _SOCIAL_POST_PATH.fullmatch(route_path):
             max_bytes = MAX_SOCIAL_POST_BYTES
+        elif scope.get("method") == "POST" and _FACEBOOK_POST_PATH.fullmatch(route_path):
+            max_bytes = MAX_FACEBOOK_POST_BYTES
+        elif scope.get("method") == "POST" and _FACEBOOK_VIDEO_PATH.fullmatch(route_path):
+            max_bytes = MAX_FACEBOOK_VIDEO_UPLOAD_BYTES
 
         declared = _header(scope, b"content-length")
         if declared is not None:

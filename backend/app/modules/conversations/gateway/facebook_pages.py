@@ -11,6 +11,7 @@ below is Meta's own, from "Pages API: Posts", "Comments" and "Page Insights":
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,12 @@ from app.core.circuit_breaker import PROVIDER_MESSENGER, get_breaker
 from app.core.errors import ExternalProviderError
 from app.core.instagram_version import INSTAGRAM_API_VERSION
 from app.modules.conversations.gateway.base import ProviderCredentials, parse_provider_body
+
+#: Where Meta takes the bytes of a Reel or a Story video (every other call stays on graph).
+UPLOAD_HOST = "https://rupload.facebook.com/video-upload"
+#: A video is processed after the upload; how long to wait for it, and how often to ask.
+PROCESSING_TIMEOUT_SECONDS = 180
+PROCESSING_POLL_SECONDS = 3
 
 SCHEDULE_MIN_SECONDS = 10 * 60
 SCHEDULE_MAX_SECONDS = 30 * 24 * 3600
@@ -289,6 +296,222 @@ class FacebookPagesClient:
             _client=_client,
         )
         return str(body.get("message_id") or "")
+
+    # ---- Reels and Stories ----
+    async def _start_video(
+        self, credentials: ProviderCredentials, edge: str, _client=None
+    ) -> tuple[str, str]:
+        """Open an upload session. Returns (video_id, upload_url)."""
+        _, page_id = self._creds(credentials)
+        body = await self._graph(
+            "POST",
+            f"{page_id}/{edge}",
+            credentials,
+            data={"upload_phase": "start"},
+            _client=_client,
+        )
+        video_id = str(body.get("video_id") or "")
+        if not video_id:
+            raise ExternalProviderError(f"facebook {edge} start returned no video id")
+        return video_id, str(body.get("upload_url") or f"{UPLOAD_HOST}/{video_id}")
+
+    async def _hand_over_video(
+        self,
+        credentials: ProviderCredentials,
+        upload_url: str,
+        file_url: str,
+        _client=None,
+    ) -> None:
+        """Tell Meta where to fetch the video from; it pulls the file itself."""
+        token, _ = self._creds(credentials)
+        if not upload_url.startswith(UPLOAD_HOST):
+            # the host is part of Meta's contract: never send a token to any other address
+            raise ExternalProviderError("facebook returned an unexpected upload address")
+        headers = {"Authorization": f"OAuth {token}", "file_url": file_url}
+
+        async def _call() -> None:
+            if _client is not None:
+                resp = await _client.post(upload_url, headers=headers)
+            else:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.post(upload_url, headers=headers)
+            body = parse_provider_body(resp, "facebook video upload")
+            if resp.status_code != 200 or not body.get("success"):
+                err = body.get("error") if isinstance(body, dict) else None
+                detail = (err or {}).get("message") if isinstance(err, dict) else str(body)[:200]
+                raise ExternalProviderError(
+                    f"facebook video upload failed: HTTP {resp.status_code} - {detail}"
+                )
+
+        await get_breaker(PROVIDER_MESSENGER).call(_call)
+
+    async def video_status(
+        self, credentials: ProviderCredentials, video_id: str, _client=None
+    ) -> dict[str, Any]:
+        body = await self._graph(
+            "GET", video_id, credentials, params={"fields": "status"}, _client=_client
+        )
+        return body.get("status") or {}
+
+    async def _wait_until_processed(
+        self, credentials: ProviderCredentials, video_id: str, _client=None, _sleep=None
+    ) -> None:
+        """Meta processes the video after the upload; publishing before it is done is refused.
+
+        Stops at the first definite answer: an error Meta names (its message is passed on, e.g.
+        "Resolution too low"), or the upload and processing both complete.
+        """
+        sleep = _sleep or asyncio.sleep
+        waited = 0
+        while True:
+            status = await self.video_status(credentials, video_id, _client=_client)
+            for phase in ("uploading_phase", "processing_phase", "publishing_phase"):
+                err = (status.get(phase) or {}).get("error")
+                if err:
+                    msg = err.get("message") if isinstance(err, dict) else str(err)
+                    raise ExternalProviderError(f"facebook could not process the video: {msg}")
+            if status.get("video_status") in ("error", "upload_failed", "expired"):
+                raise ExternalProviderError(
+                    f"facebook could not process the video: {status.get('video_status')}"
+                )
+            done = ("complete", "completed")
+            if (status.get("uploading_phase") or {}).get("status") in done and (
+                status.get("processing_phase") or {}
+            ).get("status") in done:
+                return
+            if waited >= PROCESSING_TIMEOUT_SECONDS:
+                raise ExternalProviderError(
+                    "facebook is still processing the video; try again later"
+                )
+            await sleep(PROCESSING_POLL_SECONDS)
+            waited += PROCESSING_POLL_SECONDS
+
+    async def publish_reel(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        video_url: str,
+        description: str | None = None,
+        title: str | None = None,
+        schedule_at: datetime | int | None = None,
+        place: str | None = None,
+        is_ai_generated: bool = False,
+        _client=None,
+        _sleep=None,
+    ) -> str:
+        """Publish a Reel from a link Meta can fetch. Returns the video id."""
+        description = (description or "").strip() or None
+        if description and len(description) > MAX_POST_CHARS:
+            raise ValueError(f"a Reel's text is at most {MAX_POST_CHARS:,} characters")
+        data: dict[str, Any] = {"upload_phase": "finish", "video_state": "PUBLISHED"}
+        if schedule_at is not None:
+            from app.modules.conversations.gateway.facebook_video import (
+                REEL_SCHEDULE_MAX_SECONDS,
+                REEL_SCHEDULE_MIN_SECONDS,
+            )
+
+            stamp = (
+                int(schedule_at.timestamp())
+                if isinstance(schedule_at, datetime)
+                else int(schedule_at)
+            )
+            delta = stamp - time.time()
+            if delta < REEL_SCHEDULE_MIN_SECONDS:
+                raise ValueError("a scheduled Reel must go live at least 10 minutes from now")
+            if delta > REEL_SCHEDULE_MAX_SECONDS:
+                raise ValueError("a scheduled Reel must go live within 29 days")
+            data["video_state"] = "SCHEDULED"
+            data["scheduled_publish_time"] = str(stamp)
+        if description:
+            data["description"] = description
+        if title and title.strip():
+            data["title"] = title.strip()[:255]
+        if place:
+            data["place"] = place
+        if is_ai_generated:
+            data["is_ai_generated"] = "true"
+        _, page_id = self._creds(credentials)
+        video_id, upload_url = await self._start_video(credentials, "video_reels", _client=_client)
+        await self._hand_over_video(credentials, upload_url, video_url, _client=_client)
+        await self._wait_until_processed(credentials, video_id, _client=_client, _sleep=_sleep)
+        data["video_id"] = video_id
+        await self._graph("POST", f"{page_id}/video_reels", credentials, data=data, _client=_client)
+        return video_id
+
+    async def publish_video_story(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        video_url: str,
+        is_ai_generated: bool = False,
+        _client=None,
+        _sleep=None,
+    ) -> str:
+        """Publish a video Story from a link Meta can fetch. Returns the story's post id."""
+        _, page_id = self._creds(credentials)
+        video_id, upload_url = await self._start_video(
+            credentials, "video_stories", _client=_client
+        )
+        await self._hand_over_video(credentials, upload_url, video_url, _client=_client)
+        await self._wait_until_processed(credentials, video_id, _client=_client, _sleep=_sleep)
+        data = {"video_id": video_id, "upload_phase": "finish"}
+        if is_ai_generated:
+            data["is_ai_generated"] = "true"
+        body = await self._graph(
+            "POST", f"{page_id}/video_stories", credentials, data=data, _client=_client
+        )
+        return str(body.get("post_id") or video_id)
+
+    async def publish_photo_story(
+        self, credentials: ProviderCredentials, *, photo_url: str, _client=None
+    ) -> str:
+        """Publish a photo Story: upload it unpublished, then turn it into a Story."""
+        _, page_id = self._creds(credentials)
+        photo = await self._graph(
+            "POST",
+            f"{page_id}/photos",
+            credentials,
+            data={"url": photo_url, "published": "false"},
+            _client=_client,
+        )
+        photo_id = str(photo.get("id") or "")
+        if not photo_id:
+            raise ExternalProviderError("facebook returned no id for the story picture")
+        body = await self._graph(
+            "POST",
+            f"{page_id}/photo_stories",
+            credentials,
+            data={"photo_id": photo_id},
+            _client=_client,
+        )
+        return str(body.get("post_id") or photo_id)
+
+    async def list_reels(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        limit: int = 25,
+        after: str | None = None,
+        _client=None,
+    ) -> dict[str, Any]:
+        _, page_id = self._creds(credentials)
+        params: dict[str, Any] = {
+            "fields": "id,description,title,updated_time,permalink_url,picture,length",
+            "limit": max(1, min(limit, 50)),
+        }
+        if after:
+            params["after"] = after
+        body = await self._graph(
+            "GET", f"{page_id}/video_reels", credentials, params=params, _client=_client
+        )
+        return self._page(body)
+
+    async def list_stories(
+        self, credentials: ProviderCredentials, *, _client=None
+    ) -> list[dict[str, Any]]:
+        _, page_id = self._creds(credentials)
+        body = await self._graph("GET", f"{page_id}/stories", credentials, _client=_client)
+        return body.get("data") or []
 
     # ---- insights ----
     async def get_page_insights(

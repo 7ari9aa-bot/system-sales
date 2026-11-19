@@ -4,7 +4,7 @@ import { InboxProvider, useInbox } from "@/pages/inbox/InboxProvider";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import FacebookNewPostDialog from "@/components/facebook/FacebookNewPostDialog";
 import { FB } from "@/components/facebook/fbTheme";
-import { FbBell, FbChannels, FbChart, FbHome, FbLogo, FbMessenger, FbPlus } from "@/components/facebook/fbIcons";
+import { FbBell, FbChannels, FbChart, FbHome, FbLogo, FbMessenger, FbPlus, FbReels } from "@/components/facebook/fbIcons";
 import { cn } from "@/lib/utils";
 import { useFacebookData } from "./useFacebookData";
 
@@ -23,20 +23,24 @@ function TopBar({ onCreate }) {
   const { pathname } = useLocation();
   const ar = lang === "ar";
   const tab = (active) => cn(
-    "relative grid h-12 min-w-[56px] flex-1 place-items-center rounded-lg transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] sm:max-w-[110px]",
+    "relative grid h-12 min-w-0 flex-1 place-items-center sm:min-w-[56px] rounded-lg transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] sm:max-w-[110px]",
     active ? "text-[#0866ff] hover:bg-transparent" : "text-[#65676b]",
   );
   const underline = (active) => active && <span className="absolute inset-x-1 bottom-[-4px] h-[3px] rounded-t-full" style={{ background: FB.blue }} />;
   const onPosts = pathname === "/facebook" || pathname.startsWith("/facebook/posts");
   const onMessages = pathname.startsWith("/facebook/messages");
   const onActivity = pathname.startsWith("/facebook/activity");
+  const onReels = pathname.startsWith("/facebook/reels");
   const onInsights = pathname.startsWith("/facebook/insights");
   return (
-    <header className="z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-white px-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)]" style={{ borderColor: FB.divider }}>
-      <NavLink to="/facebook/posts" aria-label={ar ? "الصفحة الرئيسية" : "Home"} className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]"><FbLogo size={40} /></NavLink>
-      <nav aria-label={ar ? "تنقل فيسبوك" : "Facebook navigation"} className="mx-auto flex h-full min-w-0 flex-1 items-center justify-center gap-1 sm:flex-none sm:gap-2">
+    <header className="z-20 flex shrink-0 flex-wrap items-center gap-x-2 border-b bg-white px-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] sm:h-14 sm:flex-nowrap" style={{ borderColor: FB.divider }}>
+      <NavLink to="/facebook/posts" aria-label={ar ? "الصفحة الرئيسية" : "Home"} className="my-2 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] sm:my-0"><FbLogo size={40} /></NavLink>
+      <nav aria-label={ar ? "تنقل فيسبوك" : "Facebook navigation"} className="order-last flex h-12 w-full min-w-0 items-center justify-between gap-0 border-t sm:order-none sm:mx-auto sm:h-full sm:w-auto sm:flex-none sm:justify-center sm:gap-2 sm:border-t-0" style={{ borderColor: FB.divider }}>
         <NavLink to="/facebook/posts" className={() => tab(onPosts)} aria-label={ar ? "المنشورات" : "Posts"} title={ar ? "المنشورات" : "Posts"}>
           <FbHome filled={onPosts} size={26} />{underline(onPosts)}
+        </NavLink>
+        <NavLink to="/facebook/reels" className={() => tab(onReels)} aria-label={ar ? "الريلز والستوري" : "Reels and Stories"} title={ar ? "الريلز والستوري" : "Reels and Stories"}>
+          <FbReels filled={onReels} size={26} />{underline(onReels)}
         </NavLink>
         <NavLink to="/facebook/messages" className={() => tab(onMessages)} aria-label={ar ? "الرسائل" : "Messages"} title={ar ? "الرسائل" : "Messages"}>
           <span className="relative"><FbMessenger filled={onMessages} size={26} /><Badge count={unreadMessages} /></span>{underline(onMessages)}

@@ -1197,3 +1197,9 @@ html[lang="en"] .app :where(h1,h2,h3,h4,p,li,small,b,strong,label,option,.kicker
 .post-cta{margin-top:40px}
 .app[data-lang="ar"] :is(.post-h2,.post-p,.post-list){direction:rtl;text-align:right}
 .app[data-lang="en"] :is(.post-h2,.post-p,.post-list){direction:ltr;text-align:left}
+
+/* Facebook pages: the marketing rule `p{line-height:1.8}` above sits outside any layer, so it beats
+   every Tailwind line-height class and stretched post and comment text to 27px (Facebook: 20px).
+   Inside the Facebook app a paragraph is 15px on a 20px line, as on facebook.com; a leading class on
+   the element can still change it where the layer-less rule above would otherwise win. */
+:where([data-testid="facebook-app"]) p{line-height:var(--tw-leading,1.3333)}

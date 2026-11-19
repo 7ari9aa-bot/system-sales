@@ -12,6 +12,18 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.gateway.instagram_limits import InstagramLimitError, check_upload
+from app.modules.conversations.gateway.messenger_media import (
+    MessengerLimitError,
+)
+from app.modules.conversations.gateway.messenger_media import (
+    check_upload as messenger_check_upload,
+)
+from app.modules.conversations.gateway.telegram_media import (
+    TelegramLimitError,
+)
+from app.modules.conversations.gateway.telegram_media import (
+    check_upload as telegram_check_upload,
+)
 from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.outbound_media import (
@@ -39,6 +51,8 @@ from app.modules.conversations.service import ConversationService
 from app.modules.platform.services import channel_access as _channel_access
 
 logger = logging.getLogger(__name__)
+
+_FILE_CHANNELS = ("whatsapp", "instagram", "messenger", "telegram")
 
 router = APIRouter(tags=["inbox"])
 
@@ -363,8 +377,10 @@ async def upload_media(
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     await _ensure_channel_access(ctx, conversation)
     await _ensure_channel_send(ctx, conversation)
-    if conversation.channel not in ("whatsapp", "instagram"):
-        raise ValidationError("sending files is only available on WhatsApp and Instagram")
+    if conversation.channel not in _FILE_CHANNELS:
+        raise ValidationError(
+            "sending files is only available on WhatsApp, Instagram, Messenger and Telegram"
+        )
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
 
@@ -388,6 +404,23 @@ async def upload_media(
             # The inbox calls a PDF a "document"; Instagram's Send API calls it a "file".
             kind="document" if ig.kind == "file" else ig.kind,
             size=ig.size,
+            filename=safe_filename(_decoded_filename(request.headers.get("x-filename"))),
+        )
+    elif conversation.channel in ("messenger", "telegram"):
+        # Each has its own formats and sizes, and a file it would refuse must fail here, while
+        # the agent can still pick another, not after it was "sent".
+        check = (
+            messenger_check_upload if conversation.channel == "messenger" else telegram_check_upload
+        )
+        try:
+            up = check(request.headers.get("content-type"), bytes(chunks))
+        except (MessengerLimitError, TelegramLimitError) as exc:
+            raise ValidationError(str(exc), details={"reason": exc.code}) from exc
+        spec = OutboundMediaSpec(
+            mime=up.mime,
+            # The inbox calls a Messenger "file" a "document".
+            kind="document" if up.kind == "file" else up.kind,
+            size=up.size,
             filename=safe_filename(_decoded_filename(request.headers.get("x-filename"))),
         )
     else:

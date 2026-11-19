@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import ChatList from "@/components/inbox/whatsapp/ChatList";
-import FacebookPostsWorkspace from "@/components/inbox/FacebookPostsWorkspace";
 import { cn } from "@/lib/utils";
 import { CHAT_LIST_MIN_WIDTH, CHAT_LIST_MAX_WIDTH, useInbox } from "./InboxProvider";
 
@@ -13,8 +13,6 @@ export default function InboxWorkspace({ embedded = false }) {
   const {
     FILTERS,
     activeChannel,
-    addFacebookPageComment,
-    addFacebookPageReply,
     approvalLoadError,
     changeListState,
     channel,
@@ -26,7 +24,6 @@ export default function InboxWorkspace({ embedded = false }) {
     current,
     decideApproval,
     error,
-    facebookPosts,
     filter,
     finishChatListResize,
     handleReact,
@@ -81,6 +78,13 @@ export default function InboxWorkspace({ embedded = false }) {
     unreadByChannel,
     visibleConversations,
   } = useInbox();
+  const navigate = useNavigate();
+  // Facebook has its own pages (/facebook/...), built on the Page's real posts and comments. The
+  // inbox never draws a second, local-only copy of them: landing here on Facebook goes there.
+  useEffect(() => {
+    if (isFacebook) navigate("/facebook/posts", { replace: true });
+  }, [isFacebook, navigate]);
+  if (isFacebook) return null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -98,9 +102,6 @@ export default function InboxWorkspace({ embedded = false }) {
 
       <div dir="ltr" className={embedded ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_52px] overflow-hidden"}>
       <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {isFacebook ? (
-        <FacebookPostsWorkspace posts={facebookPosts} lang={lang} onReply={addFacebookPageReply} onComment={addFacebookPageComment} />
-      ) : (
       <div
         ref={inboxSplitRef}
         dir="ltr"
@@ -356,7 +357,6 @@ export default function InboxWorkspace({ embedded = false }) {
           onDecline={() => decideApproval(pendingApproval, "REJECTED")}
         />
       </div>
-      )}
       </div>
       {!embedded && <aside className="z-10 flex min-h-0 min-w-0 flex-col items-center border-l border-border/80 bg-card" aria-label={t("inbox.title")}>
         <ChannelSwitcher

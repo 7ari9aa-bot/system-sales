@@ -155,7 +155,7 @@
 
 ‫‏Meta و Facebook:
 
-- OAuth لتوصيل الصفحة: ‏`app/modules/customers/meta_oauth.py`‏ — ‏متغيرات ‏`META_APP_ID`‏ و ‏`META_APP_SECRET`‏ و ‏`META_OAUTH_REDIRECT_URI`‏ و ‏`META_OAUTH_CONFIG_ID`
+- OAuth لتوصيل الصفحة: ‏`app/modules/customers/meta_oauth.py`‏ — ‏متغيرات ‏`META_APP_ID`‏ و ‏`META_APP_SECRET`‏ و ‏`META_OAUTH_REDIRECT_URI`‏ و ‏`META_INSTAGRAM_CONFIG_ID`
 - بوابات الرسائل: ‏`app/modules/conversations/gateway/`‏ — ‏adapters لـ whatsapp و messenger و instagram و telegram و email و webchat
 - متغيرات القنوات: ‏`WHATSAPP_APP_SECRET`‏ و ‏`WHATSAPP_VERIFY_TOKEN`‏ و ‏`MESSENGER_APP_SECRET`‏ و ‏`MESSENGER_VERIFY_TOKEN`‏ و ‏`INSTAGRAM_APP_SECRET`‏ و ‏`INSTAGRAM_VERIFY_TOKEN`‏ و ‏`TELEGRAM_BOT_TOKEN`‏ و ‏`TELEGRAM_WEBHOOK_SECRET`‏ و ‏`API_PUBLIC_BASE_URL`
 - ملاحظة مهمة: ‏متغيرات Meta دي مش موجودة أصلاً في ‏`.env.example`‏ — ‏فجوة موثقة في القسم 8
@@ -238,7 +238,7 @@
 
 ‫فجوات في ‏`.env.example`:
 
-- متغيرات Meta الأربعة (‏`META_APP_ID`‏ و `META_APP_SECRET` و `META_OAUTH_REDIRECT_URI` و `META_OAUTH_CONFIG_ID`‏) مش موجودة فيه رغم إن موديول meta_oauth بيقراها من الإعدادات
+- متغيرات Meta الأربعة (‏`META_APP_ID`‏ و `META_APP_SECRET` و `META_OAUTH_REDIRECT_URI` و `META_INSTAGRAM_CONFIG_ID`‏) مش موجودة فيه رغم إن موديول meta_oauth بيقراها من الإعدادات
 - ‏`WEBSITE_PLATFORM_API_KEY`‏ مش موجود فيه رغم إن ‏`website/client.py`‏ بيقراه
 
 ‫ملاحظات أخرى:

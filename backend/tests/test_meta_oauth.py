@@ -32,6 +32,14 @@ PAGE_ID = "100948385744201"
 PAGE_TOKEN = "page-access-token-value"
 IG_ID = "17841400000000001"
 LONG_LIVED_TOKEN = "long-lived-user-token"
+ALL_FACEBOOK_PERMISSIONS = [
+    "pages_show_list",
+    "pages_messaging",
+    "pages_manage_posts",
+    "pages_manage_engagement",
+    "pages_read_user_content",
+    "read_insights",
+]
 
 
 def _fake_settings(*, config_id: str = "", redirect_uri: str = REDIRECT_URI, api_base: str = ""):
@@ -43,7 +51,7 @@ def _fake_settings(*, config_id: str = "", redirect_uri: str = REDIRECT_URI, api
     s.meta_app_id = APP_ID
     s.meta_app_secret = APP_SECRET
     s.meta_oauth_redirect_uri = redirect_uri
-    s.meta_oauth_config_id = config_id
+    s.meta_instagram_config_id = config_id
     s.api_public_base_url = api_base
     return s
 
@@ -73,6 +81,8 @@ def _graph_handler(
     long_lived=False,
     accounts_error=False,
     instagram=False,
+    granted=None,
+    permissions_error=False,
 ):
     """Routes the Graph calls the flow makes, in any order. The code swap
     and the long-lived exchange share the /oauth/access_token path — they
@@ -100,6 +110,15 @@ def _graph_handler(
                 # flow uses to attempt the fb_exchange_token grant.
                 body["expires_in"] = 5183944
             return httpx.Response(200, json=body)
+        if "/me/permissions" in url:
+            if permissions_error:
+                return httpx.Response(
+                    200, json={"error": {"message": "Session has expired", "code": 190}}
+                )
+            names = ALL_FACEBOOK_PERMISSIONS if granted is None else granted
+            return httpx.Response(
+                200, json={"data": [{"permission": n, "status": "granted"} for n in names]}
+            )
         if "/me/accounts" in url:
             if accounts_error:
                 return httpx.Response(
@@ -267,6 +286,24 @@ async def test_start_uses_config_id_for_business_login(db, tenant_ctx, monkeypat
     assert "override_default_response_type=true" in url
     # The business configuration replaces the scope list on the dialog.
     assert "scope=" not in url
+
+
+@pytest.mark.parametrize("provider", ["facebook", "messenger"])
+async def test_instagram_config_never_replaces_other_channels_scopes(
+    db, tenant_ctx, monkeypatch, provider
+):
+    """Instagram's configuration id must not narrow Facebook or Messenger:
+    they keep requesting their own scope lists (incl. the Page post scopes)."""
+    _config_patch(monkeypatch, config_id="2761697214337369")
+    app = _app(db, tenant_ctx)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        response = await c.get(f"/api/v1/integrations/meta/oauth/start?provider={provider}")
+    url = response.json()["authorize_url"]
+    assert "config_id" not in url
+    assert "override_default_response_type" not in url
+    assert "scope=" in url
+    if provider == "facebook":
+        assert "pages_manage_posts" in url
 
 
 async def test_callback_connects_the_page_and_subscribes_its_webhook(
@@ -592,3 +629,128 @@ def sa_select_integration():
     import sqlalchemy as sa
 
     return sa.select(Integration)
+
+
+async def _facebook_callback(db, tenant_ctx, monkeypatch, **graph):
+    _config_patch(monkeypatch)
+    calls: list[str] = []
+    _patch_graph(monkeypatch, _graph_handler(calls, **graph))
+    state = create_oauth_state_token(
+        str(tenant_ctx.user.id),
+        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "facebook"},
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db, tenant_ctx)), base_url="http://test"
+    ) as c:
+        response = await c.get(
+            "/api/v1/integrations/meta/oauth/callback",
+            params={"code": "auth-code-1", "state": state},
+            follow_redirects=False,
+        )
+    return _popup_result(response), calls
+
+
+async def test_facebook_connect_records_the_permissions_meta_granted(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    result, _calls = await _facebook_callback(db, tenant_ctx, monkeypatch)
+    assert result["connected"].startswith("facebook:")
+    row = (await db.execute(sa_select_integration())).scalar_one()
+    assert set(row.config["_connection"]["granted_scopes"]) == set(ALL_FACEBOOK_PERMISSIONS)
+
+
+async def test_facebook_connect_is_refused_when_one_permission_was_unticked(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    # The Meta dialog lets the owner untick a single permission and carry on. Connecting anyway
+    # would show a green channel that fails on its first post, so it is refused and named.
+    granted = [n for n in ALL_FACEBOOK_PERMISSIONS if n != "pages_manage_posts"]
+    result, _calls = await _facebook_callback(db, tenant_ctx, monkeypatch, granted=granted)
+    assert "connected" not in result
+    assert "pages_manage_posts" in result["error"]
+    assert (await db.execute(sa_select_integration())).scalar_one_or_none() is None
+
+
+async def test_facebook_connect_is_refused_when_the_permissions_cannot_be_read(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    result, _calls = await _facebook_callback(db, tenant_ctx, monkeypatch, permissions_error=True)
+    assert "connected" not in result
+    assert (await db.execute(sa_select_integration())).scalar_one_or_none() is None
+
+
+async def test_messenger_connect_does_not_need_the_page_permissions(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    # A chat-only store grants no posting rights and must still connect.
+    _config_patch(monkeypatch)
+    _patch_graph(monkeypatch, _graph_handler([], granted=["pages_messaging"]))
+    state = create_oauth_state_token(
+        str(tenant_ctx.user.id),
+        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db, tenant_ctx)), base_url="http://test"
+    ) as c:
+        response = await c.get(
+            "/api/v1/integrations/meta/oauth/callback",
+            params={"code": "auth-code-1", "state": state},
+            follow_redirects=False,
+        )
+    assert _popup_result(response)["connected"].startswith("messenger:")
+
+
+async def test_a_refused_page_subscription_fails_the_connect() -> None:
+    """A Page Meta will not deliver webhooks for must not be stored as connected."""
+    from app.core.errors import ExternalProviderError
+    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": {"message": "(#200) Permissions error"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(refuse)) as http:
+        with pytest.raises(ExternalProviderError):
+            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="facebook")
+
+
+async def test_a_subscription_that_does_not_say_success_fails_the_connect() -> None:
+    from app.core.errors import ExternalProviderError
+    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+
+    def odd(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": False})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(odd)) as http:
+        with pytest.raises(ExternalProviderError):
+            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="messenger")
+
+
+async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -> None:
+    from app.core.errors import ExternalProviderError
+    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(down)) as http:
+        with pytest.raises(ExternalProviderError):
+            await _subscribe_page_webhook(http, page_id="1", page_token="t", provider="instagram")
+
+
+@pytest.mark.parametrize(
+    ("provider", "field"),
+    [("facebook", "feed"), ("instagram", "comments"), ("messenger", "messages")],
+)
+async def test_the_subscription_asks_for_the_channels_own_fields(provider, field) -> None:
+    from app.modules.customers.meta_oauth import _subscribe_page_webhook
+
+    seen: dict[str, str] = {}
+
+    def ok(request: httpx.Request) -> httpx.Response:
+        seen.update(dict(request.url.params))
+        return httpx.Response(200, json={"success": True})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as http:
+        await _subscribe_page_webhook(http, page_id="1", page_token="tok", provider=provider)
+    assert field in seen["subscribed_fields"].split(",")
+    assert seen["access_token"] == "tok"

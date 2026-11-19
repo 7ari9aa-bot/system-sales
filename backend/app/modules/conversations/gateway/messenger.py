@@ -26,6 +26,11 @@ from app.modules.conversations.gateway.base import (
     parse_meta_comment_changes,
     parse_provider_body,
 )
+from app.modules.conversations.gateway.messenger_media import (
+    MessengerLimitError,
+    attachment_type,
+    check_attachment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,28 +186,46 @@ class MessengerAdapter(ChannelAdapter):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        payload: dict[str, Any] = {
-            "recipient": {"id": message.customer_ref},
-            "message": {"text": message.body or ""},
-        }
+        recipient = {"id": message.customer_ref}
+        # A text message and an attachment are two messages on Messenger: one request cannot carry
+        # both. A file with a caption therefore goes out as the file, then the caption.
+        payloads: list[dict[str, Any]] = []
         if message.template_name:
-            payload["message"] = {
-                "attachment": {
-                    "type": "template",
-                    "payload": {
-                        "template_type": message.template_name,
-                        **message.template_vars,
+            payloads.append(
+                {
+                    "recipient": recipient,
+                    "message": {
+                        "attachment": {
+                            "type": "template",
+                            "payload": {
+                                "template_type": message.template_name,
+                                **message.template_vars,
+                            },
+                        }
                     },
                 }
-            }
+            )
+        elif message.media_url:
+            kind = attachment_type(message.meta.get("media_type"))
+            try:
+                check_attachment(message.media_url, kind, message.meta.get("media_size_bytes"))
+            except MessengerLimitError as exc:
+                raise ExternalProviderError(f"messenger send refused: {exc}") from exc
+            payloads.append(
+                {
+                    "recipient": recipient,
+                    "message": {
+                        "attachment": {"type": kind, "payload": {"url": message.media_url}}
+                    },
+                }
+            )
+            if message.body:
+                payloads.append({"recipient": recipient, "message": {"text": message.body}})
+        else:
+            payloads.append({"recipient": recipient, "message": {"text": message.body or ""}})
 
-        async def _post() -> str:
-            """Post and return the provider message id — entirely inside the breaker."""
-            if _client is not None:
-                resp = await _client.post(url, headers=headers, json=payload)
-            else:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(url, headers=headers, json=payload)
+        async def _post_one(client: httpx.AsyncClient, payload: dict[str, Any]) -> str:
+            resp = await client.post(url, headers=headers, json=payload)
             # A provider that REJECTS the send is a provider FAILURE, so it must
             # be raised INSIDE the breaker — checking the status outside would
             # record a rejecting provider as a SUCCESS and never open the breaker.
@@ -212,6 +235,22 @@ class MessengerAdapter(ChannelAdapter):
                     f"messenger send failed: HTTP {resp.status_code} — {str(data)[:200]}"
                 )
             return str(data.get("message_id", ""))
+
+        async def _post() -> str:
+            """Post and return the provider message id — entirely inside the breaker.
+
+            With a file and a caption it is the FILE's id that is kept: that is the message the
+            conversation row stands for, and the caption follows it.
+            """
+            ids: list[str] = []
+            if _client is not None:
+                for payload in payloads:
+                    ids.append(await _post_one(_client, payload))
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    for payload in payloads:
+                        ids.append(await _post_one(client, payload))
+            return ids[0]
 
         # §47/G-13: the outbound call goes through the process-wide
         # `provider.messenger` breaker, so a dead provider is backed off instead

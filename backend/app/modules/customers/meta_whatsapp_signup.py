@@ -154,7 +154,10 @@ async def _exchange_code_for_token(
 async def _phone_display_name(
     http: httpx.AsyncClient, *, phone_number_id: str, token: str
 ) -> str | None:
-    """The verified business name / display number, for the settings UI."""
+    """The verified business name / display number, for the settings UI.
+
+    Cosmetic: the connection is verified separately, so a network failure here must
+    not fail a signup the owner already completed in Meta's popup."""
     try:
         response = await http.get(
             f"{_GRAPH}/{phone_number_id}",

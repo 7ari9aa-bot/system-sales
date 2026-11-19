@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { FB_LIMITS, facebookPostProblem, fbAge, toFacebookComments, toFacebookPost } from "@/lib/facebookApi";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FB_LIMITS, facebookPostProblem, fbAge, publishFacebookPost, toFacebookComments, toFacebookPost } from "@/lib/facebookApi";
+import { api } from "@/lib/api";
+
+vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ id: "1_2", scheduled: false })) }));
+afterEach(() => vi.mocked(api).mockClear());
+
+const pic = (type = "image/png", bytes = 8) => new File([new Uint8Array(bytes)], "p", { type });
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0, 0);
 const at = (minutes) => new Date(NOW + minutes * 60000).toISOString().slice(0, 16);
@@ -61,5 +67,51 @@ describe("fbAge", () => {
     expect(fbAge(ago(2 * 1440), "en")).toBe("2d");
     expect(fbAge("", "en")).toBe("");
     expect(fbAge("nope", "en")).toBe("");
+  });
+});
+
+describe("a Facebook post can carry a picture", () => {
+  it("accepts a picture alone, with no text", () => {
+    expect(facebookPostProblem({ picture: pic() }, "en", NOW)).toBe("");
+  });
+  it("takes only the types Facebook takes", () => {
+    for (const t of ["image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp"]) {
+      expect(facebookPostProblem({ picture: pic(t) }, "en", NOW)).toBe("");
+    }
+    expect(facebookPostProblem({ picture: pic("application/pdf") }, "en", NOW)).toMatch(/JPEG, PNG/);
+    expect(facebookPostProblem({ picture: pic("image/svg+xml") }, "en", NOW)).toMatch(/JPEG, PNG/);
+  });
+  it("stops at 4 MB, and exactly 4 MB is fine", () => {
+    expect(facebookPostProblem({ picture: pic("image/png", FB_LIMITS.maxPictureBytes) }, "en", NOW)).toBe("");
+    expect(facebookPostProblem({ picture: pic("image/png", FB_LIMITS.maxPictureBytes + 1) }, "en", NOW)).toMatch(/4 MB/);
+  });
+  it("never carries a picture and a link together", () => {
+    expect(facebookPostProblem({ picture: pic(), link: "https://a.co" }, "en", NOW)).toMatch(/not both/);
+  });
+  it("still applies the schedule window to a picture post", () => {
+    expect(facebookPostProblem({ picture: pic(), scheduleAt: at(9) }, "en", NOW)).toMatch(/10 minutes/);
+    expect(facebookPostProblem({ picture: pic(), scheduleAt: at(30) }, "en", NOW)).toBe("");
+  });
+  it("answers in Arabic too", () => {
+    expect(facebookPostProblem({ picture: pic("image/png", FB_LIMITS.maxPictureBytes + 1) }, "ar", NOW)).toMatch(/4 ميغابايت/);
+  });
+  it("sends the picture as base64 and drops the link", async () => {
+    await publishFacebookPost({ message: " hi ", link: "https://a.co", picture: new File([new Uint8Array([1, 2, 3])], "p.png", { type: "image/png" }) });
+    const [path, opts] = vi.mocked(api).mock.calls[0];
+    expect(path).toBe("/facebook/posts");
+    expect(opts.body).toEqual({ message: "hi", link: null, picture: "AQID", schedule_at: null });
+  });
+  it("sends a plain text or link post exactly as before", async () => {
+    await publishFacebookPost({ message: "hi", link: " https://a.co " });
+    expect(vi.mocked(api).mock.calls[0][1].body).toEqual({ message: "hi", link: "https://a.co", picture: null, schedule_at: null });
+  });
+});
+
+describe("a large picture is encoded without overflowing the stack", () => {
+  it("round-trips 4 MB", async () => {
+    const { readPictureAsBase64 } = await import("@/lib/facebookApi");
+    const bytes = new Uint8Array(4 * 1024 * 1024).map((_, i) => i % 251);
+    const b64 = await readPictureAsBase64(new File([bytes], "big.png", { type: "image/png" }));
+    expect(Buffer.from(b64, "base64").equals(Buffer.from(bytes))).toBe(true);
   });
 });

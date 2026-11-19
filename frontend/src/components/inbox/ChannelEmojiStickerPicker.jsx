@@ -36,24 +36,15 @@ const EMOJI_CATEGORIES = [
   },
 ];
 
-const WHATSAPP_STICKERS = [
-  { id: "s1", url: "https://cdn-icons-png.flaticon.com/128/9376/9376281.png", label: "Hello" },
-  { id: "s2", url: "https://cdn-icons-png.flaticon.com/128/9376/9376332.png", label: "Thank You" },
-  { id: "s3", url: "https://cdn-icons-png.flaticon.com/128/9376/9376317.png", label: "Love it" },
-  { id: "s4", url: "https://cdn-icons-png.flaticon.com/128/9376/9376295.png", label: "Order Shipped" },
-  { id: "s5", url: "https://cdn-icons-png.flaticon.com/128/9376/9376340.png", label: "Approved" },
-  { id: "s6", url: "https://cdn-icons-png.flaticon.com/128/9376/9376302.png", label: "Discount" },
-];
 
 export default function ChannelEmojiStickerPicker({
   isOpen,
   onClose,
   onSelectEmoji,
-  onSelectSticker,
   lang = "ar",
   isWhatsApp = false,
 }) {
-  const [activeTab, setActiveTab] = useState("emoji"); // emoji | gif | sticker
+  const [activeTab, setActiveTab] = useState("emoji");
   const [activeCategory, setActiveCategory] = useState("smileys");
   const [search, setSearch] = useState("");
 
@@ -68,7 +59,7 @@ export default function ChannelEmojiStickerPicker({
   return (
     <div
       role="dialog"
-      aria-label={isAr ? "لوحة الرموز والاستيكرز" : "Emoji and Stickers"}
+      aria-label={isAr ? "لوحة الرموز" : "Emoji picker"}
       className={cn(
         "absolute bottom-16 left-3 z-40 w-80 sm:w-96 rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95",
         isWhatsApp ? "bg-white border-[#d1d7db]" : "bg-card border-border"
@@ -88,19 +79,6 @@ export default function ChannelEmojiStickerPicker({
           >
             😀 {isAr ? "الرموز" : "Emoji"}
           </button>
-          {/* A sticker is sent as the text "🖼️ name", not as a sticker, so WhatsApp (where it would reach the customer) does not offer it. */}
-          {!isWhatsApp && (
-          <button
-            type="button"
-            onClick={() => setActiveTab("sticker")}
-            className={cn(
-              "px-3 py-1 rounded-lg text-[12px] font-semibold transition-colors",
-              activeTab === "sticker" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            🖼️ {isAr ? "ملصقات" : "Stickers"}
-          </button>
-          )}
         </div>
         <button
           type="button"
@@ -143,21 +121,6 @@ export default function ChannelEmojiStickerPicker({
           </div>
         )}
 
-        {activeTab === "sticker" && (
-          <div className="grid grid-cols-3 gap-2.5 p-1">
-            {WHATSAPP_STICKERS.map((stk) => (
-              <button
-                key={stk.id}
-                type="button"
-                onClick={() => { onSelectSticker(stk); onClose(); }}
-                className="p-2 rounded-xl border border-border/70 hover:border-primary/50 hover:bg-surface flex flex-col items-center gap-1.5 transition-all group"
-              >
-                <img src={stk.url} alt={stk.label} className="h-16 w-16 object-contain group-hover:scale-110 transition-transform" />
-                <span className="text-[11px] font-medium text-muted-foreground truncate">{stk.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Category Icons Bottom Bar (WhatsApp style) */}

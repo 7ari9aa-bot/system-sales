@@ -1,6 +1,7 @@
 import React from "react";
 import { Copy, Loader2, LinkIcon, ShieldCheck, Unplug } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
+import FacebookRelinkNotice, { facebookNeedsRelink } from "@/pages/settings/FacebookRelinkNotice";
 import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
@@ -748,6 +749,7 @@ export default function ChannelsSettings() {
               const status = statusFor(channel);
               const needsAttention = ATTENTION_STATES.has(channel.status);
               const needsVerification = channel.integrationId && ["active", "connected"].includes(channel.status) && !channel.credentialsVerified;
+              const needsRelink = facebookNeedsRelink(channel);
               const terminal = channel.status === "disabled";
               const fields = CONNECTION_FIELDS[channel.id];
               const isConnected = channel.connected || channel.webhookStatus === "receiving";
@@ -766,6 +768,7 @@ export default function ChannelsSettings() {
                       <div className="text-[13.5px] font-medium">{localizedChannelName}</div>
                       <div className="text-[12px] text-muted-foreground">{status}</div>
                       {displayName && displayName !== localizedChannelName && <div className="text-[11px] text-muted-foreground">{displayName}</div>}
+                      <FacebookRelinkNotice channel={channel} isAr={isAr} />
                       {channel.integrationId && (
                         <div className="mt-1 text-[11px] text-muted-foreground">
                           {webhookStatusFor(channel)}
@@ -774,7 +777,7 @@ export default function ChannelsSettings() {
                       )}
                     </div>
 
-                    <Badge tone={isConnected ? "success" : needsAttention || needsVerification ? "warning" : "muted"}>{status}</Badge>
+                    <Badge tone={needsRelink ? "warning" : isConnected ? "success" : needsAttention || needsVerification ? "warning" : "muted"}>{needsRelink ? (isAr ? "يحتاج صلاحيات" : "Needs permissions") : status}</Badge>
 
                     {/* Action buttons */}
                     {terminal ? (
@@ -842,7 +845,7 @@ export default function ChannelsSettings() {
                               ? (isAr ? "جارٍ الربط…" : "Connecting…")
                               : channel.id === "whatsapp" && whatsappSdkLoading
                               ? (isAr ? "جارٍ تجهيز واتساب…" : "Preparing WhatsApp…")
-                              : channel.connected || needsAttention || needsVerification
+                              : channel.connected || needsAttention || needsVerification || needsRelink
                               ? (isAr ? "إعادة ربط" : "Reconnect")
                               : (isAr ? "ربط" : "Connect")}
                           </button>

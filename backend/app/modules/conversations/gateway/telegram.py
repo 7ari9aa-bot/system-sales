@@ -19,6 +19,13 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_provider_body,
 )
+from app.modules.conversations.gateway.telegram_media import (
+    MAX_CAPTION_CHARS,
+    TelegramLimitError,
+    check_file,
+    file_field,
+    send_method,
+)
 
 API_BASE = "https://api.telegram.org"
 
@@ -109,22 +116,42 @@ class TelegramAdapter:
         token = credentials.get("bot_token")
         if not token:
             raise ExternalProviderError("telegram integration missing bot_token")
-        payload: dict = {
-            "chat_id": message.customer_ref,
-            "text": message.body or "[media]",
-        }
-        if message.meta.get("reply_markup"):
-            payload["reply_markup"] = message.meta["reply_markup"]
-        url = f"{API_BASE}/bot{token}/sendMessage"
+        markup = message.meta.get("reply_markup")
+        # (Bot API method, its parameters) for each call this message needs, in order.
+        calls: list[tuple[str, dict]] = []
+        if message.media_url:
+            method = send_method(message.meta.get("media_type"))
+            try:
+                check_file(
+                    method,
+                    message.media_url,
+                    message.meta.get("media_size_bytes"),
+                    message.meta.get("filename"),
+                )
+            except TelegramLimitError as exc:
+                raise ExternalProviderError(f"telegram send refused: {exc}") from exc
+            params: dict = {"chat_id": message.customer_ref, file_field(method): message.media_url}
+            caption = message.body or ""
+            # A caption rides with the file when it fits; a longer text follows as its own message.
+            if caption and len(caption) <= MAX_CAPTION_CHARS:
+                params["caption"] = caption
+                caption = ""
+            if markup and not caption:
+                params["reply_markup"] = markup
+            calls.append((method, params))
+            if caption:
+                text: dict = {"chat_id": message.customer_ref, "text": caption}
+                if markup:
+                    text["reply_markup"] = markup
+                calls.append(("sendMessage", text))
+        else:
+            payload: dict = {"chat_id": message.customer_ref, "text": message.body or "[media]"}
+            if markup:
+                payload["reply_markup"] = markup
+            calls.append(("sendMessage", payload))
 
-        async def _post() -> str:
-            """Post and return the provider message id — entirely inside the breaker."""
-            if _client is not None:
-                response = await _client.post(url, json=payload)
-            else:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    response = await client.post(url, json=payload)
-
+        async def _call(client: httpx.AsyncClient, method: str, payload: dict) -> str:
+            response = await client.post(f"{API_BASE}/bot{token}/{method}", json=payload)
             # A provider that REJECTS the send is a provider FAILURE, so it must be
             # raised INSIDE the breaker. Wrapping only the request meant a provider
             # answering 500 to every call was recorded as a SUCCESS and the breaker
@@ -148,6 +175,18 @@ class TelegramAdapter:
             if not message_id:
                 raise ExternalProviderError("telegram send: empty message id in response")
             return str(message_id)
+
+        async def _post() -> str:
+            """Post every call and return the FIRST message id — entirely inside the breaker."""
+            ids: list[str] = []
+            if _client is not None:
+                for method, params_ in calls:
+                    ids.append(await _call(_client, method, params_))
+            else:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    for method, params_ in calls:
+                        ids.append(await _call(client, method, params_))
+            return ids[0]
 
         # §47: the outbound call goes through the process-wide `provider.telegram`
         # breaker, so a dead provider is backed off instead of hammered. An OPEN

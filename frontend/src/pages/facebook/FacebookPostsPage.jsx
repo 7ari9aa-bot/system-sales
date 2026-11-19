@@ -81,7 +81,7 @@ function FbPostInsightsDialog({ post, lang, onClose }) {
   };
   return (
     <div role="dialog" aria-modal="true" aria-label={ar ? "إحصاءات المنشور" : "Post insights"} dir={ar ? "rtl" : "ltr"} className="fixed inset-0 z-50 grid place-items-center bg-white/80 p-3" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-[420px] rounded-lg bg-white p-4 shadow-[0_12px_28px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.1)]">
+      <div className="w-full max-w-[420px] rounded-xl bg-white p-4 shadow-[0_12px_28px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.1)]">
         <div className="mb-3 flex items-center justify-between"><h2 className="text-[18px] font-bold">{ar ? "إحصاءات المنشور" : "Post insights"}</h2><button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} className="grid h-8 w-8 place-items-center rounded-full bg-[#e4e6eb] text-[18px] leading-none">×</button></div>
         {q.isLoading && <p role="status" style={{ color: FB.text2 }}>{ar ? "جارٍ التحميل..." : "Loading..."}</p>}
         {q.error && <p role="alert" style={{ color: FB.red }}>{q.error.message || (ar ? "تعذّر تحميل الإحصاءات" : "Could not load insights")}</p>}

@@ -8,6 +8,7 @@ status we set ourselves.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -17,10 +18,40 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.storage import FetchedMedia, get_storage
+from app.modules.conversations.gateway import facebook_video
 from app.modules.conversations.gateway.facebook_pages import facebook_pages
 from app.modules.conversations.models import SocialComment, SocialPost
 
 PLATFORM = "facebook"
+
+_logger = logging.getLogger(__name__)
+
+#: Facebook's own ceiling for a picture sent to a Page (Pages API: photos).
+MAX_PICTURE_BYTES = 4 * 1024 * 1024
+#: Facebook fetches the picture once, right away; the link only has to outlive that.
+PICTURE_LINK_SECONDS = 15 * 60
+#: Facebook fetches a video once it has been told where it is; it needs longer than for a picture
+#: (the file is bigger), but the link still only has to outlive the fetch and the processing.
+VIDEO_LINK_SECONDS = 30 * 60
+# The kind is read from the file's first bytes, never from its name or the header the browser sent.
+_PICTURE_KINDS: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+)
+
+
+def picture_kind(data: bytes) -> str | None:
+    """The type of these bytes when Facebook takes them (JPEG, PNG, GIF, BMP, WEBP), else None."""
+    for magic, kind in _PICTURE_KINDS:
+        if data.startswith(magic):
+            return kind
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def _time(value: Any) -> datetime:
@@ -172,6 +203,150 @@ class FacebookService:
         return n
 
     # ---- acting for the Page ----
+    @staticmethod
+    def check_picture(data: bytes) -> str:
+        """Refuse what Facebook would refuse, before a single byte is stored. Returns the type."""
+        if not data:
+            raise ValidationError("the picture is empty")
+        if len(data) > MAX_PICTURE_BYTES:
+            raise ValidationError("the picture is larger than 4 MB")
+        kind = picture_kind(data)
+        if kind is None:
+            raise ValidationError("Facebook accepts JPEG, PNG, GIF, BMP or WEBP pictures")
+        return kind
+
+    @staticmethod
+    async def publish_picture(
+        session, tenant_id, credentials: dict, *, picture: bytes, **kw
+    ) -> str:
+        """Publish a post whose picture is a file we hold, not a link someone else hosts.
+
+        The picture waits in private storage only long enough for Facebook to fetch it (a short
+        signed link), and is removed afterwards whatever happens.
+        """
+        kind = FacebookService.check_picture(picture)
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so a picture cannot be posted yet")
+        stored = await storage.store(
+            FetchedMedia(data=picture, content_type=kind, checksum=""),
+            prefix=f"social-outbox/{tenant_id}",
+        )
+        if not stored.storage_key:
+            raise ConflictError("the picture could not be stored for publishing")
+        try:
+            link = storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+            return await FacebookService.publish(
+                session, tenant_id, credentials, photo_url=link, **kw
+            )
+        finally:
+            try:
+                await storage.delete_objects([stored.storage_key])
+            except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
+                _logger.warning("facebook.publish.cleanup_failed")
+
+    # ---- Reels and Stories ----
+    @staticmethod
+    async def _with_stored_file(tenant_id, data: bytes, content_type: str, fn) -> Any:
+        """Hold a file in private storage just long enough for Facebook to fetch it.
+
+        `fn` gets a short signed link. The file is removed afterwards, whatever happens.
+        """
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so this cannot be posted yet")
+        stored = await storage.store(
+            FetchedMedia(data=data, content_type=content_type, checksum=""),
+            prefix=f"social-outbox/{tenant_id}",
+        )
+        if not stored.storage_key:
+            raise ConflictError("the file could not be stored for publishing")
+        try:
+            link = storage.signed_url(stored.storage_key, expires_in=VIDEO_LINK_SECONDS)
+            return await fn(link)
+        finally:
+            try:
+                await storage.delete_objects([stored.storage_key])
+            except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
+                _logger.warning("facebook.publish.cleanup_failed")
+
+    @staticmethod
+    async def _reel_budget(tenant_id: uuid.UUID, page_id: str) -> None:
+        """Meta allows 30 Reels per Page in any 24 hours; refuse the 31st with the time to wait.
+
+        Redis down must not stop a post: Meta enforces the same limit and says so itself.
+        """
+        from app.core.ratelimit import RateLimiter
+        from app.core.redis import get_redis_or_none
+
+        client = get_redis_or_none()
+        if client is None:
+            return
+        try:
+            result = await RateLimiter(
+                client,
+                limit=facebook_video.REELS_PER_DAY,
+                window_seconds=24 * 3600,
+                prefix="fb-reels",
+            ).allow(f"{tenant_id}:{page_id}")
+        except Exception:  # noqa: BLE001
+            _logger.warning("facebook.reel_budget.unavailable")
+            return
+        if not result.allowed:
+            hours = max(1, round(result.retry_after_seconds / 3600))
+            raise ConflictError(
+                f"Facebook allows {facebook_video.REELS_PER_DAY} Reels a day for a Page; "
+                f"try again in about {hours} hour{'s' if hours != 1 else ''}"
+            )
+
+    @staticmethod
+    async def publish_reel(session, tenant_id, credentials: dict, *, video: bytes, **kw) -> str:
+        try:
+            facebook_video.check_reel(video)
+        except facebook_video.FacebookVideoError as exc:
+            raise ValidationError(str(exc), details={"reason": exc.code}) from exc
+        await FacebookService._reel_budget(tenant_id, str(credentials.get("account_id")))
+
+        async def _go(link: str) -> str:
+            try:
+                return await facebook_pages.publish_reel(credentials, video_url=link, **kw)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+        return await FacebookService._with_stored_file(tenant_id, video, "video/mp4", _go)
+
+    @staticmethod
+    async def publish_story(
+        session,
+        tenant_id,
+        credentials: dict,
+        *,
+        video: bytes | None = None,
+        photo: bytes | None = None,
+    ) -> str:
+        if (video is None) == (photo is None):
+            raise ValidationError("a Story is one video or one picture")
+        try:
+            if video is not None:
+                facebook_video.check_video_story(video)
+            else:
+                photo_type = facebook_video.check_story_photo(photo)
+        except facebook_video.FacebookVideoError as exc:
+            raise ValidationError(str(exc), details={"reason": exc.code}) from exc
+        if video is not None:
+            return await FacebookService._with_stored_file(
+                tenant_id,
+                video,
+                "video/mp4",
+                lambda link: facebook_pages.publish_video_story(credentials, video_url=link),
+            )
+        return await FacebookService._with_stored_file(
+            tenant_id,
+            photo,
+            photo_type,
+            lambda link: facebook_pages.publish_photo_story(credentials, photo_url=link),
+        )
+
     @staticmethod
     async def publish(session, tenant_id, credentials: dict, **kw) -> str:
         try:

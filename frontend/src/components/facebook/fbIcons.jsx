@@ -50,3 +50,15 @@ export const FbClock = ({ size = 20 }) => (
 export const FbChannels = ({ size = 24 }) => (
   <svg {...base(size)} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
 );
+export const FbPhoto = ({ size = 24 }) => (
+  <svg {...base(size)} fill="currentColor">
+    <path d="M5 3h14a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v9.6l3.5-3.6a1.5 1.5 0 0 1 2.1 0l2.6 2.6 3.3-4.2a1.5 1.5 0 0 1 2.3 0L20 13.6V6a1 1 0 0 0-1-1H5Zm11 2.2a1.8 1.8 0 1 1 0 3.600 1.8 1.8 0 0 1 0-3.600Z" />
+  </svg>
+);
+export const FbReels = ({ filled, size = 24 }) => (
+  <svg {...base(size)} fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="4" />
+    <path d="M3 9h18M9 3l3 6M15 3l3 6" />
+    <path d="m10.5 13 4 2.4-4 2.4Z" fill="currentColor" />
+  </svg>
+);

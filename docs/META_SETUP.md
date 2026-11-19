@@ -45,7 +45,7 @@ META_APP_ID             معرف التطبيق من صفحة الإعدادات
 META_APP_SECRET         سر التطبيق — لا يغادر الخادم أبدًا
 META_OAUTH_REDIRECT_URI رابط العودة المسجل حرفيًا في ميتا، ويُشتق تلقائيًا من المتغير التالي إن تُرك فارغًا
 API_PUBLIC_BASE_URL     العنوان العام للـAPI ويُشتق منه رابط العودة والـWebhooks
-META_OAUTH_CONFIG_ID    اختياري لتطبيقات نوع Business فقط — معرف إعداد Facebook Login for Business
+META_INSTAGRAM_CONFIG_ID    اختياري — معرف إعداد Facebook Login for Business الخاص بإنستجرام فقط (فيسبوك وMessenger لا يستخدمانه)
 MESSENGER_APP_SECRET    للتحقق من توقيع Webhooks ماسنجر
 MESSENGER_VERIFY_TOKEN  توكن التحقق عند تسجيل رابط الاستقبال
 INSTAGRAM_APP_SECRET    للتحقق من توقيع Webhooks إنستجرام
@@ -145,7 +145,7 @@ META_APP_ID             App ID from Settings → Basic
 META_APP_SECRET         App secret — server-side only, never sent to the browser
 META_OAUTH_REDIRECT_URI exact callback URL registered in Meta; derived from API_PUBLIC_BASE_URL when empty
 API_PUBLIC_BASE_URL     canonical public API origin; also drives the webhook URLs
-META_OAUTH_CONFIG_ID    optional — Business-type apps only: Facebook Login for Business configuration id
+META_INSTAGRAM_CONFIG_ID    optional — Instagram's own Facebook Login for Business configuration id (Facebook and Messenger never use it)
 MESSENGER_APP_SECRET    verifies Messenger webhook signatures
 MESSENGER_VERIFY_TOKEN  verify token for the Messenger webhook registration
 INSTAGRAM_APP_SECRET    verifies Instagram webhook signatures

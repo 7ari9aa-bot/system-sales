@@ -11,7 +11,6 @@ import {
   Paperclip,
   ImageIcon,
   Smile,
-  Mic,
   Heart,
   MoreVertical,
   Send,
@@ -25,7 +24,6 @@ import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
-import ChannelVoiceRecorder from "@/components/inbox/ChannelVoiceRecorder";
 import IgQuickReplies, { quickReplyProblem } from "@/components/inbox/instagram/IgQuickReplies";
 import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import ImageViewer from "./whatsapp/ImageViewer";
@@ -39,6 +37,8 @@ import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
 import { ACCEPT as IG_ACCEPT, checkFile as checkInstagramFile } from "./instagram/igAttachments";
 import IgAttachPreview from "./instagram/IgAttachPreview";
+import ChannelAttachPreview from "./ChannelAttachPreview";
+import { checkFile as checkChannelFile, mimeOf as mimeOfChannelFile } from "./channelAttachments";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
@@ -240,7 +240,9 @@ export default function ChannelChat({
 
   // A file was picked: check it here so a wrong one is refused before any upload.
   function pickFile(file, { asSticker = false } = {}) {
-    const checked = isInstagram ? checkInstagramFile(file, { lang }) : checkFile(file, { lang, asSticker });
+    const checked = isInstagram ? checkInstagramFile(file, { lang })
+      : isMessenger || isTelegram ? checkChannelFile(file, { channel: channel.id, lang })
+      : checkFile(file, { lang, asSticker });
     if (!checked.ok) { setAttachError(checked.error); return; }
     setAttachError("");
     setAttachment({ file, kind: checked.kind, asSticker });
@@ -250,7 +252,7 @@ export default function ChannelChat({
     if (!attachment || uploading || !conversation) return;
     setUploading(true);
     setAttachError("");
-    const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker });
+    const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker, mimeOf: isMessenger || isTelegram ? mimeOfChannelFile : null });
     if (!up.ok) { setUploading(false); setAttachError(up.error); return; }
     const sent = await onSend?.(conversation.id, caption, {
       mediaId: up.media.media_id,
@@ -601,9 +603,6 @@ export default function ChannelChat({
         isOpen={emojiPickerOpen}
         onClose={() => setEmojiPickerOpen(false)}
         onSelectEmoji={(emoji) => setText((prev) => prev + emoji)}
-        onSelectSticker={isWhatsApp ? undefined : (sticker) => {
-          void onSend?.(conversation.id, `🖼️ ${sticker.label}`, { mediaType: "image", mediaUrl: sticker.url });
-        }}
         lang={lang}
         isWhatsApp={isWhatsApp}
       />
@@ -613,10 +612,7 @@ export default function ChannelChat({
         onClose={() => setAttachmentMenuOpen(false)}
         channelId={channel.id}
         lang={lang}
-        onFileSelected={(file, type) => {
-          const previewUrl = URL.createObjectURL(file);
-          void onSend?.(conversation.id, file.name, { mediaType: type, mediaUrl: previewUrl });
-        }}
+        onFileSelected={(file) => pickFile(file)}
       />
 
       {isWhatsApp && attachment && (
@@ -642,6 +638,24 @@ export default function ChannelChat({
           onCancel={() => { setAttachment(null); setAttachError(""); }}
         />
       )}
+      {(isMessenger || isTelegram) && attachment && (
+        <ChannelAttachPreview
+          channel={channel.id}
+          file={attachment.file}
+          kind={attachment.kind}
+          busy={uploading}
+          error={attachError}
+          lang={lang}
+          onSend={(caption) => { void sendAttachment(caption); }}
+          onCancel={() => { setAttachment(null); setAttachError(""); }}
+        />
+      )}
+      {(isMessenger || isTelegram) && !attachment && attachError && (
+        <div role="alert" data-testid="channel-attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#fde8ec] px-3 py-2 text-[13px] text-[#7a1230]">
+          <span className="flex-1">{attachError}</span>
+          <button type="button" onClick={() => setAttachError("")} aria-label={lang === "ar" ? "إغلاق" : "Dismiss"} className="shrink-0">×</button>
+        </div>
+      )}
       {isInstagram && !attachment && attachError && (
         <div role="alert" data-testid="ig-attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#f3f5f7] px-3 py-2 text-[13px] text-[#ed4956]">
           <span className="flex-1">{attachError}</span>
@@ -666,16 +680,6 @@ export default function ChannelChat({
             onCancel={() => setIsRecordingVoice(false)}
             onError={(message) => setAttachError(message)}
             onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false, audioUrl: URL.createObjectURL(file) }); }}
-          />
-        ) : isRecordingVoice && !isInstagram ? (
-          <ChannelVoiceRecorder
-            isRecording={isRecordingVoice}
-            onCancel={() => setIsRecordingVoice(false)}
-            onSendVoice={(durationStr) => {
-              void onSend?.(conversation.id, `🎤 رسالة صوتية (${durationStr})`, { mediaType: "audio", duration: durationStr });
-            }}
-            channelId={channel.id}
-            lang={lang}
           />
         ) : isWhatsApp ? (
           <Composer
@@ -723,7 +727,7 @@ export default function ChannelChat({
             >
               <Smile className="h-[21px] w-[21px]" />
             </button>
-            {text.trim() ? (
+            {text.trim() && (
               <button
                 type="button"
                 onClick={() => { void submitMessage(); }}
@@ -733,16 +737,6 @@ export default function ChannelChat({
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#2aabee] hover:bg-[#eff8fd] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2aabee]"
               >
                 <ArrowUpRight className="h-[19px] w-[19px]" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsRecordingVoice(true)}
-                aria-label={lang === "ar" ? "رسالة صوتية" : "Voice message"}
-                title={lang === "ar" ? "رسالة صوتية" : "Voice message"}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#8a9aa8] hover:bg-[#eff8fd] hover:text-[#2aabee] transition-colors"
-              >
-                <Mic className="h-[21px] w-[21px]" />
               </button>
             )}
           </div>
@@ -848,7 +842,7 @@ export default function ChannelChat({
               disabled={sending}
               className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
             />
-            {text.trim() ? (
+            {text.trim() && (
               <button
                 type="button"
                 onClick={() => { void submitMessage(); }}
@@ -859,15 +853,6 @@ export default function ChannelChat({
                 style={{ background: th.out }}
               >
                 <Send className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsRecordingVoice(true)}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
-                title={lang === "ar" ? "رسالة صوتية" : "Voice note"}
-              >
-                <Mic className="h-4 w-4" />
               </button>
             )}
           </div>

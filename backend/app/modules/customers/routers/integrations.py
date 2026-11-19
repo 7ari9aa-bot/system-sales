@@ -15,6 +15,7 @@ from app.core.errors import ConflictError, ExternalProviderError, NotFoundError,
 from app.core.secrets import encrypt_credentials_dict
 from app.modules.billing.service import EntitlementService
 from app.modules.customers import schemas
+from app.modules.customers.meta_scopes import missing_facebook_scopes
 from app.modules.customers.schemas import IntegrationBody
 from app.modules.identity.models import Invitation, Role
 from app.modules.platform.integration_verifier import (
@@ -158,6 +159,13 @@ def _integration_output(integration: Integration) -> dict:
         "last_webhook_at": _last_webhook_at(integration),
         "webhook_url": webhook_url,
         "public_key": public_key if integration.provider == "webchat" else None,
+        # Facebook only: the Page permissions this connection lacks (posting, comments, insights).
+        # A Page connected before they were asked for lacks all of them and must connect again.
+        "missing_scopes": (
+            missing_facebook_scopes(connection.get("granted_scopes"))
+            if integration.provider == "facebook" and integration.kind == "channel"
+            else []
+        ),
     }
 
 
