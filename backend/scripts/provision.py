@@ -420,7 +420,7 @@ ROLE_MATRIX: dict[str, list[str]] = {
     ],
 }
 
-ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "webchat"]
+ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "facebook", "telegram", "webchat"]
 
 PLANS = [
     (
