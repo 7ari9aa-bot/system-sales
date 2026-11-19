@@ -73,6 +73,9 @@ META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من ا�
 ### الصلاحيات المطلوبة
 `whatsapp_business_management` و`whatsapp_business_messaging` — ووضع التطوير يكفي للاختبار بحساب له دور عليه.
 
+### تسجيل الرقم (ضروري ليستقبل الرقم رسائل)
+نافذة ميتا تضيف الرقم وتتحقق منه بكود OTP، لكن الرقم لا يرسل ولا يستقبل إلا بعد **تسجيله** بنداء API (لا يمكن من WhatsApp Manager ولا من لوحة التطبيق). الخادم يفعل ذلك تلقائيًا بعد الاشتراك في الـWABA: يقرأ حالة الرقم، فإن كانت `CONNECTED` تركه كما هو، وإلا سجّله برقم سري من 6 أرقام يولّده بنفسه ويحفظه **مشفّرًا** (للتحقق الثنائي، ويلزم لتغيير الرقم السري أو حذف الرقم لاحقًا). ميتا تسمح بـ10 محاولات تسجيل كل 72 ساعة ثم تقفل الرقم (الخطأ `133016`)، لذلك لا يعيد الخادم المحاولة.
+
 ### ما يحدث تقنيًا (للمرجع)
 - الواجهة تحمّل Facebook JS SDK ثم `FB.login` بـ `config_id` و`response_type: "code"` و`override_default_response_type: true` و`extras: { featureType: "", sessionInfoVersion: "3" }`.
 - ميتا ترسل حدث `WA_EMBEDDED_SIGNUP` بنوع `FINISH` إلى نافذة الصفحة، ويحتوي `data` على `waba_id` و`phone_number_id` و`business_id`.
@@ -164,6 +167,9 @@ The WhatsApp button on the channels page opens **Meta's own popup** (not a redir
 - Server: `GET /oauth/access_token` (no redirect_uri) → `POST /{waba_id}/subscribed_apps` → `GET /{phone_number_id}` → verify → store.
 
 `META_APP_ID` and `META_APP_SECRET` are shared across all Meta channels.
+
+### Registering the number (required before it can receive)
+Meta's window adds and verifies the number with an OTP, but a number only sends and receives once it is **registered**, and that is an API call (not possible from WhatsApp Manager or the App Dashboard). After subscribing to the WABA the server does it automatically: it reads the number's status, leaves a `CONNECTED` number alone, and otherwise registers it with a 6-digit two-step PIN it generates and keeps **encrypted** (needed later to change the PIN or delete the number). Meta allows 10 registration attempts per 72 hours and then locks the number (error `133016`), so the server never retries.
 
 ## 7. "App not active" appears in the Facebook window
 
