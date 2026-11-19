@@ -22,6 +22,7 @@ from app.modules.conversations.gateway.instagram_limits import (
     InstagramLimitError,
     check_media,
     check_text,
+    check_upload,
     classify_instagram_error,
     text_bytes,
 )
@@ -253,3 +254,121 @@ def test_a_human_agent_reply_carries_the_message_tag() -> None:
 def test_an_ordinary_reply_carries_no_tag() -> None:
     payload = A.build_send_payload(_msg(body="hi"))
     assert "tag" not in payload and "messaging_type" not in payload
+
+
+# ---------------------------------------------------------------- an agent's own upload
+
+JPG = b"\xff\xd8\xff\xe0" + b"0" * 32
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+PDF = b"%PDF-1.7\n" + b"0" * 32
+MP4 = b"\x00\x00\x00\x18ftypmp42" + b"0" * 32
+WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"0" * 32
+AAC = b"\xff\xf1" + b"0" * 32
+
+
+@pytest.mark.parametrize(
+    ("mime", "data", "kind"),
+    [
+        ("image/jpeg", JPG, "image"),
+        ("image/jpg", JPG, "image"),
+        ("image/png", PNG, "image"),
+        ("application/pdf", PDF, "file"),
+        ("video/mp4", MP4, "video"),
+        ("audio/wav", WAV, "audio"),
+        ("audio/aac", AAC, "audio"),
+        ("audio/mp4", MP4, "audio"),
+        ("image/jpeg; charset=binary", JPG, "image"),
+    ],
+)
+def test_an_upload_instagram_accepts_is_named_by_its_send_type(mime, data, kind):
+    spec = check_upload(mime, data)
+    assert (spec.kind, spec.size) == (kind, len(data))
+
+
+@pytest.mark.parametrize(
+    ("mime", "data", "code"),
+    [
+        # WhatsApp takes these; Instagram does not
+        ("image/webp", b"RIFF\x00\x00\x00\x00WEBP", "media_format"),
+        ("audio/ogg", b"OggS" + b"0" * 20, "media_format"),
+        ("audio/mpeg", b"ID3" + b"0" * 20, "media_format"),
+        ("application/msword", b"\xd0\xcf\x11\xe0" + b"0" * 20, "media_format"),
+        ("text/plain", b"hello", "media_format"),
+        ("", JPG, "media_format"),
+        ("image/jpeg", b"", "media_empty"),
+        # the declared type is only a claim: the bytes must agree
+        ("image/jpeg", PNG, "media_mismatch"),
+        ("application/pdf", JPG, "media_mismatch"),
+        ("video/mp4", b"not a video at all", "media_mismatch"),
+    ],
+)
+def test_an_upload_instagram_would_refuse_is_refused_before_it_is_stored(mime, data, code):
+    with pytest.raises(InstagramLimitError) as exc:
+        check_upload(mime, data)
+    assert exc.value.code == code
+
+
+def test_an_upload_over_the_size_cap_names_the_cap():
+    mb = 1024 * 1024
+    check_upload("image/jpeg", JPG + b"0" * (8 * mb - len(JPG)))  # exactly 8 MB: fine
+    with pytest.raises(InstagramLimitError, match="at most 8 MB") as exc:
+        check_upload("image/jpeg", JPG + b"0" * (8 * mb))
+    assert exc.value.code == "media_size"
+    # video and pdf have the larger 25 MB cap, not the image one
+    check_upload("application/pdf", PDF + b"0" * (9 * mb))
+
+
+def test_the_size_reaches_the_gateway_so_an_oversized_file_cannot_slip_through():
+    """The signed storage link has no extension, so the SIZE is the only thing that can stop it."""
+    mb = 1024 * 1024
+    link = "https://bucket.example/outbound-media/t/abc?X-Amz-Signature=1"
+    ok = OutboundMessage(
+        tenant_id=None,
+        conversation_id=None,
+        message_id=None,
+        customer_ref="igsid-1",
+        body=None,
+        media_url=link,
+        meta={"media_type": "image", "media_size_bytes": 2 * mb},
+    )
+    assert InstagramAdapter.build_send_payload(ok)["message"] == {
+        "attachment": {"type": "image", "payload": {"url": link}}
+    }
+    big = OutboundMessage(
+        tenant_id=None,
+        conversation_id=None,
+        message_id=None,
+        customer_ref="igsid-1",
+        body=None,
+        media_url=link,
+        meta={"media_type": "image", "media_size_bytes": 9 * mb},
+    )
+    with pytest.raises(InstagramLimitError, match="at most 8 MB"):
+        InstagramAdapter.build_send_payload(big)
+    # a PDF is sent as Instagram's "file" attachment
+    pdf = OutboundMessage(
+        tenant_id=None,
+        conversation_id=None,
+        message_id=None,
+        customer_ref="igsid-1",
+        body=None,
+        media_url=link,
+        meta={"media_type": "document", "media_size_bytes": 1000},
+    )
+    assert InstagramAdapter.build_send_payload(pdf)["message"]["attachment"]["type"] == "file"
+
+
+def test_the_send_worker_tells_the_adapter_how_big_the_uploaded_file_is():
+    from app.workers.message_worker import uploaded_media_meta
+
+    assert uploaded_media_meta("image", {"filename": "a.jpg", "media_size_bytes": 123}) == {
+        "media_type": "image",
+        "filename": "a.jpg",
+        "media_size_bytes": 123,
+    }
+    # an old upload that stored no size still sends (the size is just not checked)
+    assert uploaded_media_meta(None, None) == {
+        "media_type": "document",
+        "filename": "file",
+        "media_size_bytes": None,
+    }

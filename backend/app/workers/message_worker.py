@@ -184,6 +184,20 @@ async def transcribe_inbound_voice(
     return None
 
 
+def uploaded_media_meta(media_type: str | None, provider_metadata: dict | None) -> dict:
+    """What the provider adapter is told about a file an agent uploaded.
+
+    The size travels with it because the link handed to the provider is a signed storage URL with
+    no file extension: the size is the one thing the adapter can still check the limit against.
+    """
+    meta = provider_metadata or {}
+    return {
+        "media_type": media_type or "document",
+        "filename": meta.get("filename") or "file",
+        "media_size_bytes": meta.get("media_size_bytes"),
+    }
+
+
 @dataclass(slots=True)
 class _SendPlan:
     """Everything phase 2 needs, snapshotted while phase 1 still holds the TX."""
@@ -657,10 +671,7 @@ class MessageWorker(StreamWorker):
                 message.status = "failed"
                 message.error = "the uploaded file could not be read from storage"
                 raise PermanentError("uploaded file unavailable") from exc
-            media_meta = {
-                "media_type": message.media_type or "document",
-                "filename": (message.provider_metadata or {}).get("filename") or "file",
-            }
+            media_meta = uploaded_media_meta(message.media_type, message.provider_metadata)
         return _SendPlan(
             adapter=adapter,
             credentials=ProviderCredentials(config=credentials_config),

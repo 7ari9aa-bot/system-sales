@@ -3,8 +3,6 @@ import {
   FileText,
   Image as ImageIcon,
   Camera,
-  User,
-  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +10,6 @@ export default function ChannelAttachmentMenu({
   isOpen,
   onClose,
   onFileSelected,
-  onSendAction,
   lang = "ar",
   channelId: _channelId = "whatsapp",
 }) {
@@ -51,26 +48,6 @@ export default function ChannelAttachmentMenu({
       color: "bg-[#d3396d] hover:bg-[#c22e5f]",
       icon: Camera,
       onClick: () => fileInputRef.current?.click(),
-    },
-    {
-      id: "contact",
-      title: isAr ? "جهة اتصال" : "Contact",
-      color: "bg-[#009de2] hover:bg-[#008ecf]",
-      icon: User,
-      onClick: () => {
-        onSendAction?.("👤 بطاقة جهة اتصال متجرنا الرسمية\nالهاتف: +20 101 234 5678");
-        onClose();
-      },
-    },
-    {
-      id: "poll",
-      title: isAr ? "استطلاع رأي" : "Poll",
-      color: "bg-[#ffbc38] hover:bg-[#f2b02e]",
-      icon: BarChart2,
-      onClick: () => {
-        onSendAction?.("📊 استطلاع رأي: كيف تقيّم تجربة الشراء معنا اليوم؟\n1. ممتاز ⭐\n2. جيد 👍\n3. بحاجة لتحسين 🔧");
-        onClose();
-      },
     },
   ];
 

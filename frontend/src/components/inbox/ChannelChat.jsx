@@ -37,6 +37,8 @@ import Composer from "./whatsapp/Composer";
 import AttachPreview from "./whatsapp/AttachPreview";
 import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
+import { ACCEPT as IG_ACCEPT, checkFile as checkInstagramFile } from "./instagram/igAttachments";
+import IgAttachPreview from "./instagram/IgAttachPreview";
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
@@ -86,6 +88,7 @@ export default function ChannelChat({
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const igFileInput = useRef(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -237,7 +240,7 @@ export default function ChannelChat({
 
   // A file was picked: check it here so a wrong one is refused before any upload.
   function pickFile(file, { asSticker = false } = {}) {
-    const checked = checkFile(file, { lang, asSticker });
+    const checked = isInstagram ? checkInstagramFile(file, { lang }) : checkFile(file, { lang, asSticker });
     if (!checked.ok) { setAttachError(checked.error); return; }
     setAttachError("");
     setAttachment({ file, kind: checked.kind, asSticker });
@@ -606,16 +609,13 @@ export default function ChannelChat({
       />
 
       <ChannelAttachmentMenu
-        isOpen={attachmentMenuOpen && !isWhatsApp}
+        isOpen={attachmentMenuOpen && !isWhatsApp && !isInstagram}
         onClose={() => setAttachmentMenuOpen(false)}
         channelId={channel.id}
         lang={lang}
         onFileSelected={(file, type) => {
           const previewUrl = URL.createObjectURL(file);
           void onSend?.(conversation.id, file.name, { mediaType: type, mediaUrl: previewUrl });
-        }}
-        onSendAction={(content) => {
-          void onSend?.(conversation.id, content);
         }}
       />
 
@@ -630,6 +630,23 @@ export default function ChannelChat({
           onSend={(caption) => { void sendAttachment(caption); }}
           onCancel={() => { if (attachment.audioUrl) URL.revokeObjectURL(attachment.audioUrl); setAttachment(null); setAttachError(""); }}
         />
+      )}
+      {isInstagram && attachment && (
+        <IgAttachPreview
+          file={attachment.file}
+          kind={attachment.kind}
+          busy={uploading}
+          error={attachError}
+          lang={lang}
+          onSend={() => { void sendAttachment(""); }}
+          onCancel={() => { setAttachment(null); setAttachError(""); }}
+        />
+      )}
+      {isInstagram && !attachment && attachError && (
+        <div role="alert" data-testid="ig-attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#f3f5f7] px-3 py-2 text-[13px] text-[#ed4956]">
+          <span className="flex-1">{attachError}</span>
+          <button type="button" onClick={() => setAttachError("")} aria-label={lang === "ar" ? "إغلاق" : "Dismiss"} className="shrink-0">×</button>
+        </div>
       )}
       {isWhatsApp && !attachment && attachError && (
         <div role="alert" data-testid="attach-pick-error" dir={lang === "ar" ? "rtl" : "ltr"} className="mx-3 mb-1 flex items-start gap-2 rounded-lg bg-[#fde8ec] px-3 py-2 text-[13px] text-[#7a1230]">
@@ -754,12 +771,15 @@ export default function ChannelChat({
             />
             {!text.trim() ? (
               <div className="flex items-center gap-1">
+                <input ref={igFileInput} type="file" accept={IG_ACCEPT} hidden data-testid="ig-chat-file-input"
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) pickFile(f); }} />
                 <button
                   type="button"
-                  onClick={() => setAttachmentMenuOpen((v) => !v)}
+                  onClick={() => igFileInput.current?.click()}
+                  disabled={sending || uploading}
                   aria-label={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
                   title={lang === "ar" ? "إرسال صور أو ملفات" : "Media attachment"}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors disabled:opacity-50"
                 >
                   <ImageIcon className="h-[19px] w-[19px]" />
                 </button>

@@ -110,6 +110,73 @@ def check_media(url: str, kind: str, size_bytes: int | None = None) -> None:
         )
 
 
+# ------------------------------------------------------------- an agent's upload
+
+#: The MIME type each extension Instagram accepts is uploaded as. Only these are sent: a file
+#: Instagram would refuse must be refused here, before the agent believes it went out.
+_UPLOAD_MIME = {
+    "image": {"image/jpeg": "jpg", "image/png": "png"},
+    "audio": {"audio/aac": "aac", "audio/mp4": "m4a", "audio/wav": "wav", "audio/x-wav": "wav"},
+    "video": {
+        "video/mp4": "mp4",
+        "video/ogg": "ogg",
+        "video/x-msvideo": "avi",
+        "video/quicktime": "mov",
+        "video/webm": "webm",
+    },
+    "file": {"application/pdf": "pdf"},
+}
+
+#: What the first bytes of each type must look like (the declared type is only a claim).
+_UPLOAD_SIGNATURE = {
+    "image/jpeg": lambda d: d[:3] == b"\xff\xd8\xff",
+    "image/png": lambda d: d[:8] == b"\x89PNG\r\n\x1a\n",
+    "audio/aac": lambda d: d[:2] in (b"\xff\xf1", b"\xff\xf9"),
+    "audio/mp4": lambda d: len(d) >= 12 and d[4:8] == b"ftyp",
+    "audio/wav": lambda d: d[:4] == b"RIFF" and d[8:12] == b"WAVE",
+    "audio/x-wav": lambda d: d[:4] == b"RIFF" and d[8:12] == b"WAVE",
+    "video/mp4": lambda d: len(d) >= 12 and d[4:8] == b"ftyp",
+    "video/ogg": lambda d: d[:4] == b"OggS",
+    "video/x-msvideo": lambda d: d[:4] == b"RIFF" and d[8:12] == b"AVI ",
+    "video/quicktime": lambda d: len(d) >= 12 and d[4:8] == b"ftyp",
+    "video/webm": lambda d: d[:4] == b"\x1a\x45\xdf\xa3",
+    "application/pdf": lambda d: d[:5] == b"%PDF-",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class UploadSpec:
+    mime: str
+    kind: str  # the Send API attachment type: image | audio | video | file
+    size: int
+
+
+def check_upload(content_type: str | None, data: bytes) -> UploadSpec:
+    """What an agent's upload is, or InstagramLimitError naming why Instagram would refuse it."""
+    mime = (content_type or "").split(";")[0].strip().lower()
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    kind = next((k for k, types in _UPLOAD_MIME.items() if mime in types), None)
+    if kind is None:
+        raise InstagramLimitError(
+            "media_format",
+            "Instagram accepts only jpg/png images, aac/m4a/wav audio, mp4/ogg/avi/mov/webm video "
+            f"and pdf files; {mime or 'this file'} is not one of them",
+        )
+    if not data:
+        raise InstagramLimitError("media_empty", "the file is empty")
+    if not _UPLOAD_SIGNATURE[mime](data):
+        raise InstagramLimitError("media_mismatch", "the file's content does not match its type")
+    limit = MEDIA_RULES[kind].max_bytes
+    if len(data) > limit:
+        raise InstagramLimitError(
+            "media_size",
+            f"a {kind} is at most {limit // _MB} MB on Instagram; this one is "
+            f"{len(data) / _MB:.1f} MB",
+        )
+    return UploadSpec(mime=mime, kind=kind, size=len(data))
+
+
 # ------------------------------------------------------------- error classification
 
 #: What the caller should do about a failure.

@@ -11,13 +11,16 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
+from app.modules.conversations.gateway.instagram_limits import InstagramLimitError, check_upload
 from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED
 from app.modules.conversations.inbox import InboxQuery, decode_keyset
 from app.modules.conversations.outbound_media import (
     ABSOLUTE_MAX_BYTES,
+    OutboundMediaSpec,
     check_caption,
     check_outbound_media,
     content_type_for,
+    safe_filename,
 )
 from app.modules.conversations.outbound_media_service import OutboundMediaService
 from app.modules.conversations.routers._deps import (
@@ -360,8 +363,8 @@ async def upload_media(
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     await _ensure_channel_access(ctx, conversation)
     await _ensure_channel_send(ctx, conversation)
-    if conversation.channel != "whatsapp":
-        raise ValidationError("sending files is only available on WhatsApp conversations")
+    if conversation.channel not in ("whatsapp", "instagram"):
+        raise ValidationError("sending files is only available on WhatsApp and Instagram")
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
 
@@ -373,12 +376,27 @@ async def upload_media(
                 "the file is too large to send on WhatsApp",
                 details={"reason": "too_large", "max_bytes": ABSOLUTE_MAX_BYTES},
             )
-    spec = check_outbound_media(
-        content_type=request.headers.get("content-type"),
-        data=bytes(chunks),
-        filename=_decoded_filename(request.headers.get("x-filename")),
-        as_sticker=request.headers.get("x-as-sticker", "").lower() == "true",
-    )
+    if conversation.channel == "instagram":
+        # Instagram has its own formats and sizes (jpg/png only, pdf only, 8 MB per image):
+        # WhatsApp's rules would let through files Instagram then refuses.
+        try:
+            ig = check_upload(request.headers.get("content-type"), bytes(chunks))
+        except InstagramLimitError as exc:
+            raise ValidationError(str(exc), details={"reason": exc.code}) from exc
+        spec = OutboundMediaSpec(
+            mime=ig.mime,
+            # The inbox calls a PDF a "document"; Instagram's Send API calls it a "file".
+            kind="document" if ig.kind == "file" else ig.kind,
+            size=ig.size,
+            filename=safe_filename(_decoded_filename(request.headers.get("x-filename"))),
+        )
+    else:
+        spec = check_outbound_media(
+            content_type=request.headers.get("content-type"),
+            data=bytes(chunks),
+            filename=_decoded_filename(request.headers.get("x-filename")),
+            as_sticker=request.headers.get("x-as-sticker", "").lower() == "true",
+        )
     attachment = await OutboundMediaService.store_upload(
         ctx.session, ctx.tenant_id, conversation_id=conversation_id, spec=spec, data=bytes(chunks)
     )
@@ -435,6 +453,13 @@ async def send_message(
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
         raise ValidationError("a template cannot carry an uploaded file")
+    if body.media_id is not None and conversation.channel == "instagram" and body.body:
+        # An Instagram attachment is a message of its own: text beside it would be dropped
+        # without a word, so it is refused. The text goes as its own message.
+        raise ValidationError(
+            "an Instagram file cannot have a caption; send the text as its own message",
+            details={"reason": "caption_not_allowed"},
+        )
     if body.reply_to_message_id is not None:
         # The quoted message must belong to THIS conversation. Anything else is
         # reported as not found, so the answer never confirms that a message
@@ -483,7 +508,9 @@ async def send_message(
             "media_url": f"s3://{media.storage_key}",
             "media_type": kind,
             "content_type": content_type_for(kind),
-            "provider_metadata": {"filename": media.filename},
+            # The size travels with the message so the send worker can check it against the
+            # channel's limit (an Instagram signed link has no file extension to read it from).
+            "provider_metadata": {"filename": media.filename, "media_size_bytes": media.size},
         }
 
     # The policy decision lives in ConversationService.add_message so that the
