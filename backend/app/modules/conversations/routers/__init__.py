@@ -12,6 +12,7 @@ from app.modules.conversations.routers._deps import (
     _inbox_page,
     _redact_inbox_item,
 )
+from app.modules.conversations.routers.facebook_pages import router as _facebook_pages_router
 from app.modules.conversations.routers.inbox import (
     assign,
     close,
@@ -69,6 +70,7 @@ router = APIRouter(tags=["inbox"])
 router.routes.extend(_inbox_router.routes)
 router.routes.extend(_stream_router.routes)
 router.routes.extend(_social_router.routes)
+router.routes.extend(_facebook_pages_router.routes)
 
 __all__ = [
     "AssignRequest",
