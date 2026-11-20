@@ -187,13 +187,16 @@ def _config_patch(monkeypatch, **kwargs):
 def _popup_result(response) -> dict:
     """The outcome the callback posts back to the opener window.
 
-    The callback no longer redirects: it answers with a small self-closing page whose script carries
-    ``var msg = {...}`` (what ``window.opener.postMessage`` delivers). That JSON is the contract the
-    settings screen reads, so the tests read it instead of a ``Location`` header.
+    The callback answers with a small self-closing page. The result travels as inert JSON in
+    ``<script id="meta-oauth-data" type="application/json">`` (no inline code, so the strict
+    site CSP holds) and ``/meta-oauth-result.js`` posts it to the opener. That JSON is the
+    contract the settings screen reads, so the tests read it, not a ``Location`` header.
     """
     assert response.status_code == 200, response.text[:200]
     assert response.headers["content-type"].startswith("text/html")
-    found = re.search(r"var msg = (\{.*?\});", response.text)
+    found = re.search(
+        r'<script id="meta-oauth-data"[^>]*>(\{.*?\})</script>', response.text, flags=re.DOTALL
+    )
     assert found, "the popup page must carry the result for the opener window"
     msg = json.loads(found.group(1))
     assert msg["type"] == "META_OAUTH_RESULT"
