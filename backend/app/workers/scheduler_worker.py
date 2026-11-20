@@ -91,6 +91,10 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # "pending" and the vision gate refuses them forever. Hourly per tenant,
     # scanner-configured only — see MediaService.rescan_pending_images.
     "media.rescan_pending_images": (timedelta(hours=1), {}),
+    # ETA e-receipts are stored first and delivered here, oldest first per till. Receipts must
+    # reach the authority in issue order and inside a legal window, so this cannot wait for a
+    # daily sweep; it is a no-op for a store with no configured Egyptian till.
+    "einvoice.eta_deliver": (timedelta(minutes=1), {}),
 }
 
 
@@ -872,3 +876,13 @@ class SchedulerWorker(StreamWorker):
         job.last_error = None
         job.payload = payload
         return True
+
+
+async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
+    """Send what is due for every ETA till of this store (see ``deliver_tenant``)."""
+    from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+    return await deliver_tenant(session, tenant_id)
+
+
+register_job_handler("einvoice.eta_deliver", _handle_eta_deliver)

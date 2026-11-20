@@ -361,3 +361,58 @@ async def apply_device_event(
     device.metadata_info = notes
     await session.flush()
     return "applied"
+
+
+async def deliver_tenant(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+    provider: EtaEInvoiceProvider | None = None,
+) -> dict:
+    """Run the sender for every active, configured ETA till of one store.
+
+    A till that fails must not stop the others (one till's bad credentials are not another's
+    problem), so each runs in its own savepoint and a failure is counted, logged without any
+    credential, and left for the next run.
+    """
+    ids = (
+        (
+            await session.execute(
+                select(EInvoiceDevice.id)
+                .where(
+                    EInvoiceDevice.tenant_id == tenant_id,
+                    EInvoiceDevice.provider_type == "eta",
+                    EInvoiceDevice.status == "active",
+                )
+                .order_by(EInvoiceDevice.created_at, EInvoiceDevice.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    totals = {"tills": 0, "sent": 0, "accepted": 0, "rejected": 0, "failed": 0, "errors": 0}
+    attention: list[dict] = []
+    for device_id in ids:
+        try:
+            async with session.begin_nested():
+                report = await deliver_device(session, device_id, now=now, provider=provider)
+        except Exception:  # noqa: BLE001 - one till must never stop the others
+            logger.exception("eta.deliver.till_failed tenant=%s device=%s", tenant_id, device_id)
+            totals["errors"] += 1
+            continue
+        if report is None:
+            continue  # another worker holds this till right now
+        totals["tills"] += 1
+        for k in ("sent", "accepted", "rejected", "failed"):
+            totals[k] += getattr(report, k)
+        if report.needs_correction or report.window_closing or report.window_closed:
+            attention.append(
+                {
+                    "till": report.device_serial,
+                    "needs_correction": report.needs_correction,
+                    "window_closing": report.window_closing,
+                    "window_closed": report.window_closed,
+                }
+            )
+    return {**totals, "attention": attention}

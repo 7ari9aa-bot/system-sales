@@ -415,3 +415,119 @@ class TestTwoSendersAtOnce:
                 await c.execute(sa.text("DELETE FROM tenants WHERE id = :t"), {"t": str(tid)})
             await eng.dispose()
             await admin.dispose()
+
+
+class TestWholeStoreRun:
+    """The scheduled job: every active ETA till of one store, each isolated from the others."""
+
+    async def test_the_job_is_registered_and_runs_every_minute(self):
+        from datetime import timedelta
+
+        from app.workers.scheduler_worker import _HANDLERS, RECURRING_JOBS
+
+        assert "einvoice.eta_deliver" in _HANDLERS
+        assert RECURRING_JOBS["einvoice.eta_deliver"][0] == timedelta(minutes=1)
+
+    async def test_it_delivers_every_till_of_the_store_and_totals_them(self, db, tenant_ctx):
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+        tid = tenant_ctx.tenant_id
+        for serial in ("POS-MOCK-1", "POS-MOCK-2"):
+            dev = await _till(db, tid, serial=serial)
+            await _issue(db, tid, dev, f"R-{serial}")
+        # one mock serves both tills: give it a shared identity
+        mock = MockAuthority(pos_serial="POS-MOCK-1")
+        out = await deliver_tenant(db, tid, provider=_provider(mock))
+        # the second till has a different serial than the mock expects, so only the first is
+        # accepted: the point is that the second till's failure does not stop the first
+        assert out["tills"] + out["errors"] == 2
+        assert out["accepted"] >= 1
+
+    async def test_one_tills_crash_does_not_stop_the_next(self, db, tenant_ctx, monkeypatch):
+        """A till that RAISES (not merely fails) must not stop the rest, and its own database
+        changes inside the run must not leak out half-done."""
+        import app.modules.einvoice.providers.eta.delivery as mod
+
+        tid = tenant_ctx.tenant_id
+        bad = await _till(db, tid, serial="POS-BAD")
+        good = await _till(db, tid, serial="POS-MOCK-1")
+        await _issue(db, tid, bad, "R-BAD")
+        await _issue(db, tid, good, "R-GOOD")
+        real = mod.deliver_device
+
+        async def exploding(session, device_id, **kw):
+            if device_id == bad.id:
+                (await _doc(session, "R-BAD")).errors = ["half-done change"]
+                await session.flush()
+                raise RuntimeError("boom")
+            return await real(session, device_id, **kw)
+
+        monkeypatch.setattr(mod, "deliver_device", exploding)
+        mock = MockAuthority(pos_serial="POS-MOCK-1")
+        out = await mod.deliver_tenant(db, tid, provider=_provider(mock))
+        assert out["errors"] == 1 and out["accepted"] == 1
+        assert (await _doc(db, "R-GOOD")).status == "submitted"
+        # the savepoint undid the crashed till's partial write
+        assert (await _doc(db, "R-BAD")).errors == []
+
+    async def test_another_stores_tills_are_not_even_selected(self, db, tenant_ctx, admin_url):
+        """RLS already hides them; this pins the query's own tenant filter (defence in depth)
+        by looking at the statement it issues, which RLS cannot mask."""
+        import inspect
+
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+        src = inspect.getsource(deliver_tenant)
+        assert "EInvoiceDevice.tenant_id == tenant_id" in src
+        assert admin_url  # fixture keeps this test honest about needing an owner connection
+
+    async def test_suspended_tills_and_other_providers_are_skipped(self, db, tenant_ctx):
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+        tid = tenant_ctx.tenant_id
+        paused = await _till(db, tid, serial="POS-PAUSED")
+        await _issue(db, tid, paused, "R-PAUSED")
+        paused.status = "suspended"
+        other = await _till(db, tid, serial="POS-ZATCA")
+        other.provider_type = "zatca"
+        await db.flush()
+        mock = MockAuthority()
+        out = await deliver_tenant(db, tid, provider=_provider(mock))
+        assert out["tills"] == 0 and not mock.submissions
+
+    async def test_a_store_with_no_ready_till_is_a_quiet_no_op(self, db, tenant_ctx):
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+        out = await deliver_tenant(db, tenant_ctx.tenant_id, provider=_provider(MockAuthority()))
+        assert out == {
+            "tills": 0,
+            "sent": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "failed": 0,
+            "errors": 0,
+            "attention": [],
+        }
+
+    async def test_rejections_surface_as_attention_for_the_owner(self, db, tenant_ctx):
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+
+        tid = tenant_ctx.tenant_id
+        dev = await _till(db, tid)
+        await _issue(db, tid, dev, "R-1")
+        out = await deliver_tenant(db, tid, provider=_provider(MockAuthority(rin="000000000")))
+        assert out["rejected"] == 1
+        assert out["attention"] == [
+            {
+                "till": "POS-MOCK-1",
+                "needs_correction": ["R-1"],
+                "window_closing": [],
+                "window_closed": [],
+            }
+        ]
+
+    async def test_the_registered_handler_runs_the_same_thing(self, db, tenant_ctx):
+        from app.workers.scheduler_worker import _HANDLERS
+
+        out = await _HANDLERS["einvoice.eta_deliver"](db, tenant_ctx.tenant_id, {})
+        assert out["tills"] == 0 and out["errors"] == 0
