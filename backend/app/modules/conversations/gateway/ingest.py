@@ -12,6 +12,7 @@ owned by the webhook router.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy import case, select, text
@@ -24,6 +25,8 @@ from app.modules.conversations.models import Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
 from app.modules.platform.models import IdempotencyKey, WebhookEvent
+
+logger = logging.getLogger(__name__)
 
 
 class IngestError(Exception):
@@ -53,6 +56,22 @@ class IngestService:
             await session.execute(
                 text("SELECT public.resolve_channel_tenant(:provider, :key)"),
                 {"provider": adapter_name, "key": tenant_key},
+            )
+        ).scalar_one_or_none()
+        return uuid.UUID(str(row)) if row else None
+
+    @staticmethod
+    async def resolve_account_tenant(session: AsyncSession, waba_id: str) -> uuid.UUID | None:
+        """The store that owns a WhatsApp Business Account, or None when it is not exactly one.
+
+        Same reasons as `resolve_tenant`: it runs before any store is bound, so it goes through
+        a SECURITY DEFINER function that returns only the store id.
+        """
+        if not waba_id:
+            return None
+        row = (
+            await session.execute(
+                text("SELECT public.resolve_whatsapp_waba_tenant(:waba)"), {"waba": waba_id}
             )
         ).scalar_one_or_none()
         return uuid.UUID(str(row)) if row else None
@@ -291,6 +310,29 @@ class IngestService:
                         session, tenant_id, platform=channel, comment=comment
                     )
                     accepted += 1
+            # A template's review state changed. The event is only a signal: our copy is brought
+            # up to date from Meta itself, never written from what the event says, so a forged or
+            # stale event cannot approve anything.
+            has_template_news = getattr(adapter, "has_template_status_change", None)
+            if callable(has_template_news) and has_template_news(payload):
+                from app.modules.conversations.templates import TemplateService
+                from app.modules.platform.services.channel_access import (
+                    channel_credentials_config,
+                )
+
+                credentials = await channel_credentials_config(session, tenant_id, channel)
+                if credentials and credentials.get("access_token"):
+                    # Its own savepoint: Meta being slow or down must not roll back the messages
+                    # ingested above. The periodic sweep catches up whatever this misses.
+                    try:
+                        async with session.begin_nested():
+                            await TemplateService.sync_from_meta(
+                                session, tenant_id, credentials=credentials
+                            )
+                    except Exception:  # noqa: BLE001 - the sweep retries within 15 minutes
+                        logger.warning(
+                            "webhook.template_resync_failed tenant=%s", tenant_id, exc_info=True
+                        )
             await session.execute(
                 sa_update(WebhookEvent)
                 .where(WebhookEvent.id == event_id)

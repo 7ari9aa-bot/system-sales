@@ -335,7 +335,8 @@ async def test_one_meta_batch_is_split_and_queued_under_each_phone_tenant(
     raw = json.dumps(payload).encode()
     response = await cr.channel_webhook("whatsapp", _FakeRequest(raw), db)
 
-    assert response == {"ok": True, "queued": True}
+    # Two phone numbers in one delivery are two accounts, each ingested on its own.
+    assert response == {"ok": True, "queued": True, "accounts": 2}
     for tenant_id, expected_phone in (
         (tenant_ctx.tenant_id, "201000000001"),
         (other.id, "201000000002"),

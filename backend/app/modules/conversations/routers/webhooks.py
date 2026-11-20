@@ -98,6 +98,15 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes)
     tenant_id = await IngestService.resolve_tenant(session, channel, tenant_key)
 
     if tenant_id is None:
+        # Account-level news (a template's review state) names the business account, not a phone
+        # number. Only an envelope that is nothing BUT that is placed this way, and only when
+        # exactly one store owns the account.
+        account_of = getattr(adapter, "resolve_template_account", None)
+        account = account_of(payload) if callable(account_of) else None
+        if account:
+            tenant_id = await IngestService.resolve_account_tenant(session, account)
+
+    if tenant_id is None:
         # Unknown tenant: acknowledge without detail (do not leak existence).
         #
         # webhook_events is FORCE-RLS with a strict tenant_isolation policy

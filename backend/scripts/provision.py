@@ -168,8 +168,8 @@ def _rls_statements() -> list[str]:
 # is acknowledged while ingesting nothing. SECURITY DEFINER runs the lookup as
 # the table owner and returns ONLY the tenant id, so provider credentials in
 # integrations.config never leave the table. search_path is pinned — mandatory
-# for SECURITY DEFINER. Kept identical to migration c0a2026f0199 so an
-# already-provisioned database converges.
+# for SECURITY DEFINER. Kept identical to the LATEST migration that
+# redefines it (fe2026101711, which added facebook) so an already-provisioned database converges.
 CHANNEL_TENANT_FN_SQL = """
 CREATE OR REPLACE FUNCTION public.resolve_channel_tenant(p_provider text, p_key text)
 RETURNS uuid
@@ -188,6 +188,7 @@ AS $fn$
              WHEN 'telegram' THEN i.config->>'public_key'
              WHEN 'messenger' THEN i.config->>'account_id'
              WHEN 'instagram' THEN i.config->>'account_id'
+             WHEN 'facebook' THEN COALESCE(i.config->>'account_id', i.config->>'page_id')
              WHEN 'webchat' THEN i.config->>'public_key'
              ELSE NULL
            END
@@ -203,6 +204,9 @@ AS $fn$
                       WHEN 'telegram' THEN duplicate.config->>'public_key'
                       WHEN 'messenger' THEN duplicate.config->>'account_id'
                       WHEN 'instagram' THEN duplicate.config->>'account_id'
+                      WHEN 'facebook' THEN COALESCE(
+                          duplicate.config->>'account_id', duplicate.config->>'page_id'
+                      )
                       WHEN 'webchat' THEN duplicate.config->>'public_key'
                       ELSE NULL
                     END
@@ -210,6 +214,42 @@ AS $fn$
      LIMIT 1
 $fn$;
 """
+
+# Meta's template-status webhook names the business account, not a phone number, so it is
+# placed by a second resolver. Kept identical to migration fe2026112002.
+WABA_TENANT_FN_SQL = """
+CREATE OR REPLACE FUNCTION public.resolve_whatsapp_waba_tenant(p_waba_id text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+    SELECT i.tenant_id
+      FROM public.integrations i
+     WHERE p_waba_id IS NOT NULL
+       AND p_waba_id <> ''
+       AND i.provider = 'whatsapp'
+       AND i.kind = 'channel'
+       AND i.status IN ('active', 'connected')
+       AND i.config->>'waba_id' = p_waba_id
+       AND NOT EXISTS (
+             SELECT 1
+               FROM public.integrations other
+              WHERE other.id <> i.id
+                AND other.provider = 'whatsapp'
+                AND other.kind = 'channel'
+                AND other.status IN ('active', 'connected')
+                AND other.config->>'waba_id' = p_waba_id
+                AND other.tenant_id <> i.tenant_id
+           )
+     LIMIT 1
+$fn$;
+"""
+
+WABA_TENANT_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.resolve_whatsapp_waba_tenant(text) FROM PUBLIC;"
+)
 
 # asyncpg's extended-query protocol accepts ONE statement per execute, so the
 # REVOKE is issued separately (same reason as the migration).
@@ -690,6 +730,11 @@ async def main() -> None:
         await conn.execute(CHANNEL_TENANT_FN_REVOKE)
         await conn.execute(
             "GRANT EXECUTE ON FUNCTION public.resolve_channel_tenant(text, text) TO sales_app"
+        )
+        await conn.execute(WABA_TENANT_FN_SQL)
+        await conn.execute(WABA_TENANT_FN_REVOKE)
+        await conn.execute(
+            "GRANT EXECUTE ON FUNCTION public.resolve_whatsapp_waba_tenant(text) TO sales_app"
         )
         await seed(conn)
         # System infrastructure tables RLS policies

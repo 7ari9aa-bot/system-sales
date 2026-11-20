@@ -281,18 +281,60 @@ def _effective_sql(sql: str) -> str:
     must not diverge is the SQL that actually runs.
     """
     lines = [line for line in sql.splitlines() if not line.strip().startswith("--")]
-    return " ".join(" ".join(lines).split())
+    text = " ".join(" ".join(lines).split())
+    # Two spellings Postgres treats as the same thing (the dollar-quote tag, and how a function's
+    # search_path is written); anything else that differs is a real divergence.
+    text = text.replace("$function$", "$fn$")
+    text = re.sub(
+        r"SET search_path (?:=|TO) '?public'?, '?pg_temp'?",
+        "SET search_path = public, pg_temp",
+        text,
+    )
+    # Line wrapping inside parentheses leaves stray spaces; they change nothing.
+    return text.replace("( ", "(").replace(" )", ")")
+
+
+def _latest_resolver_migration() -> Path:
+    """The newest migration, by revision order, that redefines resolve_channel_tenant.
+
+    Walks alembic's own revision graph from the head instead of naming a file, so the next
+    migration that touches the function is the one provision.py is held to.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config()
+    config.set_main_option("script_location", str(VERSIONS_DIR.parent))
+    script = ScriptDirectory.from_config(config)
+    for revision in script.walk_revisions():  # head first, then each ancestor
+        path = Path(revision.path)
+        if "CREATE OR REPLACE FUNCTION public.resolve_channel_tenant" in path.read_text(
+            encoding="utf-8"
+        ):
+            return path
+    raise AssertionError("no migration defines resolve_channel_tenant")
+
+
+def _defined_resolver_sql(path: Path) -> str:
+    """The resolve_channel_tenant statement a migration sends to the database."""
+    module, captured = _load_migration(path)
+    module.upgrade()
+    matches = [
+        sql for sql in captured if "CREATE OR REPLACE FUNCTION public.resolve_channel_tenant" in sql
+    ]
+    assert len(matches) == 1, f"{path.name} defines the resolver {len(matches)} times"
+    return matches[0]
 
 
 def test_resolver_sql_matches_between_migration_and_provision() -> None:
-    """The migration and scripts/provision.py must converge on one definition.
+    """The newest migration and scripts/provision.py must converge on one definition.
 
-    They run in either order, so a behavioural divergence would leave the
-    function different depending on which ran last.
+    They run in either order (CI runs the migrations and THEN provision.py), so a divergence
+    would leave the function dependent on which ran last. Held to the NEWEST migration that
+    redefines it: pinning an old one let provision.py lag behind and drop Facebook routing.
     """
     import ast
 
-    module, _ = _load_migration(CHANNEL_TENANT_ROUTING_MIGRATION)
     provision_source = (VERSIONS_DIR.parent.parent / "scripts" / "provision.py").read_text(
         encoding="utf-8"
     )
@@ -303,7 +345,13 @@ def test_resolver_sql_matches_between_migration_and_provision() -> None:
                 if getattr(target, "id", None) == "CHANNEL_TENANT_FN_SQL":
                     provision_sql = ast.literal_eval(node.value)
     assert provision_sql is not None, "CHANNEL_TENANT_FN_SQL not found in provision.py"
-    assert _effective_sql(provision_sql) == _effective_sql(module._CHANNEL_TENANT_FN)
+    latest = _defined_resolver_sql(_latest_resolver_migration())
+    assert _effective_sql(provision_sql) == _effective_sql(latest)
+
+
+def test_the_resolver_drift_check_follows_the_newest_definition() -> None:
+    """Guards the guard: the newest definition is the Facebook one, not the original."""
+    assert _latest_resolver_migration().name.startswith("fe2026101711")
 
 
 def test_channel_identity_migration_parses_and_fails_closed_on_duplicates() -> None:

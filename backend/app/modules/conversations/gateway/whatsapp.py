@@ -119,6 +119,50 @@ class WhatsAppAdapter:
             for phone_number_id, changes in grouped.items()
         ]
 
+    #: Meta's field name for "a template's review state changed".
+    TEMPLATE_STATUS_FIELD = "message_template_status_update"
+
+    def resolve_template_account(self, payload: dict) -> str | None:
+        """The business account id when this envelope is only template-status news.
+
+        Meta's template events name the business account (`entry[].id`) and carry no phone number,
+        so `resolve_tenant_key` cannot place them. An envelope that mixes in anything else, or
+        names several accounts, answers None and keeps its normal routing.
+        """
+        accounts: set[str] = set()
+        for entry in payload.get("entry", []) or []:
+            if not isinstance(entry, dict):
+                return None
+            changes = entry.get("changes") or []
+            if not changes or any(
+                not isinstance(c, dict) or c.get("field") != self.TEMPLATE_STATUS_FIELD
+                for c in changes
+            ):
+                return None
+            account = str(entry.get("id") or "").strip()
+            if not account:
+                return None
+            accounts.add(account)
+        return next(iter(accounts)) if len(accounts) == 1 else None
+
+    def has_template_status_change(self, payload: dict) -> bool:
+        """True when any change in the envelope reports a template's review state."""
+        return any(
+            isinstance(change, dict) and change.get("field") == self.TEMPLATE_STATUS_FIELD
+            for entry in payload.get("entry", []) or []
+            if isinstance(entry, dict)
+            for change in entry.get("changes", []) or []
+        )
+
+    def split_by_account(self, payload: dict) -> list[dict]:
+        """One envelope per phone number, which is how the webhook router asks adapters to split.
+
+        The router resolves the store from the FIRST envelope's key, so without this a delivery
+        naming two numbers is filed entirely under the first number's store. `partition_payloads`
+        already does the grouping; this exposes it under the name the router looks for.
+        """
+        return [part for _key, part in self.partition_payloads(payload)]
+
     # ---------- normalization ----------
 
     def parse_inbound(self, payload: dict) -> list[InboundMessage]:
