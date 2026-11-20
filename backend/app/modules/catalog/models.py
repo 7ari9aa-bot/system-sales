@@ -161,10 +161,10 @@ class ProductPrice(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, I
 class ProductIdentifier(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only scan code on one sellable unit (Commerce Core v1.0 §179).
 
-    `type` is the closed vocabulary {gtin, ean, upc, barcode, qr_token,
-    external, egs, gs1} enforced in CatalogService (`egs`/`gs1` are the item codes the Egyptian
-    Tax Authority registers per taxpayer; they are never matched by a till scan) — never sa.Enum. (tenant, type,
-    value) is unique so the resolver returns exactly one variant or nothing.
+    `type` is the closed vocabulary {gtin, ean, upc, barcode, qr_token, external, egs, gs1}
+    enforced in CatalogService, never sa.Enum. `egs` / `gs1` are the item codes the Egyptian Tax
+    Authority registers per taxpayer; a till scan never matches them. (tenant, type, value) is
+    unique so the resolver returns exactly one variant or nothing.
     Corrections delete and re-add; the rows are facts, not state.
     """
 

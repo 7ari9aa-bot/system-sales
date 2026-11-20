@@ -1347,6 +1347,7 @@ class PosService(PosReceiptReads):
         receipt = await PosService._issue_receipt(
             session, tenant_id, pos_session, order, sold_by_user_id=actor_user_id
         )
+        await PosService._issue_eta_receipt(session, tenant_id, pos_session, receipt)
         return {
             "order_id": order.id,
             "order_number": order.number,
@@ -1440,6 +1441,22 @@ class PosService(PosReceiptReads):
             except IntegrityError as exc:
                 last_exc = exc
         raise ConflictError("could not allocate a receipt number") from last_exc
+
+    @staticmethod
+    async def _issue_eta_receipt(
+        session: AsyncSession, tenant_id: UUID, pos_session: PosSession, receipt: PosReceipt
+    ) -> None:
+        """Hand a finished till receipt to the Egyptian e-receipt layer (off unless enabled).
+
+        Called only AFTER the receipt's lines are written, since a return's lines are what the
+        e-receipt is built from. It never raises into the sale: the customer is at the counter,
+        and a missing tax number or item code must not stop them leaving (see
+        ``issue_for_receipt``). The register's code names the e-receipt till.
+        """
+        from app.modules.einvoice.pos_adapter import issue_for_receipt
+
+        register = await PosService._get_register(session, tenant_id, pos_session.register_id)
+        await issue_for_receipt(session, tenant_id, receipt, register_code=register.code)
 
     # -------------------------------------------------------------- close ----
 
@@ -2881,6 +2898,7 @@ class PosService(PosReceiptReads):
                 )
             )
         await session.flush()
+        await PosService._issue_eta_receipt(session, tenant_id, pos_session, return_receipt)
 
         await add_outbox_event(
             session,
@@ -3223,6 +3241,8 @@ class PosService(PosReceiptReads):
             sold_by_user_id=actor_user_id,
         )
         await session.flush()
+        await PosService._issue_eta_receipt(session, tenant_id, pos_session, return_receipt)
+        await PosService._issue_eta_receipt(session, tenant_id, pos_session, new_receipt)
 
         net = to_money(new_grand_total - return_total, "net")
         await add_outbox_event(

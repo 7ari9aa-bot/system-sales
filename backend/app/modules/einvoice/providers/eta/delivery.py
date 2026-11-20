@@ -23,7 +23,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -145,7 +145,19 @@ async def deliver_device(
         .all()
     )
     by_id = {str(d.id): d for d in docs}
-    plan: Plan = plan_device([_queued(d, device.device_serial) for d in docs], now=now)
+    from app.modules.settings.service import SettingsService
+
+    # How early the owner wants to be warned is the merchant's own choice (Settings > e-receipt).
+    warn_hours = int(
+        await SettingsService(session, device.tenant_id).value(
+            "einvoice.warn_hours_before_deadline"
+        )
+    )
+    plan: Plan = plan_device(
+        [_queued(d, device.device_serial) for d in docs],
+        now=now,
+        warn_before=timedelta(hours=warn_hours),
+    )
     report.blocked_by = plan.blocked_by
     report.window_closing = [by_id[q.id].invoice_number for q in plan.expiring]
     report.window_closed = [by_id[q.id].invoice_number for q in plan.expired]

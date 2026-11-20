@@ -85,33 +85,6 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,
     # onboarding, sandbox to production), not a one-line call. Drop an entry when its caller lands.
     "app.modules.einvoice.providers.eta.mock_authority": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.peppol_ae.pint": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.peppol_ae.provider": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.sandbox": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.zatca.crypto": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.zatca.provider": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.zatca.tlv": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.zatca.ubl": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.registry": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.service": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
     # Sales Intelligence analytics layer (spec §5-11) — pure, LLM-free
     # contracts and math: the metric contracts, the exact midpoint drivers,
     # the maturity classifier, the number policy, the confidence engine, and

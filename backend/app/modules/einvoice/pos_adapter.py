@@ -16,6 +16,7 @@ Everything here is read-only. Whether and when the receipt is sent is ``delivery
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,7 +30,10 @@ from app.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyIn
 from app.modules.einvoice.providers.eta.calc import price_excluding_vat, q5
 from app.modules.einvoice.providers.eta.codes import UNIT_EACH
 
-_VAT_SUBTYPE_TAXABLE = "V009"
+logger = logging.getLogger(__name__)
+
+# The merchant picks the category; the authority's sub-type code for it is fixed by the authority.
+_VAT_SUBTYPE = {"taxable": "V009", "exempt": "V003", "non_taxable": "V004"}
 _HUNDRED = Decimal(100)
 
 
@@ -39,9 +43,15 @@ class NotReady(ValueError):
 
 @dataclass(frozen=True)
 class EtaSettings:
+    """Everything about the shop itself that the merchant decides (Settings > e-receipt)."""
+
     enabled: bool
     prices_include_vat: bool
     default_payment_method: str
+    vat_category: str = "taxable"
+    unit_code: str = UNIT_EACH
+    delivery_mode: str = "FC"
+    warn_hours_before_deadline: int = 24
 
 
 async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettings:
@@ -52,7 +62,28 @@ async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettin
         enabled=bool(await svc.value("einvoice.eta_enabled")),
         prices_include_vat=bool(await svc.value("einvoice.prices_include_vat")),
         default_payment_method=str(await svc.value("einvoice.default_payment_method")),
+        vat_category=str(await svc.value("einvoice.vat_category")),
+        unit_code=str(await svc.value("einvoice.unit_code")),
+        delivery_mode=str(await svc.value("einvoice.delivery_mode")),
+        warn_hours_before_deadline=int(await svc.value("einvoice.warn_hours_before_deadline")),
     )
+
+
+async def eta_branch(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
+    """The store's registered branch, exactly as the merchant typed it (never defaulted)."""
+    from app.modules.settings.service import SettingsService
+
+    svc = SettingsService(session, tenant_id)
+    return {
+        "branch_code": str(await svc.value("einvoice.branch_code") or ""),
+        "activity_code": str(await svc.value("einvoice.activity_code") or ""),
+        "branch_address": {
+            "governate": str(await svc.value("einvoice.branch_governate") or ""),
+            "region_city": str(await svc.value("einvoice.branch_region_city") or ""),
+            "street": str(await svc.value("einvoice.branch_street") or ""),
+            "building_number": str(await svc.value("einvoice.branch_building_number") or ""),
+        },
+    }
 
 
 async def _seller(session: AsyncSession, tenant_id: uuid.UUID) -> PartyInfo:
@@ -151,9 +182,14 @@ def _line(
         sku=sku or "",
         item_code_type=code[0],
         item_code=code[1],
-        unit_code=UNIT_EACH,
-        vat_subtype=_VAT_SUBTYPE_TAXABLE,
+        unit_code=settings.unit_code,
+        vat_subtype=_VAT_SUBTYPE[settings.vat_category],
     )
+
+
+def effective_rate(settings: EtaSettings, national_rate: Decimal) -> Decimal:
+    """VAT actually charged: the national rate only for taxable goods, zero otherwise."""
+    return national_rate if settings.vat_category == "taxable" else Decimal("0.00")
 
 
 async def vat_rate_percent(session: AsyncSession, issued_at: datetime) -> Decimal:
@@ -180,7 +216,7 @@ async def build_context(
 
     settings = await eta_settings(session, tenant_id)
     issued_at = receipt.issued_at or now or datetime.now(UTC)
-    rate = await vat_rate_percent(session, issued_at)
+    rate = effective_rate(settings, await vat_rate_percent(session, issued_at))
     seller = await _seller(session, tenant_id)
     order = (
         await session.execute(
@@ -283,7 +319,11 @@ async def build_context(
     ]
     subtotal = q5(sum((line.subtotal for line in lines), Decimal(0)))
     tax_total = q5(sum((line.tax_amount for line in lines), Decimal(0)))
-    extras: dict = {"payment_method": settings.default_payment_method}
+    extras: dict = {
+        "payment_method": settings.default_payment_method,
+        "delivery_mode": settings.delivery_mode,
+        "store_profile": await eta_branch(session, tenant_id),
+    }
     document_type = "sale_receipt"
     if receipt.kind == "return":
         document_type = "return_receipt"
@@ -305,3 +345,72 @@ async def build_context(
         original_uuid=original_uuid,
         extras=extras,
     )
+
+
+@dataclass(frozen=True)
+class HookResult:
+    """What the cashier hook did for one receipt. ``skipped`` carries the reason, never raised."""
+
+    issued: bool
+    skipped: str | None = None
+
+
+async def issue_for_receipt(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    receipt,
+    *,
+    register_code: str,
+) -> HookResult:
+    """Issue the ETA e-receipt for a till receipt. NEVER raises into the sale.
+
+    A customer is standing at the counter. Whatever is missing on the e-receipt side (the till is
+    not set up, an item has no registered code, the store has no tax number yet) must never stop
+    the sale, so every failure is caught here, recorded as a warning and left for the owner to
+    fix. The work runs in a savepoint, so even a database error cannot poison the sale's own
+    transaction.
+
+    The ETA till is the one whose serial equals the register's code, and it is never created
+    here: it must be set up deliberately with the store's real registration data.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.errors import DomainError
+    from app.modules.einvoice.models import EInvoiceDevice
+    from app.modules.einvoice.providers.eta.client import EtaError
+    from app.modules.einvoice.service import EInvoiceService
+
+    try:
+        if not (await eta_settings(session, tenant_id)).enabled:
+            return HookResult(False, "disabled")
+        device = (
+            await session.execute(
+                select(EInvoiceDevice).where(
+                    EInvoiceDevice.tenant_id == tenant_id,
+                    EInvoiceDevice.device_serial == register_code,
+                    EInvoiceDevice.provider_type == "eta",
+                    EInvoiceDevice.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if device is None:
+            return HookResult(False, f"no active ETA till for register {register_code}")
+        async with session.begin_nested():
+            context = await build_context(session, tenant_id, receipt)
+            await EInvoiceService.issue_einvoice(
+                session,
+                tenant_id,
+                context,
+                device_id=device.id,
+                order_id=receipt.order_id,
+                receipt_id=receipt.id,
+            )
+        return HookResult(True)
+    except NotReady as exc:
+        logger.warning("eta.hook.not_ready tenant=%s receipt=%s: %s", tenant_id, receipt.id, exc)
+        return HookResult(False, str(exc))
+    except (SQLAlchemyError, DomainError, EtaError, ValueError, KeyError, LookupError) as exc:
+        logger.warning(
+            "eta.hook.failed tenant=%s receipt=%s: %s", tenant_id, receipt.id, type(exc).__name__
+        )
+        return HookResult(False, f"{type(exc).__name__}")

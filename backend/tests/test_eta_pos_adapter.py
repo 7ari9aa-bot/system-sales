@@ -13,6 +13,7 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401
+from app.core.errors import ValidationError
 from app.modules.catalog.service import CatalogService
 from app.modules.einvoice.pos_adapter import NotReady, build_context, eta_settings, split_line
 from app.modules.einvoice.providers.eta.calc import q5
@@ -293,3 +294,99 @@ class TestReturn:
 
     async def test_the_receipt_ids_are_unique_per_tenant(self):
         assert uuid.uuid4() != uuid.uuid4()
+
+
+class TestTheMerchantDecides:
+    """Everything about the shop itself is a store setting, and each one changes the receipt."""
+
+    async def test_an_exempt_store_charges_no_vat_even_with_vat_inclusive_prices(
+        self, db, tenant_ctx
+    ):
+        await _configure(db, tenant_ctx.tenant_id, **{"einvoice.vat_category": "exempt"})
+        _, _, sold, receipt = await _sold(db, tenant_ctx, price="114.00", qty=1)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        line = ctx.lines[0]
+        assert line.vat_subtype == "V003" and line.tax_amount == Decimal(0)
+        assert line.unit_price == Decimal("114.00000")  # not divided by 1.14
+        assert ctx.grand_total == Decimal(sold["grand_total"]) == Decimal("114.00")
+
+    async def test_a_non_taxable_store_uses_the_non_taxable_subtype_and_no_vat(
+        self, db, tenant_ctx
+    ):
+        await _configure(db, tenant_ctx.tenant_id, **{"einvoice.vat_category": "non_taxable"})
+        _, _, _, receipt = await _sold(db, tenant_ctx, price="50.00", qty=2)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        assert ctx.lines[0].vat_subtype == "V004" and ctx.tax_total == Decimal(0)
+        assert ctx.grand_total == Decimal("100.00")
+
+    async def test_the_unit_of_measure_is_the_merchants_choice(self, db, tenant_ctx):
+        await _configure(db, tenant_ctx.tenant_id, **{"einvoice.unit_code": "KGM"})
+        _, _, _, receipt = await _sold(db, tenant_ctx)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        assert ctx.lines[0].unit_code == "KGM"
+
+    async def test_the_delivery_mode_is_the_merchants_choice(self, db, tenant_ctx):
+        await _configure(db, tenant_ctx.tenant_id, **{"einvoice.delivery_mode": "TC"})
+        _, _, _, receipt = await _sold(db, tenant_ctx)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        assert ctx.extras["delivery_mode"] == "TC"
+
+    async def test_the_branch_comes_from_the_store_settings(self, db, tenant_ctx):
+        await _configure(
+            db,
+            tenant_ctx.tenant_id,
+            **{
+                "einvoice.branch_code": "7",
+                "einvoice.activity_code": "4771",
+                "einvoice.branch_governate": "Cairo",
+                "einvoice.branch_region_city": "Nasr City",
+                "einvoice.branch_street": "Abbas El Akkad",
+                "einvoice.branch_building_number": "12",
+            },
+        )
+        _, _, _, receipt = await _sold(db, tenant_ctx)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        assert ctx.extras["store_profile"] == {
+            "branch_code": "7",
+            "activity_code": "4771",
+            "branch_address": {
+                "governate": "Cairo",
+                "region_city": "Nasr City",
+                "street": "Abbas El Akkad",
+                "building_number": "12",
+            },
+        }
+
+    async def test_a_value_set_on_the_till_itself_overrides_the_store_setting(self):
+        from app.modules.einvoice.models import EInvoiceDevice
+        from app.modules.einvoice.providers.eta.context import device_profile
+
+        store = {
+            "branch_code": "7",
+            "activity_code": "4771",
+            "branch_address": {"governate": "Cairo", "street": "Main"},
+        }
+        till = EInvoiceDevice(
+            device_serial="R2",
+            metadata_info={"eta": {"branch_code": "9", "branch_address": {"street": "Annex"}}},
+        )
+        profile = device_profile(till, store)
+        assert profile.branch_code == "9" and profile.activity_code == "4771"
+        assert profile.address.street == "Annex" and profile.address.governate == "Cairo"
+
+    async def test_nothing_is_invented_when_the_merchant_has_not_filled_it_in(self):
+        from app.modules.einvoice.models import EInvoiceDevice
+        from app.modules.einvoice.providers.eta.context import device_profile
+
+        profile = device_profile(EInvoiceDevice(device_serial="R1", metadata_info={}), None)
+        assert profile.branch_code == "" and profile.activity_code == ""
+        assert profile.address.governate == "" and profile.address.street == ""
+
+    async def test_an_unknown_choice_is_refused_by_the_settings_layer(self, db, tenant_ctx):
+        svc = SettingsService(db, tenant_ctx.tenant_id)
+        with pytest.raises(ValidationError):
+            await svc.set("einvoice.vat_category", "whatever")
+        with pytest.raises(ValidationError):
+            await svc.set("einvoice.delivery_mode", "XX")
+        with pytest.raises(ValidationError):
+            await svc.set("einvoice.warn_hours_before_deadline", 0)

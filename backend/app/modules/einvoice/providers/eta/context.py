@@ -66,13 +66,22 @@ class DeviceProfile:
     environment: str = "preprod"
 
 
-def device_profile(device: EInvoiceDevice) -> DeviceProfile:
+def device_profile(device: EInvoiceDevice, store: dict[str, Any] | None = None) -> DeviceProfile:
+    """The till's ETA profile. The merchant's own settings (``store``) are the source; a value
+    set on the till itself (a shop with two branches) overrides them. Nothing is invented: an
+    empty value stays empty and the validator refuses the receipt with a precise code."""
     raw: dict[str, Any] = (device.metadata_info or {}).get("eta") or {}
-    addr = raw.get("branch_address") or {}
+    base: dict[str, Any] = store or {}
+    base_addr: dict[str, Any] = base.get("branch_address") or {}
+    addr = {**base_addr, **(raw.get("branch_address") or {})}
+
+    def pick(key: str, default: str = "") -> str:
+        return str(raw.get(key) or base.get(key) or default)
+
     return DeviceProfile(
-        branch_code=str(raw.get("branch_code", "")),
-        activity_code=str(raw.get("activity_code", "")),
-        environment=str(raw.get("environment", "preprod")),
+        branch_code=pick("branch_code"),
+        activity_code=pick("activity_code"),
+        environment=pick("environment", "preprod"),
         address=BranchAddress(
             governate=str(addr.get("governate", "")),
             region_city=str(addr.get("region_city", "")),
@@ -124,8 +133,8 @@ def to_eta_input(
             f"document type {context.document_type!r} cannot be issued as an ETA receipt"
         ) from None
 
-    profile = device_profile(device)
     extras = context.extras or {}
+    profile = device_profile(device, extras.get("store_profile"))
     seller = SellerProfile(
         rin=context.seller.tax_id,
         trade_name=context.seller.name,

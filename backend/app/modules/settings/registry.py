@@ -199,6 +199,19 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "einvoice.eta_enabled",  # einvoice/pos_adapter.py::eta_settings
         "einvoice.prices_include_vat",  # einvoice/pos_adapter.py::eta_settings
         "einvoice.default_payment_method",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.vat_category",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.unit_code",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.delivery_mode",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.warn_hours_before_deadline",  # einvoice/providers/eta/delivery.py
+        "einvoice.branch_code",  # einvoice/pos_adapter.py::eta_branch
+        "einvoice.activity_code",  # einvoice/pos_adapter.py::eta_branch
+        "einvoice.branch_governate",  # einvoice/pos_adapter.py::eta_branch
+        "einvoice.branch_region_city",  # einvoice/pos_adapter.py::eta_branch
+        "einvoice.branch_street",  # einvoice/pos_adapter.py::eta_branch
+        "einvoice.branch_building_number",  # einvoice/pos_adapter.py::eta_branch
+        "business.legal_name",  # einvoice/pos_adapter.py::_seller
+        "business.trade_name",  # einvoice/pos_adapter.py::_seller
+        "business.tax_id",  # einvoice/pos_adapter.py::_seller
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
     }
@@ -427,6 +440,147 @@ _reg(
         label_en="Default receipt payment method",
         description_ar="الكاشير لا يسجّل طريقة الدفع، والمصلحة تشترطها: تُستخدم هذه القيمة.",
         description_en="The till does not record how the customer paid; ETA requires it.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.vat_category",
+        domain="einvoice",
+        type=SettingType.ENUM,
+        default="taxable",
+        scopes=(Scope.TENANT,),
+        allowed_values=("taxable", "exempt", "non_taxable"),
+        label_ar="فئة ضريبة القيمة المضافة للأصناف",
+        label_en="Item VAT category",
+        description_ar="خاضع للضريبة، معفى، أو غير خاضع. تُطبّق على كل أصناف المحل.",
+        description_en="Taxable, exempt or non-taxable; applied to every item of the store.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.unit_code",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="EA",
+        scopes=(Scope.TENANT,),
+        max_length=10,
+        label_ar="وحدة القياس في الإيصال",
+        label_en="Receipt unit of measure",
+        description_ar="كود وحدة القياس المعتمد لدى المصلحة. القطعة EA.",
+        description_en="Authority unit code. A piece is EA.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.delivery_mode",
+        domain="einvoice",
+        type=SettingType.ENUM,
+        default="FC",
+        scopes=(Scope.TENANT,),
+        allowed_values=("FC", "TO", "TC"),
+        label_ar="وضع التسليم",
+        label_en="Delivery mode",
+        description_ar="FC من مكان الشركة، TO نقل بواسطة آخرين، TC نقل بواسطة الشركة.",
+        description_en="FC from the company, TO transport by others, TC transport by the company.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.warn_hours_before_deadline",
+        domain="einvoice",
+        type=SettingType.NUMBER,
+        default=24,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=96,
+        label_ar="التنبيه قبل انتهاء مهلة الإرسال (ساعات)",
+        label_en="Warn before send deadline (hours)",
+        description_ar="كم ساعة قبل انتهاء مهلة إرسال الإيصال تظهر لك تنبيهًا.",
+        description_en="How many hours before a receipt's send deadline you are warned.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.branch_code",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="كود الفرع لدى المصلحة",
+        label_en="Branch code at the authority",
+        description_ar="الكود المسجل لفرعك في بوابة الممول (رقم، وليس اسم الفرع).",
+        description_en="The number registered for your branch in the taxpayer portal.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.activity_code",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="كود النشاط",
+        label_en="Activity code",
+        description_ar="كود نشاطك المسجل، مثل 4771 لمتاجر الملابس.",
+        description_en="Your registered activity code, e.g. 4771 for clothing stores.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.branch_governate",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="محافظة الفرع",
+        label_en="Branch governorate",
+        description_ar="محافظة الفرع كما هي مسجلة.",
+        description_en="Branch governorate as registered.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.branch_region_city",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="المدينة أو المنطقة",
+        label_en="Branch city or region",
+        description_ar="مدينة أو منطقة الفرع كما هي مسجلة.",
+        description_en="Branch city or region as registered.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.branch_street",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="شارع الفرع",
+        label_en="Branch street",
+        description_ar="شارع الفرع كما هو مسجل.",
+        description_en="Branch street as registered.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.branch_building_number",
+        domain="einvoice",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=120,
+        label_ar="رقم المبنى",
+        label_en="Branch building number",
+        description_ar="رقم مبنى الفرع كما هو مسجل.",
+        description_en="Branch building number as registered.",
     )
 )
 _reg(

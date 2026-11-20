@@ -122,7 +122,7 @@ class EtaEInvoiceProvider(EInvoiceProvider):
     ) -> SignedPayload:
         doc = json.loads(payload.raw_content)
         receipt_uuid = doc["header"]["uuid"]
-        profile = device_profile(device)
+        profile = device_profile(device, (context.extras or {}).get("store_profile"))
         portal = EtaEndpoints.for_environment(profile.environment or "preprod").portal
         qr = build_qr_payload(
             portal_base_url=portal,
