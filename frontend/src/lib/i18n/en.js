@@ -1243,4 +1243,12 @@ export default {
   "pos.printer.printReceipt": "Print Receipt (ESC/POS)",
   "pos.printer.printSuccess": "Print job sent successfully.",
   "pos.printer.notSupported": "Your browser does not support WebUSB/WebBluetooth.",
+  "pos.printer.err.usb_unsupported": "This browser does not support USB printing. Use Chrome or Edge.",
+  "pos.printer.err.bt_unsupported": "This browser does not support Bluetooth printing. Use Chrome or Edge.",
+  "pos.printer.err.no_characteristic": "This Bluetooth printer does not accept print commands. Try another printer.",
+  "pos.printer.err.not_connected": "No printer is connected. Connect a USB or Bluetooth printer first.",
+  "pos.printer.err.connectUsb": "Could not connect to the USB printer. Check it is on and plugged in, then try again.",
+  "pos.printer.err.connectBluetooth": "Could not connect to the Bluetooth printer. Check it is on and nearby, then try again.",
+  "pos.printer.err.testPrint": "The test print failed. Check the printer is connected and has paper.",
+  "pos.printer.err.kick": "Could not open the cash drawer. Check the drawer is plugged into the printer.",
 };

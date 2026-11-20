@@ -3,6 +3,7 @@ import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { useT } from "@/lib/i18n";
 import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { printerErrorKey } from "@/cashier/lib/printerErrors";
 import {
   connectBluetoothPrinter,
   connectUsbPrinter,
@@ -20,6 +21,11 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  // Closing the device picker is not a failure; anything else is shown in the shop's language.
+  const failureText = (err, action) => {
+    const key = printerErrorKey(err, action);
+    return key ? t(key) : "";
+  };
 
   const connected = isPrinterConnected();
   const printerName = getConnectedPrinterName();
@@ -32,7 +38,7 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
       const res = await connectUsbPrinter();
       setStatusMsg(t("pos.printer.connected").replace("{name}", res.name));
     } catch (err) {
-      setErrorMsg(err.message || "Failed to connect to USB printer.");
+      setErrorMsg(failureText(err, "connectUsb"));
     } finally {
       setLoading(false);
     }
@@ -46,7 +52,7 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
       const res = await connectBluetoothPrinter();
       setStatusMsg(t("pos.printer.connected").replace("{name}", res.name));
     } catch (err) {
-      setErrorMsg(err.message || "Failed to connect to Bluetooth printer.");
+      setErrorMsg(failureText(err, "connectBluetooth"));
     } finally {
       setLoading(false);
     }
@@ -69,7 +75,7 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
       await printRaw(testBytes);
       setStatusMsg(t("pos.printer.printSuccess"));
     } catch (err) {
-      setErrorMsg(err.message || "Failed to print test receipt.");
+      setErrorMsg(failureText(err, "testPrint"));
     } finally {
       setLoading(false);
     }
@@ -82,7 +88,7 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
       await kickCashDrawer();
       setStatusMsg("تم إرسال إشارة فتح الدرج بنجاح.");
     } catch (err) {
-      setErrorMsg(err.message || "Failed to kick cash drawer.");
+      setErrorMsg(failureText(err, "kick"));
     } finally {
       setLoading(false);
     }

@@ -336,21 +336,12 @@ function PosScreen({ user, session }) {
   async function confirmSale() {
     if (!offlineSync.isOnline) {
       try {
-        const payload = {
-          items: lines.map((l) => ({
-            variant_id: l.variantId,
-            quantity: l.quantity,
-            ...(l.discount ? { discount: l.discount } : {}),
-            ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
-            ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
-          })),
-          customer_phone: customerPhone?.trim() || undefined,
-          customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
-          customer_id: pickedCustomer?.id || undefined,
-          discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
-          note: sale.note || undefined,
-        };
-        await enqueueOfflineSale({ registerId: session.register_id, payload });
+        const { payload, intentKey } = sale.offlineSale({
+          customerId: pickedCustomer?.id,
+          customerPhone,
+          customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
+        });
+        await enqueueOfflineSale({ registerId: session.register_id, payload, intentKey });
         await offlineSync.refreshCount();
         toast.info("تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
         resetInvoice();
@@ -415,21 +406,12 @@ function PosScreen({ user, session }) {
     } catch (e) {
       if (!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) {
         try {
-          const payload = {
-            items: lines.map((l) => ({
-              variant_id: l.variantId,
-              quantity: l.quantity,
-              ...(l.discount ? { discount: l.discount } : {}),
-              ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
-              ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
-            })),
-            customer_phone: customerPhone?.trim() || undefined,
-            customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
-            customer_id: pickedCustomer?.id || undefined,
-            discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
-            note: sale.note || undefined,
-          };
-          await enqueueOfflineSale({ registerId: session.register_id, payload });
+          const { payload, intentKey } = sale.offlineSale({
+            customerId: pickedCustomer?.id,
+            customerPhone,
+            customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
+          });
+          await enqueueOfflineSale({ registerId: session.register_id, payload, intentKey });
           await offlineSync.refreshCount();
           toast.info("انقطع الاتصال: تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
           resetInvoice();

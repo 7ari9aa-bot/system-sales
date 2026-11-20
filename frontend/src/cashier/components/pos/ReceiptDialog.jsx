@@ -6,6 +6,7 @@ import { fmtMoney } from "@/cashier/lib/format";
 import { useAuth } from "@/lib/AuthContext";
 import { receiptHeader } from "@/cashier/lib/shopProfile";
 import FlipButtons from "@/cashier/components/pos/FlipButtons";
+import EmailReceiptForm from "@/cashier/components/pos/EmailReceiptForm";
 
 // معاينة الفاتورة الحرارية ٨٠ مم قبل الطباعة.
 export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, onEdit, onPrev, onNext, prevDisabled, nextDisabled }) {
@@ -116,6 +117,8 @@ export default function ReceiptDialog({ open, onOpenChange, receipt, onNewSale, 
           <StatusBadge kind="invoice" value={receipt.status} />
           <span className="num text-xs text-muted-foreground">الإجمالي {fmtMoney(receipt.total)}</span>
         </div>
+
+        <EmailReceiptForm key={receipt.id} receiptId={receipt.id} />
 
         <div className="flex flex-wrap items-center gap-2">
           {onPrev && (

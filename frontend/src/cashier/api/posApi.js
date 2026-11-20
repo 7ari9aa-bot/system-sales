@@ -12,6 +12,7 @@
  *     is rejected locally with a clear message.
  */
 import { api } from "@/lib/api";
+import { validReceiptEmail } from "./receiptEmail";
 import { toWire } from "./money";
 
 export const BALANCES_LIMIT = 5000;
@@ -200,6 +201,12 @@ export const posApi = {
       }),
       needIntent(intent),
     ),
+  /** Queue "email me this receipt". The server sends it from a worker; this only asks. */
+  emailReceipt: (receiptId, email) => {
+    const address = String(email ?? "").trim();
+    if (!validReceiptEmail(address)) throw new TypeError("posApi: a single valid email address is required");
+    return post(`/pos/receipts/${seg(receiptId)}/email`, { email: address });
+  },
   // The shop's own choices for returns (restock default, reasons, windows), resolved for this till.
   returnPolicy: (id) => api(`/pos/sessions/${seg(id)}/return-policy`),
   returnSale: async (id, { orderId, lines: l, restock }, intent) =>

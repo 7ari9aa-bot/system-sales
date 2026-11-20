@@ -23,6 +23,16 @@ const saleFingerprint = ({ cart, discountTotal, customerId, customerPhone, custo
     String(note ?? "").trim(),
   ]);
 
+/** The body `recordSale` takes. ONE builder for the online tap and the offline queue, so they cannot drift apart. */
+const salePayload = ({ cart, discountTotal, customerId, customerPhone, customerName, note }) => ({
+  items: cartItems(cart),
+  customerId: customerId || undefined,
+  customerPhone: customerId ? undefined : customerPhone,
+  customerName: customerId ? undefined : customerName,
+  discountTotal: discountTotal || undefined,
+  note,
+});
+
 export function createSaleSession(sessionId, registerId) {
   let intent = null;
   let intentFor = null;
@@ -30,6 +40,21 @@ export function createSaleSession(sessionId, registerId) {
   let inflightFor = null;
 
   return {
+    /**
+     * The sale as the offline queue must keep it: the exact body `recordSale` takes, plus the key to
+     * replay it under. If this very sale was already sent (the reply may have been lost on a weak
+     * connection) the key is THAT sale's key, so the server hands back the first answer instead of
+     * booking it twice; otherwise a fresh key is minted and kept for the same cart.
+     */
+    offlineSnapshot(sale) {
+      const fp = saleFingerprint(sale);
+      if (!intent || intentFor !== fp) {
+        intent = newIntent();
+        intentFor = fp;
+      }
+      return { payload: salePayload(sale), intentKey: intent.key };
+    },
+
     async quote({ cart, discountTotal }) {
       if (!cart?.length) return { subtotal: "0.00", discountTotal: "0.00", total: "0.00" };
       const r = await posApi.quote(sessionId, { items: cartItems(cart), discountTotal });
@@ -52,18 +77,7 @@ export function createSaleSession(sessionId, registerId) {
       const sent = intent;
       inflightFor = fp;
       inflight = posApi
-        .recordSale(
-          registerId,
-          {
-            items: cartItems(cart),
-            customerId: customerId || undefined,
-            customerPhone: customerId ? undefined : customerPhone,
-            customerName: customerId ? undefined : customerName,
-            discountTotal: discountTotal || undefined,
-            note,
-          },
-          sent,
-        )
+        .recordSale(registerId, salePayload({ cart, discountTotal, customerId, customerPhone, customerName, note }), sent)
         .then(async (sold) => {
           const detail = await posApi.receipt(sold.receipt_id);
           intent = null;
