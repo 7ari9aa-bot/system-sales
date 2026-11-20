@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 589,
-    "sha256": "eb5155c8524a4bb434932e4548f3c98b0ea6cb96fc07836b66a88f3a9efb7719",
+    "sha256": "2f996e82a8ecf6c089fa12c8901f72298483614507c98941941a39c8dbbb4c6f",
     "typed_operations": 333
   },
   "spec": {
@@ -6092,6 +6092,18 @@
             "started": {
               "title": "Started",
               "type": "boolean"
+            },
+            "tender": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tender"
             }
           },
           "required": [

@@ -192,7 +192,7 @@ async def test_asking_for_the_session_never_opens_a_day(db, tenant_ctx) -> None:
     r = await _post(ctx, f"/api/v1/pos/registers/{shift.register_id}/working-session", {})
 
     assert r.status_code == 200, r.text
-    assert r.json() == {"started": False, "session": None}
+    assert r.json() == {"started": False, "session": None, "tender": None}
     open_now = (
         await db.execute(
             select(func.count())

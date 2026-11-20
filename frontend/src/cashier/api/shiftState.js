@@ -90,6 +90,9 @@ export async function resolveShiftState({ canConfigure = false, userId = null } 
   }
 }
 
+/** The day's session with the till's payment rules on it. A server that sends none means "not recording payments". */
+const withTender = (day) => ({ ...day.session, tender: day.tender ?? null });
+
 /**
  * The till WITHOUT a shift: which register, and its working session for today.
  *
@@ -114,7 +117,7 @@ export async function resolveWorkingSession({ canConfigure = false, registerId =
   if (!register) return { status: "choose", registers };
   try {
     const day = await posApi.workingSession(register.id);
-    return day?.started && day.session ? { status: "open", register, session: day.session } : { status: "needs_opening", register };
+    return day?.started && day.session ? { status: "open", register, session: withTender(day) } : { status: "needs_opening", register };
   } catch (err) {
     return failure(err);
   }
@@ -132,7 +135,7 @@ export async function startDay(registerId, rawBalance) {
   const balance = parseOpeningBalance(rawBalance);
   if (balance === null) throw new Error("أدخل رصيد الدرج في بداية اليوم (رقم صحيح أو عشري).");
   const day = await posApi.openDay(registerId, balance);
-  return day.session;
+  return withTender(day);
 }
 
 /**
