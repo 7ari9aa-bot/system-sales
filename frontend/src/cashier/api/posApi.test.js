@@ -26,6 +26,16 @@ describe("a recorded sale carries no payment and never a bad figure", () => {
     expect(blank).not.toHaveProperty("customer_name");
   });
 
+  it("recordSale carries the payment lines and the on-account flag only when it is given them", async () => {
+    const items = [{ variant_id: "v", quantity: 1 }];
+    await posApi.recordSale("r1", { items, payments: [{ method: "cash", amount: "50.00" }], onAccount: true }, newIntent());
+    expect(calls[0].body.payments).toEqual([{ method: "cash", amount: "50.00" }]);
+    expect(calls[0].body.on_account).toBe(true);
+    await posApi.recordSale("r1", { items }, newIntent());
+    expect(calls[1].body).not.toHaveProperty("payments");
+    expect(calls[1].body).not.toHaveProperty("on_account");
+  });
+
   it("recordSale sends the items, the discount as a wire string, and no tender", async () => {
     await posApi.recordSale(
       "r1",

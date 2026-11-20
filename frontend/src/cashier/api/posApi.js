@@ -186,8 +186,8 @@ export const posApi = {
   variantCostHistory: (id) => api(`/variant-costs/${seg(id)}/history`),
 
   /* ---- money (intent required) ---- */
-  /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
-  recordSale: async (registerId, { items, customerId, customerPhone, customerName, discountTotal, note }, intent) =>
+  /** Record a sale: what was sold, to whom, at what discount. `payments` and `onAccount` go only when the till records payments. */
+  recordSale: async (registerId, { items, customerId, customerPhone, customerName, discountTotal, note, payments, onAccount }, intent) =>
     post(
       `/pos/registers/${seg(registerId)}/sales`,
       compact({
@@ -198,6 +198,9 @@ export const posApi = {
         customer_name: String(customerName ?? "").trim() || undefined,
         discount_total: opt(discountTotal),
         note: String(note ?? "").trim() || undefined,
+        // Only for a till that records payments (see tenderPlan.js); the server refuses them otherwise.
+        payments: payments?.length ? payments : undefined,
+        on_account: onAccount ? true : undefined,
       }),
       needIntent(intent),
     ),

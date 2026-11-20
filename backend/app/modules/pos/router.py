@@ -509,6 +509,19 @@ class DayStateOut(BaseModel):
 
     started: bool
     session: WorkingSessionOut | None = None
+    # How this till may take money (payments recorded, sale on account, methods, references).
+    # None until the day has started, because it is read from the day's own till.
+    tender: dict | None = None
+
+
+async def _day_state(ctx, found) -> dict:
+    if found is None:
+        return {"started": False, "session": None, "tender": None}
+    return {
+        "started": True,
+        "session": _session_out(found),
+        "tender": await PosService.tender_rules(ctx.session, ctx.tenant_id, found),
+    }
 
 
 @router.post("/registers/{register_id}/working-session", response_model=DayStateOut)
@@ -519,7 +532,7 @@ async def working_session(register_id: UUID, ctx: PosWriteCtx):
     ``started: false`` and the screen asks for the balance (``POST .../open-day``).
     """
     found = await PosService.working_session(ctx.session, ctx.tenant_id, register_id)
-    return {"started": found is not None, "session": _session_out(found) if found else None}
+    return await _day_state(ctx, found)
 
 
 @router.post("/registers/{register_id}/open-day", response_model=DayStateOut, status_code=201)
@@ -533,7 +546,7 @@ async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
         opening_float=body.opening_float,
         actor_user_id=ctx.user.id,
     )
-    return {"started": True, "session": _session_out(opened)}
+    return await _day_state(ctx, opened)
 
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)

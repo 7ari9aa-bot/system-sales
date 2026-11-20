@@ -887,6 +887,34 @@ class PosService(PosReceiptReads):
         return await svc.value(key, scope="pos_profile", scope_id=pos_session.profile_id)
 
     @staticmethod
+    async def tender_rules(session: AsyncSession, tenant_id: UUID, pos_session: PosSession) -> dict:
+        """How this till may take money, for the screen to start from.
+
+        The same settings and profile ``record_sale`` enforces, so the screen and the server cannot
+        disagree: a till that records payments refuses a sale with no payment line, and a sale on
+        account needs BOTH ``pos.take_payments`` and ``pos.allow_sale_on_account``.
+        """
+        take = bool(await PosService._setting(session, tenant_id, "pos.take_payments", pos_session))
+        on_account = take and bool(
+            await PosService._setting(session, tenant_id, "pos.allow_sale_on_account", pos_session)
+        )
+        profile = (
+            await PosProfileService.get(session, tenant_id, pos_session.profile_id)
+            if pos_session.profile_id is not None
+            else None
+        )
+        methods = list(profile.allowed_payment_methods or []) if profile is not None else ["cash"]
+        required = await PosService._setting(
+            session, tenant_id, "pos.reference_required_methods", pos_session
+        )
+        return {
+            "take_payments": take,
+            "allow_on_account": on_account,
+            "methods": methods if take else [],
+            "reference_required": [str(m) for m in (required or [])] if take else [],
+        }
+
+    @staticmethod
     async def return_policy(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
         """What this till's owner decided about returns, for the cashier screen to start from.
 

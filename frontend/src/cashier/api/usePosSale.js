@@ -239,9 +239,9 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
     [sale, cart, discountTotal, note],
   );
 
-  /** Record the sale. There is no payment step: no tender, no change, no method. */
+  /** Record the sale. `payments`/`onAccount` are sent only by a till that records payments (see tenderPlan.js). */
   const confirm = useCallback(
-    async ({ customerId, cashier, customerName, customerPhone } = {}) => {
+    async ({ customerId, cashier, customerName, customerPhone, payments, onAccount } = {}) => {
       if (!sale) throw new Error("لا توجد جلسة بيع");
       setPaying(true);
       setPayError(null);
@@ -253,6 +253,8 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
           customerPhone,
           customerName,
           note,
+          payments,
+          onAccount,
         });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });

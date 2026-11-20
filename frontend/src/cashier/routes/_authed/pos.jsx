@@ -32,7 +32,8 @@ import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 import { scanRefusalText } from "../../api/scanRefusal";
 import { useOfflineSync } from "@/cashier/lib/useOfflineSync";
 import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
-import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
+import { receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -333,8 +334,14 @@ function PosScreen({ user, session }) {
     }
   }
 
-  async function confirmSale() {
+  async function confirmSale(tender = {}) {
     if (!offlineSync.isOnline) {
+      // A till that records payments cannot settle a sale later: the server would refuse it.
+      const offline = whenOffline(session.tender);
+      if (!offline.queue) {
+        toast.error(offline.message);
+        return;
+      }
       try {
         const { payload, intentKey } = sale.offlineSale({
           customerId: pickedCustomer?.id,
@@ -359,6 +366,7 @@ function PosScreen({ user, session }) {
         customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
         customerId: pickedCustomer?.id,
         customerPhone,
+        ...saleTender(tender),
       });
 
       for (const line of lines) {
@@ -373,11 +381,11 @@ function PosScreen({ user, session }) {
 
       if (isPrinterConnected()) {
         try {
-          const bytes = buildReceiptEscPos({
-            shopName: session?.profile?.name || "FIHRIST POS",
+          const bytes = receiptBytes({
+            shopName: session?.profile?.name || "فهرست",
             receiptNumber: r?.number || r?.order_number || "",
             items: lines.map((l) => ({
-              name: l.title || l.name || "Item",
+              name: l.title || l.name || "صنف",
               quantity: l.quantity,
               unit_price: l.price,
               total: l.total,
@@ -404,7 +412,7 @@ function PosScreen({ user, session }) {
       setCustomerPhone("");
       setPickedCustomer(null);
     } catch (e) {
-      if (!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) {
+      if ((!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) && whenOffline(session.tender).queue) {
         try {
           const { payload, intentKey } = sale.offlineSale({
             customerId: pickedCustomer?.id,
@@ -585,6 +593,8 @@ function PosScreen({ user, session }) {
         onConfirm={confirmSale}
         pending={sale.paying}
         error={sale.payError}
+        rules={session.tender}
+        customer={{ customerId: pickedCustomer?.id, customerPhone }}
       />
 
       <NoteDialog

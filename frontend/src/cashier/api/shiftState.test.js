@@ -227,9 +227,18 @@ describe("resolveWorkingSession: the till without a shift", () => {
     pos.listRegisters.mockResolvedValue([REG]);
     pos.workingSession.mockResolvedValue({ started: true, session: SESSION });
     const s = await resolveWorkingSession({ canConfigure: false });
-    expect(s).toEqual({ status: "open", register: REG, session: SESSION });
+    expect(s).toEqual({ status: "open", register: REG, session: { ...SESSION, tender: null } });
     expect(pos.workingSession).toHaveBeenCalledWith("r1");
     expect(pos.listSessions).not.toHaveBeenCalled();
+  });
+
+  it("the till's payment rules ride on the session, and an older server without them means 'not recording payments'", async () => {
+    const tender = { take_payments: true, allow_on_account: false, methods: ["cash"], reference_required: [] };
+    pos.listRegisters.mockResolvedValue([REG]);
+    pos.workingSession.mockResolvedValue({ started: true, session: SESSION, tender });
+    expect((await resolveWorkingSession({})).session.tender).toEqual(tender);
+    pos.workingSession.mockResolvedValue({ started: true, session: SESSION });
+    expect((await resolveWorkingSession({})).session.tender).toBeNull();
   });
 
   it("the day not started => needs_opening: looking at the till never opens it", async () => {
@@ -300,8 +309,14 @@ describe("opening balance: required, and checked before any request", () => {
 
   it("startDay sends the cleaned balance and returns the session", async () => {
     pos.openDay.mockResolvedValue({ started: true, session: SESSION });
-    expect(await startDay("r1", "٢٥٠٫٥٠")).toEqual(SESSION);
+    expect(await startDay("r1", "٢٥٠٫٥٠")).toEqual({ ...SESSION, tender: null });
     expect(pos.openDay).toHaveBeenCalledWith("r1", "250.50");
+  });
+
+  it("startDay hands back the rules of the till it just opened", async () => {
+    const tender = { take_payments: true, allow_on_account: true, methods: ["cash", "card"], reference_required: ["card"] };
+    pos.openDay.mockResolvedValue({ started: true, session: SESSION, tender });
+    expect((await startDay("r1", "10")).tender).toEqual(tender);
   });
 
   it("startDay with no valid balance throws and makes NO request", async () => {
