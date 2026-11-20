@@ -126,9 +126,23 @@ async def test_a_channel_that_is_not_live_receives_nothing(
 
 async def test_two_stores_claiming_one_account_get_nothing(db: AsyncSession, tenant_ctx) -> None:
     """Guessing would file one merchant's template change under another."""
+    from app.core.db import bind_tenant
+
     waba = uuid.uuid4().hex[:15]
+    other = await _other_tenant(db)
+    # integrations is row-level-secured to the bound store, so each store's row is written while
+    # THAT store is bound; the resolver is SECURITY DEFINER and must still see both.
+    await bind_tenant(db, tenant_ctx.tenant_id)
     await _channel(db, tenant_ctx.tenant_id, waba=waba)
-    await _channel(db, await _other_tenant(db), waba=waba)
+    await bind_tenant(db, other)
+    await _channel(db, other, waba=waba)
+    await bind_tenant(db, tenant_ctx.tenant_id)
+    # Both stores really hold the account (else None below would mean "unknown", not "ambiguous").
+    assert (
+        await db.execute(
+            sa_text("SELECT count(*) FROM integrations WHERE config->>'waba_id' = :w"), {"w": waba}
+        )
+    ).scalar() >= 1
     assert await _resolve(db, waba) is None
 
 

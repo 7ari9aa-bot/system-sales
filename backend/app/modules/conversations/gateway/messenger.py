@@ -101,6 +101,19 @@ class MessengerAdapter(ChannelAdapter):
             for account_id, entries in grouped.items()
         ]
 
+    def split_by_account(self, payload: dict) -> list[dict]:
+        """One envelope per Page, which is how the webhook router asks adapters to split.
+
+        The router resolves the store from the FIRST envelope's key, so without this a delivery
+        naming two Pages is filed entirely under the first Page's store. `partition_payloads`
+        already does the grouping; a delivery for one Page (the usual case), or with no usable
+        entry at all, is returned untouched.
+        """
+        parts = self.partition_payloads(payload)
+        if len(parts) <= 1:
+            return [payload]
+        return [part for _key, part in parts]
+
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
         # Meta delivery/read receipts arrive as messaging[0].delivery|read —
         # inbound-only for now; the generic status path handles the rest.

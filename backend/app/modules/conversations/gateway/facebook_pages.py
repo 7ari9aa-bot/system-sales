@@ -282,7 +282,7 @@ class FacebookPagesClient:
     ) -> None:
         await self._graph("DELETE", comment_id, credentials, _client=_client)
 
-    async def like(
+    async def set_like(
         self, credentials: ProviderCredentials, object_id: str, liked: bool, _client=None
     ) -> None:
         """The Page likes (or un-likes) a post or comment, as the Page."""

@@ -337,7 +337,7 @@ async def like_object(
 ):
     """The Page likes (or un-likes) a post or comment as itself."""
     creds = await _credentials(ctx, send=True)
-    await facebook_pages.like(creds, object_id, body.liked)
+    await facebook_pages.set_like(creds, object_id, body.liked)
     return {"id": object_id, "liked": body.liked}
 
 

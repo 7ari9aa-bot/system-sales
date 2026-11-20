@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -95,9 +96,9 @@ async def assign_barcodes(product_id: UUID, body: AssignBarcodesRequest, ctx: Wr
 async def print_labels(
     product_id: UUID,
     ctx: TenantCtxDep,
-    size: str = Query("medium"),
-    copies: int = Query(1, ge=1, le=20),
-    variant_id: list[UUID] | None = Query(None),
+    size: Annotated[str, Query()] = "medium",
+    copies: Annotated[int, Query(ge=1, le=20)] = 1,
+    variant_id: Annotated[list[UUID] | None, Query()] = None,
 ):
     """A print-ready page with one label per variant (times ``copies``), each at its real size.
 

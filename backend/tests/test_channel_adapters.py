@@ -286,14 +286,18 @@ def test_messenger_and_instagram_parse_every_message_in_a_batch():
             {"id": "IG-2", "messaging": [event("i2", "u2", "IG-2")]},
         ]
     }
-    instagram = instagram_adapter.parse_inbound(instagram_payload)
+    # The webhook router splits a multi-account delivery into one envelope per account and parses
+    # each under its own tenant; parsing the whole batch under one tenant would file IG-2's
+    # message under IG-1's store, so parse_inbound deliberately reads only the resolved account.
+    parts = instagram_adapter.split_by_account(instagram_payload)
+    instagram = [m for part in parts for m in instagram_adapter.parse_inbound(part)]
 
     assert [message.channel_message_id for message in messenger] == ["m1", "m2"]
-    assert [key for key, _ in instagram_adapter.partition_payloads(instagram_payload)] == [
-        "IG-1",
-        "IG-2",
-    ]
+    assert [part["entry"][0]["id"] for part in parts] == ["IG-1", "IG-2"]
     assert [message.channel_message_id for message in instagram] == ["i1", "i2"]
+    assert [m.channel_message_id for m in instagram_adapter.parse_inbound(instagram_payload)] == [
+        "i1"
+    ]
 
 
 def test_whatsapp_reply_context_sets_reply_to_message_id():

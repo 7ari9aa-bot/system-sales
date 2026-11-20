@@ -105,8 +105,8 @@ async def test_comment_reply_hide_like_delete_use_the_documented_calls():
         assert await fp.facebook_pages.comment(CREDS, "post1", "thanks", _client=c) == "c2"
         await fp.facebook_pages.set_comment_hidden(CREDS, "c1", True, _client=c)
         await fp.facebook_pages.set_comment_hidden(CREDS, "c1", False, _client=c)
-        await fp.facebook_pages.like(CREDS, "c1", True, _client=c)
-        await fp.facebook_pages.like(CREDS, "c1", False, _client=c)
+        await fp.facebook_pages.set_like(CREDS, "c1", True, _client=c)
+        await fp.facebook_pages.set_like(CREDS, "c1", False, _client=c)
         await fp.facebook_pages.delete_comment(CREDS, "c1", _client=c)
         await fp.facebook_pages.delete_post(CREDS, "post1", _client=c)
     assert seen[0] == ("POST", "post1/comments", {"message": "thanks"})
