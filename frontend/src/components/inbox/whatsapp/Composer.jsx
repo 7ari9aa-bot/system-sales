@@ -8,14 +8,14 @@ const WORDS = {
   ar: {
     placeholder: "اكتب رسالة", send: "إرسال", emoji: "الرموز التعبيرية", attach: "إرفاق", voice: "تسجيل رسالة صوتية",
     cancelReply: "إلغاء الرد", you: "أنت", customer: "العميل", attachment: "مرفق",
-    closed: "انتهت نافذة الـ 24 ساعة. لا يمكن إرسال رسالة حرة، يلزم قالب معتمد.",
+    closed: "انتهت نافذة الـ 24 ساعة. لا يمكن إرسال رسالة حرة، يلزم قالب معتمد.", sendTemplate: "إرسال قالب",
     sending: "جارٍ الإرسال",
     left: "متبقي", over: "تجاوزت الحد بمقدار", dismiss: "إغلاق",
   },
   en: {
     placeholder: "Type a message", send: "Send", emoji: "Emoji", attach: "Attach", voice: "Record voice message",
     cancelReply: "Cancel reply", you: "You", customer: "Customer", attachment: "Attachment",
-    closed: "The 24-hour window has closed. You cannot send a free-form message, an approved template is required.",
+    closed: "The 24-hour window has closed. You cannot send a free-form message, an approved template is required.", sendTemplate: "Send a template",
     sending: "Sending",
     left: "left", over: "Over the limit by", dismiss: "Dismiss",
   },
@@ -30,7 +30,7 @@ const WORDS = {
  */
 export default function Composer({
   value, onChange, onSend, onToggleEmoji, onCancelReply, replyingTo, customerName,
-  lastCustomerMessageAt, sending = false, lang = "ar", now, fontFamily, onPickFile, onStartVoice,
+  lastCustomerMessageAt, sending = false, lang = "ar", now, fontFamily, onPickFile, onStartVoice, onOpenTemplates,
 }) {
   const w = WORDS[lang] || WORDS.en;
   const ref = useRef(null);
@@ -55,7 +55,10 @@ export default function Composer({
     return (
       <div data-testid="composer-closed" role="status" dir={lang === "ar" ? "rtl" : "ltr"} style={{ fontFamily }} className="flex items-center gap-3 px-4 py-3 text-[13.5px] text-[color:var(--wa-text-icon)]">
         <AlertIcon size={20} className="shrink-0 text-[color:var(--wa-warn)]" />
-        <span>{w.closed}</span>
+        <span className="flex-1">{w.closed}</span>
+        {onOpenTemplates && (
+          <button type="button" data-testid="composer-send-template" onClick={() => onOpenTemplates()} className="shrink-0 rounded-full bg-[var(--wa-green,#00a884)] px-4 py-2 text-[13.5px] font-medium text-white">{w.sendTemplate}</button>
+        )}
       </div>
     );
   }
@@ -79,7 +82,7 @@ export default function Composer({
       <div dir="ltr" data-testid="composer-capsule" className="flex min-h-[52px] items-end gap-0 rounded-[28px] bg-[var(--wa-bg-capsule)] px-1 py-1 sm:gap-0.5 sm:px-2 shadow-[0_1px_3px_rgba(11,20,26,0.13)]">
         <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label={w.attach} aria-haspopup="menu" aria-expanded={menuOpen} title={w.attach} data-testid="composer-attach" className={iconBtn}><PlusIcon size={26} className={menuOpen ? "rotate-45 transition-transform" : "transition-transform"} /></button>
         <button type="button" onClick={onToggleEmoji} aria-label={w.emoji} title={w.emoji} data-testid="composer-emoji" className={iconBtn}><EmojiIcon size={26} /></button>
-        <AttachMenu open={menuOpen} onClose={() => setMenuOpen(false)} onPick={(file, opts) => onPickFile?.(file, opts)} lang={lang} />
+        <AttachMenu open={menuOpen} onClose={() => setMenuOpen(false)} onPick={(file, opts) => onPickFile?.(file, opts)} onOpenTemplates={onOpenTemplates} lang={lang} />
         <div className="mx-1 min-w-0 flex-1">
           <textarea
             ref={ref}

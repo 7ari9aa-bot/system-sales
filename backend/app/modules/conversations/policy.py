@@ -239,7 +239,18 @@ class MessagingPolicyService:
         )
 
 
+def template_language(template_vars: dict | None) -> str:
+    """The language a template send is made in: the ONE rule the policy check and the adapter share.
+
+    Meta reviews each language of a template separately, so the policy must look up the very
+    language the adapter will put on the wire. A blank value counts as absent.
+    """
+    value = (template_vars or {}).get("language_code")
+    return str(value).strip() if value and str(value).strip() else "ar"
+
+
 __all__ = [
+    "template_language",
     "CHANNEL_POLICIES",
     "ChannelMessagingPolicy",
     "MessagingPolicyService",

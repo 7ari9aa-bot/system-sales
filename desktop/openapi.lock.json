@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 572,
-    "sha256": "607165a0c998c008ad583233c35a715a39499f8eefad6be4035ebfb68b68de9e",
+    "operations": 573,
+    "sha256": "7b5be324716548f80b6d902c48a74d8791a2a27028b30120301015628823f86b",
     "typed_operations": 320
   },
   "spec": {
@@ -20182,11 +20182,72 @@
         },
         "TemplateUpsertRequest": {
           "properties": {
+            "body_examples": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Body Examples",
+              "type": "array"
+            },
             "body_text": {
               "maxLength": 4096,
               "minLength": 1,
               "title": "Body Text",
               "type": "string"
+            },
+            "buttons": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "maxItems": 10,
+              "title": "Buttons",
+              "type": "array"
+            },
+            "category": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            },
+            "footer": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Footer"
+            },
+            "header_examples": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1,
+              "title": "Header Examples",
+              "type": "array"
+            },
+            "header_text": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Header Text"
             },
             "language": {
               "default": "ar",
@@ -56833,6 +56894,102 @@
             }
           },
           "summary": "Create Template",
+          "tags": [
+            "templates"
+          ]
+        }
+      },
+      "/api/v1/message-templates/sync": {
+        "post": {
+          "description": "Pull every template's review state from Meta (what turns \"submitted\" into \"approved\").",
+          "operationId": "sync_templates_api_v1_message_templates_sync_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Sync Templates",
           "tags": [
             "templates"
           ]

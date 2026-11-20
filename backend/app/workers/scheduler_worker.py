@@ -138,6 +138,12 @@ async def _refresh_meta_channel_tokens() -> int:
     return await sweep_expiring_tokens()
 
 
+async def _sync_whatsapp_template_status() -> int:
+    from app.workers.whatsapp_template_sync import sweep_template_status
+
+    return await sweep_template_status()
+
+
 GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
     "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
@@ -154,6 +160,9 @@ GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     # configuration requests expiring tokens. Renew ahead of time so channel
     # owners do not have to repeat OAuth every two months.
     "meta.channel_token_refresh": (timedelta(hours=6), _refresh_meta_channel_tokens),
+    # Meta reviews a template after it is submitted and can pause one later. Asked every
+    # 15 minutes, and only for stores that have a template Meta may still change.
+    "whatsapp.template_status_sync": (timedelta(minutes=15), _sync_whatsapp_template_status),
 }
 
 

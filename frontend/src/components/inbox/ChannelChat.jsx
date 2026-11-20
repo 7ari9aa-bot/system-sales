@@ -32,6 +32,7 @@ import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
+import TemplatePicker from "./whatsapp/TemplatePicker";
 import AttachPreview from "./whatsapp/AttachPreview";
 import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
@@ -92,6 +93,7 @@ export default function ChannelChat({
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   // WhatsApp only: the file the agent picked (or the voice note just recorded),
   // shown in a preview until Send uploads it and sends the message.
   const [attachment, setAttachment] = useState(null); // { file, kind, asSticker, audioUrl? }
@@ -615,6 +617,17 @@ export default function ChannelChat({
         onFileSelected={(file) => pickFile(file)}
       />
 
+      {isWhatsApp && (
+        <TemplatePicker
+          open={templatesOpen}
+          lang={lang}
+          fontFamily={WHATSAPP_FONT}
+          onClose={() => setTemplatesOpen(false)}
+          loadTemplates={async () => (await api("/message-templates?status=approved&provider=whatsapp"))?.items || []}
+          onSend={async (template) => (await onSend?.(conversation.id, "", { template })) !== false}
+        />
+      )}
+
       {isWhatsApp && attachment && (
         <AttachPreview
           file={attachment.file}
@@ -696,6 +709,7 @@ export default function ChannelChat({
             fontFamily={WHATSAPP_FONT}
             onPickFile={pickFile}
             onStartVoice={() => { setAttachError(""); setIsRecordingVoice(true); }}
+            onOpenTemplates={() => setTemplatesOpen(true)}
           />
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>

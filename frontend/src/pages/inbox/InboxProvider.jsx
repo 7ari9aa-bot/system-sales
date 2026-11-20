@@ -643,7 +643,7 @@ export function InboxProvider({ children }) {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null, quickReplies: opts.quickReplies || null });
+      const result = await sendReply(conversationId, opts.template ? "" : text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null, quickReplies: opts.quickReplies || null, templateName: opts.template?.name || null, templateVars: opts.template?.vars || null, templateLanguage: opts.template?.language || null });
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -673,7 +673,7 @@ export function InboxProvider({ children }) {
         ...(opts.sharePostId && opts.sharedPost
           ? { contentType: "share", card: { type: "share", kind: "ig_post", url: opts.sharedPost.permalink || null, title: opts.sharedPost.caption || null } }
           : {}),
-        text: opts.heart ? "\u2764\ufe0f" : text,
+        text: opts.heart ? "\u2764\ufe0f" : (opts.template?.preview ?? text),
         time: displayTime(createdAt),
         createdAt,
         status: sent?.status || "queued",

@@ -7,7 +7,13 @@ import uuid
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.core.errors import ConflictError, PermissionDeniedError
 from app.modules.conversations.routers._deps import TenantContext, require_permission
+from app.modules.conversations.routers.inbox import (
+    _allowed_channels,
+    _channel_config,
+    _sendable_channels,
+)
 from app.modules.conversations.templates import TemplateInput, TemplateService
 
 templates_router = APIRouter(prefix="/message-templates", tags=["templates"])
@@ -19,6 +25,13 @@ class TemplateUpsertRequest(BaseModel):
     language: str = Field(default="ar", max_length=15)
     provider: str = Field(default="whatsapp", max_length=31)
     variables: list[str] = Field(default_factory=list)
+    # WhatsApp only. With a category the template is created and reviewed on Meta.
+    category: str | None = Field(default=None, max_length=15)
+    header_text: str | None = Field(default=None, max_length=60)
+    footer: str | None = Field(default=None, max_length=60)
+    buttons: list[dict] = Field(default_factory=list, max_length=10)
+    body_examples: list[str] = Field(default_factory=list, max_length=20)
+    header_examples: list[str] = Field(default_factory=list, max_length=1)
 
 
 class TemplateRejectRequest(BaseModel):
@@ -39,6 +52,11 @@ def _template_out(t) -> dict:
         "body_text": t.body_text,
         "variables": t.variables or [],
         "provider_template_id": t.provider_template_id,
+        "category": t.category,
+        "components": t.components or [],
+        "rejection_reason": t.rejection_reason,
+        # A WhatsApp template with a category is reviewed by Meta: the UI hides hand approval.
+        "meta_managed": TemplateService.is_meta_managed(t),
         "version": t.version,
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
@@ -51,7 +69,31 @@ def _template_input(body: TemplateUpsertRequest) -> TemplateInput:
         language=body.language,
         provider=body.provider,
         variables=tuple(body.variables),
+        category=body.category,
+        header_text=body.header_text,
+        footer=body.footer,
+        buttons=tuple(body.buttons),
+        body_examples=tuple(body.body_examples),
+        header_examples=tuple(body.header_examples),
     )
+
+
+async def _whatsapp_credentials(ctx: TenantContext) -> dict:
+    """The connected WhatsApp account, after the user's channel grants are checked.
+
+    Submitting, syncing and deleting spend the customer's own Meta account, so they need the
+    stricter send grant, not just permission to read the inbox.
+    """
+    allowed = await _allowed_channels(ctx)
+    if allowed is not None and "whatsapp" not in allowed:
+        raise PermissionDeniedError("channel is not enabled for this user")
+    sendable = await _sendable_channels(ctx)
+    if sendable is not None and "whatsapp" not in sendable:
+        raise PermissionDeniedError("sending is not enabled for this user on this channel")
+    config = await _channel_config(ctx, "whatsapp")
+    if not config or not config.get("access_token"):
+        raise ConflictError("WhatsApp is not connected")
+    return config
 
 
 @templates_router.get("")
@@ -102,8 +144,25 @@ async def submit_template(
     template_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    template = await TemplateService.submit(ctx.session, ctx.tenant_id, template_id)
+    existing = await TemplateService.get(ctx.session, ctx.tenant_id, template_id)
+    credentials = (
+        await _whatsapp_credentials(ctx) if TemplateService.is_meta_managed(existing) else None
+    )
+    template = await TemplateService.submit(
+        ctx.session, ctx.tenant_id, template_id, credentials=credentials
+    )
     return _template_out(template)
+
+
+@templates_router.post("/sync")
+async def sync_templates(
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Pull every template's review state from Meta (what turns "submitted" into "approved")."""
+    result = await TemplateService.sync_from_meta(
+        ctx.session, ctx.tenant_id, credentials=await _whatsapp_credentials(ctx)
+    )
+    return result
 
 
 @templates_router.post("/{template_id}/approve")
@@ -161,4 +220,14 @@ async def archive_template(
     template_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    return _template_out(await TemplateService.archive(ctx.session, ctx.tenant_id, template_id))
+    existing = await TemplateService.get(ctx.session, ctx.tenant_id, template_id)
+    credentials = (
+        await _whatsapp_credentials(ctx)
+        if TemplateService.is_meta_managed(existing) and existing.status != "draft"
+        else None
+    )
+    return _template_out(
+        await TemplateService.remove(
+            ctx.session, ctx.tenant_id, template_id, credentials=credentials
+        )
+    )

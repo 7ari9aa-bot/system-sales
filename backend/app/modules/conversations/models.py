@@ -251,6 +251,12 @@ class MessageTemplate(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     provider: Mapped[str] = mapped_column(String(31), server_default="whatsapp")
     provider_template_id: Mapped[str | None] = mapped_column(String(127))
     version: Mapped[int] = mapped_column(default=1)
+    # UTILITY | MARKETING | AUTHENTICATION (WhatsApp). None for channels that have no categories.
+    category: Mapped[str | None] = mapped_column(String(15))
+    # Header / footer / buttons exactly as sent to the provider; [] means "just the body".
+    components: Mapped[list] = mapped_column(JSONB, server_default="[]", default=list)
+    # The provider's own words when it refused the template.
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", "language", name="uq_templates_tenant_name_lang"),

@@ -348,3 +348,54 @@ describe("uploadMedia sends the type the screen accepted the file under", () => 
     expect(await sent({ name: "a", type: "" }, null)).toBe("application/octet-stream");
   });
 });
+
+describe("sendReply with a WhatsApp template", () => {
+  const send = (api, intents, extra) =>
+    sendReply("c1", "", { api, intents, templateName: "order_ready", templateLanguage: "en", templateVars: { body_params: ["Ali"] }, ...extra });
+
+  it("sends the template name, its values and its language, and no body", async () => {
+    const api = vi.fn(async () => ({ id: "m1" }));
+    await send(api, fresh());
+    expect(api.mock.calls[0][1].body).toEqual({
+      template_name: "order_ready",
+      template_vars: { body_params: ["Ali"] },
+      template_language: "en",
+    });
+  });
+
+  it("a template with nothing to fill still sends an (empty) values object", async () => {
+    const api = vi.fn(async () => ({ id: "m1" }));
+    await send(api, fresh(), { templateVars: null });
+    expect(api.mock.calls[0][1].body.template_vars).toEqual({});
+  });
+
+  it("an ordinary message carries none of the template fields", async () => {
+    const api = vi.fn(async () => ({ id: "m1" }));
+    await sendReply("c1", "hi", { api, intents: fresh() });
+    expect(api.mock.calls[0][1].body).toEqual({ body: "hi" });
+  });
+
+  it("a retry of the SAME template keeps the key", async () => {
+    const intents = fresh();
+    const api = vi.fn()
+      .mockRejectedValueOnce(err({ code: "timeout" }))
+      .mockResolvedValueOnce({ id: "m1" });
+    await send(api, intents);
+    await send(api, intents);
+    expect(api.mock.calls[1][1].headers["Idempotency-Key"]).toBe(api.mock.calls[0][1].headers["Idempotency-Key"]);
+  });
+
+  it.each([
+    ["another template", { templateName: "other_tpl" }],
+    ["other values", { templateVars: { body_params: ["Omar"] } }],
+    ["another language", { templateLanguage: "ar" }],
+  ])("%s is a new intention with a new key, never a replay of the first", async (_label, change) => {
+    const intents = fresh();
+    const api = vi.fn()
+      .mockRejectedValueOnce(err({ code: "timeout" }))
+      .mockResolvedValueOnce({ id: "m2" });
+    await send(api, intents);
+    await send(api, intents, change);
+    expect(api.mock.calls[1][1].headers["Idempotency-Key"]).not.toBe(api.mock.calls[0][1].headers["Idempotency-Key"]);
+  });
+});

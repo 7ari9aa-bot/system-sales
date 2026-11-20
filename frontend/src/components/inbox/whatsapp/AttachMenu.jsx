@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from "react";
-import { CameraIcon, FileIcon } from "./icons";
+import { CameraIcon, FileIcon, ListIcon } from "./icons";
 
 const WORDS = {
-  ar: { menu: "إرفاق", document: "مستند", media: "صور وفيديو", sticker: "ملصق", camera: "كاميرا" },
-  en: { menu: "Attach", document: "Document", media: "Photos & videos", sticker: "Sticker", camera: "Camera" },
+  ar: { menu: "إرفاق", document: "مستند", media: "صور وفيديو", sticker: "ملصق", camera: "كاميرا", template: "قالب" },
+  en: { menu: "Attach", document: "Document", media: "Photos & videos", sticker: "Sticker", camera: "Camera", template: "Template" },
 };
 
 const DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,text/plain";
@@ -14,7 +14,7 @@ const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/3gpp";
  * the browser's own file picker; the picked file goes to the preview, never
  * straight to the customer.
  */
-export default function AttachMenu({ open, onClose, onPick, lang = "ar" }) {
+export default function AttachMenu({ open, onClose, onPick, onOpenTemplates, lang = "ar" }) {
   const w = WORDS[lang] || WORDS.en;
   const ref = useRef(null);
   const docRef = useRef(null);
@@ -55,6 +55,11 @@ export default function AttachMenu({ open, onClose, onPick, lang = "ar" }) {
           <button type="button" role="menuitem" className={item} data-testid="attach-sticker" onClick={() => stickerRef.current?.click()}>
             <span className="grid h-9 w-9 place-items-center rounded-full bg-[#02a698] text-lg text-white" aria-hidden="true">☺</span>{w.sticker}
           </button>
+          {onOpenTemplates && (
+            <button type="button" role="menuitem" className={item} data-testid="attach-template" onClick={() => { onClose?.(); onOpenTemplates(); }}>
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-[#00a884] text-white"><ListIcon size={20} /></span>{w.template}
+            </button>
+          )}
         </div>
       )}
     </>

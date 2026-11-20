@@ -25,7 +25,11 @@ from app.modules.conversations.models import (
     Message,
     normalize_conversation_status,
 )
-from app.modules.conversations.policy import MessagingPolicyService, OutboundBlockedError
+from app.modules.conversations.policy import (
+    MessagingPolicyService,
+    OutboundBlockedError,
+    template_language,
+)
 
 
 class ConversationService:
@@ -206,6 +210,9 @@ class ConversationService:
                 tenant_id,
                 conversation,
                 template_name=template_name,
+                # The language the adapter will really send. Checking another one would approve
+                # (or block) the wrong template: Meta reviews every language on its own.
+                language=template_language(template_vars),
                 sender_type=sender_type,
             )
             if not decision.allowed:

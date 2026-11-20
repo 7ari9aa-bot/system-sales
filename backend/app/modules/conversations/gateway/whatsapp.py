@@ -23,6 +23,8 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_provider_body,
 )
+from app.modules.conversations.gateway.whatsapp_templates import build_send_components
+from app.modules.conversations.policy import template_language
 
 GRAPH_BASE = "https://graph.facebook.com/v27.0"
 
@@ -382,16 +384,8 @@ class WhatsAppAdapter:
             "to": message.customer_ref,
         }
         if message.template_name:
-            lang = message.template_vars.get("language_code", "ar")
-            components = []
-            params = message.template_vars.get("body_params") or []
-            if params:
-                components.append(
-                    {
-                        "type": "body",
-                        "parameters": [{"type": "text", "text": str(p)} for p in params],
-                    }
-                )
+            lang = template_language(message.template_vars)
+            components = build_send_components(message.template_vars)
             return {
                 **base,
                 "type": "template",
