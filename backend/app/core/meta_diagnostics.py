@@ -141,7 +141,8 @@ CATALOG: dict[str, Issue] = {
     "send.rate_limited": Issue(
         "medium",
         "Meta throttled outgoing messages.",
-        "Slow the send rate; messages are retried.",
+        "Slow the send rate. A message Meta refused for this is not retried automatically: "
+        "resend it from the conversation.",
     ),
     "send.window_closed": Issue(
         "medium",
