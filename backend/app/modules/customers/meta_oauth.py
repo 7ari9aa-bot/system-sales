@@ -424,6 +424,22 @@ async def _meta_exchange_and_connect(
                 "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."  # noqa: E501
             )
 
+        # Evidence for support: which pages Meta returned and whether each carries an
+        # Instagram business account. Ids and names only; never a token.
+        _logger.info(
+            "meta_oauth.pages provider=%s granted=%s pages=%s",
+            provider,
+            ",".join(sorted(granted)) if granted else "-",
+            [
+                {
+                    "id": str(p.get("id")),
+                    "name": p.get("name"),
+                    "tasks": p.get("tasks"),
+                    "ig": (p.get("instagram_business_account") or {}).get("id"),
+                }
+                for p in all_pages
+            ],
+        )
         pages = _messaging_pages(all_pages)
         if len(pages) > 1:
             # One channel holds one Page and the owner ticked several: ask which, instead of
