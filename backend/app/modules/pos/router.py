@@ -831,6 +831,7 @@ async def get_receipt(receipt_id: UUID, ctx: PosReadCtx):
         },
         "lines": [{**line, "variant_id": str(line["variant_id"])} for line in payload["lines"]],
         "tenders": payload["tenders"],
+        "shop": payload["shop"],
     }
 
 

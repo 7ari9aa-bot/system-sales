@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, getTokens, setTokens, prefetchDashboard, ApiError } from "@/lib/api";
 import { queryClientInstance } from "@/lib/query-client";
 import { currentVisitorId } from "@/lib/visitorId";
+import { setShopCurrency } from "@/cashier/lib/format";
 
 /** مصادقة حقيقية على /auth/* — login و register و logout و me.
  *  بيتحمل مرة واحدة: لو فيه توكنات بيجيب /auth/me، ولو فشلت بيمسح
@@ -15,6 +16,13 @@ export function AuthProvider({ children }) {
   const [isLoadingAuth, setLoadingAuth] = useState(() => Boolean(getTokens()));
   const [authError, setAuthError] = useState(null);
   const navigate = useNavigate();
+
+  // Every amount on every screen is written in the shop's own currency. Whenever the signed-in
+  // user changes (login, switch of shop, logout) the sign follows; a user in several shops uses the
+  // single shop's currency, and none is set otherwise so the default stands.
+  useEffect(() => {
+    setShopCurrency(user?.tenants?.length === 1 ? user.tenants[0].currency : undefined);
+  }, [user]);
 
   const checkUserAuth = useCallback(async () => {
     if (!getTokens()) {

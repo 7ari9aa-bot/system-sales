@@ -30,7 +30,9 @@ async def _current_user(session, user_id) -> schemas.CurrentUser:
         avatar_url=avatar.read_url(full.avatar_url),
         mfa_enabled=await is_mfa_enabled(session, user_id=user_id),
         tenants=[
-            schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
+            schemas.CurrentTenant(
+                id=t.id, name=t.name, slug=t.slug, role_code=role, currency=t.currency
+            )
             for t, role in tenants
         ],
     )

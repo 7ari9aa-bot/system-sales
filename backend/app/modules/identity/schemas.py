@@ -102,6 +102,8 @@ class CurrentTenant(BaseModel):
     name: str
     slug: str
     role_code: str | None = None
+    # The one currency this shop trades in (ISO 4217), so a screen writes amounts in it.
+    currency: str | None = None
 
 
 class CurrentUser(BaseModel):

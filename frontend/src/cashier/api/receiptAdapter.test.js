@@ -121,3 +121,28 @@ describe("receiptFromApi invoice note", () => {
     expect(receiptFromApi(api, { cashier: "سارة" }).items[0].name).toBe("قميص قطن - أبيض / M");
   });
 });
+
+describe("receiptFromApi: what the owner set for the receipt", () => {
+  const shop = { shop_name: "الأمل", address: "القاهرة", phone: "0100", tax_id: "9", paper_mm: 58, show_logo: false, header_text: null, footer_text: "شكراً", copies: 2, show_tax_detail: true, exchange_days: 30 };
+
+  it("carries the shop block the server resolved for this receipt", () => {
+    const r = receiptFromApi({ ...api, shop }, ctx);
+    expect(r.shop).toMatchObject({ name: "الأمل", address: "القاهرة", paperMm: 58, copies: 2, exchangeDays: 30, footerText: "شكراً" });
+  });
+
+  it("an older reply with no shop block still prints, with plain defaults", () => {
+    const r = receiptFromApi(api, ctx);
+    expect(r.shop).toMatchObject({ name: "", paperMm: 80, copies: 1, exchangeDays: 0 });
+  });
+
+  it("keeps the order's own currency code, to be written as its sign", () => {
+    expect(receiptFromApi(api, ctx).currency).toBe("EGP");
+    expect(receiptFromApi({ ...api, order: { ...api.order, currency: " SAR " } }, ctx).currency).toBe("SAR");
+  });
+
+  it("no currency on the order is empty, never a guess", () => {
+    for (const currency of [null, undefined, "", "  ", 5]) {
+      expect(receiptFromApi({ ...api, order: { ...api.order, currency } }, ctx).currency).toBe("");
+    }
+  });
+});

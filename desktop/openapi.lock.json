@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 591,
-    "sha256": "b226aed936b134f7b4981430db15f31090230b1bf61571cb04d1039763c7363c",
+    "sha256": "374afc99395e27df0cb834ab3f52cc3f61f645b1a6e5993d29262dacfa42ab6d",
     "typed_operations": 334
   },
   "spec": {
@@ -4896,6 +4896,17 @@
         },
         "CurrentTenant": {
           "properties": {
+            "currency": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            },
             "id": {
               "format": "uuid",
               "title": "Id",

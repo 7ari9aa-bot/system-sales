@@ -46,4 +46,5 @@ def test_every_key_a_module_reads_is_marked_enforced() -> None:
 def test_the_flag_reaches_the_definition() -> None:
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["pos.max_discount_pct"].enforced
-    assert not by_key["print.copies"].enforced
+    assert by_key["print.copies"].enforced
+    assert not by_key["print.invoice_prefix"].enforced

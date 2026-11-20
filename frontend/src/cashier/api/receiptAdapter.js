@@ -5,6 +5,7 @@
  * change is passed through, and paid - change always equals the order total.
  */
 import { parseMoney } from "./money";
+import { receiptShop } from "@/cashier/lib/receiptShop";
 
 const num = (wire) => (wire === null || wire === undefined ? 0 : parseMoney(wire).minor / 100);
 const LABELS = { cash: "نقدي", card: "بطاقة", wallet: "محفظة إلكترونية", bank_transfer: "تحويل بنكي" };
@@ -16,7 +17,7 @@ export function statusOf(order, items) {
 }
 
 export function receiptFromApi(data, { cashier = "", customerName = "", names = {} } = {}) {
-  const { receipt, order, lines = [], tenders = [] } = data;
+  const { receipt, order, lines = [], tenders = [], shop } = data;
   const payments = tenders.map((t) => ({ method: t.method, label: LABELS[t.method] ?? t.method, amount: num(t.amount) }));
   const nonCash = payments.filter((p) => p.method !== "cash").reduce((s, p) => s + p.amount, 0);
   const cashPaid = payments.filter((p) => p.method === "cash").reduce((s, p) => s + p.amount, 0);
@@ -74,5 +75,9 @@ export function receiptFromApi(data, { cashier = "", customerName = "", names = 
     paymentLabel: payments.map((p) => p.label).join(" + "),
     note: String(order.note ?? ""),
     status: statusOf(order, items),
+    // What the owner set for this receipt: name, address, wording, paper, copies. The preview and the
+    // printed copy both read it, so neither carries a policy of its own.
+    shop: receiptShop(shop),
+    currency: typeof order.currency === "string" && order.currency.trim() ? order.currency.trim() : "",
   };
 }
