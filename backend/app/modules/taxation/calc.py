@@ -76,3 +76,36 @@ def split_document(
         tax=sum((x.tax for x in lines), _ZERO),
         gross=sum((x.gross for x in lines), _ZERO),
     )
+
+
+def allocate_discount(line_nets: list[Decimal], discount: Decimal) -> list[Decimal]:
+    """Spread an order-level discount over the lines in proportion to their value.
+
+    The shares add up to ``discount`` EXACTLY: the last line takes what is left after the others
+    are rounded, so no piaster is created or lost. A line is never discounted below zero.
+    """
+    if discount < 0:
+        raise ValueError("a discount cannot be negative")
+    total = sum(line_nets, _ZERO)
+    if discount == 0 or total == 0:
+        return [_ZERO for _ in line_nets]
+    if discount > total:
+        raise ValueError("the discount exceeds the value of the lines")
+    shares: list[Decimal] = []
+    given = _ZERO
+    last = len(line_nets) - 1
+    for index, net in enumerate(line_nets):
+        share = discount - given if index == last else _money(discount * net / total)
+        share = min(share, net)
+        shares.append(share)
+        given += share
+    # A capped line can leave a remainder; put it on the first line that can still take it.
+    left = discount - given
+    for index, net in enumerate(line_nets):
+        if left <= 0:
+            break
+        room = net - shares[index]
+        take = min(room, left)
+        shares[index] += take
+        left -= take
+    return shares

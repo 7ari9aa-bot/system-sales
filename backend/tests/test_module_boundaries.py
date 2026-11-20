@@ -263,7 +263,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 246 -> 247 on 2026-11-20: the new taxation module's router imports identity.deps for
 # require_permission, exactly as every other module's router does. Not avoidable: the permission
 # check lives in identity.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 247
+# 247 -> 249 on 2026-11-20: orders reads taxation (service for the tax profile and classes, calc
+# for the exact split) to extract the tax inside a shelf price. One direction only: taxation never
+# imports orders, and both imports are function-scope.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 249
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

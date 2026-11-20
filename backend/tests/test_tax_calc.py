@@ -75,3 +75,44 @@ def test_the_invariant_holds_over_a_wide_sweep() -> None:
             line = split_line(amount, rate)
             assert line.net + line.tax == line.gross, (amount, rate)
             assert line.tax >= 0
+
+
+# ---- spreading an order-level discount ----
+
+from app.modules.taxation.calc import allocate_discount  # noqa: E402
+
+
+def test_the_shares_add_up_to_the_discount_exactly() -> None:
+    nets = [D("33.33"), D("33.33"), D("33.34")]
+    shares = allocate_discount(nets, D("10.00"))
+    assert sum(shares) == D("10.00")
+
+
+def test_a_discount_is_spread_in_proportion() -> None:
+    assert allocate_discount([D("100.00"), D("300.00")], D("40.00")) == [D("10.00"), D("30.00")]
+
+
+def test_no_line_goes_below_zero() -> None:
+    shares = allocate_discount([D("1.00"), D("99.00")], D("100.00"))
+    assert sum(shares) == D("100.00")
+    assert all(s >= 0 for s in shares)
+    assert [n - s for n, s in zip([D("1.00"), D("99.00")], shares, strict=True)] == [D("0.00")] * 2
+
+
+def test_no_discount_no_shares() -> None:
+    assert allocate_discount([D("10.00"), D("20.00")], D("0")) == [D("0.00"), D("0.00")]
+
+
+def test_a_discount_larger_than_the_basket_is_refused() -> None:
+    with pytest.raises(ValueError):
+        allocate_discount([D("10.00")], D("10.01"))
+
+
+def test_the_sweep_never_creates_or_loses_a_piaster() -> None:
+    nets = [D("19.99"), D("0.01"), D("250.50"), D("7.77")]
+    total = sum(nets)
+    for cents in range(0, int(total * 100) + 1, 37):
+        discount = D(cents) / D(100)
+        shares = allocate_discount(nets, discount)
+        assert sum(shares) == discount, discount
+        assert all(0 <= s <= n for s, n in zip(shares, nets, strict=True)), discount

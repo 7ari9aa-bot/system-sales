@@ -72,6 +72,10 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     )
     # allowed: draft | active | archived
     status: Mapped[str] = mapped_column(String(15), server_default="draft")
+    # The tax treatment of this product (taxation.tax_classes). NULL means the shop's default
+    # class. No foreign key on purpose: catalog does not import taxation, and a class is only ever
+    # deactivated, never deleted, so the id stays resolvable.
+    tax_class_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, server_default="{}")
 
     # §45 full text — DATABASE-DERIVED, never assign. `simple` is pinned because

@@ -53,6 +53,11 @@ class Order(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Base
     discount_total: Mapped[float] = mapped_column(MONEY, server_default="0")
     shipping_total: Mapped[float] = mapped_column(MONEY, server_default="0")
     tax_total: Mapped[float] = mapped_column(MONEY, server_default="0")
+    # Tax that is INSIDE the prices (the shelf price is what the customer pays), extracted for the
+    # tax return and the e-receipt. It is NOT added to grand_total: grand = subtotal - discount +
+    # shipping + tax_total, and tax_included is already inside subtotal. 0 for a shop that is not
+    # VAT-registered, and for every order that predates this column.
+    tax_included: Mapped[float] = mapped_column(MONEY, server_default="0")
     grand_total: Mapped[float] = mapped_column(MONEY, server_default="0")
     # allowed: whatsapp | instagram | messenger | telegram | webchat | dashboard
     channel: Mapped[str | None] = mapped_column(String(31))
@@ -103,6 +108,10 @@ class OrderItem(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base
     # approval gate). ``total`` carries the line's NET.
     discount_pct: Mapped[float] = mapped_column(Numeric(5, 2), server_default="0")
     total: Mapped[float] = mapped_column(MONEY)
+    # Frozen at the sale: the rate and the tax inside ``total``. A tax class edited later must not
+    # rewrite a receipt that was already issued, so the line carries its own copy.
+    tax_rate: Mapped[float] = mapped_column(Numeric(6, 4), server_default="0")
+    tax_included: Mapped[float] = mapped_column(MONEY, server_default="0")
 
     __table_args__ = (Index("ix_order_items_tenant_order", "tenant_id", "order_id"),)
 
