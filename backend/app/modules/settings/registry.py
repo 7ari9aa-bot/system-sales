@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from app.modules.settings.capabilities import CAPABILITIES, DEFAULT_VERTICAL, VERTICALS
+
 
 class SettingType(enum.StrEnum):
     BOOL = "bool"
@@ -201,6 +203,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.reference_required_methods",  # pos/service.py::record_sale
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
+        "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
         "business.trade_name",  # pos/receipt_settings.py::receipt_settings
         "business.legal_name",  # pos/receipt_settings.py::receipt_settings
         "business.address.line1",  # pos/receipt_settings.py::receipt_settings
@@ -384,6 +387,43 @@ _reg(
         description_en="The kind of business. It decides which settings you see.",
     )
 )
+
+_reg(
+    SettingDef(
+        key="business.vertical",
+        domain="business",
+        type=SettingType.ENUM,
+        default=DEFAULT_VERTICAL,
+        scopes=(Scope.TENANT,),
+        allowed_values=VERTICALS,
+        label_ar="قطاع النشاط",
+        label_en="Industry",
+        description_ar=(
+            "ملابس أو صيدلية أو مطعم أو عام. يحدد القدرات المفعّلة مبدئياً وتعدّل كل واحدة منها بنفسك."
+        ),
+        description_en=(
+            "Apparel, pharmacy, restaurant or general. It sets which capabilities "
+            "start on; you can change each one."
+        ),
+    )
+)
+
+# One owner switch per capability. The vertical only chooses the starting answer (see
+# ``capabilities.capability_enabled``), so the list lives in one place: capabilities.CAPABILITIES.
+for _cap in CAPABILITIES.values():
+    _reg(
+        SettingDef(
+            key=f"capability.{_cap.name}",
+            domain="business",
+            type=SettingType.BOOL,
+            default=False,
+            scopes=(Scope.TENANT,),
+            label_ar=_cap.label_ar,
+            label_en=_cap.label_en,
+            description_ar=_cap.description_ar,
+            description_en=_cap.description_en,
+        )
+    )
 
 # ============================= POS & SALES ================================
 
@@ -577,6 +617,21 @@ _reg(
         label_en="Auto Reserve for Orders",
         description_ar="حجز مخزون الطلب تلقائياً عند إنشائه.",
         description_en="Reserve an order's stock automatically when it is created.",
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.expiry_alert_days",
+        domain="inventory",
+        type=SettingType.NUMBER,
+        default=30,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=730,
+        label_ar="تنبيه قرب الانتهاء (أيام)",
+        label_en="Expiry alert window (days)",
+        description_ar="الدفعة التي تنتهي صلاحيتها خلال هذه المدة تظهر في تقرير قرب الانتهاء.",
+        description_en="A batch that expires within this many days appears in the expiry report.",
     )
 )
 _reg(

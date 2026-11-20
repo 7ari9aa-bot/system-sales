@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 589,
-    "sha256": "ae2bbeb3b97ff006b1ce6bc36d3db077c25d91fec5517dfe07b4bd4bec19744a",
-    "typed_operations": 334
+    "operations": 591,
+    "sha256": "a20c4c02c287cb50cf3be5dc2fb061e91fe4b425432d8da7b02f8df308932eb2",
+    "typed_operations": 335
   },
   "spec": {
     "components": {
@@ -51307,6 +51307,102 @@
           ]
         }
       },
+      "/api/v1/inventory/expiry-report": {
+        "get": {
+          "description": "Expired and soon-to-expire batches; the owner sets the window.",
+          "operationId": "get_expiry_report_api_v1_inventory_expiry_report_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Expiry Report",
+          "tags": [
+            "inventory"
+          ]
+        }
+      },
       "/api/v1/inventory/inspections": {
         "post": {
           "operationId": "create_inspection_api_v1_inventory_inspections_post",
@@ -79212,6 +79308,106 @@
             }
           },
           "summary": "Bulk Set Settings",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/capabilities": {
+        "get": {
+          "description": "The shop's vertical and what it can do, as its owner has set them (final answers).",
+          "operationId": "get_shop_capabilities_api_v1_settings_capabilities_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Get Shop Capabilities Api V1 Settings Capabilities Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Shop Capabilities",
           "tags": [
             "settings"
           ]
