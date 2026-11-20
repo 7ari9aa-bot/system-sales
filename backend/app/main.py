@@ -110,6 +110,7 @@ from app.modules.platform.routers.owner import router as owner_console_router
 from app.modules.platform.routers.sites_platform import router as sites_platform_router
 from app.modules.platform.routers.telemetry import router as public_telemetry_router
 from app.modules.pos.router import router as pos_router
+from app.modules.privacy.router import public_router as privacy_public_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
 from app.modules.realtime.router import router as realtime_router
@@ -486,6 +487,7 @@ def create_app() -> FastAPI:
         realtime_router,
         notifications_router,
         privacy_router,
+        privacy_public_router,
         platform_module_router,
         platform_impersonation_router,
         owner_console_router,

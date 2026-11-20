@@ -127,6 +127,11 @@ CATALOG: dict[str, Issue] = {
         "Meta's webhook verification request was refused.",
         "The verify token in Meta must equal the one configured on the server.",
     ),
+    "webhook.deletion_bad_signature": Issue(
+        "high",
+        "A data-deletion request reached the callback with a signature that did not verify.",
+        "Check that the Meta app secret configured on the server is the one for this app.",
+    ),
     "webhook.silent": Issue(
         "high",
         "The channel is connected but no delivery has arrived for a long time.",

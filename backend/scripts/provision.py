@@ -251,6 +251,55 @@ WABA_TENANT_FN_REVOKE = (
     "REVOKE ALL ON FUNCTION public.resolve_whatsapp_waba_tenant(text) FROM PUBLIC;"
 )
 
+META_USER_CUSTOMER_FN_SQL = """
+CREATE OR REPLACE FUNCTION public.resolve_meta_user_customer(p_external_id text)
+RETURNS TABLE (tenant_id uuid, customer_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+    SELECT ci.tenant_id, ci.customer_id
+      FROM public.customer_identities ci
+     WHERE p_external_id IS NOT NULL
+       AND p_external_id <> ''
+       AND ci.channel IN ('messenger', 'instagram', 'facebook')
+       AND ci.external_id = p_external_id
+       AND (
+             SELECT count(DISTINCT (x.tenant_id, x.customer_id))
+               FROM public.customer_identities x
+              WHERE x.channel IN ('messenger', 'instagram', 'facebook')
+                AND x.external_id = p_external_id
+           ) = 1
+     LIMIT 1
+$fn$;
+"""
+
+META_DELETION_STATUS_FN_SQL = """
+CREATE OR REPLACE FUNCTION public.meta_deletion_status(p_request_id uuid)
+RETURNS TABLE (status text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+    SELECT d.status::text
+      FROM public.data_subject_requests d
+     WHERE d.id = p_request_id
+       AND d.request_type = 'delete'
+       AND d.payload_scope->>'source' = 'meta_data_deletion_callback'
+     LIMIT 1
+$fn$;
+"""
+
+META_DELETION_STATUS_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.meta_deletion_status(uuid) FROM PUBLIC;"
+)
+
+META_USER_CUSTOMER_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.resolve_meta_user_customer(text) FROM PUBLIC;"
+)
+
 # asyncpg's extended-query protocol accepts ONE statement per execute, so the
 # REVOKE is issued separately (same reason as the migration).
 CHANNEL_TENANT_FN_REVOKE = (
@@ -735,6 +784,16 @@ async def main() -> None:
         await conn.execute(WABA_TENANT_FN_REVOKE)
         await conn.execute(
             "GRANT EXECUTE ON FUNCTION public.resolve_whatsapp_waba_tenant(text) TO sales_app"
+        )
+        await conn.execute(META_USER_CUSTOMER_FN_SQL)
+        await conn.execute(META_USER_CUSTOMER_FN_REVOKE)
+        await conn.execute(
+            "GRANT EXECUTE ON FUNCTION public.resolve_meta_user_customer(text) TO sales_app"
+        )
+        await conn.execute(META_DELETION_STATUS_FN_SQL)
+        await conn.execute(META_DELETION_STATUS_FN_REVOKE)
+        await conn.execute(
+            "GRANT EXECUTE ON FUNCTION public.meta_deletion_status(uuid) TO sales_app"
         )
         await seed(conn)
         # System infrastructure tables RLS policies

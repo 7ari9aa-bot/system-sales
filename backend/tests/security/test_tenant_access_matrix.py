@@ -70,6 +70,12 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /api/v1/auth/mfa/confirm",
         "POST /api/v1/auth/mfa/disable",
         "POST /api/v1/invitations/accept",
+        # Meta's data-deletion callback (privacy/router.py public_router): Meta posts it with no
+        # user session, the signed_request IS the credential (HMAC-SHA256 under the app secret,
+        # fails closed without one), and the status page answers only for codes the callback
+        # itself issued. Covered by tests/test_meta_data_deletion_callback.py.
+        "POST /api/v1/webhooks/meta/data-deletion",
+        "GET /api/v1/webhooks/meta/data-deletion/status/{confirmation_code}",
         # account-global recovery (docs/ACCOUNT_RECOVERY.md): password reset
         # runs BEFORE any tenant scope exists; the token row is account-scoped
         # and inaccessible to Supabase public roles by migration.

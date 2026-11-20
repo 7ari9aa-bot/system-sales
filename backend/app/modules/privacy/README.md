@@ -4,13 +4,19 @@ PRIVACY domain — consent, data-subject requests, retention (spec §51-52).
 
 ## Where things are
 
+- `meta_deletion.py` (Meta's data-deletion callback: verify `signed_request`, open a `delete` request)
 - `models.py`
 - `router.py`
 - `service.py`
 
 ## HTTP
 
-7 endpoints. Route prefixes: `/privacy`. Registered in `app/main.py`.
+9 endpoints. Route prefixes: `/privacy`, and the public `/webhooks/meta/data-deletion` (Meta's
+deletion callback and its status page, authenticated only by the signed request). Registered in
+`app/main.py`.
+
+The callback only OPENS a deletion request; it never erases. The merchant executes it from the
+privacy screen, because a signature check alone must not be able to trigger an irreversible erasure.
 
 ## Tables
 

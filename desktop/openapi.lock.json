@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 591,
-    "sha256": "a20c4c02c287cb50cf3be5dc2fb061e91fe4b425432d8da7b02f8df308932eb2",
+    "operations": 593,
+    "sha256": "f7d3ea57d79ab3b0eee9265ffa981689d78398606b8a0c61b8bc8a6804998444",
     "typed_operations": 335
   },
   "spec": {
@@ -88529,6 +88529,67 @@
           "summary": "Rotate Webhook Secret",
           "tags": [
             "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion": {
+        "post": {
+          "description": "Meta's data-deletion callback: verify `signed_request`, open a deletion request.\n\nMeta needs `{url, confirmation_code}` back. The merchant executes the request from the\nprivacy screen; see `app.modules.privacy.meta_deletion` for why it is not automatic.",
+          "operationId": "meta_data_deletion_api_v1_webhooks_meta_data_deletion_post",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Meta Data Deletion",
+          "tags": [
+            "privacy"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion/status/{confirmation_code}": {
+        "get": {
+          "description": "The page Meta shows the person: where their deletion request stands.",
+          "operationId": "meta_data_deletion_status_api_v1_webhooks_meta_data_deletion_status__confirmation_code__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "confirmation_code",
+              "required": true,
+              "schema": {
+                "title": "Confirmation Code",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Meta Data Deletion Status",
+          "tags": [
+            "privacy"
           ]
         }
       },
