@@ -260,7 +260,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # only the shared gap-free ``document_counters`` counter guarantees (purchasing already draws
 # POs and returns from it the same way). The old random suffix could not be audited for a
 # missing receipt. Lazy and declared, no new cycle (test_no_new_module_import_cycles).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 246
+# 246 -> 247 on 2026-11-20: the new taxation module's router imports identity.deps for
+# require_permission, exactly as every other module's router does. Not avoidable: the permission
+# check lives in identity.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 247
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 574,
-    "sha256": "7bfa9cc4c4fd90c162b95755b4416d5453db52549073e69b70fab3e4bc938178",
-    "typed_operations": 320
+    "operations": 578,
+    "sha256": "40490db88d1f64fe4c0a77715e998b9dc1cbbb9bfba72d40dfa84978774a19a5",
+    "typed_operations": 324
   },
   "spec": {
     "components": {
@@ -15308,6 +15308,334 @@
           "title": "PostCommentsToggleRequest",
           "type": "object"
         },
+        "ProfileOut": {
+          "properties": {
+            "activity_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Code"
+            },
+            "branch_code": {
+              "title": "Branch Code",
+              "type": "string"
+            },
+            "building_number": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Building Number"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "commercial_register": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commercial Register"
+            },
+            "country_code": {
+              "title": "Country Code",
+              "type": "string"
+            },
+            "governorate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Governorate"
+            },
+            "legal_name": {
+              "title": "Legal Name",
+              "type": "string"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "postal_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            },
+            "street": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Street"
+            },
+            "tax_registration_number": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Registration Number"
+            },
+            "trade_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Name"
+            },
+            "vat_status": {
+              "title": "Vat Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "legal_name",
+            "trade_name",
+            "vat_status",
+            "tax_registration_number",
+            "commercial_register",
+            "activity_code",
+            "branch_code",
+            "governorate",
+            "city",
+            "street",
+            "building_number",
+            "postal_code",
+            "phone",
+            "country_code"
+          ],
+          "title": "ProfileOut",
+          "type": "object"
+        },
+        "ProfileRequest": {
+          "properties": {
+            "activity_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Code"
+            },
+            "branch_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch Code"
+            },
+            "building_number": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Building Number"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "commercial_register": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commercial Register"
+            },
+            "governorate": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Governorate"
+            },
+            "legal_name": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Legal Name",
+              "type": "string"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "postal_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            },
+            "street": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Street"
+            },
+            "tax_registration_number": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Registration Number"
+            },
+            "trade_name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Name"
+            },
+            "vat_status": {
+              "default": "not_registered",
+              "pattern": "^(registered|not_registered)$",
+              "title": "Vat Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "legal_name"
+          ],
+          "title": "ProfileRequest",
+          "type": "object"
+        },
+        "ProfileResponse": {
+          "properties": {
+            "missing_for_e_receipt": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Missing For E Receipt",
+              "type": "array"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProfileOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "profile",
+            "missing_for_e_receipt"
+          ],
+          "title": "ProfileResponse",
+          "type": "object"
+        },
         "ProfileUpdate": {
           "description": "The parts of an account its owner may rewrite about themselves.\n\nDeliberately narrow: the full name is the one personal fact the API owns.\nEmail is not here — changing it is a verified-identity operation (prove the\ninbox, then move the login), not a field edit, and the address is the key\ninvitations bind to. The workspace name is not here either: it belongs to\nthe shop (``PUT /tenants/{id}/name``), not to the person.",
           "properties": {
@@ -20153,6 +20481,91 @@
             }
           },
           "title": "TaskUpdate",
+          "type": "object"
+        },
+        "TaxClassOut": {
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "eta_sub_type": {
+              "title": "Eta Sub Type",
+              "type": "string"
+            },
+            "eta_tax_type": {
+              "title": "Eta Tax Type",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "is_default": {
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rate": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Rate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "code",
+            "name",
+            "rate",
+            "eta_tax_type",
+            "eta_sub_type",
+            "is_default",
+            "is_active"
+          ],
+          "title": "TaxClassOut",
+          "type": "object"
+        },
+        "TaxClassRequest": {
+          "properties": {
+            "code": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "eta_sub_type": {
+              "default": "V009",
+              "maxLength": 15,
+              "title": "Eta Sub Type",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "rate": {
+              "maxLength": 8,
+              "minLength": 1,
+              "title": "Rate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "name",
+            "rate"
+          ],
+          "title": "TaxClassRequest",
           "type": "object"
         },
         "TelemetryEventIn": {
@@ -82200,6 +82613,414 @@
           "summary": "Update Task Status",
           "tags": [
             "operations"
+          ]
+        }
+      },
+      "/api/v1/taxation/classes": {
+        "get": {
+          "operationId": "list_classes_api_v1_taxation_classes_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/TaxClassOut"
+                    },
+                    "title": "Response List Classes Api V1 Taxation Classes Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Classes",
+          "tags": [
+            "taxation"
+          ]
+        },
+        "post": {
+          "operationId": "create_class_api_v1_taxation_classes_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxClassRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaxClassOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Class",
+          "tags": [
+            "taxation"
+          ]
+        }
+      },
+      "/api/v1/taxation/profile": {
+        "get": {
+          "operationId": "get_profile_api_v1_taxation_profile_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProfileResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Profile",
+          "tags": [
+            "taxation"
+          ]
+        },
+        "put": {
+          "operationId": "put_profile_api_v1_taxation_profile_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProfileResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Put Profile",
+          "tags": [
+            "taxation"
           ]
         }
       },
