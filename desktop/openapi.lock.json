@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 589,
-    "sha256": "2f996e82a8ecf6c089fa12c8901f72298483614507c98941941a39c8dbbb4c6f",
-    "typed_operations": 333
+    "operations": 591,
+    "sha256": "b226aed936b134f7b4981430db15f31090230b1bf61571cb04d1039763c7363c",
+    "typed_operations": 334
   },
   "spec": {
     "components": {
@@ -12607,6 +12607,20 @@
             "content"
           ],
           "title": "MessageSendRequest",
+          "type": "object"
+        },
+        "MetaOAuthChoosePageOut": {
+          "description": "Contract for POST /integrations/meta/oauth/choose-page: which channel was connected,\nas ``<provider>:<display name>`` (the popup shows it back to the owner).",
+          "properties": {
+            "connected": {
+              "title": "Connected",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connected"
+          ],
+          "title": "MetaOAuthChoosePageOut",
           "type": "object"
         },
         "MetaOAuthPageChoiceIn": {
@@ -50127,7 +50141,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/MetaOAuthChoosePageOut"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -88306,6 +88322,67 @@
           "summary": "Rotate Webhook Secret",
           "tags": [
             "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion": {
+        "post": {
+          "description": "Meta's data-deletion callback: verify `signed_request`, open a deletion request.\n\nMeta needs `{url, confirmation_code}` back. The merchant executes the request from the\nprivacy screen; see `app.modules.privacy.meta_deletion` for why it is not automatic.",
+          "operationId": "meta_data_deletion_api_v1_webhooks_meta_data_deletion_post",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Meta Data Deletion",
+          "tags": [
+            "privacy"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion/status/{confirmation_code}": {
+        "get": {
+          "description": "The page Meta shows the person: where their deletion request stands.",
+          "operationId": "meta_data_deletion_status_api_v1_webhooks_meta_data_deletion_status__confirmation_code__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "confirmation_code",
+              "required": true,
+              "schema": {
+                "title": "Confirmation Code",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Meta Data Deletion Status",
+          "tags": [
+            "privacy"
           ]
         }
       },
