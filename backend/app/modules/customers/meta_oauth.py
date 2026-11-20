@@ -194,6 +194,22 @@ def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     return f"{step} failed ({code}): {message}" if code else f"{step} failed: {message}"
 
 
+async def _flag(
+    key: str, provider: str | None, tenant_id: uuid.UUID | None, details: dict | None = None
+) -> None:
+    """Name a linking failure on the channel's trail. Never raises, never changes the outcome."""
+    from app.core.meta_diagnostics import record_channel_issue
+
+    await record_channel_issue(key, channel=provider, tenant_id=tenant_id, details=details)
+
+
+def _graph_fields(payload: dict) -> dict:
+    """Meta's own error fields (code, subcode, type, fbtrace_id) for a failed Graph response."""
+    from app.core.meta_diagnostics import graph_error_fields
+
+    return graph_error_fields(payload.get("error") if isinstance(payload, dict) else None)
+
+
 async def _subscribe_page_to_app(
     http, *, page_id: str, page_token: str, provider: str = "messenger"
 ) -> None:
@@ -351,9 +367,11 @@ async def _meta_exchange_and_connect(
         failure = _meta_graph_error(swap, step="code exchange")
         if failure:
             _logger.warning("meta_oauth.exchange_failed %s", failure)
+            await _flag("link.code_exchange_failed", provider, tenant_id, _graph_fields(swap))
             raise ValidationError(failure[:200])
         user_token = swap.get("access_token")
         if not user_token:
+            await _flag("link.code_exchange_failed", provider, tenant_id, {"reason": "no_token"})
             raise ValidationError("Meta rejected the authorization code.")
 
         # 2) Short-lived → LONG-LIVED user token (fb_exchange_token grant).
@@ -384,6 +402,12 @@ async def _meta_exchange_and_connect(
             if not long_token:
                 failure = _meta_graph_error(long_lived, step="long-lived exchange")
                 _logger.warning("meta_oauth.longlived_failed %s", failure)
+                await _flag(
+                    "link.code_exchange_failed",
+                    provider,
+                    tenant_id,
+                    {"step": "long_lived", **_graph_fields(long_lived)},
+                )
                 raise ValidationError(
                     (failure or "Meta refused the long-lived token exchange.")[:200]
                 )
@@ -401,6 +425,7 @@ async def _meta_exchange_and_connect(
             lacking = missing_facebook_scopes(granted)
             if lacking:
                 _logger.warning("meta_oauth.facebook_scopes_missing %s", ",".join(lacking))
+                await _flag("link.scopes_missing", provider, tenant_id, {"missing": list(lacking)})
                 raise ValidationError(
                     "لم تُمنح كل صلاحيات فيسبوك المطلوبة للنشر والتعليقات والإحصاءات "
                     f"({', '.join(lacking)}). أعد الربط وفعّل كل الصلاحيات في نافذة فيسبوك."
@@ -416,10 +441,17 @@ async def _meta_exchange_and_connect(
         failure = _meta_graph_error(accounts, step="page listing")
         if failure:
             _logger.warning("meta_oauth.accounts_failed %s", failure)
+            await _flag(
+                "link.code_exchange_failed",
+                provider,
+                tenant_id,
+                {"step": "page_listing", **_graph_fields(accounts)},
+            )
             raise ValidationError(failure[:200])
 
         all_pages = accounts.get("data", [])
         if not all_pages:
+            await _flag("link.no_pages", provider, tenant_id, {"granted": sorted(granted)})
             raise ValidationError(
                 "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."  # noqa: E501
             )
@@ -508,6 +540,12 @@ async def _connect_page(
         ig_id = str(ig_account.get("id") or "")
         if not ig_id:
             page_title = page.get("name") or str(page.get("id") or "المحددة")
+            await _flag(
+                "link.no_instagram_account",
+                provider,
+                tenant_id,
+                {"page_id": str(page.get("id")), "page_name": page.get("name")},
+            )
             raise ValidationError(
                 f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."  # noqa: E501
             )
@@ -517,9 +555,19 @@ async def _connect_page(
     verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
     # A channel that cannot receive provider webhooks is not connected.
-    await _subscribe_page_to_app(
-        http, page_id=str(page["id"]), page_token=page_token, provider=provider
-    )
+    try:
+        await _subscribe_page_to_app(
+            http, page_id=str(page["id"]), page_token=page_token, provider=provider
+        )
+    except ExternalProviderError as exc:
+        # Without this subscription nothing the customer sends would ever arrive.
+        await _flag(
+            "link.subscription_failed",
+            provider,
+            tenant_id,
+            {"page_id": str(page["id"]), "reason": str(exc)[:200]},
+        )
+        raise
 
     from app.core.meta_tokens import token_expiry
 
@@ -878,6 +926,12 @@ async def meta_oauth_callback(
             error,
             error_code,
             description[:200],
+        )
+        await _flag(
+            "link.window_closed" if error == "access_denied" else "link.code_exchange_failed",
+            None,
+            None,
+            {"error": error, "error_code": error_code, "description": description[:200]},
         )
         return _back("error", detail)
 

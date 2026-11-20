@@ -38,6 +38,17 @@ def _get_adapter(channel: str):
     return default_get_adapter(channel)
 
 
+async def _flag_untenanted(key: str, channel: str, details: dict | None = None) -> None:
+    """Name a webhook problem that has no tenant yet (signature/verify failures come first).
+
+    Tenant-less rows are written with ``tenant_id=None`` (the security trail's pre-auth case); the
+    caller's own refusal still goes out, so a failure to record can never change the answer.
+    """
+    from app.core.meta_diagnostics import record_channel_issue
+
+    await record_channel_issue(key, channel=channel, details=details)
+
+
 @webhook_router.get("/webhooks/{channel}")
 async def verify_webhook(channel: str, request: Request):
     if channel not in _WEBHOOK_CHANNELS:
@@ -47,6 +58,8 @@ async def verify_webhook(channel: str, request: Request):
         raise NotFoundError(f"unknown channel: {channel}")
     challenge = adapter.verify_request(dict(request.query_params))
     if challenge is None:
+        # Meta's "Verify and save" lands here; a wrong verify token is otherwise invisible.
+        await _flag_untenanted("webhook.verify_failed", channel)
         raise PermissionDeniedError("verification failed")
     return Response(content=challenge, media_type="text/plain")
 
@@ -62,10 +75,18 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     raw = await request.body()
     headers = {k.lower(): v for k, v in request.headers.items()}
     if not adapter.check_signature(headers, raw):
+        # The commonest reason a connected channel receives nothing: the app secret held here is
+        # not the one Meta signs with. Count it instead of refusing in silence.
+        await _flag_untenanted(
+            "webhook.bad_signature",
+            channel,
+            {"has_signature_header": "x-hub-signature-256" in headers, "bytes": len(raw)},
+        )
         raise PermissionDeniedError("invalid signature")
     try:
         payload = json.loads(raw or b"{}")
     except json.JSONDecodeError as exc:
+        await _flag_untenanted("webhook.unparsable", channel, {"bytes": len(raw)})
         # 422, not the domain 400: an unparsable body is a FRAMEWORK-shaped
         # validation refusal (the same class as a pydantic 422), answered in
         # the unified envelope by the StarletteHTTPException handler with
@@ -117,6 +138,9 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes)
         # unattributed delivery, so log and ACK; the durable audit trail and
         # the §24 retry cover attributed deliveries only.
         logger.info("webhook.unknown_tenant channel=%s", channel)
+        await _flag_untenanted(
+            "webhook.unknown_account", channel, {"account_key": str(tenant_key)[:64]}
+        )
         return {"ok": True}
 
     from app.core.db import bind_tenant
