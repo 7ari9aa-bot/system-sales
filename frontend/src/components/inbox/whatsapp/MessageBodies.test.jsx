@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
-import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./MessageBodies";
+import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./MessageBodies";
 
 const r = (el) => renderToStaticMarkup(el);
 
@@ -64,5 +64,52 @@ describe("DocumentBody actions (as in the real app)", () => {
     const html = r(<DocumentBody label="a.pdf" lang="en" />);
     expect(html).not.toContain("document-open");
     expect(html).not.toContain("Save as");
+  });
+});
+
+// These three are exactly what the server returns for a sent message (built by the same code that
+// builds what Meta receives), so the screen and the server cannot drift apart unnoticed.
+const SENT = {"buttons": {"type": "button", "body": {"text": "تأكيد الطلب؟"}, "header": {"type": "text", "text": "Order #7"}, "footer": {"text": "شكرًا"}, "action": {"buttons": [{"type": "reply", "reply": {"id": "yes", "title": "تأكيد"}}, {"type": "reply", "reply": {"id": "no", "title": "إلغاء"}}]}}, "list": {"type": "list", "body": {"text": "اختر الشحن"}, "action": {"button": "الخيارات", "sections": [{"title": "الشحن", "rows": [{"id": "fast", "title": "سريع", "description": "يوم واحد"}, {"id": "slow", "title": "عادي"}]}]}}, "cta": {"type": "cta_url", "body": {"text": "تابع طلبك"}, "action": {"name": "cta_url", "parameters": {"display_text": "فتح", "url": "https://fihrist.world/o/1"}}}};
+
+describe("an interactive message we sent", () => {
+  test("reply buttons show the text, header, footer and every button title in order", () => {
+    const out = r(<InteractiveBody message={SENT.buttons} lang="en" />);
+    expect(out).toContain("Order #7");
+    expect(out).toContain("تأكيد الطلب؟");
+    expect(out).toContain("شكرًا");
+    expect(out.match(/data-testid="interactive-choice"/g)).toHaveLength(2);
+    expect(out.indexOf("تأكيد</span>")).toBeLessThan(out.indexOf("إلغاء"));
+  });
+  test("reply buttons are not clickable here: the agent is not the customer", () => {
+    const out = r(<InteractiveBody message={SENT.buttons} lang="en" />);
+    expect(out).not.toMatch(/<button|<a /);
+  });
+  test("a list shows its button AND every section and row, so the agent can see what was offered", () => {
+    const out = r(<InteractiveBody message={SENT.list} lang="en" />);
+    expect(out).toContain("الخيارات");
+    expect(out).toContain("الشحن");
+    expect(out.match(/data-testid="interactive-row"/g)).toHaveLength(2);
+    expect(out).toContain("يوم واحد");
+    expect(out).toContain("<details");
+  });
+  test("a link button is a real link that opens safely in a new tab", () => {
+    const out = r(<InteractiveBody message={SENT.cta} lang="en" />);
+    expect(out).toContain('href="https://fihrist.world/o/1"');
+    expect(out).toContain('target="_blank"');
+    expect(out).toContain('rel="noopener noreferrer"');
+    expect(out).toContain("فتح");
+  });
+  test("a message with no choices still shows its text and draws no empty frame", () => {
+    const out = r(<InteractiveBody message={{ type: "button", body: { text: "Hi" }, action: { buttons: [] } }} lang="en" />);
+    expect(out).toContain("Hi");
+    expect(out).not.toContain("interactive-choice");
+    expect(out).not.toContain("border-t");
+  });
+  test("nothing is shown for an empty message instead of crashing", () => {
+    expect(() => r(<InteractiveBody message={null} lang="en" />)).not.toThrow();
+  });
+  test("text is escaped, not injected", () => {
+    const evil = { type: "button", body: { text: "<img src=x onerror=alert(1)>" }, action: { buttons: [] } };
+    expect(r(<InteractiveBody message={evil} lang="en" />)).not.toContain("<img");
   });
 });

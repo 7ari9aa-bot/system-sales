@@ -298,12 +298,32 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "my_reaction": (reactions.get(m.id) or {}).get("outbound") or "",
                 # The tap-to-reply buttons we sent under this message (Instagram).
                 "quick_replies": [] if m.deleted else _quick_replies(m),
+                # The buttons / list / link button we sent (WhatsApp), for the bubble to draw.
+                "interactive": None if m.deleted else _present_interactive(m),
             }
         )
     return items
 
 
 _CARD_KEYS = ("share", "story_reply", "story_mention")
+
+
+def _present_interactive(m) -> dict | None:
+    """The interactive message we sent, rebuilt and checked, or None.
+
+    Never the stored dict as-is: it is run through the same builder that produced what Meta got,
+    so the browser only ever sees a checked shape, and a row whose spec no longer passes (a rule
+    that tightened since) shows its plain text instead of failing the whole conversation.
+    """
+    spec = (m.provider_metadata or {}).get("interactive")
+    if not spec or m.direction != "outbound":
+        return None
+    from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+
+    try:
+        return build_interactive(spec)
+    except ValidationError:
+        return None
 
 
 def _quick_replies(m) -> list[str]:

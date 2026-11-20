@@ -170,3 +170,43 @@ async def test_a_plain_text_message_is_unchanged(monkeypatch) -> None:
     (stored,) = seen["messages"]
     assert stored["body"] == "hello"
     assert "content_type" not in stored and "provider_metadata" not in stored
+
+
+# ------------------------------------------------------------------ what the thread gets back
+
+
+def _row(meta, direction="outbound"):
+    return SimpleNamespace(provider_metadata=meta, direction=direction)
+
+
+def test_the_thread_gets_the_checked_message_to_draw():
+    from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+    from app.modules.conversations.routers.inbox import _present_interactive
+
+    assert _present_interactive(_row({"interactive": BUTTONS})) == build_interactive(BUTTONS)
+
+
+def test_the_thread_never_gets_the_stored_dict_as_is():
+    from app.modules.conversations.routers.inbox import _present_interactive
+
+    shown = _present_interactive(_row({"interactive": {**BUTTONS, "internal_note": "secret"}}))
+    assert "internal_note" not in shown and "kind" not in shown
+
+
+def test_a_spec_that_no_longer_passes_shows_plain_text_not_an_error():
+    from app.modules.conversations.routers.inbox import _present_interactive
+
+    assert _present_interactive(_row({"interactive": {**BUTTONS, "body": ""}})) is None
+
+
+@pytest.mark.parametrize("meta", [None, {}, {"interactive": None}, {"interactive": {}}])
+def test_a_message_without_one_has_none(meta):
+    from app.modules.conversations.routers.inbox import _present_interactive
+
+    assert _present_interactive(_row(meta)) is None
+
+
+def test_a_customers_message_never_carries_one():
+    from app.modules.conversations.routers.inbox import _present_interactive
+
+    assert _present_interactive(_row({"interactive": BUTTONS}, direction="inbound")) is None

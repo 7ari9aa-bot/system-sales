@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { BlockedIcon, FileIcon, ListIcon, PinIcon, PlayIcon, UserIcon } from "./icons";
+import { BlockedIcon, FileIcon, LinkOutIcon, ListIcon, PinIcon, PlayIcon, UserIcon } from "./icons";
 import { fileExtension, fileNameOf, parseContact, parseLocation } from "./messageKind";
 import { cn } from "@/lib/utils";
 
 const WORDS = {
-  ar: { location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", open: "فتح", saveAs: "حفظ باسم...", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
-  en: { location: "Location", contact: "Contact", document: "Document", download: "Download", open: "Open", saveAs: "Save as...", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
+  ar: { choices: "الخيارات", location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", open: "فتح", saveAs: "حفظ باسم...", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
+  en: { choices: "Choices", location: "Location", contact: "Contact", document: "Document", download: "Download", open: "Open", saveAs: "Save as...", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
 };
 const t = (lang) => WORDS[lang] || WORDS.en;
 
@@ -136,6 +136,73 @@ export function UnsupportedBody({ lang }) {
     <div data-testid="unsupported" dir="auto" className="flex items-start gap-2 italic text-[color:var(--wa-text-secondary)]">
       <BlockedIcon size={16} className="mt-0.5 shrink-0" />
       <span>{t(lang).unsupported}</span>
+    </div>
+  );
+}
+
+// A message WE sent with choices under it (buttons, a list, or a link button), drawn like the
+// customer sees it. The agent is not the customer, so reply buttons and the list button only SHOW
+// the choices; the link button is a real link. `message` is what the server checked and rebuilt.
+export function InteractiveBody({ message, lang }) {
+  const w = t(lang);
+  const action = message?.action || {};
+  const rows = [];
+  if (message?.type === "button") {
+    for (const b of action.buttons || []) rows.push({ key: b.reply.id, label: b.reply.title, icon: null });
+  } else if (message?.type === "list") {
+    rows.push({ key: "list", label: action.button, icon: <ListIcon size={16} /> });
+  } else if (message?.type === "cta_url") {
+    rows.push({ key: "cta", label: action.parameters?.display_text, href: action.parameters?.url, icon: <LinkOutIcon size={16} /> });
+  }
+  const header = message?.header?.type === "text" ? message.header.text : "";
+  return (
+    <div data-testid={`interactive-${message?.type || "unknown"}`} className="w-64 max-w-full">
+      {header && <div dir="auto" className="mb-1 font-semibold">{header}</div>}
+      <div dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message?.body?.text}</div>
+      {message?.footer?.text && (
+        <div dir="auto" className="mt-1 text-[12.5px] text-[color:var(--wa-text-secondary)]">{message.footer.text}</div>
+      )}
+      {rows.length > 0 && (
+        <div className="-mx-1 mt-2 border-t border-[color:var(--wa-divider)]" aria-label={w.choices}>
+          {rows.map((r, i) => {
+            const cls = cn(
+              "flex items-center justify-center gap-1.5 px-2 py-2 text-center text-[14px] font-medium text-[color:var(--wa-green-link)]",
+              i > 0 && "border-t border-[color:var(--wa-divider)]",
+            );
+            if (message?.type === "list") {
+              return (
+                <details key={r.key} data-testid="interactive-list" className="group">
+                  <summary className={cn(cls, "cursor-pointer list-none [&::-webkit-details-marker]:hidden hover:bg-black/5")}>
+                    {r.icon}<span dir="auto" className="truncate">{r.label}</span>
+                  </summary>
+                  <div className="space-y-2 pb-2 pt-1">
+                    {(action.sections || []).map((sec) => (
+                      <div key={sec.title}>
+                        <div dir="auto" className="px-2 text-[12px] font-semibold text-[color:var(--wa-text-secondary)]">{sec.title}</div>
+                        {sec.rows.map((row) => (
+                          <div key={row.id} data-testid="interactive-row" className="px-2 py-1">
+                            <div dir="auto" className="text-[13.5px]">{row.title}</div>
+                            {row.description && <div dir="auto" className="text-[12px] text-[color:var(--wa-text-secondary)]">{row.description}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              );
+            }
+            return r.href ? (
+              <a key={r.key} href={r.href} target="_blank" rel="noopener noreferrer" data-testid="interactive-link" className={cn(cls, "hover:bg-black/5")}>
+                {r.icon}<span dir="auto" className="truncate">{r.label}</span>
+              </a>
+            ) : (
+              <div key={r.key} data-testid="interactive-choice" className={cls}>
+                {r.icon}<span dir="auto" className="truncate">{r.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

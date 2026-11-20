@@ -348,6 +348,7 @@ export default function InboxWorkspace({ embedded = false }) {
           sending={sending}
           pendingDecision={pendingDecision}
           error={null}
+          sendError={error || ""}
           t={t}
           onSend={handleSend}
           onReact={handleReact}
