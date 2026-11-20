@@ -74,6 +74,7 @@ from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
 from app.modules.decisions.router import router as decisions_router
 from app.modules.effects.router import router as effects_router
+from app.modules.einvoice.router import router as einvoice_router
 from app.modules.evidence.router import router as evidence_router
 from app.modules.expenses.router import router as expenses_router
 from app.modules.financial.router import router as financial_router
@@ -466,6 +467,7 @@ def create_app() -> FastAPI:
         conversations_templates_router,
         conversations_public_router,
         conversations_webhook_router,
+        einvoice_router,
         catalog_router,
         website_platform_catalog_router,
         website_orders_router,
