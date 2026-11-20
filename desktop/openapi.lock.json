@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 578,
-    "sha256": "40490db88d1f64fe4c0a77715e998b9dc1cbbb9bfba72d40dfa84978774a19a5",
-    "typed_operations": 324
+    "operations": 585,
+    "sha256": "5dd1e4fc463f79cbdcff107d5aa67f5738c186ca59568c7a3a623641d3362d07",
+    "typed_operations": 331
   },
   "spec": {
     "components": {
@@ -75,7 +75,7 @@
           "properties": {
             "items": {
               "items": {
-                "$ref": "#/components/schemas/AccountOut"
+                "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
               },
               "title": "Items",
               "type": "array"
@@ -90,57 +90,6 @@
             "total"
           ],
           "title": "AccountListOut",
-          "type": "object"
-        },
-        "AccountOut": {
-          "properties": {
-            "account_id": {
-              "format": "uuid",
-              "title": "Account Id",
-              "type": "string"
-            },
-            "account_type": {
-              "title": "Account Type",
-              "type": "string"
-            },
-            "code": {
-              "title": "Code",
-              "type": "string"
-            },
-            "created_at": {
-              "format": "date-time",
-              "title": "Created At",
-              "type": "string"
-            },
-            "currency": {
-              "title": "Currency",
-              "type": "string"
-            },
-            "is_active": {
-              "title": "Is Active",
-              "type": "boolean"
-            },
-            "name": {
-              "title": "Name",
-              "type": "string"
-            },
-            "tenant_id": {
-              "format": "uuid",
-              "title": "Tenant Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "account_id",
-            "tenant_id",
-            "code",
-            "name",
-            "account_type",
-            "currency",
-            "is_active",
-            "created_at"
-          ],
-          "title": "AccountOut",
           "type": "object"
         },
         "ActivityOut": {
@@ -447,6 +396,29 @@
             "is_default"
           ],
           "title": "AddressOut",
+          "type": "object"
+        },
+        "AdjustRequest": {
+          "properties": {
+            "amount": {
+              "description": "+ raises debt, - lowers it",
+              "maxLength": 21,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            },
+            "reason": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "amount",
+            "reason"
+          ],
+          "title": "AdjustRequest",
           "type": "object"
         },
         "AgentCapabilityOut": {
@@ -1089,6 +1061,21 @@
             "target"
           ],
           "title": "AlertDestination",
+          "type": "object"
+        },
+        "AmountRequest": {
+          "properties": {
+            "amount": {
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            }
+          },
+          "required": [
+            "amount"
+          ],
+          "title": "AmountRequest",
           "type": "object"
         },
         "AnalysisOut": {
@@ -7681,59 +7668,6 @@
           "title": "EntryCreate",
           "type": "object"
         },
-        "EntryOut": {
-          "properties": {
-            "account_code": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Account Code"
-            },
-            "account_id": {
-              "format": "uuid",
-              "title": "Account Id",
-              "type": "string"
-            },
-            "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "title": "Amount",
-              "type": "string"
-            },
-            "entry_id": {
-              "format": "uuid",
-              "title": "Entry Id",
-              "type": "string"
-            },
-            "entry_type": {
-              "title": "Entry Type",
-              "type": "string"
-            },
-            "memo": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Memo"
-            }
-          },
-          "required": [
-            "entry_id",
-            "account_id",
-            "entry_type",
-            "amount"
-          ],
-          "title": "EntryOut",
-          "type": "object"
-        },
         "EvaluationCreateRequest": {
           "properties": {
             "agent_id": {
@@ -13508,6 +13442,36 @@
           "title": "OpenDayRequest",
           "type": "object"
         },
+        "OpenRequest": {
+          "properties": {
+            "credit_limit": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Credit Limit"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "title": "OpenRequest",
+          "type": "object"
+        },
         "OpenStocktakeRequest": {
           "properties": {
             "note": {
@@ -17298,6 +17262,21 @@
             "net_aov"
           ],
           "title": "RevenueSummaryOut",
+          "type": "object"
+        },
+        "ReverseRequest": {
+          "properties": {
+            "reason": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "title": "ReverseRequest",
           "type": "object"
         },
         "RoasRowOut": {
@@ -22584,7 +22563,7 @@
             },
             "entries": {
               "items": {
-                "$ref": "#/components/schemas/EntryOut"
+                "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
               },
               "title": "Entries",
               "type": "array"
@@ -24450,6 +24429,259 @@
             }
           },
           "title": "WorkspaceUpdate",
+          "type": "object"
+        },
+        "app__modules__customer_accounts__router__AccountOut": {
+          "properties": {
+            "available_credit": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Available Credit"
+            },
+            "balance": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Balance",
+              "type": "string"
+            },
+            "credit_held": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Credit Held",
+              "type": "string"
+            },
+            "credit_limit": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Credit Limit"
+            },
+            "customer_id": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "owes": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Owes",
+              "type": "string"
+            }
+          },
+          "required": [
+            "customer_id",
+            "credit_limit",
+            "note",
+            "balance",
+            "owes",
+            "credit_held",
+            "available_credit"
+          ],
+          "title": "AccountOut",
+          "type": "object"
+        },
+        "app__modules__customer_accounts__router__EntryOut": {
+          "properties": {
+            "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "balance_after": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Balance After",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "entry_type": {
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "order_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "reverses_entry_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverses Entry Id"
+            },
+            "seq": {
+              "title": "Seq",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "seq",
+            "entry_type",
+            "amount",
+            "balance_after",
+            "order_id",
+            "reverses_entry_id",
+            "reason",
+            "created_at"
+          ],
+          "title": "EntryOut",
+          "type": "object"
+        },
+        "app__modules__financial__schemas__AccountOut": {
+          "properties": {
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "account_type": {
+              "title": "Account Type",
+              "type": "string"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id",
+            "tenant_id",
+            "code",
+            "name",
+            "account_type",
+            "currency",
+            "is_active",
+            "created_at"
+          ],
+          "title": "AccountOut",
+          "type": "object"
+        },
+        "app__modules__financial__schemas__EntryOut": {
+          "properties": {
+            "account_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Code"
+            },
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "entry_id": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            },
+            "entry_type": {
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "memo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memo"
+            }
+          },
+          "required": [
+            "entry_id",
+            "account_id",
+            "entry_type",
+            "amount"
+          ],
+          "title": "EntryOut",
           "type": "object"
         },
         "app__modules__identity__schemas__LocationOut": {
@@ -37456,6 +37688,853 @@
           ]
         }
       },
+      "/api/v1/customer-accounts/entries/{entry_id}/reverse": {
+        "post": {
+          "operationId": "reverse_api_v1_customer_accounts_entries__entry_id__reverse_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "entry_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Entry Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reverse",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}": {
+        "get": {
+          "operationId": "get_account_api_v1_customer_accounts__customer_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Account",
+          "tags": [
+            "customer-accounts"
+          ]
+        },
+        "put": {
+          "operationId": "open_account_api_v1_customer_accounts__customer_id__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Account",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/adjustments": {
+        "post": {
+          "operationId": "adjust_api_v1_customer_accounts__customer_id__adjustments_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Adjust",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/deposits": {
+        "post": {
+          "operationId": "take_deposit_api_v1_customer_accounts__customer_id__deposits_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Take Deposit",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/payments": {
+        "post": {
+          "operationId": "receive_payment_api_v1_customer_accounts__customer_id__payments_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Receive Payment",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/statement": {
+        "get": {
+          "operationId": "statement_api_v1_customer_accounts__customer_id__statement_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 200,
+                "maximum": 1000,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    },
+                    "title": "Response Statement Api V1 Customer Accounts  Customer Id  Statement Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Statement",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
       "/api/v1/customers": {
         "get": {
           "operationId": "list_customers_api_v1_customers_get",
@@ -44858,7 +45937,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/AccountOut"
+                    "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
                   }
                 }
               },
@@ -45309,7 +46388,7 @@
                 "application/json": {
                   "schema": {
                     "items": {
-                      "$ref": "#/components/schemas/EntryOut"
+                      "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
                     },
                     "title": "Response List Transaction Entries Api V1 Financial Transactions  Transaction Id  Entries Get",
                     "type": "array"

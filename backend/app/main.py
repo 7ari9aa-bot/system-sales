@@ -70,6 +70,7 @@ from app.modules.conversations.router import (
 from app.modules.conversations.router import (
     webhook_router as conversations_webhook_router,
 )
+from app.modules.customer_accounts.router import router as customer_accounts_router
 from app.modules.customers.router import platform_router as platform_router
 from app.modules.customers.router import router as customers_router
 from app.modules.decisions.router import router as decisions_router
@@ -507,6 +508,7 @@ def create_app() -> FastAPI:
         purchasing_router,
         settings_router,
         taxation_router,
+        customer_accounts_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

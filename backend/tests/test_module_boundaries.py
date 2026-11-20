@@ -266,7 +266,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 247 -> 249 on 2026-11-20: orders reads taxation (service for the tax profile and classes, calc
 # for the exact split) to extract the tax inside a shelf price. One direction only: taxation never
 # imports orders, and both imports are function-scope.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 249
+# 249 -> 251 on 2026-11-20: customer_accounts imports identity.deps (require_permission, as every
+# router does) and customers.service (CustomerService.get, which refuses an archived or merged-away
+# customer: no credit account for someone who no longer exists). Through the service, not tables.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 251
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
