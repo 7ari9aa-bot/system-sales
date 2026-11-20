@@ -84,23 +84,7 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # registry and the orchestrating service are built and unit-tested, but no route or worker
     # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,
     # onboarding, sandbox to production), not a one-line call. Drop an entry when its caller lands.
-    "app.modules.einvoice.models": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.ports": ("e-invoicing: built, tested; caller lands per country rollout."),
-    "app.modules.einvoice.providers.eta.provider": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
-    "app.modules.einvoice.providers.eta.builder": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.calc": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.client": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.codes": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.context": _ETA_CORE_WHY,
     "app.modules.einvoice.providers.eta.mock_authority": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.models": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.qr": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.uuid_": _ETA_CORE_WHY,
-    "app.modules.einvoice.providers.eta.validator": _ETA_CORE_WHY,
     "app.modules.einvoice.providers.peppol_ae.pint": (
         "e-invoicing: built, tested; caller lands per country rollout."
     ),
