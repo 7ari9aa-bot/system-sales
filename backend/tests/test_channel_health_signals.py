@@ -157,3 +157,95 @@ async def test_bookkeeping_failure_never_breaks_the_quarantine(monkeypatch):
     await IngestService.mark_webhook_event_failed(
         _Broken(None, None), uuid.uuid4(), RuntimeError("x")
     )
+
+
+# ---- a linked channel that never hears from Meta ------------------------------------------
+# "Never received anything" used to be healthy forever: right for a connection a minute old,
+# wrong for one linked weeks ago whose webhook subscription silently never worked (app still in
+# Development mode, a missing field, a wrong callback). That channel looks fine and is dead.
+
+from app.modules.platform.routers.health import (  # noqa: E402
+    NO_WEBHOOK_AFTER_LINK,
+    integration_health_since_link,
+)
+
+
+def test_a_just_linked_channel_with_no_webhook_yet_is_still_healthy():
+    assert integration_health_since_link({}, linked_at=_ago(minutes=5), now=NOW) == "healthy"
+
+
+def test_a_channel_linked_long_ago_that_never_received_anything_is_degraded():
+    linked = (NOW - NO_WEBHOOK_AFTER_LINK - timedelta(minutes=1)).isoformat()
+    assert integration_health_since_link({}, linked_at=linked, now=NOW) == "degraded"
+
+
+def test_the_first_webhook_ends_the_wait():
+    health = {"last_webhook_at": _ago(minutes=3)}
+    assert integration_health_since_link(health, linked_at=_ago(days=30), now=NOW) == "healthy"
+
+
+@pytest.mark.parametrize("linked_at", [None, "", "not-a-date", 12345])
+def test_an_unknown_link_time_never_raises_and_never_cries_wolf(linked_at):
+    assert integration_health_since_link({}, linked_at=linked_at, now=NOW) == "healthy"
+
+
+def test_failures_still_win_over_the_link_age():
+    health = {"consecutive_failures": WEBHOOK_FAILURES_DOWN}
+    assert integration_health_since_link(health, linked_at=_ago(days=30), now=NOW) == "down"
+
+
+# ---- the roll-up must apply that rule only to channels that can be silent -----------------
+
+
+async def _rollup(db, tenant_ctx, rows: list[dict]) -> dict:
+    import uuid
+
+    from app.modules.platform.models import Integration
+    from app.modules.platform.routers.health import _integrations_subsystem
+
+    old = (datetime.now(UTC) - timedelta(days=3)).isoformat()
+    for row in rows:
+        db.add(
+            Integration(
+                id=uuid.uuid4(),
+                tenant_id=tenant_ctx.tenant_id,
+                kind=row.get("kind", "channel"),
+                provider=row["provider"],
+                status=row.get("status", "active"),
+                config={"_connection": {"verified_at": old}},
+                webhook_health=row.get("health", {}),
+                credentials={},
+            )
+        )
+    await db.flush()
+    ctx = type("Ctx", (), {"session": db, "tenant_id": tenant_ctx.tenant_id})()
+    return await _integrations_subsystem(ctx)
+
+
+async def test_a_live_channel_linked_days_ago_that_never_heard_from_meta_is_degraded(
+    db, tenant_ctx
+):
+    result = await _rollup(db, tenant_ctx, [{"provider": "messenger"}])
+    assert result["integrations"] == [{"provider": "messenger", "status": "degraded"}]
+    assert result["status"] == "degraded"
+
+
+async def test_a_channel_that_is_receiving_stays_healthy(db, tenant_ctx):
+    health = {"last_webhook_at": datetime.now(UTC).isoformat()}
+    result = await _rollup(db, tenant_ctx, [{"provider": "whatsapp", "health": health}])
+    assert result["status"] == "healthy"
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"provider": "messenger", "status": "pending"},
+        {"provider": "messenger", "status": "disconnected"},
+        {"provider": "messenger", "status": "reauth_required"},
+        {"provider": "webchat"},
+        {"provider": "stripe", "kind": "payment"},
+    ],
+)
+async def test_rows_that_have_no_webhook_to_wait_for_are_never_called_silent(db, tenant_ctx, row):
+    result = await _rollup(db, tenant_ctx, [row])
+    assert result["integrations"][0]["status"] == "healthy", row

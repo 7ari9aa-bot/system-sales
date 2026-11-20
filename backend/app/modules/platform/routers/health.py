@@ -99,6 +99,38 @@ def integration_health(webhook_health: dict | None, *, now: datetime | None = No
     return "healthy"
 
 
+#: A channel linked this long ago that has STILL never received a webhook is not "new", it is
+#: not working: the subscription was written but nothing arrives (the Meta app in Development
+#: mode, a missing field, a wrong callback URL). One hour is long enough that nobody is merely
+#: waiting for their first customer message to be tested.
+NO_WEBHOOK_AFTER_LINK = timedelta(hours=1)
+
+
+def integration_health_since_link(
+    webhook_health: dict | None, *, linked_at: object, now: datetime | None = None
+) -> str:
+    """``integration_health`` plus the one case it cannot see: linked, but never heard from.
+
+    ``integration_health`` calls a channel that never received anything healthy, so a fresh
+    connection is not flagged. Given WHEN it was linked, that stops being true after
+    ``NO_WEBHOOK_AFTER_LINK``. An unknown or unreadable link time never degrades a channel.
+    """
+    status = integration_health(webhook_health, now=now)
+    if status != "healthy" or (webhook_health or {}).get("last_webhook_at"):
+        return status
+    if not isinstance(linked_at, str) or not linked_at:
+        return status
+    try:
+        linked = datetime.fromisoformat(linked_at)
+    except ValueError:
+        return status
+    if linked.tzinfo is None:
+        linked = linked.replace(tzinfo=UTC)
+    if (now or datetime.now(UTC)) - linked > NO_WEBHOOK_AFTER_LINK:
+        return "degraded"
+    return status
+
+
 async def _database_subsystem(ctx: TenantContext) -> dict:
     try:
         await ctx.session.execute(text("SELECT 1"))
@@ -168,14 +200,26 @@ async def _dlq_subsystem() -> dict:
     return subsystem("dlq", status, f"{depth} dead-lettered events")
 
 
+_WEBHOOK_PROVIDERS = frozenset({"whatsapp", "messenger", "facebook", "instagram", "telegram"})
+
+
+def _linked_at(config: object) -> object:
+    connection = config.get("_connection") if isinstance(config, dict) else None
+    return connection.get("verified_at") if isinstance(connection, dict) else None
+
+
 async def _integrations_subsystem(ctx: TenantContext) -> dict:
     """Per-integration webhook health, rolled up into one subsystem row."""
     try:
         rows = (
             await ctx.session.execute(
-                select(Integration.provider, Integration.webhook_health).where(
-                    Integration.tenant_id == ctx.tenant_id
-                )
+                select(
+                    Integration.provider,
+                    Integration.webhook_health,
+                    Integration.config,
+                    Integration.kind,
+                    Integration.status,
+                ).where(Integration.tenant_id == ctx.tenant_id)
             )
         ).all()
     except Exception as exc:  # noqa: BLE001
@@ -184,8 +228,19 @@ async def _integrations_subsystem(ctx: TenantContext) -> dict:
         return subsystem("integrations", "healthy", "no integrations configured")
 
     entries = [
-        {"provider": provider, "status": integration_health(webhook_health)}
-        for provider, webhook_health in rows
+        {
+            "provider": provider,
+            "status": (
+                # Only a LIVE channel that Meta or Telegram calls back can be "linked but silent":
+                # a pending, disconnected or webchat row has no webhook to wait for.
+                integration_health_since_link(webhook_health, linked_at=_linked_at(config))
+                if kind == "channel"
+                and status in ("active", "connected")
+                and provider in _WEBHOOK_PROVIDERS
+                else integration_health(webhook_health)
+            ),
+        }
+        for provider, webhook_health, config, kind, status in rows
     ]
     failing = sum(1 for entry in entries if entry["status"] != "healthy")
     worst = overall_health_status(entries)
