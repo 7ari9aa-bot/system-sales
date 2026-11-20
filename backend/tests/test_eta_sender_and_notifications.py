@@ -306,3 +306,38 @@ def test_device_notifications():
     for bad in (None, {"Type": "PosDeactivated"}, {"Id": "x", "Type": "Nope"}):
         with pytest.raises(NotificationError):
             parse_general_notification(bad)
+
+
+class TestCorrectionWindowDependsOnTheReceiptKind:
+    """ETA: a rejected receipt may be corrected within 96 hours, but a return WITHOUT a reference
+    within 72 (its reference_less flag is how the planner knows which clock applies)."""
+
+    NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+
+    def _rejected(self, hours_old: int, **kw):
+        return _q(1, DocState.INVALID, issued_at=self.NOW - timedelta(hours=hours_old), **kw)
+
+    def test_a_normal_receipt_can_still_be_corrected_at_80_hours(self):
+        assert after_rejected(self._rejected(80), now=self.NOW).needs_correction is True
+
+    def test_a_return_without_reference_can_not_at_80_hours(self):
+        doc = self._rejected(80, reference_less=True)
+        assert after_rejected(doc, now=self.NOW).needs_correction is False
+
+    def test_a_return_without_reference_can_at_70_hours(self):
+        doc = self._rejected(70, reference_less=True)
+        assert after_rejected(doc, now=self.NOW).needs_correction is True
+
+    def test_the_planner_counts_the_shorter_window_as_closed(self):
+        late = self._rejected(80, reference_less=True)
+        plan = plan_device([late], now=self.NOW)
+        assert [d.id for d in plan.expired] == [late.id]
+        normal = self._rejected(80)
+        assert plan_device([normal], now=self.NOW).expired == ()
+
+    def test_the_planner_warns_sooner_for_the_shorter_window(self):
+        # 60h old: 12h left of 72 (warn), but 36h left of 96 (do not warn yet at a 24h notice)
+        short = self._rejected(60, reference_less=True)
+        assert [d.id for d in plan_device([short], now=self.NOW).expiring] == [short.id]
+        normal = self._rejected(60)
+        assert plan_device([normal], now=self.NOW).expiring == ()

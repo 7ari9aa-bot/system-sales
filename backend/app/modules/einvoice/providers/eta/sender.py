@@ -60,6 +60,8 @@ class QueuedDoc:
     # the one before it, and that order is the order they were issued, whatever their printed
     # times say (two receipts a moment apart, or an exchange's two halves, can share a time).
     sequence: int = 0
+    # A return WITHOUT a reference receipt has the shorter correction window (72h, not 96h).
+    reference_less: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,11 @@ class Plan:
     blocked_by: str | None = None  # why nothing is being sent (observable, never silent)
     expiring: tuple[QueuedDoc, ...] = ()  # rejected docs whose correction window is closing
     expired: tuple[QueuedDoc, ...] = ()  # rejected docs now needing a Late Submission Request
+
+
+def correction_window(doc: QueuedDoc) -> timedelta:
+    """How long after issue a rejected receipt may still be replaced by a corrected one."""
+    return AMENDMENT_WITHOUT_REFERENCE if doc.reference_less else AMENDMENT_WITH_REFERENCE
 
 
 def backoff_for(attempts: int) -> timedelta:
@@ -85,14 +92,14 @@ def plan_device(
     expired = tuple(
         d
         for d in ordered
-        if d.state is DocState.INVALID and now - d.issued_at > AMENDMENT_WITH_REFERENCE
+        if d.state is DocState.INVALID and now - d.issued_at > correction_window(d)
     )
     expiring = tuple(
         d
         for d in ordered
         if d.state is DocState.INVALID
         and d not in expired
-        and AMENDMENT_WITH_REFERENCE - (now - d.issued_at) <= warn_before
+        and correction_window(d) - (now - d.issued_at) <= warn_before
     )
 
     # Only receipts that still need delivery are candidates, in issue order.
@@ -144,5 +151,5 @@ def after_accepted(doc: QueuedDoc) -> Outcome:
 
 def after_rejected(doc: QueuedDoc, *, now: datetime) -> Outcome:
     """Rejected by the authority: needs a corrected replacement, not a blind retry."""
-    in_time = now - doc.issued_at <= AMENDMENT_WITH_REFERENCE
+    in_time = now - doc.issued_at <= correction_window(doc)
     return Outcome(DocState.INVALID, None, doc.attempts + 1, needs_correction=in_time)

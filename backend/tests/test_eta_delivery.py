@@ -613,3 +613,19 @@ class TestTellingTheOwner:
             {"t": str(tenant_ctx.tenant_id)},
         )
         assert count == 0
+
+
+class TestTheShorterWindowReachesThePlannerFromTheDatabase:
+    async def test_a_stored_reference_less_return_gets_72_hours_not_96(self, db, tenant_ctx):
+        tid = tenant_ctx.tenant_id
+        dev = await _till(db, tid)
+        await _issue(db, tid, dev, "R-1")
+        await _issue(db, tid, dev, "R-2")
+        plain, reference_less = await _doc(db, "R-1"), await _doc(db, "R-2")
+        reference_less.document_type = "return_without_reference"
+        old = datetime.now(UTC) - timedelta(hours=80)  # past 72h, inside 96h
+        for d in (plain, reference_less):
+            d.status, d.issued_at = "rejected", old
+        await db.flush()
+        report = await deliver_device(db, dev.id, provider=_provider(MockAuthority()))
+        assert report.window_closed == ["R-2"]  # the 72h one is gone, the 96h one is not

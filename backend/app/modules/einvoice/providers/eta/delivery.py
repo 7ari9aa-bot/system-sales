@@ -90,6 +90,7 @@ def _queued(doc: EInvoiceDocument, serial: str) -> QueuedDoc:
         previous_uuid=doc.pih,
         issued_at=doc.issued_at,
         sequence=doc.icv or 0,
+        reference_less=doc.document_type == "return_without_reference",
         state=_TO_STATE[doc.status],
         attempts=doc.delivery_attempts or 0,
         next_attempt_at=doc.next_attempt_at,
