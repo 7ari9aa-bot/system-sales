@@ -561,7 +561,7 @@ async def _connect_page(
     return provider, display_name
 
 
-def _popup_html(result: dict, frontend_origin: str, nonce: str = "") -> str:
+def _popup_html(result: dict, frontend_origin: str) -> str:
     """Small self-closing HTML page that posts the OAuth result to the opener.
 
     Uses multiple fallback channels:
@@ -575,7 +575,6 @@ def _popup_html(result: dict, frontend_origin: str, nonce: str = "") -> str:
 
     payload_json = _json.dumps(result)
     safe_json = payload_json.replace("<", "\\u003c").replace(">", "\\u003e")
-    safe_origin = _json.dumps(frontend_origin)
 
     is_connected = "connected" in result
     is_choosing = "choose" in result
@@ -621,14 +620,15 @@ def _popup_html(result: dict, frontend_origin: str, nonce: str = "") -> str:
         else:
             subtitle_text = s[:200]
 
-        action_html = '<button onclick="window.close()" class="btn-close">إغلاق النافذة</button>'
+        action_html = (
+            '<button id="meta-oauth-close" type="button" class="btn-close">إغلاق النافذة</button>'
+        )
 
     esc_title = _html.escape(title_text)
     esc_subtitle = _html.escape(subtitle_text)
 
-    auto_close_js = (
-        "setTimeout(function(){ window.close(); }, 1400);" if is_connected or is_choosing else ""
-    )
+    autoclose_flag = "1" if (is_connected or is_choosing) else "0"
+    esc_origin = _html.escape(frontend_origin.rstrip("/"), quote=True)
 
     return f"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -722,61 +722,36 @@ def _popup_html(result: dict, frontend_origin: str, nonce: str = "") -> str:
   <p class="desc">{esc_subtitle}</p>
   {action_html}
 </div>
-<script nonce="{nonce}">
-(function(){{
-  var msg = {safe_json};
-  var origin = {safe_origin};
-  
-  if (window.opener) {{
-    try {{
-      window.opener.postMessage(msg, origin || "*");
-    }} catch (e) {{
-      try {{ window.opener.postMessage(msg, "*"); }} catch (_) {{}}
-    }}
-  }}
-
-  try {{
-    var bc = new BroadcastChannel("meta_oauth");
-    bc.postMessage(msg);
-  }} catch (_) {{}}
-
-  try {{
-    localStorage.setItem("meta_oauth_result", JSON.stringify(msg));
-  }} catch (_) {{}}
-
-  {auto_close_js}
-}})();
-</script>
+<script id="meta-oauth-data" type="application/json"
+  data-origin="{esc_origin}" data-autoclose="{autoclose_flag}">{safe_json}</script>
+<script src="{esc_origin}/meta-oauth-result.js"></script>
 </body></html>"""
 
 
 def _popup_response(result: dict, frontend_origin: str):
-    """The OAuth result page, with headers that let its one script actually run.
+    """The OAuth result page, with headers that let it report back to the opener.
 
-    SecurityHeadersMiddleware stamps every response with ``default-src 'none'``
-    and ``COOP: same-origin``. For this page that silently killed all three
-    result channels: the inline script was blocked (no BroadcastChannel,
-    localStorage or auto-close) and COOP severed ``window.opener`` after the
-    round trip through facebook.com. The operator saw a connected channel plus a
-    false "window closed before confirmation" warning.
+    Two things silently broke the "connected" confirmation although the channel
+    itself connected fine:
 
-    The page therefore carries its own policy: a per-response nonce allows only
-    its single script (no ``unsafe-inline``), everything else stays denied, and
-    COOP is relaxed for this response alone so the opener survives. The
-    middleware only fills headers that are absent, so these win.
+    * COOP ``same-origin`` (stamped on every API response) severed
+      ``window.opener`` after the round trip through facebook.com. It is relaxed
+      for this one response.
+    * The page's inline script never ran: ``/api/v1/...`` is proxied through
+      Vercel, which stamps ``script-src 'self'`` on every path, and the API's own
+      ``default-src 'none'`` blocks it too. The script is therefore an external
+      same-origin file and the result travels as inert JSON data, so no inline
+      code is needed and the site CSP stays strict.
     """
-    import secrets
-
     from fastapi.responses import HTMLResponse
 
-    nonce = secrets.token_urlsafe(16)
+    origin = frontend_origin.rstrip("/")
     return HTMLResponse(
-        _popup_html(result, frontend_origin, nonce),
+        _popup_html(result, frontend_origin),
         headers={
             "Content-Security-Policy": (
-                f"default-src 'none'; script-src 'nonce-{nonce}'; "
-                "style-src 'unsafe-inline'; img-src data:; "
-                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                f"default-src 'none'; script-src {origin}; style-src 'unsafe-inline'; "
+                "img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             ),
             "Cross-Origin-Opener-Policy": "unsafe-none",
             "Cache-Control": "no-store",
