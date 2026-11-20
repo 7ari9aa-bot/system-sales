@@ -598,9 +598,9 @@ export default function PosSettings() {
         <TabsContent value="policy" className="mt-4"><ShopPolicySettings /></TabsContent>
         <TabsContent value="einvoice" className="mt-4">
           <ShopPolicySettings
-            domain="einvoice"
+            domain={["business", "einvoice"]}
             title="الإيصال الإلكتروني (مصلحة الضرائب)"
-            description="بيانات محلك التي يحتاجها الإيصال. كل قيمة هنا تقررها أنت، ولا يُرسل أي إيصال قبل تفعيله."
+            description="اسم محلك ورقمه الضريبي وبيانات فرعك كما هي مسجلة لدى المصلحة. كل قيمة هنا تقررها أنت، ولا يُرسل أي إيصال قبل تفعيله."
           />
         </TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>

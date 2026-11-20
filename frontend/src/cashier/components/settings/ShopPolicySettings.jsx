@@ -23,17 +23,27 @@ import {
 // القيم هنا على مستوى المحل كله. الحفظ يرسل ما تغيّر فقط.
 
 function useShopPolicy(domain) {
+  const domains = Array.isArray(domain) ? domain : [domain];
   return useQuery({
-    queryKey: ["settings", "shop-policy", domain],
+    queryKey: ["settings", "shop-policy", ...domains],
     staleTime: 0,
     queryFn: async () => {
-      const [definitions, effective] = await Promise.all([api(`/settings/definitions?domain=${domain}`), api(`/settings/effective?domain=${domain}`)]);
-      return { defs: policyDefinitions(definitions, { domain }), effective };
+      // One request pair per domain; the screen shows them as a single form, in the order given.
+      const parts = await Promise.all(
+        domains.map(async (d) => {
+          const [definitions, effective] = await Promise.all([api(`/settings/definitions?domain=${d}`), api(`/settings/effective?domain=${d}`)]);
+          return { defs: policyDefinitions(definitions, { domain: d }), effective };
+        }),
+      );
+      return {
+        defs: parts.flatMap((p) => p.defs),
+        effective: Object.assign({}, ...parts.map((p) => p.effective)),
+      };
     },
   });
 }
 
-function Field({ def, value, text, error, onChange }) {
+export function Field({ def, value, text, error, onChange }) {
   const label = def.label_ar || def.label_en || def.key;
   const desc = def.description_ar || def.description_en;
   let control;
@@ -120,7 +130,7 @@ export default function ShopPolicySettings({
   description = "المرتجع والاستبدال والخصم. كل ما تضبطه هنا يطبّقه الكاشير والنظام فعلًا.",
 }) {
   const qc = useQueryClient();
-  const QUERY = ["settings", "shop-policy", domain];
+  const QUERY = ["settings", "shop-policy", ...(Array.isArray(domain) ? domain : [domain])];
   const { data, isLoading, error: loadError } = useShopPolicy(domain);
   const [draft, setDraft] = useState(null); // what the form holds: numbers/bools as values, lists as text
   const [saving, setSaving] = useState(false);

@@ -7,7 +7,8 @@
 
 /** The settings an owner can change here: this domain, wired to real behaviour, tenant-wide. */
 export function policyDefinitions(definitions, { domain = "pos" } = {}) {
-  return (definitions ?? []).filter((d) => d.domain === domain && d.enforced && (d.scopes ?? []).includes("tenant"));
+  const domains = Array.isArray(domain) ? domain : [domain];
+  return (definitions ?? []).filter((d) => domains.includes(d.domain) && d.enforced && (d.scopes ?? []).includes("tenant"));
 }
 
 /** What the form starts from: the effective value of each setting, as the server resolved it. */

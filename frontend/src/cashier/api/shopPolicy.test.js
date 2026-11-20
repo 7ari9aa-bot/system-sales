@@ -104,6 +104,24 @@ describe("text and choice settings (the e-receipt screen)", () => {
   });
 });
 
+describe("policyDefinitions for several domains at once", () => {
+  it("keeps the settings of every domain asked for, in the order the server sent them", () => {
+    const defs = [
+      def({ key: "business.tax_id", domain: "business" }),
+      def({ key: "einvoice.branch_code", domain: "einvoice" }),
+      def({ key: "pos.x", domain: "pos" }),
+    ];
+    expect(policyDefinitions(defs, { domain: ["business", "einvoice"] }).map((d) => d.key)).toEqual([
+      "business.tax_id",
+      "einvoice.branch_code",
+    ]);
+  });
+  it("still hides a setting nothing reads, whichever domain it is in", () => {
+    const defs = [def({ key: "business.website", domain: "business", enforced: false })];
+    expect(policyDefinitions(defs, { domain: ["business"] })).toEqual([]);
+  });
+});
+
 describe("policyDefinitions for another domain", () => {
   it("takes the domain it is asked for", () => {
     const defs = [def({ key: "a" }), def({ key: "b", domain: "einvoice" })];
