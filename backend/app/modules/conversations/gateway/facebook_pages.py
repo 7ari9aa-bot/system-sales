@@ -82,17 +82,30 @@ def check_metrics(metrics: list[str]) -> list[str]:
     return metrics
 
 
+def page_token_and_id(credentials: ProviderCredentials) -> tuple[str, str]:
+    """The Page token and Page id of a stored Facebook channel, whichever way it was saved.
+
+    The connection spec and the OAuth callback store a ``facebook`` channel as
+    ``credentials.page_access_token`` with the page in ``config.account_id`` (the
+    Messenger gateway already accepts both token keys). This client only ever read
+    ``api_key``, so a correctly connected Page answered "Facebook is not connected" on
+    every /facebook screen. Empty strings when either part is missing.
+    """
+    token = credentials.get("page_access_token") or credentials.get("api_key") or ""
+    page_id = credentials.get("account_id") or credentials.get("page_id") or ""
+    return str(token), str(page_id)
+
+
 class FacebookPagesClient:
     def __init__(self, *, api_version: str = INSTAGRAM_API_VERSION):
         self._base = f"https://graph.facebook.com/{api_version}"
 
     @staticmethod
     def _creds(credentials: ProviderCredentials) -> tuple[str, str]:
-        token = credentials.get("api_key")
-        page_id = credentials.get("account_id")
+        token, page_id = page_token_and_id(credentials)
         if not token or not page_id:
-            raise ExternalProviderError("facebook integration missing api_key or account_id")
-        return str(token), str(page_id)
+            raise ExternalProviderError("facebook integration missing page token or page id")
+        return token, page_id
 
     async def _graph(
         self,
