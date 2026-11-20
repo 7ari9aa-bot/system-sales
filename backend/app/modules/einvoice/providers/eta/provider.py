@@ -22,7 +22,7 @@ How the shared contract maps onto ETA:
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -81,7 +81,9 @@ class EtaEInvoiceProvider(EInvoiceProvider):
         http: httpx.AsyncClient | None = None,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
+        self._sleep = sleep  # injectable so tests never really wait out a back-off
         self._http = http  # injectable for tests; created per call otherwise
         self._clock = clock  # "now" for the not-in-the-future rule; injectable so tests are stable
 
@@ -212,4 +214,5 @@ class EtaEInvoiceProvider(EInvoiceProvider):
             preshared_key=cfg["preshared_key"],
         )
         http = self._http or httpx.AsyncClient(timeout=30.0)
-        return EtaClient(http, EtaEndpoints.for_environment(profile.environment), creds)
+        extra = {"sleep": self._sleep} if self._sleep else {}
+        return EtaClient(http, EtaEndpoints.for_environment(profile.environment), creds, **extra)

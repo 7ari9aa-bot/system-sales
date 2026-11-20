@@ -11,6 +11,7 @@ Persisting them and the HTTP route live elsewhere, so the rules are testable wit
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 from dataclasses import dataclass
 from enum import StrEnum
@@ -85,6 +86,27 @@ def api_key_matches(authorization_header: str | None, expected_key: str) -> bool
     if scheme.lower() != "apikey":
         return False
     return hmac.compare_digest(supplied.strip().encode(), expected_key.encode())
+
+
+def key_hash(key: str) -> str:
+    """The stored form of a callback key: SHA-256 hex. The plain key is never persisted."""
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def key_hash_from_header(authorization_header: str | None) -> str | None:
+    """Hash of the key in ``Authorization: ApiKey <key>``, or None when the header is unusable.
+
+    The callback arrives before any store is known, so the hash is the lookup handle; the store
+    is then found with ``resolve_eta_notification_device``. A missing or malformed header yields
+    None so the caller answers 401 without touching the database.
+    """
+    if not authorization_header:
+        return None
+    scheme, _, supplied = authorization_header.partition(" ")
+    supplied = supplied.strip()
+    if scheme.lower() != "apikey" or not supplied:
+        return None
+    return key_hash(supplied)
 
 
 def parse_receipt_notification(body: Any) -> list[ReceiptEvent]:
