@@ -255,12 +255,19 @@ class GoodsReceiptLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixi
     position: Mapped[int] = mapped_column(Integer)  # 1-based place on the document
     # allowed: good | quarantine | reject
     condition: Mapped[str] = mapped_column(String(15), server_default="good")
+    # The batch this stock arrived in, when the shop labels deliveries (a season, a shipment, an
+    # expiry). Optional: a line without a code makes exactly the layer it always did.
+    lot_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lot_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "goods_receipt_id", "position", name="uq_goods_receipt_lines_position"
         ),
         CheckConstraint("quantity > 0", name="ck_goods_receipt_lines_quantity"),
+        CheckConstraint(
+            "lot_expires_at IS NULL OR lot_code IS NOT NULL", name="ck_gr_lines_expiry_needs_code"
+        ),
         CheckConstraint("unit_cost >= 0", name="ck_goods_receipt_lines_unit_cost"),
         CheckConstraint("line_total >= 0", name="ck_goods_receipt_lines_line_total"),
         CheckConstraint("position > 0", name="ck_goods_receipt_lines_position"),

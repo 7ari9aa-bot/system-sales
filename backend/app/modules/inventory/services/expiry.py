@@ -18,6 +18,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryCostLayer, InventoryLot
 from app.modules.settings.capabilities import shop_capabilities
@@ -173,3 +174,37 @@ async def sellable_quantity(
         return int(on_hand)
     expired = await expired_quantity(session, tenant_id, variant_id, warehouse_id, now=now)
     return max(int(on_hand) - expired, 0)
+
+
+async def find_or_create_lot(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    variant_id: UUID,
+    lot_code: str,
+    expires_at: datetime | None,
+) -> UUID:
+    """The batch with this code for this variant, made if it is new.
+
+    A batch is one code per variant. A second delivery of the same code joins it, but only with the
+    same expiry date: two dates under one code would make the batch's expiry a guess.
+    """
+    existing = (
+        await session.execute(
+            select(InventoryLot).where(
+                InventoryLot.tenant_id == tenant_id,
+                InventoryLot.variant_id == variant_id,
+                InventoryLot.lot_code == lot_code,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        if existing.expires_at != expires_at:
+            raise ValidationError(f"batch {lot_code!r} already exists with a different expiry date")
+        return existing.id
+    lot = InventoryLot(
+        tenant_id=tenant_id, variant_id=variant_id, lot_code=lot_code, expires_at=expires_at
+    )
+    session.add(lot)
+    await session.flush()
+    return lot.id
