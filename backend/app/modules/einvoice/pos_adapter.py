@@ -277,7 +277,6 @@ async def build_context(
             code=codes.get(r["variant_id"]),
             settings=settings,
             rate=rate,
-            variant=None,
             **{k: v for k, v in r.items() if k != "variant_id"},
         )
         for r in raw
