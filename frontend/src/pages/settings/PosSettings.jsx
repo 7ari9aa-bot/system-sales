@@ -3,7 +3,7 @@ import { Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
-import { DatabaseBackup, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
+import { DatabaseBackup, FileCheck2, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/cashier/components/ui/tabs";
 import { Toaster } from "@/cashier/components/ui/sonner";
 import "@/cashier/cashier.css";
@@ -567,6 +567,7 @@ function ProfilesAndRegistersTab() {
 const TABS = [
   { value: "shop", label: "بيانات المحل", icon: Store },
   { value: "policy", label: "سياسة المحل", icon: Undo2 },
+  { value: "einvoice", label: "الإيصال الإلكتروني", icon: FileCheck2 },
   { value: "print", label: "الطباعة والباركود", icon: Printer },
   { value: "lists", label: "الفئات", icon: Tags },
   { value: "users", label: "المستخدمون", icon: Users },
@@ -595,6 +596,13 @@ export default function PosSettings() {
         </TabsList>
         <TabsContent value="shop" className="mt-4"><ShopProfileForm /></TabsContent>
         <TabsContent value="policy" className="mt-4"><ShopPolicySettings /></TabsContent>
+        <TabsContent value="einvoice" className="mt-4">
+          <ShopPolicySettings
+            domain="einvoice"
+            title="الإيصال الإلكتروني (مصلحة الضرائب)"
+            description="بيانات محلك التي يحتاجها الإيصال. كل قيمة هنا تقررها أنت، ولا يُرسل أي إيصال قبل تفعيله."
+          />
+        </TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
         <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>
         <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>

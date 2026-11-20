@@ -390,3 +390,23 @@ class TestTheMerchantDecides:
             await svc.set("einvoice.delivery_mode", "XX")
         with pytest.raises(ValidationError):
             await svc.set("einvoice.warn_hours_before_deadline", 0)
+
+
+class TestTheFrontendNamesEveryChoice:
+    """The settings screen names coded choices in plain Arabic; none may be left out."""
+
+    def test_every_allowed_value_has_an_arabic_name_in_the_screen(self):
+        import pathlib
+        import re
+
+        from app.modules.settings.registry import list_definitions
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        src = (root / "frontend/src/cashier/api/shopPolicy.js").read_text(encoding="utf-8")
+        for d in list_definitions(domain="einvoice"):
+            if d.type.value != "enum":
+                continue
+            block = re.search(rf'"{re.escape(d.key)}": \{{(.*?)\n  \}}', src, re.S)
+            assert block, f"{d.key} has no Arabic names in shopPolicy.js"
+            named = set(re.findall(r"^\s+(\w+):", block.group(1), re.M))
+            assert named == set(d.allowed_values), (d.key, named ^ set(d.allowed_values))

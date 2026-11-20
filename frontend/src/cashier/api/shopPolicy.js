@@ -35,6 +35,53 @@ export function parseNumber(def, text) {
   return { value: n };
 }
 
+/**
+ * Plain-Arabic names for the coded choices the authority defines, so a merchant never has to read
+ * "CC" or "V004". Keyed by setting, then by the stored value. A choice with no entry shows its
+ * raw value, which is honest, just less friendly.
+ */
+export const CHOICE_LABELS_AR = {
+  "einvoice.default_payment_method": {
+    C: "نقدي",
+    V: "فيزا",
+    CC: "نقدي مع مقاول",
+    VC: "فيزا مع مقاول",
+    VO: "قسيمة",
+    PR: "ترويج",
+    GC: "بطاقة هدايا",
+    P: "نقاط",
+    O: "أخرى (محفظة، إنستاباي، تحويل)",
+  },
+  "einvoice.vat_category": {
+    taxable: "خاضع للضريبة (14%)",
+    exempt: "معفى من الضريبة",
+    non_taxable: "غير خاضع للضريبة",
+  },
+  "einvoice.delivery_mode": {
+    FC: "من مكان الشركة",
+    TO: "نقل بواسطة آخرين",
+    TC: "نقل بواسطة الشركة",
+  },
+};
+
+/** The label to show for one stored choice. */
+export function choiceLabel(def, value) {
+  return CHOICE_LABELS_AR[def.key]?.[value] ?? value;
+}
+
+/** Free text (a branch code, a street). Kept as text: "007" must never become 7. May be empty. */
+export function parseText(def, text) {
+  const v = String(text ?? "").trim();
+  if (def.max_length != null && v.length > def.max_length) return { error: `الحد الأقصى ${def.max_length} حرفًا` };
+  return { value: v };
+}
+
+/** One of the server's own allowed choices, never anything typed by hand. */
+export function parseChoice(def, value) {
+  if (!(def.allowed_values ?? []).includes(value)) return { error: "اختر قيمة من القائمة" };
+  return { value };
+}
+
 /** One reason per line; blanks and repeats dropped, so the list the cashier sees is clean. */
 export function parseReasons(text) {
   const seen = new Set();

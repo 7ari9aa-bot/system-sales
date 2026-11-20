@@ -7,8 +7,11 @@ import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import { Switch } from "@/cashier/components/ui/switch";
 import {
   changedValues,
+  choiceLabel,
+  parseChoice,
   parseNumber,
   parseReasons,
+  parseText,
   policyDefinitions,
   policyErrorMessage,
   reasonsToText,
@@ -19,15 +22,13 @@ import {
 // يقرأه النظام فعلًا (enforced)، وأي إعداد جديد يُربط بالخادم يظهر وحده. كل حقل يحمل عنوانه ووصفه من المحرك.
 // القيم هنا على مستوى المحل كله. الحفظ يرسل ما تغيّر فقط.
 
-const QUERY = ["settings", "shop-policy"];
-
-function useShopPolicy() {
+function useShopPolicy(domain) {
   return useQuery({
-    queryKey: QUERY,
+    queryKey: ["settings", "shop-policy", domain],
     staleTime: 0,
     queryFn: async () => {
-      const [definitions, effective] = await Promise.all([api("/settings/definitions?domain=pos"), api("/settings/effective?domain=pos")]);
-      return { defs: policyDefinitions(definitions), effective };
+      const [definitions, effective] = await Promise.all([api(`/settings/definitions?domain=${domain}`), api(`/settings/effective?domain=${domain}`)]);
+      return { defs: policyDefinitions(definitions, { domain }), effective };
     },
   });
 }
@@ -58,7 +59,34 @@ function Field({ def, value, text, error, onChange }) {
         className="w-full min-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-[12.5px]"
       />
     );
-  } else {
+  } else if (def.type === "enum") {
+    control = (
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className="h-8 min-w-[160px] rounded-md border border-border bg-background px-2 text-[13px]"
+      >
+        {(def.allowed_values ?? []).map((v) => (
+          <option key={v} value={v}>
+            {choiceLabel(def, v)}
+          </option>
+        ))}
+      </select>
+    );
+  } else if (def.type === "string") {
+    control = (
+      <input
+        type="text"
+        dir="auto"
+        value={text}
+        maxLength={def.max_length ?? undefined}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        className="h-8 w-56 rounded-md border border-border bg-background px-2 text-[13px]"
+      />
+    );
+  } else if (def.type === "number") {
     control = (
       <input
         type="text"
@@ -70,6 +98,9 @@ function Field({ def, value, text, error, onChange }) {
         className="num h-8 w-28 rounded-md border border-border bg-background px-2 text-[13px]"
       />
     );
+  } else {
+    // A kind of setting this screen cannot edit: say so, never draw a wrong control for it.
+    control = <span className="text-[12px] text-muted-foreground">لا يمكن تعديله من هنا</span>;
   }
   return (
     <div className="flex flex-col gap-1.5 border-b border-border py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-6" data-testid={`policy-${def.key}`}>
@@ -83,9 +114,14 @@ function Field({ def, value, text, error, onChange }) {
   );
 }
 
-export default function ShopPolicySettings() {
+export default function ShopPolicySettings({
+  domain = "pos",
+  title = "سياسة المحل",
+  description = "المرتجع والاستبدال والخصم. كل ما تضبطه هنا يطبّقه الكاشير والنظام فعلًا.",
+}) {
   const qc = useQueryClient();
-  const { data, isLoading, error: loadError } = useShopPolicy();
+  const QUERY = ["settings", "shop-policy", domain];
+  const { data, isLoading, error: loadError } = useShopPolicy(domain);
   const [draft, setDraft] = useState(null); // what the form holds: numbers/bools as values, lists as text
   const [saving, setSaving] = useState(false);
 
@@ -107,6 +143,14 @@ export default function ShopPolicySettings() {
         else values[d.key] = r.value;
       } else if (d.type === "list") {
         values[d.key] = parseReasons(draft[d.key]);
+      } else if (d.type === "string") {
+        const r = parseText(d, draft[d.key]);
+        if (r.error) errors[d.key] = r.error;
+        else values[d.key] = r.value;
+      } else if (d.type === "enum") {
+        const r = parseChoice(d, draft[d.key]);
+        if (r.error) errors[d.key] = r.error;
+        else values[d.key] = r.value;
       } else {
         values[d.key] = draft[d.key];
       }
@@ -136,7 +180,7 @@ export default function ShopPolicySettings() {
     return (
       <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground" role="status">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        جارٍ تحميل سياسة المحل…
+        جارٍ التحميل…
       </div>
     );
   }
@@ -147,8 +191,8 @@ export default function ShopPolicySettings() {
   return (
     <SectionCard
       flat
-      title="سياسة المحل"
-      description="المرتجع والاستبدال والخصم. كل ما تضبطه هنا يطبّقه الكاشير والنظام فعلًا."
+      title={title}
+      description={description}
       action={
         <button
           type="button"

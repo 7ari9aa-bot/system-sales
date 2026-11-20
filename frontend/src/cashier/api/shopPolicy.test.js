@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedValues, parseNumber, parseReasons, policyDefinitions, policyErrorMessage, reasonsToText, startingValues } from "./shopPolicy";
+import { CHOICE_LABELS_AR, changedValues, choiceLabel, parseChoice, parseNumber, parseReasons, parseText, policyDefinitions, policyErrorMessage, reasonsToText, startingValues } from "./shopPolicy";
 
 const def = (o) => ({ domain: "pos", enforced: true, scopes: ["tenant", "branch"], default: 30, min_value: 0, max_value: 365, ...o });
 
@@ -67,5 +67,68 @@ describe("policyErrorMessage", () => {
     expect(policyErrorMessage(new Error("missing permission: settings:write"))).toMatch(/صلاحية/);
     expect(policyErrorMessage(new Error("value out of range"))).toBe("value out of range");
     expect(policyErrorMessage(null)).toBe("تعذّر الحفظ");
+  });
+});
+
+describe("text and choice settings (the e-receipt screen)", () => {
+  const text = def({ key: "einvoice.branch_code", type: "string", default: "", max_length: 120 });
+  const choice = def({
+    key: "einvoice.vat_category",
+    type: "enum",
+    default: "taxable",
+    allowed_values: ["taxable", "exempt", "non_taxable"],
+  });
+
+  it("starts a text box from the saved text, never a number", () => {
+    expect(startingValues([text], { "einvoice.branch_code": { value: "007" } })).toEqual({ "einvoice.branch_code": "007" });
+  });
+  it("keeps a branch code's leading zeros: text is not parsed as a number", () => {
+    expect(parseText(text, "007")).toEqual({ value: "007" });
+  });
+  it("trims text and refuses what is too long", () => {
+    expect(parseText(text, "  7  ")).toEqual({ value: "7" });
+    expect(parseText(text, "x".repeat(121)).error).toMatch(/120/);
+  });
+  it("lets a text setting be emptied (the merchant has not filled it in)", () => {
+    expect(parseText(text, "")).toEqual({ value: "" });
+  });
+  it("accepts only one of the allowed choices", () => {
+    expect(parseChoice(choice, "exempt")).toEqual({ value: "exempt" });
+    expect(parseChoice(choice, "whatever").error).toBeTruthy();
+  });
+  it("lists a changed choice and leaves an untouched one alone", () => {
+    const o = { "einvoice.vat_category": "taxable", "einvoice.branch_code": "7" };
+    expect(changedValues([choice, text], o, { ...o, "einvoice.vat_category": "exempt" })).toEqual([
+      { key: "einvoice.vat_category", value: "exempt" },
+    ]);
+  });
+});
+
+describe("policyDefinitions for another domain", () => {
+  it("takes the domain it is asked for", () => {
+    const defs = [def({ key: "a" }), def({ key: "b", domain: "einvoice" })];
+    expect(policyDefinitions(defs, { domain: "einvoice" }).map((d) => d.key)).toEqual(["b"]);
+  });
+});
+
+describe("friendly names for coded choices", () => {
+  it("names every payment method the authority defines", () => {
+    const d = def({ key: "einvoice.default_payment_method" });
+    for (const code of ["C", "V", "CC", "VC", "VO", "PR", "GC", "P", "O"]) {
+      expect(choiceLabel(d, code)).not.toBe(code);
+    }
+  });
+  it("names every choice the server allows for the e-receipt settings (none left as a bare code)", () => {
+    const allowed = {
+      "einvoice.default_payment_method": ["C", "V", "CC", "VC", "VO", "PR", "GC", "P", "O"],
+      "einvoice.vat_category": ["taxable", "exempt", "non_taxable"],
+      "einvoice.delivery_mode": ["FC", "TO", "TC"],
+    };
+    for (const [key, values] of Object.entries(allowed)) {
+      expect(Object.keys(CHOICE_LABELS_AR[key]).sort()).toEqual([...values].sort());
+    }
+  });
+  it("falls back to the stored value for a choice it has no name for", () => {
+    expect(choiceLabel(def({ key: "x.y" }), "zzz")).toBe("zzz");
   });
 });
