@@ -1269,8 +1269,14 @@ class PosService(PosReceiptReads):
         actor_user_id: UUID | None = None,
         discount_override: bool = False,
         payments: list[dict] | None = None,
+        on_account: bool = False,
+        idempotency_key: str | None = None,
     ) -> dict:
         """RECORD a counter sale: what was sold, at what price, by whom.
+
+        ``on_account`` puts whatever the customer did not pay now on their credit account. It needs
+        ``pos.allow_sale_on_account`` AND ``pos.take_payments`` on, a customer named on the sale
+        (never the shared walk-in), and an open account with room under its limit.
 
         By default no payment is taken: the order is created (stock reserved), confirmed (the
         reservation becomes a real sale) and a receipt is issued with the seller on it, all in the
@@ -1344,9 +1350,27 @@ class PosService(PosReceiptReads):
             await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
         )
         tender_lines = parse_lines(payments)
+        account_sale = False
+        if on_account:
+            if not take_payments:
+                raise ValidationError(
+                    "selling on account needs payments recorded: turn on pos.take_payments"
+                )
+            if not bool(
+                await PosService._setting(
+                    session, tenant_id, "pos.allow_sale_on_account", pos_session
+                )
+            ):
+                raise ValidationError(
+                    "this till does not sell on account: turn on pos.allow_sale_on_account"
+                )
+            if customer_id is None and not (customer_phone and customer_phone.strip()):
+                # the shared walk-in customer must never carry a debt nobody can chase
+                raise ValidationError("a sale on account needs a named customer")
+            account_sale = True
         reference_required: list[str] = []
         if take_payments:
-            if not tender_lines:
+            if not tender_lines and not account_sale:
                 raise ValidationError("this till takes payments: send at least one payment line")
             reference_required = [
                 str(m)
@@ -1382,6 +1406,7 @@ class PosService(PosReceiptReads):
                 total=Decimal(str(order.grand_total)),
                 allowed_methods=allowed,
                 reference_required=reference_required,
+                allow_partial=account_sale,
             )
             for line in tender.lines:
                 await OrderService.add_payment(
@@ -1393,9 +1418,37 @@ class PosService(PosReceiptReads):
                     provider=line.reference,
                     actor_user_id=actor_user_id,
                 )
+            if account_sale:
+                # A sale on account is not settled by its payments, so no payment may be the thing
+                # that confirms it: confirm it here. Idempotent, so a payment that already did is
+                # not repeated and the stock leaves the shelf exactly once.
+                await OrderService.confirm_sale(
+                    session, tenant_id, order.id, actor_user_id=actor_user_id
+                )
         else:
             await OrderService.confirm_sale(
                 session, tenant_id, order.id, actor_user_id=actor_user_id
+            )
+        on_account_amount = Decimal("0.00")
+        if account_sale:
+            from app.modules.customer_accounts.service import CustomerAccountService
+
+            paid_now = tender.paid if tender is not None else Decimal("0.00")
+            entry = await CustomerAccountService.charge(
+                session,
+                tenant_id,
+                resolved_customer_id,
+                sale_total=order.grand_total,
+                paid_now=paid_now,
+                order_id=order.id,
+                idempotency_key=f"sale:{idempotency_key}" if idempotency_key else None,
+                actor_user_id=actor_user_id,
+                blocked=await PosService._customer_blocked(
+                    session, tenant_id, resolved_customer_id
+                ),
+            )
+            on_account_amount = (
+                Decimal(str(entry.amount)) if entry is not None else on_account_amount
             )
         has_cash = tender is not None and tender.tendered_cash is not None
         receipt = await PosService._issue_receipt(
@@ -1430,7 +1483,15 @@ class PosService(PosReceiptReads):
             "customer_notice": customer_notice,
             "paid": str(tender.paid) if tender is not None else None,
             "change": str(tender.change) if has_cash else None,
+            "on_account": str(on_account_amount) if account_sale else None,
         }
+
+    @staticmethod
+    async def _customer_blocked(session: AsyncSession, tenant_id: UUID, customer_id: UUID) -> bool:
+        from app.modules.customers.service import CustomerService
+
+        customer = await CustomerService.get(session, tenant_id, customer_id)
+        return bool(customer.is_blocked)
 
     @staticmethod
     async def _resolve_customer(

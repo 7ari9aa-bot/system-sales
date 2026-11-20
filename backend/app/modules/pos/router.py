@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator
 
 from app.modules.errors import ValidationError
@@ -272,6 +272,9 @@ class RecordSaleRequest(BaseModel):
     # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
     note: str | None = Field(default=None, max_length=512)
     payments: list[PaymentLine] | None = Field(default=None, max_length=8)
+    # Put whatever the customer did not pay now on their credit account. Needs a named customer
+    # and the shop's pos.allow_sale_on_account; refused when the account's limit would be passed.
+    on_account: bool = False
 
 
 class WorkingSessionOut(BaseModel):
@@ -300,6 +303,8 @@ class RecordSaleOut(BaseModel):
     # (change is None when nothing was paid in cash).
     paid: str | None = None
     change: str | None = None
+    # The part of the sale put on the customer's account; None when the sale was not on account.
+    on_account: str | None = None
 
 
 class HoldCartRequest(BaseModel):
@@ -531,7 +536,11 @@ async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)
 async def record_sale(
-    register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx, override: OverrideDep
+    register_id: UUID,
+    body: RecordSaleRequest,
+    ctx: PosWriteCtx,
+    override: OverrideDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ):
     """Record a sale: stock comes off the shelf; payment is taken only if the shop turned it on."""
     return await PosService.record_sale(
@@ -547,6 +556,8 @@ async def record_sale(
         actor_user_id=ctx.user.id,
         discount_override=override.active,
         payments=[line.model_dump() for line in body.payments] if body.payments else None,
+        on_account=body.on_account,
+        idempotency_key=idempotency_key,
     )
 
 

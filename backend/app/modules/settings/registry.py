@@ -197,6 +197,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
         "pos.take_payments",  # pos/service.py::record_sale
+        "pos.allow_sale_on_account",  # pos/service.py::record_sale
         "pos.reference_required_methods",  # pos/service.py::record_sale
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
@@ -500,6 +501,28 @@ _reg(
         description_en=(
             "When on, the cashier records how the customer paid (cash, card, transfer) and the "
             "change, and cash goes into the drawer ledger. When off, a sale is recorded only."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.allow_sale_on_account",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="البيع بالآجل على حساب العميل",
+        label_en="Sell on Customer Account",
+        description_ar=(
+            "عند التفعيل يستطيع الكاشير تسجيل جزء من البيع (أو كله) على حساب عميل له حساب آجل "
+            "وحد ائتمان. لا يعمل إلا مع تسجيل وسائل الدفع، ويلزم تحديد العميل صراحة."
+        ),
+        description_en=(
+            "When on, the cashier can put part or all of a sale on the account of a customer who "
+            "has a credit account and limit. Needs payments recording, and a named customer."
         ),
     )
 )

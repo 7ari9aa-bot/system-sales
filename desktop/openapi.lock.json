@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 585,
-    "sha256": "5dd1e4fc463f79cbdcff107d5aa67f5738c186ca59568c7a3a623641d3362d07",
+    "sha256": "10168cab56e3196ee2017b321f13925f62cfc42cd2f9a10515b6d2a0a9179dae",
     "typed_operations": 331
   },
   "spec": {
@@ -16124,6 +16124,17 @@
               "title": "Grand Total",
               "type": "string"
             },
+            "on_account": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On Account"
+            },
             "order_id": {
               "format": "uuid",
               "title": "Order Id",
@@ -16235,6 +16246,11 @@
                 }
               ],
               "title": "Note"
+            },
+            "on_account": {
+              "default": false,
+              "title": "On Account",
+              "type": "boolean"
             },
             "payments": {
               "anyOf": [
@@ -70543,6 +70559,23 @@
                 "format": "uuid",
                 "title": "Register Id",
                 "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
               }
             },
             {

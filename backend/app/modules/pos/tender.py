@@ -102,6 +102,7 @@ def settle(
     total: Decimal,
     allowed_methods: Iterable[str],
     reference_required: Iterable[str] = (),
+    allow_partial: bool = False,
 ) -> TenderResult:
     """Check a sale's tender lines against the total and the shop's rules.
 
@@ -109,8 +110,9 @@ def settle(
     * every method must be one the till accepts;
     * only cash may be tendered above the amount it covers, and ``tendered`` can never be less
       than ``amount``;
-    * the lines must cover the whole total (a short payment is not a settled sale: a shop that
-      sells on account does so by using no payment lines at all, which the caller decides);
+    * the lines must cover the whole total, unless ``allow_partial`` is set: that is a sale on a
+      customer's account, where the caller posts the unpaid rest to the ledger (it may be the
+      whole total, with no payment lines at all);
     * the amounts may not exceed the total, because change is a cash matter handled through
       ``tendered``, never a second way to over-collect;
     * a method the shop marked as needing a reference (card approval, transfer number) must carry
@@ -120,7 +122,7 @@ def settle(
     needs_reference = set(reference_required)
     total = to_money(total, "total")
     chosen = tuple(lines)
-    if not chosen:
+    if not chosen and not allow_partial:
         raise ValidationError("at least one payment line is required")
 
     paid = ZERO
@@ -150,7 +152,7 @@ def settle(
 
     if paid > total:
         raise ValidationError(f"payments {paid} exceed the sale total {total}")
-    if paid < total:
+    if paid < total and not allow_partial:
         raise ValidationError(f"payments {paid} do not cover the sale total {total}")
 
     change = to_money(cash_tendered - cash_amount, "change") if saw_cash else ZERO
