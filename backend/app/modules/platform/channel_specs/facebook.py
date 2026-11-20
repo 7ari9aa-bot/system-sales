@@ -53,7 +53,12 @@ class FacebookConnectionSpec(ConnectionSpec):
         *,
         client: httpx.AsyncClient | None = None,
     ) -> VerifiedChannel:
-        page_id = numeric_id(config, "page_id")
+        # The manual form submits ``page_id``; the OAuth flow stores the page id as ``account_id``
+        # (the identity field). Verifying only the first made the verify button fail for every
+        # OAuth-linked page and demote a healthy channel to reauth_required.
+        page_id = numeric_id(
+            config if config.get("page_id") else {"page_id": config.get("account_id")}, "page_id"
+        )
         token = required_text(credentials, "page_access_token")
         owns_client = client is None
         http = client or httpx.AsyncClient(

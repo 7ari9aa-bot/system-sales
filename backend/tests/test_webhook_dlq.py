@@ -46,12 +46,19 @@ from tests.test_webhook_retry import (
 
 
 class _CapturingUpdate:
+    """Keeps the FIRST statement (the quarantine UPDATE these tests assert on).
+
+    ``mark_webhook_event_failed`` now also counts the failure on the channel's health, which
+    reads a row afterwards; those later reads must neither replace the captured UPDATE nor fail.
+    """
+
     def __init__(self) -> None:
         self.statement: Any = None
 
     async def execute(self, statement: Any, *_args: Any, **_kwargs: Any) -> Any:
-        self.statement = statement
-        return SimpleNamespace(rowcount=1)
+        if self.statement is None:
+            self.statement = statement
+        return SimpleNamespace(rowcount=1, first=lambda: None)
 
 
 def _literal_sql(statement: Any) -> str:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import case, select, text
 from sqlalchemy import update as sa_update
@@ -24,7 +25,7 @@ from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.models import Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
-from app.modules.platform.models import IdempotencyKey, WebhookEvent
+from app.modules.platform.models import IdempotencyKey, Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +372,55 @@ class IngestService:
                 attempts=WebhookEvent.attempts + 1,
             )
         )
+        await IngestService._record_channel_failure(session, event_id, exc)
+
+    @staticmethod
+    async def _record_channel_failure(
+        session: AsyncSession, event_id: uuid.UUID, exc: Exception
+    ) -> None:
+        """Count the failure on the channel it belongs to, so the health surface can see it.
+
+        ``consecutive_failures`` used to be written as 0 and nothing else, so no channel could ever
+        turn degraded because its deliveries kept failing. Never raises: this runs inside the
+        quarantine path, whose own job (keeping the row) must not be lost to bookkeeping.
+        """
+        try:
+            from app.core.log_redaction import redact
+            from app.core.meta_diagnostics import record_channel_issue
+
+            row = (
+                await session.execute(
+                    select(WebhookEvent.provider, WebhookEvent.tenant_id).where(
+                        WebhookEvent.id == event_id
+                    )
+                )
+            ).first()
+            if row is None or row.tenant_id is None:
+                return
+            integration = (
+                await session.execute(
+                    select(Integration).where(
+                        Integration.tenant_id == row.tenant_id,
+                        Integration.provider == row.provider,
+                        Integration.kind == "channel",
+                        Integration.status.in_(("active", "connected")),
+                    )
+                )
+            ).scalar_one_or_none()
+            if integration is not None:
+                health = dict(integration.webhook_health or {})
+                health["consecutive_failures"] = int(health.get("consecutive_failures") or 0) + 1
+                health["last_error"] = redact(str(exc))[:300]
+                health["last_failure_at"] = datetime.now(UTC).isoformat()
+                integration.webhook_health = health
+            await record_channel_issue(
+                "webhook.processing_failed",
+                channel=row.provider,
+                tenant_id=row.tenant_id,
+                details={"event_id": str(event_id), "error": type(exc).__name__},
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping must not undo the quarantine
+            logger.warning("webhook.failure_bookkeeping_failed event=%s", event_id, exc_info=True)
 
     @staticmethod
     async def apply_status_updates(session, tenant_id: uuid.UUID, updates) -> None:

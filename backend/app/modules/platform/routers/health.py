@@ -61,7 +61,28 @@ def build_health_response(subsystems: list[dict]) -> dict:
     return {"status": overall_health_status(subsystems), "subsystems": subsystems}
 
 
-def integration_health(webhook_health: dict | None) -> str:
+#: A channel that HAS received webhooks and then goes quiet this long is reported degraded.
+#: One that never received any stays healthy (a fresh connection has not failed).
+WEBHOOK_STALE_AFTER = timedelta(hours=24)
+
+
+def webhook_staleness(
+    webhook_health: dict | None, *, now: datetime | None = None
+) -> timedelta | None:
+    """How long since the last delivery, or None when none was ever recorded (or unreadable)."""
+    raw = (webhook_health or {}).get("last_webhook_at")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        last = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    return (now or datetime.now(UTC)) - last
+
+
+def integration_health(webhook_health: dict | None, *, now: datetime | None = None) -> str:
     """Map one integration's ``webhook_health`` snapshot to a status.
 
     Empty or absent health is ``healthy``, not ``degraded``: an integration
@@ -70,11 +91,12 @@ def integration_health(webhook_health: dict | None) -> str:
     """
     health = webhook_health or {}
     failures = health.get("consecutive_failures")
-    if not isinstance(failures, int) or failures <= 0:
-        return "healthy"
-    if failures >= WEBHOOK_FAILURES_DOWN:
-        return "down"
-    return "degraded"
+    if isinstance(failures, int) and failures > 0:
+        return "down" if failures >= WEBHOOK_FAILURES_DOWN else "degraded"
+    quiet_for = webhook_staleness(health, now=now)
+    if quiet_for is not None and quiet_for > WEBHOOK_STALE_AFTER:
+        return "degraded"
+    return "healthy"
 
 
 async def _database_subsystem(ctx: TenantContext) -> dict:
