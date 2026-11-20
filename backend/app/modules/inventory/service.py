@@ -35,6 +35,7 @@ from app.modules.inventory.services import (
     check_movement_shape,
     check_physical_settlement,
 )
+from app.modules.inventory.services.expiry import find_or_create_lot
 
 # Preserve __module__ for test reflection and introspection
 InventoryService.__module__ = "app.modules.inventory.service"
@@ -48,6 +49,7 @@ InventoryService.InventoryBundleService = InventoryBundleService  # type: ignore
 InventoryService.TraceabilityService = TraceabilityService  # type: ignore[attr-defined]
 InventoryService.InventoryReportingService = InventoryReportingService  # type: ignore[attr-defined]
 InventoryService.ChannelAllocationService = ChannelAllocationService  # type: ignore[attr-defined]
+InventoryService.find_or_create_lot = staticmethod(find_or_create_lot)  # type: ignore[attr-defined]
 
 __all__ = [
     "InventoryService",

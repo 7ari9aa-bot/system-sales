@@ -10,8 +10,8 @@ person is worse than one that needs a human.
 The status function lets the public status URL answer for a code it handed out, and only for
 requests the callback itself opened.
 
-Revision ID: fe2026112006
-Revises: fe2026112005
+Revision ID: fe2026112008
+Revises: fe2026112007
 Create Date: 2026-11-20 14:00:00.000000
 """
 
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "fe2026112006"
-down_revision: str | None = "fe2026112005"
+revision: str = "fe2026112008"
+down_revision: str | None = "fe2026112007"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

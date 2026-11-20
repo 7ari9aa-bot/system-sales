@@ -888,6 +888,11 @@ class InventoryCostLayer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMix
     # No FK on either: the source is polymorphic, like the inspection's.
     source_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # The batch this stock arrived in, when the shop tracks expiry. A batch's remaining quantity
+    # is the sum of its layers' remaining_quantity, so there is one place stock is counted.
+    lot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("inventory_lots.id", ondelete="SET NULL"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint("received_quantity > 0", name="ck_inv_cost_layers_received_quantity"),
@@ -903,6 +908,12 @@ class InventoryCostLayer(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMix
             "variant_id",
             "warehouse_id",
             "layer_date",
+        ),
+        Index(
+            "ix_inventory_cost_layers_lot",
+            "tenant_id",
+            "lot_id",
+            postgresql_where=text("lot_id IS NOT NULL"),
         ),
     )
 

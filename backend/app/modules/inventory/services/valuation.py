@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import InsufficientStockError
@@ -26,6 +26,7 @@ from app.modules.inventory.models import (
     InventoryCostLayer,
     InventoryLandedCost,
     InventoryLandedCostLine,
+    InventoryLot,
     Warehouse,
 )
 
@@ -47,6 +48,7 @@ class ValuationService:
         source_type: str | None = None,
         source_id: UUID | None = None,
         layer_date: datetime | None = None,
+        lot_id: UUID | None = None,
     ) -> InventoryCostLayer:
         """Create a new FIFO cost layer when stock arrives (goods receipt, transfer, etc.)."""
         if quantity <= 0:
@@ -65,6 +67,7 @@ class ValuationService:
             layer_date=layer_date or datetime.now(UTC),
             source_type=source_type,
             source_id=source_id,
+            lot_id=lot_id,
         )
         session.add(layer)
         await session.flush()
@@ -103,8 +106,14 @@ class ValuationService:
         warehouse_id: UUID,
         quantity: int,
         allow_partial: bool = False,
+        order: str = "fifo",
+        now: datetime | None = None,
     ) -> dict[str, Any]:
-        """Deplete cost layers in FIFO order.
+        """Deplete cost layers: oldest received first (``fifo``) or soonest expiring (``fefo``).
+
+        ``fifo`` is what every shop has always had. ``fefo`` is for a shop that tracks expiry: the
+        layer whose batch expires first goes first, a batch that has expired is never sold, and
+        stock with no batch or no expiry date goes after the dated batches.
 
         Returns:
             {
@@ -116,20 +125,33 @@ class ValuationService:
         if quantity <= 0:
             raise ValidationError("quantity to consume must be positive")
 
+        if order not in ("fifo", "fefo"):
+            raise ValueError(f"unknown consumption order {order!r}; expected 'fifo' or 'fefo'")
+
+        stmt = select(InventoryCostLayer).where(
+            InventoryCostLayer.tenant_id == tenant_id,
+            InventoryCostLayer.variant_id == variant_id,
+            InventoryCostLayer.warehouse_id == warehouse_id,
+            InventoryCostLayer.remaining_quantity > 0,
+        )
+        if order == "fefo":
+            at = now or datetime.now(UTC)
+            # Outer join: a layer with no batch is still stock. Only a batch that has expired
+            # is excluded; one that expires this instant counts as expired.
+            stmt = stmt.outerjoin(
+                InventoryLot,
+                (InventoryLot.id == InventoryCostLayer.lot_id)
+                & (InventoryLot.tenant_id == InventoryCostLayer.tenant_id),
+            ).where(or_(InventoryLot.expires_at.is_(None), InventoryLot.expires_at > at))
+            stmt = stmt.order_by(
+                InventoryLot.expires_at.asc().nulls_last(),
+                InventoryCostLayer.layer_date.asc(),
+                InventoryCostLayer.id.asc(),
+            )
+        else:
+            stmt = stmt.order_by(InventoryCostLayer.layer_date.asc(), InventoryCostLayer.id.asc())
         layers = list(
-            (
-                await session.execute(
-                    select(InventoryCostLayer)
-                    .where(
-                        InventoryCostLayer.tenant_id == tenant_id,
-                        InventoryCostLayer.variant_id == variant_id,
-                        InventoryCostLayer.warehouse_id == warehouse_id,
-                        InventoryCostLayer.remaining_quantity > 0,
-                    )
-                    .order_by(InventoryCostLayer.layer_date.asc(), InventoryCostLayer.id.asc())
-                    .with_for_update()
-                )
-            ).scalars()
+            (await session.execute(stmt.with_for_update(of=InventoryCostLayer))).scalars()
         )
 
         total_available = sum(lyr.remaining_quantity for lyr in layers)
@@ -154,6 +176,7 @@ class ValuationService:
             consumed_layers.append(
                 {
                     "layer_id": str(layer.id),
+                    "lot_id": str(layer.lot_id) if layer.lot_id else None,
                     "quantity": taken,
                     "unit_cost": layer.unit_cost,
                     "cost": layer_cost,

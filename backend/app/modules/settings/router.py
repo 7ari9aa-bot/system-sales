@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.modules.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.settings.capabilities import shop_capabilities
 from app.modules.settings.presets import PRESETS
 from app.modules.settings.registry import (
     SEGMENTS,
@@ -122,6 +123,12 @@ async def list_setting_domains(ctx: SettingsReadCtx) -> list[str]:
 # ---------------------------------------------------------------------------
 # Resolution (Effective Values)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/capabilities")
+async def get_shop_capabilities(ctx: SettingsReadCtx) -> dict[str, object]:
+    """The shop's vertical and what it can do, as its owner has set them (final answers)."""
+    return await shop_capabilities(ctx.session, ctx.tenant_id)
 
 
 @router.get("/effective", response_model=dict[str, ResolvedSettingOut])
