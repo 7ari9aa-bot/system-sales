@@ -343,3 +343,109 @@ class TestReturnAndExchange:
         ]
         assert return_doc.invoice_number == result["return_receipt_number"]
         assert (sale_doc.icv, return_doc.icv, new_doc.icv) == (1, 2, 3)
+
+
+class TestReturnOnASaleFromBeforeTheShopJoined:
+    async def test_the_whole_path_to_the_authority_works_for_a_reference_less_return(
+        self, db, tenant_ctx
+    ):
+        """Sale, then the shop turns e-receipts on, then the old sale is returned: the return is
+        built, stored and ACCEPTED by the (official-rules) mock authority as a reference-less
+        return with reason B."""
+        import json
+
+        import httpx
+
+        from app.modules.einvoice.providers.eta.delivery import deliver_device
+        from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
+        from app.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
+
+        tid = tenant_ctx.tenant_id
+        register, shift, variant, ctx = await _shop(db, tid, enabled=False)
+        old = await _sell(db, tid, shift, variant, ctx, qty=2)
+        await db.execute(
+            sa.text("update pos_receipts set issued_at = issued_at - interval '3 days'")
+        )
+        await SettingsService(db, tid).set("einvoice.eta_enabled", True)
+        # the first e-receipt the shop ever issues (so "before" now has a meaning)
+        await _sell(db, tid, shift, variant, ctx, qty=1)
+        returned = await PosService.return_sale(
+            db,
+            tid,
+            shift.id,
+            order_id=old["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+        docs = await _docs(db, tid)
+        ret = next(d for d in docs if d.invoice_number == returned["receipt_number"])
+        body = json.loads(ret.raw_payload)
+        assert ret.document_type == "return_without_reference"
+        assert body["documentType"]["receiptType"] == "RWR"
+        assert "referenceUUID" not in body["header"]
+        assert body["header"]["documentUseReason"] == "B"
+
+        # configure the till for sending and deliver everything through the mock authority
+        device = (await db.execute(sa.select(EInvoiceDevice))).scalars().first()
+        from tests.test_eta_delivery import CREDS
+
+        device.credentials = {"eta": CREDS}
+        await db.flush()
+
+        async def no_sleep(_):
+            return None
+
+        mock = MockAuthority(pos_serial=device.device_serial, rin="674859545")
+        provider = EtaEInvoiceProvider(
+            http=httpx.AsyncClient(transport=mock.transport()), sleep=no_sleep
+        )
+        report = await deliver_device(db, device.id, provider=provider)
+
+        assert report.rejected == 0 and report.accepted == len(docs)
+
+
+class TestReferenceLessReturnAgainstTheOfficialPage:
+    """Return Receipt Without Reference v1.2, as published: the mock enforces it too."""
+
+    def _doc(self, **header):
+        """A complete, valid reference-less return built by the real builder, then altered."""
+        import copy
+        from datetime import UTC, datetime
+
+        from app.modules.einvoice.providers.eta import builder
+        from app.modules.einvoice.providers.eta.codes import ReceiptType, ReturnReason
+        from tests.test_eta_ereceipt_core import _receipt
+
+        base = _receipt(
+            receipt_type=ReceiptType.RETURN_WITHOUT_REFERENCE,
+            return_reason=ReturnReason.BEFORE_ADOPTION,
+            sales_issued_at=datetime(2026, 11, 10, 8, 0, tzinfo=UTC),
+            reference_uuid="",
+        )
+        doc = copy.deepcopy(builder.build_receipt(base))
+        doc["header"].update(header)
+        return doc
+
+    def _errors(self, doc):
+        """Only the rules this class is about (CF332-CF335); the rest of the document is not."""
+        from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
+
+        found = MockAuthority()._validate(doc, {})
+        return {e["code"] for e in found if e["code"] in {"CF332", "CF333", "CF334", "CF335"}}
+
+    def test_reason_must_be_i_or_b(self):
+        assert "CF332" in self._errors(self._doc(documentUseReason="X"))
+
+    def test_the_sale_date_is_mandatory(self):
+        doc = self._doc()
+        del doc["header"]["salesIssuedDateTime"]
+        assert "CF333" in self._errors(doc)
+
+    def test_an_empty_reference_is_a_defect_but_an_absent_one_is_fine(self):
+        assert "CF334" in self._errors(self._doc(referenceUUID=""))
+        assert self._errors(self._doc()) == set()
+        assert self._errors(self._doc(referenceUUID="b" * 64)) == set()
+
+    def test_only_this_type_carries_a_reason(self):
+        doc = self._doc()
+        doc["documentType"]["receiptType"] = "SR"
+        assert "CF335" in self._errors(doc)

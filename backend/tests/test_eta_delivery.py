@@ -531,3 +531,23 @@ class TestWholeStoreRun:
 
         out = await _HANDLERS["einvoice.eta_deliver"](db, tenant_ctx.tenant_id, {})
         assert out["tills"] == 0 and out["errors"] == 0
+
+
+class TestSendOrderIsTheChainOrder:
+    """Two receipts a moment apart (or an exchange's two halves) can carry the same printed time,
+    or the later one an EARLIER time. The chain still goes in the order they were issued."""
+
+    async def test_a_receipt_with_an_earlier_printed_time_still_goes_after_its_predecessor(
+        self, db, tenant_ctx
+    ):
+        tid = tenant_ctx.tenant_id
+        dev = await _till(db, tid)
+        await _issue(db, tid, dev, "R-1")
+        await _issue(db, tid, dev, "R-2")
+        first, second = await _doc(db, "R-1"), await _doc(db, "R-2")
+        # the second is chained after the first (icv 2) but prints an EARLIER time
+        second.issued_at = first.issued_at - timedelta(minutes=5)
+        await db.flush()
+        mock = MockAuthority()
+        report = await deliver_device(db, dev.id, provider=_provider(mock))
+        assert report.accepted == 2 and report.rejected == 0

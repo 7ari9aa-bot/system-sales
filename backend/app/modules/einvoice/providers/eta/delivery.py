@@ -89,6 +89,7 @@ def _queued(doc: EInvoiceDocument, serial: str) -> QueuedDoc:
         uuid=doc.invoice_hash,
         previous_uuid=doc.pih,
         issued_at=doc.issued_at,
+        sequence=doc.icv or 0,
         state=_TO_STATE[doc.status],
         attempts=doc.delivery_attempts or 0,
         next_attempt_at=doc.next_attempt_at,
@@ -138,7 +139,7 @@ async def deliver_device(
                     EInvoiceDocument.device_id == device.id,
                     EInvoiceDocument.status.in_(_OPEN_STORED),
                 )
-                .order_by(EInvoiceDocument.issued_at, EInvoiceDocument.id)
+                .order_by(EInvoiceDocument.icv, EInvoiceDocument.issued_at, EInvoiceDocument.id)
             )
         )
         .scalars()

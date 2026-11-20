@@ -139,7 +139,11 @@ def build_receipt(receipt: EtaReceiptInput) -> dict[str, Any]:
         "uuid": "",
         "previousUUID": receipt.previous_uuid,
     }
-    if receipt.receipt_type in (ReceiptType.RETURN, ReceiptType.RETURN_WITHOUT_REFERENCE):
+    # A return always names its sale. A return WITHOUT reference may name one too (optional, a
+    # 64-character id), but an empty value is not a 64-character id: leave the field out instead.
+    if receipt.receipt_type is ReceiptType.RETURN or (
+        receipt.receipt_type is ReceiptType.RETURN_WITHOUT_REFERENCE and receipt.reference_uuid
+    ):
         header["referenceUUID"] = receipt.reference_uuid
     header["referenceOldUUID"] = receipt.reference_old_uuid
     header["currency"] = receipt.currency

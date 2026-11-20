@@ -192,6 +192,30 @@ def effective_rate(settings: EtaSettings, national_rate: Decimal) -> Decimal:
     return national_rate if settings.vat_category == "taxable" else Decimal("0.00")
 
 
+async def _sold_before_adoption(
+    session: AsyncSession, tenant_id: uuid.UUID, sold_at: datetime | None
+) -> bool:
+    """Was this sale made before the shop's first e-receipt? That moment is when it joined.
+
+    Taken from the shop's own history (its earliest e-receipt), never guessed. A shop with no
+    e-receipt at all has not joined, so nothing it sold counts as "before"."""
+    from sqlalchemy import func
+
+    from app.modules.einvoice.models import EInvoiceDocument
+
+    if sold_at is None:
+        return False
+    first = (
+        await session.execute(
+            select(func.min(EInvoiceDocument.issued_at)).where(
+                EInvoiceDocument.tenant_id == tenant_id,
+                EInvoiceDocument.provider_type == "eta",
+            )
+        )
+    ).scalar_one_or_none()
+    return first is not None and sold_at < first
+
+
 async def vat_rate_percent(session: AsyncSession, issued_at: datetime) -> Decimal:
     """Egypt's VAT on the issue date, from the shared tax table (never a literal here)."""
     from app.modules.billing.services.tax import resolve_applicable_tax_rate
@@ -228,6 +252,7 @@ async def build_context(
     original_number: str | None = None
     original_uuid: str | None = None
     sold_at: datetime | None = None
+    reference_less = False
     if receipt.kind == "return":
         sale = (
             await session.execute(
@@ -252,12 +277,17 @@ async def build_context(
                 )
             )
         ).scalar_one_or_none()
-        if not ref:
+        if ref:
+            original_uuid = ref
+        elif await _sold_before_adoption(session, tenant_id, sold_at):
+            # The authority has a type for exactly this: goods sold before the shop joined the
+            # system. It carries no reference, only the reason "B".
+            reference_less = True
+        else:
             raise NotReady(
-                f"the original sale {sale.number} has no e-receipt to refer to "
-                "(a return needs one: it cannot be sent as a return with a reference)"
+                f"the original sale {sale.number} has no e-receipt to refer to, and it was not "
+                "sold before this shop started issuing e-receipts"
             )
-        original_uuid = ref
         originals = {
             r.variant_id: r
             for r in (
@@ -329,6 +359,9 @@ async def build_context(
         document_type = "return_receipt"
         extras["sales_issued_at"] = sold_at
         extras["return_reason"] = None
+        if reference_less:
+            document_type = "return_without_reference"
+            extras["return_reason"] = "B"  # sold before the shop joined the system
     return EInvoiceContext(
         tenant_id=tenant_id,
         country_code="EG",
@@ -341,7 +374,7 @@ async def build_context(
         subtotal=subtotal,
         tax_total=tax_total,
         grand_total=q5(subtotal + tax_total),
-        original_reference=original_number,
+        original_reference=None if reference_less else original_number,
         original_uuid=original_uuid,
         extras=extras,
     )

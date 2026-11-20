@@ -56,6 +56,10 @@ class QueuedDoc:
     attempts: int = 0
     next_attempt_at: datetime | None = None
     reference_old_uuid: str = ""  # set when this document is a correction
+    # The till's own running number. THE order of the chain: ``previousUUID`` of each receipt names
+    # the one before it, and that order is the order they were issued, whatever their printed
+    # times say (two receipts a moment apart, or an exchange's two halves, can share a time).
+    sequence: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,7 +80,7 @@ def plan_device(
     docs: list[QueuedDoc], *, now: datetime, warn_before: timedelta = timedelta(hours=24)
 ) -> Plan:
     """Plan the next batch for ONE device from all of its not-yet-final documents."""
-    ordered = sorted(docs, key=lambda d: (d.issued_at, d.id))
+    ordered = sorted(docs, key=lambda d: (d.sequence, d.issued_at, d.id))
 
     expired = tuple(
         d

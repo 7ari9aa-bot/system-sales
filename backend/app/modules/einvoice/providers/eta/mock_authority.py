@@ -236,6 +236,18 @@ class MockAuthority:
             err("CF330", "header.referenceUUID", "a return receipt must reference a sale")
         if rtype == "SR" and h.get("referenceUUID"):
             err("CF331", "header.referenceUUID", "a sale receipt cannot carry referenceUUID")
+        if rtype == "RWR":
+            # Official page "Return Receipt Without Reference v1.2": the reason (I or B) and the
+            # sale's own date are mandatory; the reference is optional but, when sent, is a
+            # 64-character id (so an empty one is a defect, not "no reference").
+            if h.get("documentUseReason") not in ("I", "B"):
+                err("CF332", "header.documentUseReason", "must be I or B")
+            if not h.get("salesIssuedDateTime"):
+                err("CF333", "header.salesIssuedDateTime", "the sale's issue time is required")
+            if "referenceUUID" in h and not _hex64(h.get("referenceUUID")):
+                err("CF334", "header.referenceUUID", "when present it must be a 64-character id")
+        elif "documentUseReason" in h or "salesIssuedDateTime" in h:
+            err("CF335", "header.documentUseReason", "only a return without reference carries it")
         if not doc.get("paymentMethod"):
             err("CF340", "paymentMethod", "paymentMethod is required")
         if not h.get("currency"):

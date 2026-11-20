@@ -7,6 +7,7 @@ These tests pin what the converter makes of that, and every reason it refuses to
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -31,6 +32,18 @@ async def _configure(db, tid, **settings):
     base = {"business.tax_id": "674859545", "business.legal_name": "متجر الملابس"}
     for key, value in {**base, **settings}.items():
         await svc.set(key, value)
+
+
+async def _age(db, receipt, *, days: int):
+    """Make a till receipt older: the database stamps it with 'now', a test needs a past."""
+    await db.execute(
+        sa.text(
+            "update pos_receipts set issued_at = issued_at - make_interval(days => :d) "
+            "where id = :i"
+        ),
+        {"d": days, "i": str(receipt.id)},
+    )
+    await db.refresh(receipt)
 
 
 async def _coded(db, tid, variant, code="EG-1001", kind="egs"):
@@ -291,6 +304,82 @@ class TestReturn:
         _, _, receipt = await self._returned(db, tenant_ctx, with_original_receipt=False)
         with pytest.raises(NotReady, match="has no e-receipt to refer to"):
             await build_context(db, tenant_ctx.tenant_id, receipt)
+
+    async def test_a_return_on_a_sale_made_before_the_shop_joined_uses_the_reference_less_type(
+        self, db, tenant_ctx
+    ):
+        from app.modules.einvoice.service import EInvoiceService
+        from tests.test_eta_db_layer import _ctx, _device
+
+        tid = tenant_ctx.tenant_id
+        await _configure(db, tid)
+        shift, variant, old_sale, old_receipt = await _sold(db, tenant_ctx, price="114.00", qty=2)
+        await _age(db, old_receipt, days=3)  # the sale is three days old
+        # the shop only starts issuing e-receipts now
+        dev = await _device(db, tid)
+        await EInvoiceService.issue_einvoice(db, tid, _ctx(tid, "FIRST-EVER"), device_id=dev.id)
+        returned = await PosService.return_sale(
+            db,
+            tid,
+            shift.id,
+            order_id=old_sale["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+        receipt = (
+            await db.execute(sa.select(PosReceipt).where(PosReceipt.id == returned["receipt_id"]))
+        ).scalar_one()
+        ctx = await build_context(db, tid, receipt)
+        assert ctx.document_type == "return_without_reference"
+        assert ctx.extras["return_reason"] == "B"
+        assert ctx.original_uuid is None and ctx.original_reference is None
+        assert ctx.grand_total == Decimal("114.00")
+
+    async def test_a_sale_that_should_have_been_sent_but_was_not_does_not_become_reference_less(
+        self, db, tenant_ctx
+    ):
+        """It happened AFTER the shop joined, so the authority must hear about it the normal way:
+        silently re-labelling its return "sold before adoption" would hide a missed receipt."""
+        from app.modules.einvoice.service import EInvoiceService
+        from tests.test_eta_db_layer import _ctx, _device
+
+        tid = tenant_ctx.tenant_id
+        await _configure(db, tid)
+        dev = await _device(db, tid)
+        first = await EInvoiceService.issue_einvoice(
+            db, tid, _ctx(tid, "FIRST-EVER"), device_id=dev.id
+        )
+        first.issued_at = first.issued_at - timedelta(days=3)  # the shop joined three days ago
+        await db.flush()
+        shift, variant, sold, _ = await _sold(db, tenant_ctx, price="114.00", qty=2)
+        returned = await PosService.return_sale(
+            db,
+            tid,
+            shift.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+        receipt = (
+            await db.execute(sa.select(PosReceipt).where(PosReceipt.id == returned["receipt_id"]))
+        ).scalar_one()
+        with pytest.raises(NotReady, match="was not sold before"):
+            await build_context(db, tid, receipt)
+
+    async def test_a_shop_with_no_e_receipts_at_all_has_not_joined_yet(self, db, tenant_ctx):
+        tid = tenant_ctx.tenant_id
+        await _configure(db, tid)
+        shift, variant, sold, _ = await _sold(db, tenant_ctx, price="114.00", qty=2)
+        returned = await PosService.return_sale(
+            db,
+            tid,
+            shift.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        )
+        receipt = (
+            await db.execute(sa.select(PosReceipt).where(PosReceipt.id == returned["receipt_id"]))
+        ).scalar_one()
+        with pytest.raises(NotReady, match="was not sold before"):
+            await build_context(db, tid, receipt)
 
     async def test_the_receipt_ids_are_unique_per_tenant(self):
         assert uuid.uuid4() != uuid.uuid4()
