@@ -8,7 +8,7 @@ _PRODUCT_STATUSES = {"draft", "active", "archived"}
 
 # §179 closed vocabulary — one importer cannot invent "EAN13" while another
 # writes "ean-13" and split the same barcode across two rows.
-IDENTIFIER_TYPES = {"gtin", "ean", "upc", "barcode", "qr_token", "external"}
+IDENTIFIER_TYPES = {"gtin", "ean", "upc", "barcode", "qr_token", "external", "egs", "gs1"}
 
 
 def _to_decimal(value: object, field: str) -> Decimal:

@@ -109,7 +109,7 @@ class SetPriceRequest(BaseModel):
 class AddIdentifierRequest(BaseModel):
     """§179: one closed-vocabulary scan code on one sellable unit."""
 
-    identifier_type: str = Field(pattern="^(gtin|ean|upc|barcode|qr_token|external)$")
+    identifier_type: str = Field(pattern="^(gtin|ean|upc|barcode|qr_token|external|egs|gs1)$")
     value: str = Field(min_length=1, max_length=127)
 
 

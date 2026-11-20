@@ -196,6 +196,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.return_reasons",  # pos/service.py::_clean_return_reason
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
+        "einvoice.eta_enabled",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.prices_include_vat",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.default_payment_method",  # einvoice/pos_adapter.py::eta_settings
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
     }
@@ -384,6 +387,46 @@ _reg(
         label_en="Require Customer",
         description_ar="هل يجب تحديد عميل قبل إتمام البيع؟",
         description_en="Must a customer be selected before completing a sale?",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.eta_enabled",
+        domain="einvoice",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="الإيصال الإلكتروني (مصلحة الضرائب)",
+        label_en="ETA e-receipt",
+        description_ar="إصدار إيصال إلكتروني لكل بيع ومرتجع من الكاشير وإرساله لمصلحة الضرائب.",
+        description_en="Issue an ETA e-receipt for every cashier sale and return.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.prices_include_vat",
+        domain="einvoice",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="الأسعار شاملة ضريبة القيمة المضافة",
+        label_en="Prices include VAT",
+        description_ar="لو مفعّل فسعر الصنف المسجّل في الكاشير يشمل الضريبة، وتُستخرج منه في الإيصال.",
+        description_en="Recorded prices already include VAT; it is extracted on the receipt.",
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.default_payment_method",
+        domain="einvoice",
+        type=SettingType.ENUM,
+        default="C",
+        scopes=(Scope.TENANT,),
+        allowed_values=("C", "V", "CC", "VC", "VO", "PR", "GC", "P", "O"),
+        label_ar="طريقة الدفع الافتراضية في الإيصال",
+        label_en="Default receipt payment method",
+        description_ar="الكاشير لا يسجّل طريقة الدفع، والمصلحة تشترطها: تُستخدم هذه القيمة.",
+        description_en="The till does not record how the customer paid; ETA requires it.",
     )
 )
 _reg(
