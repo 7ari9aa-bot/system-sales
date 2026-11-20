@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import NotFoundError, ValidationError
 from app.modules.orders.money import to_money
-from app.modules.pos.models import PosReceipt, PosReturnLine
+from app.modules.pos.models import PosReceipt, PosReturnLine, PosSession
+from app.modules.pos.receipt_settings import receipt_settings
 
 
 class PosReceiptReads:
@@ -69,6 +70,15 @@ class PosReceiptReads:
             .scalars()
             .all()
         )
+        # The till this receipt was issued on decides the shop's receipt wording and paper.
+        register_id = (
+            await session.execute(
+                select(PosSession.register_id).where(
+                    PosSession.tenant_id == tenant_id, PosSession.id == receipt.session_id
+                )
+            )
+        ).scalar_one_or_none()
+        shop = await receipt_settings(session, tenant_id, register_id=register_id)
         # Return state of the ORDER, derived from the return lines — the
         # derived equivalent of ERPNext's "Credit Note Issued" marker.
         returned_by_variant: dict[UUID, int] = dict(
@@ -173,6 +183,7 @@ class PosReceiptReads:
             "tenders": [
                 {"method": t.method, "amount": str(t.amount), "status": t.status} for t in tenders
             ],
+            "shop": shop,
         }
 
     @staticmethod

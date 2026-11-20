@@ -95,9 +95,13 @@ export function receiptLines({
   discount,
   tax,
   footerNote,
+  headerLines = [],
+  footerLines = [],
+  currency = "",
 }) {
   const money = (v) => Number(v || 0).toFixed(2);
   const lines = [{ kind: "title", text: String(shopName ?? "") }];
+  for (const text of headerLines) lines.push({ kind: "center", text: String(text) });
   if (receiptNumber) lines.push({ kind: "center", text: `رقم الإيصال: ${receiptNumber}` });
   if (date) lines.push({ kind: "center", text: String(date) });
   lines.push({ kind: "rule" });
@@ -111,9 +115,10 @@ export function receiptLines({
   lines.push({ kind: "rule" });
   if (Number(discount) > 0) lines.push({ kind: "row", left: `-${money(discount)}`, right: "الخصم" });
   if (Number(tax) > 0) lines.push({ kind: "row", left: money(tax), right: "الضريبة" });
-  lines.push({ kind: "total", left: money(total), right: "الإجمالي" });
+  lines.push({ kind: "total", left: currency ? `${money(total)} ${currency}` : money(total), right: "الإجمالي" });
   lines.push({ kind: "rule" });
   if (footerNote) lines.push({ kind: "center", text: String(footerNote) });
+  for (const text of footerLines) lines.push({ kind: "center", text: String(text) });
   return lines;
 }
 

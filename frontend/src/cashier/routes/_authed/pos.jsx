@@ -33,7 +33,7 @@ import { scanRefusalText } from "../../api/scanRefusal";
 import { useOfflineSync } from "@/cashier/lib/useOfflineSync";
 import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
 import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
-import { receiptBytes } from "@/cashier/lib/receiptPrint";
+import { printableReceipt, receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -381,19 +381,9 @@ function PosScreen({ user, session }) {
 
       if (isPrinterConnected()) {
         try {
-          const bytes = receiptBytes({
-            shopName: session?.profile?.name || "فهرست",
-            receiptNumber: r?.number || r?.order_number || "",
-            items: lines.map((l) => ({
-              name: l.title || l.name || "صنف",
-              quantity: l.quantity,
-              unit_price: l.price,
-              total: l.total,
-            })),
-            total: r?.total ?? sale.quote.total,
-            discount: sale.quote.discount,
-          });
-          printRaw(bytes).catch(() => {});
+          const bytes = receiptBytes(printableReceipt(r, { fallbackName: session?.profile?.name || "فهرست" }));
+          // The owner decides how many copies a till prints.
+          for (let n = 0; n < (r?.shop?.copies ?? 1); n += 1) printRaw(bytes).catch(() => {});
           kickCashDrawer().catch(() => {});
         } catch {
           /* printer errors are non-fatal to the sale */

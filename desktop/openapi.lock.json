@@ -1,8 +1,8 @@
 {
   "measured": {
     "operations": 589,
-    "sha256": "2f996e82a8ecf6c089fa12c8901f72298483614507c98941941a39c8dbbb4c6f",
-    "typed_operations": 333
+    "sha256": "ae2bbeb3b97ff006b1ce6bc36d3db077c25d91fec5517dfe07b4bd4bec19744a",
+    "typed_operations": 334
   },
   "spec": {
     "components": {
@@ -4896,6 +4896,17 @@
         },
         "CurrentTenant": {
           "properties": {
+            "currency": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            },
             "id": {
               "format": "uuid",
               "title": "Id",
@@ -12607,6 +12618,20 @@
             "content"
           ],
           "title": "MessageSendRequest",
+          "type": "object"
+        },
+        "MetaOAuthChoosePageOut": {
+          "description": "Contract for POST /integrations/meta/oauth/choose-page: which channel was connected,\nas ``<provider>:<display name>`` (the popup shows it back to the owner).",
+          "properties": {
+            "connected": {
+              "title": "Connected",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connected"
+          ],
+          "title": "MetaOAuthChoosePageOut",
           "type": "object"
         },
         "MetaOAuthPageChoiceIn": {
@@ -50127,7 +50152,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/MetaOAuthChoosePageOut"
+                  }
                 }
               },
               "description": "Successful Response"

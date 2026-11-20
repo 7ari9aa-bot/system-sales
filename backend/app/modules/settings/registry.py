@@ -201,6 +201,18 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.reference_required_methods",  # pos/service.py::record_sale
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
+        "business.trade_name",  # pos/receipt_settings.py::receipt_settings
+        "business.legal_name",  # pos/receipt_settings.py::receipt_settings
+        "business.address.line1",  # pos/receipt_settings.py::receipt_settings
+        "business.address.city",  # pos/receipt_settings.py::receipt_settings
+        "business.phone",  # pos/receipt_settings.py::receipt_settings
+        "business.tax_id",  # pos/receipt_settings.py::receipt_settings
+        "print.paper_width",  # pos/receipt_settings.py::receipt_settings
+        "print.show_logo",  # pos/receipt_settings.py::receipt_settings
+        "print.header_text",  # pos/receipt_settings.py::receipt_settings
+        "print.footer_text",  # pos/receipt_settings.py::receipt_settings
+        "print.copies",  # pos/receipt_settings.py::receipt_settings
+        "print.show_tax_detail",  # pos/receipt_settings.py::receipt_settings
     }
 )
 

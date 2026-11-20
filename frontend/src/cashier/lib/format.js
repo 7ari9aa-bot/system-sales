@@ -1,6 +1,22 @@
-// Shared number / date formatting for the whole system (Egyptian pound, Arabic labels).
+// Shared number / date formatting for the whole system (Arabic labels).
 
-const CURRENCY = "ج.م";
+import { currencyLabel } from "./receiptShop";
+
+// The Egyptian pound until the signed-in shop says otherwise. A shop trades in ONE currency (the
+// server's ``Tenant.currency``), so one module-level sign serves every amount on every screen
+// without threading a prop through each of them.
+const DEFAULT_CURRENCY = "ج.م";
+let CURRENCY = DEFAULT_CURRENCY;
+
+/** Set the sign every amount is written with, from the shop's ISO code. A code that cannot be read keeps the last good sign. */
+export function setShopCurrency(code) {
+  CURRENCY = currencyLabel(code) || DEFAULT_CURRENCY;
+}
+
+/** The sign amounts are written with right now (for the few places that write one beside a number). */
+export function currencySign() {
+  return CURRENCY;
+}
 
 export function fmtMoney(value) {
   const n = Number(value) || 0;
