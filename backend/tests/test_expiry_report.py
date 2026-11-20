@@ -169,3 +169,58 @@ async def test_the_query_is_scoped_to_the_shop_in_the_statement_itself(
     await expiry_report(db, tid, now=NOW)
     lot_queries = [q for q in seen if "inventory_lots" in q]
     assert lot_queries and all("inventory_lots.tenant_id =" in q for q in lot_queries)
+
+
+async def test_each_batch_reports_the_units_it_still_holds(db, tenant_ctx) -> None:
+    from app.modules.inventory.services.valuation import ValuationService
+
+    tid = tenant_ctx.tenant_id
+    await _on(db, tid)
+    var = await _variant(db, tid)
+    from app.modules.inventory.models import Warehouse
+
+    wh = Warehouse(tenant_id=tid, name="M", code="WH-Q", is_active=True)
+    db.add(wh)
+    await db.flush()
+    lot = await _lot(db, tid, var, "HOLDS", 5)
+    layer = await ValuationService.create_cost_layer(
+        db,
+        tid,
+        variant_id=var.id,
+        warehouse_id=wh.id,
+        quantity=10,
+        unit_cost=Decimal("3"),
+        lot_id=lot.id,
+    )
+    layer.remaining_quantity = 6  # four already sold out of it
+    await db.flush()
+    await _lot(db, tid, var, "UNTRACKED", 6)  # a batch no layer names: quantity unknown
+    out = await expiry_report(db, tid, now=NOW)
+    qty = {r["lot_code"]: r["quantity"] for r in out["expiring"]}
+    assert qty == {"HOLDS": 6, "UNTRACKED": None}
+
+
+async def test_the_report_totals_the_units_at_risk(db, tenant_ctx) -> None:
+    from app.modules.inventory.models import Warehouse
+    from app.modules.inventory.services.valuation import ValuationService
+
+    tid = tenant_ctx.tenant_id
+    await _on(db, tid)
+    var = await _variant(db, tid)
+    wh = Warehouse(tenant_id=tid, name="M", code="WH-T", is_active=True)
+    db.add(wh)
+    await db.flush()
+    for code, days, qty in (("X", -3, 4), ("S", 5, 7), ("F", 400, 9)):
+        lot = await _lot(db, tid, var, code, days)
+        await ValuationService.create_cost_layer(
+            db,
+            tid,
+            variant_id=var.id,
+            warehouse_id=wh.id,
+            quantity=qty,
+            unit_cost=Decimal("3"),
+            lot_id=lot.id,
+        )
+    out = await expiry_report(db, tid, now=NOW)
+    assert out["expired_units"] == 4
+    assert out["expiring_units"] == 7
