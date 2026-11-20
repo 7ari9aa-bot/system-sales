@@ -196,6 +196,8 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.return_reasons",  # pos/service.py::_clean_return_reason
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
+        "pos.take_payments",  # pos/service.py::record_sale
+        "pos.reference_required_methods",  # pos/service.py::record_sale
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
     }
@@ -477,6 +479,50 @@ _reg(
         label_en="Return Reasons",
         description_ar="الأسباب التي يختار منها الكاشير عند المرتجع. تُسجَّل مع كل قطعة.",
         description_en="The reasons a cashier can pick from on a return. Saved on each item.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.take_payments",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="تسجيل وسائل الدفع",
+        label_en="Record Payments at the Till",
+        description_ar=(
+            "عند التفعيل يسجّل الكاشير كيف دفع الزبون (كاش أو كارت أو تحويل) والباقي، "
+            "وتدخل المبالغ النقدية في حركة الدرج. عند الإيقاف يسجّل البيع فقط كما كان."
+        ),
+        description_en=(
+            "When on, the cashier records how the customer paid (cash, card, transfer) and the "
+            "change, and cash goes into the drawer ledger. When off, a sale is recorded only."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.reference_required_methods",
+        domain="pos",
+        type=SettingType.LIST,
+        default=["card", "bank_transfer", "wallet"],
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="وسائل دفع تتطلب رقماً مرجعياً",
+        label_en="Payment Methods That Need a Reference",
+        description_ar=(
+            "وسائل الدفع التي يجب أن يكتب الكاشير معها رقم العملية أو الموافقة "
+            "(مثل رقم إيصال ماكينة الكارت أو رقم تحويل إنستاباي)."
+        ),
+        description_en=(
+            "Payment methods that need an approval or transfer number typed by the cashier "
+            "(a card terminal slip number, an instant-transfer reference)."
+        ),
     )
 )
 # ============================== INVENTORY =================================

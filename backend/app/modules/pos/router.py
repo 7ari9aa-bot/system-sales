@@ -233,12 +233,28 @@ class QuoteRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
 
 
-class RecordSaleRequest(BaseModel):
-    """A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.
+class PaymentLine(BaseModel):
+    """One way the customer paid. ``tendered`` is only for cash (the note handed over)."""
 
-    ``extra="forbid"``: a client that still sends ``method``/``amount``/``tenders`` or a seller
-    id is refused rather than ignored. Ignoring a payment field would let the client believe
-    money was handled; the seller is always the authenticated caller, never a body field.
+    model_config = ConfigDict(extra="forbid")
+
+    method: str = Field(min_length=1, max_length=31)
+    amount: str = Field(pattern=_MONEY)
+    tendered: str | None = Field(default=None, pattern=_MONEY)
+    # Card approval number, transfer reference. Required for the methods the shop lists in
+    # ``pos.reference_required_methods``.
+    reference: str | None = Field(default=None, max_length=63)
+
+
+class RecordSaleRequest(BaseModel):
+    """A counter sale. The cashier records WHAT was sold and, if the shop turned it on, HOW it
+    was paid.
+
+    ``extra="forbid"``: a client that sends an unknown field or a seller id is refused rather
+    than ignored; the seller is always the authenticated caller, never a body field. ``payments``
+    is accepted only when the shop's ``pos.take_payments`` is on, and required then. Ignoring a
+    payment field would let the client believe money was handled, so a till that does not record
+    payments refuses it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -255,6 +271,7 @@ class RecordSaleRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
     note: str | None = Field(default=None, max_length=512)
+    payments: list[PaymentLine] | None = Field(default=None, max_length=8)
 
 
 class WorkingSessionOut(BaseModel):
@@ -279,6 +296,10 @@ class RecordSaleOut(BaseModel):
     # not be attached to the invoice: the sale itself still went through, but the customer will not
     # be able to follow it from a chat. The till shows a notice and the cashier can fix it.
     customer_notice: str | None = None
+    # Set only when the till records payments: what was collected and the change handed back
+    # (change is None when nothing was paid in cash).
+    paid: str | None = None
+    change: str | None = None
 
 
 class HoldCartRequest(BaseModel):
@@ -512,7 +533,7 @@ async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
 async def record_sale(
     register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx, override: OverrideDep
 ):
-    """Record a sale: no shift to open, no payment to take. Stock comes off the shelf."""
+    """Record a sale: stock comes off the shelf; payment is taken only if the shop turned it on."""
     return await PosService.record_sale(
         ctx.session,
         ctx.tenant_id,
@@ -525,19 +546,40 @@ async def record_sale(
         note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,
         discount_override=override.active,
+        payments=[line.model_dump() for line in body.payments] if body.payments else None,
     )
 
 
+class CloseSessionRequest(BaseModel):
+    """The close. ``counted_cash`` is required when the till takes payments and refused when not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    counted_cash: str | None = Field(default=None, pattern=_MONEY)
+
+
 @router.post("/sessions/{session_id}/close")
-async def close_session(session_id: UUID, ctx: PosWriteCtx, override: OverrideDep):
+async def close_session(
+    session_id: UUID,
+    ctx: PosWriteCtx,
+    override: OverrideDep,
+    body: CloseSessionRequest | None = None,
+):
     pos_session = await PosService.close_session(
         ctx.session,
         ctx.tenant_id,
         session_id,
         closed_by=ctx.user.id,
         shift_override=override.active,
+        counted_cash=body.counted_cash if body is not None else None,
     )
     return _session_out(pos_session)
+
+
+@router.get("/sessions/{session_id}/drawer")
+async def drawer_summary(session_id: UUID, ctx: PosReadCtx):
+    """Expected cash from the drawer ledger and what each payment method collected."""
+    return await PosService.drawer_summary(ctx.session, ctx.tenant_id, session_id)
 
 
 class CashMovementRequest(BaseModel):

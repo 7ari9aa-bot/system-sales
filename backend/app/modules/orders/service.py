@@ -373,6 +373,30 @@ class OrderService:
         return list(rows)
 
     @staticmethod
+    async def collected_by_method(
+        session: AsyncSession, tenant_id: UUID, order_ids: list[UUID]
+    ) -> dict[str, Decimal]:
+        """What each payment method captured across the given orders (captured rows only).
+
+        The cashier's day-end figure: the card total to compare with the terminal slip, the
+        transfers with the account. Refunds are not netted; they are their own rows.
+        """
+        if not order_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(OrderPayment.method, func.coalesce(func.sum(OrderPayment.amount), 0))
+                .where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id.in_(order_ids),
+                    OrderPayment.status == "captured",
+                )
+                .group_by(OrderPayment.method)
+            )
+        ).all()
+        return {str(method): to_money(total, "collected") for method, total in rows}
+
+    @staticmethod
     async def list_status_history(
         session: AsyncSession,
         tenant_id: UUID,

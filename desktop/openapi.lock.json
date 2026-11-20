@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 573,
-    "sha256": "bcb70d85abcda85738ada81357fc4261f6c6818bb3c768a415fb4731322b89b9",
+    "operations": 574,
+    "sha256": "7bfa9cc4c4fd90c162b95755b4416d5453db52549073e69b70fab3e4bc938178",
     "typed_operations": 320
   },
   "spec": {
@@ -3951,6 +3951,26 @@
             "period_end"
           ],
           "title": "ClosePeriodRequest",
+          "type": "object"
+        },
+        "CloseSessionRequest": {
+          "additionalProperties": false,
+          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.",
+          "properties": {
+            "counted_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Cash"
+            }
+          },
+          "title": "CloseSessionRequest",
           "type": "object"
         },
         "CommentHideRequest": {
@@ -14501,6 +14521,53 @@
           "title": "PaymentIn",
           "type": "object"
         },
+        "PaymentLine": {
+          "additionalProperties": false,
+          "description": "One way the customer paid. ``tendered`` is only for cash (the note handed over).",
+          "properties": {
+            "amount": {
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "method": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Method",
+              "type": "string"
+            },
+            "reference": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference"
+            },
+            "tendered": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tendered"
+            }
+          },
+          "required": [
+            "method",
+            "amount"
+          ],
+          "title": "PaymentLine",
+          "type": "object"
+        },
         "PaymentMethodInfo": {
           "properties": {
             "key": {
@@ -15739,6 +15806,17 @@
         },
         "RecordSaleOut": {
           "properties": {
+            "change": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change"
+            },
             "customer_notice": {
               "anyOf": [
                 {
@@ -15763,6 +15841,17 @@
               "title": "Order Number",
               "type": "string"
             },
+            "paid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paid"
+            },
             "receipt_id": {
               "format": "uuid",
               "title": "Receipt Id",
@@ -15785,7 +15874,7 @@
         },
         "RecordSaleRequest": {
           "additionalProperties": false,
-          "description": "A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.\n\n``extra=\"forbid\"``: a client that still sends ``method``/``amount``/``tenders`` or a seller\nid is refused rather than ignored. Ignoring a payment field would let the client believe\nmoney was handled; the seller is always the authenticated caller, never a body field.",
+          "description": "A counter sale. The cashier records WHAT was sold and, if the shop turned it on, HOW it\nwas paid.\n\n``extra=\"forbid\"``: a client that sends an unknown field or a seller id is refused rather\nthan ignored; the seller is always the authenticated caller, never a body field. ``payments``\nis accepted only when the shop's ``pos.take_payments`` is on, and required then. Ignoring a\npayment field would let the client believe money was handled, so a till that does not record\npayments refuses it.",
           "properties": {
             "customer_id": {
               "anyOf": [
@@ -15854,6 +15943,21 @@
                 }
               ],
               "title": "Note"
+            },
+            "payments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentLine"
+                  },
+                  "maxItems": 8,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payments"
             }
           },
           "required": [
@@ -68936,7 +69040,7 @@
       },
       "/api/v1/pos/registers/{register_id}/sales": {
         "post": {
-          "description": "Record a sale: no shift to open, no payment to take. Stock comes off the shelf.",
+          "description": "Record a sale: stock comes off the shelf; payment is taken only if the shop turned it on.",
           "operationId": "record_sale_api_v1_pos_registers__register_id__sales_post",
           "parameters": [
             {
@@ -70084,6 +70188,23 @@
               }
             }
           ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CloseSessionRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
           "responses": {
             "200": {
               "content": {
@@ -70211,6 +70332,112 @@
             }
           },
           "summary": "Get Close Preview",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/drawer": {
+        "get": {
+          "description": "Expected cash from the drawer ledger and what each payment method collected.",
+          "operationId": "drawer_summary_api_v1_pos_sessions__session_id__drawer_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Drawer Summary",
           "tags": [
             "pos"
           ]

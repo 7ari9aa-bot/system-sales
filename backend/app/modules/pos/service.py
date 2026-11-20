@@ -45,6 +45,7 @@ from app.modules.pos.models import (
 )
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.receipt_reads import PosReceiptReads
+from app.modules.pos.tender import expected_drawer_cash, parse_lines, settle, variance
 
 _SALE_METHODS = {"cash", "card", "wallet", "bank_transfer"}
 _NUMBER_ATTEMPTS = 3
@@ -1268,16 +1269,21 @@ class PosService(PosReceiptReads):
         note: str | None = None,
         actor_user_id: UUID | None = None,
         discount_override: bool = False,
+        payments: list[dict] | None = None,
     ) -> dict:
-        """RECORD a counter sale: what was sold, at what price, by whom. No payment taken.
+        """RECORD a counter sale: what was sold, at what price, by whom.
 
-        How the customer paid is not this system's business, so there is no tender, no method, no
-        amount, no change and no drawer. The order is created (stock reserved), confirmed (the
+        By default no payment is taken: the order is created (stock reserved), confirmed (the
         reservation becomes a real sale) and a receipt is issued with the seller on it, all in the
-        caller's one transaction. It never writes an ``OrderPayment``, a ``Refund`` or a
-        ``PosCashMovement``.
+        caller's one transaction, and no ``OrderPayment`` or ``PosCashMovement`` is written.
+
+        A shop that turns ``pos.take_payments`` on records how the customer paid. Each tender line
+        goes through ``OrderService.add_payment`` (which keeps the over-payment guard and converts
+        the stock reservation), the receipt carries the cash tendered and the change, and the cash
+        that stays in the drawer is appended to the drawer ledger. A shop with the setting off that
+        still sends ``payments`` is refused, never silently ignored.
         """
-        from app.modules.orders.service import OrderService
+        OrderService = PosService._order_service()
 
         register = await PosService._get_register(session, tenant_id, register_id)
         if not register.is_active:
@@ -1333,6 +1339,30 @@ class PosService(PosReceiptReads):
             session, tenant_id, profile, customer_id
         )
 
+        # Decide up front whether this till takes payments, so a bad request is refused before any
+        # order or reservation exists.
+        take_payments = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        tender_lines = parse_lines(payments)
+        reference_required: list[str] = []
+        if take_payments:
+            if not tender_lines:
+                raise ValidationError("this till takes payments: send at least one payment line")
+            reference_required = [
+                str(m)
+                for m in (
+                    await PosService._setting(
+                        session, tenant_id, "pos.reference_required_methods", pos_session
+                    )
+                    or []
+                )
+            ]
+        elif tender_lines:
+            raise ValidationError(
+                "this till does not record payments: turn on pos.take_payments or send no payments"
+            )
+
         order = await OrderService.create_order(
             session,
             tenant_id,
@@ -1343,10 +1373,55 @@ class PosService(PosReceiptReads):
             discount_total=discount_total,
             note=note,
         )
-        await OrderService.confirm_sale(session, tenant_id, order.id, actor_user_id=actor_user_id)
+        tender = None
+        if take_payments:
+            allowed = (
+                set(profile.allowed_payment_methods or []) if profile is not None else {"cash"}
+            )
+            tender = settle(
+                tender_lines,
+                total=Decimal(str(order.grand_total)),
+                allowed_methods=allowed,
+                reference_required=reference_required,
+            )
+            for line in tender.lines:
+                await OrderService.add_payment(
+                    session,
+                    tenant_id,
+                    order.id,
+                    method=line.method,
+                    amount=line.amount,
+                    provider=line.reference,
+                    actor_user_id=actor_user_id,
+                )
+        else:
+            await OrderService.confirm_sale(
+                session, tenant_id, order.id, actor_user_id=actor_user_id
+            )
+        has_cash = tender is not None and tender.tendered_cash is not None
         receipt = await PosService._issue_receipt(
-            session, tenant_id, pos_session, order, sold_by_user_id=actor_user_id
+            session,
+            tenant_id,
+            pos_session,
+            order,
+            tendered_amount=tender.tendered_cash if has_cash else None,
+            change_amount=tender.change if has_cash else None,
+            sold_by_user_id=actor_user_id,
         )
+        if tender is not None and tender.cash_kept > 0:
+            session.add(
+                PosCashMovement(
+                    tenant_id=tenant_id,
+                    session_id=pos_session.id,
+                    direction="in",
+                    reason="cash_sale",
+                    amount=tender.cash_kept,
+                    reference_type="order",
+                    reference_id=order.id,
+                    created_by_user_id=actor_user_id,
+                )
+            )
+            await session.flush()
         return {
             "order_id": order.id,
             "order_number": order.number,
@@ -1354,6 +1429,8 @@ class PosService(PosReceiptReads):
             "receipt_number": receipt.number,
             "grand_total": str(order.grand_total),
             "customer_notice": customer_notice,
+            "paid": str(tender.paid) if tender is not None else None,
+            "change": str(tender.change) if has_cash else None,
         }
 
     @staticmethod
@@ -1451,15 +1528,17 @@ class PosService(PosReceiptReads):
         *,
         closed_by: UUID | None = None,
         shift_override: bool = False,
+        counted_cash: object = None,
     ) -> PosSession:
-        """OPEN → CLOSED. The day is RECORDED, never counted.
+        """OPEN → CLOSED. The day is RECORDED; it is counted only where the shop counts.
 
-        The close is not a drawer count: nobody types a counted figure and no
-        shortage or surplus is computed. What it stores is the day's closing
-        balance, derived from the ledgers: opening balance + every invoice
-        − every return (an exchange is a return plus a new sale, so its value
-        difference is already inside both figures). No payment, drawer
-        movement or refund is created here.
+        By default nothing is counted: the close stores the day's closing balance, derived from
+        the ledgers (opening balance + every invoice − every return; an exchange is a return plus
+        a new sale, so its value difference is already inside both figures).
+
+        A till whose ``pos.take_payments`` is on also has a drawer. Its close then needs the cash
+        the cashier counted, and records the expected cash (from the drawer ledger) and the
+        variance. A till with the setting off refuses a counted figure rather than ignoring it.
         """
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
@@ -1468,8 +1547,98 @@ class PosService(PosReceiptReads):
         )
         if pos_session.status != "OPEN":
             raise ConflictError(f"pos session is already {pos_session.status}")
+        counted: Decimal | None = None
+        drawer_on = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        if drawer_on:
+            if counted_cash is None:
+                raise ValidationError("count the drawer: counted_cash is required to close")
+            counted = to_money(counted_cash, "counted_cash")
+            if counted < 0:
+                raise ValidationError("counted_cash cannot be negative")
+        elif counted_cash is not None:
+            raise ValidationError(
+                "this till does not count a drawer: turn on pos.take_payments or send no count"
+            )
+        expected: Decimal | None = None
+        if counted is not None:
+            expected = Decimal(
+                (await PosService.drawer_summary(session, tenant_id, session_id))["expected_cash"]
+            )
         await PosService._record_close(session, tenant_id, pos_session, closed_by=closed_by)
+        if counted is not None and expected is not None:
+            # Stored beside the day's balance: the counted figure, the cash the ledger says the
+            # drawer should hold, and the difference. The ledger figure replaces the book balance
+            # in ``expected_cash`` only for a till that counts, so a shop that never counts keeps
+            # exactly what it had.
+            pos_session.counted_cash = counted
+            pos_session.expected_cash = expected
+            pos_session.variance = variance(counted=counted, expected=expected)
+            await session.flush()
         return pos_session
+
+    @staticmethod
+    def _order_service():
+        """The orders service, imported once for this module's payment calls.
+
+        Imported lazily (``orders`` imports ``pos`` elsewhere) and in ONE place, so the cashier
+        reaches the orders module through a single seam instead of one import per caller.
+        """
+        from app.modules.orders.service import OrderService
+
+        return OrderService
+
+    @staticmethod
+    async def drawer_summary(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
+        """What the drawer should hold and how the day was paid. Read-only, from the ledgers.
+
+        ``expected_cash`` is the opening float plus every row of the drawer ledger, never a stored
+        figure, so a missing row shows up as a variance instead of being hidden. ``by_method`` is
+        what each payment method collected on the day's sales, for comparing the card total with
+        the bank slip and the transfers with the account.
+        """
+        pos_session = await PosService._get_session(session, tenant_id, session_id)
+        rows = (
+            await session.execute(
+                select(
+                    PosCashMovement.direction, PosCashMovement.reason, PosCashMovement.amount
+                ).where(
+                    PosCashMovement.tenant_id == tenant_id,
+                    PosCashMovement.session_id == pos_session.id,
+                )
+            )
+        ).all()
+        expected = expected_drawer_cash(
+            opening_float=to_money(pos_session.opening_float, "opening_float"),
+            movements=[(r[0], r[1], Decimal(str(r[2]))) for r in rows],
+        )
+        sold_order_ids = list(
+            (
+                await session.execute(
+                    select(PosReceipt.order_id).where(
+                        PosReceipt.tenant_id == tenant_id,
+                        PosReceipt.session_id == pos_session.id,
+                        PosReceipt.kind == "sale",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        collected = await PosService._order_service().collected_by_method(
+            session, tenant_id, sold_order_ids
+        )
+        return {
+            "session_id": pos_session.id,
+            "opening_float": str(to_money(pos_session.opening_float, "opening_float")),
+            "expected_cash": str(expected),
+            "counted_cash": (
+                str(pos_session.counted_cash) if pos_session.counted_cash is not None else None
+            ),
+            "variance": str(pos_session.variance) if pos_session.variance is not None else None,
+            "by_method": {m: str(a) for m, a in collected.items()},
+        }
 
     @staticmethod
     async def handover_session(
