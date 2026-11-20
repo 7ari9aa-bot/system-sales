@@ -137,3 +137,26 @@ def parse_general_notification(body: Any) -> DeviceEvent:
     if not isinstance(message, dict):
         raise NotificationError("general notification 'Message' must be an object")
     return DeviceEvent(type=kind, device_serial=serial, message=message)
+
+
+# What the authority-facing words become in ``einvoice_documents.status`` (a CHECK-constrained
+# column shared with the other countries). One table, so the stored word never drifts from the
+# logic that decides it.
+STORED_STATUS: dict[str, str] = {
+    "pending": "signed",  # built, signed/stored, not yet delivered
+    "submitted": "submitted",  # the authority answered 202
+    "valid": "reported",  # the authority validated it
+    "invalid": "rejected",  # the authority refused it
+    "rejected": "rejected",
+    "failed": "failed",  # delivery trouble, safe to retry
+    "cancelled": "cancelled",
+    "received": "reported",  # a buyer-side event on an already valid receipt
+}
+
+
+def stored_status(authority_word: str) -> str:
+    """The value to write to ``einvoice_documents.status``; unknown words are a bug, not a guess."""
+    try:
+        return STORED_STATUS[authority_word]
+    except KeyError:
+        raise ValueError(f"no stored status for ETA state {authority_word!r}") from None

@@ -19,6 +19,7 @@ import pytest
 from app.modules.einvoice.models import EInvoiceDevice
 from app.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
 from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
+from app.modules.einvoice.providers.eta.notifications import stored_status
 from app.modules.einvoice.providers.eta.provider import (
     STATUS_FAILED,
     STATUS_PENDING,
@@ -180,7 +181,7 @@ async def test_unconfigured_device_stores_pending_and_claims_nothing():
     _, signed = await _issue(prov, device, _context(device))
     result = await prov.submit(signed, device)
     assert result.success is False
-    assert result.status == STATUS_PENDING
+    assert result.status == stored_status(STATUS_PENDING)
     assert result.warnings  # says why
 
 
@@ -242,4 +243,4 @@ async def test_bad_credentials_leave_the_receipt_retryable_not_rejected():
 async def test_check_status_never_invents_valid():
     result = await EtaEInvoiceProvider(clock=lambda: NOW).check_status("a" * 64, _device())
     assert result.success is False
-    assert result.status == STATUS_PENDING
+    assert result.status == stored_status(STATUS_PENDING)

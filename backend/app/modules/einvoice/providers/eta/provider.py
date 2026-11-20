@@ -46,6 +46,7 @@ from app.modules.einvoice.providers.eta.client import (
     EtaTransientError,
 )
 from app.modules.einvoice.providers.eta.context import device_profile, to_eta_input
+from app.modules.einvoice.providers.eta.notifications import stored_status
 from app.modules.einvoice.providers.eta.qr import build_qr_payload
 from app.modules.einvoice.providers.eta.validator import (
     Issue,
@@ -56,7 +57,8 @@ from app.modules.einvoice.providers.eta.validator import (
 if TYPE_CHECKING:
     from app.modules.einvoice.models import EInvoiceDevice
 
-# Statuses written to ``einvoice_documents.status`` by this provider.
+# Words this provider reports for a submission. ``stored_status`` maps them onto the values the
+# documents table accepts (pending is stored as "signed", for instance).
 STATUS_PENDING = "pending"  # built + stored, not (yet) accepted by the authority
 STATUS_SUBMITTED = "submitted"  # authority returned 202 and accepted the document
 STATUS_REJECTED = "rejected"  # authority returned the document as rejected
@@ -143,7 +145,7 @@ class EtaEInvoiceProvider(EInvoiceProvider):
             # Not onboarded with the authority: keep the receipt, claim nothing.
             return SubmissionResult(
                 success=False,
-                status=STATUS_PENDING,
+                status=stored_status(STATUS_PENDING),
                 authority_uuid=None,
                 warnings=["ETA credentials are not configured; receipt stored, not submitted"],
                 raw_response={},
@@ -155,11 +157,17 @@ class EtaEInvoiceProvider(EInvoiceProvider):
             resp = await self._client(device, cfg).submit_raw(body)
         except (EtaAuthError, EtaTransientError) as exc:
             return SubmissionResult(
-                success=False, status=STATUS_FAILED, errors=[str(exc)], raw_response={}
+                success=False,
+                status=stored_status(STATUS_FAILED),
+                errors=[str(exc)],
+                raw_response={},
             )
         except EtaError as exc:
             return SubmissionResult(
-                success=False, status=STATUS_REJECTED, errors=[str(exc)], raw_response={}
+                success=False,
+                status=stored_status(STATUS_REJECTED),
+                errors=[str(exc)],
+                raw_response={},
             )
         if resp.rejected:
             errs = [
@@ -169,14 +177,14 @@ class EtaEInvoiceProvider(EInvoiceProvider):
             ]
             return SubmissionResult(
                 success=False,
-                status=STATUS_REJECTED,
+                status=stored_status(STATUS_REJECTED),
                 authority_uuid=doc["header"]["uuid"],
                 errors=errs,
                 raw_response=resp.raw,
             )
         return SubmissionResult(
             success=True,
-            status=STATUS_SUBMITTED,
+            status=stored_status(STATUS_SUBMITTED),
             authority_uuid=doc["header"]["uuid"],
             raw_response=resp.raw,
         )
@@ -187,7 +195,7 @@ class EtaEInvoiceProvider(EInvoiceProvider):
         # honest to return here without a submission id.
         return SubmissionResult(
             success=False,
-            status=STATUS_PENDING,
+            status=stored_status(STATUS_PENDING),
             authority_uuid=authority_uuid,
             warnings=["status is delivered by callback; query by submission id instead"],
         )

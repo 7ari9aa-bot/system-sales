@@ -58,9 +58,19 @@ class EInvoiceDevice(TenantMixin, TimestampMixin, IdMixin, Base):
     # Encrypted credentials / CSID / tokens / certificate metadata
     credentials: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     metadata_info: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # SHA-256 (hex) of the shared key the authority sends in ``Authorization: ApiKey``. Only the
+    # hash is stored: the plain key lives with the merchant's onboarding, never in this row.
+    # Unique so a callback resolves to exactly one store (NULL = no callbacks configured).
+    notification_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "device_serial", name="uq_einvoice_devices_tenant_serial"),
+        Index(
+            "uq_einvoice_devices_notification_key",
+            "notification_key_hash",
+            unique=True,
+            postgresql_where="notification_key_hash IS NOT NULL",
+        ),
         CheckConstraint(
             "status IN ('active', 'onboarding', 'suspended', 'revoked')",
             name="ck_einvoice_devices_status",
@@ -94,7 +104,9 @@ class EInvoiceDocument(TenantMixin, TimestampMixin, IdMixin, Base):
     invoice_number: Mapped[str] = mapped_column(String(63))
     # document_type: tax_invoice | simplified | credit_note | debit_note | return_receipt
     document_type: Mapped[str] = mapped_column(String(31))
-    # status: draft | signed | submitted | cleared | reported | rejected | failed
+    # status: draft | signed | submitted | cleared | reported | rejected | failed | cancelled
+    # ETA: signed=stored, not yet delivered | submitted=202 accepted | reported=validated
+    #       rejected=invalid | failed=delivery trouble, retryable | cancelled=voided
     status: Mapped[str] = mapped_column(String(31), default="draft", server_default="draft")
     # Invoice Counter Value for this specific document
     icv: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
@@ -112,6 +124,15 @@ class EInvoiceDocument(TenantMixin, TimestampMixin, IdMixin, Base):
     authority_uuid: Mapped[str | None] = mapped_column(String(127), nullable=True)
     authority_response: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     errors: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    # ETA delivery tracking (unused by the other providers; defaults keep them unaffected).
+    # The authority's id for the batch this receipt travelled in (for status follow-up).
+    submission_uuid: Mapped[str | None] = mapped_column(String(127), nullable=True)
+    # The authority's permanent id for an accepted receipt (``longId``).
+    authority_long_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Set when this receipt replaces a rejected one (the rejected receipt's uuid).
+    reference_old_uuid: Mapped[str | None] = mapped_column(String(127), nullable=True)
+    delivery_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -122,10 +143,43 @@ class EInvoiceDocument(TenantMixin, TimestampMixin, IdMixin, Base):
         UniqueConstraint("tenant_id", "invoice_number", name="uq_einvoice_documents_tenant_number"),
         CheckConstraint(
             "status IN ('draft', 'signed', 'submitted', 'cleared', "
-            "'reported', 'rejected', 'failed')",
+            "'reported', 'rejected', 'failed', 'cancelled')",
             name="ck_einvoice_documents_status",
         ),
         Index("ix_einvoice_docs_tenant_order", "tenant_id", "order_id"),
         Index("ix_einvoice_docs_tenant_receipt", "tenant_id", "receipt_id"),
         Index("ix_einvoice_docs_tenant_status", "tenant_id", "status"),
+        # the sender walks one device's undelivered receipts oldest first
+        Index("ix_einvoice_docs_device_queue", "tenant_id", "device_id", "status", "issued_at"),
+        # callbacks find a receipt by the authority uuid
+        Index("ix_einvoice_docs_tenant_authority_uuid", "tenant_id", "authority_uuid"),
+    )
+
+
+class EInvoiceNotification(TenantMixin, TimestampMixin, IdMixin, Base):
+    """One notification the authority pushed to us, kept for idempotency and audit.
+
+    The authority may deliver the same notification more than once and requires a 200 each time,
+    so ``(tenant_id, delivery_id)`` is unique: the second delivery finds the first and does
+    nothing. The raw body is kept so a disputed status can be traced to what was actually sent.
+    """
+
+    __tablename__ = "einvoice_notifications"
+
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("einvoice_devices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # receipt | general
+    kind: Mapped[str] = mapped_column(String(15))
+    delivery_id: Mapped[str] = mapped_column(String(127))
+    payload: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "kind", "delivery_id", name="uq_einvoice_notifications_delivery"
+        ),
+        CheckConstraint("kind IN ('receipt', 'general')", name="ck_einvoice_notifications_kind"),
     )

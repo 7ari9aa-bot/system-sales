@@ -45,7 +45,12 @@ class EInvoiceService:
         if device is not None:
             return device
 
-        chosen_provider = provider_type or ("zatca" if clean_country == "SA" else "sandbox")
+        # Each country's own authority provider. Falling back to the sandbox for Egypt made a
+        # till report receipts as "cleared" that no authority had ever seen.
+        default_provider = {"SA": "zatca", "EG": "eta", "AE": "peppol_ae"}.get(
+            clean_country, "sandbox"
+        )
+        chosen_provider = provider_type or default_provider
 
         device = EInvoiceDevice(
             tenant_id=tenant_id,

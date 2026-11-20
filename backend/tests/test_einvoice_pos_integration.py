@@ -237,7 +237,7 @@ async def test_eta_pos_sale_and_return_lifecycle():
     assert sale_data["documentType"]["receiptType"] == "SR"
     assert "/receipts/search/" in doc_sale.qr_code and "IssuerRIN:200300400" in doc_sale.qr_code
     # No ETA credentials on this device: stored for later, never claimed as reported.
-    assert doc_sale.status == "pending"
+    assert doc_sale.status == "signed"
     assert doc_sale.authority_uuid is None
 
     # 2. POS Return Receipt
