@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 587,
-    "sha256": "e29da95839ba33637aa6bdce45b9973f884405d6d090cfa8f4a16abb17864e86",
-    "typed_operations": 332
+    "operations": 589,
+    "sha256": "eb5155c8524a4bb434932e4548f3c98b0ea6cb96fc07836b66a88f3a9efb7719",
+    "typed_operations": 333
   },
   "spec": {
     "components": {
@@ -1995,6 +1995,28 @@
           "title": "Archived",
           "type": "object"
         },
+        "AssignBarcodesRequest": {
+          "properties": {
+            "variant_ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 500,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Ids"
+            }
+          },
+          "title": "AssignBarcodesRequest",
+          "type": "object"
+        },
         "AssignRequest": {
           "properties": {
             "user_id": {
@@ -2592,6 +2614,35 @@
             "updated_at"
           ],
           "title": "AutonomyBudgetOut",
+          "type": "object"
+        },
+        "BarcodesOut": {
+          "properties": {
+            "already_had_one": {
+              "title": "Already Had One",
+              "type": "integer"
+            },
+            "assigned": {
+              "title": "Assigned",
+              "type": "integer"
+            },
+            "codes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "format": "uuid"
+              },
+              "title": "Codes",
+              "type": "object"
+            }
+          },
+          "required": [
+            "assigned",
+            "already_had_one",
+            "codes"
+          ],
+          "title": "BarcodesOut",
           "type": "object"
         },
         "BlockState": {
@@ -75713,6 +75764,124 @@
           ]
         }
       },
+      "/api/v1/products/{product_id}/barcodes": {
+        "post": {
+          "description": "Give every variant of the garment that has no barcode one of the shop's own.",
+          "operationId": "assign_barcodes_api_v1_products__product_id__barcodes_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignBarcodesRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BarcodesOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Assign Barcodes",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
       "/api/v1/products/{product_id}/images": {
         "get": {
           "operationId": "list_product_images_api_v1_products__product_id__images_get",
@@ -76031,6 +76200,156 @@
             }
           },
           "summary": "Upload Product Image",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/{product_id}/labels": {
+        "get": {
+          "description": "A print-ready page with one label per variant (times ``copies``), each at its real size.\n\nLabelling is a separate, write-protected step (POST .../barcodes): a variant without a code\nmakes this refuse rather than print a label nobody can scan.",
+          "operationId": "print_labels_api_v1_products__product_id__labels_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "size",
+              "required": false,
+              "schema": {
+                "default": "medium",
+                "title": "Size",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "copies",
+              "required": false,
+              "schema": {
+                "default": 1,
+                "maximum": 20,
+                "minimum": 1,
+                "title": "Copies",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "variant_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Variant Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "text/html": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Print Labels",
           "tags": [
             "catalog"
           ]
