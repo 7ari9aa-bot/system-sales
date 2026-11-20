@@ -381,10 +381,10 @@ async def test_business_login_uses_expiring_system_user_refresh_contract(
 ):
     _config_patch(monkeypatch, config_id="business-login-config")
     calls: list[str] = []
-    _patch_graph(monkeypatch, _graph_handler(calls, long_lived=True))
+    _patch_graph(monkeypatch, _graph_handler(calls, long_lived=True, instagram=True))
     state = create_oauth_state_token(
         str(tenant_ctx.user.id),
-        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
+        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "instagram"},
     )
     app = _app(db, tenant_ctx)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -401,7 +401,7 @@ async def test_business_login_uses_expiring_system_user_refresh_contract(
     stored = decrypt_credentials_dict(row.credentials)
     assert stored["_meta"]["refreshable"] is True
     assert stored["_meta"]["source_access_token"] == LONG_LIVED_TOKEN
-    assert stored["_meta"]["page_id"] == PAGE_ID
+    assert stored["_meta"]["page_id"] == PAGE_ID  # the Page that owns the IG account
     assert stored["_meta"]["expires_at"]
 
 

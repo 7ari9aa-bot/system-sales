@@ -233,6 +233,24 @@ def _graph_fields(payload: dict) -> dict:
     return graph_error_fields(payload.get("error") if isinstance(payload, dict) else None)
 
 
+async def _existing_subscribed_fields(http, *, page_id: str, page_token: str) -> list[str]:
+    """The webhook fields this app already has on the Page, or [] when they cannot be read."""
+    try:
+        response = await http.get(
+            f"{_GRAPH}/{page_id}/subscribed_apps", params={"access_token": page_token}
+        )
+        if not response.is_success:
+            return []
+        data = response.json().get("data")
+    except (httpx.RequestError, ValueError, AttributeError):
+        return []
+    fields: list[str] = []
+    for entry in data if isinstance(data, list) else []:
+        raw = entry.get("subscribed_fields") if isinstance(entry, dict) else None
+        fields.extend(f for f in (raw if isinstance(raw, list) else []) if isinstance(f, str) and f)
+    return fields
+
+
 async def _subscribe_page_to_app(
     http, *, page_id: str, page_token: str, provider: str = "messenger"
 ) -> None:
@@ -240,11 +258,18 @@ async def _subscribe_page_to_app(
 
     The fields are the channel's own: a Facebook Page also needs `feed` for its comments and
     an Instagram account `comments`, which the base messaging fields alone never deliver."""
+    wanted = subscribed_fields(provider)
+    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
+    # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
+    # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
+    # fields are still written, exactly as before.
+    kept = await _existing_subscribed_fields(http, page_id=page_id, page_token=page_token)
+    merged = list(dict.fromkeys([*wanted.split(","), *kept]))
     try:
         response = await http.post(
             f"{_GRAPH}/{page_id}/subscribed_apps",
             params={
-                "subscribed_fields": subscribed_fields(provider),
+                "subscribed_fields": ",".join(merged),
                 "access_token": page_token,
             },
         )
@@ -412,7 +437,7 @@ async def _meta_exchange_and_connect(
                 "client_secret": app_secret,
                 "fb_exchange_token": user_token,
             }
-            if _config_id:
+            if _config_id and provider == "instagram":
                 # Business Login system-user tokens support the rolling
                 # 60-day refresh contract documented by Meta.
                 exchange_params["set_token_expires_in_60_days"] = "true"
@@ -602,7 +627,9 @@ async def _connect_page(
         "source_access_token": user_token,
         "page_id": str(page["id"]),
         "expires_at": token_expiry(expires_in),
-        "refreshable": bool(_config_id and expires_in),
+        # Only Instagram is linked through a Business Login configuration; for Messenger and
+        # Facebook the Instagram setting says nothing about their token.
+        "refreshable": bool(provider == "instagram" and _config_id and expires_in),
     }
 
     existing = (

@@ -25,6 +25,17 @@ class MetaNeedsReauthorization(ValueError):
     """Meta revoked the grant or the connected page is no longer available."""
 
 
+# What Meta documents as "the grant behind this token is gone": 190 is an invalid or revoked
+# token, 102 an ended session, 10 and 200 a permission the app no longer holds, 368 a block on
+# the account. Retrying any of them every 12 hours only leaves a dead channel looking active.
+_DEAD_GRANT_CODES = frozenset({190, 102, 10, 200, 368})
+
+
+def _grant_is_dead(error: object, status_code: int) -> bool:
+    code = error.get("code") if isinstance(error, dict) else None
+    return code in _DEAD_GRANT_CODES or status_code in {401, 403}
+
+
 def _due(credentials: dict, now: datetime) -> bool:
     metadata = credentials.get("_meta")
     if not isinstance(metadata, dict) or not metadata.get("refreshable"):
@@ -73,7 +84,7 @@ async def _refresh_source_token(
         error = payload.get("error", {}) if isinstance(payload, dict) else {}
         code = error.get("code") if isinstance(error, dict) else None
         # Never log the response body; provider errors may echo credential data.
-        if code in {190, 102} or response.status_code in {401, 403}:
+        if _grant_is_dead(error, response.status_code):
             raise MetaNeedsReauthorization("Meta rejected the stored system-user grant")
         if response.status_code == 429 or response.status_code >= 500:
             raise httpx.RequestError(
@@ -107,8 +118,7 @@ async def _refresh_page_token(http: httpx.AsyncClient, *, source_token: str, pag
                 "Meta page lookup temporarily unavailable", request=response.request
             )
         error = payload.get("error", {}) if isinstance(payload, dict) else {}
-        code = error.get("code") if isinstance(error, dict) else None
-        if code in {190, 102} or response.status_code in {400, 401, 403}:
+        if _grant_is_dead(error, response.status_code) or response.status_code == 400:
             raise MetaNeedsReauthorization("Meta rejected the renewed page grant")
         raise ValueError("Meta refused to refresh the connected page token")
     pages = payload.get("data")
