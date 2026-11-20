@@ -77,6 +77,11 @@ CATALOG: dict[str, Issue] = {
         "The connect window closed before Meta's result reached the page.",
         "Connect again and keep the window open until it closes by itself.",
     ),
+    "link.provider_unavailable": Issue(
+        "medium",
+        "Meta (or the path to it) was down or rate limiting while the channel was being linked.",
+        "Nothing is wrong with the setup. Connect again in a minute.",
+    ),
     "link.embedded_signup_rejected": Issue(
         "high",
         "WhatsApp Embedded Signup would not start or finish.",

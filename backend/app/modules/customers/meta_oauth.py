@@ -184,6 +184,29 @@ async def meta_oauth_start(
     return {"authorize_url": authorize_url}
 
 
+def _graph_json(response: httpx.Response, *, step: str) -> dict:
+    """The JSON body of a Graph response, or a retryable outage.
+
+    A 429, a 5xx, or a body that is not a JSON object (a gateway's HTML page, a captive portal)
+    means Meta, or the path to it, is unavailable. That is NOT a configuration mistake, so it must
+    never reach the owner as one. A 4xx that carries Meta's own ``error`` object is returned as is:
+    the caller names Meta's explanation.
+    """
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ExternalProviderError(f"Meta is temporarily unavailable ({step}).", retryable=True)
+    try:
+        payload = response.json()
+    except ValueError:
+        raise ExternalProviderError(
+            f"Meta returned an unreadable response ({step}).", retryable=True
+        ) from None
+    if not isinstance(payload, dict):
+        raise ExternalProviderError(
+            f"Meta returned an unexpected response ({step}).", retryable=True
+        )
+    return payload
+
+
 def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     """Meta error message from a Graph response, if the call failed."""
     error = payload.get("error")
@@ -353,7 +376,7 @@ async def _meta_exchange_and_connect(
     ) as http:
         # 1) Authorization code → user token (server-to-server; the app
         #    secret must never see the browser).
-        swap = (
+        swap = _graph_json(
             await http.get(
                 f"{_GRAPH}/oauth/access_token",
                 params={
@@ -362,8 +385,9 @@ async def _meta_exchange_and_connect(
                     "redirect_uri": redirect_uri,
                     "code": code,
                 },
-            )
-        ).json()
+            ),
+            step="code exchange",
+        )
         failure = _meta_graph_error(swap, step="code exchange")
         if failure:
             _logger.warning("meta_oauth.exchange_failed %s", failure)
@@ -392,12 +416,13 @@ async def _meta_exchange_and_connect(
                 # Business Login system-user tokens support the rolling
                 # 60-day refresh contract documented by Meta.
                 exchange_params["set_token_expires_in_60_days"] = "true"
-            long_lived = (
+            long_lived = _graph_json(
                 await http.get(
                     f"{_GRAPH}/oauth/access_token",
                     params=exchange_params,
-                )
-            ).json()
+                ),
+                step="long-lived exchange",
+            )
             long_token = long_lived.get("access_token")
             if not long_token:
                 failure = _meta_graph_error(long_lived, step="long-lived exchange")
@@ -417,9 +442,10 @@ async def _meta_exchange_and_connect(
         # 2b) What the owner actually ticked. The dialog lets them untick a single permission and
         #     still continue, and a Facebook channel without posting or comment rights would show
         #     as connected and then fail on its first post. Refuse it here, naming what is missing.
-        permissions = (
-            await http.get(f"{_GRAPH}/me/permissions", params={"access_token": user_token})
-        ).json()
+        permissions = _graph_json(
+            await http.get(f"{_GRAPH}/me/permissions", params={"access_token": user_token}),
+            step="permissions",
+        )
         granted = granted_scopes_from_permissions(permissions)
         if provider == "facebook":
             lacking = missing_facebook_scopes(granted)
@@ -432,12 +458,13 @@ async def _meta_exchange_and_connect(
                 )
 
         # 3) Pages the operator manages, WITH their page tokens.
-        accounts = (
+        accounts = _graph_json(
             await http.get(
                 f"{_GRAPH}/me/accounts",
                 params={"fields": _PAGE_FIELDS, "access_token": user_token},
-            )
-        ).json()
+            ),
+            step="page listing",
+        )
         failure = _meta_graph_error(accounts, step="page listing")
         if failure:
             _logger.warning("meta_oauth.accounts_failed %s", failure)
@@ -677,6 +704,11 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
             subtitle_text = (
                 "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."  # noqa: E501
             )
+        elif s.startswith("meta_unavailable"):
+            title_text = "فيسبوك غير متاح مؤقتاً"
+            subtitle_text = (
+                "خوادم فيسبوك لا تستجيب الآن. هذه ليست مشكلة في الإعدادات. أعد المحاولة بعد دقيقة."  # noqa: E501
+            )
         elif "missing_code_or_state" in s:
             subtitle_text = "أُلغيت العملية أو لم يُرجع فيسبوك رمز التفويض."
         elif "invalid_state" in s:
@@ -855,12 +887,13 @@ async def meta_oauth_choose_page(
         timeout=httpx.Timeout(8.0, connect=3.0), follow_redirects=False
     ) as http:
         # Page tokens are never parked: list the Pages again from the user token.
-        accounts = (
+        accounts = _graph_json(
             await http.get(
                 f"{_GRAPH}/me/accounts",
                 params={"fields": _PAGE_FIELDS, "access_token": secrets["user_token"]},
-            )
-        ).json()
+            ),
+            step="page listing",
+        )
         failure = _meta_graph_error(accounts, step="page listing")
         if failure:
             _logger.warning("meta_oauth.choose_accounts_failed %s", failure)
@@ -957,6 +990,12 @@ async def meta_oauth_callback(
             provider,
             {"choose": {"ticket": choice.ticket, "provider": provider, "pages": choice.choices}},
         )
+    except ExternalProviderError as exc:
+        # Meta (or the path to it) is down or rate limiting: say so, and say it is retryable.
+        await session.rollback()
+        _logger.warning("meta_oauth.provider_unavailable provider=%s reason=%s", provider, exc)
+        await _flag("link.provider_unavailable", provider, None, {"reason": str(exc)[:200]})
+        return _back("error", f"meta_unavailable:{str(exc)[:120]}")
     except DomainError as exc:
         await session.rollback()
         return _back("error", f"{provider}:{str(exc)[:120]}")
