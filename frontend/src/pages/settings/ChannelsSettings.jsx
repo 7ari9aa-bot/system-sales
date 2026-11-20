@@ -154,7 +154,7 @@ export function extractWhatsAppSignupIds(session) {
 }
 
 /** Map the marker the OAuth callback appended onto a sentence the operator can act on. */
-function friendlyMetaError(raw, isAr) {
+export function friendlyMetaError(raw, isAr) {
   const detail = String(raw || "");
   if (detail.includes("Invalid Scopes") || detail.includes("instagram_basic")) {
     return isAr
@@ -190,6 +190,12 @@ function friendlyMetaError(raw, isAr) {
     return isAr
       ? "أُلغيت العملية أو عاد ربط فيسبوك بلا بيانات مكتملة. أعد المحاولة."
       : "The Facebook connect returned without a complete response. Retry.";
+  }
+  if (detail.startsWith("meta_unavailable")) {
+    // Meta (or the path to it) was down or rate limiting. Nothing is wrong with the setup.
+    return isAr
+      ? "خوادم فيسبوك لا تستجيب الآن. هذه ليست مشكلة في الإعدادات، أعد المحاولة بعد دقيقة."
+      : "Meta is not responding right now. This is not a setup problem. Try again in a minute.";
   }
   if (detail.startsWith("meta_exchange_failed")) {
     return isAr
