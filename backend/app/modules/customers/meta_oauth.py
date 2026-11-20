@@ -561,7 +561,7 @@ async def _connect_page(
     return provider, display_name
 
 
-def _popup_html(result: dict, frontend_origin: str) -> str:
+def _popup_html(result: dict, frontend_origin: str, nonce: str = "") -> str:
     """Small self-closing HTML page that posts the OAuth result to the opener.
 
     Uses multiple fallback channels:
@@ -722,7 +722,7 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
   <p class="desc">{esc_subtitle}</p>
   {action_html}
 </div>
-<script>
+<script nonce="{nonce}">
 (function(){{
   var msg = {safe_json};
   var origin = {safe_origin};
@@ -748,6 +748,40 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
 }})();
 </script>
 </body></html>"""
+
+
+def _popup_response(result: dict, frontend_origin: str):
+    """The OAuth result page, with headers that let its one script actually run.
+
+    SecurityHeadersMiddleware stamps every response with ``default-src 'none'``
+    and ``COOP: same-origin``. For this page that silently killed all three
+    result channels: the inline script was blocked (no BroadcastChannel,
+    localStorage or auto-close) and COOP severed ``window.opener`` after the
+    round trip through facebook.com. The operator saw a connected channel plus a
+    false "window closed before confirmation" warning.
+
+    The page therefore carries its own policy: a per-response nonce allows only
+    its single script (no ``unsafe-inline``), everything else stays denied, and
+    COOP is relaxed for this response alone so the opener survives. The
+    middleware only fills headers that are absent, so these win.
+    """
+    import secrets
+
+    from fastapi.responses import HTMLResponse
+
+    nonce = secrets.token_urlsafe(16)
+    return HTMLResponse(
+        _popup_html(result, frontend_origin, nonce),
+        headers={
+            "Content-Security-Policy": (
+                f"default-src 'none'; script-src 'nonce-{nonce}'; "
+                "style-src 'unsafe-inline'; img-src data:; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            ),
+            "Cross-Origin-Opener-Policy": "unsafe-none",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 class MetaOAuthPageChoiceIn(BaseModel):
@@ -827,7 +861,6 @@ async def meta_oauth_callback(
     Every outcome posts back to the opener window via postMessage / BroadcastChannel —
     the operator never leaves the settings page. Meta's own dialog errors
     (access_denied, Invalid Scopes, etc.) are carried through verbatim."""
-    from fastapi.responses import HTMLResponse
 
     from app.core.config import get_settings
     from app.core.db import bind_tenant
@@ -842,7 +875,7 @@ async def meta_oauth_callback(
             result["error"] = value
         if extra:
             result.update(extra)
-        return HTMLResponse(_popup_html(result, frontend))
+        return _popup_response(result, frontend)
 
     # Meta redirects here with error params when the DIALOG failed
     if (error or error_code or error_message) and not code:
