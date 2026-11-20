@@ -16,7 +16,6 @@ product or a price.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from uuid import UUID
@@ -1495,9 +1494,16 @@ class PosService(PosReceiptReads):
         exchange_return_receipt_id: UUID | None = None,
         sold_by_user_id: UUID | None = None,
     ) -> PosReceipt:
+        # Receipt numbers are a fiscal sequence: consecutive, no gaps, per tenant and year
+        # (POS-2026-0001, POS-2026-0002 ...). They come from the same gap-free counter the
+        # purchasing and expenses documents use, taken under a row lock in THIS transaction, so a
+        # sale that rolls back gives its number back and two tills can never draw the same one.
+        # A random suffix (the old scheme) cannot be audited for missing receipts.
         last_exc: IntegrityError | None = None
         for _attempt in range(_NUMBER_ATTEMPTS):
-            number = f"{number_prefix}-{datetime.now(UTC):%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
+            number = await PosService._order_numbering().next_number(
+                session, tenant_id, number_prefix
+            )
             receipt = PosReceipt(
                 tenant_id=tenant_id,
                 order_id=order.id,
@@ -1577,6 +1583,13 @@ class PosService(PosReceiptReads):
             pos_session.variance = variance(counted=counted, expected=expected)
             await session.flush()
         return pos_session
+
+    @staticmethod
+    def _order_numbering():
+        """The gap-free document counter (lives with the expenses module that created it)."""
+        from app.modules.expenses.service import NumberingService
+
+        return NumberingService
 
     @staticmethod
     def _order_service():

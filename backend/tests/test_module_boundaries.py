@@ -253,7 +253,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # pos/service.py::_resolve_customer (pos.require_customer, the shop-wide default under a till's
 # own switch) and inventory/services/replenishment.py::set_policy
 # (inventory.safety_stock_default, used when a policy states no buffer of its own).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 244
+# 244 -> 246 on 2026-11-20. main had ALREADY drifted to 245 with no recorded reason (this test
+# was red on main before this change); that one is not explained here. The second is deliberate:
+# ONE edge, pos/service.py::_order_numbering -> expenses.service (NumberingService).
+# A cashier receipt is a fiscal document: its number must be consecutive with no gaps, which
+# only the shared gap-free ``document_counters`` counter guarantees (purchasing already draws
+# POs and returns from it the same way). The old random suffix could not be audited for a
+# missing receipt. Lazy and declared, no new cycle (test_no_new_module_import_cycles).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 246
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
