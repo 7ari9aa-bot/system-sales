@@ -38,7 +38,7 @@ from app.modules.customers.meta_scopes import (
     granted_scopes_from_permissions,
     missing_facebook_scopes,
 )
-from app.modules.customers.schemas import MetaOAuthStartOut
+from app.modules.customers.schemas import MetaOAuthChoosePageOut, MetaOAuthStartOut
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.integration_verifier import verify_channel_credentials
 from app.modules.platform.models import Integration
@@ -887,7 +887,9 @@ class MetaOAuthPageChoiceIn(BaseModel):
     page_id: str = Field(min_length=1, max_length=64, pattern=r"^[0-9]+$")
 
 
-@meta_oauth_router.post("/integrations/meta/oauth/choose-page")
+@meta_oauth_router.post(
+    "/integrations/meta/oauth/choose-page", response_model=MetaOAuthChoosePageOut
+)
 async def meta_oauth_choose_page(
     body: MetaOAuthPageChoiceIn,
     session: DbSession,

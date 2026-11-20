@@ -386,6 +386,13 @@ class IntegrationUpserted(BaseModel):
     status: str
 
 
+class MetaOAuthChoosePageOut(BaseModel):
+    """Contract for POST /integrations/meta/oauth/choose-page: which channel was connected,
+    as ``<provider>:<display name>`` (the popup shows it back to the owner)."""
+
+    connected: str
+
+
 class MetaOAuthStartOut(BaseModel):
     """P8 contract for GET /integrations/meta/oauth/start: the ONLY field the
     frontend consumes is the Meta-owned dialog URL it navigates to."""

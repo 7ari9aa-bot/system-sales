@@ -65,7 +65,7 @@ from types import SimpleNamespace  # noqa: E402
 
 from app.modules.conversations.gateway.ingest import IngestService  # noqa: E402
 
-FAKE_TOKEN = "EAAUtSPZCPZCF0BTfakefakefakefakefake1234567890"
+FAKE_TOKEN = "fake-EAAUtSPZCPZCF0BT-fakefakefakefakefake1234567890"
 
 
 class _Result:
