@@ -272,7 +272,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 251 -> 253 on 2026-11-20: the till posts the unpaid part of a sale on account through
 # customer_accounts.service, and asks customers.service whether the buyer is blocked. Both go
 # through a service, never a table, and only pos reaches into them (they never import pos).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 253
+# 253 -> 254 on 2026-11-20: the apparel grid asks inventory.service how many of each variant can be
+# sold (one batched read that applies on_hand - quarantined - reserved), instead of reading the
+# balance table itself. Through a service, one direction.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 254
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

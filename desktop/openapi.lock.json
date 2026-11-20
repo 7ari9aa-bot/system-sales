@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 585,
-    "sha256": "f1910455aec9fbf51103de0ca72ce4fa7d2fdd031e54e8b483f092695b9e4d60",
-    "typed_operations": 331
+    "operations": 587,
+    "sha256": "e29da95839ba33637aa6bdce45b9973f884405d6d090cfa8f4a16abb17864e86",
+    "typed_operations": 332
   },
   "spec": {
     "components": {
@@ -9278,6 +9278,69 @@
           "title": "FullDiagnosticsOut",
           "type": "object"
         },
+        "GenerateMatrixRequest": {
+          "properties": {
+            "color_codes": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color Codes"
+            },
+            "colors": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Colors",
+              "type": "array"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Price"
+            },
+            "sizes": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Sizes",
+              "type": "array"
+            },
+            "sku_prefix": {
+              "maxLength": 30,
+              "minLength": 1,
+              "title": "Sku Prefix",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sizes",
+            "colors",
+            "price",
+            "sku_prefix"
+          ],
+          "title": "GenerateMatrixRequest",
+          "type": "object"
+        },
         "GoodsReceiptIn": {
           "properties": {
             "lines": {
@@ -11942,6 +12005,41 @@
             "campaign_budget_roas"
           ],
           "title": "MarketingSummaryOut",
+          "type": "object"
+        },
+        "MatrixCreatedOut": {
+          "properties": {
+            "created": {
+              "title": "Created",
+              "type": "integer"
+            },
+            "skipped": {
+              "title": "Skipped",
+              "type": "integer"
+            },
+            "skipped_skus": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Skipped Skus",
+              "type": "array"
+            },
+            "variant_ids": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "title": "Variant Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "created",
+            "skipped",
+            "variant_ids",
+            "skipped_skus"
+          ],
+          "title": "MatrixCreatedOut",
           "type": "object"
         },
         "MaturityPolicy": {
@@ -75933,6 +76031,228 @@
             }
           },
           "summary": "Upload Product Image",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/{product_id}/matrix": {
+        "get": {
+          "description": "The garment as a grid: colours down, sizes across, sellable stock in each cell.",
+          "operationId": "read_matrix_api_v1_products__product_id__matrix_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read Matrix",
+          "tags": [
+            "catalog"
+          ]
+        },
+        "post": {
+          "description": "Add every missing size x colour variant of a garment, all or none.",
+          "operationId": "generate_matrix_api_v1_products__product_id__matrix_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateMatrixRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MatrixCreatedOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Generate Matrix",
           "tags": [
             "catalog"
           ]

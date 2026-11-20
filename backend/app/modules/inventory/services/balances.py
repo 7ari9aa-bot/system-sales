@@ -61,6 +61,39 @@ class BalanceServiceMixin:
         return int(total)
 
     @staticmethod
+    async def available_for_many(
+        session: AsyncSession, tenant_id: UUID, variant_ids: list[UUID]
+    ) -> dict[UUID, int]:
+        """What can be sold of each variant, across all warehouses, in ONE query.
+
+        ``available = on_hand - quarantined - reserved`` (the rule every reader of availability
+        must follow). A variant never stocked is simply absent from the result, so callers use
+        ``.get(id, 0)``. A negative figure is kept as it is: hiding an oversold variant behind a 0
+        would tell a cashier there is nothing wrong.
+        """
+        if not variant_ids:
+            return {}
+        rows = await session.execute(
+            select(
+                InventoryBalance.variant_id,
+                func.coalesce(
+                    func.sum(
+                        InventoryBalance.on_hand
+                        - InventoryBalance.quarantined
+                        - InventoryBalance.reserved
+                    ),
+                    0,
+                ),
+            )
+            .where(
+                InventoryBalance.tenant_id == tenant_id,
+                InventoryBalance.variant_id.in_(variant_ids),
+            )
+            .group_by(InventoryBalance.variant_id)
+        )
+        return {vid: int(total) for vid, total in rows.all()}
+
+    @staticmethod
     async def list_balances(session: AsyncSession, tenant_id: UUID, *, limit: int = 200) -> list:
         rows = (
             (
