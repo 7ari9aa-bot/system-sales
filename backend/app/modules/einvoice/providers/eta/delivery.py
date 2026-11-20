@@ -429,3 +429,77 @@ async def deliver_tenant(
                 }
             )
     return {**totals, "attention": attention}
+
+
+def owner_messages(attention: list[dict]) -> list[tuple[str, str, str]]:
+    """What to tell the owner, as (key, title, body), from ``deliver_tenant``'s attention list.
+
+    One message per till and per kind of problem, each saying what happened and what to do. Plain
+    Arabic, no codes: the owner is a shop keeper, not an integrator.
+    """
+    out: list[tuple[str, str, str]] = []
+    for a in attention:
+        till = a["till"]
+        if a["needs_correction"]:
+            n = len(a["needs_correction"])
+            out.append(
+                (
+                    f"{till}:rejected",
+                    "إيصال إلكتروني مرفوض من مصلحة الضرائب",
+                    f"{n} إيصال على الجهاز {till} رفضته المصلحة وينتظر تصحيحه. "
+                    "راجع بيانات المحل والأصناف (الرقم الضريبي، كود الفرع، كود الصنف).",
+                )
+            )
+        if a["window_closing"]:
+            n = len(a["window_closing"])
+            out.append(
+                (
+                    f"{till}:closing",
+                    "مهلة إرسال إيصالات إلكترونية على وشك الانتهاء",
+                    f"{n} إيصال على الجهاز {till} لم يصل للمصلحة وتنتهي مهلته قريبًا. "
+                    "تأكد من الاتصال بالإنترنت ومن اكتمال إعدادات الإيصال الإلكتروني.",
+                )
+            )
+        if a["window_closed"]:
+            n = len(a["window_closed"])
+            out.append(
+                (
+                    f"{till}:closed",
+                    "إيصالات إلكترونية انتهت مهلة إرسالها",
+                    f"{n} إيصال على الجهاز {till} انتهت مهلته قبل وصوله للمصلحة. "
+                    "يلزم طلب إرسال متأخر من بوابة الممول.",
+                )
+            )
+    return out
+
+
+async def notify_owners(
+    session: AsyncSession, tenant_id: uuid.UUID, attention: list[dict], owner_ids: list[uuid.UUID]
+) -> int:
+    """Put what needs the owner's attention in their bell. Returns how many it wrote.
+
+    The job runs every minute, so a problem that stays is reminded once per till, per kind, per
+    day (the dedup key carries the date), never once a minute.
+    """
+    from app.modules.notifications.service import NotificationService
+
+    messages = owner_messages(attention)
+    if not messages or not owner_ids:
+        return 0
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    written = 0
+    for user_id in owner_ids:
+        for key, title, body in messages:
+            till, problem = key.split(":")
+            await NotificationService.create(
+                session,
+                tenant_id,
+                user_id,
+                kind="einvoice",
+                title=title,
+                body=body,
+                payload={"till": till, "problem": problem},
+                dedup_key=f"eta:{key}:{today}",
+            )
+            written += 1
+    return written

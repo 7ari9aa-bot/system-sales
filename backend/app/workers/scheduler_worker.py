@@ -880,9 +880,13 @@ class SchedulerWorker(StreamWorker):
 
 async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
     """Send what is due for every ETA till of this store (see ``deliver_tenant``)."""
-    from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+    from app.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
 
-    return await deliver_tenant(session, tenant_id)
+    result = await deliver_tenant(session, tenant_id)
+    await notify_owners(
+        session, tenant_id, result["attention"], await _tenant_owner_ids(session, tenant_id)
+    )
+    return result
 
 
 register_job_handler("einvoice.eta_deliver", _handle_eta_deliver)

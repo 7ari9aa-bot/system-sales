@@ -551,3 +551,65 @@ class TestSendOrderIsTheChainOrder:
         mock = MockAuthority()
         report = await deliver_device(db, dev.id, provider=_provider(mock))
         assert report.accepted == 2 and report.rejected == 0
+
+
+class TestTellingTheOwner:
+    """What the owner is told, in plain Arabic, and not more often than once a day."""
+
+    def test_nothing_to_say_when_nothing_is_wrong(self):
+        from app.modules.einvoice.providers.eta.delivery import owner_messages
+
+        assert owner_messages([]) == []
+        quiet = {"till": "R1", "needs_correction": [], "window_closing": [], "window_closed": []}
+        assert owner_messages([quiet]) == []
+
+    def test_each_problem_on_each_till_is_its_own_message_that_says_what_to_do(self):
+        from app.modules.einvoice.providers.eta.delivery import owner_messages
+
+        a = {
+            "till": "R1",
+            "needs_correction": ["A", "B"],
+            "window_closing": ["C"],
+            "window_closed": ["D"],
+        }
+        b = {"till": "R2", "needs_correction": ["E"], "window_closing": [], "window_closed": []}
+        msgs = owner_messages([a, b])
+        assert [m[0] for m in msgs] == ["R1:rejected", "R1:closing", "R1:closed", "R2:rejected"]
+        assert "2 إيصال" in msgs[0][2] and "R1" in msgs[0][2]
+        assert "بوابة الممول" in msgs[2][2]
+        # no internal codes leak into what a shop keeper reads
+        for _, title, body in msgs:
+            assert not any(c in title + body for c in ("CF3", "ETA-L", "HTTP"))
+
+    async def test_a_rejected_receipt_reaches_the_owners_bell_once_a_day(self, db, tenant_ctx):
+        from app.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
+        from app.workers.scheduler_worker import _tenant_owner_ids
+
+        tid = tenant_ctx.tenant_id
+        dev = await _till(db, tid)
+        await _issue(db, tid, dev, "R-1")
+        owners = await _tenant_owner_ids(db, tid)
+        assert owners  # the store has an owner to tell
+        # the authority refuses it (a wrong RIN) and the job notices it on three runs in a row
+        first = await deliver_tenant(db, tid, provider=_provider(MockAuthority(rin="000000000")))
+        assert first["rejected"] == 1 and first["attention"][0]["needs_correction"] == ["R-1"]
+        for _ in range(3):
+            await notify_owners(db, tid, first["attention"], owners)
+        rows = (
+            await db.execute(
+                sa.text("select kind, title, body from notifications where tenant_id = :t"),
+                {"t": str(tid)},
+            )
+        ).all()
+        assert len(rows) == len(owners)  # one per owner, however often the job runs
+        assert rows[0].kind == "einvoice" and "مرفوض" in rows[0].title
+
+    async def test_a_store_with_nothing_wrong_gets_no_notification(self, db, tenant_ctx):
+        from app.workers.scheduler_worker import _HANDLERS
+
+        await _HANDLERS["einvoice.eta_deliver"](db, tenant_ctx.tenant_id, {})
+        count = await db.scalar(
+            sa.text("select count(*) from notifications where tenant_id = :t"),
+            {"t": str(tenant_ctx.tenant_id)},
+        )
+        assert count == 0
