@@ -20,6 +20,7 @@ Meta console prerequisites (docs/META_SETUP.md §WhatsApp):
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import uuid
@@ -28,10 +29,11 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.errors import ExternalProviderError, ValidationError
-from app.core.secrets import encrypt_credentials_dict
+from app.core.errors import ConflictError, ExternalProviderError, ValidationError
+from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
@@ -297,22 +299,35 @@ async def _phone_status(http: httpx.AsyncClient, *, phone_number_id: str, token:
 
 
 async def _register_phone_number(
-    http: httpx.AsyncClient, *, phone_number_id: str, token: str
+    http: httpx.AsyncClient,
+    *,
+    phone_number_id: str,
+    token: str,
+    pin: str | None = None,
 ) -> str | None:
-    """Register the verified number with Cloud API; return the PIN we set (None if not needed).
+    """Register the verified number with Cloud API; return the PIN now set (None if not needed).
 
     Meta: a number only sends and receives once it is registered, and registering is an API call
     (WhatsApp Manager and the App Dashboard cannot do it). The call needs a 6-digit two-step PIN.
-    For a number without one it becomes the number's new PIN, so we generate it and keep it
-    (encrypted) for the owner to recover the number later.
+    For a number without one it becomes the number's new PIN, so we keep it (encrypted) for the
+    owner to recover the number later.
 
-    A number that is already CONNECTED is left alone: registering again would burn one of the 10
-    attempts Meta allows per 72 hours (error 133016 then locks the number for 72 hours) and would
-    pointlessly re-set a working number. Never retried, for the same reason.
+    * A number that is already CONNECTED is left alone: registering again would burn one of the 10
+      attempts Meta allows per 72 hours (error 133016 then locks the number for 72 hours).
+    * A status we could not READ is not "not connected". It fails the connect as retryable instead
+      of spending an attempt on a guess.
+    * ``pin`` is the PIN a previous, interrupted attempt may already have set. Reusing it keeps a
+      lost response from leaving the number on a PIN nobody stored.
     """
-    if await _phone_status(http, phone_number_id=phone_number_id, token=token) == "CONNECTED":
+    status = await _phone_status(http, phone_number_id=phone_number_id, token=token)
+    if status == "CONNECTED":
         return None
-    pin = f"{secrets.randbelow(1_000_000):06d}"
+    if status is None:
+        raise ExternalProviderError(
+            "Could not read the WhatsApp number's status from Meta. Press connect again.",
+            retryable=True,
+        )
+    pin = pin or f"{secrets.randbelow(1_000_000):06d}"
     try:
         response = await http.post(
             f"{_GRAPH}/{phone_number_id}/register",
@@ -320,8 +335,12 @@ async def _register_phone_number(
             json={"messaging_product": "whatsapp", "pin": pin},
         )
     except httpx.RequestError:
+        # The request may have reached Meta and set this PIN. Park it before failing so the retry
+        # registers with the SAME one.
+        await _remember_pending_pin(phone_number_id, pin)
         raise ExternalProviderError(
-            "Could not reach Meta to register the WhatsApp number. Press connect again."
+            "Could not reach Meta to register the WhatsApp number. Press connect again.",
+            retryable=True,
         ) from None
     if response.is_error:
         code = None
@@ -340,7 +359,51 @@ async def _register_phone_number(
             "Facebook window, then connect again.",
             retryable=False,
         )
+    await _forget_pending_pin(phone_number_id)
     return pin
+
+
+#: A PIN parked after an ambiguous register call. Redis, not Postgres: it is transport state for a
+#: retry minutes away, and a number registered on a PIN is recoverable by the owner through Meta.
+_PENDING_PIN_TTL_SECONDS = 24 * 60 * 60
+
+
+def _pending_pin_key(phone_number_id: str) -> str:
+    return f"whatsapp:pending_register_pin:{phone_number_id}"
+
+
+async def _remember_pending_pin(phone_number_id: str, pin: str) -> None:
+    from app.core.redis import get_redis
+
+    try:
+        await get_redis().set(
+            _pending_pin_key(phone_number_id),
+            json.dumps(encrypt_credentials_dict({"pin": pin})),
+            ex=_PENDING_PIN_TTL_SECONDS,
+        )
+    except Exception:  # noqa: BLE001 - parking is best effort; the connect error is what matters
+        logger.warning("whatsapp.pending_pin_not_parked phone_number_id=%s", phone_number_id)
+
+
+async def _take_pending_pin(phone_number_id: str) -> str | None:
+    from app.core.redis import get_redis
+
+    try:
+        raw = await get_redis().get(_pending_pin_key(phone_number_id))
+        if raw is None:
+            return None
+        return decrypt_credentials_dict(json.loads(raw)).get("pin")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _forget_pending_pin(phone_number_id: str) -> None:
+    from app.core.redis import get_redis
+
+    try:
+        await get_redis().delete(_pending_pin_key(phone_number_id))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @whatsapp_signup_router.post(
@@ -396,13 +459,16 @@ async def whatsapp_signup_complete(
             {"phone_number_id": body.phone_number_id},
             client=http,
         )
-        # Subscribe only after the business credential and chosen phone have
-        # passed verification. Otherwise a failed connect leaves an orphaned
-        # webhook subscription on the customer's account.
-        await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
+        # Register the number FIRST, then subscribe. Registering is the step Meta can refuse
+        # (unverified number, 133016 lock-out); subscribing first would leave an orphaned
+        # webhook subscription on the customer's WABA every time it does.
         registration_pin = await _register_phone_number(
-            http, phone_number_id=body.phone_number_id, token=token
+            http,
+            phone_number_id=body.phone_number_id,
+            token=token,
+            pin=await _take_pending_pin(body.phone_number_id),
         )
+        await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
 
     verified_at = datetime.now(UTC).isoformat()
     integration_config = {
@@ -441,7 +507,14 @@ async def whatsapp_signup_complete(
         existing.config = integration_config
         existing.credentials = encrypted
         integration = existing
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # The unique index covers provider identity across tenants. Never expose the other
+        # tenant or any account detail.
+        raise ConflictError(
+            "This WhatsApp number is already connected to another workspace."
+        ) from None
 
     logger.info(
         "whatsapp.embedded_signup_connected tenant=%s phone_number_id=%s waba=%s",

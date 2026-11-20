@@ -89,8 +89,9 @@ async def test_connecting_an_unregistered_number_registers_it_and_keeps_the_pin_
 
     assert ("POST", f"/{signup._GRAPH_VERSION}/777/register") in seen
     order = [p for _m, p in seen]
-    assert order.index(f"/{signup._GRAPH_VERSION}/900/subscribed_apps") < order.index(
-        f"/{signup._GRAPH_VERSION}/777/register"
+    # register first: a number Meta refuses must not leave a subscription behind (W8)
+    assert order.index(f"/{signup._GRAPH_VERSION}/777/register") < order.index(
+        f"/{signup._GRAPH_VERSION}/900/subscribed_apps"
     )
 
     row = await _stored(db, tenant_ctx)
