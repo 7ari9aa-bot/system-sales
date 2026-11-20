@@ -33,6 +33,8 @@ def _fake_meta(*, status: str, seen: list[tuple[str, str]], register_ok: bool = 
         seen.append((request.method, path))
         if path.endswith("/oauth/access_token"):
             return httpx.Response(200, json={"access_token": "TOKEN-123"})
+        if path.endswith("/phone_numbers"):
+            return httpx.Response(200, json={"data": [{"id": "777"}]})
         if path.endswith("/subscribed_apps"):
             return httpx.Response(200, json={"success": True})
         if path.endswith("/register"):
@@ -85,9 +87,11 @@ async def test_connecting_an_unregistered_number_registers_it_and_keeps_the_pin_
     r = await _connect(monkeypatch, db, tenant_ctx, _fake_meta(status="PENDING", seen=seen))
     assert r.status_code == 201, r.text
 
-    assert ("POST", "/v26.0/777/register") in seen
+    assert ("POST", f"/{signup._GRAPH_VERSION}/777/register") in seen
     order = [p for _m, p in seen]
-    assert order.index("/v26.0/900/subscribed_apps") < order.index("/v26.0/777/register")
+    assert order.index(f"/{signup._GRAPH_VERSION}/900/subscribed_apps") < order.index(
+        f"/{signup._GRAPH_VERSION}/777/register"
+    )
 
     row = await _stored(db, tenant_ctx)
     assert row.status == "active"
