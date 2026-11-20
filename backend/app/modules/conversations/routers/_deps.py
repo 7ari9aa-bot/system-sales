@@ -56,6 +56,9 @@ class SendMessageRequest(BaseModel):
     instagram_share_post_id: str | None = Field(default=None, max_length=64)
     # Instagram only: up to 13 tap-to-reply buttons under a TEXT message (Meta: 20 characters each).
     instagram_quick_replies: list[str] | None = Field(default=None, max_length=13)
+    # WhatsApp only: buttons, a list or a link button under a message. A flat description
+    # (kind + text + choices); it is checked against Meta's limits in the route, field by field.
+    interactive: dict | None = None
 
 
 class ReadSignalRequest(BaseModel):

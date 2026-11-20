@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 573,
-    "sha256": "7b5be324716548f80b6d902c48a74d8791a2a27028b30120301015628823f86b",
+    "sha256": "bcb70d85abcda85738ada81357fc4261f6c6818bb3c768a415fb4731322b89b9",
     "typed_operations": 320
   },
   "spec": {
@@ -18209,6 +18209,18 @@
                 }
               ],
               "title": "Instagram Share Post Id"
+            },
+            "interactive": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interactive"
             },
             "media_id": {
               "anyOf": [

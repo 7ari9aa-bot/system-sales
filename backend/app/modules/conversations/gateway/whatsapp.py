@@ -23,6 +23,7 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_provider_body,
 )
+from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
 from app.modules.conversations.gateway.whatsapp_templates import build_send_components
 from app.modules.conversations.policy import template_language
 
@@ -427,6 +428,12 @@ class WhatsAppAdapter:
             "recipient_type": "individual",
             "to": message.customer_ref,
         }
+        # An interactive message (buttons, list, link button). The spec was validated when the
+        # agent composed it; it is built again here so that what reaches Meta is always a freshly
+        # checked object and never a stored dict trusted as-is.
+        interactive = message.meta.get("interactive")
+        if interactive and not message.template_name:
+            return {**base, "type": "interactive", "interactive": build_interactive(interactive)}
         if message.template_name:
             lang = template_language(message.template_vars)
             components = build_send_components(message.template_vars)

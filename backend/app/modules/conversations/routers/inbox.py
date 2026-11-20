@@ -482,7 +482,25 @@ async def send_message(
             raise ValidationError("a quick reply is at most 20 characters")
         if len(set(quick_replies)) != len(quick_replies):
             raise ValidationError("quick replies must be different from each other")
-    if not body.body and not body.template_name and body.media_id is None and not instagram_extra:
+    interactive_text: str | None = None
+    if body.interactive is not None:
+        if conversation.channel != "whatsapp":
+            raise ValidationError("buttons and lists can only be sent on WhatsApp")
+        if body.template_name or body.media_id is not None or instagram_extra or quick_replies:
+            raise ValidationError("an interactive message carries nothing else")
+        # Its text lives in the spec; a separate `body` would be silently ignored.
+        if body.body:
+            raise ValidationError("write the text inside the interactive message, not beside it")
+        from app.modules.conversations.gateway.whatsapp_interactive import preview_text
+
+        interactive_text = preview_text(body.interactive)  # raises, naming the bad field
+    if (
+        not body.body
+        and not body.template_name
+        and body.media_id is None
+        and not instagram_extra
+        and interactive_text is None
+    ):
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
         raise ValidationError("a template cannot carry an uploaded file")
@@ -531,6 +549,12 @@ async def send_message(
         }
     elif quick_replies:
         media_kwargs = {"provider_metadata": {"instagram_quick_replies": quick_replies}}
+    elif interactive_text is not None:
+        caption = interactive_text
+        media_kwargs = {
+            "content_type": "interactive",
+            "provider_metadata": {"interactive": body.interactive},
+        }
     if body.media_id is not None:
         media = await OutboundMediaService.claim(
             ctx.session, ctx.tenant_id, media_id=body.media_id, conversation_id=conversation_id

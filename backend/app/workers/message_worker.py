@@ -198,6 +198,37 @@ def uploaded_media_meta(media_type: str | None, provider_metadata: dict | None) 
     }
 
 
+def outbound_meta(message: Message, *, media_meta: dict, reply_to_provider_id: str | None) -> dict:
+    """What the channel adapter is told about a message beyond its text and file.
+
+    Everything a send-time feature needs travels here, read from the row the agent's request
+    stored. A key missing from this dict is a feature the customer silently does not get: the
+    message still goes out, as plain text.
+    """
+    stored = message.provider_metadata or {}
+    meta: dict = {**media_meta}
+    if stored.get("instagram_heart"):
+        meta["like_heart"] = True
+    if stored.get("instagram_share_post_id"):
+        meta["share_media_id"] = stored["instagram_share_post_id"]
+    if stored.get("instagram_quick_replies"):
+        meta["quick_replies"] = [
+            {"title": t, "payload": t} for t in stored["instagram_quick_replies"]
+        ]
+    if stored.get("human_agent"):
+        meta["human_agent"] = True
+    if stored.get("interactive"):
+        meta["interactive"] = stored["interactive"]
+    if reply_to_provider_id:
+        key = (
+            "reaction_to_provider_id"
+            if message.content_type == "reaction"
+            else "reply_to_provider_id"
+        )
+        meta[key] = reply_to_provider_id
+    return meta
+
+
 @dataclass(slots=True)
 class _SendPlan:
     """Everything phase 2 needs, snapshotted while phase 1 still holds the TX."""
@@ -686,49 +717,9 @@ class MessageWorker(StreamWorker):
                 # not actually be delivered even when one was required.
                 template_name=message.template_name,
                 template_vars=message.template_vars or {},
-                meta={
-                    **media_meta,
-                    **(
-                        {"like_heart": True}
-                        if (message.provider_metadata or {}).get("instagram_heart")
-                        else {}
-                    ),
-                    **(
-                        {
-                            "share_media_id": (message.provider_metadata or {})[
-                                "instagram_share_post_id"
-                            ]
-                        }
-                        if (message.provider_metadata or {}).get("instagram_share_post_id")
-                        else {}
-                    ),
-                    **(
-                        {
-                            "quick_replies": [
-                                {"title": t, "payload": t}
-                                for t in (message.provider_metadata or {})[
-                                    "instagram_quick_replies"
-                                ]
-                            ]
-                        }
-                        if (message.provider_metadata or {}).get("instagram_quick_replies")
-                        else {}
-                    ),
-                    **(
-                        {"human_agent": True}
-                        if (message.provider_metadata or {}).get("human_agent")
-                        else {}
-                    ),
-                    **(
-                        {
-                            "reaction_to_provider_id"
-                            if message.content_type == "reaction"
-                            else "reply_to_provider_id": reply_to_provider_id
-                        }
-                        if reply_to_provider_id
-                        else {}
-                    ),
-                },
+                meta=outbound_meta(
+                    message, media_meta=media_meta, reply_to_provider_id=reply_to_provider_id
+                ),
             ),
             set_channel_message_id=conversation.channel != "webchat",
         )
