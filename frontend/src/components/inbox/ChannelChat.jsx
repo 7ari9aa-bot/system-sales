@@ -43,7 +43,7 @@ import IgAttachPreview from "./instagram/IgAttachPreview";
 import ChannelAttachPreview from "./ChannelAttachPreview";
 import { checkFile as checkChannelFile, mimeOf as mimeOfChannelFile } from "./channelAttachments";
 import { uploadMedia } from "@/lib/inboxSend";
-import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, OrderBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
@@ -1030,6 +1030,8 @@ function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _
       media = withCaption(<ContactBody body={m.text} lang={_lang} />, "");
     } else if (kind === "interactive") {
       media = withCaption(<InteractiveBody message={m.interactive} lang={_lang} />, "");
+    } else if (kind === "order") {
+      media = withCaption(<OrderBody order={m.order} lang={_lang} />, "");
     } else if (kind === "buttons" || kind === "list") {
       media = withCaption(<ChoiceBody body={m.text} kind={kind} lang={_lang} />, "");
     } else if (kind === "unsupported") {

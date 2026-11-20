@@ -300,6 +300,8 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "quick_replies": [] if m.deleted else _quick_replies(m),
                 # The buttons / list / link button we sent (WhatsApp), for the bubble to draw.
                 "interactive": None if m.deleted else _present_interactive(m),
+                # A cart the customer sent from the catalog (WhatsApp): products and quantities.
+                "order": None if m.deleted else _present_order(m),
             }
         )
     return items
@@ -324,6 +326,20 @@ def _present_interactive(m) -> dict | None:
         return build_interactive(spec)
     except ValidationError:
         return None
+
+
+def _present_order(m) -> dict | None:
+    """The cart a customer sent, re-read through the same checker that produced its summary.
+
+    The stored webhook body never leaves as-is: only the checked shape does, so a hostile or
+    broken payload cannot put anything else on the agent's screen. Customer messages only.
+    """
+    if m.content_type != "order" or m.direction != "inbound":
+        return None
+    payload = m.payload if isinstance(m.payload, dict) else {}
+    from app.modules.conversations.gateway.whatsapp_order import parse_order
+
+    return parse_order(payload.get("raw"))
 
 
 def _quick_replies(m) -> list[str]:

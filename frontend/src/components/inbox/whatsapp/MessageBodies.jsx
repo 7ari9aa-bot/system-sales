@@ -4,8 +4,8 @@ import { fileExtension, fileNameOf, parseContact, parseLocation } from "./messag
 import { cn } from "@/lib/utils";
 
 const WORDS = {
-  ar: { choices: "الخيارات", location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", open: "فتح", saveAs: "حفظ باسم...", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
-  en: { choices: "Choices", location: "Location", contact: "Contact", document: "Document", download: "Download", open: "Open", saveAs: "Save as...", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
+  ar: { orderTitle: "طلب من الكتالوج", orderQty: "الكمية", orderUnreadable: "{n} سطر لم نستطع قراءته. راجع الطلب مع العميل.", orderNote: "ملاحظة العميل", choices: "الخيارات", location: "الموقع", contact: "جهة اتصال", document: "مستند", download: "تنزيل", open: "فتح", saveAs: "حفظ باسم...", video: "فيديو", play: "تشغيل الفيديو", sticker: "ملصق", buttonReply: "ردّ بزر", listReply: "اختيار من قائمة", unsupported: "رسالة غير مدعومة. افتحها من تطبيق واتساب على الهاتف.", photoFailed: "تعذّر تحميل الصورة", mediaFailed: "تعذّر تحميل الملف", photo: "صورة", noNumber: "بدون رقم" },
+  en: { orderTitle: "Catalog order", orderQty: "Qty", orderUnreadable: "{n} line(s) could not be read. Check the order with the customer.", orderNote: "Customer note", choices: "Choices", location: "Location", contact: "Contact", document: "Document", download: "Download", open: "Open", saveAs: "Save as...", video: "Video", play: "Play video", sticker: "Sticker", buttonReply: "Button reply", listReply: "List choice", unsupported: "This message type is not supported. Open it in the WhatsApp app on your phone.", photoFailed: "Could not load the photo", mediaFailed: "Could not load the file", photo: "Photo", noNumber: "No number", },
 };
 const t = (lang) => WORDS[lang] || WORDS.en;
 
@@ -127,6 +127,37 @@ export function ChoiceBody({ body, kind, lang }) {
         {Icon && <Icon size={13} />}{kind === "list" ? w.listReply : w.buttonReply}
       </div>
       <div dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{body}</div>
+    </div>
+  );
+}
+
+/**
+ * A cart the customer sent from our catalog: one line per product with its quantity.
+ * No prices on purpose: the number on the customer's phone is not what we charge, and showing it
+ * invites the agent to quote it. `skipped` says a line was unreadable so nothing is silently short.
+ */
+export function OrderBody({ order, lang }) {
+  const w = t(lang);
+  const items = Array.isArray(order?.items) ? order.items : [];
+  return (
+    <div data-testid="order-card" className="w-64 max-w-full">
+      <div className="mb-1 flex items-center gap-1.5 font-semibold"><ListIcon size={16} />{w.orderTitle}</div>
+      <ul className="divide-y divide-[color:var(--wa-divider)] rounded-lg bg-black/5">
+        {items.map((it, i) => (
+          <li key={`${it.retailer_id}-${i}`} data-testid="order-line" className="flex items-center justify-between gap-3 px-2 py-1.5 text-[13.5px]">
+            <span dir="auto" className="min-w-0 break-words [overflow-wrap:anywhere]">{it.retailer_id}</span>
+            <span dir="ltr" aria-label={`${w.orderQty} ${it.quantity}`} className="shrink-0 font-semibold">x {it.quantity}</span>
+          </li>
+        ))}
+      </ul>
+      {order?.note && (
+        <div data-testid="order-note" dir="auto" className="mt-2 whitespace-pre-wrap break-words text-[13px] [overflow-wrap:anywhere]">
+          <span className="text-[color:var(--wa-text-secondary)]">{w.orderNote}: </span>{order.note}
+        </div>
+      )}
+      {order?.skipped > 0 && (
+        <div role="alert" data-testid="order-skipped" dir="auto" className="mt-2 text-[12.5px] text-[color:var(--wa-warn)]">{w.orderUnreadable.replace("{n}", order.skipped)}</div>
+      )}
     </div>
   );
 }

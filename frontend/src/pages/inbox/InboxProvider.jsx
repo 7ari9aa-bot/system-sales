@@ -71,6 +71,7 @@ function toMessage(message) {
     myReaction: message.my_reaction || "",
     quickReplies: Array.isArray(message.quick_replies) ? message.quick_replies : [],
     interactive: message.interactive || null,
+    order: message.order || null,
   };
 }
 

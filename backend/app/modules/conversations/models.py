@@ -153,7 +153,7 @@ class Message(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
     media_type: Mapped[str | None] = mapped_column(String(31), nullable=True)
     # §155 canonical content kind — ONE column every surface reads:
     # text | image | voice | video | file | location | contact
-    #    | buttons | list | reaction | unsupported
+    #    | buttons | list | reaction | interactive | order | unsupported
     content_type: Mapped[str] = mapped_column(
         String(31), nullable=False, default="text", server_default="text"
     )

@@ -24,6 +24,7 @@ from app.modules.conversations.gateway.base import (
     parse_provider_body,
 )
 from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+from app.modules.conversations.gateway.whatsapp_order import order_summary, parse_order
 from app.modules.conversations.gateway.whatsapp_templates import build_send_components
 from app.modules.conversations.policy import template_language
 
@@ -256,8 +257,14 @@ class WhatsAppAdapter:
             # rather than "" (which add_message rejects, failing the webhook).
             emoji = (msg.get("reaction", {}).get("emoji") or "").strip()
             return emoji or REACTION_REMOVED, None, None, "reaction"
-        # A type this adapter does not know (order, system, referral, ...): the
-        # raw JSON is kept as the body for forensics, and the canonical type is
+        if msg_type == "order":
+            # A cart sent from our catalog. Shown as a readable list, never as the raw webhook.
+            # One with no readable product at all falls through to "unsupported" below.
+            cart = parse_order(msg)
+            if cart is not None:
+                return order_summary(cart), None, None, "order"
+        # A type this adapter does not know (an order with nothing readable, system, referral,
+        # ...): the raw JSON is kept as the body for forensics, and the canonical type is
         # honest about it instead of claiming "text".
         return (json.dumps(msg)[:500] if msg else None, None, None, "unsupported")
 
