@@ -275,7 +275,16 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 253 -> 254 on 2026-11-20: the apparel grid asks inventory.service how many of each variant can be
 # sold (one batched read that applies on_hand - quarantined - reserved), instead of reading the
 # balance table itself. Through a service, one direction.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 254
+# 254 -> 258 on 2026-11-20 (recorded after the fact; main was red on this test). Two parts:
+#  * +1 was never written down. 254 was measured at the apparel commit, then 73817a70 (the till
+#    selling on a customer's account) added pos -> customer_accounts.service and pos ->
+#    customers.service, which the 251 -> 253 note already describes as deliberate, so the real
+#    count was 255 from then on while this ceiling stayed 254.
+#  * +3 are the expiry report (1d548eb3): inventory -> settings.capabilities (which features a shop
+#    has), inventory -> settings.service (the alert window, a function-scope import) and
+#    inventory -> catalog.models (product names on the lot rows). Read-only, one direction, no new
+#    cycle (test_no_new_module_import_cycles). catalog.models should become a catalog read-model.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 258
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

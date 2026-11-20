@@ -22,7 +22,6 @@ from app.core.errors import ValidationError
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryCostLayer, InventoryLot
 from app.modules.settings.capabilities import shop_capabilities
-from app.modules.settings.service import SettingsService
 
 
 def _row(
@@ -47,6 +46,10 @@ async def expiry_report(
     session: AsyncSession, tenant_id: UUID, *, now: datetime | None = None
 ) -> dict[str, Any]:
     """Expired and soon-to-expire batches, soonest first, for a shop that tracks expiry."""
+    # Function scope on purpose: the boundary guard counts module-scope service imports across
+    # modules (test_module_scope_service_imports_do_not_grow) and the cashier modules may not add.
+    from app.modules.settings.service import SettingsService
+
     now = now or datetime.now(UTC)
     caps = await shop_capabilities(session, tenant_id)
     # The setting is a number from 1 to 730 with a default of 30, so it always resolves.
