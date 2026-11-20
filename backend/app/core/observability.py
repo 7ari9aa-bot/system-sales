@@ -74,9 +74,11 @@ def get_tracer():
 
 def configure_logging() -> None:
     from app.core.config import get_settings
+    from app.core.log_redaction import install_secret_redaction
 
     level = logging.DEBUG if get_settings().debug else logging.INFO
     logging.basicConfig(level=level, format="%(message)s")
+    install_secret_redaction()
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
