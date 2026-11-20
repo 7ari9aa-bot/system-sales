@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { useT } from "@/lib/i18n";
-import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { receiptBytes } from "@/cashier/lib/receiptPrint";
 import { printerErrorKey } from "@/cashier/lib/printerErrors";
 import {
   connectBluetoothPrinter,
@@ -62,15 +62,15 @@ export default function PrinterSetupDialog({ open, onOpenChange }) {
     setErrorMsg("");
     setLoading(true);
     try {
-      const testBytes = buildReceiptEscPos({
-        shopName: "FIHRIST POS TEST",
+      const testBytes = receiptBytes({
+        shopName: "فهرست - اختبار الطباعة",
         receiptNumber: "TEST-0001",
         items: [
-          { name: "Test Product A", quantity: 1, unit_price: "10.00", total: "10.00" },
-          { name: "Test Product B", quantity: 2, unit_price: "20.00", total: "40.00" },
+          { name: "صنف تجريبي ١", quantity: 1, unit_price: "10.00", total: "10.00" },
+          { name: "صنف تجريبي ٢", quantity: 2, unit_price: "20.00", total: "40.00" },
         ],
         total: "50.00",
-        footerNote: "Thermal printer test successful!",
+        footerNote: "نجح اختبار الطابعة",
       });
       await printRaw(testBytes);
       setStatusMsg(t("pos.printer.printSuccess"));

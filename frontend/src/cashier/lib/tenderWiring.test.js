@@ -46,3 +46,13 @@ describe("the dialog only offers what the till allows", () => {
     expect(dialog).toMatch(/disabled=\{pending \|\| !\(Number\(total\) > 0\) \|\| !plan\.ok\}/);
   });
 });
+
+describe("receipts reach the printer as a picture", () => {
+  it("neither print path sends raw text bytes, which print Arabic as symbols", () => {
+    for (const rel of ["routes/_authed/pos.jsx", "components/pos/PrinterSetupDialog.jsx"]) {
+      const src = read(rel);
+      expect(src, rel).toMatch(/receiptBytes\(\{/);
+      expect(src, rel).not.toMatch(/buildReceiptEscPos/);
+    }
+  });
+});

@@ -33,7 +33,7 @@ import { scanRefusalText } from "../../api/scanRefusal";
 import { useOfflineSync } from "@/cashier/lib/useOfflineSync";
 import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
 import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
-import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -381,11 +381,11 @@ function PosScreen({ user, session }) {
 
       if (isPrinterConnected()) {
         try {
-          const bytes = buildReceiptEscPos({
-            shopName: session?.profile?.name || "FIHRIST POS",
+          const bytes = receiptBytes({
+            shopName: session?.profile?.name || "فهرست",
             receiptNumber: r?.number || r?.order_number || "",
             items: lines.map((l) => ({
-              name: l.title || l.name || "Item",
+              name: l.title || l.name || "صنف",
               quantity: l.quantity,
               unit_price: l.price,
               total: l.total,
