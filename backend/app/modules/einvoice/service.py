@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -116,11 +117,14 @@ class EInvoiceService:
             device.provider_type, country_code=context.country_code
         )
 
-        # 4. Generate canonical payload (XML/JSON)
-        payload = await active_provider.generate_document(context)
+        # 4. Generate canonical payload (XML/JSON). Providers that chain by the previous
+        #    document (ETA) need the locked device row; it is handed over through ``extras``
+        #    on a copy so the caller's frozen context is never mutated.
+        build_context = replace(context, extras={**context.extras, "_device": device})
+        payload = await active_provider.generate_document(build_context)
 
         # 5. Cryptographically sign and stamp
-        signed = await active_provider.sign_document(context, payload, device)
+        signed = await active_provider.sign_document(build_context, payload, device)
 
         # 6. Update device state (advance ICV and forward PIH chain)
         device.icv_counter = signed.icv

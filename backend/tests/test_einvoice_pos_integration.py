@@ -171,6 +171,19 @@ async def test_eta_pos_sale_and_return_lifecycle():
         provider_type="eta",
         icv_counter=0,
         last_pih=None,
+        metadata_info={
+            "eta": {
+                "environment": "preprod",
+                "branch_code": "1",
+                "activity_code": "4771",
+                "branch_address": {
+                    "governate": "alexandria",
+                    "region_city": "city center",
+                    "street": "1 corniche",
+                    "building_number": "1",
+                },
+            }
+        },
     )
 
     def mock_execute(stmt):
@@ -207,17 +220,25 @@ async def test_eta_pos_sale_and_return_lifecycle():
                 tax_rate=Decimal("0.1400"),
                 tax_amount=Decimal("14.00"),
                 total=Decimal("114.00"),
+                sku="STAT-1",
+                item_code_type="EGS",
+                item_code="EG-200300400-1",
+                vat_subtype="V009",
             )
         ],
         subtotal=Decimal("100.00"),
         tax_total=Decimal("14.00"),
         grand_total=Decimal("114.00"),
+        extras={"payment_tender": "cash"},
     )
 
     doc_sale = await EInvoiceService.issue_einvoice(mock_session, tenant_id, sale_ctx)
     sale_data = json.loads(doc_sale.raw_payload)
-    assert sale_data["documentType"]["receiptType"] == "S"
-    assert "https://invoicing.eta.gov.eg/receipts/search" in doc_sale.qr_code
+    assert sale_data["documentType"]["receiptType"] == "SR"
+    assert "/receipts/search/" in doc_sale.qr_code and "IssuerRIN:200300400" in doc_sale.qr_code
+    # No ETA credentials on this device: stored for later, never claimed as reported.
+    assert doc_sale.status == "pending"
+    assert doc_sale.authority_uuid is None
 
     # 2. POS Return Receipt
     return_ctx = EInvoiceContext(
@@ -242,16 +263,22 @@ async def test_eta_pos_sale_and_return_lifecycle():
                 tax_rate=Decimal("0.1400"),
                 tax_amount=Decimal("14.00"),
                 total=Decimal("114.00"),
+                sku="STAT-1",
+                item_code_type="EGS",
+                item_code="EG-200300400-1",
+                vat_subtype="V009",
             )
         ],
         subtotal=Decimal("100.00"),
         tax_total=Decimal("14.00"),
         grand_total=Decimal("114.00"),
         original_reference="REC-EGY-001",
-        original_uuid=doc_sale.authority_uuid,
+        original_uuid=sale_data["header"]["uuid"],
+        extras={"payment_tender": "cash"},
     )
 
     doc_return = await EInvoiceService.issue_einvoice(mock_session, tenant_id, return_ctx)
     return_data = json.loads(doc_return.raw_payload)
-    assert return_data["documentType"]["receiptType"] == "R"
-    assert return_data["header"]["referenceOldUUID"] == doc_sale.authority_uuid
+    assert return_data["documentType"]["receiptType"] == "RR"
+    assert return_data["header"]["referenceUUID"] == sale_data["header"]["uuid"]
+    assert return_data["header"]["previousUUID"] == sale_data["header"]["uuid"]

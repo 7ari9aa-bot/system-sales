@@ -40,6 +40,13 @@ class InvoiceLineItem:
     tax_amount: Decimal = Decimal("0.00")
     total: Decimal = Decimal("0.00")
     sku: str = ""
+    # Country-specific extras, ignored by providers that do not need them. ETA (Egypt) needs the
+    # item's *registered* code (EGS/GS1), its unit, and whether VAT applies; see
+    # providers/eta/context.py. Empty means "not provided", and the ETA validator refuses.
+    item_code_type: str = ""  # "EGS" | "GS1"
+    item_code: str = ""
+    unit_code: str = ""
+    vat_subtype: str = ""  # e.g. "V009" taxable, "V003" exempt
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,9 @@ class EInvoiceContext:
     original_reference: str | None = None
     original_uuid: str | None = None
     return_reason: str | None = None
+    # Free-form per-country data (ETA: branch, activity, payment tender, buyer, delivery mode).
+    # Kept as a plain mapping so adding a country never changes this shared contract.
+    extras: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -74,6 +74,11 @@ ROOT_MODULES: frozenset[str] = frozenset(
 # deleted: a deletion is the owner's call, and a wrong deletion is unrecoverable.
 # Nothing here sits in a path owned by a concurrent agent: each is a feature
 # genuinely awaiting its caller, honestly recorded rather than deleted.
+_ETA_CORE_WHY = (
+    "ETA eReceipt core: built and tested against the mock authority; the caller "
+    "(sender worker + POS hook) lands with the ETA rollout."
+)
+
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # E-invoicing (ZATCA SA, ETA EG, Peppol AE; commit 33b5364f). The provider engines, the
     # registry and the orchestrating service are built and unit-tested, but no route or worker
@@ -86,9 +91,16 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     "app.modules.einvoice.providers.eta.provider": (
         "e-invoicing: built, tested; caller lands per country rollout."
     ),
-    "app.modules.einvoice.providers.eta.receipt": (
-        "e-invoicing: built, tested; caller lands per country rollout."
-    ),
+    "app.modules.einvoice.providers.eta.builder": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.calc": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.client": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.codes": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.context": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.mock_authority": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.models": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.qr": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.uuid_": _ETA_CORE_WHY,
+    "app.modules.einvoice.providers.eta.validator": _ETA_CORE_WHY,
     "app.modules.einvoice.providers.peppol_ae.pint": (
         "e-invoicing: built, tested; caller lands per country rollout."
     ),
