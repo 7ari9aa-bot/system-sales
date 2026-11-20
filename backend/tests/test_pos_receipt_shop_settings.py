@@ -162,10 +162,8 @@ async def test_a_stored_value_the_settings_no_longer_allow_still_prints(
     """A row written before a rule was tightened must not stop a sale from printing."""
     from types import SimpleNamespace
 
-    from app.modules.pos import receipt_settings as rs
-
     shift, _ = await _receipt(db, tenant_ctx)
-    real = rs.SettingsService.resolve_many
+    real = SettingsService.resolve_many
 
     async def corrupt(self, keys, **kw):
         out = await real(self, keys, **kw)
@@ -178,7 +176,7 @@ async def test_a_stored_value_the_settings_no_longer_allow_still_prints(
         }
         return {k: SimpleNamespace(value=bad.get(k, r.value)) for k, r in out.items()}
 
-    monkeypatch.setattr(rs.SettingsService, "resolve_many", corrupt)
+    monkeypatch.setattr(SettingsService, "resolve_many", corrupt)
     shop = await _shop_block(db, tenant_ctx, shift)
     assert shop["paper_mm"] == 80
     assert shop["exchange_days"] == 0
