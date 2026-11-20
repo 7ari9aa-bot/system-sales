@@ -305,6 +305,8 @@ class RecordSaleOut(BaseModel):
     change: str | None = None
     # The part of the sale put on the customer's account; None when the sale was not on account.
     on_account: str | None = None
+    # How much of the customer's held deposit paid for this sale (None when not on account).
+    deposit_used: str | None = None
 
 
 class HoldCartRequest(BaseModel):

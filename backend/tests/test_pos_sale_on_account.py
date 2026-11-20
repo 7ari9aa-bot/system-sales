@@ -231,3 +231,59 @@ async def test_a_replayed_sale_charges_the_account_once(db, tenant_ctx) -> None:
         )
     ).scalar_one()
     assert count == 1
+
+
+# ---- a deposit the customer already holds ----
+
+
+async def test_a_held_deposit_pays_first_then_the_rest_goes_on_account(db, tenant_ctx) -> None:
+    t = tenant_ctx.tenant_id
+    register, variant, customer = await _ready(db, tenant_ctx)
+    await Accounts.take_deposit(db, t, customer.id, amount="120")
+    out = await _sell(db, tenant_ctx, register, variant, customer, qty=3)  # 300
+    assert out["deposit_used"] == "120.00"
+    assert out["on_account"] == "180.00"
+    assert await Accounts.balance(db, t, customer.id) == D("180.00")  # deposit gone, 180 owed
+
+
+async def test_a_deposit_larger_than_the_sale_leaves_the_rest_held(db, tenant_ctx) -> None:
+    t = tenant_ctx.tenant_id
+    register, variant, customer = await _ready(db, tenant_ctx)
+    await Accounts.take_deposit(db, t, customer.id, amount="500")
+    out = await _sell(db, tenant_ctx, register, variant, customer, qty=2)  # 200
+    assert out["deposit_used"] == "200.00" and out["on_account"] == "0.00"
+    assert await Accounts.balance(db, t, customer.id) == D("-300.00")  # 300 still held for them
+
+
+async def test_cash_paid_in_full_leaves_the_deposit_untouched(db, tenant_ctx) -> None:
+    t = tenant_ctx.tenant_id
+    register, variant, customer = await _ready(db, tenant_ctx)
+    await Accounts.take_deposit(db, t, customer.id, amount="150")
+    out = await _sell(
+        db,
+        tenant_ctx,
+        register,
+        variant,
+        customer,
+        qty=1,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    assert out["deposit_used"] == "0.00" and out["on_account"] == "0.00"
+    assert await Accounts.balance(db, t, customer.id) == D("-150.00")
+
+
+async def test_the_deposit_counts_toward_the_limit_check(db, tenant_ctx) -> None:
+    t = tenant_ctx.tenant_id
+    # price 100, limit 100. A 3-unit sale (300) alone would owe 300 > 100 and be refused, but with
+    # 250 already deposited only 50 is owed, which is within the limit: so it must pass.
+    register, variant, customer = await _ready(db, tenant_ctx, limit="100")
+    await Accounts.take_deposit(db, t, customer.id, amount="250")
+    out = await _sell(db, tenant_ctx, register, variant, customer, qty=3)
+    assert out["deposit_used"] == "250.00" and out["on_account"] == "50.00"
+    assert await Accounts.balance(db, t, customer.id) == D("50.00")
+
+
+async def test_without_the_deposit_the_same_sale_is_refused(db, tenant_ctx) -> None:
+    register, variant, customer = await _ready(db, tenant_ctx, limit="100")
+    with pytest.raises(ConflictError):
+        await _sell(db, tenant_ctx, register, variant, customer, qty=3)

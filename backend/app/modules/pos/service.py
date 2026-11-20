@@ -1430,10 +1430,27 @@ class PosService(PosReceiptReads):
                 session, tenant_id, order.id, actor_user_id=actor_user_id
             )
         on_account_amount = Decimal("0.00")
+        deposit_used = Decimal("0.00")
         if account_sale:
             from app.modules.customer_accounts.service import CustomerAccountService
 
             paid_now = tender.paid if tender is not None else Decimal("0.00")
+            # A deposit the customer holds pays first. It comes off BEFORE the credit check so
+            # the limit is judged on what is really still owed. The amount used covers part of the
+            # sale, so it counts as paid: only the remainder can go on account.
+            still_due = Decimal(str(order.grand_total)) - paid_now
+            deposit_used = Decimal("0.00")
+            if still_due > 0:
+                deposit_used = await CustomerAccountService.apply_deposit_to_sale(
+                    session,
+                    tenant_id,
+                    resolved_customer_id,
+                    sale_total=still_due,
+                    order_id=order.id,
+                    idempotency_key=f"deposit:{idempotency_key}" if idempotency_key else None,
+                    actor_user_id=actor_user_id,
+                )
+            paid_now += deposit_used
             entry = await CustomerAccountService.charge(
                 session,
                 tenant_id,
@@ -1484,6 +1501,7 @@ class PosService(PosReceiptReads):
             "paid": str(tender.paid) if tender is not None else None,
             "change": str(tender.change) if has_cash else None,
             "on_account": str(on_account_amount) if account_sale else None,
+            "deposit_used": str(deposit_used) if account_sale else None,
         }
 
     @staticmethod

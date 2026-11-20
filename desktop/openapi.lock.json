@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 585,
-    "sha256": "10168cab56e3196ee2017b321f13925f62cfc42cd2f9a10515b6d2a0a9179dae",
+    "sha256": "f1910455aec9fbf51103de0ca72ce4fa7d2fdd031e54e8b483f092695b9e4d60",
     "typed_operations": 331
   },
   "spec": {
@@ -16119,6 +16119,17 @@
                 }
               ],
               "title": "Customer Notice"
+            },
+            "deposit_used": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deposit Used"
             },
             "grand_total": {
               "title": "Grand Total",
