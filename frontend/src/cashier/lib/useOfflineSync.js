@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { posApi, newIntent } from "../api/posApi";
+import { posApi } from "../api/posApi";
 import { countOfflineSales, listOfflineSales, removeOfflineSale } from "./offlineQueue";
 
 export function useOfflineSync({ onSaleSynced, onError } = {}) {
@@ -24,7 +24,10 @@ export function useOfflineSync({ onSaleSynced, onError } = {}) {
       for (const item of pending) {
         try {
           const { registerId, payload } = item.data;
-          const result = await posApi.recordSale(registerId, payload, newIntent());
+          // The key stored with the record, never a fresh one: a replay of a sale the server already
+          // took must come back as that same sale, not as a second sale.
+          const intent = { key: item.intent_key || `pos-${item.id}` };
+          const result = await posApi.recordSale(registerId, payload, intent);
           await removeOfflineSale(item.id);
           onSaleSynced?.(result, item);
         } catch (err) {

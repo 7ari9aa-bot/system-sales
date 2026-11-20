@@ -40,6 +40,10 @@ export async function enqueueOfflineSale(saleData) {
   const record = {
     id,
     data: saleData,
+    // One Idempotency-Key for this sale, minted HERE and kept with the record. Replays reuse it,
+    // so a sale the server already took (reply lost on a weak connection) is returned, not booked
+    // and deducted from stock a second time. Never regenerate it on a retry.
+    intent_key: saleData?.intentKey || `pos-${id}`,
     created_at: new Date().toISOString(),
     retry_count: 0,
   };
