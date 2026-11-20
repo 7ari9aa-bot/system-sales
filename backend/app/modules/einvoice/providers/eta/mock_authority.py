@@ -6,8 +6,9 @@ within 10 minutes, 429, 503) and the submission details endpoint, and it checks 
 authority publishes for the receipt itself (hash chain, UUID shape, totals, mandatory fields).
 
 What it cannot do, and must not be mistaken for:
-* It does not know the authority's real UUID normalization, so by default it checks only the
-  UUID *shape* (``verify_uuid=False``). Pass a ``uuid_fn`` to check content hashes.
+* It checks the receipt UUID against the CONTENT, with the authority's own rule (verified with
+  its published ``ETA.Ereceipt.UUID`` library, see ``uuid_.py``). Pass ``uuid_fn=None`` to
+  check only the shape, or your own function to override.
 * It does not know which activity/item codes a given taxpayer is entitled to.
 * It proves our client and builder agree with the documentation, not with the live service.
 """
@@ -28,6 +29,13 @@ from app.modules.einvoice.providers.eta.validator import check_document_consiste
 _DUP_WINDOW_SECONDS = 600
 
 
+def _authority_uuid(doc: dict[str, Any]) -> str:
+    """The authority's UUID of ``doc``. ``doc`` must hold its numbers as ``Decimal`` (as sent)."""
+    from app.modules.einvoice.providers.eta.uuid_ import compute_receipt_uuid
+
+    return compute_receipt_uuid(doc)
+
+
 def _hex64(value: Any) -> bool:
     return (
         isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
@@ -44,7 +52,7 @@ class MockAuthority:
     preshared_key: str = "mock-psk"
     rin: str = "674859545"
     token_ttl: int = 3600
-    uuid_fn: Callable[[dict[str, Any]], str] | None = None
+    uuid_fn: Callable[[dict[str, Any]], str] | None = _authority_uuid
     now: float = 0.0  # injectable clock for the duplicate window
     # Failure injection: popped front-to-back, one per submission call.
     fail_next: list[int] = field(default_factory=list)
@@ -134,10 +142,13 @@ class MockAuthority:
         except (ValueError, KeyError, AssertionError):
             return httpx.Response(400, json={"code": "BadStructure", "error": "BadStructure"})
 
+        # The UUID is a hash of the text as written ("1.50000", not 1.5), so check it on a second
+        # parse that keeps every number exactly as it was sent.
+        exact = json.loads(raw, parse_float=Decimal, parse_int=Decimal)["receipts"]
         accepted, rejected = [], []
         chain_tip = dict(self.last_uuid_by_pos)
-        for doc in receipts:
-            errors = self._validate(doc, chain_tip)
+        for doc, exact_doc in zip(receipts, exact, strict=True):
+            errors = self._validate(doc, chain_tip, exact_doc)
             uuid = doc.get("header", {}).get("uuid", "")
             number = doc.get("header", {}).get("receiptNumber", "")
             if errors:
@@ -186,7 +197,9 @@ class MockAuthority:
         )
 
     # ---------------------------------------------------------------------------------
-    def _validate(self, doc: dict[str, Any], chain_tip: dict[str, str]) -> list[dict[str, str]]:
+    def _validate(
+        self, doc: dict[str, Any], chain_tip: dict[str, str], exact: dict[str, Any] | None = None
+    ) -> list[dict[str, str]]:
         errs: list[dict[str, str]] = []
 
         def err(code: str, path: str, msg: str) -> None:
@@ -202,7 +215,7 @@ class MockAuthority:
         if not _hex64(h.get("uuid")):
             err("CF310", "header.uuid", "uuid must be a 64-char SHA256 hex string")
         elif self.uuid_fn is not None:
-            blank = json.loads(json.dumps(doc))
+            blank = json.loads(json.dumps(exact if exact is not None else doc, default=str))
             blank["header"]["uuid"] = ""
             if self.uuid_fn(blank) != h["uuid"]:
                 err("CF311", "header.uuid", "uuid is not a valid hash of the receipt content")

@@ -130,6 +130,13 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # provider webhook entrypoints (signature-verified inside the handler)
         "GET /api/v1/webhooks/{channel}",
         "POST /api/v1/webhooks/{channel}",
+        # ETA e-receipt authority callbacks (modules/einvoice/providers/eta/callbacks.py): the
+        # authority calls with the per-till callback key (never a user token). The handler
+        # resolves the store from the key's hash through a SECURITY DEFINER lookup, then binds
+        # the tenant before touching a row; unknown or revoked keys are 401 and change nothing
+        # (tests/test_eta_callbacks_http.py, incl. cross-store isolation).
+        "PUT /api/v1/einvoice/eta/notifications/receipts",
+        "PUT /api/v1/einvoice/eta/notifications/general",
         # Meta OAuth callback: PUBLIC by design — the 10-minute server-signed
         # oauth_state JWT minted to a settings:write holder is the
         # authorization, and the route only ever redirects back to the

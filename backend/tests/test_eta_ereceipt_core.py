@@ -1,9 +1,9 @@
 """ETA eReceipt core: arithmetic, builder, validator, QR, client, mock authority.
 
 These tests pin the behaviour the authority *documents* (sdk.invoicing.eta.gov.eg). They run
-without a database or network. They do NOT prove acceptance by the live service: see
-``app/modules/einvoice/providers/eta/uuid_.py`` (UUID normalization is unverified) and
-``docs`` for what still needs a PreProd account.
+without a database or network. They do NOT prove acceptance by the live service. The UUID rule
+itself is checked against the authority's own library in ``test_eta_uuid_toolkit_vectors.py``;
+signing and registered item codes still need a merchant certificate and a PreProd account.
 """
 
 from __future__ import annotations
@@ -477,3 +477,25 @@ async def test_submission_status_lookup():
     resp = await client.submit_receipts([_doc()])
     detail = await client.get_submission(resp.submission_uuid)
     assert detail["receiptsCount"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_mock_authority_checks_the_uuid_against_the_content():
+    """A UUID that is well formed but is not the hash of the receipt is refused (CF311)."""
+    mock = MockAuthority()
+    client, _ = _client(mock)
+    doc = _doc()
+    doc["itemData"][0]["description"] = "قميص بعد التوقيع"  # content changed after hashing
+    result = await client.submit_receipts([doc])
+    assert not result.accepted
+    assert any(d.get("code") == "CF311" for d in result.rejected[0].details)
+
+
+@pytest.mark.asyncio
+async def test_the_mock_authority_accepts_what_the_builder_hashed_even_with_awkward_text():
+    mock = MockAuthority()
+    client, _ = _client(mock)
+    nasty = 'Shirt "slim" \\ fit\tتجربة 😀\n'
+    doc = _doc(lines=(_line(description=nasty),))
+    result = await client.submit_receipts([doc])
+    assert result.accepted and not result.rejected

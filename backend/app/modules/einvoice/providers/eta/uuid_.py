@@ -6,18 +6,22 @@ The authority's published procedure (Receipt Issuance FAQ, "How to generate rece
   3. serialize + normalize and flatten every property into one line of text,
   4. SHA-256 it, 5. hex-encode the 32 bytes into 64 characters, 6. that is the UUID.
 
-UNVERIFIED (read before relying on this): the exact "serialize + normalize" step is implemented
-inside the authority's Integration Toolkit and is not published as text anywhere we could reach.
-The canonical form below (walk the object in document order, emit the upper-cased property name
-then its quoted value, recurse into arrays and objects) is an EDUCATED GUESS modelled on the
-authority's e-invoice signing canonicalization. It is deterministic and unit-tested for
-stability, but nobody has compared it with the authority's output. Until that is done a receipt
-signed with this UUID may be rejected with a "UUID is not a valid hash of the content" error.
+VERIFIED AGAINST THE AUTHORITY'S OWN LIBRARY. Step 3 is not published as prose, but the authority
+ships it as an MIT-licensed NuGet package, ``ETA.Ereceipt.UUID`` 1.0.0 (author "ETAEgypt"), whose
+``Manager.GenerateUUID(json)`` does exactly: parse the JSON (numbers and dates kept as written),
+then walk it depth first and emit, for every property, ``"`` + NAME UPPER-CASED + ``"`` followed by
+its value; hash that text with SHA-256 over UTF-8 and write each byte as two lowercase hex digits.
+The rules below were read from that library's IL and then checked against its real output (the
+library was executed, no account needed): see ``tests/test_eta_uuid_toolkit_vectors.py``.
 
-To close this gap, run the same receipt through the Toolkit (offline, no account needed) and
-through ``compute_receipt_uuid``, then put the pairs in ``tests/test_eta_uuid_toolkit_vectors.py``.
-When every vector matches, flip ``NORMALIZATION_VERIFIED`` to True. ``EtaClient`` refuses to
-submit to production while it is False.
+* a property whose value is text, a number, a date or a boolean: ``"NAME""value"``;
+  numbers keep the exact text they were written with (``1.50000`` stays ``1.50000``) and booleans
+  are written ``True`` / ``False`` (.NET's spelling);
+* ``null`` and an empty object or array: the name alone, no value;
+* an object: its name, then its properties in document order;
+* an array of objects: its name, then for EACH element the name again followed by that element's
+  properties. Arrays of plain values (numbers, strings) contribute only the repeated name; the
+  authority's receipt has none, so we refuse them rather than guess.
 """
 
 from __future__ import annotations
@@ -26,39 +30,72 @@ import hashlib
 import json
 from typing import Any
 
-from app.modules.einvoice.providers.eta.codes import MAX_DECIMAL_PLACES
+NORMALIZATION_VERIFIED = True
+"""True because the rule above reproduces the authority's own library output (see the vectors)."""
 
-NORMALIZATION_VERIFIED = False
-"""Flip to True only when ``test_eta_uuid_toolkit_vectors`` passes against real Toolkit output."""
+
+class UnsupportedShape(ValueError):
+    """The receipt holds a shape the authority's own serializer treats in a surprising way."""
+
+
+_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\b": "\\b",
+    "\f": "\\f",
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+}
+
+
+def _escape(text: str) -> str:
+    """Escape text the way Json.NET's ``JsonConvert.ToString`` does (the authority's library).
+
+    Backslash, quote and the usual control letters get their short form, every other control
+    character below U+0020 becomes ``\\u00xx`` (lowercase hex), and everything else, Arabic and
+    emoji included, is written as is. Property NAMES are never escaped.
+    """
+    out = []
+    for ch in text:
+        if ch in _ESCAPES:
+            out.append(_ESCAPES[ch])
+        elif ord(ch) < 0x20:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _scalar(value: Any) -> str:
-    if value is None:
-        return ""
     if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, float):
-        # Floats are never produced by our builder (money is Decimal -> str); guard anyway.
-        return format(value, f".{MAX_DECIMAL_PLACES}f")
-    return str(value)
+        return "True" if value else "False"
+    return _escape(str(value))
 
 
 def canonical_string(node: Any, key: str | None = None) -> str:
     """Flatten ``node`` into the one-line canonical text that is hashed."""
-    parts: list[str] = []
     if isinstance(node, dict):
-        for name, value in node.items():
-            parts.append(canonical_string(value, name))
-    elif isinstance(node, list):
-        # Array elements repeat the *parent's* name, then their own content.
+        body = "".join(canonical_string(v, k) for k, v in node.items())
+        return body if key is None else f'"{key.upper()}"{body}'
+    if isinstance(node, list):
+        if key is None:
+            raise UnsupportedShape("a receipt is an object, not an array")
+        parts = [f'"{key.upper()}"']
         for element in node:
+            if not isinstance(element, dict):
+                raise UnsupportedShape(
+                    f"array {key!r} holds a plain value; the authority's rule is not usable"
+                )
             parts.append(canonical_string(element, key))
-    else:
-        return f'"{(key or "").upper()}""{_scalar(node)}"'
-    body = "".join(parts)
+        return "".join(parts)
     if key is None:
-        return body
-    return f'"{key.upper()}"{body}'
+        raise UnsupportedShape("a bare value has no property name")
+    if node is None:
+        return f'"{key.upper()}"'
+    return f'"{key.upper()}""{_scalar(node)}"'
 
 
 def compute_receipt_uuid(receipt: dict[str, Any]) -> str:
