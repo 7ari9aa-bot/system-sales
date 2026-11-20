@@ -54,6 +54,10 @@ class MockAuthority:
     token_requests: int = 0
     submissions: dict[str, dict[str, Any]] = field(default_factory=dict)
     last_uuid_by_pos: dict[str, str] = field(default_factory=dict)
+    rejected_uuids: set[str] = field(default_factory=set)
+    valid_uuids: set[str] = field(default_factory=set)
+    # a rejected receipt's uuid -> the chain position its correction took over
+    amended_from: dict[str, str] = field(default_factory=dict)
     _seen_payloads: dict[str, float] = field(default_factory=dict)
     _issued_tokens: set[str] = field(default_factory=set)
     _seq: int = 0
@@ -137,6 +141,7 @@ class MockAuthority:
             uuid = doc.get("header", {}).get("uuid", "")
             number = doc.get("header", {}).get("receiptNumber", "")
             if errors:
+                self.rejected_uuids.add(uuid)
                 rejected.append(
                     {
                         "receiptNumber": number,
@@ -149,7 +154,12 @@ class MockAuthority:
                     }
                 )
             else:
-                chain_tip[doc["seller"]["deviceSerialNumber"]] = uuid
+                self.valid_uuids.add(uuid)
+                old_ref = doc["header"].get("referenceOldUUID", "")
+                if old_ref:
+                    # the correction takes the place of the rejected receipt in the chain
+                    self.amended_from[uuid] = old_ref
+                chain_tip[doc["seller"]["deviceSerialNumber"]] = old_ref or uuid
                 self._seq += 1
                 accepted.append(
                     {"uuid": uuid, "longId": f"LONG{self._seq:08d}", "receiptNumber": number}
@@ -197,14 +207,29 @@ class MockAuthority:
             if self.uuid_fn(blank) != h["uuid"]:
                 err("CF311", "header.uuid", "uuid is not a valid hash of the receipt content")
         prev = h.get("previousUUID", "")
+        old_ref = h.get("referenceOldUUID", "")
         tip = chain_tip.get(pos, "")
-        if tip == "" and prev != "":
+        # Authority rule (Receipt Issuance FAQ): a correction keeps the rejected receipt's
+        # previousUUID and sets referenceOldUUID to it; the receipt after it keeps pointing at
+        # the ORIGINAL rejected uuid, so a chain position may be "held" by a rejected uuid.
+        # NOTE: this encodes the FAQ's single worked example (R3 points at the original R2, not
+        # at R2*). The text states no general rule, so treat it as example-derived behaviour and
+        # confirm against PreProd before relying on it.
+        position_ok = prev == tip
+        if old_ref:
+            if old_ref in self.valid_uuids:
+                err(
+                    "CF322", "header.referenceOldUUID", "references a receipt that is already valid"
+                )
+            elif old_ref not in self.rejected_uuids:
+                err("CF323", "header.referenceOldUUID", "references no previously invalid receipt")
+        elif tip == "" and prev != "":
             err(
                 "CF320",
                 "header.previousUUID",
                 "first receipt of a POS must have empty previousUUID",
             )
-        elif tip != "" and prev != tip and not h.get("referenceOldUUID"):
+        elif not position_ok:
             err("CF321", "header.previousUUID", "previousUUID does not match the last receipt")
         rtype = doc.get("documentType", {}).get("receiptType")
         if rtype == "RR" and not _hex64(h.get("referenceUUID")):
