@@ -105,6 +105,33 @@ export async function readPictureAsBase64(file) {
   return btoa(binary);
 }
 
+// ---- Reactions. Meta lets a Page READ every kind but WRITE only a like, so these are for display. ----
+export const REACTION_KINDS = ["LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"];
+export const REACTION_LABEL = {
+  LIKE: { ar: "أعجبني", en: "Like" },
+  LOVE: { ar: "أحببته", en: "Love" },
+  HAHA: { ar: "هاها", en: "Haha" },
+  WOW: { ar: "واو", en: "Wow" },
+  SAD: { ar: "أحزنني", en: "Sad" },
+  ANGRY: { ar: "أغضبني", en: "Angry" },
+};
+
+/** The kinds that have any reactions, most used first (ties in Facebook's order), at most three:
+ *  the little icons beside the total in a post's summary line. */
+export function topReactions(kinds, max = 3) {
+  return REACTION_KINDS.map((kind, order) => ({ kind, count: Number(kinds?.[kind]) || 0, order }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .slice(0, max)
+    .map(({ kind, count }) => ({ kind, count }));
+}
+
+/** One post's or comment's reactions by kind, read from Facebook when asked for. */
+export async function fetchReactionBreakdown(objectId) {
+  const out = await api(`/facebook/objects/${enc(objectId)}/reactions`);
+  return { total: out.total || 0, kinds: out.kinds || {} };
+}
+
 export async function publishFacebookPost({ message, link, picture, scheduleAt }) {
   return api("/facebook/posts", {
     method: "POST",

@@ -62,3 +62,22 @@ export const FbReels = ({ filled, size = 24 }) => (
     <path d="m10.5 13 4 2.4-4 2.4Z" fill="currentColor" />
   </svg>
 );
+
+// The small round badge for one reaction kind in a post's summary line. Like keeps Facebook's blue
+// thumb; the others are the familiar faces, so a count reads at a glance.
+const BADGE = {
+  LIKE: { bg: "#0866ff", face: null },
+  LOVE: { bg: "#f33e58", face: "❤" },
+  HAHA: { bg: "#f7b125", face: "😆" },
+  WOW: { bg: "#f7b125", face: "😮" },
+  SAD: { bg: "#f7b125", face: "😢" },
+  ANGRY: { bg: "#e9710f", face: "😡" },
+};
+export const FbReactionBadge = ({ kind, size = 18 }) => {
+  const b = BADGE[kind] || BADGE.LIKE;
+  return (
+    <span aria-hidden="true" data-kind={kind} className="grid place-items-center rounded-full text-white ring-2 ring-white" style={{ width: size, height: size, background: b.bg, fontSize: size * 0.62, lineHeight: 1 }}>
+      {b.face ?? <FbLike filled size={size * 0.62} />}
+    </span>
+  );
+};

@@ -77,7 +77,7 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
       <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-        <span className="inline-flex items-center gap-1.5">{reactionsShown > 0 && <><span className="grid h-[18px] w-[18px] place-items-center rounded-full text-white" style={{ background: FB.blue }}><FbLike filled size={11} /></span>{reactionsShown}</>}</span>
+        <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
         {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
       </div>
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
