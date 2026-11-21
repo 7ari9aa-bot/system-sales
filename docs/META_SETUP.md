@@ -113,6 +113,26 @@ META_WHATSAPP_CONFIG_ID   معرف إعداد WhatsApp Embedded Signup (من ا�
 
 This guide covers the Meta Developer Console setup required by the connect button on the channels page. The button opens Meta's own login dialog; the operator consents with their Meta account and no app id or token is pasted anywhere.
 
+## ثامنًا: ظهرت عبارة «ليس بإمكان <اسم التطبيق> تأهيل العملاء الآن»
+
+الإنجليزية: "<App name> can't onboard customers right now". تظهر بعد تسجيل الدخول في نافذة فيسبوك، ويظل الزر يدور بلا نهاية، ولا يصل أي رمز تفويض للصفحة. مصدرها ميتا، وليست خطأ في الكود ولا في إعدادات المتجر، فإعادة المحاولة لن تفيد.
+
+معناها أن التطبيق **غير مسجّل Tech Provider بالكامل** في ميتا، فلا يحق له تأهيل عملاء آخرين عبر Embedded Signup. الشروط كلها تُستكمل في لوحة ميتا للتطبيق ولحافظة الأعمال (Business Portfolio) المالكة له، بهذا الترتيب:
+
+1. **Business Verification** للحافظة المالكة للتطبيق (Business settings > Security center).
+2. **Access Verification** والتسجيل كـ **Tech Provider** (App Dashboard > WhatsApp > تأهيل مزوّد التقنية).
+3. **App Review** وحصول التطبيق على **Advanced Access** للصلاحيتين `whatsapp_business_management` و`whatsapp_business_messaging`.
+4. التطبيق في وضع **Live** (وليس Development).
+5. `META_APP_ID` و`META_WHATSAPP_CONFIG_ID` على الخادم يخصان هذا التطبيق نفسه (الـ config من Facebook Login for Business > Configurations).
+
+ملاحظات مهمة:
+
+- حساب له دور **Admin أو Developer أو Tester** على التطبيق يُسمح له بتجربة الربط لحسابه هو قبل اكتمال الخطوات أعلاه، فلا تختبر بحساب بلا دور.
+- بعض الفرق تُكمل كل الخطوات وتظل الرسالة تظهر أيامًا حتى تُحدَّث حالة التطبيق عند ميتا. إن اكتملت الأربع ولم تزل، افتح تذكرة من Meta Support مع **Session ID** الظاهر أسفل النافذة (مثل `01a1fc32-...`) فهو ما يطلبه الدعم.
+- ربط **فيسبوك وماسنجر** لا يتأثر بهذه الرسالة، وهو يعمل بصلاحيات صفحات عادية.
+
+---
+
 ## 1. App basics
 
 1. Create an app at `https://developers.facebook.com/apps`.
@@ -206,3 +226,21 @@ Common causes, all checked in the Meta developer console for that app:
 4. The app is **deleted or belongs to another account**, or `META_APP_ID` on the server points at a different app. Compare it with Settings > Basic.
 
 Finally, make sure `META_APP_ID` on the server is the same live app you are working in.
+
+## 8. "<App> can't onboard customers right now" in the Facebook window
+
+This appears after the Facebook login step; the Connect button then spins forever and no authorization code ever reaches the page. It comes from Meta, not from our code or the store's settings, so retrying will not help.
+
+It means the app is **not fully registered as a Tech Provider**, so it may not onboard other businesses through Embedded Signup. Everything is completed in the Meta console for the app and for the Business Portfolio that owns it, in this order:
+
+1. **Business Verification** of the owning portfolio (Business settings > Security center).
+2. **Access Verification** and registration as a **Tech Provider** (App Dashboard > WhatsApp > Tech Provider onboarding).
+3. **App Review** with **Advanced Access** for `whatsapp_business_management` and `whatsapp_business_messaging`.
+4. The app is in **Live** mode, not Development.
+5. `META_APP_ID` and `META_WHATSAPP_CONFIG_ID` on the server belong to this same app (the config comes from Facebook Login for Business > Configurations).
+
+Notes:
+
+- An account with an **Admin, Developer or Tester** role on the app may be allowed to try the connect for its own account before the steps above are finished, so do not test with an account that has no role.
+- Some teams finish every step and still see the message for days until Meta refreshes the app's status. If all of the above is done and it persists, open a Meta Support ticket with the **Session ID** shown at the bottom of the window (like `01a1fc32-...`); it is what support asks for.
+- **Facebook and Messenger** connect are unaffected: they use ordinary Page permissions.

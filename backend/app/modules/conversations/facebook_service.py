@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.storage import FetchedMedia, get_storage
 from app.modules.conversations.gateway import facebook_video
-from app.modules.conversations.gateway.facebook_pages import facebook_pages
+from app.modules.conversations.gateway.facebook_pages import MAX_PHOTOS_PER_POST, facebook_pages
 from app.modules.conversations.models import SocialComment, SocialPost
 
 PLATFORM = "facebook"
@@ -69,6 +69,13 @@ def _media_type(post: dict) -> str:
     atts = (post.get("attachments") or {}).get("data") or []
     kind = str((atts[0] if atts else {}).get("media_type") or post.get("status_type") or "")
     return kind.upper() or "STATUS"
+
+
+#: Pages of 50 comments read for one post in one refresh. A cursor that never ends stops here.
+MAX_COMMENT_PAGES = 20
+
+#: Meta takes a handful of tags in one comment, not a crowd.
+MAX_MENTIONS = 5
 
 
 class FacebookService:
@@ -162,7 +169,7 @@ class FacebookService:
 
     @staticmethod
     async def sync_comments(session, tenant_id, credentials: dict, post_id: str) -> int:
-        page = await facebook_pages.list_comments(credentials, post_id)
+        """Store every comment on the post, following Meta's pages to the end (up to a cap)."""
         n = 0
 
         async def _upsert(c: dict, parent: str | None) -> None:
@@ -196,10 +203,27 @@ class FacebookService:
             )
             n += 1
 
-        for top in page["items"]:
-            await _upsert(top, None)
-            for reply in (top.get("comments") or {}).get("data") or []:
-                await _upsert(reply, str(top["id"]))
+        async def _pages(object_id: str):
+            """Meta's pages for one post or comment, until it says there is no next one."""
+            after = None
+            for _ in range(MAX_COMMENT_PAGES):
+                page = await facebook_pages.list_comments(credentials, object_id, after=after)
+                yield page["items"]
+                after = page.get("next")
+                if not after:
+                    return
+
+        async for items in _pages(post_id):
+            for top in items:
+                await _upsert(top, None)
+                inline = top.get("comments") or {}
+                for reply in inline.get("data") or []:
+                    await _upsert(reply, str(top["id"]))
+                # The inline list holds a comment's first replies only; Meta marks a longer one.
+                if (inline.get("paging") or {}).get("next"):
+                    async for more in _pages(str(top["id"])):
+                        for reply in more:
+                            await _upsert(reply, str(top["id"]))
         return n
 
     # ---- acting for the Page ----
@@ -244,6 +268,46 @@ class FacebookService:
                 await storage.delete_objects([stored.storage_key])
             except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
                 _logger.warning("facebook.publish.cleanup_failed")
+
+    @staticmethod
+    async def publish_pictures(
+        session, tenant_id, credentials: dict, *, pictures: list[bytes], **kw
+    ) -> str:
+        """Publish a post with several picture FILES (an album), not links someone else hosts.
+
+        Each file waits in private storage just long enough for Facebook to fetch it through its own
+        short signed link, and every one that was stored is removed afterwards, whatever happens,
+        including a storage failure part way through.
+        """
+        if len(pictures) > MAX_PHOTOS_PER_POST:
+            raise ValidationError(f"a post carries at most {MAX_PHOTOS_PER_POST} pictures")
+        kinds = [FacebookService.check_picture(p) for p in pictures]  # all checked before any store
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so pictures cannot be posted yet")
+        keys: list[str] = []
+        try:
+            links: list[str] = []
+            for data, kind in zip(pictures, kinds, strict=True):
+                stored = await storage.store(
+                    FetchedMedia(data=data, content_type=kind, checksum=""),
+                    prefix=f"social-outbox/{tenant_id}",
+                )
+                if not stored.storage_key:
+                    raise ConflictError("a picture could not be stored for publishing")
+                keys.append(stored.storage_key)
+                links.append(
+                    storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+                )
+            return await FacebookService.publish(
+                session, tenant_id, credentials, photo_urls=links, **kw
+            )
+        finally:
+            if keys:
+                try:
+                    await storage.delete_objects(keys)
+                except Exception:  # noqa: BLE001 - leftover temp files must not hide the result
+                    _logger.warning("facebook.publish.cleanup_failed")
 
     # ---- Reels and Stories ----
     @staticmethod
@@ -382,8 +446,34 @@ class FacebookService:
         await session.flush()
 
     @staticmethod
+    def resolve_mentions(thread, wanted: list[str] | None) -> list[str]:
+        """The ids to tag, kept only if each wrote on this thread as someone other than the Page.
+
+        Meta lets a Page mention a person only when that person commented on, or created, the post
+        (Pages API: Comments and @mentions). Tagging anyone else is refused by Meta, so it is
+        refused here first, with a reason the owner can read.
+        """
+        if not wanted:
+            return []
+        ids = list(dict.fromkeys(str(w).strip() for w in wanted))
+        if len(ids) > MAX_MENTIONS:
+            raise ValidationError(f"you can tag at most {MAX_MENTIONS} people in one reply")
+        allowed = {c.author_ref for c in thread if c.author_ref and not c.is_page_reply}
+        stray = [i for i in ids if i not in allowed]
+        if stray:
+            raise ValidationError("you can only tag people who commented on this post")
+        return ids
+
+    @staticmethod
     async def reply(
-        session, tenant_id, credentials: dict, object_id: str, text: str, *, user_id=None
+        session,
+        tenant_id,
+        credentials: dict,
+        object_id: str,
+        text: str,
+        *,
+        user_id=None,
+        mention: list[str] | None = None,
     ):
         """Comment on a post, or reply to a comment (Facebook threads are one level deep)."""
         post = await FacebookService.get_post(session, tenant_id, object_id)
@@ -395,8 +485,24 @@ class FacebookService:
             post_id, root = target.post_id, target.parent_comment_id or target.comment_id
         else:
             post_id, root = post.post_id, post.post_id
+        tags: list[str] = []
+        if mention:
+            thread = (
+                (
+                    await session.execute(
+                        select(SocialComment).where(
+                            SocialComment.tenant_id == tenant_id,
+                            SocialComment.platform == PLATFORM,
+                            SocialComment.post_id == post_id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            tags = FacebookService.resolve_mentions(thread, mention)
         try:
-            new_id = await facebook_pages.comment(credentials, root, text)
+            new_id = await facebook_pages.comment(credentials, root, text, mention=tags or None)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         now = datetime.now(UTC)

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 607,
-    "sha256": "04ecba9852f1f9d62020a292a9a1b8ef304cd597c58441b9c4931a492d02ffee",
+    "operations": 608,
+    "sha256": "4cb6c24f8782605f743dba24916bf60068dd37f70140ed766d6fbf65b94fc401",
     "typed_operations": 342
   },
   "spec": {
@@ -16164,7 +16164,7 @@
           "type": "object"
         },
         "PublishRequest": {
-          "description": "Text, a link, or one picture; `schedule_at` schedules it.\n\nThe picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public\nhttps link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.",
+          "description": "Text, a link, or pictures; `schedule_at` schedules it.\n\nThe picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public\nhttps link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.",
           "properties": {
             "link": {
               "anyOf": [
@@ -16215,6 +16215,15 @@
                 }
               ],
               "title": "Picture"
+            },
+            "pictures": {
+              "description": "Several picture files (base64), posted as one album.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "title": "Pictures",
+              "type": "array"
             },
             "schedule_at": {
               "anyOf": [
@@ -16917,6 +16926,30 @@
             "reorder_level"
           ],
           "title": "ReorderLevelRequest",
+          "type": "object"
+        },
+        "ReplyRequest": {
+          "description": "A reply, optionally tagging people who commented on the post (Meta's @mention).",
+          "properties": {
+            "mention": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 5,
+              "title": "Mention",
+              "type": "array"
+            },
+            "text": {
+              "maxLength": 8000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "ReplyRequest",
           "type": "object"
         },
         "ResendVerificationRequest": {
@@ -45349,7 +45382,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TextRequest"
+                  "$ref": "#/components/schemas/ReplyRequest"
                 }
               }
             },
@@ -45491,6 +45524,111 @@
             }
           },
           "summary": "Like Object",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/objects/{object_id}/reactions": {
+        "get": {
+          "description": "A post's or comment's reactions by kind (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), counts only.\n\nA Page can read every kind but write only a like, so this is for display.",
+          "operationId": "object_reactions_api_v1_facebook_objects__object_id__reactions_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "object_id",
+              "required": true,
+              "schema": {
+                "title": "Object Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Object Reactions",
           "tags": [
             "facebook"
           ]

@@ -11,6 +11,8 @@ export const FB_LIMITS = {
   scheduleMaxDays: 30,
   maxCommentChars: 8000,
   maxPictureBytes: 4 * 1024 * 1024,
+  // Pictures in one post. Meta takes more, but a longer album fails often; the server holds the same cap.
+  maxPictures: 10,
 };
 
 // What the Pages API takes for a picture. The server reads the real type from the file's bytes;
@@ -33,6 +35,20 @@ export function fbAge(iso, lang = "ar") {
   return new Date(iso).toLocaleDateString(ar ? "ar-EG" : "en-GB", { day: "numeric", month: "short", year: days > 330 ? "numeric" : undefined });
 }
 
+/** How many comments a post shows before "View more comments", and each click opens. */
+export const COMMENTS_PER_STEP = 5;
+
+/** The slice of a post's comments to draw after `steps` clicks of "View more comments".
+ *  The newest stay in view, as on Facebook; `hidden` is what is still folded away and `next` how many
+ *  the next click opens. */
+export function commentWindow(comments, steps) {
+  const list = comments || [];
+  const size = COMMENTS_PER_STEP * (1 + Math.max(0, steps || 0));
+  const shown = list.length > size ? list.slice(list.length - size) : list;
+  const hidden = list.length - shown.length;
+  return { shown, hidden, next: Math.min(COMMENTS_PER_STEP, hidden) };
+}
+
 /** Comments arrive flat with parent ids; a reply nests under its parent (Facebook threads are one level deep). */
 export function toFacebookComments(items, lang = "ar", pageName = "") {
   const visible = (items || []).filter((c) => c.status !== "removed");
@@ -45,6 +61,7 @@ export function toFacebookComments(items, lang = "ar", pageName = "") {
         timeLabel: fbAge(c.commented_at, lang),
         commentedAt: c.commented_at,
         text: c.body || "",
+        authorRef: c.author_ref || null,
         likes: c.like_count || 0,
         isPage: !!c.is_page_reply,
         hidden: c.status === "hidden",
@@ -105,13 +122,58 @@ export async function readPictureAsBase64(file) {
   return btoa(binary);
 }
 
-export async function publishFacebookPost({ message, link, picture, scheduleAt }) {
+/** The album after picking more files: what was there, then the new ones, without a file picked twice,
+ *  cut at the album limit. The result's `left` counts the files that did not fit. */
+export function addPictures(current, picked) {
+  const out = [...(current || [])];
+  let left = 0;
+  for (const file of Array.from(picked || [])) {
+    if (out.some((f) => f.name === file.name && f.size === file.size && f.type === file.type)) continue;
+    if (out.length >= FB_LIMITS.maxPictures) left += 1;
+    else out.push(file);
+  }
+  out.left = left;
+  return out;
+}
+
+// ---- Reactions. Meta lets a Page READ every kind but WRITE only a like, so these are for display. ----
+export const REACTION_KINDS = ["LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"];
+export const REACTION_LABEL = {
+  LIKE: { ar: "أعجبني", en: "Like" },
+  LOVE: { ar: "أحببته", en: "Love" },
+  HAHA: { ar: "هاها", en: "Haha" },
+  WOW: { ar: "واو", en: "Wow" },
+  SAD: { ar: "أحزنني", en: "Sad" },
+  ANGRY: { ar: "أغضبني", en: "Angry" },
+};
+
+/** The kinds that have any reactions, most used first (ties in Facebook's order), at most three:
+ *  the little icons beside the total in a post's summary line. */
+export function topReactions(kinds, max = 3) {
+  return REACTION_KINDS.map((kind, order) => ({ kind, count: Number(kinds?.[kind]) || 0, order }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .slice(0, max)
+    .map(({ kind, count }) => ({ kind, count }));
+}
+
+/** One post's or comment's reactions by kind, read from Facebook when asked for. */
+export async function fetchReactionBreakdown(objectId) {
+  const out = await api(`/facebook/objects/${enc(objectId)}/reactions`);
+  return { total: out.total || 0, kinds: out.kinds || {} };
+}
+
+export async function publishFacebookPost({ message, link, picture, pictures, scheduleAt }) {
+  const album = pictures || [];
+  const hasPictures = !!picture || album.length > 0;
   return api("/facebook/posts", {
     method: "POST",
     body: {
       message: (message || "").trim() || null,
-      link: picture ? null : (link || "").trim() || null,
+      link: hasPictures ? null : (link || "").trim() || null,
       picture: picture ? await readPictureAsBase64(picture) : null,
+      // Only an album adds the field, so a text, link or single-picture post is sent exactly as it was.
+      ...(album.length ? { pictures: await Promise.all(album.map(readPictureAsBase64)) } : {}),
       schedule_at: scheduleAt ? new Date(scheduleAt).toISOString() : null,
     },
   });
@@ -121,9 +183,28 @@ export const editFacebookPost = (postId, message) =>
   api(`/facebook/posts/${enc(postId)}`, { method: "PATCH", body: { message } });
 export const deleteFacebookPost = (postId) => api(`/facebook/posts/${enc(postId)}`, { method: "DELETE" });
 
-/** A comment on a post, or a reply when `objectId` is a comment. */
-export const commentOn = (objectId, text) =>
-  api(`/facebook/objects/${enc(objectId)}/comments`, { method: "POST", body: { text } });
+/** A comment on a post, or a reply when `objectId` is a comment. `mention` is the ids of people who
+ *  commented, to tag (Meta's @mention); left out, the body is just the text. */
+export const commentOn = (objectId, text, mention) =>
+  api(`/facebook/objects/${enc(objectId)}/comments`, {
+    method: "POST",
+    body: mention?.length ? { text, mention } : { text },
+  });
+
+/** The ids a reply tags. Facebook opens a reply with the person's name in it, so a public reply tags
+ *  the commenter unless the owner removed the name. A private reply goes to one inbox and tags nobody. */
+export function replyMention(comment, { tagged, privateReply }) {
+  if (privateReply || !tagged) return undefined;
+  const handle = mentionHandle(comment);
+  return handle ? [handle.id] : undefined;
+}
+
+/** Who a reply to this comment can tag: the person who wrote it. The Page itself and anyone whose id
+ *  the server did not give cannot be tagged, so Facebook's pre-filled name is simply not offered. */
+export function mentionHandle(comment) {
+  if (!comment || comment.isPage || !comment.authorRef) return null;
+  return { id: comment.authorRef, label: comment.author };
+}
 export const likeObject = (objectId, liked) =>
   api(`/facebook/objects/${enc(objectId)}/like`, { method: "POST", body: { liked } });
 export const hideFacebookComment = (commentId, hidden) =>
@@ -140,13 +221,17 @@ export async function fetchFacebookInsights() {
 }
 
 /** Why this post cannot be sent, or "" when it can. Checked before anything leaves the browser. */
-export function facebookPostProblem({ message = "", link = "", picture = null, scheduleAt = "" }, lang = "ar", now = Date.now()) {
+export function facebookPostProblem({ message = "", link = "", picture = null, pictures = [], scheduleAt = "" }, lang = "ar", now = Date.now()) {
   const ar = lang === "ar";
   const text = message.trim();
   const url = link.trim();
-  if (picture) {
-    if (!FB_PICTURE_TYPES.includes(picture.type)) return ar ? "الصورة يجب أن تكون JPEG أو PNG أو GIF أو BMP أو WEBP" : "The picture must be a JPEG, PNG, GIF, BMP or WEBP";
-    if (picture.size > FB_LIMITS.maxPictureBytes) return ar ? "الصورة أكبر من 4 ميغابايت" : "The picture is larger than 4 MB";
+  const files = [...(picture ? [picture] : []), ...(pictures || [])];
+  if (files.length > FB_LIMITS.maxPictures) return ar ? `المنشور يحمل ${FB_LIMITS.maxPictures} صور كحد أقصى` : `A post carries at most ${FB_LIMITS.maxPictures} pictures`;
+  if (files.length) {
+    for (const file of files) {
+      if (!FB_PICTURE_TYPES.includes(file.type)) return ar ? "الصورة يجب أن تكون JPEG أو PNG أو GIF أو BMP أو WEBP" : "The picture must be a JPEG, PNG, GIF, BMP or WEBP";
+      if (file.size > FB_LIMITS.maxPictureBytes) return ar ? "الصورة أكبر من 4 ميغابايت" : "The picture is larger than 4 MB";
+    }
     if (url) return ar ? "المنشور يحمل صورة أو رابطًا، ليس الاثنين" : "A post carries a picture or a link, not both";
   } else if (!text && !url) return ar ? "اكتب نصًا أو أضف صورة أو رابطًا" : "Write something, or add a picture or a link";
   if (text.length > FB_LIMITS.maxPostChars) return ar ? "المنشور أطول من الحد المسموح" : "The post is longer than Facebook allows";
@@ -159,6 +244,30 @@ export function facebookPostProblem({ message = "", link = "", picture = null, s
     if (mins > FB_LIMITS.scheduleMaxDays * 1440) return ar ? "الجدولة خلال 30 يومًا كحد أقصى" : "Schedule within 30 days at most";
   }
   return "";
+}
+
+// ---- Insights charts: Meta sends one value per day for each metric ----
+/** A metric's days in date order, as {day: "YYYY-MM-DD", value}. A day without a number is left out;
+ *  a real zero stays. */
+export function dailySeries(metric) {
+  return (metric?.values || [])
+    .filter((v) => typeof v?.value === "number" && v.end_time)
+    .map((v) => ({ day: String(v.end_time).slice(0, 10), value: v.value }))
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
+
+/** The SVG path of a series inside a width x height box: `line` for the stroke, `area` closed down to
+ *  the floor for the fill. The highest value sits at the top; a flat series sits mid-height. */
+export function chartPath(series, width, height) {
+  if (!series.length) return { line: "", area: "" };
+  const values = series.map((p) => p.value);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const x = (i) => (series.length === 1 ? width / 2 : (i / (series.length - 1)) * width);
+  const y = (v) => (max === min ? height / 2 : height - ((v - min) / (max - min)) * height);
+  const pts = series.map((p, i) => `${i ? "L" : "M"}${+x(i).toFixed(2)},${+y(p.value).toFixed(2)}`);
+  const line = pts.join("");
+  return { line, area: `${line}L${+x(series.length - 1).toFixed(2)},${height}L${+x(0).toFixed(2)},${height}Z` };
 }
 
 // ---- Reels and Stories (Meta: "Reels Publishing API", "Facebook Stories API") ----
