@@ -17,11 +17,45 @@ const REASON_MAX = 500;
 /** True when this till counts a drawer at close. */
 export const countsDrawer = (rules) => Boolean(rules?.take_payments);
 
+const ARABIC_INDIC = "٠١٢٣٤٥٦٧٨٩";
+const EXTENDED_INDIC = "۰۱۲۳۴۵۶۷۸۹";
+
+/**
+ * The cash a cashier typed, as plain decimal text, or null when it cannot be read with certainty.
+ * Read as typed: Arabic-Indic digits (٥٠٠), the Arabic decimal point (٫), a decimal comma (500,5)
+ * and thousands separators (1,000 / ٣٬٥٠٠ / 1 000). A comma or space is a thousands separator only
+ * when exactly three digits follow it; "1,00,0" or "1.000,5" are ambiguous, so they are refused
+ * rather than guessed, because a guessed count is a made-up cash difference. Zero is a valid count.
+ */
+export function readCountedCash(raw) {
+  if (raw === null || raw === undefined) return null;
+  let t = String(raw)
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String(ARABIC_INDIC.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String(EXTENDED_INDIC.indexOf(d)))
+    .replace(/٫/g, ".");
+  if (!t) return null;
+  if (/[٬،, \u00a0\u202f]/.test(t)) {
+    // groups of exactly three digits after a leading 1-3 digit group: thousands separators
+    const m = /^([1-9]\d{0,2})((?:[٬،, \u00a0\u202f]\d{3})+)(\.\d+)?$/.exec(t);
+    if (m) {
+      t = m[1] + m[2].replace(/[^\d]/g, "") + (m[3] ?? "");
+    } else if (!t.includes(".") && /^\d+,\d{1,2}$/.test(t)) {
+      t = t.replace(",", ".");
+    } else {
+      return null;
+    }
+  }
+  return /^\d+(\.\d+)?$/.test(t) ? t : null;
+}
+
 /** counted - expected, in cents, or null while either is unknown or the count is not a valid amount. */
 export function gapMinor(counted, expected) {
   if (counted === "" || counted == null || expected == null) return null;
   try {
-    const c = toMinor(String(counted));
+    const typed = readCountedCash(counted);
+    if (typed === null) return null;
+    const c = toMinor(typed);
     if (c < 0) return null;
     return c - toMinor(expected);
   } catch {
@@ -48,7 +82,7 @@ export function closeProblems({ rules, counted, expected, reason, reasonRequired
 /** The body of the close request: nothing for a till with no drawer, otherwise the count and the reason (if any gap). */
 export function closeBody({ rules, counted, expected, reason }) {
   if (!countsDrawer(rules)) return undefined;
-  const body = { counted_cash: toWire(String(counted)) };
+  const body = { counted_cash: toWire(readCountedCash(counted) ?? String(counted)) };
   const gap = gapMinor(counted, expected);
   const text = String(reason ?? "").trim();
   if (gap !== 0 && text) body.variance_reason = text;
