@@ -10,7 +10,7 @@ Statuses: DONE (implemented), MISSING-ALLOWED (the API allows it, we do not do i
 |---|---|---|---|---|---|
 | Comments, reactions, moderation | [engagement.md](facebook-parity/engagement.md) | 16 | 11 | 3 | 1 |
 | Insights, page info, Messenger, ratings | [insights-and-more.md](facebook-parity/insights-and-more.md) | 14 | 39 | 7 | 6 |
-| Publishing and posts | publish.md (branch feat/facebook-matrix-publish, still being completed) | pending | pending | pending | pending |
+| Publishing and posts | [publish.md](facebook-parity/publish.md) | 9 | 3 | 0 | 10 |
 
 Counts come from `grep -c '| STATUS |'` on each file.
 
@@ -33,4 +33,5 @@ Frontend full suite on this branch: 168 files, 2244 tests passing. ESLint clean 
 - Shares count: the API returns `shares`, the app asks for it and drops it. Needs a new column on `social_posts` plus a migration, so it needs the owner's go-ahead.
 - Comment order ("most relevant" vs "newest") and the low-quality filter: the gateway pins `order=chronological` and `filter=toplevel`. The backend test environment is not installed in the sandbox, so a failing-first test could not be run and no change was made.
 - Visual comparison of Insights, Messages and Reels against real Facebook: not done. The owner's local browser tools were not available.
+- Publishing matrix: reels are confirmed against Meta's reference; stories, pin, live, albums, events, polls and call-to-action are UNVERIFIED because Meta's own pages did not load from the sandbox. Nothing there is claimed either way.
 - The ranked list of MISSING-ALLOWED items is in the two matrix files above.
