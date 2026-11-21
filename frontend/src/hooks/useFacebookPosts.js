@@ -14,6 +14,8 @@ import {
   toFacebookPost,
 } from "@/lib/facebookApi";
 import { browserWorld, startQuietRefresh } from "@/lib/quietRefresh";
+import { startCommentPush } from "@/lib/realtimeComments";
+import { openCommentStream } from "@/lib/commentStream";
 
 // How often an open screen looks again at what the webhook stored. Our own copy, not Meta: cheap.
 export const QUIET_REFRESH_MS = 45 * 1000;
@@ -60,6 +62,23 @@ export function useFacebookPosts({ enabled, lang, pageName = "" }) {
     if (!enabled) return undefined;
     return startQuietRefresh({ look: () => load({ quiet: true }), everyMs: QUIET_REFRESH_MS, ...browserWorld() });
   }, [enabled, load]);
+
+  // Our own copy of one post's comments, read the moment the server says it stored one. Not Meta:
+  // the webhook already wrote it, so this is a cheap read. A look that began before an owner action
+  // is dropped, like the quiet one, so it cannot put back what they just hid.
+  const pullPost = useCallback(async (postId) => {
+    const startedAt = actionSeq.current;
+    const items = await fetchFacebookComments(postId);
+    if (!alive.current || startedAt !== actionSeq.current) return;
+    setPosts((prev) => prev.map((p) => (p.id === postId
+      ? { ...p, comments: toFacebookComments(items, lang, pageName), commentsCount: items.filter((c) => c.status !== "removed").length }
+      : p)));
+  }, [lang, pageName]);
+
+  useEffect(() => {
+    if (!enabled || typeof EventSource === "undefined") return undefined;
+    return startCommentPush({ reload: pullPost, open: openCommentStream, ...browserWorld() });
+  }, [enabled, pullPost]);
 
   const reloadPost = useCallback(async (postId) => {
     actionSeq.current += 1;
