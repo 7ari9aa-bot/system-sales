@@ -31,7 +31,7 @@ Frontend full suite on this branch: 168 files, 2244 tests passing. ESLint clean 
 
 - Page liking a comment the Page itself wrote: Meta's docs are silent. Left hidden until tested against the real API.
 - Shares count: the API returns `shares`, the app asks for it and drops it. Needs a new column on `social_posts` plus a migration, so it needs the owner's go-ahead.
-- Comment order ("most relevant" vs "newest") and the low-quality filter: the gateway pins `order=chronological` and `filter=toplevel`. The backend test environment is not installed in the sandbox, so a failing-first test could not be run and no change was made.
+- Comment order ("most relevant" vs "newest"): the gateway now accepts `order` (branch feat/facebook-comment-order, commit dbbed9ff, 2 backend tests that failed before the change and pass after). It is NOT shown on the screen. The Posts page reads comments from our own database, which has no Meta ranking, so a "Most relevant" button would be fake. "Newest" could be done locally by reversing `commented_at`. Needs the owner's call on whether to ship only that.
 - Visual comparison of Insights, Messages and Reels against real Facebook: not done. The owner's local browser tools were not available.
 - Publishing matrix: reels are confirmed against Meta's reference; stories, pin, live, albums, events, polls and call-to-action are UNVERIFIED because Meta's own pages did not load from the sandbox. Nothing there is claimed either way.
 - The ranked list of MISSING-ALLOWED items is in the two matrix files above.
