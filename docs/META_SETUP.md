@@ -29,8 +29,12 @@ https://<api-host>/api/v1/integrations/meta/oauth/callback
 
 ```text
 https://<api-host>/api/v1/webhooks/messenger
+https://<api-host>/api/v1/webhooks/facebook
 https://<api-host>/api/v1/webhooks/instagram
+https://<api-host>/api/v1/webhooks/whatsapp
 ```
+
+فيسبوك وماسنجر يتبعان نفس القاعدة تمامًا: يوقّع التطبيق الطلب بـ MESSENGER_APP_SECRET (أو META_APP_SECRET إن تُرك فارغًا)، ويفتح التحقق بـ MESSENGER_VERIFY_TOKEN فقط. توكن واتساب لا يُقبل لهما أبدًا. أما واتساب فعنوانه على مستوى التطبيق كله (WhatsApp ثم Configuration)، وتوكن التحقق وسرّه خاصان به كما في القسم السادس.
 
 الخادم يشترك في حقول الصفحة تلقائيًا بعد نجاح الربط، لكن اشتراك التطبيق نفسه في منتج Webhooks مع رابط الاستقبال يبقى مسؤولية الإعداد.
 
@@ -46,8 +50,10 @@ META_APP_SECRET         سر التطبيق — لا يغادر الخادم أ�
 META_OAUTH_REDIRECT_URI رابط العودة المسجل حرفيًا في ميتا، ويُشتق تلقائيًا من المتغير التالي إن تُرك فارغًا
 API_PUBLIC_BASE_URL     العنوان العام للـAPI ويُشتق منه رابط العودة والـWebhooks
 META_INSTAGRAM_CONFIG_ID    اختياري — معرف إعداد Facebook Login for Business الخاص بإنستجرام فقط (فيسبوك وMessenger لا يستخدمانه)
-MESSENGER_APP_SECRET    للتحقق من توقيع Webhooks ماسنجر
-MESSENGER_VERIFY_TOKEN  توكن التحقق عند تسجيل رابط الاستقبال
+MESSENGER_APP_SECRET    للتحقق من توقيع Webhooks ماسنجر وفيسبوك (يُستخدم META_APP_SECRET إن تُرك فارغًا)
+MESSENGER_VERIFY_TOKEN  توكن التحقق عند تسجيل رابط الاستقبال لماسنجر وفيسبوك
+WHATSAPP_APP_SECRET     للتحقق من توقيع Webhooks واتساب (سر التطبيق نفسه من الإعدادات الأساسية)
+WHATSAPP_VERIFY_TOKEN   توكن التحقق لواتساب فقط — نص عشوائي تضعه هنا وفي WhatsApp ثم Configuration
 INSTAGRAM_APP_SECRET    للتحقق من توقيع Webhooks إنستجرام
 INSTAGRAM_VERIFY_TOKEN  توكن التحقق لإنستجرام
 FRONTEND_PUBLIC_URL     عنوان لوحة التحكم، وعليه يهبط المتصفح بعد الربط
@@ -129,10 +135,14 @@ In the `Webhooks` product, subscribe to the `Page` object with the fields `messa
 
 ```text
 https://<api-host>/api/v1/webhooks/messenger
+https://<api-host>/api/v1/webhooks/facebook
 https://<api-host>/api/v1/webhooks/instagram
+https://<api-host>/api/v1/webhooks/whatsapp
 ```
 
-The verify token must match `MESSENGER_VERIFY_TOKEN` or `INSTAGRAM_VERIFY_TOKEN`. The server subscribes the page itself after a successful connect; the app-level webhook subscription above is still operator setup.
+Facebook and Messenger follow one rule: the request is signed with `MESSENGER_APP_SECRET` (or `META_APP_SECRET` when it is empty) and the handshake opens with `MESSENGER_VERIFY_TOKEN` only. The WhatsApp token is never accepted for them. WhatsApp's callback is set once for the whole app (WhatsApp → Configuration), with its own verify token and secret, see section 6.
+
+The verify token must match `MESSENGER_VERIFY_TOKEN` (Messenger and Facebook), `INSTAGRAM_VERIFY_TOKEN`, or `WHATSAPP_VERIFY_TOKEN`. The server subscribes the page itself after a successful connect; the app-level webhook subscription above is still operator setup.
 
 ## 4. Development mode and testers
 
@@ -146,8 +156,10 @@ META_APP_SECRET         App secret — server-side only, never sent to the brows
 META_OAUTH_REDIRECT_URI exact callback URL registered in Meta; derived from API_PUBLIC_BASE_URL when empty
 API_PUBLIC_BASE_URL     canonical public API origin; also drives the webhook URLs
 META_INSTAGRAM_CONFIG_ID    optional — Instagram's own Facebook Login for Business configuration id (Facebook and Messenger never use it)
-MESSENGER_APP_SECRET    verifies Messenger webhook signatures
-MESSENGER_VERIFY_TOKEN  verify token for the Messenger webhook registration
+MESSENGER_APP_SECRET    verifies Messenger and Facebook webhook signatures (META_APP_SECRET is used when empty)
+MESSENGER_VERIFY_TOKEN  verify token for the Messenger and Facebook webhook registration
+WHATSAPP_APP_SECRET     verifies WhatsApp webhook signatures (the same app secret, from Settings → Basic)
+WHATSAPP_VERIFY_TOKEN   verify token for WhatsApp only — any random text, set here and in WhatsApp → Configuration
 INSTAGRAM_APP_SECRET    verifies Instagram webhook signatures
 INSTAGRAM_VERIFY_TOKEN  verify token for the Instagram webhook registration
 FRONTEND_PUBLIC_URL     dashboard origin the callback redirects back to

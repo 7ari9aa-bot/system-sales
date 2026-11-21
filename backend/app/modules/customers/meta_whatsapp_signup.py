@@ -435,6 +435,18 @@ async def whatsapp_signup_complete(
         raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
     if existing is None:
         await EntitlementService.ensure_channel_allowed(session, tenant_id, "whatsapp")
+    elif _already_connected_to(existing, body):
+        # The popup's code works once. When the first answer was lost, the same request comes
+        # again (a retry, or the owner pressing connect once more), and exchanging the spent
+        # code would end in "Meta rejected the authorization code" about a channel that is in
+        # fact connected. Say what is true instead, without touching Meta: a second exchange,
+        # register or subscribe would each spend a code or one of the 10 register attempts.
+        logger.info(
+            "whatsapp.embedded_signup_replayed tenant=%s phone_number_id=%s",
+            tenant_id,
+            body.phone_number_id,
+        )
+        return _connected_result(existing, body)
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False
@@ -527,6 +539,34 @@ async def whatsapp_signup_complete(
         "provider": "whatsapp",
         "status": integration.status,
         "display_name": display_name or verified.display_name,
+        "phone_number_id": body.phone_number_id,
+        "waba_id": body.waba_id,
+    }
+
+
+def _already_connected_to(integration, body: WhatsAppSignupCompleteBody) -> bool:
+    """True when this tenant's live WhatsApp channel IS the number and account being completed.
+
+    Only a channel that works qualifies. One that needs reconnecting (``reauth_required``,
+    ``disconnected``...) has to go through the whole link again, or a dead token stays dead."""
+    config = integration.config if isinstance(integration.config, dict) else {}
+    return (
+        integration.status == "active"
+        and str(config.get("phone_number_id") or "") == body.phone_number_id
+        and str(config.get("waba_id") or "") == body.waba_id
+    )
+
+
+def _connected_result(integration, body: WhatsAppSignupCompleteBody) -> dict:
+    """The answer a finished connect gives, from the stored row (never a credential)."""
+    config = integration.config if isinstance(integration.config, dict) else {}
+    connection = config.get("_connection")
+    display_name = connection.get("display_name") if isinstance(connection, dict) else None
+    return {
+        "id": str(integration.id),
+        "provider": "whatsapp",
+        "status": integration.status,
+        "display_name": display_name,
         "phone_number_id": body.phone_number_id,
         "waba_id": body.waba_id,
     }

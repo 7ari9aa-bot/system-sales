@@ -67,6 +67,18 @@ CATALOG: dict[str, Issue] = {
         "More than one Page was shared; the owner must choose one.",
         "Pick the Page in the dialog.",
     ),
+    "link.state_invalid": Issue(
+        "medium",
+        "Meta sent the owner back with a connect state this server could not accept "
+        "(expired, altered, or not a connect state).",
+        "Connect again from the settings screen. If it repeats at about 10 minutes, the owner "
+        "is finishing too slowly; otherwise check that the callback URL has not been altered.",
+    ),
+    "link.choice_ticket_invalid": Issue(
+        "medium",
+        "The owner picked a Page but the saved choice was gone or unreadable.",
+        "Connect again. A choice lives 10 minutes; one that is unreadable points at Redis.",
+    ),
     "link.subscription_failed": Issue(
         "critical",
         "The Page could not be subscribed to this app's webhooks, so nothing would arrive.",

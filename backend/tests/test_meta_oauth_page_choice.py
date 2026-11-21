@@ -1,7 +1,7 @@
 """Choosing which Page to connect when the owner ticked several.
 
 The connect used to take the first Page without asking. Now it pauses, keeps the long-lived user
-token server-side (encrypted, once-only ticket, 10 minutes) and finishes with the Page the owner
+token server-side (encrypted, once-only ticket, short-lived) and finishes with the Page the owner
 picks. These tests need no database: they cover what makes the pause safe.
 """
 
@@ -77,10 +77,11 @@ async def test_the_user_token_is_stored_encrypted_not_in_the_clear(redis) -> Non
     assert "PAGE-TOKEN" not in raw
 
 
-async def test_the_parked_choice_expires_after_ten_minutes(redis) -> None:
+async def test_the_parked_choice_expires_and_is_never_kept_forever(redis) -> None:
+    """It holds the owner's long-lived token (encrypted), so it must always have a deadline."""
     ticket = await _park()
     ttl = await redis.ttl(mo._page_choice_key(ticket))
-    assert 0 < ttl <= 600
+    assert 0 < ttl <= mo._PAGE_CHOICE_TTL_SECONDS
 
 
 async def test_a_ticket_round_trips_with_the_secrets_back(redis) -> None:
@@ -144,6 +145,84 @@ async def test_a_page_that_was_not_offered_is_refused(redis) -> None:
     ticket = await _park()
     with pytest.raises(ValidationError, match="not one of the choices"):
         await _choose(ticket, "333")
+
+
+async def test_a_page_that_was_not_offered_does_not_burn_the_owners_ticket(redis) -> None:
+    """One slip (a wrong id, a double click) must not force the owner to start the OAuth again.
+
+    The ticket is 192 random bits, so keeping it alive after a bad page id gives a guesser
+    nothing: they would need the ticket first. Burning it only punished the real owner."""
+    ticket = await _park()
+    with pytest.raises(ValidationError, match="not one of the choices"):
+        await _choose(ticket, "333")
+
+    assert await redis.exists(mo._page_choice_key(ticket)), "the owner can still pick a Page"
+
+
+async def test_another_users_ticket_is_burned(redis) -> None:
+    """Someone else holding this ticket is tampering, not slipping: it dies on the spot."""
+    ticket = await _park()
+    with pytest.raises(ValidationError, match="not started by you"):
+        await _choose(ticket, "111", _Ctx(user_id=str(uuid.uuid4())))
+
+    assert not await redis.exists(mo._page_choice_key(ticket))
+
+
+async def test_the_owner_can_pick_again_after_a_wrong_page(redis, monkeypatch) -> None:
+    ticket = await _park()
+    with pytest.raises(ValidationError, match="not one of the choices"):
+        await _choose(ticket, "333")
+
+    parked = await mo._take_page_choice(ticket)
+    assert parked is not None and "111" in parked["page_ids"]
+
+
+async def test_a_ticket_still_works_only_once_after_a_good_choice(redis) -> None:
+    """Checking before consuming must not open a window for two requests to both succeed."""
+    ticket = await _park()
+    assert await mo._take_page_choice(ticket) is not None
+    with pytest.raises(ValidationError, match="expired"):
+        await _choose(ticket, "111")
+
+
+async def test_two_simultaneous_choices_connect_exactly_one(redis, monkeypatch) -> None:
+    """Peeking first opens a window where both requests pass their checks. The atomic GETDEL
+    that follows is what closes it: of two double-clicks, only one may go on and connect."""
+    import asyncio
+
+    ticket = await _park()
+    connected: list[str] = []
+
+    async def fake_connect(*args, **kwargs):
+        connected.append(kwargs["page"]["id"])
+        return "facebook", "Page"
+
+    class _Http:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return object()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(mo, "_connect_page", fake_connect)
+    monkeypatch.setattr(mo.httpx, "AsyncClient", lambda *a, **k: _Http())
+    monkeypatch.setattr(mo, "_graph_json", lambda *a, **k: {"data": [{"id": "111", "name": "A"}]})
+    monkeypatch.setattr(mo, "_meta_graph_error", lambda *a, **k: None)
+    monkeypatch.setattr("app.core.db.bind_tenant", noop)
+
+    results = await asyncio.gather(
+        _choose(ticket, "111"), _choose(ticket, "111"), return_exceptions=True
+    )
+
+    assert len(connected) == 1, "the same ticket connected a channel twice"
+    assert sum(isinstance(r, ValidationError) for r in results) == 1
+    assert sum(isinstance(r, dict) for r in results) == 1
 
 
 def test_the_page_id_must_be_numeric() -> None:

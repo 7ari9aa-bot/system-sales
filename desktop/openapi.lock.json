@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 602,
-    "sha256": "880885425c61031328c8a449b73ef642023cdb225461676b7e67739435cf4925",
-    "typed_operations": 337
+    "operations": 604,
+    "sha256": "9b6de3f9a35fcb0a22cb3bcfc4b27f85883c9ddc6ed4dc66d510f367daf7f605",
+    "typed_operations": 339
   },
   "spec": {
     "components": {
@@ -78859,6 +78859,274 @@
           "summary": "Mint Stream Token",
           "tags": [
             "realtime"
+          ]
+        }
+      },
+      "/api/v1/reports/profit": {
+        "get": {
+          "description": "Gross profit, expenses, net profit and stock at cost over [start, end).",
+          "operationId": "profit_summary_api_v1_reports_profit_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "start",
+              "required": true,
+              "schema": {
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "end",
+              "required": true,
+              "schema": {
+                "title": "End",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "channel",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Profit Summary Api V1 Reports Profit Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Profit Summary",
+          "tags": [
+            "profit"
+          ]
+        }
+      },
+      "/api/v1/reports/profit/by-variant": {
+        "get": {
+          "description": "One row per model, colour and size, most profitable first.",
+          "operationId": "profit_by_variant_api_v1_reports_profit_by_variant_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "start",
+              "required": true,
+              "schema": {
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "end",
+              "required": true,
+              "schema": {
+                "title": "End",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "channel",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Profit By Variant Api V1 Reports Profit By Variant Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Profit By Variant",
+          "tags": [
+            "profit"
           ]
         }
       },

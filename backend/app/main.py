@@ -45,6 +45,7 @@ from app.core.observability import (
     configure_logging,
     get_logger,
 )
+from app.core.profit_report import router as profit_report_router
 from app.core.redis import close_redis, get_redis
 from app.core.shop_type import router as shop_type_router
 from app.modules.activity.router import router as activity_router
@@ -515,6 +516,7 @@ def create_app() -> FastAPI:
         taxation_router,
         customer_accounts_router,
         shop_type_router,
+        profit_report_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

@@ -87,7 +87,11 @@ def subscribed_fields(provider: str) -> str:
 # A Facebook connection is the same page-messaging grant as Messenger — the
 # page-scoped token IS the credential; the provider value only names the row.
 _META_PROVIDERS = ("messenger", "instagram", "facebook")
-_META_STATE_TTL_SECONDS = 600
+#: 15 minutes, deliberately LONGER than the 10 the settings screen waits. The state is minted
+#: before the screen starts its own clock, so with equal windows an owner finishing in the last
+#: seconds met an expired state while the screen was still waiting. The screen is the one that
+#: gives up first and says so; the server only has to still be listening.
+_META_STATE_TTL_SECONDS = 900
 
 #: The page fields the flow consumes: tasks gates the MESSAGING capability,
 #: instagram_business_account carries the IG id the Instagram gateway sends
@@ -302,7 +306,7 @@ class PageChoiceRequired(Exception):
         self.choices = choices
 
 
-#: How long the owner has to pick a Page. Matches the state token's window.
+#: How long the owner has to pick a Page. The same window as the state token's, margin included.
 _PAGE_CHOICE_TTL_SECONDS = _META_STATE_TTL_SECONDS
 
 
@@ -364,17 +368,29 @@ async def _park_page_choice(
     return ticket
 
 
-async def _take_page_choice(ticket: str) -> dict | None:
-    """Read AND remove a parked choice in one step, so a ticket works once."""
-    raw = await get_redis().getdel(_page_choice_key(ticket))
+def _open_parked_choice(raw) -> dict | None:
+    """Decode a parked choice and unseal its secrets; None when it is unreadable."""
     if raw is None:
         return None
     try:
         parked = json.loads(raw)
-    except ValueError:
+        parked["secrets"] = decrypt_credentials_dict(parked.pop("sealed", {}))
+    except (ValueError, TypeError, KeyError):
         return None
-    parked["secrets"] = decrypt_credentials_dict(parked.pop("sealed", {}))
     return parked
+
+
+async def _peek_page_choice(ticket: str) -> dict | None:
+    """Read a parked choice WITHOUT consuming it, so it can be checked before it is spent."""
+    return _open_parked_choice(await get_redis().get(_page_choice_key(ticket)))
+
+
+async def _take_page_choice(ticket: str) -> dict | None:
+    """Read AND remove a parked choice in one step, so a ticket works once.
+
+    The removal is the atomic part: of two requests that both passed their checks, only the one
+    whose GETDEL finds the ticket may continue."""
+    return _open_parked_choice(await get_redis().getdel(_page_choice_key(ticket)))
 
 
 async def _meta_exchange_and_connect(
@@ -901,13 +917,28 @@ async def meta_oauth_choose_page(
     parked with can be chosen — a forged page id cannot reach another Page the user manages."""
     from app.core.db import bind_tenant
 
-    parked = await _take_page_choice(body.ticket)
+    # Check BEFORE spending the ticket. It used to be burned by the first request that touched
+    # it, so a wrong id or a double click sent the owner back to the start of the OAuth.
+    parked = await _peek_page_choice(body.ticket)
     if parked is None:
+        # Gone (the 10 minutes ran out) and unreadable (a broken value) read the same to the
+        # owner but need different fixes, so the trail tells them apart. Never the ticket itself.
+        present = await get_redis().exists(_page_choice_key(body.ticket))
+        reason = "unreadable" if present else "missing_or_expired"
+        _logger.warning("meta_oauth.choice_ticket_invalid reason=%s", reason)
+        await _flag("link.choice_ticket_invalid", None, ctx.tenant_id, {"reason": reason})
         raise ValidationError("This choice expired. Press connect again.")
     if parked["tenant_id"] != str(ctx.tenant_id) or parked["user_id"] != str(ctx.user.id):
+        # Someone else is holding this ticket: that is tampering, not a slip. It dies here.
+        await _take_page_choice(body.ticket)
         raise ValidationError("This choice was not started by you. Press connect again.")
     if body.page_id not in parked["page_ids"]:
-        raise ValidationError("That Page was not one of the choices. Press connect again.")
+        # The owner's own slip. The ticket is random and useless without being the owner, so
+        # leaving it alive costs nothing and lets them choose again.
+        raise ValidationError("That Page was not one of the choices. Choose one from the list.")
+    if await _take_page_choice(body.ticket) is None:
+        # A second request got here first (a double click): exactly one may go on.
+        raise ValidationError("This choice expired. Press connect again.")
 
     provider = parked["provider"]
     secrets = parked["secrets"]
@@ -957,7 +988,7 @@ async def meta_oauth_callback(
 ):
     """Meta redirects the operator's browser here with the authorization code.
 
-    PUBLIC by design: the state JWT (10-minute TTL, server-signed) is the
+    PUBLIC by design: the state JWT (15-minute TTL, server-signed) is the
     authorization — it was minted to a settings:write holder at start time.
     Every outcome posts back to the opener window via postMessage / BroadcastChannel —
     the operator never leaves the settings page. Meta's own dialog errors
@@ -997,17 +1028,24 @@ async def meta_oauth_callback(
         )
         return _back("error", detail)
 
+    # Each early refusal below says WHY on the diagnostics trail. The state and the code are
+    # credentials, so only the reason is recorded, never their values.
+    async def _refuse(error: str, reason: str, provider: str | None = None):
+        _logger.warning("meta_oauth.state_refused reason=%s", reason)
+        await _flag("link.state_invalid", provider, None, {"reason": reason})
+        return _back("error", error)
+
     if not code or not state:
-        return _back("error", "missing_code_or_state")
+        return await _refuse("missing_code_or_state", "missing_code_or_state")
     try:
         payload = decode_token(state)
     except Exception:
-        return _back("error", "invalid_state")
+        return await _refuse("invalid_state", "undecodable")
     if payload.get("type") != "oauth_state":
-        return _back("error", "invalid_state")
+        return await _refuse("invalid_state", "wrong_type")
     provider = payload.get("provider")
     if provider not in _META_PROVIDERS:
-        return _back("error", "invalid_provider")
+        return await _refuse("invalid_provider", "unknown_provider")
 
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))

@@ -53,19 +53,23 @@ class MessengerAdapter(ChannelAdapter):
 
     def verify_request(self, query_params: dict[str, str]) -> str | None:
         """Meta webhook subscription handshake (GET hub.challenge)."""
-        settings = get_settings()
-        if not settings.messenger_verify_token:
+        # The verify token is THIS channel's own. Another channel's token (WhatsApp's) is not a
+        # credential for a Page subscription, so it is never accepted here.
+        expected = get_settings().messenger_verify_token
+        if not expected:
             return None
         if (
             query_params.get("hub.mode") == "subscribe"
-            and query_params.get("hub.verify_token") == settings.messenger_verify_token
+            and query_params.get("hub.verify_token") == expected
         ):
             return query_params.get("hub.challenge", "")
         return None
 
     def check_signature(self, headers: dict[str, str], raw_body: bytes) -> bool:
         """X-Hub-Signature-256 (HMAC-SHA256) — fail closed without a secret."""
-        secret = get_settings().messenger_app_secret
+        # One Meta app signs all of its webhooks, so its app secret is a legitimate fallback.
+        settings = get_settings()
+        secret = settings.messenger_app_secret or getattr(settings, "meta_app_secret", "")
         if not secret:
             return False
         signature = headers.get("x-hub-signature-256", "")
