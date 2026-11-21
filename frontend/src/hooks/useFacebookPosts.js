@@ -59,7 +59,7 @@ export function useFacebookPosts({ enabled, lang, pageName = "" }) {
     error,
     refresh: () => load({ refresh: true }),
     comment: async (postId, text) => { await commentOn(postId, text); await reloadPost(postId); },
-    reply: async (commentId, postId, text) => { await commentOn(commentId, text); await reloadPost(postId); },
+    reply: async (commentId, postId, text, mention) => { await commentOn(commentId, text, mention); await reloadPost(postId); },
     hide: async (commentId, postId, hidden) => { await hideFacebookComment(commentId, hidden); await reloadPost(postId); },
     removeComment: async (commentId, postId) => { await deleteFacebookComment(commentId); await reloadPost(postId); },
     sendPrivate: async (commentId, postId, text) => { await privateReplyFacebook(commentId, text); await reloadPost(postId); },

@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 602,
-    "sha256": "ee8538213baa1addfe48b2e27b2a6f133e65ea96278a9d35001f4eb5c737b236",
+    "sha256": "dedad37a4998e4bc542249d6312dec9ed495bd7aca48c6cb7404fa65b710098c",
     "typed_operations": 337
   },
   "spec": {
@@ -16797,6 +16797,30 @@
             "reorder_level"
           ],
           "title": "ReorderLevelRequest",
+          "type": "object"
+        },
+        "ReplyRequest": {
+          "description": "A reply, optionally tagging people who commented on the post (Meta's @mention).",
+          "properties": {
+            "mention": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 5,
+              "title": "Mention",
+              "type": "array"
+            },
+            "text": {
+              "maxLength": 8000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "ReplyRequest",
           "type": "object"
         },
         "ResendVerificationRequest": {
@@ -44832,7 +44856,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TextRequest"
+                  "$ref": "#/components/schemas/ReplyRequest"
                 }
               }
             },
