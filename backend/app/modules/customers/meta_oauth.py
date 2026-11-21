@@ -917,6 +917,12 @@ async def meta_oauth_choose_page(
     # it, so a wrong id or a double click sent the owner back to the start of the OAuth.
     parked = await _peek_page_choice(body.ticket)
     if parked is None:
+        # Gone (the 10 minutes ran out) and unreadable (a broken value) read the same to the
+        # owner but need different fixes, so the trail tells them apart. Never the ticket itself.
+        present = await get_redis().exists(_page_choice_key(body.ticket))
+        reason = "unreadable" if present else "missing_or_expired"
+        _logger.warning("meta_oauth.choice_ticket_invalid reason=%s", reason)
+        await _flag("link.choice_ticket_invalid", None, ctx.tenant_id, {"reason": reason})
         raise ValidationError("This choice expired. Press connect again.")
     if parked["tenant_id"] != str(ctx.tenant_id) or parked["user_id"] != str(ctx.user.id):
         # Someone else is holding this ticket: that is tampering, not a slip. It dies here.
@@ -1018,17 +1024,24 @@ async def meta_oauth_callback(
         )
         return _back("error", detail)
 
+    # Each early refusal below says WHY on the diagnostics trail. The state and the code are
+    # credentials, so only the reason is recorded, never their values.
+    async def _refuse(error: str, reason: str, provider: str | None = None):
+        _logger.warning("meta_oauth.state_refused reason=%s", reason)
+        await _flag("link.state_invalid", provider, None, {"reason": reason})
+        return _back("error", error)
+
     if not code or not state:
-        return _back("error", "missing_code_or_state")
+        return await _refuse("missing_code_or_state", "missing_code_or_state")
     try:
         payload = decode_token(state)
     except Exception:
-        return _back("error", "invalid_state")
+        return await _refuse("invalid_state", "undecodable")
     if payload.get("type") != "oauth_state":
-        return _back("error", "invalid_state")
+        return await _refuse("invalid_state", "wrong_type")
     provider = payload.get("provider")
     if provider not in _META_PROVIDERS:
-        return _back("error", "invalid_provider")
+        return await _refuse("invalid_provider", "unknown_provider")
 
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))
