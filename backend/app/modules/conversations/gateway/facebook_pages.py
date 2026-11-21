@@ -117,6 +117,9 @@ def page_token_and_id(credentials: ProviderCredentials) -> tuple[str, str]:
 #: Pictures in one Page post. Meta takes more, but a longer album fails often and half-uploads.
 MAX_PHOTOS_PER_POST = 10
 
+#: The reaction kinds Meta counts, in the order Facebook shows them.
+REACTION_KINDS = ("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY")
+
 
 class FacebookPagesClient:
     def __init__(self, *, api_version: str = INSTAGRAM_API_VERSION):
@@ -362,6 +365,27 @@ class FacebookPagesClient:
         self, credentials: ProviderCredentials, comment_id: str, _client=None
     ) -> None:
         await self._graph("DELETE", comment_id, credentials, _client=_client)
+
+    async def get_reaction_breakdown(
+        self, credentials: ProviderCredentials, object_id: str, _client=None
+    ) -> dict[str, int]:
+        """A post's (or comment's) reactions by kind, in Facebook's order, in ONE request.
+
+        Meta's Object Reactions edge counts one kind per call (`reactions.type(LOVE)`), so each kind
+        is an aliased edge of the same read. Counts only (`limit(0)`), never the people. A Page can
+        read all six kinds but write only a like, so this feeds the display, not a reaction picker.
+        """
+        edges = ",".join(
+            f"reactions.type({kind}).limit(0).summary(true).as({kind.lower()})"
+            for kind in REACTION_KINDS
+        )
+        body = await self._graph(
+            "GET", object_id, credentials, params={"fields": edges}, _client=_client
+        )
+        return {
+            kind: int(((body.get(kind.lower()) or {}).get("summary") or {}).get("total_count") or 0)
+            for kind in REACTION_KINDS
+        }
 
     async def set_like(
         self, credentials: ProviderCredentials, object_id: str, liked: bool, _client=None

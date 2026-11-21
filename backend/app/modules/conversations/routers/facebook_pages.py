@@ -373,6 +373,20 @@ async def like_object(
     return {"id": object_id, "liked": body.liked}
 
 
+@router.get("/facebook/objects/{object_id}/reactions")
+async def object_reactions(
+    object_id: str,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """A post's or comment's reactions by kind (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), counts only.
+
+    A Page can read every kind but write only a like, so this is for display.
+    """
+    creds = await _credentials(ctx, send=False)
+    kinds = await facebook_pages.get_reaction_breakdown(creds, object_id)
+    return {"id": object_id, "total": sum(kinds.values()), "kinds": kinds}
+
+
 @router.post("/facebook/comments/{comment_id}/hide")
 async def hide_comment(
     comment_id: str,
