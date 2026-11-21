@@ -22,10 +22,14 @@ router = APIRouter()
 
 @router.get("/products")
 async def list_products(
-    ctx: TenantCtxDep, limit: int = 100, offset: int = 0, season: str | None = None
+    ctx: TenantCtxDep,
+    limit: int = 100,
+    offset: int = 0,
+    season: str | None = None,
+    material: str | None = None,
 ):
     products = await CatalogService.list_products(
-        ctx.session, ctx.tenant_id, limit=limit, offset=offset, season=season
+        ctx.session, ctx.tenant_id, limit=limit, offset=offset, season=season, material=material
     )
     images_by_product = await CatalogService.list_images_for_products(
         ctx.session, ctx.tenant_id, [product.id for product in products]
@@ -55,6 +59,7 @@ async def create_product(ctx: WriteCtx, body: CreateProductRequest):
         slug=body.slug,
         description=body.description,
         season=body.season,
+        material=body.material,
     )
     variant = None
     if body.price is not None:
@@ -72,6 +77,7 @@ async def create_product(ctx: WriteCtx, body: CreateProductRequest):
         "slug": product.slug,
         "status": product.status,
         "season": product.season,
+        "material": product.material,
         "variant_id": str(variant.id) if variant else None,
     }
 

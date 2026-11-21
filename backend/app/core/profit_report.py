@@ -77,11 +77,13 @@ class ProfitReportService:
         end: date | datetime,
         channel: str | None = None,
         season: str | None = None,
+        material: str | None = None,
         brand_id: UUID | None = None,
     ) -> dict[str, Any]:
-        """One row per model, colour and size. ``season`` and ``brand_id`` narrow it to one season
-        or one brand. A season is the owner's own label: case and outer spaces do not matter.
-        Left out, every sale is in, exactly as before."""
+        """One row per model, colour and size. ``season``, ``material`` and ``brand_id`` narrow it
+        to one season, one fabric or one brand. A season and a material are the owner's own
+        labels: case and outer spaces do not matter. Left out, every sale is in, exactly as
+        before."""
         lo, hi = _bounds(start, end)
 
         order_ok = [
@@ -179,6 +181,11 @@ class ProfitReportService:
         if season is not None:
             # Same rule as the product list: SS26, ss26 and ' SS26' are one season.
             product_ok.append(func.lower(Product.season) == season.strip().lower())
+        wanted_material = (material or "").strip()
+        if wanted_material:
+            # Same rule again: قطن,  قطن and ' COTTON ' are one fabric. A box left empty is no
+            # filter at all, not a filter for products with an empty fabric.
+            product_ok.append(func.lower(Product.material) == wanted_material.lower())
         if brand_id is not None:
             product_ok.append(Product.brand_id == brand_id)
         # Discount already inside the line nets (a per-line percentage) is not taken off twice:
@@ -188,6 +195,7 @@ class ProfitReportService:
                 ProductVariant.id.label("variant_id"),
                 Product.title.label("model"),
                 Product.season.label("season"),
+                Product.material.label("material"),
                 Product.brand_id.label("brand_id"),
                 ProductVariant.option_values[SIZE_AXIS].astext.label("size"),
                 ProductVariant.option_values[COLOR_AXIS].astext.label("colour"),
@@ -229,6 +237,7 @@ class ProfitReportService:
                 ProductVariant.id,
                 Product.title,
                 Product.season,
+                Product.material,
                 Product.brand_id,
                 ProductVariant.option_values[SIZE_AXIS].astext,
                 ProductVariant.option_values[COLOR_AXIS].astext,
@@ -257,6 +266,7 @@ class ProfitReportService:
                     "variant_id": str(r.variant_id),
                     "model": r.model,
                     "season": r.season,
+                    "material": r.material,
                     "brand_id": str(r.brand_id) if r.brand_id else None,
                     "size": r.size,
                     "colour": r.colour,
@@ -387,9 +397,11 @@ async def profit_by_variant(
     end: str,
     channel: str | None = None,
     season: str | None = None,
+    material: str | None = None,
     brand_id: UUID | None = None,
 ) -> dict[str, Any]:
-    """One row per model, colour and size, most profitable first; optionally one season or brand."""
+    """One row per model, colour and size, most profitable first; optionally one season, fabric or
+    brand."""
     return await ProfitReportService.by_variant(
         ctx.session,
         ctx.tenant_id,
@@ -397,5 +409,6 @@ async def profit_by_variant(
         end=_parse(end, "end"),
         channel=channel,
         season=season,
+        material=material,
         brand_id=brand_id,
     )

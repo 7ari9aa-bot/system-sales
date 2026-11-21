@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 608,
-    "sha256": "79dd2eed25485c107d9f41ead1575812fc81d58aa16babb9b905489817635dbe",
+    "sha256": "ae7cdb4962196762d686efd95554b5cc54133ed0db30cf08ccc54c391d148a57",
     "typed_operations": 342
   },
   "spec": {
@@ -4729,6 +4729,18 @@
                 }
               ],
               "title": "Description"
+            },
+            "material": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Material"
             },
             "price": {
               "anyOf": [
@@ -19968,6 +19980,17 @@
               ],
               "title": "Category Id"
             },
+            "material": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Material"
+            },
             "on_hand": {
               "title": "On Hand",
               "type": "integer"
@@ -20053,6 +20076,7 @@
             "category",
             "brand_id",
             "season",
+            "material",
             "sku",
             "options",
             "barcode",
@@ -23535,6 +23559,18 @@
                 }
               ],
               "title": "Description"
+            },
+            "material": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Material"
             },
             "season": {
               "anyOf": [
@@ -75020,6 +75056,23 @@
             },
             {
               "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 60,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
+              }
+            },
+            {
+              "in": "query",
               "name": "status",
               "required": false,
               "schema": {
@@ -76853,6 +76906,22 @@
                   }
                 ],
                 "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
               }
             },
             {
@@ -79797,7 +79866,7 @@
       },
       "/api/v1/reports/profit/by-variant": {
         "get": {
-          "description": "One row per model, colour and size, most profitable first; optionally one season or brand.",
+          "description": "One row per model, colour and size, most profitable first; optionally one season, fabric or\nbrand.",
           "operationId": "profit_by_variant_api_v1_reports_profit_by_variant_get",
           "parameters": [
             {
@@ -79848,6 +79917,22 @@
                   }
                 ],
                 "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
               }
             },
             {

@@ -61,6 +61,7 @@ def _product_out(product, variants, images=(), *, tenant_id=None) -> dict:
         "brand_id": str(product.brand_id) if product.brand_id else None,
         "category_id": str(product.category_id) if product.category_id else None,
         "season": product.season,
+        "material": product.material,
         "attributes": product.attributes or {},
         "variants": [_variant_out(v) for v in variants],
         "images": [_image_out(image, tenant_id=tenant_id) for image in images],
@@ -72,6 +73,7 @@ class CreateProductRequest(BaseModel):
     slug: str = Field(min_length=1, max_length=255)
     description: str | None = None
     season: str | None = Field(default=None, max_length=40)
+    material: str | None = Field(default=None, max_length=60)
     price: Decimal | None = None  # convenience: creates the default variant
     sku: str | None = None
 
@@ -83,6 +85,7 @@ class UpdateProductRequest(BaseModel):
     brand_id: UUID | None = None
     category_id: UUID | None = None
     season: str | None = Field(default=None, max_length=40)
+    material: str | None = Field(default=None, max_length=60)
     attributes: dict | None = None
     status: str | None = Field(default=None, pattern="^(draft|active|archived)$")
 

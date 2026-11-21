@@ -81,6 +81,9 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     # The owner's own label for the season this product belongs to (SS26, AW26...). Free text on
     # purpose: a shop names its seasons, the system does not. NULL means not seasonal.
     season: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The fabric of the garment (cotton, linen, polyester...), in the owner's own words. Free text
+    # for the same reason as season: a shop names its materials. NULL means not recorded.
+    material: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     # §45 full text — DATABASE-DERIVED, never assign. `simple` is pinned because
     # a GENERATED column needs an IMMUTABLE expression and the 1-argument
@@ -106,6 +109,12 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
             "tenant_id",
             "season",
             postgresql_where=text("season IS NOT NULL"),
+        ),
+        Index(
+            "ix_products_tenant_material",
+            "tenant_id",
+            "material",
+            postgresql_where=text("material IS NOT NULL"),
         ),
     )
 

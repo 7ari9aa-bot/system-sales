@@ -108,6 +108,7 @@ class StockViewService:
         category_id: UUID | None = None,
         brand_id: UUID | None = None,
         season: str | None = None,
+        material: str | None = None,
         status: str | None = None,
         limit: int = 500,
         offset: int = 0,
@@ -115,6 +116,7 @@ class StockViewService:
         if status is not None and status not in {"in", "low", "out"}:
             raise ValidationError("status must be one of in, low, out")
         wanted_season = (season or "").strip()
+        wanted_material = (material or "").strip()
 
         limit = max(1, min(int(limit), 1000))
         offset = max(0, int(offset))
@@ -169,6 +171,9 @@ class StockViewService:
         if wanted_season:
             # Same rule as the product list: SS26, ss26 and ' SS26' are one season.
             query = query.where(func.lower(Product.season) == wanted_season.lower())
+        if wanted_material:
+            # Same rule again: قطن,  قطن and ' COTTON ' are one fabric.
+            query = query.where(func.lower(Product.material) == wanted_material.lower())
         if term and term.strip():
             spelled = arabic_regex(term)
             codes = (
@@ -263,6 +268,7 @@ class StockViewService:
             "category": category_name,
             "brand_id": str(product.brand_id) if product.brand_id else None,
             "season": product.season,
+            "material": product.material,
             "sku": variant.sku,
             "options": variant.option_values or {},
             "barcode": barcode,

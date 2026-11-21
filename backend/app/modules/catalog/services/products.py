@@ -16,6 +16,7 @@ from app.modules.catalog.services._common import (
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 SEASON_MAX_LENGTH = 40
+MATERIAL_MAX_LENGTH = 60
 
 
 def _clean_season(raw: str | None) -> str | None:
@@ -31,6 +32,22 @@ def _clean_season(raw: str | None) -> str | None:
         return None
     if len(cleaned) > SEASON_MAX_LENGTH:
         raise ValueError(f"season must be at most {SEASON_MAX_LENGTH} characters")
+    return cleaned
+
+
+def _clean_material(raw: str | None) -> str | None:
+    """The fabric a caller means: spaces trimmed, blank means none, too long is refused.
+
+    Refused rather than cut, for the same reason as a season: a name silently shortened would
+    no longer match what the owner typed.
+    """
+    if raw is None:
+        return None
+    cleaned = str(raw).strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > MATERIAL_MAX_LENGTH:
+        raise ValueError(f"material must be at most {MATERIAL_MAX_LENGTH} characters")
     return cleaned
 
 
@@ -63,6 +80,7 @@ class ProductServiceMixin:
         category_id: UUID | None = None,
         attributes: dict | None = None,
         season: str | None = None,
+        material: str | None = None,
     ) -> Product:
         """Create a product; the slug must be unique within the tenant."""
         duplicate = (
@@ -85,6 +103,7 @@ class ProductServiceMixin:
             category_id=category_id,
             attributes=attributes or {},
             season=_clean_season(season),
+            material=_clean_material(material),
         )
         try:
             async with session.begin_nested():
@@ -111,6 +130,7 @@ class ProductServiceMixin:
             "attributes",
             "status",
             "season",
+            "material",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -139,6 +159,8 @@ class ProductServiceMixin:
 
         if "season" in fields:
             fields["season"] = _clean_season(fields["season"])
+        if "material" in fields:
+            fields["material"] = _clean_material(fields["material"])
         for key, value in fields.items():
             setattr(product, key, value)
         await session.flush()
@@ -318,12 +340,17 @@ class ProductServiceMixin:
         limit: int = 100,
         offset: int = 0,
         season: str | None = None,
+        material: str | None = None,
     ) -> list[Product]:
         query = select(Product).where(Product.tenant_id == tenant_id)
         wanted = _clean_season(season)
         if wanted is not None:
             # A shop types SS26 and ss26 and " SS26" meaning the same season.
             query = query.where(func.lower(Product.season) == wanted.lower())
+        wanted_material = _clean_material(material)
+        if wanted_material is not None:
+            # Cotton, cotton and " COTTON " are one fabric.
+            query = query.where(func.lower(Product.material) == wanted_material.lower())
         rows = (
             (
                 await session.execute(
