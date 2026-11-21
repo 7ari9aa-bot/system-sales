@@ -53,7 +53,11 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
         <div className="min-w-0 flex-1">
           <div className="relative inline-block max-w-full rounded-[18px] px-3 py-2 text-[15px] leading-[1.35]" style={{ background: FB.bubble }}>
             <span className="text-[13px] font-semibold">{comment.author}</span>
-            {comment.isPage && <span className="ms-1 text-[12px]" style={{ color: FB.text2 }}>· {ar ? "الصفحة" : "Page"}</span>}
+            {comment.isPage && (
+              <span className="ms-1 inline-flex items-center gap-1 text-[12px] font-normal" style={{ color: FB.text2 }}>
+                <span aria-hidden="true">·</span>{ar ? "كاتب المنشور" : "Author"}
+              </span>
+            )}
             <p dir="auto" className="whitespace-pre-wrap break-words">{comment.text}</p>
             {shownLikes > 0 && <span className="absolute -bottom-2.5 end-1 inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-px text-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.3)]" style={{ color: FB.text2 }}><span className="grid h-4 w-4 place-items-center rounded-full text-[9px] text-white" style={{ background: FB.blue }}>👍</span>{shownLikes}</span>}
           </div>
