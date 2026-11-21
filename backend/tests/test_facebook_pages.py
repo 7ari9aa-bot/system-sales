@@ -147,3 +147,30 @@ async def test_post_and_page_insights_request_only_current_metrics():
 async def test_missing_credentials_are_refused():
     with pytest.raises(ExternalProviderError):
         await fp.facebook_pages.get_page({"api_key": "t"})
+
+
+# ---- comment order: Facebook offers "Most relevant" and "Newest" on a post ----
+@pytest.mark.asyncio
+async def test_comment_order_can_be_ranked_or_newest_like_the_screen():
+    seen = []
+
+    def handler(req):
+        seen.append({k: v[0] for k, v in parse_qs(req.url.query.decode()).items()})
+        return httpx.Response(200, json={"data": []})
+
+    async with _client(handler) as c:
+        await fp.facebook_pages.list_comments(CREDS, "post1", order="ranked", _client=c)
+        await fp.facebook_pages.list_comments(CREDS, "post1", order="newest", _client=c)
+        await fp.facebook_pages.list_comments(CREDS, "post1", _client=c)
+
+    # "Most relevant" lets Meta rank; sending order=chronological would override the ranking.
+    assert "order" not in seen[0]
+    assert seen[1]["order"] == "reverse_chronological"
+    # The default stays chronological so a caller that does not care sees the oldest first.
+    assert seen[2]["order"] == "chronological"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_comment_order_is_refused_before_any_request():
+    with pytest.raises(ValueError, match="order"):
+        await fp.facebook_pages.list_comments(CREDS, "post1", order="popular")
