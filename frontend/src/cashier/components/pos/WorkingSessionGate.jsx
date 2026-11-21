@@ -44,6 +44,13 @@ export function startDayParts(register) {
   };
 }
 
+/** How the start button looks. While it waits for the number it must still read as a button. */
+export function startButtonLook(waiting) {
+  return waiting
+    ? { className: "w-full border border-orange-300 bg-orange-100 text-orange-800 opacity-100", waiting: true }
+    : { className: "w-full", waiting: false };
+}
+
 /** The message for a till that cannot be used. Pure, so it can be tested without a screen. */
 export function gateMessage(state) {
   switch (state?.status) {
@@ -133,7 +140,7 @@ export function StartDay({ register, onStart, pending, error }) {
       )}
       <Button
         type="submit"
-        className="w-full disabled:border disabled:border-orange-300 disabled:bg-orange-100 disabled:text-orange-800 disabled:opacity-100"
+        className={startButtonLook(parsed === null || pending).className}
         disabled={parsed === null || pending}
       >
         {pending ? "جارٍ البدء…" : "ابدأ اليوم"}

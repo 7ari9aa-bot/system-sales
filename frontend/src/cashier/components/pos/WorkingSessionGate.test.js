@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gateMessage, setupAction, startDayParts, tillLabel } from "./WorkingSessionGate";
+import { gateMessage, setupAction, startButtonLook, startDayParts, tillLabel } from "./WorkingSessionGate";
 
 describe("gateMessage", () => {
   it.each([
@@ -76,5 +76,21 @@ describe("startDayParts", () => {
 
   it("a name the owner typed is kept inside the brackets", () => {
     expect(startDayParts({ name: "درج الدور الأول" }).tail).toBe(" (درج الدور الأول).");
+  });
+});
+
+describe("startButtonLook", () => {
+  it("while waiting for the number the button keeps a visible fill, border and text colour", () => {
+    const { className } = startButtonLook(true);
+    expect(className).toContain("bg-orange-100");
+    expect(className).toContain("border-orange-300");
+    expect(className).toContain("text-orange-800");
+    expect(className).toContain("opacity-100");
+  });
+
+  it("once it can be pressed it uses the normal primary look, with no waiting colours", () => {
+    const { className } = startButtonLook(false);
+    expect(className).toBe("w-full");
+    expect(className).not.toContain("orange");
   });
 });
