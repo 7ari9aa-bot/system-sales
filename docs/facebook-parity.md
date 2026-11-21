@@ -82,6 +82,12 @@ Consequence for the Page-likes-own-comment item: the docs make it plausible and 
 
 Branch `feat/facebook-page-like-comment` (not merged). The Like button now shows on the Page's own comment, as on Facebook (tested in the owner's browser). Two tests failed first, then passed. Pressing it calls the existing `POST /facebook/objects/{id}/like`; if Meta rejects it the screen shows the error and does not keep the like (the existing `run` wrapper). The first real press on the test Page is what settles the API side. Known gap: the initial pressed state is not read from Meta's `user_likes`, because storing it needs a new column and migration; the like count shown is the stored `like_count`.
 
+## Verified live on 2026-11-21 (main ba515de4, Vercel READY)
+
+- Notifications header menu: opened on fihrist.world, shows "Mark all as read" and "Notification settings"; settings landed on /settings/channels. Same two items as real Facebook.
+- Like on the Page's own comment: the button shows beside Reply and Delete. Pressing it reached Meta: after a sync our counter went 1 to 2, matching Facebook's own 2 on that comment. So the API accepted a Page like on a comment the Page wrote (the Page token and pages_manage_engagement are enough). Caveat: that comment was already liked once from Facebook's UI, and the press added the second like instead of being refused, so the like was counted as a new one in the count; a repeat press on the same Page identity is not proven to toggle off.
+- Known gap left: the pressed state after a reload is not read from Meta's user_likes (needs a column and a migration), and the screen shows the count only after a sync.
+
 ## Release state
 
 main = c14fa23c. It carries the whole parity line (comment look, post card look, comment order gateway, comment sort menu, shares count, the matrices and this report) plus the migration fe2026112013. Verified after the push: frontend suite 174 files, 2400 tests green; the affected backend tests (facebook pages, shares count, migrations, openapi lock) 28 passed; Vercel production deployment of c14fa23c READY and its bundle contains the sort menu, the share counter and the comment counter; the Northflank build of c14fa23c succeeded, its log shows `Running upgrade fe2026112012 -> fe2026112013` and the new container is running. A visual check on the live site was not done: the owner's browser tools were unavailable.
