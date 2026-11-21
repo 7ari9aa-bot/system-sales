@@ -16,6 +16,7 @@ and which website visitor this is (for the owner-console signup funnel).
 
 from __future__ import annotations
 
+import logging
 import re
 from urllib.parse import quote, urlencode, urlparse
 
@@ -31,6 +32,8 @@ from app.modules.identity import service as service
 from app.modules.identity.deps import DbSession
 from app.modules.identity.routers._deps import _client_meta
 from app.modules.identity.service import GoogleMfaRequired
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["auth"])
 
@@ -149,29 +152,35 @@ async def google_callback(
     if not client_id or not client_secret:
         return _login_error("google_not_configured")
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        token_res = await client.post(
-            _GOOGLE_TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": _redirect_uri(request),
-                "grant_type": "authorization_code",
-            },
-        )
-        if token_res.status_code != 200:
-            return _login_error("google_token_exchange")
-        access_token = token_res.json().get("access_token")
-        if not access_token:
-            return _login_error("google_no_token")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            token_res = await client.post(
+                _GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": _redirect_uri(request),
+                    "grant_type": "authorization_code",
+                },
+            )
+            if token_res.status_code != 200:
+                return _login_error("google_token_exchange")
+            access_token = token_res.json().get("access_token")
+            if not access_token:
+                return _login_error("google_no_token")
 
-        profile_res = await client.get(
-            _GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
-        )
-        if profile_res.status_code != 200:
-            return _login_error("google_profile")
-        profile = profile_res.json()
+            profile_res = await client.get(
+                _GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if profile_res.status_code != 200:
+                return _login_error("google_profile")
+            profile = profile_res.json()
+
+    except httpx.HTTPError:
+        # Google unreachable or answering garbage: a retry is the right advice, not a JSON 500.
+        logger.warning("google_callback.network_error", exc_info=True)
+        return _login_error("google_token_exchange")
 
     email = (profile.get("email") or "").strip()
     if not email:
@@ -197,6 +206,25 @@ async def google_callback(
         if "not verified" in reason:
             return _login_error("google_email_unverified")
         return _login_error("google_account_unavailable")
+    except Exception as exc:
+        # Anything else is OUR failure (a database or provisioning error while creating or
+        # reading the account), not the user's. It used to surface as a bare JSON 500 on a page
+        # with no way back. Log it the way the global handler does, so the request id on the
+        # screen finds the traceback, and send the person back to the login page.
+        #
+        # The rollback is not optional: `get_db` commits when the route returns normally, so a
+        # swallowed error would otherwise commit a half-created workspace.
+        await session.rollback()
+        logger.error(
+            "unhandled_error",
+            extra={
+                "path": request.url.path,
+                "error": exc.__class__.__name__,
+                "request_id": getattr(request.state, "request_id", None),
+            },
+            exc_info=exc,
+        )
+        return _login_error("google_failed")
 
     response = RedirectResponse(url=safe_return_to(claims.get("return_to")), status_code=302)
     cookies.set_auth_cookies(response, pair.access_token, pair.refresh_token)
