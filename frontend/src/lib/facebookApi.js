@@ -161,6 +161,30 @@ export function facebookPostProblem({ message = "", link = "", picture = null, s
   return "";
 }
 
+// ---- Insights charts: Meta sends one value per day for each metric ----
+/** A metric's days in date order, as {day: "YYYY-MM-DD", value}. A day without a number is left out;
+ *  a real zero stays. */
+export function dailySeries(metric) {
+  return (metric?.values || [])
+    .filter((v) => typeof v?.value === "number" && v.end_time)
+    .map((v) => ({ day: String(v.end_time).slice(0, 10), value: v.value }))
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
+
+/** The SVG path of a series inside a width x height box: `line` for the stroke, `area` closed down to
+ *  the floor for the fill. The highest value sits at the top; a flat series sits mid-height. */
+export function chartPath(series, width, height) {
+  if (!series.length) return { line: "", area: "" };
+  const values = series.map((p) => p.value);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const x = (i) => (series.length === 1 ? width / 2 : (i / (series.length - 1)) * width);
+  const y = (v) => (max === min ? height / 2 : height - ((v - min) / (max - min)) * height);
+  const pts = series.map((p, i) => `${i ? "L" : "M"}${+x(i).toFixed(2)},${+y(p.value).toFixed(2)}`);
+  const line = pts.join("");
+  return { line, area: `${line}L${+x(series.length - 1).toFixed(2)},${height}L${+x(0).toFixed(2)},${height}Z` };
+}
+
 // ---- Reels and Stories (Meta: "Reels Publishing API", "Facebook Stories API") ----
 // The rules are Meta's. The server checks the real file again from its own bytes; this keeps a
 // file Meta would refuse from being uploaded (a video can be tens of MB) in the first place.
