@@ -21,7 +21,7 @@ export const SECTIONS = [
     id: "identity",
     title: "بيانات المحل الضريبية",
     hint: "زي ما هي مسجلة في بطاقتك الضريبية. بتظهر في كل إيصال.",
-    keys: ["business.legal_name", "business.trade_name", "business.tax_id", "business.commercial_register"],
+    keys: ["business.legal_name", "business.trade_name", "business.tax_id"],
   },
   {
     id: "pricing",
@@ -113,13 +113,17 @@ export function readiness(values) {
     return { state: "off", missing: [], reasons: [] };
   }
   const missing = [];
-  if (!(asciiDigits(clean(v["business.tax_id"])) && clean(v["business.tax_id"]).length === 9)) {
-    missing.push("الرقم الضريبي (9 أرقام)");
+  const taxId = clean(v["business.tax_id"]);
+  if (!(asciiDigits(taxId) && taxId.length === 9)) {
+    // Arabic-Indic digits look right on screen but the authority only takes 0-9: say so.
+    missing.push(/[\u0660-\u0669\u06F0-\u06F9]/.test(taxId) ? "الرقم الضريبي (اكتبه بأرقام إنجليزية 0-9، 9 أرقام)" : "الرقم الضريبي (9 أرقام)");
   }
   if (!clean(v["business.legal_name"]) && !clean(v["business.trade_name"])) missing.push("اسم المحل");
   if (!clean(v["einvoice.branch_code"])) missing.push("كود الفرع");
   const activity = clean(v["einvoice.activity_code"]);
-  if (!(asciiDigits(activity) && activity.length === 4)) missing.push("كود النشاط (4 أرقام)");
+  if (!(asciiDigits(activity) && activity.length === 4)) {
+    missing.push(/[\u0660-\u0669\u06F0-\u06F9]/.test(activity) ? "كود النشاط (اكتبه بأرقام إنجليزية 0-9، 4 أرقام)" : "كود النشاط (4 أرقام)");
+  }
   if (!clean(v["einvoice.branch_governate"])) missing.push("المحافظة");
   if (!clean(v["einvoice.branch_region_city"])) missing.push("المدينة أو المنطقة");
   if (!clean(v["einvoice.branch_street"])) missing.push("الشارع");

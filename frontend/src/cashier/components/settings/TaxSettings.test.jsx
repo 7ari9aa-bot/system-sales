@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { StatusPanel } from "./TaxSettings";
+import { StatusPanel, unsavedNote } from "./TaxSettings";
 import { readiness } from "@/cashier/api/taxSettings";
 
 const GOOD = { "business.legal_name": "س", "business.tax_id": "123456789", "einvoice.eta_enabled": true, "einvoice.settings_confirmed": true, "einvoice.branch_code": "0", "einvoice.activity_code": "4771", "einvoice.branch_governate": "ق", "einvoice.branch_region_city": "م", "einvoice.branch_street": "ش", "einvoice.branch_building_number": "5" };
@@ -41,5 +41,26 @@ describe("the status panel", () => {
 
   it("warns that the starting values are suggestions", () => {
     expect(draw(GOOD)).toContain("اقتراحات");
+  });
+});
+
+describe("unsaved changes", () => {
+  it("say plainly that the status above is the SAVED one, so a green panel never promises what is not saved", () => {
+    expect(unsavedNote(3)).toContain("3");
+    expect(unsavedNote(3)).toContain("لسه ما اتحفظتش");
+  });
+
+  it("show nothing when there is nothing unsaved", () => {
+    expect(unsavedNote(0)).toBeNull();
+  });
+
+  it("the panel shows that note when it is given one", () => {
+    const h = renderToStaticMarkup(<StatusPanel status={readiness(GOOD)} enabled confirmed note={unsavedNote(2)} />);
+    expect(h).toContain("لسه ما اتحفظتش");
+    expect(h).toContain('data-testid="tax-unsaved"');
+  });
+
+  it("no note, no banner", () => {
+    expect(draw(GOOD)).not.toContain("tax-unsaved");
   });
 });

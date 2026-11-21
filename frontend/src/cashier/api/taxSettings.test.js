@@ -3,7 +3,7 @@ import { SECTIONS, TAX_DOMAINS, readiness, sectionDefs, FRIENDLY } from "./taxSe
 
 const def = (key, extra = {}) => ({ key, domain: key.split(".")[0], type: "string", enforced: true, scopes: ["tenant"], ...extra });
 const ALL_KEYS = [
-  "business.legal_name", "business.trade_name", "business.tax_id", "business.commercial_register",
+  "business.legal_name", "business.trade_name", "business.tax_id",
   "business.address.line1", "business.address.city", "business.address.postal_code", "business.phone", "business.email", "business.website",
   "einvoice.eta_enabled", "einvoice.settings_confirmed", "einvoice.prices_include_vat", "einvoice.vat_category",
   "einvoice.default_payment_method", "einvoice.split_payment_rule", "einvoice.unit_code", "einvoice.delivery_mode",
@@ -97,6 +97,13 @@ describe("is the e-receipt really going out?", () => {
       expect(r.missing.join(" ")).toContain("الرقم الضريبي");
     }
     expect(readiness(vals({ "business.tax_id": " 123456789 " })).state).toBe("running");
+  });
+
+  it("Arabic-Indic digits are refused AND the merchant is told to type English digits, not just 'wrong'", () => {
+    const r = readiness(vals({ "business.tax_id": "١٢٣٤٥٦٧٨٩", "einvoice.activity_code": "٤٧٧١" }));
+    expect(r.state).toBe("blocked");
+    expect(r.missing.join(" ")).toContain("أرقام إنجليزية");
+    expect(r.missing).toHaveLength(2);
   });
 
   it("the activity code must be exactly 4 digits", () => {

@@ -446,6 +446,24 @@ class TestTheMerchantDecides:
             },
         }
 
+    async def test_branch_code_zero_is_a_real_code_and_reaches_the_receipt(self, db, tenant_ctx):
+        # The first branch is "0". It is falsy-looking text, and must never be read as "not set".
+        await _configure(
+            db,
+            tenant_ctx.tenant_id,
+            **{
+                "einvoice.branch_code": "0",
+                "einvoice.activity_code": "4771",
+                "einvoice.branch_governate": "Cairo",
+                "einvoice.branch_region_city": "Nasr City",
+                "einvoice.branch_street": "Abbas El Akkad",
+                "einvoice.branch_building_number": "12",
+            },
+        )
+        _, _, _, receipt = await _sold(db, tenant_ctx)
+        ctx = await build_context(db, tenant_ctx.tenant_id, receipt)
+        assert ctx.extras["store_profile"]["branch_code"] == "0"
+
     async def test_a_value_set_on_the_till_itself_overrides_the_store_setting(self):
         from app.modules.einvoice.models import EInvoiceDevice
         from app.modules.einvoice.providers.eta.context import device_profile

@@ -19,8 +19,17 @@ const PANEL = {
   off: { Icon: PauseCircle, cls: "border-border bg-muted/40 text-muted-foreground", title: "الإيصال الإلكتروني مقفول", body: "فعّله لما تكون جاهز. مفيش حاجة هتتبعت للمصلحة وهو مقفول." },
 };
 
-/** The panel only draws what `readiness` decided. Exported so it can be tested without a server. */
-export function StatusPanel({ status, enabled, confirmed, onEnabled, onConfirmed }) {
+/** The line shown when the screen holds changes the server has not got yet. Null when there are none. */
+export function unsavedNote(count) {
+  return count > 0 ? `عندك ${count} تعديل لسه ما اتحفظتش. الحالة اللي فوق هي المحفوظة على السيرفر، احفظ عشان تتغيّر.` : null;
+}
+
+/**
+ * The panel only draws what `readiness` decided, and `readiness` is fed the SAVED values: a green
+ * "running" must mean the server is issuing, not that the form on screen looks complete.
+ * Exported so it can be tested without a server.
+ */
+export function StatusPanel({ status, enabled, confirmed, onEnabled, onConfirmed, note }) {
   const p = PANEL[status.state];
   return (
     <div className={cn("rounded-xl border p-3", p.cls)} data-state={status.state} data-testid="tax-status">
@@ -29,6 +38,7 @@ export function StatusPanel({ status, enabled, confirmed, onEnabled, onConfirmed
         <div className="min-w-0">
           <p className="text-[14px] font-bold">{p.title}</p>
           {p.body && <p className="mt-0.5 text-[12.5px]">{p.body}</p>}
+          {note && <p data-testid="tax-unsaved" className="mt-1 rounded-md bg-white/70 px-2 py-1 text-[12.5px] font-semibold">{note}</p>}
           {status.reasons?.length > 0 && (
             <ul className="mt-1 list-disc space-y-0.5 pe-4 text-[12.5px]">
               {status.reasons.map((r) => <li key={r}>{r}</li>)}
@@ -76,7 +86,8 @@ export default function TaxSettings() {
   }, [data, draft]);
 
   const changes = data && draft && original ? changedValues(data.defs, original, draft) : [];
-  const status = useMemo(() => readiness(draft ?? {}), [draft]);
+  // The panel states what the server is doing, so it reads what is saved, never the unsaved form.
+  const status = useMemo(() => readiness(original ?? {}), [original]);
 
   async function save() {
     if (!changes.length || Object.keys(errors).length || saving) return;
@@ -100,7 +111,7 @@ export default function TaxSettings() {
 
   return (
     <div className="space-y-3" dir="rtl">
-      <StatusPanel status={status} enabled={draft["einvoice.eta_enabled"]} confirmed={draft["einvoice.settings_confirmed"]} onEnabled={set("einvoice.eta_enabled")} onConfirmed={set("einvoice.settings_confirmed")} />
+      <StatusPanel status={status} note={unsavedNote(changes.length)} enabled={draft["einvoice.eta_enabled"]} confirmed={draft["einvoice.settings_confirmed"]} onEnabled={set("einvoice.eta_enabled")} onConfirmed={set("einvoice.settings_confirmed")} />
       {SECTIONS.map((s) => {
         const defs = sectionDefs(s, data.defs);
         if (!defs.length) return null;
