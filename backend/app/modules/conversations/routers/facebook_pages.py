@@ -94,6 +94,7 @@ def _post_out(p) -> dict:
         "permalink": p.permalink,
         "reactions": p.like_count,
         "comments": p.comments_count,
+        "shares": p.shares_count,
         "posted_at": p.posted_at.isoformat() if p.posted_at else None,
     }
 

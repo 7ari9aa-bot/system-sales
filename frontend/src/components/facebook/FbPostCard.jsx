@@ -96,9 +96,10 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
         </form>
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
-      {reactionsShown > 0 && (
+      {(reactionsShown > 0 || (post.sharesCount || 0) > 0) && (
         <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-          <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
+          {reactionsShown > 0 ? <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} /> : <span />}
+          {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count">{post.sharesCount} {ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span>}
         </div>
       )}
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>

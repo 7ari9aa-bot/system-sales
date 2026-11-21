@@ -114,6 +114,7 @@ export function toFacebookPost(p, comments, lang = "ar") {
     permalink: p.permalink || "",
     reactions: p.reactions || 0,
     commentsCount: p.comments || 0,
+    sharesCount: p.shares || 0,
     postedAt: p.posted_at,
     timeLabel: fbAge(p.posted_at, lang),
     comments: comments || [],
