@@ -48,3 +48,55 @@ describe("Notifications grouped the way Facebook lists them", () => {
     expect(groupNotifications([], { now: NOW })).toEqual({ fresh: [], earlier: [], hiddenCount: 0 });
   });
 });
+
+describe("Mark all as read (the header menu on Facebook's Notifications)", () => {
+  // The API has no read flag for a Page's comments, so "read" is remembered in the browser as a time:
+  // everything at or before it counts as read.
+  it("an item is unread only when it waits for an answer and is newer than the mark", async () => {
+    const { isUnread } = await import("@/pages/facebook/notificationGroups");
+    const waitingNew = item("n", 1, true);
+    const waitingOld = item("o", 30, true);
+    const answered = item("a", 1, false);
+    const mark = NOW - 2 * 3600_000;
+    expect(isUnread(waitingNew, mark)).toBe(true);
+    expect(isUnread(waitingOld, mark)).toBe(false);
+    expect(isUnread(answered, mark)).toBe(false);
+    expect(isUnread(waitingOld, 0)).toBe(true);
+  });
+
+  it("Unread tab drops what was marked read, All keeps everything", () => {
+    const rows = [item("new", 1, true), item("old", 30, true)];
+    const mark = NOW - 2 * 3600_000;
+    const unread = groupNotifications(rows, { now: NOW, onlyUnread: true, readUpTo: mark });
+    expect([...unread.fresh, ...unread.earlier].map((x) => x.comment.id)).toEqual(["new"]);
+    const all = groupNotifications(rows, { now: NOW, readUpTo: mark });
+    expect([...all.fresh, ...all.earlier].map((x) => x.comment.id)).toEqual(["new", "old"]);
+  });
+
+  it("reads and writes the mark safely when storage is missing or holds junk", async () => {
+    const { loadReadMark, saveReadMark } = await import("@/pages/facebook/notificationGroups");
+    const mem = {};
+    const store = { getItem: (k) => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); } };
+    expect(loadReadMark(store, "t1")).toBe(0);
+    saveReadMark(store, "t1", 1234);
+    expect(loadReadMark(store, "t1")).toBe(1234);
+    expect(loadReadMark(store, "t2")).toBe(0);
+    mem["fb-notif-read:t3"] = "junk";
+    expect(loadReadMark(store, "t3")).toBe(0);
+    expect(loadReadMark(null, "t1")).toBe(0);
+    expect(() => saveReadMark(null, "t1", 5)).not.toThrow();
+  });
+});
+
+describe("Header menu items, as on Facebook", () => {
+  it("offers exactly 'Mark all as read' then 'Notification settings'", async () => {
+    const { headerMenuItems } = await import("@/pages/facebook/notificationGroups");
+    expect(headerMenuItems("ar").map((i) => i.id)).toEqual(["markAllRead", "settings"]);
+    expect(headerMenuItems("ar").map((i) => i.label)).toEqual(["تمييز الكل كمقروء", "إعدادات الإشعارات"]);
+    expect(headerMenuItems("en").map((i) => i.label)).toEqual(["Mark all as read", "Notification settings"]);
+  });
+  it("settings leads to the channel settings where the Page is connected", async () => {
+    const { headerMenuItems } = await import("@/pages/facebook/notificationGroups");
+    expect(headerMenuItems("en").find((i) => i.id === "settings").to).toBe("/settings/channels");
+  });
+});
