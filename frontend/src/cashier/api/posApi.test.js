@@ -174,3 +174,29 @@ describe("recordSale note", () => {
     expect(calls[2].headers["Idempotency-Key"]).toMatch(/^pos-/);
   });
 });
+
+describe("the profit report request", () => {
+  it("asks the reports path and carries the query string it was given", async () => {
+    await posApi.profitByVariant("start=2026-11-21&end=2026-11-22");
+    expect(calls[0].path).toBe("/reports/profit/by-variant?start=2026-11-21&end=2026-11-22");
+  });
+  it("asks the bare path when there is no query, never a dangling question mark", async () => {
+    await posApi.profitByVariant("");
+    expect(calls[0].path).toBe("/reports/profit/by-variant");
+    await posApi.profitByVariant();
+    expect(calls[1].path).toBe("/reports/profit/by-variant");
+  });
+});
+
+describe("the profit report is read from the profit route", () => {
+  it("asks for /reports/profit/by-variant with the query it was given", async () => {
+    await posApi.profitByVariant("start=2026-11-21&end=2026-11-22&brand_id=b1");
+    expect(calls.at(-1).path).toBe("/reports/profit/by-variant?start=2026-11-21&end=2026-11-22&brand_id=b1");
+  });
+  it("with no query it asks for the bare route, with no stray question mark", async () => {
+    await posApi.profitByVariant();
+    expect(calls.at(-1).path).toBe("/reports/profit/by-variant");
+    await posApi.profitByVariant("");
+    expect(calls.at(-1).path).toBe("/reports/profit/by-variant");
+  });
+});

@@ -102,6 +102,29 @@ describe("the comment count on the action bar", () => {
   });
 });
 
+describe("the comment sort menu, as Facebook shows it above a busy thread", () => {
+  const cm = (id, at, text) => ({ id, author: "Ann", timeLabel: "1m", commentedAt: at, text, likes: 0, replies: [] });
+  const two = [cm("a", "2026-11-21T08:00:00Z", "first one"), cm("b", "2026-11-21T09:00:00Z", "second one")];
+
+  it("is absent when there is nothing to order", () => {
+    expect(html({ comments: [] })).not.toContain('data-testid="fb-comment-sort"');
+    expect(html({ comments: [two[0]] })).not.toContain('data-testid="fb-comment-sort"');
+  });
+  it("shows once the thread has two comments, named 'Most relevant' to begin with", () => {
+    const out = html({ comments: two });
+    expect(out).toContain('data-testid="fb-comment-sort"');
+    expect(out).toContain("Most relevant");
+  });
+  it("is in Arabic with the Arabic labels", () => {
+    const out = renderToStaticMarkup(<FbPostCard post={{ ...post, comments: two }} pageName="Fihrist" lang="ar" actions={{}} />);
+    expect(out).toContain("الأكثر ملاءمة");
+  });
+  it("draws the thread oldest first by default", () => {
+    const out = html({ comments: two });
+    expect(out.indexOf("first one")).toBeLessThan(out.indexOf("second one"));
+  });
+});
+
 describe("the share counter, as Facebook draws it beside the comment count", () => {
   it("shows how many times the post was shared", () => {
     const out = html({ sharesCount: 4 });
@@ -110,6 +133,11 @@ describe("the share counter, as Facebook draws it beside the comment count", () 
   });
   it("says 1 share in the singular", () => {
     expect(html({ sharesCount: 1 })).toContain("1 share<");
+  });
+  it("still shows the share count on a post nobody has reacted to", () => {
+    const out = html({ reactions: 0, sharesCount: 2 });
+    expect(out).toContain("2 shares");
+    expect(out).not.toContain('data-kind="LIKE"');
   });
   it("draws nothing when nobody shared, as Facebook does", () => {
     expect(html({ sharesCount: 0 })).not.toContain("fb-share-count");

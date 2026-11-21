@@ -11,9 +11,14 @@ import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useSalesReport, useTopProducts } from "@/cashier/api/usePosSale";
 import ProductsReportSection from "@/cashier/components/reports/ProductsReportSection";
-import { useStock } from "@/cashier/api/useStock";
+import { useStock, useStockSeasons } from "@/cashier/api/useStock";
 import { valuationByCategory } from "@/cashier/api/inventoryValuation";
 import InventoryReportSection from "@/cashier/components/reports/InventoryReportSection";
+import ProfitReportSection from "@/cashier/components/reports/ProfitReportSection";
+import ProfitFilters from "@/cashier/components/reports/ProfitFilters";
+import { useProfitReport } from "@/cashier/api/useProfitReport";
+import { profitErrorNotice } from "@/cashier/components/reports/profitView";
+import { useBrands } from "@/cashier/api/useCatalogWrite";
 import { summarizeSales } from "@/cashier/api/salesReport";
 import { inShopPeriod } from "@/cashier/lib/period";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
@@ -22,13 +27,15 @@ import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/62d4eef78_generated_image.png";
 const HERO_ALT = "مكتب إدارة المحل مع تقارير مبيعات ودفتر حساب";
 
-// Only reports that read the backend are listed. The others (top products, profit, inventory value,
-// returns by reason, purchases) return when they are built on real data: a made-up profit or stock
-// figure next to a real Z report would be read as the shop's real numbers.
+// Only reports that read the backend are listed. The rest (returns by reason, purchases, expenses)
+// return when they are built on real data: a made-up figure next to a real Z report would be read
+// as the shop's real numbers. Profit is listed because GET /reports/profit/by-variant computes it
+// from the real purchase layers, and it says out loud when a cost is missing.
 const REPORTS = [
   { key: "sales", label: "المبيعات" },
   { key: "products", label: "الأصناف" },
   { key: "inventory", label: "تقييم المخزون" },
+  { key: "profit", label: "الربح" },
   { key: "zreport", label: "إغلاق اليوم (Z)" },
 ];
 
@@ -38,12 +45,26 @@ const TAB_TRIGGER =
 export default function ReportsPage() {
   const [period, setPeriod] = useState("7d");
   const [tab, setTab] = useState(REPORTS[0].key);
+  // فلتر العلامة والموسم بتاع تقرير الربح لوحده: الفترة هي فلتر الصفحة المشترك.
+  const [profitFilters, setProfitFilters] = useState({ brand: "", season: "" });
 
   const stockQuery = useStock({});
   const valuation = valuationByCategory(stockQuery.data ?? []);
   const salesQuery = useSalesReport(period);
   const topQuery = useTopProducts(period);
   const daily = salesQuery.data ?? [];
+
+  // التقرير بيتطلب لما تاب الربح يتفتح: كاشير مش من حقه يشوفه، فمش محتاج طلب يترفض بـ403
+  // ويسجّل خطأ كل مرة يفتح شاشة التقارير.
+  const profitQueryResult = useProfitReport({
+    period,
+    brandId: profitFilters.brand,
+    season: profitFilters.season,
+    enabled: tab === "profit",
+  });
+  const brandsQuery = useBrands();
+  const seasonsQuery = useStockSeasons();
+  const profitNotice = profitQueryResult.isError ? profitErrorNotice(profitQueryResult.error) : null;
 
   // ورديات نفس الفترة المختارة من الخادم (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
   const { user } = useAuth();
@@ -105,6 +126,35 @@ export default function ReportsPage() {
           ) : (
             <InventoryReportSection rows={valuation} />
           )}
+        </TabsContent>
+        <TabsContent value="profit" className="mt-0">
+          <div className="space-y-3">
+            <ProfitFilters
+              values={profitFilters}
+              onChange={setProfitFilters}
+              brands={brandsQuery.data ?? []}
+              seasons={seasonsQuery.data ?? []}
+            />
+            {profitQueryResult.isPending ? (
+              <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل تقرير الربح…</p>
+            ) : profitNotice ? (
+              <p
+                className={
+                  profitNotice.tone === "forbidden"
+                    ? "border border-[#DED8CD] bg-white px-4 py-6 text-center text-[12.5px] text-[#7A766C]"
+                    : "p-6 text-center text-sm font-semibold text-rose-600"
+                }
+                role="alert"
+              >
+                {profitNotice.message}
+              </p>
+            ) : (
+              <ProfitReportSection
+                rows={profitQueryResult.data?.rows ?? []}
+                totals={profitQueryResult.data?.totals ?? null}
+              />
+            )}
+          </div>
         </TabsContent>
         <TabsContent value="zreport" className="mt-0">
           {shifts.isLoading ? (

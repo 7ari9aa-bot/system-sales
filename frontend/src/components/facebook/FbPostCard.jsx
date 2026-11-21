@@ -4,7 +4,7 @@ import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
 import FbReactionSummary from "@/components/facebook/FbReactionSummary";
 import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
-import { commentWindow } from "@/lib/facebookApi";
+import { COMMENT_SORTS, commentWindow, sortComments } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
@@ -34,8 +34,11 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
   const [steps, setSteps] = useState(0);
+  const [sort, setSort] = useState("relevant");
+  const [sortOpen, setSortOpen] = useState(false);
   const total = Math.max(post.commentsCount || 0, countAll(post.comments));
-  const win = commentWindow(post.comments, steps);
+  const ordered = sortComments(post.comments, sort);
+  const win = commentWindow(ordered, steps);
 
   const run = async (fn, after) => {
     setBusy(true);
@@ -95,12 +98,8 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
       {(reactionsShown > 0 || (post.sharesCount || 0) > 0) && (
         <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-          <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
-          {(post.sharesCount || 0) > 0 && (
-            <span data-testid="fb-share-count">
-              {post.sharesCount} {ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}
-            </span>
-          )}
+          {reactionsShown > 0 ? <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} /> : <span />}
+          {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count">{post.sharesCount} {ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span>}
         </div>
       )}
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
@@ -109,6 +108,21 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
+        {(post.comments || []).length > 1 && (
+          <div className="relative">
+            <button type="button" data-testid="fb-comment-sort" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[15px] font-semibold hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
+              {COMMENT_SORTS.find((x) => x.id === sort)[ar ? "ar" : "en"]}
+              <span aria-hidden="true" className="text-[11px]">▾</span>
+            </button>
+            {sortOpen && (
+              <div role="menu" className="absolute start-0 top-8 z-20 w-56 rounded-lg bg-white p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.1)]">
+                {COMMENT_SORTS.map((x) => (
+                  <button key={x.id} role="menuitemradio" aria-checked={sort === x.id} type="button" onClick={() => { setSort(x.id); setSortOpen(false); setSteps(0); }} className={cn(item, sort === x.id && "bg-[#e7f3ff] text-[#0866ff]")}>{x[ar ? "ar" : "en"]}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {win.hidden > 0 && (
           <button type="button" onClick={() => setSteps((n) => n + 1)} className="block text-[15px] font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]" style={{ color: FB.text2 }}>
             {ar ? `عرض ${win.next} تعليقات أخرى` : `View ${win.next} more ${win.next === 1 ? "comment" : "comments"}`}

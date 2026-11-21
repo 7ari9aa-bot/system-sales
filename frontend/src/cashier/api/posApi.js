@@ -78,6 +78,8 @@ export const posApi = {
   salesReport: (since, until) => api(`/pos/reports/sales?since=${since}&until=${until}`),
   /** Best sellers over [since, until] by net revenue (returns taken off). No cost or profit. */
   topProducts: (since, until, limit = 20) => api(`/pos/reports/top-products?since=${since}&until=${until}&limit=${limit}`),
+  /** Profit by model, colour and size over the server's half-open [start, end); `query` comes from profitQuery(). */
+  profitByVariant: (query = "") => api(`/reports/profit/by-variant${query ? `?${query}` : ""}`),
 
   /** Has today been started on this register? Read-only: { started, session|null }. It never opens a day. */
   workingSession: async (registerId) => post(`/pos/registers/${seg(registerId)}/working-session`, {}),
