@@ -3,6 +3,11 @@ import { expect, test } from "@playwright/test";
 
 test.skip(process.env.E2E_LIVE_API !== "1", "requires the ephemeral API/Postgres/Redis CI stack");
 
+// The backend numbers sale receipts as a gap-free yearly sequence (POS-2026-0001), so a missing
+// receipt can be audited. The old random shape (POS-20261020-D89DF0) no longer exists. Return
+// receipts are POS-RET-..., which this pattern deliberately does not match.
+const SALE_INVOICE_NO = /POS-\d{4}-\d{4,}/;
+
 test("real registration, dashboard reads, customers, and logout work end to end", async ({ page }) => {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -152,7 +157,7 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
     await expect(dialog.getByLabel("المبلغ المدفوع")).toHaveCount(0);
     await dialog.getByRole("button", { name: /تأكيد البيع/ }).click();
     await expect(dialog.getByText("معاينة الفاتورة")).toBeVisible();
-    const number = ((await dialog.innerText()).match(/POS-\d{8}-[A-Z0-9]+/) || [""])[0];
+    const number = ((await dialog.innerText()).match(SALE_INVOICE_NO) || [""])[0];
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     return number;
@@ -614,7 +619,7 @@ test("sell, return and exchange from the screens with no shift and no payment: t
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("button", { name: /تأكيد البيع/ }).click();
   await expect(dlg.getByText("معاينة الفاتورة")).toBeVisible();
-  const invoiceNo = ((await dlg.innerText()).match(/POS-\d{8}-[A-Z0-9]+/) || [""])[0];
+  const invoiceNo = ((await dlg.innerText()).match(SALE_INVOICE_NO) || [""])[0];
   expect(invoiceNo).toMatch(/^POS-/);
   await page.keyboard.press("Escape");
   expect(await onHand(vA.id), "two A left the shelf").toBe(8);
