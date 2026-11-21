@@ -24,6 +24,17 @@ function rememberRegister(id) {
   }
 }
 
+// The two names the shop's first till is created with. They are shown as plain Arabic; any name a
+// person typed themselves is shown exactly as typed.
+const FACTORY_TILL_NAMES = new Set(["main till", "main"]);
+
+/** The till's name as the screen shows it. Pure, so it can be tested without a screen. */
+export function tillLabel(register) {
+  const name = String(register?.name ?? "").trim();
+  if (!name) return "";
+  return FACTORY_TILL_NAMES.has(name.toLowerCase()) ? "الدرج الرئيسي" : name;
+}
+
 /** The message for a till that cannot be used. Pure, so it can be tested without a screen. */
 export function gateMessage(state) {
   switch (state?.status) {
@@ -91,7 +102,8 @@ export function StartDay({ register, onStart, pending, error }) {
     >
       <p className="text-base font-bold">بداية اليوم</p>
       <p className="text-sm text-muted-foreground">
-        عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي{register?.name ? ` (${register.name})` : ""}.
+        عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي
+        {tillLabel(register) ? <span className="whitespace-nowrap"> ({tillLabel(register)})</span> : null}.
       </p>
       <label className="w-full text-start text-sm font-semibold" htmlFor="opening-balance">رصيد الدرج في بداية اليوم</label>
       <input
@@ -110,7 +122,11 @@ export function StartDay({ register, onStart, pending, error }) {
       {value.trim() === "" && (
         <p className="text-xs text-muted-foreground">اكتب رصيد الدرج لتفعيل زر البدء (اكتب 0 لو الدرج فاضي).</p>
       )}
-      <Button type="submit" className="w-full" disabled={parsed === null || pending}>
+      <Button
+        type="submit"
+        className="w-full disabled:border disabled:border-primary/40 disabled:bg-primary/15 disabled:text-primary disabled:opacity-100"
+        disabled={parsed === null || pending}
+      >
         {pending ? "جارٍ البدء…" : "ابدأ اليوم"}
       </Button>
     </form>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gateMessage, setupAction } from "./WorkingSessionGate";
+import { gateMessage, setupAction, tillLabel } from "./WorkingSessionGate";
 
 describe("gateMessage", () => {
   it.each([
@@ -39,5 +39,25 @@ describe("first use of a shop: nobody is told to 'ask the manager' when there ma
     expect(setupAction({ status: "unauthorized" })).toBeNull();
     expect(setupAction({ status: "error" })).toBeNull();
     expect(setupAction(undefined)).toBeNull();
+  });
+});
+
+describe("tillLabel", () => {
+  it.each([["Main till"], ["main till"], ["  MAIN TILL  "], ["Main"], ["main"]])(
+    "the factory name %j reads as Arabic",
+    (name) => expect(tillLabel({ name })).toBe("الدرج الرئيسي"),
+  );
+
+  it("a name a person typed is shown exactly as typed", () => {
+    expect(tillLabel({ name: "درج الدور الأول" })).toBe("درج الدور الأول");
+    expect(tillLabel({ name: "Main till 2" })).toBe("Main till 2");
+  });
+
+  it("no till or an empty name shows nothing, never the word undefined", () => {
+    expect(tillLabel(null)).toBe("");
+    expect(tillLabel(undefined)).toBe("");
+    expect(tillLabel({})).toBe("");
+    expect(tillLabel({ name: "   " })).toBe("");
+    expect(tillLabel({ name: null })).toBe("");
   });
 });
