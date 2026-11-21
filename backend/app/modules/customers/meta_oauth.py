@@ -87,7 +87,11 @@ def subscribed_fields(provider: str) -> str:
 # A Facebook connection is the same page-messaging grant as Messenger — the
 # page-scoped token IS the credential; the provider value only names the row.
 _META_PROVIDERS = ("messenger", "instagram", "facebook")
-_META_STATE_TTL_SECONDS = 600
+#: 15 minutes, deliberately LONGER than the 10 the settings screen waits. The state is minted
+#: before the screen starts its own clock, so with equal windows an owner finishing in the last
+#: seconds met an expired state while the screen was still waiting. The screen is the one that
+#: gives up first and says so; the server only has to still be listening.
+_META_STATE_TTL_SECONDS = 900
 
 #: The page fields the flow consumes: tasks gates the MESSAGING capability,
 #: instagram_business_account carries the IG id the Instagram gateway sends
@@ -302,7 +306,7 @@ class PageChoiceRequired(Exception):
         self.choices = choices
 
 
-#: How long the owner has to pick a Page. Matches the state token's window.
+#: How long the owner has to pick a Page. The same window as the state token's, margin included.
 _PAGE_CHOICE_TTL_SECONDS = _META_STATE_TTL_SECONDS
 
 
@@ -984,7 +988,7 @@ async def meta_oauth_callback(
 ):
     """Meta redirects the operator's browser here with the authorization code.
 
-    PUBLIC by design: the state JWT (10-minute TTL, server-signed) is the
+    PUBLIC by design: the state JWT (15-minute TTL, server-signed) is the
     authorization — it was minted to a settings:write holder at start time.
     Every outcome posts back to the opener window via postMessage / BroadcastChannel —
     the operator never leaves the settings page. Meta's own dialog errors

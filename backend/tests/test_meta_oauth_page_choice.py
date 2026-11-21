@@ -1,7 +1,7 @@
 """Choosing which Page to connect when the owner ticked several.
 
 The connect used to take the first Page without asking. Now it pauses, keeps the long-lived user
-token server-side (encrypted, once-only ticket, 10 minutes) and finishes with the Page the owner
+token server-side (encrypted, once-only ticket, short-lived) and finishes with the Page the owner
 picks. These tests need no database: they cover what makes the pause safe.
 """
 
@@ -77,10 +77,11 @@ async def test_the_user_token_is_stored_encrypted_not_in_the_clear(redis) -> Non
     assert "PAGE-TOKEN" not in raw
 
 
-async def test_the_parked_choice_expires_after_ten_minutes(redis) -> None:
+async def test_the_parked_choice_expires_and_is_never_kept_forever(redis) -> None:
+    """It holds the owner's long-lived token (encrypted), so it must always have a deadline."""
     ticket = await _park()
     ttl = await redis.ttl(mo._page_choice_key(ticket))
-    assert 0 < ttl <= 600
+    assert 0 < ttl <= mo._PAGE_CHOICE_TTL_SECONDS
 
 
 async def test_a_ticket_round_trips_with_the_secrets_back(redis) -> None:
