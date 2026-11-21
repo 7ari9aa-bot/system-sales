@@ -108,3 +108,25 @@ describe("the Page's like on a comment", () => {
     expect(shownLikeCount({ likes: 0, pageLiked: true }, false)).toBe(0);
   });
 });
+
+// The comment mounts with its id as the key, and Meta's answer can arrive after it was first drawn
+// (the sync updates the row). A Like state frozen at mount stays un-pressed for good, so the pressed
+// state must follow Meta's answer until the person presses the button on this screen.
+describe("the pressed state follows Meta until the person presses it", () => {
+  it("is Meta's answer when nothing was pressed here", async () => {
+    const { likedNow } = await import("@/components/facebook/FbComment");
+    expect(likedNow({ pageLiked: true }, null)).toBe(true);
+    expect(likedNow({ pageLiked: false }, null)).toBe(false);
+    expect(likedNow({}, null)).toBe(false);
+  });
+  it("follows a later answer from Meta that arrives after the first draw", async () => {
+    const { likedNow } = await import("@/components/facebook/FbComment");
+    expect(likedNow({ pageLiked: false }, null)).toBe(false);
+    expect(likedNow({ pageLiked: true }, null)).toBe(true);
+  });
+  it("is what the person pressed once they pressed it, whatever Meta said", async () => {
+    const { likedNow } = await import("@/components/facebook/FbComment");
+    expect(likedNow({ pageLiked: true }, false)).toBe(false);
+    expect(likedNow({ pageLiked: false }, true)).toBe(true);
+  });
+});

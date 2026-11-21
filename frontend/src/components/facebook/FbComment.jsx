@@ -28,6 +28,13 @@ export function commentActions(comment, depth = 0) {
   };
 }
 
+/** Whether the Like button is pressed. Meta's answer (`pageLiked`) rules until the person presses the
+ *  button on this screen (`pressed` is then true or false); a state frozen at mount would miss an answer
+ *  that arrives after the first draw, when the sync updates the row. */
+export function likedNow(comment, pressed) {
+  return pressed === null || pressed === undefined ? !!comment.pageLiked : !!pressed;
+}
+
 /** The like count to draw. Meta's count already includes a like the Page gave earlier (`pageLiked`), so
  *  only a change made on this screen moves it: +1 for a new like, -1 for taking back a stored one. */
 export function shownLikeCount(comment, liked) {
@@ -50,7 +57,8 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
   const [replying, setReplying] = useState(false);
   const [privateOpen, setPrivateOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [liked, setLiked] = useState(!!comment.pageLiked);
+  const [pressed, setPressed] = useState(null);
+  const liked = likedNow(comment, pressed);
   const [tagged, setTagged] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -76,7 +84,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
     const send = privateOpen ? actions.sendPrivate(comment.id, postId, text) : actions.reply(comment.id, postId, text, replyMention(comment, { tagged, privateReply: privateOpen }));
     run(() => send, () => { setDraft(""); setReplying(false); setPrivateOpen(false); setTagged(true); });
   };
-  const toggleLike = () => run(async () => { await actions.like(comment.id, !liked); setLiked((v) => !v); });
+  const toggleLike = () => run(async () => { await actions.like(comment.id, !liked); setPressed(!liked); });
   const link = "font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] disabled:opacity-50";
   const shownLikes = shownLikeCount(comment, liked);
   const actions_ = commentActions(comment, depth);
