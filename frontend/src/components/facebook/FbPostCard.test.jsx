@@ -19,3 +19,20 @@ describe("a Page post card", () => {
     expect(html({ reactions: 0 })).not.toContain('data-kind="LIKE"');
   });
 });
+
+describe("a Page post card, as Facebook draws an empty thread", () => {
+  it("always shows the comment box, as Facebook does, not only after pressing Comment", () => {
+    const out = html({ timeLabel: "3m" });
+    expect(out).toContain("Comment as Fihrist");
+  });
+  it("says there are no comments yet and invites the first one", () => {
+    const out = html({ timeLabel: "3m" });
+    expect(out).toContain("No comments yet");
+    expect(out).toContain("Be the first to comment");
+  });
+  it("invites the first comment in Arabic too", () => {
+    const out = renderToStaticMarkup(<FbPostCard post={{ ...post }} pageName="Fihrist" lang="ar" actions={{}} />);
+    expect(out).toContain("لا توجد تعليقات حتى الآن");
+    expect(out).toContain("كن أول من يعلّق");
+  });
+});

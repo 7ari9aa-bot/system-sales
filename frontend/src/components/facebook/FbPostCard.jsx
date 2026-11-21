@@ -96,16 +96,19 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
           </button>
         )}
         {win.shown.map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}
-        {commenting && (
-          <form onSubmit={sendComment} className="flex items-center gap-2">
-            <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
-            <div className="flex min-w-0 flex-1 items-center rounded-full px-3" style={{ background: FB.bubble }}>
-              <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} dir="auto" aria-label={ar ? "اكتب تعليقًا" : "Write a comment"} placeholder={ar ? `التعليق باسم ${pageName}...` : `Comment as ${pageName}...`} className="min-w-0 flex-1 bg-transparent py-2 text-[15px] outline-none placeholder:text-[#65676b]" />
-              <button type="submit" disabled={!draft.trim() || busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
-            </div>
-          </form>
+        {(post.comments || []).length === 0 && (
+          <div className="py-4 text-center" style={{ color: FB.text2 }}>
+            <p className="text-[17px] font-bold">{ar ? "لا توجد تعليقات حتى الآن" : "No comments yet"}</p>
+            <p className="text-[15px]">{ar ? "كن أول من يعلّق" : "Be the first to comment"}</p>
+          </div>
         )}
-        {!commenting && (post.comments || []).length === 0 && <p className="text-center text-[13px]" style={{ color: FB.text2 }}>{ar ? "لا توجد تعليقات بعد." : "No comments yet."}</p>}
+        <form onSubmit={sendComment} className="flex items-center gap-2">
+          <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
+          <div className="flex min-w-0 flex-1 items-center rounded-full px-3" style={{ background: FB.bubble }}>
+            <input autoFocus={commenting} value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} dir="auto" aria-label={ar ? "اكتب تعليقًا" : "Write a comment"} placeholder={ar ? `التعليق باسم ${pageName}...` : `Comment as ${pageName}...`} className="min-w-0 flex-1 bg-transparent py-2 text-[15px] outline-none placeholder:text-[#65676b]" />
+            <button type="submit" disabled={!draft.trim() || busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
+          </div>
+        </form>
       </div>
     </article>
   );
