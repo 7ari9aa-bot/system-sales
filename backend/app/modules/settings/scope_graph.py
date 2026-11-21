@@ -51,10 +51,12 @@ _PARENT_COLUMN: dict[Scope, tuple[str, Scope, str]] = {
     Scope.REGISTER: ("pos_registers", Scope.POS_PROFILE, "profile_id"),
     Scope.POS_PROFILE: ("pos_profiles", Scope.WAREHOUSE, "warehouse_id"),
     Scope.WAREHOUSE: ("warehouses", Scope.BRANCH, "location_id"),
+    Scope.BRANCH: ("locations", Scope.WORKSPACE, "workspace_id"),
 }
 
 # Tables whose primary key IS the scope id, for scopes with no parent column.
 _ROOT_TABLE: dict[Scope, str] = {
+    Scope.WORKSPACE: "workspaces",
     Scope.BRANCH: "locations",
     Scope.WAREHOUSE: "warehouses",
     Scope.POS_PROFILE: "pos_profiles",
@@ -127,9 +129,8 @@ async def resolve_chain(
             await session.execute(text(sql), {"tid": tenant_id, "sid": current_id})
         ).scalar_one_or_none()
         if parent_id is None:
-            # Optional parent (e.g. a warehouse not attached to a branch): skip it.
-            if parent_scope is Scope.BRANCH:
-                break
+            # Optional parent (a warehouse not attached to a branch): the chain ends here and
+            # falls straight to the tenant, exactly as it did before workspaces were a scope.
             break
         chain.append(ScopeLink(parent_scope, parent_id))
         current_scope, current_id = parent_scope, parent_id

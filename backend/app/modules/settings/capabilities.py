@@ -132,15 +132,39 @@ def capability_enabled(
     return defaults_for(vertical)[name]
 
 
-async def shop_capabilities(session: AsyncSession, tenant_id: UUID) -> dict[str, object]:
+async def shop_capabilities(
+    session: AsyncSession, tenant_id: UUID, *, workspace_id: UUID | None = None
+) -> dict[str, object]:
     """The shop's vertical and the final answer for every capability, as its owner has set them.
 
     The reply is the resolved answer, never a rule: no client works out what a vertical implies.
+
+    One account can run several activities, each its own workspace with its own vertical and
+    capabilities. ``workspace_id`` names the activity; left out, it is the workspace the request
+    is in. A request in no workspace (and any worker) reads the account's own values, which is
+    exactly what every shop got before workspaces had settings, so nothing changes for it.
     """
+    from app.core.tenancy import current_scope
+    from app.modules.settings.registry import Scope
+    from app.modules.settings.scope_graph import UnknownScopeError
     from app.modules.settings.service import SettingsService  # settings reads itself lazily
 
+    if workspace_id is None:
+        workspace_id = current_scope()[0]
     keys = ["business.vertical", *(f"capability.{n}" for n in CAPABILITIES)]
-    resolved = await SettingsService(session, tenant_id).resolve_many(keys)
+    service = SettingsService(session, tenant_id)
+    resolved = None
+    if workspace_id is not None:
+        try:
+            resolved = await service.resolve_many(
+                keys, scope=Scope.WORKSPACE, scope_id=workspace_id
+            )
+        except UnknownScopeError:
+            # The workspace went away between the request being admitted and this read. A sale
+            # must not fail over a setting, so it reads the account's own answer instead.
+            resolved = None
+    if resolved is None:
+        resolved = await service.resolve_many(keys)
     vertical = resolved["business.vertical"].value
     # Only a setting the owner actually set is a choice; an untouched one is the registry's
     # default (False) and must not outrank the vertical.

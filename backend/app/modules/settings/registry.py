@@ -37,6 +37,7 @@ class SettingType(enum.StrEnum):
 
 class Scope(enum.StrEnum):
     TENANT = "tenant"
+    WORKSPACE = "workspace"
     BRANCH = "branch"
     WAREHOUSE = "warehouse"
     POS_PROFILE = "pos_profile"
@@ -55,7 +56,10 @@ SEGMENTS: tuple[str, ...] = ("retail", "fnb", "services", "wholesale")
 # Branches inherit from tenant, warehouses from branch, etc.
 SCOPE_PARENT: dict[Scope, Scope | None] = {
     Scope.TENANT: None,
-    Scope.BRANCH: Scope.TENANT,
+    # One business activity of the account (a clothes shop, a distribution company). A branch sits
+    # inside a workspace, so a value set here reaches every branch under it.
+    Scope.WORKSPACE: Scope.TENANT,
+    Scope.BRANCH: Scope.WORKSPACE,
     Scope.WAREHOUSE: Scope.BRANCH,
     Scope.POS_PROFILE: Scope.WAREHOUSE,
     Scope.REGISTER: Scope.POS_PROFILE,
@@ -415,7 +419,7 @@ _reg(
         domain="business",
         type=SettingType.ENUM,
         default=DEFAULT_VERTICAL,
-        scopes=(Scope.TENANT,),
+        scopes=(Scope.TENANT, Scope.WORKSPACE),
         allowed_values=VERTICALS,
         label_ar="قطاع النشاط",
         label_en="Industry",
@@ -438,7 +442,7 @@ for _cap in CAPABILITIES.values():
             domain="business",
             type=SettingType.BOOL,
             default=False,
-            scopes=(Scope.TENANT,),
+            scopes=(Scope.TENANT, Scope.WORKSPACE),
             label_ar=_cap.label_ar,
             label_en=_cap.label_en,
             description_ar=_cap.description_ar,

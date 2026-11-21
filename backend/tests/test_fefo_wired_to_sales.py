@@ -17,8 +17,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.modules.purchasing.models  # noqa: F401 - registers the suppliers table
+from app.core.tenancy import reset_current_scope, set_current_scope
 from app.modules.catalog.service import CatalogService
 from app.modules.customers.service import CustomerService
+from app.modules.identity.models import Workspace
 from app.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
 from app.modules.inventory.service import InventoryReservationService, InventoryService
 from app.modules.inventory.services.expiry import consumption_order
@@ -234,3 +236,34 @@ async def test_a_transfer_ships_oldest_received_first_when_fefo_is_off(
     await _ship_three(db, tid, wh, variant)
 
     assert await _left(db, variant.id) == {"LATE-EXPIRY": 2, "SOON-EXPIRY": 5}
+
+
+async def test_a_sale_follows_the_workspace_it_is_made_in(db: AsyncSession, tenant_ctx) -> None:
+    """Two activities under one account: only the workspace that picks FEFO sells that way."""
+    tid = tenant_ctx.tenant_id
+    pharmacy = Workspace(tenant_id=tid, name="p", slug=f"p-{uuid.uuid4().hex[:6]}")
+    clothes = Workspace(tenant_id=tid, name="c", slug=f"c-{uuid.uuid4().hex[:6]}")
+    db.add_all([pharmacy, clothes])
+    await db.flush()
+    await SettingsService(db, tid).set(
+        "capability.fefo_picking", True, scope="workspace", scope_id=pharmacy.id
+    )
+
+    token = set_current_scope(pharmacy.id, None)
+    try:
+        wh, variant = await _shop_stock(db, tid)
+        await _paid_order(db, tid, wh, variant, qty=3)
+        in_pharmacy = await _left(db, variant.id)
+    finally:
+        reset_current_scope(token)
+
+    token = set_current_scope(clothes.id, None)
+    try:
+        wh2, variant2 = await _shop_stock(db, tid)
+        await _paid_order(db, tid, wh2, variant2, qty=3)
+        in_clothes = await _left(db, variant2.id)
+    finally:
+        reset_current_scope(token)
+
+    assert in_pharmacy == {"LATE-EXPIRY": 5, "SOON-EXPIRY": 2}  # soonest-expiring first
+    assert in_clothes == {"LATE-EXPIRY": 2, "SOON-EXPIRY": 5}  # oldest-received first
