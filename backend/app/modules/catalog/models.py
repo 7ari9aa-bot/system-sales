@@ -326,3 +326,31 @@ class ProductBundleLine(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixi
             name="uq_product_bundle_lines_tenant_bundle_variant",
         ),
     )
+
+
+class ShopSizeSet(TenantMixin, TimestampMixin, IdMixin, Base):
+    """One named size set the shop offers (men's, babies', shoes), its sizes in rack order.
+
+    A shop that saved none is shown the built-in sets, so a row here means the owner chose. The
+    sizes are stored in the order the owner gave and read back in that order.
+    """
+
+    __tablename__ = "shop_size_sets"
+
+    name: Mapped[str] = mapped_column(String(63))
+    sizes: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    position: Mapped[int] = mapped_column(Integer, server_default="0")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_shop_size_sets_tenant_name"),)
+
+
+class ShopColour(TenantMixin, TimestampMixin, IdMixin, Base):
+    """One colour the shop sells, with an optional swatch, in the order the owner gave."""
+
+    __tablename__ = "shop_colours"
+
+    name: Mapped[str] = mapped_column(String(63))
+    hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, server_default="0")
+
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_shop_colours_tenant_name"),)

@@ -201,6 +201,8 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.take_payments",  # pos/service.py::record_sale
         "pos.allow_sale_on_account",  # pos/service.py::record_sale
         "pos.reference_required_methods",  # pos/service.py::record_sale
+        "pos.variance_reason_required",  # pos/service.py::close_session
+        "pos.variance_approval_threshold",  # pos/service.py::close_session
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
@@ -598,6 +600,52 @@ _reg(
         description_en=(
             "Payment methods that need an approval or transfer number typed by the cashier "
             "(a card terminal slip number, an instant-transfer reference)."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.variance_reason_required",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="سبب الفرق إجباري عند إغلاق الدرج",
+        label_en="Require a Reason for a Drawer Variance",
+        description_ar=(
+            "عند التفعيل لا يُقفل الدرج إذا كان المعدود يختلف عن المتوقع إلا بكتابة سبب الفرق. "
+            "يعمل فقط حيث يُسجَّل الدفع ويُعدّ الدرج."
+        ),
+        description_en=(
+            "When on, a drawer whose count differs from the expected cash cannot close without a "
+            "written reason. Applies only where the till takes payments and counts its drawer."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.variance_approval_threshold",
+        domain="pos",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        min_value=0,
+        max_value=1_000_000,
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="حدّ فرق الدرج الذي يحتاج موافقة مدير",
+        label_en="Drawer Variance That Needs a Manager",
+        description_ar=(
+            "فرق أكبر من هذا المبلغ (عجزاً أو زيادة) لا يُقفل الدرج معه إلا بموافقة من يملك "
+            "صلاحية المدير، ويُسجَّل اسمه ووقت الموافقة. صفر يعني لا حدّ."
+        ),
+        description_en=(
+            "A drawer variance larger than this amount (short or over) can only close with a "
+            "manager's approval, recorded with their name and time. Zero means no limit."
         ),
     )
 )
