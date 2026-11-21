@@ -33,6 +33,20 @@ export function fbAge(iso, lang = "ar") {
   return new Date(iso).toLocaleDateString(ar ? "ar-EG" : "en-GB", { day: "numeric", month: "short", year: days > 330 ? "numeric" : undefined });
 }
 
+/** How many comments a post shows before "View more comments", and each click opens. */
+export const COMMENTS_PER_STEP = 5;
+
+/** The slice of a post's comments to draw after `steps` clicks of "View more comments".
+ *  The newest stay in view, as on Facebook; `hidden` is what is still folded away and `next` how many
+ *  the next click opens. */
+export function commentWindow(comments, steps) {
+  const list = comments || [];
+  const size = COMMENTS_PER_STEP * (1 + Math.max(0, steps || 0));
+  const shown = list.length > size ? list.slice(list.length - size) : list;
+  const hidden = list.length - shown.length;
+  return { shown, hidden, next: Math.min(COMMENTS_PER_STEP, hidden) };
+}
+
 /** Comments arrive flat with parent ids; a reply nests under its parent (Facebook threads are one level deep). */
 export function toFacebookComments(items, lang = "ar", pageName = "") {
   const visible = (items || []).filter((c) => c.status !== "removed");
