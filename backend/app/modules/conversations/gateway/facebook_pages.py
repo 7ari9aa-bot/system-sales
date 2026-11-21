@@ -96,6 +96,10 @@ def page_token_and_id(credentials: ProviderCredentials) -> tuple[str, str]:
     return str(token), str(page_id)
 
 
+#: Pictures in one Page post. Meta takes more, but a longer album fails often and half-uploads.
+MAX_PHOTOS_PER_POST = 10
+
+
 class FacebookPagesClient:
     def __init__(self, *, api_version: str = INSTAGRAM_API_VERSION):
         self._base = f"https://graph.facebook.com/{api_version}"
@@ -190,18 +194,33 @@ class FacebookPagesClient:
         message: str | None = None,
         link: str | None = None,
         photo_url: str | None = None,
+        photo_urls: list[str] | None = None,
         schedule_at: datetime | int | None = None,
         _client=None,
     ) -> str:
-        """Publish now, or schedule. A photo goes to /photos, everything else to /feed."""
+        """Publish now, or schedule. One photo goes to /photos, several to /feed as attached media,
+        everything else to /feed."""
         message = (message or "").strip() or None
-        if not (message or link or photo_url):
+        photos = [u for u in (photo_urls or []) if u]
+        if photo_url and photos:
+            raise ValueError(
+                "a post carries a picture or a link, not both: send one form of picture"
+            )
+        if len(photos) > MAX_PHOTOS_PER_POST:
+            raise ValueError(f"a post carries at most {MAX_PHOTOS_PER_POST} pictures")
+        if len(photos) == 1:
+            photo_url, photos = photos[0], []
+        if not (message or link or photo_url or photos):
             raise ValueError("a post needs text, a link or a picture")
         if message and len(message) > MAX_POST_CHARS:
             raise ValueError(f"a post is at most {MAX_POST_CHARS:,} characters")
-        if photo_url and link:
+        if (photo_url or photos) and link:
             raise ValueError("a post carries a picture or a link, not both")
         _, page_id = self._creds(credentials)
+        if photos:
+            return await self._publish_album(
+                credentials, page_id, message, photos, schedule_at, _client
+            )
         data: dict[str, Any] = {}
         if message:
             data["caption" if photo_url else "message"] = message
@@ -216,6 +235,38 @@ class FacebookPagesClient:
         body = await self._graph(
             "POST", f"{page_id}/{edge}", credentials, data=data, _client=_client
         )
+        return str(body.get("post_id") or body.get("id"))
+
+    async def _publish_album(
+        self, credentials, page_id: str, message, photos: list[str], schedule_at, _client
+    ) -> str:
+        """Several pictures: upload each unpublished, then one /feed post lists their ids.
+
+        Meta has no single call for it. The time to publish belongs to the post, not to the photos,
+        so a scheduled album schedules the feed post and leaves the uploads unpublished.
+        """
+        when = check_schedule(schedule_at) if schedule_at is not None else None
+        ids: list[str] = []
+        for url in photos:
+            up = await self._graph(
+                "POST",
+                f"{page_id}/photos",
+                credentials,
+                data={"url": url, "published": "false"},
+                _client=_client,
+            )
+            if not up.get("id"):
+                raise ValueError("Facebook did not accept one of the pictures")
+            ids.append(str(up["id"]))
+        data: dict[str, Any] = {
+            f"attached_media[{i}]": _json({"media_fbid": pid}) for i, pid in enumerate(ids)
+        }
+        if message:
+            data["message"] = message
+        if when is not None:
+            data["published"] = "false"
+            data["scheduled_publish_time"] = str(when)
+        body = await self._graph("POST", f"{page_id}/feed", credentials, data=data, _client=_client)
         return str(body.get("post_id") or body.get("id"))
 
     async def update_post(

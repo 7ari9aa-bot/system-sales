@@ -71,6 +71,9 @@ def _media_type(post: dict) -> str:
     return kind.upper() or "STATUS"
 
 
+from app.modules.conversations.gateway.facebook_pages import MAX_PHOTOS_PER_POST  # noqa: E402
+
+
 class FacebookService:
     @staticmethod
     async def sync_posts(
@@ -244,6 +247,46 @@ class FacebookService:
                 await storage.delete_objects([stored.storage_key])
             except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
                 _logger.warning("facebook.publish.cleanup_failed")
+
+    @staticmethod
+    async def publish_pictures(
+        session, tenant_id, credentials: dict, *, pictures: list[bytes], **kw
+    ) -> str:
+        """Publish a post with several picture FILES (an album), not links someone else hosts.
+
+        Each file waits in private storage just long enough for Facebook to fetch it through its own
+        short signed link, and every one that was stored is removed afterwards, whatever happens,
+        including a storage failure part way through.
+        """
+        if len(pictures) > MAX_PHOTOS_PER_POST:
+            raise ValidationError(f"a post carries at most {MAX_PHOTOS_PER_POST} pictures")
+        kinds = [FacebookService.check_picture(p) for p in pictures]  # all checked before any store
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so pictures cannot be posted yet")
+        keys: list[str] = []
+        try:
+            links: list[str] = []
+            for data, kind in zip(pictures, kinds, strict=True):
+                stored = await storage.store(
+                    FetchedMedia(data=data, content_type=kind, checksum=""),
+                    prefix=f"social-outbox/{tenant_id}",
+                )
+                if not stored.storage_key:
+                    raise ConflictError("a picture could not be stored for publishing")
+                keys.append(stored.storage_key)
+                links.append(
+                    storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+                )
+            return await FacebookService.publish(
+                session, tenant_id, credentials, photo_urls=links, **kw
+            )
+        finally:
+            if keys:
+                try:
+                    await storage.delete_objects(keys)
+                except Exception:  # noqa: BLE001 - leftover temp files must not hide the result
+                    _logger.warning("facebook.publish.cleanup_failed")
 
     # ---- Reels and Stories ----
     @staticmethod

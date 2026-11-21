@@ -114,9 +114,10 @@ _CONVERSATION_MEDIA_UPLOAD_PATH = re.compile(r"^/conversations/[0-9a-fA-F-]{36}/
 # the largest post the publish screen allows; tests/test_body_limit_social_posts.py checks that.
 MAX_SOCIAL_POST_BYTES = 112 * 1024 * 1024
 _SOCIAL_POST_PATH = re.compile(r"^/social/posts$")
-# A post for a Facebook Page: one picture of up to 4 MB as base64 inside the JSON body (4/3 of the
-# file), so about 5.4 MiB plus the text. Under the 1 MiB default every real photo was a 413.
-MAX_FACEBOOK_POST_BYTES = 8 * 1024 * 1024
+# A post for a Facebook Page: up to 10 pictures of up to 4 MB each as base64 inside the JSON body
+# (4/3 of the file), so about 54 MiB plus the text. Under the 1 MiB default every real photo was a
+# 413. 60 MiB holds the largest album the publish screen allows (test_facebook_multi_photo.py).
+MAX_FACEBOOK_POST_BYTES = 60 * 1024 * 1024
 _FACEBOOK_POST_PATH = re.compile(r"^/facebook/posts$")
 # A Reel or a Story for a Facebook Page: the raw file is the body (no base64), so this is also the
 # exact file limit. It is the video ceiling facebook_video.MAX_VIDEO_BYTES (Meta states none, so a

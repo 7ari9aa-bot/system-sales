@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 602,
-    "sha256": "ee8538213baa1addfe48b2e27b2a6f133e65ea96278a9d35001f4eb5c737b236",
+    "sha256": "8d1676eab3d9f752cfee5c07cf606ce5f6fe7d6a550d044ee3a7bc7b5bc6653e",
     "typed_operations": 337
   },
   "spec": {
@@ -16164,7 +16164,7 @@
           "type": "object"
         },
         "PublishRequest": {
-          "description": "Text, a link, or one picture; `schedule_at` schedules it.\n\nThe picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public\nhttps link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.",
+          "description": "Text, a link, or pictures; `schedule_at` schedules it.\n\nThe picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public\nhttps link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.",
           "properties": {
             "link": {
               "anyOf": [
@@ -16215,6 +16215,15 @@
                 }
               ],
               "title": "Picture"
+            },
+            "pictures": {
+              "description": "Several picture files (base64), posted as one album.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "title": "Pictures",
+              "type": "array"
             },
             "schedule_at": {
               "anyOf": [
