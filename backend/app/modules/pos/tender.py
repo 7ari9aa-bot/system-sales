@@ -190,3 +190,39 @@ def expected_drawer_cash(
 def variance(*, counted: Decimal, expected: Decimal) -> Decimal:
     """Counted minus expected: positive is an overage, negative a shortage."""
     return to_money(to_money(counted, "counted") - to_money(expected, "expected"), "variance")
+
+
+VARIANCE_REASON_MAX = 500
+
+
+def check_close_variance(
+    *,
+    variance_amount: Decimal,
+    reason: object,
+    reason_required: bool,
+    approval_threshold: Decimal,
+    may_approve: bool,
+) -> tuple[str | None, bool]:
+    """What a drawer close must carry when the count did not match the expected cash.
+
+    Returns ``(reason_to_store, approved)``. A drawer that matched stores nothing and needs
+    nothing. A gap needs its reason (when the owner requires one), and a gap above the owner's
+    limit needs a manager. Approval is recorded, never forbidden: the owner is often the only
+    cashier, so a manager closing their own shift is the normal case.
+
+    The reason is checked before the approval so the cashier is told the cheaper thing first.
+    """
+    if variance_amount == 0:
+        return None, False
+    text = str(reason).strip() if reason is not None else ""
+    if reason_required and not text:
+        raise ValidationError("the drawer is off: variance_reason is required to close")
+    if len(text) > VARIANCE_REASON_MAX:
+        raise ValidationError(f"variance_reason must be at most {VARIANCE_REASON_MAX} characters")
+    needs_approval = approval_threshold > 0 and abs(variance_amount) > approval_threshold
+    if needs_approval and not may_approve:
+        raise ValidationError(
+            f"the drawer is off by {abs(variance_amount)}, above the {approval_threshold} limit: "
+            "manager approval is required to close"
+        )
+    return (text or None), needs_approval

@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,7 +44,13 @@ from app.modules.pos.models import (
 )
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.receipt_reads import PosReceiptReads
-from app.modules.pos.tender import expected_drawer_cash, parse_lines, settle, variance
+from app.modules.pos.tender import (
+    check_close_variance,
+    expected_drawer_cash,
+    parse_lines,
+    settle,
+    variance,
+)
 
 _SALE_METHODS = {"cash", "card", "wallet", "bank_transfer"}
 _NUMBER_ATTEMPTS = 3
@@ -1642,6 +1648,7 @@ class PosService(PosReceiptReads):
         closed_by: UUID | None = None,
         shift_override: bool = False,
         counted_cash: object = None,
+        variance_reason: object = None,
     ) -> PosSession:
         """OPEN → CLOSED. The day is RECORDED; it is counted only where the shop counts.
 
@@ -1670,14 +1677,36 @@ class PosService(PosReceiptReads):
             counted = to_money(counted_cash, "counted_cash")
             if counted < 0:
                 raise ValidationError("counted_cash cannot be negative")
-        elif counted_cash is not None:
+        elif counted_cash is not None or variance_reason is not None:
             raise ValidationError(
                 "this till does not count a drawer: turn on pos.take_payments or send no count"
             )
         expected: Decimal | None = None
+        reason_to_store: str | None = None
+        approved = False
         if counted is not None:
             expected = Decimal(
                 (await PosService.drawer_summary(session, tenant_id, session_id))["expected_cash"]
+            )
+            # Everything that can refuse the close runs BEFORE the day is recorded as closed, so a
+            # refusal never leaves a closed day behind.
+            reason_to_store, approved = check_close_variance(
+                variance_amount=variance(counted=counted, expected=expected),
+                reason=variance_reason,
+                reason_required=bool(
+                    await PosService._setting(
+                        session, tenant_id, "pos.variance_reason_required", pos_session
+                    )
+                ),
+                approval_threshold=Decimal(
+                    str(
+                        await PosService._setting(
+                            session, tenant_id, "pos.variance_approval_threshold", pos_session
+                        )
+                        or 0
+                    )
+                ),
+                may_approve=shift_override,
             )
         await PosService._record_close(session, tenant_id, pos_session, closed_by=closed_by)
         if counted is not None and expected is not None:
@@ -1688,6 +1717,10 @@ class PosService(PosReceiptReads):
             pos_session.counted_cash = counted
             pos_session.expected_cash = expected
             pos_session.variance = variance(counted=counted, expected=expected)
+            pos_session.variance_reason = reason_to_store
+            if approved:
+                pos_session.variance_approved_by_user_id = closed_by
+                pos_session.variance_approved_at = datetime.now(UTC)
             await session.flush()
         return pos_session
 
@@ -2082,6 +2115,68 @@ class PosService(PosReceiptReads):
             .all()
         )
         return list(rows)
+
+    @staticmethod
+    async def cashier_custody(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        start: datetime,
+        end: datetime,
+    ) -> list[dict]:
+        """Per cashier over ``[start, end)``: the cash they were answerable for and how far off.
+
+        Built from shifts CLOSED in the period, in one grouped query. Only a shift that counted
+        its drawer has cash to account for: one that did not (the till takes no payments) adds to
+        the shift count but to no money figure, so it can never read as a perfect zero. The
+        biggest shortfall comes first, because that is the row the owner needs to see.
+        """
+        if end <= start:
+            raise ValidationError("the period must end after it starts")
+        counted = PosSession.counted_cash.is_not(None)
+        var = PosSession.variance
+        shortage = func.coalesce(func.sum(case((counted & (var < 0), -var), else_=0)), 0)
+        overage = func.coalesce(func.sum(case((counted & (var > 0), var), else_=0)), 0)
+        rows = (
+            await session.execute(
+                select(
+                    PosSession.cashier_user_id,
+                    func.count(PosSession.id),
+                    func.count(PosSession.counted_cash),
+                    func.coalesce(func.sum(PosSession.expected_cash).filter(counted), 0),
+                    func.coalesce(func.sum(PosSession.counted_cash), 0),
+                    func.coalesce(func.sum(var).filter(counted), 0),
+                    shortage,
+                    overage,
+                    func.count(PosSession.id).filter(counted & (var != 0)),
+                    func.count(PosSession.variance_approved_by_user_id),
+                )
+                .where(
+                    PosSession.tenant_id == tenant_id,
+                    PosSession.status == "CLOSED",
+                    PosSession.closed_at >= start,
+                    PosSession.closed_at < end,
+                )
+                .group_by(PosSession.cashier_user_id)
+            )
+        ).all()
+        out = [
+            {
+                "cashier_user_id": str(r[0]) if r[0] is not None else None,
+                "shifts": r[1],
+                "counted_shifts": r[2],
+                "expected_cash": str(to_money(r[3], "expected")),
+                "counted_cash": str(to_money(r[4], "counted")),
+                "net_variance": str(to_money(r[5], "variance")),
+                "shortage_total": str(to_money(r[6], "shortage")),
+                "overage_total": str(to_money(r[7], "overage")),
+                "shifts_with_variance": r[8],
+                "approved_variances": r[9],
+            }
+            for r in rows
+        ]
+        out.sort(key=lambda row: (-Decimal(row["shortage_total"]), row["cashier_user_id"] or ""))
+        return out
 
     @staticmethod
     async def session_report(session: AsyncSession, tenant_id: UUID, session_id: UUID) -> dict:
