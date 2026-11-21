@@ -84,10 +84,17 @@ describe("startDayParts", () => {
 describe("startButtonLook", () => {
   it("while waiting for the number the button keeps a visible fill, border and text colour", () => {
     const { className } = startButtonLook(true);
-    expect(className).toContain("bg-orange-100");
-    expect(className).toContain("border-orange-300");
-    expect(className).toContain("text-orange-800");
+    expect(className).toContain("bg-orange-200");
+    expect(className).toContain("border-orange-500");
+    expect(className).toContain("text-orange-950");
     expect(className).toContain("disabled:opacity-100");
+  });
+
+  it("while waiting it is tall and bold enough to read as the main button of the card", () => {
+    const { className } = startButtonLook(true);
+    expect(className).toContain("h-11");
+    expect(className).toContain("font-bold");
+    expect(className).toContain("border-2");
   });
 
   it("once it can be pressed it uses the normal primary look, with no waiting colours", () => {
@@ -105,7 +112,7 @@ describe("the waiting start button after the real class merge", () => {
     const c = merged(true);
     expect(c).not.toContain("disabled:opacity-50");
     expect(c).not.toContain("bg-primary");
-    expect(c).toContain("bg-orange-100");
+    expect(c).toContain("bg-orange-200");
     expect(c).toContain("disabled:opacity-100");
   });
 
