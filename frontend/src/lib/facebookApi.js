@@ -59,6 +59,7 @@ export function toFacebookComments(items, lang = "ar", pageName = "") {
         timeLabel: fbAge(c.commented_at, lang),
         commentedAt: c.commented_at,
         text: c.body || "",
+        authorRef: c.author_ref || null,
         likes: c.like_count || 0,
         isPage: !!c.is_page_reply,
         hidden: c.status === "hidden",
@@ -135,9 +136,28 @@ export const editFacebookPost = (postId, message) =>
   api(`/facebook/posts/${enc(postId)}`, { method: "PATCH", body: { message } });
 export const deleteFacebookPost = (postId) => api(`/facebook/posts/${enc(postId)}`, { method: "DELETE" });
 
-/** A comment on a post, or a reply when `objectId` is a comment. */
-export const commentOn = (objectId, text) =>
-  api(`/facebook/objects/${enc(objectId)}/comments`, { method: "POST", body: { text } });
+/** A comment on a post, or a reply when `objectId` is a comment. `mention` is the ids of people who
+ *  commented, to tag (Meta's @mention); left out, the body is just the text. */
+export const commentOn = (objectId, text, mention) =>
+  api(`/facebook/objects/${enc(objectId)}/comments`, {
+    method: "POST",
+    body: mention?.length ? { text, mention } : { text },
+  });
+
+/** The ids a reply tags. Facebook opens a reply with the person's name in it, so a public reply tags
+ *  the commenter unless the owner removed the name. A private reply goes to one inbox and tags nobody. */
+export function replyMention(comment, { tagged, privateReply }) {
+  if (privateReply || !tagged) return undefined;
+  const handle = mentionHandle(comment);
+  return handle ? [handle.id] : undefined;
+}
+
+/** Who a reply to this comment can tag: the person who wrote it. The Page itself and anyone whose id
+ *  the server did not give cannot be tagged, so Facebook's pre-filled name is simply not offered. */
+export function mentionHandle(comment) {
+  if (!comment || comment.isPage || !comment.authorRef) return null;
+  return { id: comment.authorRef, label: comment.author };
+}
 export const likeObject = (objectId, liked) =>
   api(`/facebook/objects/${enc(objectId)}/like`, { method: "POST", body: { liked } });
 export const hideFacebookComment = (commentId, hidden) =>

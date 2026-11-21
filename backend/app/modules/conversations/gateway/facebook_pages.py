@@ -75,6 +75,24 @@ def check_schedule(when: datetime | int, *, now: float | None = None) -> int:
     return stamp
 
 
+def mention_tag(psids: list[str]) -> str:
+    """Meta's `@[PSID]` tag (`@[1,2]` for several) that notifies the people it names.
+
+    The ids come from comments already on the Page, never from typed text, so anything that is not a
+    plain number is refused before a request is made. One person is tagged once.
+    """
+    seen: list[str] = []
+    for raw in psids or []:
+        value = str(raw).strip()
+        if not value.isdigit():
+            raise ValueError("a mention needs the numeric id of someone who commented on the Page")
+        if value not in seen:
+            seen.append(value)
+    if not seen:
+        raise ValueError("a mention needs at least one person to tag")
+    return "@[" + ",".join(seen) + "]"
+
+
 def check_metrics(metrics: list[str]) -> list[str]:
     bad = [m for m in metrics if m in REMOVED_METRICS]
     if bad:
@@ -255,12 +273,24 @@ class FacebookPagesClient:
         return self._page(body)
 
     async def comment(
-        self, credentials: ProviderCredentials, object_id: str, text: str, _client=None
+        self,
+        credentials: ProviderCredentials,
+        object_id: str,
+        text: str,
+        *,
+        mention: list[str] | None = None,
+        _client=None,
     ) -> str:
-        """A comment on a post, or a reply when `object_id` is a comment."""
+        """A comment on a post, or a reply when `object_id` is a comment.
+
+        `mention` tags people who commented on the Page (Pages API: Comments and @mentions); Meta
+        notifies them. The tag leads the text, as Facebook's own reply box puts it.
+        """
         text = text.strip()
         if not text:
             raise ValueError("a comment cannot be empty")
+        if mention:
+            text = f"{mention_tag(mention)} {text}"
         body = await self._graph(
             "POST", f"{object_id}/comments", credentials, data={"message": text}, _client=_client
         )

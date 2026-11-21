@@ -35,6 +35,13 @@ class TextRequest(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
 
 
+class ReplyRequest(BaseModel):
+    """A reply, optionally tagging people who commented on the post (Meta's @mention)."""
+
+    text: str = Field(min_length=1, max_length=8000)
+    mention: list[str] = Field(default_factory=list, max_length=5)
+
+
 class HideRequest(BaseModel):
     hidden: bool = True
 
@@ -312,19 +319,25 @@ async def list_post_comments(
     if refresh:
         await FacebookService.sync_comments(ctx.session, ctx.tenant_id, creds, post_id)
     rows = await FacebookService.list_comments(ctx.session, ctx.tenant_id, post_id)
-    return {"items": [_comment_out(c) for c in rows]}
+    return {"items": [{**_comment_out(c), "author_ref": c.author_ref} for c in rows]}
 
 
 @router.post("/facebook/objects/{object_id}/comments", status_code=201)
 async def comment_or_reply(
     object_id: str,
-    body: TextRequest,
+    body: ReplyRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
     """A comment on a post, or a reply when `object_id` is a comment."""
     creds = await _credentials(ctx, send=True)
     row = await FacebookService.reply(
-        ctx.session, ctx.tenant_id, creds, object_id, body.text, user_id=ctx.user.id
+        ctx.session,
+        ctx.tenant_id,
+        creds,
+        object_id,
+        body.text,
+        user_id=ctx.user.id,
+        mention=body.mention,
     )
     return _comment_out(row)
 

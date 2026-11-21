@@ -74,6 +74,9 @@ def _media_type(post: dict) -> str:
 #: Pages of 50 comments read for one post in one refresh. A cursor that never ends stops here.
 MAX_COMMENT_PAGES = 20
 
+#: Meta takes a handful of tags in one comment, not a crowd.
+MAX_MENTIONS = 5
+
 
 class FacebookService:
     @staticmethod
@@ -403,8 +406,34 @@ class FacebookService:
         await session.flush()
 
     @staticmethod
+    def resolve_mentions(thread, wanted: list[str] | None) -> list[str]:
+        """The ids to tag, kept only if each wrote on this thread as someone other than the Page.
+
+        Meta lets a Page mention a person only when that person commented on, or created, the post
+        (Pages API: Comments and @mentions). Tagging anyone else is refused by Meta, so it is
+        refused here first, with a reason the owner can read.
+        """
+        if not wanted:
+            return []
+        ids = list(dict.fromkeys(str(w).strip() for w in wanted))
+        if len(ids) > MAX_MENTIONS:
+            raise ValidationError(f"you can tag at most {MAX_MENTIONS} people in one reply")
+        allowed = {c.author_ref for c in thread if c.author_ref and not c.is_page_reply}
+        stray = [i for i in ids if i not in allowed]
+        if stray:
+            raise ValidationError("you can only tag people who commented on this post")
+        return ids
+
+    @staticmethod
     async def reply(
-        session, tenant_id, credentials: dict, object_id: str, text: str, *, user_id=None
+        session,
+        tenant_id,
+        credentials: dict,
+        object_id: str,
+        text: str,
+        *,
+        user_id=None,
+        mention: list[str] | None = None,
     ):
         """Comment on a post, or reply to a comment (Facebook threads are one level deep)."""
         post = await FacebookService.get_post(session, tenant_id, object_id)
@@ -416,8 +445,24 @@ class FacebookService:
             post_id, root = target.post_id, target.parent_comment_id or target.comment_id
         else:
             post_id, root = post.post_id, post.post_id
+        tags: list[str] = []
+        if mention:
+            thread = (
+                (
+                    await session.execute(
+                        select(SocialComment).where(
+                            SocialComment.tenant_id == tenant_id,
+                            SocialComment.platform == PLATFORM,
+                            SocialComment.post_id == post_id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            tags = FacebookService.resolve_mentions(thread, mention)
         try:
-            new_id = await facebook_pages.comment(credentials, root, text)
+            new_id = await facebook_pages.comment(credentials, root, text, mention=tags or None)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         now = datetime.now(UTC)
