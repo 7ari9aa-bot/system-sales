@@ -45,10 +45,14 @@ Real side: Meta Business Suite and the Page itself, for Page 61595629975011. Our
 
 Not verified here: the Reels publishing flow on real Facebook (no reel was published), and the Stories tab.
 
+## Branch state
+
+`feat/facebook-full-parity` now contains every feature branch, each merged with `--no-ff` so the history keeps them apart: feat/facebook-comment-look (19da5e0e), feat/facebook-comment-order (dbbed9ff), feat/facebook-post-card-look, and the three matrix branches feat/facebook-matrix-engage, feat/facebook-matrix-insights, feat/facebook-matrix-publish. Nothing is merged to main. Backend check on the merged tree: `pytest tests/test_facebook_pages.py` 11 passed (the full backend suite is never run, per the standing rule).
+
 ## Open items, not done
 
 - Page liking a comment the Page itself wrote: Meta's docs are silent. Left hidden until tested against the real API.
-- Shares count: the API returns `shares`, the app asks for it and drops it. Needs a new column on `social_posts` plus a migration, so it needs the owner's go-ahead.
+- Shares count: done on its own branch, feat/facebook-shares-count (93655bbd backend with migration fe2026112013, 8e2d262d screen). It is cut from main, not from this branch, so it merges separately. Not deployed.
 - Comment order ("most relevant" vs "newest"): the gateway now accepts `order` (branch feat/facebook-comment-order, commit dbbed9ff, 2 backend tests that failed before the change and pass after). It is NOT shown on the screen. The Posts page reads comments from our own database, which has no Meta ranking, so a "Most relevant" button would be fake. "Newest" could be done locally by reversing `commented_at`. Needs the owner's call on whether to ship only that.
 - Publishing matrix: reels are confirmed against Meta's reference; stories, pin, live, albums, events, polls and call-to-action are UNVERIFIED because Meta's own pages did not load from the sandbox. Nothing there is claimed either way.
 - The ranked list of MISSING-ALLOWED items is in the two matrix files above.
