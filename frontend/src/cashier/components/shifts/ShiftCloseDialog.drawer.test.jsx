@@ -59,3 +59,26 @@ describe("before the preview has loaded", () => {
     expect(confirmDisabled(html)).toBe(true);
   });
 });
+
+describe("the returns row", () => {
+  // A day whose returns net to a few piastres must not read "-0.00" on the screen the cashier confirms.
+  const withReturns = (returns_total) => render({ preview: { ...preview(false), returns_total }, drawer: null });
+
+  it("writes a plain zero when the returns round to nothing", () => {
+    const html = withReturns("0.00");
+    expect(html).not.toContain("−0.00");
+    expect(html).not.toContain("-0.00");
+    expect(html).toContain("0.00");
+  });
+
+  it("keeps the minus sign on a real return", () => {
+    const html = withReturns("120.50");
+    expect(html).toContain("−120.50");
+  });
+
+  it("never writes a double minus when the server already sent one", () => {
+    const html = withReturns("-120.50");
+    expect(html).toContain("−120.50");
+    expect(html).not.toContain("−−");
+  });
+});

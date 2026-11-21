@@ -4,7 +4,7 @@ import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Input } from "@/cashier/components/ui/input";
 import { Textarea } from "@/cashier/components/ui/textarea";
-import { fmtMoney } from "@/cashier/lib/format";
+import { fmtMoney, fmtMoneyDeduction } from "@/cashier/lib/format";
 import { closeProblems, countsDrawer, gapMinor } from "@/cashier/api/closePlan";
 
 // إغلاق اليوم: تسجيل لما حدث فقط (رصيد البداية + الفواتير − المرتجعات)، وليس جردًا للدرج.
@@ -64,7 +64,7 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
             </div>
             <div className="num flex justify-between py-0.5">
               <span className="text-muted-foreground">إجمالي المرتجعات ({ready ? preview.return_count : "…"})</span>
-              <span className="text-rose-600">−{money(preview?.returns_total)}</span>
+              <span className="text-rose-600">{ready ? fmtMoneyDeduction(preview?.returns_total) : "…"}</span>
             </div>
             <div className="num mt-1 flex justify-between border-t border-border pt-1.5 font-bold">
               <span>رصيد نهاية اليوم</span>

@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import { toMinor } from "@/cashier/api/money";
 import { PAYMENT_LABEL, RECEIPT_LABEL, RETURN_STATUS_LABEL, SETTLEMENT_LABEL } from "@/cashier/api/purchasingAdapter";
-import { fmtDate, fmtInt, fmtMoney } from "@/cashier/lib/format";
+import { fmtDate, fmtInt, fmtMoney, fmtMoneyDeduction } from "@/cashier/lib/format";
 
 const TONE = { unpaid: "text-amber-600", partial: "text-sky-700", paid: "text-emerald-700" };
 
@@ -118,7 +118,7 @@ export default function SupplierHistoryDialog({ open, onOpenChange, supplier, or
           </div>
           <div className="rounded-lg bg-sky-50 px-3 py-2">
             <p className="text-[11px] text-sky-800">مرتجعات مخصومة</p>
-            <p className="num font-heading text-base font-bold text-sky-700">− {fmtMoney(supplier.credit)}</p>
+            <p className="num font-heading text-base font-bold text-sky-700">{fmtMoneyDeduction(supplier.credit)}</p>
           </div>
           <div className="rounded-lg bg-amber-50 px-3 py-2">
             <p className="text-[11px] text-amber-800">{owes ? "المستحق بعد المرتجعات" : "الرصيد"}</p>
