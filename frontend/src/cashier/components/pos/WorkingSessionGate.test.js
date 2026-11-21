@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gateMessage, setupAction, tillLabel } from "./WorkingSessionGate";
+import { gateMessage, setupAction, startDayParts, tillLabel } from "./WorkingSessionGate";
 
 describe("gateMessage", () => {
   it.each([
@@ -59,5 +59,22 @@ describe("tillLabel", () => {
     expect(tillLabel({})).toBe("");
     expect(tillLabel({ name: "   " })).toBe("");
     expect(tillLabel({ name: null })).toBe("");
+  });
+});
+
+describe("startDayParts", () => {
+  it("the closing dot travels with the till name so it cannot sit on its own line", () => {
+    const { lead, tail } = startDayParts({ name: "Main till" });
+    expect(tail).toBe(" (الدرج الرئيسي).");
+    expect(lead.endsWith(".")).toBe(false);
+  });
+
+  it("a till with no name still ends the sentence with a dot", () => {
+    expect(startDayParts({}).tail).toBe(".");
+    expect(startDayParts(null).tail).toBe(".");
+  });
+
+  it("a name the owner typed is kept inside the brackets", () => {
+    expect(startDayParts({ name: "درج الدور الأول" }).tail).toBe(" (درج الدور الأول).");
   });
 });

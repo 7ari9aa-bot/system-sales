@@ -35,6 +35,15 @@ export function tillLabel(register) {
   return FACTORY_TILL_NAMES.has(name.toLowerCase()) ? "الدرج الرئيسي" : name;
 }
 
+/** The opening-cash instruction. The till name and the closing dot are one unbreakable piece. */
+export function startDayParts(register) {
+  const label = tillLabel(register);
+  return {
+    lead: "عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي",
+    tail: label ? ` (${label}).` : ".",
+  };
+}
+
 /** The message for a till that cannot be used. Pure, so it can be tested without a screen. */
 export function gateMessage(state) {
   switch (state?.status) {
@@ -102,8 +111,8 @@ export function StartDay({ register, onStart, pending, error }) {
     >
       <p className="text-base font-bold">بداية اليوم</p>
       <p className="text-sm text-muted-foreground">
-        عُدّ النقدية الموجودة في الدرج الآن وسجّل المبلغ الفعلي
-        {tillLabel(register) ? <span className="whitespace-nowrap"> ({tillLabel(register)})</span> : null}.
+        {startDayParts(register).lead}
+        <span className="whitespace-nowrap">{startDayParts(register).tail}</span>
       </p>
       <label className="w-full text-start text-sm font-semibold" htmlFor="opening-balance">رصيد الدرج في بداية اليوم</label>
       <input
@@ -124,7 +133,7 @@ export function StartDay({ register, onStart, pending, error }) {
       )}
       <Button
         type="submit"
-        className="w-full disabled:border disabled:border-primary/40 disabled:bg-primary/15 disabled:text-primary disabled:opacity-100"
+        className="w-full disabled:border disabled:border-orange-300 disabled:bg-orange-100 disabled:text-orange-800 disabled:opacity-100"
         disabled={parsed === null || pending}
       >
         {pending ? "جارٍ البدء…" : "ابدأ اليوم"}
