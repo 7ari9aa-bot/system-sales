@@ -364,17 +364,29 @@ async def _park_page_choice(
     return ticket
 
 
-async def _take_page_choice(ticket: str) -> dict | None:
-    """Read AND remove a parked choice in one step, so a ticket works once."""
-    raw = await get_redis().getdel(_page_choice_key(ticket))
+def _open_parked_choice(raw) -> dict | None:
+    """Decode a parked choice and unseal its secrets; None when it is unreadable."""
     if raw is None:
         return None
     try:
         parked = json.loads(raw)
-    except ValueError:
+        parked["secrets"] = decrypt_credentials_dict(parked.pop("sealed", {}))
+    except (ValueError, TypeError, KeyError):
         return None
-    parked["secrets"] = decrypt_credentials_dict(parked.pop("sealed", {}))
     return parked
+
+
+async def _peek_page_choice(ticket: str) -> dict | None:
+    """Read a parked choice WITHOUT consuming it, so it can be checked before it is spent."""
+    return _open_parked_choice(await get_redis().get(_page_choice_key(ticket)))
+
+
+async def _take_page_choice(ticket: str) -> dict | None:
+    """Read AND remove a parked choice in one step, so a ticket works once.
+
+    The removal is the atomic part: of two requests that both passed their checks, only the one
+    whose GETDEL finds the ticket may continue."""
+    return _open_parked_choice(await get_redis().getdel(_page_choice_key(ticket)))
 
 
 async def _meta_exchange_and_connect(
@@ -901,13 +913,22 @@ async def meta_oauth_choose_page(
     parked with can be chosen — a forged page id cannot reach another Page the user manages."""
     from app.core.db import bind_tenant
 
-    parked = await _take_page_choice(body.ticket)
+    # Check BEFORE spending the ticket. It used to be burned by the first request that touched
+    # it, so a wrong id or a double click sent the owner back to the start of the OAuth.
+    parked = await _peek_page_choice(body.ticket)
     if parked is None:
         raise ValidationError("This choice expired. Press connect again.")
     if parked["tenant_id"] != str(ctx.tenant_id) or parked["user_id"] != str(ctx.user.id):
+        # Someone else is holding this ticket: that is tampering, not a slip. It dies here.
+        await _take_page_choice(body.ticket)
         raise ValidationError("This choice was not started by you. Press connect again.")
     if body.page_id not in parked["page_ids"]:
-        raise ValidationError("That Page was not one of the choices. Press connect again.")
+        # The owner's own slip. The ticket is random and useless without being the owner, so
+        # leaving it alive costs nothing and lets them choose again.
+        raise ValidationError("That Page was not one of the choices. Choose one from the list.")
+    if await _take_page_choice(body.ticket) is None:
+        # A second request got here first (a double click): exactly one may go on.
+        raise ValidationError("This choice expired. Press connect again.")
 
     provider = parked["provider"]
     secrets = parked["secrets"]
