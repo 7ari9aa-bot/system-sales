@@ -27,8 +27,9 @@ export default function Terms({ locale }) {
         locale={locale}
         kicker={c('الشروط', 'Terms')}
         title={c('شروط واضحة لبداية واضحة.', 'Clear terms for a clear start.')}
-        body={c('نسخة توضيحية غير قانونية لاستخدامها في اختبار البنية فقط، وتحتاج مراجعة قانونية قبل النشر.', 'An illustrative, non-legal draft for structure testing only. It requires legal review before publication.')}
+        body={c('الشروط التي تحكم استخدامك لمنصة FIHRIST: الحساب، ملكية البيانات، والإلغاء.', 'The terms that govern your use of the FIHRIST platform: your account, data ownership, and cancellation.')}
         icon={FileText}
+        legal
       />
       <section className="section">
         <div className="container">

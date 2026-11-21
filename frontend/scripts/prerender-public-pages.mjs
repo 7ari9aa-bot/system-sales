@@ -149,7 +149,7 @@ async function main() {
       const ownPrefix = `/${route.country}/${route.locale}`;
       const strays = [...html.matchAll(/<a\b[^>]*?\shref="(\/[^"]*)"/g)]
         .map((m) => m[1])
-        .filter((href) => /^\/(product|pricing|conversations|context|assistant|automation|security|privacy|terms|contact-sales|support|solutions|blog|en)(\/|$|[?#])/.test(href));
+        .filter((href) => /^\/(product|pricing|conversations|context|assistant|automation|security|privacy|terms|data-deletion|contact-sales|support|solutions|blog|en)(\/|$|[?#])/.test(href));
       assert.deepEqual(strays, [], `${route.path} links outside ${ownPrefix}`);
 
       const outputPath = route.path === '/'

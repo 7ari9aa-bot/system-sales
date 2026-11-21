@@ -216,7 +216,9 @@ export function PrincipleCard({ icon: Icon, locale, title }) {
   )
 }
 
-export function DetailHero({ locale, kicker, title, body, icon: Icon, variant, ctaLabel, ctaHref }) {
+// `legal` drops the decorative sales-journey card (its "Illustrative" badges do not belong on a
+// privacy policy or terms page).
+export function DetailHero({ locale, kicker, title, body, icon: Icon, variant, ctaLabel, ctaHref, legal = false }) {
   return (
     <section className="detail-hero">
       <div className="container detail-grid">
@@ -229,11 +231,11 @@ export function DetailHero({ locale, kicker, title, body, icon: Icon, variant, c
             <Button href="/product" kind="secondary">{tx(c('شاهد المنصة', 'See the platform'), locale)}</Button>
           </div>
         </div>
-        <div className="detail-visual">
+        {!legal && <div className="detail-visual">
           {variant
             ? <ProductFrame locale={locale} variant={variant}/>
             : <PrincipleCard icon={Icon} locale={locale} />}
-        </div>
+        </div>}
       </div>
     </section>
   )

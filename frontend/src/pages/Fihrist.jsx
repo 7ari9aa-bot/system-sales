@@ -12,6 +12,7 @@ import Pricing from '@/pages/fhrist/Pricing'
 import Security from '@/pages/fhrist/Security'
 import Privacy from '@/pages/fhrist/Privacy'
 import Terms from '@/pages/fhrist/Terms'
+import DataDeletion from '@/pages/fhrist/DataDeletion'
 import Support from '@/pages/fhrist/Support'
 import ContactSales from '@/pages/fhrist/ContactSales'
 import InteractiveBackground from '@/components/InteractiveBackground'
@@ -54,6 +55,7 @@ export const pageMeta = {
   security: c('الأمان وصلاحيات الوصول في منصة FIHRIST', 'Security and Access Controls for Sales Teams | FIHRIST'),
   privacy: c('سياسة الخصوصية واستخدام بيانات FIHRIST', 'FIHRIST Privacy Policy and Data Use'),
   terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
+  'data-deletion': c('حذف بياناتك من FIHRIST', 'Delete Your Data from FIHRIST'),
   'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
   support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
   selector: c('FIHRIST | اختر دولتك ولغتك - نظام المبيعات للمتاجر', 'FIHRIST | Select Country & Language - Sales OS for Stores'),
@@ -72,6 +74,7 @@ export const pageDescription = {
   security: c('تعرّف على كيفية تنظيم الوصول وصلاحيات الفريق ومراجعة سجل النشاط عند استخدام منصة FIHRIST.', 'Learn how FIHRIST organizes access, team permissions, and activity records across the sales platform.'),
   privacy: c('اقرأ سياسة الخصوصية لمعرفة المعلومات التي تستخدمها FIHRIST، وكيفية التعامل معها وإدارة طلباتك.', 'Read the privacy policy to learn what information FIHRIST uses, how it is handled, and how to manage your requests.'),
   terms: c('راجع شروط استخدام FIHRIST لإدارة حسابات الفريق ومحادثات العملاء والطلبات ومتابعة المبيعات.', 'Review the terms for using FIHRIST to manage team accounts, customer conversations, orders, and sales follow-up.'),
+  'data-deletion': c('تعرّف على طريقة حذف بياناتك التي وصلت إلى FIHRIST عبر فيسبوك أو إنستجرام، وما الذي يحدث بعد طلب الحذف.', 'Learn how to delete the data that reached FIHRIST through Facebook or Instagram, and what happens after you request deletion.'),
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
   support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
   selector: c('اختر دولتك للوصول إلى منصة FIHRIST للاطلاع على الميزات والأسعار المخصصة لسوقك في الشرق الأوسط.', 'Choose your country to access the FIHRIST platform with tailored features and pricing for your market.'),
@@ -264,7 +267,7 @@ function App() {
     localizeHtmlLinks(document.getElementById('root'), locale, resolveLocalizedPath(window.location.pathname).country ?? undefined)
   }, [locale, theme, page])
 
-  const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'contact-sales': ContactSales, support: Support }
+  const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'data-deletion': DataDeletion, 'contact-sales': ContactSales, support: Support }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => {
     if (page === 'selector') return <MarketSelectorLanding />
@@ -274,7 +277,7 @@ function App() {
     if (page === 'solutions') return <SolutionsIndex locale={locale}/>
     if (page.startsWith('solution:')) return <SolutionPage slug={page.slice('solution:'.length)} locale={locale}/>
     return page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>
-  }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/blog">{tx(c('المدونة','Blog'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
+  }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/data-deletion">{tx(c('حذف البيانات','Data deletion'), locale)}</a><a href="/blog">{tx(c('المدونة','Blog'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
 
 function ChannelChips({ locale }) {
   return <div className="channel-chips"><span>{tx(c('القنوات','Channels'), locale)}</span>{['WhatsApp','Messenger','Instagram','Email','Web chat'].map((n) => <b key={n}><i/>{n}</b>)}</div>

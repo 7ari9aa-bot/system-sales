@@ -79,6 +79,7 @@ const MarketingRoutes = () => (
         <Route path="/security" element={<Fihrist />} />
         <Route path="/privacy" element={<Fihrist />} />
         <Route path="/terms" element={<Fihrist />} />
+        <Route path="/data-deletion" element={<Fihrist />} />
         <Route path="/contact-sales" element={<Fihrist />} />
         <Route path="/support" element={<Fihrist />} />
         <Route path="/solutions/*" element={<Fihrist />} />

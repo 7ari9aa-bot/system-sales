@@ -14,6 +14,7 @@ const BREADCRUMB_LABEL = {
   security: { ar: 'الأمان', en: 'Security' },
   privacy: { ar: 'الخصوصية', en: 'Privacy' },
   terms: { ar: 'الشروط', en: 'Terms' },
+  'data-deletion': { ar: 'حذف البيانات', en: 'Data deletion' },
   'contact-sales': { ar: 'تواصل مع المبيعات', en: 'Contact sales' },
   support: { ar: 'الدعم', en: 'Support' },
   solutions: { ar: 'الحلول', en: 'Solutions' },
@@ -165,7 +166,7 @@ export function buildLlmsTxt(routes) {
       : route.key.startsWith('post:') ? BLOG_POSTS[route.key.slice('post:'.length)].description.en : '';
     return `- [${label(route)}](${absoluteUrl(route.path)})${desc ? `: ${desc}` : ''}`;
   };
-  const core = routes.filter((r) => !r.key.startsWith('solution') && !r.key.startsWith('post:') && !['privacy', 'terms'].includes(r.key));
+  const core = routes.filter((r) => !r.key.startsWith('solution') && !r.key.startsWith('post:') && !['privacy', 'terms', 'data-deletion'].includes(r.key));
   const posts = routes.filter((r) => r.key.startsWith('post:'));
   const solutions = routes.filter((r) => r.key.startsWith('solution:'));
   const english = (route) => ({ ...route, path: route.path === '/' ? '/en' : `/en${route.path}` });

@@ -20,6 +20,7 @@ const CORE_KEYS = [
   ['/security', 'security'],
   ['/privacy', 'privacy'],
   ['/terms', 'terms'],
+  ['/data-deletion', 'data-deletion'],
   ['/contact-sales', 'contact-sales'],
   ['/support', 'support'],
 ];

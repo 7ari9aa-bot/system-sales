@@ -9,7 +9,7 @@ import { COUNTRY_SLUGS, DEFAULT_COUNTRY, buildLocalizedRoute } from './public-se
 
 const LOCALIZED_FIRST_SEGMENTS = new Set([
   '', 'product', 'conversations', 'context', 'assistant', 'automation', 'pricing',
-  'security', 'privacy', 'terms', 'contact-sales', 'support', 'solutions', 'blog',
+  'security', 'privacy', 'terms', 'data-deletion', 'contact-sales', 'support', 'solutions', 'blog',
 ])
 
 const ALREADY_PREFIXED = new RegExp(`^/(${COUNTRY_SLUGS.join('|')})(/|$)`)

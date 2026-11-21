@@ -20,6 +20,13 @@ const rightsPoints = [
   { title: c('الحذف', 'Deletion'), body: c('احذف حسابك وكل بياناتك نهائيًا عند الطلب.', 'Delete your account and all your data permanently on request.') },
 ]
 
+const metaPoints = [
+  { title: c('ما نقرؤه', 'What we read'), body: c('رسائل صفحتك وتعليقات منشوراتها وبيانات الملف العام للمرسل (الاسم ومعرّف التطبيق) بعد أن يربط التاجر صفحته بإذنه.', 'Your Page\'s messages, the comments on its posts and the sender\'s public profile data (name and app-scoped ID), after the merchant connects the Page with their consent.') },
+  { title: c('ما نفعله به', 'What we do with it'), body: c('نعرضه لفريق التاجر في صندوق الوارد، ونتيح الرد والنشر والإعجاب من الصفحة نفسها. لا نبيعه ولا نستخدمه للإعلانات.', 'We show it to the merchant\'s team in the inbox and let them reply, post and like as the Page. We never sell it or use it for advertising.') },
+  { title: c('الصلاحيات المطلوبة', 'Permissions we request'), body: c('pages_manage_metadata وpages_read_user_content وpages_manage_posts وpages_manage_engagement، وكلها على صفحة اختارها التاجر فقط.', 'pages_manage_metadata, pages_read_user_content, pages_manage_posts and pages_manage_engagement, all limited to a Page the merchant chose.') },
+  { title: c('حذف بياناتك من فيسبوك', 'Deleting your Facebook data'), body: c('أزل التطبيق من إعدادات فيسبوك أو اتبع التعليمات في صفحة حذف البيانات.', 'Remove the app in your Facebook settings or follow the instructions on the data deletion page.'), href: '/data-deletion' },
+]
+
 export default function Privacy({ locale }) {
   return (
     <>
@@ -27,8 +34,9 @@ export default function Privacy({ locale }) {
         locale={locale}
         kicker={c('الخصوصية', 'Privacy')}
         title={c('ما البيانات؟ لماذا؟ وكم تبقى؟', 'What data? Why? And for how long?')}
-        body={c('صفحة توضيحية تشرح أنواع البيانات وأغراض استخدامها وحقوق أصحابها.', 'An illustrative page explaining data types, purposes, and user rights.')}
+        body={c('ما نجمعه من بيانات، ولماذا، وحقوقك، بما فيها البيانات التي تصلنا عبر فيسبوك وإنستجرام.', 'What data we collect, why, and your rights, including the data that reaches us through Facebook and Instagram.')}
         icon={LockKeyhole}
+        legal
       />
       <section className="section">
         <div className="container">
@@ -60,7 +68,17 @@ export default function Privacy({ locale }) {
           <DetailPoints points={rightsPoints} locale={locale} />
         </div>
       </section>
-
+      <section className="section section-features">
+        <div className="container">
+          <SectionIntro
+            kicker={tx(c('فيسبوك وإنستجرام', 'Facebook & Instagram'), locale)}
+            title={tx(c('بيانات ميتا: ما نقرؤه ولماذا.', 'Meta data: what we read and why.'), locale)}
+            body={tx(c('نصل إلى صفحتك فقط بعد موافقتك، وبأقل الصلاحيات اللازمة.', 'We reach your Page only after your consent, with the minimum permissions needed.'), locale)}
+          />
+          <DetailPoints points={metaPoints} locale={locale} />
+          <p style={{ textAlign: 'center', marginTop: 24 }}><a href="/data-deletion">{tx(c('تعليمات حذف البيانات', 'Data deletion instructions'), locale)}</a></p>
+        </div>
+      </section>
     </>
   )
 }
