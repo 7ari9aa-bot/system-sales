@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { messengerTarget } from "./messengerTarget";
 import { InboxProvider, useInbox } from "@/pages/inbox/InboxProvider";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import FacebookNewPostDialog from "@/components/facebook/FacebookNewPostDialog";
@@ -21,7 +22,8 @@ function Badge({ count }) {
 function TopBar({ onCreate }) {
   const { lang, unreadMessages, unanswered, pageName, pageAvatar, canAct } = useFacebookData();
   const { pathname } = useLocation();
-  const { setActiveChannel } = useInbox();
+  const { setActiveChannel, channels } = useInbox();
+  const navigate = useNavigate();
   const ar = lang === "ar";
   const tab = (active) => cn(
     "relative grid h-12 min-w-0 flex-1 place-items-center sm:min-w-[56px] rounded-lg transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] sm:max-w-[110px]",
@@ -58,7 +60,7 @@ function TopBar({ onCreate }) {
         <NavLink to="/inbox" aria-label={ar ? "كل القنوات" : "All channels"} title={ar ? "كل القنوات" : "All channels"} className="grid h-10 w-10 place-items-center rounded-full bg-[#e4e6eb] text-[#050505] transition-colors hover:bg-[#d8dadf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
           <FbChannels size={20} />
         </NavLink>
-        <button type="button" data-testid="fb-messenger-link" onClick={() => setActiveChannel("messenger")} aria-label="Messenger" title={ar ? "افتح قناة ماسنجر" : "Open the Messenger channel"} className="relative grid h-10 w-10 place-items-center rounded-full bg-[#e4e6eb] text-[#050505] transition-colors hover:bg-[#d8dadf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
+        <button type="button" data-testid="fb-messenger-link" onClick={() => { const target = messengerTarget(channels); if (target.kind === "channel") setActiveChannel(target.id); else navigate(target.path); }} aria-label="Messenger" title={messengerTarget(channels).kind === "channel" ? (ar ? "افتح قناة ماسنجر" : "Open the Messenger channel") : (ar ? "ماسنجر غير متصل، اربطه من القنوات" : "Messenger is not connected, connect it in Channels")} className="relative grid h-10 w-10 place-items-center rounded-full bg-[#e4e6eb] text-[#050505] transition-colors hover:bg-[#d8dadf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
           <FbMessenger size={20} /><Badge count={unreadMessages} />
         </button>
         <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e7f3ff] text-[15px] font-bold text-[#0866ff]" title={pageName} aria-label={pageName}>
