@@ -1,6 +1,6 @@
 """Meta OAuth connect flow tests — Facebook Login for Business.
 
-The start route mints a 10-minute signed state and returns Meta's dialog
+The start route mints a short-lived signed state and returns Meta's dialog
 URL (settings:write holders only). The PUBLIC callback swaps the code for
 a user token, exchanges it for a LONG-LIVED one, picks the messaging page
 from /me/accounts (the linked IG business account for Instagram), persists
