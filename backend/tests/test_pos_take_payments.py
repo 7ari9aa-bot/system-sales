@@ -172,7 +172,12 @@ async def test_close_counts_the_drawer_and_records_the_variance(db, tenant_ctx) 
     assert summary["by_method"] == {"cash": "100.00"}
 
     closed = await PosService.close_session(
-        db, tenant_ctx.tenant_id, shift.id, closed_by=tenant_ctx.user.id, counted_cash="295.00"
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        closed_by=tenant_ctx.user.id,
+        counted_cash="295.00",
+        variance_reason="باقي ناقص",  # a gap now needs its reason (pos.variance_reason_required)
     )
     assert closed.status == "CLOSED"
     assert closed.counted_cash == D("295.00")

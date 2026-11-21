@@ -795,7 +795,7 @@ async def main() -> None:
         await conn.execute(
             "GRANT EXECUTE ON FUNCTION public.meta_deletion_status(uuid) TO sales_app"
         )
-        # The ETA e-receipt callback key -> store lookup is created by migration fe2026112009.
+        # The ETA e-receipt callback key -> store lookup is created by migration fe2026112011.
         # That migration only grants it when sales_app already exists, which on a database built
         # migrations-first (CI, a fresh clone) it does not yet: grant it here, like the ones above.
         await conn.execute(

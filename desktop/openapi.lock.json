@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 595,
-    "sha256": "86c2749b7c814f8d95c6c60763f0c27052888c6418c8dd9e7f6b03debbd97080",
+    "operations": 598,
+    "sha256": "5bbacd4a86ddab7cff143d0fe9ad60efe3940119441818ebe309816958324e96",
     "typed_operations": 337
   },
   "spec": {
@@ -4006,6 +4006,18 @@
                 }
               ],
               "title": "Counted Cash"
+            },
+            "variance_reason": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variance Reason"
             }
           },
           "title": "CloseSessionRequest",
@@ -4705,6 +4717,18 @@
                 }
               ],
               "title": "Price"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
             },
             "sku": {
               "anyOf": [
@@ -23254,6 +23278,18 @@
                 }
               ],
               "title": "Description"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
             },
             "slug": {
               "anyOf": [
@@ -71130,6 +71166,120 @@
           ]
         }
       },
+      "/api/v1/pos/reports/cashier-custody": {
+        "get": {
+          "description": "Per cashier over [start, end): shifts, cash counted vs expected, shortages and overages.\n\nManager-only (``pos:override``): it names who was short, which a cashier does not read.",
+          "operationId": "cashier_custody_report_api_v1_pos_reports_cashier_custody_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "start",
+              "required": true,
+              "schema": {
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "end",
+              "required": true,
+              "schema": {
+                "title": "End",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Cashier Custody Report",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/reports/daily": {
         "get": {
           "description": "The event-fed daily projection: one row per register for the date.",
@@ -75426,6 +75576,22 @@
                 "default": 0,
                 "title": "Offset",
                 "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
               }
             },
             {
@@ -80833,6 +80999,201 @@
           "tags": [
             "orders"
           ]
+        }
+      },
+      "/api/v1/shop-type": {
+        "get": {
+          "description": "The kinds of shop the owner can say they run, and the one they run now.",
+          "operationId": "get_shop_type_api_v1_shop_type_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Shop Type"
+        }
+      },
+      "/api/v1/shop-type/{vertical}": {
+        "post": {
+          "description": "Say what kind of shop this is. A clothing shop with no categories gets a starting tree.",
+          "operationId": "choose_shop_type_api_v1_shop_type__vertical__post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "vertical",
+              "required": true,
+              "schema": {
+                "title": "Vertical",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Choose Shop Type"
         }
       },
       "/api/v1/sla/calendars": {

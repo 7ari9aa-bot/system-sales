@@ -7,7 +7,7 @@ per-method reconciliation. The profile routes configure the terminal.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
@@ -382,6 +382,26 @@ def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> d
                 "closed_at": pos_session.closed_at.isoformat() if pos_session.closed_at else None,
             }
         )
+        # Only a drawer that was counted has these. A till that does not count keeps exactly the
+        # answer it always had, so nothing reads a missing count as a zero.
+        if pos_session.counted_cash is not None:
+            out.update(
+                {
+                    "counted_cash": str(pos_session.counted_cash),
+                    "variance": str(pos_session.variance),
+                    "variance_reason": pos_session.variance_reason,
+                    "variance_approved_by_user_id": (
+                        str(pos_session.variance_approved_by_user_id)
+                        if pos_session.variance_approved_by_user_id
+                        else None
+                    ),
+                    "variance_approved_at": (
+                        pos_session.variance_approved_at.isoformat()
+                        if pos_session.variance_approved_at
+                        else None
+                    ),
+                }
+            )
     elif inflow is not None:
         out.update(
             {
@@ -582,6 +602,7 @@ class CloseSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     counted_cash: str | None = Field(default=None, pattern=_MONEY)
+    variance_reason: str | None = Field(default=None, max_length=500)
 
 
 @router.post("/sessions/{session_id}/close")
@@ -598,6 +619,7 @@ async def close_session(
         closed_by=ctx.user.id,
         shift_override=override.active,
         counted_cash=body.counted_cash if body is not None else None,
+        variance_reason=body.variance_reason if body is not None else None,
     )
     return _session_out(pos_session)
 
@@ -794,6 +816,24 @@ async def daily_report(
         }
         for r in rows
     ]
+
+
+@router.get("/reports/cashier-custody")
+async def cashier_custody_report(ctx: PosManagerCtx, start: str, end: str):
+    """Per cashier over [start, end): shifts, cash counted vs expected, shortages and overages.
+
+    Manager-only (``pos:override``): it names who was short, which a cashier does not read.
+    """
+    try:
+        start_at = datetime.fromisoformat(start)
+        end_at = datetime.fromisoformat(end)
+    except ValueError:
+        raise ValidationError("start and end must be ISO dates or datetimes") from None
+    if start_at.tzinfo is None:
+        start_at = start_at.replace(tzinfo=UTC)
+    if end_at.tzinfo is None:
+        end_at = end_at.replace(tzinfo=UTC)
+    return await PosService.cashier_custody(ctx.session, ctx.tenant_id, start=start_at, end=end_at)
 
 
 @router.get("/sessions/{session_id}/items")

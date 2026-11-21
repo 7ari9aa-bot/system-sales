@@ -170,6 +170,15 @@ class PosSession(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base
     counted_cash: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     expected_cash: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     variance: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    # Why the drawer was off, and who signed off a gap above the owner's limit. Both stay NULL for
+    # a drawer that matched and for a till that does not count.
+    variance_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    variance_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    variance_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
