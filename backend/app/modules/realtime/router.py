@@ -233,6 +233,8 @@ _ALL_STREAMS = [
     # §189: open tills watch for their shift being closed elsewhere (the
     # cashier page subscribes with ?streams=pos_session.events).
     "pos_session.events",
+    # A public comment landed on a connected page: open post screens refetch it.
+    "social_comment.events",
 ]
 
 _HEARTBEAT_INTERVAL_S = 25  # seconds

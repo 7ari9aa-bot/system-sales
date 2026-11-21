@@ -176,6 +176,9 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "privacy.customer_deleted",
     "privacy.customer_purge_required",
     # §126: saga orchestration milestones (core/saga.py).
+    # A public comment landed or changed (webhook or sync). Carries ids only, so an open
+    # screen refetches; the comment text never rides the stream.
+    "social_comment.changed",
     "saga.completed",
     "saga.failed",
     "saga.started",
