@@ -85,6 +85,30 @@ async def _docs(db, tid) -> list[EInvoiceDocument]:
     )
 
 
+class TestShopDetailsTheMerchantHasNotEntered:
+    """Branch, activity and address are the merchant's to enter. Left blank they are never
+    replaced by a guess: the receipt is not built, the sale still goes through."""
+
+    @pytest.mark.parametrize(
+        "blank",
+        [
+            "einvoice.branch_code",
+            "einvoice.activity_code",
+            "einvoice.branch_governate",
+            "einvoice.branch_region_city",
+            "einvoice.branch_street",
+            "einvoice.branch_building_number",
+        ],
+    )
+    async def test_a_blank_shop_detail_blocks_the_receipt_not_the_sale(self, db, tenant_ctx, blank):
+        tid = tenant_ctx.tenant_id
+        _register_row, shift, variant, ctx = await _shop(db, tid, **{blank: ""})
+        sold = await _sell(db, tid, shift, variant, ctx)
+        assert sold["receipt_id"]  # the customer was served
+        # No e-receipt was built: a blank shop detail is never sent to the authority as-is.
+        assert await _docs(db, tid) == []
+
+
 class TestSale:
     async def test_a_sale_is_stored_as_an_e_receipt_for_the_registers_till(self, db, tenant_ctx):
         tid = tenant_ctx.tenant_id
