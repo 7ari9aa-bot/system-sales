@@ -49,6 +49,30 @@ export function commentWindow(comments, steps) {
   return { shown, hidden, next: Math.min(COMMENTS_PER_STEP, hidden) };
 }
 
+/** The orders Facebook's comment menu offers. "Most relevant" is Facebook's own ranking and the Graph API
+ *  does not give it for a Page's comments, so it keeps the API's order (oldest first); "Newest" and
+ *  "All comments" (oldest first) are real orders on our own copy of the thread. */
+export const COMMENT_SORTS = [
+  { id: "relevant", ar: "الأكثر ملاءمة", en: "Most relevant" },
+  { id: "newest", ar: "الأحدث", en: "Newest" },
+  { id: "all", ar: "كل التعليقات", en: "All comments" },
+];
+
+const commentTime = (c) => {
+  const t = new Date(c?.commentedAt || 0).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+/** The thread in the chosen order. Replies stay under their parent and are ordered the same way.
+ *  Returns new arrays; the input is untouched. An unknown id keeps the incoming order. */
+export function sortComments(comments, sortId) {
+  const list = Array.isArray(comments) ? comments : [];
+  const dir = sortId === "newest" ? -1 : sortId === "all" ? 1 : 0;
+  if (!dir) return list.map((c) => ({ ...c, replies: [...(c.replies || [])] }));
+  const by = (a, b) => dir * (commentTime(a) - commentTime(b));
+  return [...list].sort(by).map((c) => ({ ...c, replies: [...(c.replies || [])].sort(by) }));
+}
+
 /** Comments arrive flat with parent ids; a reply nests under its parent (Facebook threads are one level deep). */
 export function toFacebookComments(items, lang = "ar", pageName = "") {
   const visible = (items || []).filter((c) => c.status !== "removed");
