@@ -158,6 +158,18 @@ async def expired_quantity(
     return int(total)
 
 
+async def consumption_order(session: AsyncSession, tenant_id: UUID) -> str:
+    """The order stock leaves the shelf: ``fefo`` for a shop that picks soonest-expiring first.
+
+    One answer per shop, from its ``fefo_picking`` capability. Every shop that has not turned it on
+    (which is every shop until its owner or its vertical does) keeps ``fifo``, so nothing changes
+    for it. ``fefo`` alone would sell expired stock for a shop that does not track batches, which
+    is why the batch rule (``lot_expiry``) is a separate switch and ``fefo`` never needs it.
+    """
+    caps = await shop_capabilities(session, tenant_id)
+    return "fefo" if caps["capabilities"]["fefo_picking"] else "fifo"  # type: ignore[index]
+
+
 async def sellable_quantity(
     session: AsyncSession,
     tenant_id: UUID,

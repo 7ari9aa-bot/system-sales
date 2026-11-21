@@ -106,7 +106,7 @@ class ValuationService:
         warehouse_id: UUID,
         quantity: int,
         allow_partial: bool = False,
-        order: str = "fifo",
+        order: str | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Deplete cost layers: oldest received first (``fifo``) or soonest expiring (``fefo``).
@@ -114,6 +114,10 @@ class ValuationService:
         ``fifo`` is what every shop has always had. ``fefo`` is for a shop that tracks expiry: the
         layer whose batch expires first goes first, a batch that has expired is never sold, and
         stock with no batch or no expiry date goes after the dated batches.
+
+        ``order=None`` (the default) asks the shop: its ``fefo_picking`` capability decides, so a
+        sale, a transfer and a direct sale all follow the same rule without each remembering it.
+        Pass ``"fifo"`` or ``"fefo"`` to force one.
 
         Returns:
             {
@@ -125,6 +129,11 @@ class ValuationService:
         if quantity <= 0:
             raise ValidationError("quantity to consume must be positive")
 
+        if order is None:
+            # Lazy import: expiry already reads settings, and valuation must not import it at load.
+            from app.modules.inventory.services.expiry import consumption_order
+
+            order = await consumption_order(session, tenant_id)
         if order not in ("fifo", "fefo"):
             raise ValueError(f"unknown consumption order {order!r}; expected 'fifo' or 'fefo'")
 
