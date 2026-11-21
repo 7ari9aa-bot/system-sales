@@ -511,6 +511,7 @@ class SocialPost(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     permalink: Mapped[str | None] = mapped_column(Text)
     like_count: Mapped[int] = mapped_column(default=0, server_default="0")
     comments_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    shares_count: Mapped[int] = mapped_column(default=0, server_default="0")
     comments_enabled: Mapped[bool] = mapped_column(default=True, server_default="true")
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
