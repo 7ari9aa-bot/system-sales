@@ -113,6 +113,12 @@ abstract class AppLocalizations {
   /// **'الكاشير'**
   String get navCashier;
 
+  /// No description provided for @navInventory.
+  ///
+  /// In ar, this message translates to:
+  /// **'المخزون'**
+  String get navInventory;
+
   /// No description provided for @navInbox.
   ///
   /// In ar, this message translates to:
@@ -328,6 +334,108 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'رقم الفاتورة'**
   String get receiptNumber;
+
+  /// No description provided for @inventoryTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'المخزون والجرد السريع'**
+  String get inventoryTitle;
+
+  /// No description provided for @searchInventoryHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'بحث بالاسم، الباركود أو SKU...'**
+  String get searchInventoryHint;
+
+  /// No description provided for @filterAll.
+  ///
+  /// In ar, this message translates to:
+  /// **'الكل'**
+  String get filterAll;
+
+  /// No description provided for @filterLowStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'نواقص المخزون'**
+  String get filterLowStock;
+
+  /// No description provided for @filterOutOfStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'نفد المخزون'**
+  String get filterOutOfStock;
+
+  /// No description provided for @adjustStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'تعديل الرصيد'**
+  String get adjustStock;
+
+  /// No description provided for @stockCount.
+  ///
+  /// In ar, this message translates to:
+  /// **'جرد سريع'**
+  String get stockCount;
+
+  /// No description provided for @currentStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'الرصيد الحالي'**
+  String get currentStock;
+
+  /// No description provided for @newStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'الرصيد الفعلي'**
+  String get newStock;
+
+  /// No description provided for @reason.
+  ///
+  /// In ar, this message translates to:
+  /// **'السبب'**
+  String get reason;
+
+  /// No description provided for @reasonAdjustment.
+  ///
+  /// In ar, this message translates to:
+  /// **'تسوية مخزنية'**
+  String get reasonAdjustment;
+
+  /// No description provided for @reasonDamage.
+  ///
+  /// In ar, this message translates to:
+  /// **'تالف أو منتهي'**
+  String get reasonDamage;
+
+  /// No description provided for @reasonDeficit.
+  ///
+  /// In ar, this message translates to:
+  /// **'عجز أو مفقود'**
+  String get reasonDeficit;
+
+  /// No description provided for @reasonStocktake.
+  ///
+  /// In ar, this message translates to:
+  /// **'جرد دوري'**
+  String get reasonStocktake;
+
+  /// No description provided for @confirmAdjustment.
+  ///
+  /// In ar, this message translates to:
+  /// **'تأكيد التسوية'**
+  String get confirmAdjustment;
+
+  /// No description provided for @adjustmentSuccess.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم تسجيل الحركة وتحديث الرصيد'**
+  String get adjustmentSuccess;
+
+  /// No description provided for @offlineQueued.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم الحفظ محلياً وسيتم المزامنة تلقائياً'**
+  String get offlineQueued;
 
   /// No description provided for @inboxTitle.
   ///

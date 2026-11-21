@@ -1,7 +1,7 @@
 import { createNoopPlatform } from './noop'
 import type { NoopPlatformOptions, Platform } from './port'
 
-export type { AppInfo, LogPort, Platform, RuntimePort, ShellPort } from './port'
+export type { AppInfo, LogPort, Platform, PrinterDevice, PrinterPort, RuntimePort, ShellPort, UpdateCheckResult, UpdaterPort } from './port'
 export { createNoopPlatform }
 
 interface TauriInternals {

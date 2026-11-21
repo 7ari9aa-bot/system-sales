@@ -5,6 +5,7 @@ import '../providers/cashier_view_model.dart';
 import 'features/cashier/cashier_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/inbox/inbox_screen.dart';
+import 'features/inventory/inventory_screen.dart';
 import 'features/settings/settings_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -20,6 +21,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = const [
     DashboardScreen(),
     CashierScreen(),
+    InventoryScreen(),
     InboxScreen(),
     SettingsScreen(),
   ];
@@ -56,6 +58,11 @@ class _MainNavigationState extends State<MainNavigation> {
                 : const Icon(Icons.point_of_sale_outlined),
             selectedIcon: const Icon(Icons.point_of_sale),
             label: l10n.navCashier,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.inventory_2_outlined),
+            selectedIcon: const Icon(Icons.inventory_2),
+            label: l10n.navInventory,
           ),
           NavigationDestination(
             icon: const Icon(Icons.chat_bubble_outline),

@@ -18,6 +18,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get navCashier => 'الكاشير';
 
   @override
+  String get navInventory => 'المخزون';
+
+  @override
   String get navInbox => 'المحادثات';
 
   @override
@@ -124,6 +127,57 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get receiptNumber => 'رقم الفاتورة';
+
+  @override
+  String get inventoryTitle => 'المخزون والجرد السريع';
+
+  @override
+  String get searchInventoryHint => 'بحث بالاسم، الباركود أو SKU...';
+
+  @override
+  String get filterAll => 'الكل';
+
+  @override
+  String get filterLowStock => 'نواقص المخزون';
+
+  @override
+  String get filterOutOfStock => 'نفد المخزون';
+
+  @override
+  String get adjustStock => 'تعديل الرصيد';
+
+  @override
+  String get stockCount => 'جرد سريع';
+
+  @override
+  String get currentStock => 'الرصيد الحالي';
+
+  @override
+  String get newStock => 'الرصيد الفعلي';
+
+  @override
+  String get reason => 'السبب';
+
+  @override
+  String get reasonAdjustment => 'تسوية مخزنية';
+
+  @override
+  String get reasonDamage => 'تالف أو منتهي';
+
+  @override
+  String get reasonDeficit => 'عجز أو مفقود';
+
+  @override
+  String get reasonStocktake => 'جرد دوري';
+
+  @override
+  String get confirmAdjustment => 'تأكيد التسوية';
+
+  @override
+  String get adjustmentSuccess => 'تم تسجيل الحركة وتحديث الرصيد';
+
+  @override
+  String get offlineQueued => 'تم الحفظ محلياً وسيتم المزامنة تلقائياً';
 
   @override
   String get inboxTitle => 'المحادثات الموحدة';

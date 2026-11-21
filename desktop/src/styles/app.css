@@ -155,3 +155,369 @@ body {
 .boot__button:hover {
   filter: brightness(1.08);
 }
+
+/* ==========================================================================
+   Desktop Workstation Shell & Native UI System
+   ========================================================================== */
+
+.workstation {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--fh-surface);
+  color: var(--fh-ink);
+}
+
+.workstation__sidebar {
+  width: 250px;
+  min-width: 250px;
+  background: #181c24;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  border-inline-end: 1px solid #282f3d;
+  user-select: none;
+}
+
+.workstation__brand {
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid #282f3d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workstation__brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #10b981;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.workstation__nav {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.workstation__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--fh-radius);
+  color: #cbd5e1;
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: start;
+  width: 100%;
+  transition: all 120ms ease-in-out;
+}
+
+.workstation__nav-item:hover {
+  background: #232a36;
+  color: #fff;
+}
+
+.workstation__nav-item--active {
+  background: #0f6b5c;
+  color: #fff;
+  font-weight: 600;
+}
+
+.workstation__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workstation__topbar {
+  height: 60px;
+  min-height: 60px;
+  background: var(--fh-surface);
+  border-bottom: 1px solid var(--fh-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  gap: 1rem;
+}
+
+.workstation__topbar-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.workstation__topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.workstation__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.workstation__badge--online {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.workstation__badge--shift {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.workstation__content {
+  flex: 1;
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* POS Screen Layout */
+.pos-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1.25rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.pos-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.pos-search-bar {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.pos-search-input {
+  flex: 1;
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  padding: 0.65rem 1rem;
+  font: inherit;
+  font-size: 0.95rem;
+  background: var(--fh-surface);
+  color: var(--fh-ink);
+}
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.85rem;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+.pos-product-card {
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  padding: 1rem;
+  background: var(--fh-surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 100ms ease, box-shadow 100ms ease;
+  user-select: none;
+}
+
+.pos-product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  border-color: var(--fh-accent);
+}
+
+.pos-product-card__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.pos-product-card__price {
+  font-weight: 700;
+  color: var(--fh-accent);
+  font-size: 1.05rem;
+}
+
+.pos-cart {
+  background: var(--fh-surface);
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pos-cart__header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--fh-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.pos-cart__items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pos-cart__item {
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pos-cart__totals {
+  padding: 1rem;
+  border-top: 1px solid var(--fh-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.pos-cart__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.pos-cart__row--total {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--fh-accent);
+  border-top: 1px solid var(--fh-line);
+  padding-top: 0.5rem;
+}
+
+.pos-btn-checkout {
+  width: 100%;
+  background: var(--fh-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--fh-radius);
+  padding: 0.85rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.pos-btn-checkout:hover {
+  filter: brightness(1.1);
+}
+
+/* Data Tables */
+.data-table-container {
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  overflow: hidden;
+  background: var(--fh-surface);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: start;
+  font-size: 0.95rem;
+}
+
+.data-table th {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--fh-line);
+  font-weight: 600;
+}
+
+.data-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--fh-line);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+/* Modal Dialog */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: var(--fh-surface);
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  width: 90%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--fh-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--fh-line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

@@ -18,6 +18,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navCashier => 'POS';
 
   @override
+  String get navInventory => 'Inventory';
+
+  @override
   String get navInbox => 'Inbox';
 
   @override
@@ -124,6 +127,57 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get receiptNumber => 'Receipt No.';
+
+  @override
+  String get inventoryTitle => 'Inventory & Stocktaking';
+
+  @override
+  String get searchInventoryHint => 'Search by name, barcode or SKU...';
+
+  @override
+  String get filterAll => 'All';
+
+  @override
+  String get filterLowStock => 'Low Stock';
+
+  @override
+  String get filterOutOfStock => 'Out of Stock';
+
+  @override
+  String get adjustStock => 'Adjust Stock';
+
+  @override
+  String get stockCount => 'Quick Count';
+
+  @override
+  String get currentStock => 'Current Stock';
+
+  @override
+  String get newStock => 'Counted Stock';
+
+  @override
+  String get reason => 'Reason';
+
+  @override
+  String get reasonAdjustment => 'Stock Adjustment';
+
+  @override
+  String get reasonDamage => 'Damaged / Expired';
+
+  @override
+  String get reasonDeficit => 'Deficit / Missing';
+
+  @override
+  String get reasonStocktake => 'Stocktake Count';
+
+  @override
+  String get confirmAdjustment => 'Confirm Adjustment';
+
+  @override
+  String get adjustmentSuccess => 'Movement recorded and stock updated';
+
+  @override
+  String get offlineQueued => 'Saved locally and will sync when online';
 
   @override
   String get inboxTitle => 'Unified Inbox';

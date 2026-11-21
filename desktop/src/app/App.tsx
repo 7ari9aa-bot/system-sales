@@ -1,16 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FC } from 'react'
 
 import { BootScreen } from '@/app/boot-screen'
 import type { BootState } from '@/app/boot-state'
+import { AppShell } from '@/app/shell/AppShell'
 import type { Platform } from '@/platform'
 import { parseRuntimeConfig } from '@/platform/runtime'
 
-/**
- * Phase 0 ends here on purpose: the shell resolves its one piece of runtime
- * configuration and reports it. Login, inbox and everything after it belong to
- * Phase 1 and Phase 4, and nothing here pre-decides their shape.
- */
-export function App({ platform }: { readonly platform: Platform }) {
+export const App: FC<{ readonly platform: Platform }> = ({ platform }) => {
   const [state, setState] = useState<BootState>({ status: 'checking' })
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -44,5 +40,11 @@ export function App({ platform }: { readonly platform: Platform }) {
     }
   }
 
+  // If configuration is valid and server resolved, render the native desktop workstation shell!
+  if (state.status === 'ok') {
+    return <AppShell platform={platform} apiBaseUrl={state.apiBaseUrl} onSaveUrl={handleSave} />
+  }
+
+  // Otherwise, show boot configuration screen
   return <BootScreen state={state} onSave={platform.runtime.saveApiBaseUrl ? handleSave : undefined} />
 }

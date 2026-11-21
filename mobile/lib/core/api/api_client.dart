@@ -36,7 +36,10 @@ class ApiClient {
     return ApiEndpoints.defaultBaseUrl;
   }
 
-  Future<Map<String, String>> _buildHeaders({bool includeAuth = true}) async {
+  Future<Map<String, String>> _buildHeaders({
+    bool includeAuth = true,
+    Map<String, String>? extraHeaders,
+  }) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -54,13 +57,22 @@ class ApiClient {
       }
     }
 
+    if (extraHeaders != null) {
+      headers.addAll(extraHeaders);
+    }
+
     return headers;
   }
 
-  Future<dynamic> get(String endpoint, {Map<String, String>? queryParams, bool includeAuth = true}) async {
+  Future<dynamic> get(
+    String endpoint, {
+    Map<String, String>? queryParams,
+    bool includeAuth = true,
+    Map<String, String>? extraHeaders,
+  }) async {
     final baseUrl = await _getBaseUrl();
     final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
-    final headers = await _buildHeaders(includeAuth: includeAuth);
+    final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
     final response = await _http.get(uri, headers: headers);
     return _handleResponse(response);
@@ -70,10 +82,11 @@ class ApiClient {
     String endpoint, {
     Map<String, dynamic>? body,
     bool includeAuth = true,
+    Map<String, String>? extraHeaders,
   }) async {
     final baseUrl = await _getBaseUrl();
     final uri = Uri.parse('$baseUrl$endpoint');
-    final headers = await _buildHeaders(includeAuth: includeAuth);
+    final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
     final response = await _http.post(
       uri,
@@ -87,10 +100,11 @@ class ApiClient {
     String endpoint, {
     Map<String, dynamic>? body,
     bool includeAuth = true,
+    Map<String, String>? extraHeaders,
   }) async {
     final baseUrl = await _getBaseUrl();
     final uri = Uri.parse('$baseUrl$endpoint');
-    final headers = await _buildHeaders(includeAuth: includeAuth);
+    final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
     final response = await _http.put(
       uri,
@@ -100,10 +114,14 @@ class ApiClient {
     return _handleResponse(response);
   }
 
-  Future<dynamic> delete(String endpoint, {bool includeAuth = true}) async {
+  Future<dynamic> delete(
+    String endpoint, {
+    bool includeAuth = true,
+    Map<String, String>? extraHeaders,
+  }) async {
     final baseUrl = await _getBaseUrl();
     final uri = Uri.parse('$baseUrl$endpoint');
-    final headers = await _buildHeaders(includeAuth: includeAuth);
+    final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
     final response = await _http.delete(uri, headers: headers);
     return _handleResponse(response);

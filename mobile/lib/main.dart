@@ -6,6 +6,7 @@ import 'providers/auth_view_model.dart';
 import 'providers/cashier_view_model.dart';
 import 'providers/chat_view_model.dart';
 import 'providers/dashboard_view_model.dart';
+import 'providers/inventory_view_model.dart';
 import 'providers/locale_view_model.dart';
 import 'ui/app.dart';
 
@@ -22,6 +23,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => LocaleViewModel()),
         ChangeNotifierProvider.value(value: authVm),
         ChangeNotifierProvider(create: (_) => CashierViewModel()),
+        ChangeNotifierProvider(create: (_) => InventoryViewModel()),
         ChangeNotifierProvider(create: (_) => ChatViewModel()),
         ChangeNotifierProvider(create: (_) => DashboardViewModel()),
         ChangeNotifierProvider(create: (_) => ThermalPrinterManager()),

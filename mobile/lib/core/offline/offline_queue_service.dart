@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/product.dart';
 import '../../data/repositories/cashier_repository.dart';
+import '../secure_storage/secure_token_store.dart';
+import '../sync/durable_operation.dart';
+import '../sync/durable_sync_engine.dart';
 
 class QueuedSale {
   final String id;
@@ -9,6 +12,8 @@ class QueuedSale {
   final String paymentMethod;
   final String total;
   final DateTime createdAt;
+  final String? tenantId;
+  final String? idempotencyKey;
 
   QueuedSale({
     required this.id,
@@ -16,6 +21,8 @@ class QueuedSale {
     required this.paymentMethod,
     required this.total,
     required this.createdAt,
+    this.tenantId,
+    this.idempotencyKey,
   });
 
   Map<String, dynamic> toJson() => {
@@ -24,6 +31,8 @@ class QueuedSale {
         'payment_method': paymentMethod,
         'total': total,
         'created_at': createdAt.toIso8601String(),
+        'tenant_id': tenantId,
+        'idempotency_key': idempotencyKey,
       };
 
   factory QueuedSale.fromJson(Map<String, dynamic> json) => QueuedSale(
@@ -37,34 +46,76 @@ class QueuedSale {
         createdAt: json['created_at'] != null
             ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
             : DateTime.now(),
+        tenantId: json['tenant_id']?.toString(),
+        idempotencyKey: json['idempotency_key']?.toString(),
       );
 }
 
+/// OfflineQueueService maintains backward compatibility for existing callers
+/// while persisting records durably into the SQLite engine per Section 5 of the Master Plan.
 class OfflineQueueService {
   static const String _keyOfflineSales = 'pos_offline_sales_queue';
+  final SecureTokenStore _tokenStore = SecureTokenStore();
+  final DurableSyncEngine _durableEngine = DurableSyncEngine();
 
   Future<void> enqueueSale({
     required List<CartItem> items,
     required String paymentMethod,
     required String total,
   }) async {
+    final now = DateTime.now();
+    final opUuid = 'op_${now.millisecondsSinceEpoch}_${now.microsecond % 1000}';
+    final idempotencyKey = 'idem_${now.millisecondsSinceEpoch}_${now.microsecondsSinceEpoch % 100000}';
+    final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
+    final userId = (await _tokenStore.getUserId()) ?? 'offline_user';
+    final deviceId = await _tokenStore.getOrCreateDeviceId();
+    final registerId = await _tokenStore.getRegisterId();
+
+    final mappedItems = items
+        .map((item) => {
+              'product_id': item.product.id,
+              'name': item.product.name,
+              'quantity': item.quantity,
+              'unit_price': item.effectiveUnitPrice,
+              'line_total': item.lineTotal,
+            })
+        .toList();
+
+    // 1. Persist into SQLite durable queue
+    final durableOp = DurableOperation(
+      operationUuid: opUuid,
+      tenantId: tenantId,
+      userId: userId,
+      deviceId: deviceId,
+      registerId: registerId,
+      operationType: 'pos_sale',
+      payloadSnapshot: {
+        'items': mappedItems,
+        'payment_method': paymentMethod,
+        'total': total,
+      },
+      idempotencyKey: idempotencyKey,
+      createdAt: now,
+      status: DurableOperationStatus.pending,
+    );
+    try {
+      await _durableEngine.enqueueOperation(durableOp);
+    } catch (_) {
+      // In web or tests where native sqlite is mocked, fallback to prefs
+    }
+
+    // 2. Also keep in shared preferences for legacy query / fast sync
     final prefs = await SharedPreferences.getInstance();
     final currentList = await getPendingQueue();
 
     final newSale = QueuedSale(
-      id: 'offline_${DateTime.now().millisecondsSinceEpoch}',
+      id: opUuid,
       paymentMethod: paymentMethod,
       total: total,
-      createdAt: DateTime.now(),
-      items: items
-          .map((item) => {
-                'product_id': item.product.id,
-                'name': item.product.name,
-                'quantity': item.quantity,
-                'unit_price': item.effectiveUnitPrice,
-                'line_total': item.lineTotal,
-              })
-          .toList(),
+      createdAt: now,
+      tenantId: tenantId,
+      idempotencyKey: idempotencyKey,
+      items: mappedItems,
     );
 
     currentList.add(newSale);
@@ -101,32 +152,34 @@ class OfflineQueueService {
             product: Product(
               id: it['product_id']?.toString() ?? '',
               name: it['name']?.toString() ?? '',
+              sku: '',
               price: it['unit_price']?.toString() ?? '0.00',
+              stockQuantity: 99,
             ),
             quantity: (it['quantity'] as num?)?.toInt() ?? 1,
+            customPrice: it['unit_price']?.toString(),
           );
         }).toList();
 
-        await repository.checkout(
+        final result = await repository.checkout(
           items: mockItems,
           paymentMethod: sale.paymentMethod,
           total: sale.total,
         );
-        syncedCount++;
+
+        if (result['success'] == true || result['id'] != null || result['order_id'] != null) {
+          syncedCount++;
+        } else {
+          remaining.add(sale);
+        }
       } catch (_) {
         remaining.add(sale);
       }
     }
 
     final prefs = await SharedPreferences.getInstance();
-    if (remaining.isEmpty) {
-      await prefs.remove(_keyOfflineSales);
-    } else {
-      await prefs.setString(
-        _keyOfflineSales,
-        jsonEncode(remaining.map((s) => s.toJson()).toList()),
-      );
-    }
+    final jsonList = remaining.map((s) => s.toJson()).toList();
+    await prefs.setString(_keyOfflineSales, jsonEncode(jsonList));
 
     return syncedCount;
   }

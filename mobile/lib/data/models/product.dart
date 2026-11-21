@@ -24,18 +24,48 @@ class Product {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    final id = json['variant_id']?.toString() ?? json['id']?.toString() ?? '';
+    final name = json['product_title']?.toString() ?? json['name']?.toString() ?? '';
+    final price = json['price']?.toString() ?? json['unit_price']?.toString() ?? '0.00';
+    final onHand = (json['on_hand'] as num?)?.toInt() ??
+        (json['stock_quantity'] as num?)?.toInt() ??
+        (json['stock'] as num?)?.toInt() ??
+        0;
+
     return Product(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
+      id: id,
+      name: name,
       barcode: json['barcode']?.toString(),
       sku: json['sku']?.toString(),
-      price: json['price']?.toString() ?? json['unit_price']?.toString() ?? '0.00',
-      costPrice: json['cost_price']?.toString(),
+      price: price,
+      costPrice: json['avg_cost']?.toString() ?? json['cost_price']?.toString(),
       category: json['category']?.toString(),
-      stockQuantity: (json['stock_quantity'] as num?)?.toInt() ??
-          (json['stock'] as num?)?.toInt() ??
-          0,
+      stockQuantity: onHand,
       imageUrl: json['image_url']?.toString(),
+    );
+  }
+
+  Product copyWith({
+    String? id,
+    String? name,
+    String? barcode,
+    String? sku,
+    String? price,
+    String? costPrice,
+    String? category,
+    int? stockQuantity,
+    String? imageUrl,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      barcode: barcode ?? this.barcode,
+      sku: sku ?? this.sku,
+      price: price ?? this.price,
+      costPrice: costPrice ?? this.costPrice,
+      category: category ?? this.category,
+      stockQuantity: stockQuantity ?? this.stockQuantity,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 

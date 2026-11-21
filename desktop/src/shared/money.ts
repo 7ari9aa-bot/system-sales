@@ -82,3 +82,7 @@ function toLocaleDigits(fraction: string, formatter: Intl.NumberFormat): string 
   for (const char of fraction) out += formatter.format(BigInt(char))
   return out
 }
+
+export function formatSar(value: string): string {
+  return formatMoney(value, { locale: 'ar-SA', currency: 'SAR' })
+}

@@ -28,11 +28,9 @@ impl log::Log for StderrLogger {
     fn flush(&self) {}
 }
 
-/// One window, two modes. Wrap mode loads the real web application (the
-/// product: cashier, inbox, dashboard) with the scan bridge injected; scaffold
-/// mode loads the Phase 0 SPA as the fallback when no web-app URL resolves.
-/// Either way the label stays `main`, which is what `capabilities/main.json`
-/// grants.
+/// Build the primary workstation window. The native React application is
+/// bundled directly within the installer and loaded via `WebviewUrl::App("index.html")`.
+/// The hardware keyboard-wedge scanner bridge is injected as an initialization script.
 fn build_main_window(manager: &tauri::AppHandle, url: WebviewUrl) -> tauri::Result<()> {
     WebviewWindowBuilder::new(manager, "main", url)
         .title("Fihrist")
@@ -49,6 +47,7 @@ fn build_main_window(manager: &tauri::AppHandle, url: WebviewUrl) -> tauri::Resu
 /// `tauri dev` keeps loading the local scaffold — development must never
 /// silently point a build at production. Release builds resolve settings file
 /// → environment → reviewed default (see `shell_url`).
+#[allow(dead_code)]
 fn resolve_wrap_target(settings_path: Option<&std::path::Path>) -> Option<tauri::Url> {
     if cfg!(debug_assertions) && std::env::var(shell_url::ENV_VAR).is_err() {
         return None;
@@ -109,22 +108,8 @@ pub fn run() {
             commands::write_settings
         ])
         .setup(|app| {
-            let settings_path = app
-                .path()
-                .app_config_dir()
-                .ok()
-                .map(|dir| dir.join(shell_url::SETTINGS_FILE_NAME));
-            let target = resolve_wrap_target(settings_path.as_deref());
-            match target {
-                Some(parsed) => {
-                    log::info!("wrap mode: loading {parsed}");
-                    build_main_window(app.handle(), WebviewUrl::External(parsed))?;
-                }
-                None => {
-                    log::info!("loading the scaffold shell (Phase 0 SPA)");
-                    build_main_window(app.handle(), WebviewUrl::App("index.html".into()))?;
-                }
-            }
+            log::info!("launching native Fihrist desktop workstation");
+            build_main_window(app.handle(), WebviewUrl::App("index.html".into()))?;
             Ok(())
         })
         .run(tauri::generate_context!());
