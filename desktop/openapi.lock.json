@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 604,
-    "sha256": "9b6de3f9a35fcb0a22cb3bcfc4b27f85883c9ddc6ed4dc66d510f367daf7f605",
-    "typed_operations": 339
+    "operations": 606,
+    "sha256": "53ae58eb46373864e54092aeeb99aebc659106a4d2e05c65624b8b84be916eba",
+    "typed_operations": 341
   },
   "spec": {
     "components": {
@@ -16333,6 +16333,126 @@
           "title": "ReceiptEmailRequest",
           "type": "object"
         },
+        "ReceiptListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/ReceiptOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "items",
+            "total"
+          ],
+          "title": "ReceiptListOut",
+          "type": "object"
+        },
+        "ReceiptOut": {
+          "properties": {
+            "attempts": {
+              "title": "Attempts",
+              "type": "integer"
+            },
+            "attention": {
+              "title": "Attention",
+              "type": "string"
+            },
+            "authority_uuid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authority Uuid"
+            },
+            "document_type": {
+              "title": "Document Type",
+              "type": "string"
+            },
+            "errors": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Errors",
+              "type": "array"
+            },
+            "hours_left": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hours Left"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "invoice_number": {
+              "title": "Invoice Number",
+              "type": "string"
+            },
+            "issued_at": {
+              "title": "Issued At",
+              "type": "string"
+            },
+            "next_attempt_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Attempt At"
+            },
+            "order_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "invoice_number",
+            "document_type",
+            "status",
+            "attention",
+            "hours_left",
+            "errors",
+            "attempts",
+            "next_attempt_at",
+            "issued_at",
+            "order_id",
+            "authority_uuid"
+          ],
+          "title": "ReceiptOut",
+          "type": "object"
+        },
         "RecordSaleOut": {
           "properties": {
             "change": {
@@ -20154,22 +20274,6 @@
             "expires_in"
           ],
           "title": "StreamTokenOut",
-          "type": "object"
-        },
-        "SummaryOut": {
-          "properties": {
-            "counts": {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "title": "Counts",
-              "type": "object"
-            }
-          },
-          "required": [
-            "counts"
-          ],
-          "title": "SummaryOut",
           "type": "object"
         },
         "SupplierIn": {
@@ -24742,6 +24846,22 @@
           "title": "WorkspaceUpdate",
           "type": "object"
         },
+        "app__modules__activity__router__SummaryOut": {
+          "properties": {
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Counts",
+              "type": "object"
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "title": "SummaryOut",
+          "type": "object"
+        },
         "app__modules__customer_accounts__router__AccountOut": {
           "properties": {
             "available_credit": {
@@ -24889,6 +25009,64 @@
             "created_at"
           ],
           "title": "EntryOut",
+          "type": "object"
+        },
+        "app__modules__einvoice__router__SummaryOut": {
+          "properties": {
+            "accepted": {
+              "title": "Accepted",
+              "type": "integer"
+            },
+            "expired": {
+              "title": "Expired",
+              "type": "integer"
+            },
+            "fix_now": {
+              "title": "Fix Now",
+              "type": "integer"
+            },
+            "needs_attention": {
+              "title": "Needs Attention",
+              "type": "integer"
+            },
+            "rejected": {
+              "title": "Rejected",
+              "type": "integer"
+            },
+            "retrying": {
+              "title": "Retrying",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "urgent": {
+              "title": "Urgent",
+              "type": "integer"
+            },
+            "waiting": {
+              "title": "Waiting",
+              "type": "integer"
+            },
+            "warn_hours": {
+              "title": "Warn Hours",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total",
+            "accepted",
+            "waiting",
+            "retrying",
+            "rejected",
+            "fix_now",
+            "urgent",
+            "expired",
+            "needs_attention",
+            "warn_hours"
+          ],
+          "title": "SummaryOut",
           "type": "object"
         },
         "app__modules__financial__schemas__AccountOut": {
@@ -25492,7 +25670,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/SummaryOut"
+                    "$ref": "#/components/schemas/app__modules__activity__router__SummaryOut"
                   }
                 }
               },
@@ -42874,6 +43052,276 @@
             }
           },
           "summary": "Receipt Notification",
+          "tags": [
+            "einvoice"
+          ]
+        }
+      },
+      "/api/v1/einvoice/receipts": {
+        "get": {
+          "description": "Receipts newest first. Refused ones that are running out of time come before the rest.",
+          "operationId": "list_receipts_api_v1_einvoice_receipts_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "group",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(accepted|waiting|retrying|rejected|cancelled)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Group"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_from",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date From"
+              }
+            },
+            {
+              "in": "query",
+              "name": "date_to",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Date To"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReceiptListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Receipts",
+          "tags": [
+            "einvoice"
+          ]
+        }
+      },
+      "/api/v1/einvoice/receipts/summary": {
+        "get": {
+          "description": "The counters at the top of the screen (every Egyptian receipt the shop has issued).\n\nOne GROUP BY for the counts, and rows only for the REFUSED receipts (their deadline needs the\nissue time). A shop with 100k receipts reads a handful of rows, not all of them.",
+          "operationId": "receipts_summary_api_v1_einvoice_receipts_summary_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__einvoice__router__SummaryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Receipts Summary",
           "tags": [
             "einvoice"
           ]

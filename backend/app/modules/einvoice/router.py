@@ -22,19 +22,28 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
+from sqlalchemy import func, select, text
 
 from app.core.db import bind_tenant
-from app.modules.einvoice.providers.eta.delivery import apply_device_event, apply_receipt_events
+from app.modules.einvoice.models import EInvoiceDocument
+from app.modules.einvoice.providers.eta.delivery import (
+    apply_device_event,
+    apply_receipt_events,
+    warn_hours_for,
+)
 from app.modules.einvoice.providers.eta.notifications import (
     NotificationError,
     key_hash_from_header,
     parse_general_notification,
     parse_receipt_notification,
 )
-from app.modules.identity.deps import DbSession
+from app.modules.einvoice.tracking import attention_of, summarize_documents
+from app.modules.identity.deps import DbSession, TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +111,153 @@ async def general_notification(request: Request, session: DbSession) -> dict:
         session, tenant_id=row.tenant_id, device_id=row.device_id, event=event, raw_body=body
     )
     return {"ok": True, "result": outcome}
+
+
+# ---- the merchant's own view -------------------------------------------------------------------
+# Read-only, behind the same permission as the sales history: the owner and the accountant need to
+# see what the authority accepted, refused, or is about to give up on. Nothing here sends or
+# changes a receipt; correcting a refused one is the sender's job.
+
+router_merchant = APIRouter(prefix="/einvoice/receipts", tags=["einvoice"])
+
+ReadCtx = Annotated[TenantContext, Depends(require_permission("orders:read"))]
+
+_STATUS_GROUPS = {
+    "accepted": ("reported", "cleared"),
+    "waiting": ("submitted", "signed", "draft"),
+    "retrying": ("failed",),
+    "rejected": ("rejected",),
+    "cancelled": ("cancelled",),
+}
+
+
+class ReceiptOut(BaseModel):
+    id: str
+    invoice_number: str
+    document_type: str
+    status: str
+    # ok | retrying | fix | urgent | expired
+    attention: str
+    hours_left: float | None
+    errors: list[str]
+    attempts: int
+    next_attempt_at: str | None
+    issued_at: str
+    order_id: str | None
+    authority_uuid: str | None
+
+
+class ReceiptListOut(BaseModel):
+    items: list[ReceiptOut]
+    total: int
+
+
+class SummaryOut(BaseModel):
+    total: int
+    accepted: int
+    waiting: int
+    retrying: int
+    rejected: int
+    fix_now: int
+    urgent: int
+    expired: int
+    needs_attention: int
+    warn_hours: int
+
+
+async def _warn_hours(ctx: TenantContext) -> int:
+    return await warn_hours_for(ctx.session, ctx.tenant_id)
+
+
+def _day_start(d: date) -> datetime:
+    return datetime.combine(d, time.min, tzinfo=UTC)
+
+
+def _receipt(doc: EInvoiceDocument, *, now: datetime, warn_hours: int) -> dict:
+    a = attention_of(doc, now=now, warn_hours=warn_hours)
+    return {
+        "id": str(doc.id),
+        "invoice_number": doc.invoice_number,
+        "document_type": doc.document_type,
+        "status": doc.status,
+        "attention": a.level,
+        "hours_left": None if a.hours_left is None else round(a.hours_left, 1),
+        "errors": [str(e) for e in (doc.errors or [])],
+        "attempts": doc.delivery_attempts or 0,
+        "next_attempt_at": doc.next_attempt_at.isoformat() if doc.next_attempt_at else None,
+        "issued_at": doc.issued_at.isoformat(),
+        "order_id": str(doc.order_id) if doc.order_id else None,
+        "authority_uuid": doc.authority_uuid,
+    }
+
+
+@router_merchant.get("/summary", response_model=SummaryOut)
+async def receipts_summary(ctx: ReadCtx):
+    """The counters at the top of the screen (every Egyptian receipt the shop has issued).
+
+    One GROUP BY for the counts, and rows only for the REFUSED receipts (their deadline needs the
+    issue time). A shop with 100k receipts reads a handful of rows, not all of them.
+    """
+    warn = await _warn_hours(ctx)
+    mine = (EInvoiceDocument.tenant_id == ctx.tenant_id, EInvoiceDocument.provider_type == "eta")
+    by_status = dict(
+        (
+            await ctx.session.execute(
+                select(EInvoiceDocument.status, func.count())
+                .where(*mine)
+                .group_by(EInvoiceDocument.status)
+            )
+        ).all()
+    )
+    refused = list(
+        (
+            await ctx.session.execute(
+                select(EInvoiceDocument).where(*mine, EInvoiceDocument.status == "rejected")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out = summarize_documents(refused, now=datetime.now(UTC), warn_hours=warn)
+    # the refused ones were counted from their rows; the rest come from the GROUP BY
+    others = {k: v for k, v in by_status.items() if k != "rejected"}
+    out["total"] = sum(by_status.values())
+    out["accepted"] = sum(others.get(s, 0) for s in ("reported", "cleared"))
+    out["waiting"] = sum(others.get(s, 0) for s in ("submitted", "signed", "draft"))
+    out["retrying"] = others.get("failed", 0)
+    return {**out, "warn_hours": warn}
+
+
+@router_merchant.get("", response_model=ReceiptListOut)
+async def list_receipts(
+    ctx: ReadCtx,
+    group: Annotated[
+        str | None, Query(pattern="^(accepted|waiting|retrying|rejected|cancelled)$")
+    ] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    """Receipts newest first. Refused ones that are running out of time come before the rest."""
+    warn = await _warn_hours(ctx)
+    now = datetime.now(UTC)
+    q = select(EInvoiceDocument).where(
+        EInvoiceDocument.tenant_id == ctx.tenant_id, EInvoiceDocument.provider_type == "eta"
+    )
+    if group:
+        q = q.where(EInvoiceDocument.status.in_(_STATUS_GROUPS[group]))
+    if date_from:
+        q = q.where(EInvoiceDocument.issued_at >= _day_start(date_from))
+    if date_to:
+        q = q.where(EInvoiceDocument.issued_at < _day_start(date_to) + timedelta(days=1))
+    docs = list(
+        (await ctx.session.execute(q.order_by(EInvoiceDocument.issued_at.desc()))).scalars().all()
+    )
+    # Refused receipts first, the closest deadline at the top; then everything else by date.
+    rank = {"expired": 0, "urgent": 1, "fix": 2, "retrying": 3, "ok": 4}
+    rows = [_receipt(d, now=now, warn_hours=warn) for d in docs]
+    rows.sort(
+        key=lambda r: (rank[r["attention"]], r["hours_left"] if r["hours_left"] is not None else 0)
+    )
+    return {"items": rows[offset : offset + limit], "total": len(rows)}

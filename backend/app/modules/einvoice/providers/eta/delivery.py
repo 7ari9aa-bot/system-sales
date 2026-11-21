@@ -82,6 +82,19 @@ class DeliveryReport:
     window_closed: list[str] = field(default_factory=list)
 
 
+async def warn_hours_for(session: AsyncSession, tenant_id: uuid.UUID) -> int:
+    """How early the owner wants to be warned a refused receipt is running out of time.
+
+    The merchant's own choice (Settings > e-receipt). One reader, so the sender's warning and the
+    tracking screen can never use different numbers.
+    """
+    from app.modules.settings.service import SettingsService
+
+    return int(
+        await SettingsService(session, tenant_id).value("einvoice.warn_hours_before_deadline")
+    )
+
+
 def _queued(doc: EInvoiceDocument, serial: str) -> QueuedDoc:
     return QueuedDoc(
         id=str(doc.id),
@@ -147,14 +160,7 @@ async def deliver_device(
         .all()
     )
     by_id = {str(d.id): d for d in docs}
-    from app.modules.settings.service import SettingsService
-
-    # How early the owner wants to be warned is the merchant's own choice (Settings > e-receipt).
-    warn_hours = int(
-        await SettingsService(session, device.tenant_id).value(
-            "einvoice.warn_hours_before_deadline"
-        )
-    )
+    warn_hours = await warn_hours_for(session, device.tenant_id)
     plan: Plan = plan_device(
         [_queued(d, device.device_serial) for d in docs],
         now=now,

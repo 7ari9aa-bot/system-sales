@@ -3,7 +3,7 @@ import { Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
-import { DatabaseBackup, FileCheck2, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
+import { DatabaseBackup, FileCheck2, ScrollText, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/cashier/components/ui/tabs";
 import { Toaster } from "@/cashier/components/ui/sonner";
 import "@/cashier/cashier.css";
@@ -14,6 +14,7 @@ import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings
 import UsersSettings from "@/cashier/components/settings/UsersSettings";
 import BackupTab from "@/cashier/components/settings/BackupTab";
 import ShopPolicySettings from "@/cashier/components/settings/ShopPolicySettings";
+import ReceiptTracking from "@/cashier/components/settings/ReceiptTracking";
 
 /** إعدادات الكاشير — البروفايلات والكاشيرات وسماحيات الموظفين.
  *
@@ -568,6 +569,7 @@ const TABS = [
   { value: "shop", label: "بيانات المحل", icon: Store },
   { value: "policy", label: "سياسة المحل", icon: Undo2 },
   { value: "einvoice", label: "الإيصال الإلكتروني", icon: FileCheck2 },
+  { value: "receipts", label: "متابعة الإيصالات", icon: ScrollText },
   { value: "print", label: "الطباعة والباركود", icon: Printer },
   { value: "lists", label: "الفئات", icon: Tags },
   { value: "users", label: "المستخدمون", icon: Users },
@@ -603,6 +605,7 @@ export default function PosSettings() {
             description="اسم محلك ورقمه الضريبي وبيانات فرعك كما هي مسجلة لدى المصلحة. كل قيمة هنا تقررها أنت، ولا يُرسل أي إيصال قبل تفعيله."
           />
         </TabsContent>
+        <TabsContent value="receipts" className="mt-4"><ReceiptTracking /></TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
         <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>
         <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>
