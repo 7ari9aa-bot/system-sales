@@ -18,9 +18,16 @@ export function currencySign() {
   return CURRENCY;
 }
 
+// A figure that rounds to nothing must read as nothing: -0.004 at two places is "0.00", not "-0.00"
+// (JavaScript keeps the sign of a negative that rounds to zero, and so does a literal -0).
+function groupedNumber(n, digits) {
+  const text = n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return /^-[0.,]*$/.test(text) ? text.slice(1) : text;
+}
+
 export function fmtMoney(value) {
   const n = Number(value) || 0;
-  return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${CURRENCY}`;
+  return `${groupedNumber(n, 2)} ${CURRENCY}`;
 }
 
 /** A figure that may be unknown (null/undefined): "—" instead of a zero that looks like a real amount. */
@@ -30,16 +37,18 @@ export function fmtMoneyOrDash(value) {
 
 export function fmtMoneyShort(value) {
   const n = Number(value) || 0;
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return groupedNumber(n, 0);
 }
 
 export function fmtNumber(value, digits = 2) {
   const n = Number(value) || 0;
-  return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return groupedNumber(n, digits);
 }
 
 export function fmtInt(value) {
-  return (Number(value) || 0).toLocaleString("en-US");
+  const n = Number(value) || 0;
+  const text = n.toLocaleString("en-US");
+  return text === "-0" ? "0" : text;
 }
 
 export function fmtDateTime(iso) {
