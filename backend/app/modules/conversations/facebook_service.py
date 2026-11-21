@@ -71,6 +71,10 @@ def _media_type(post: dict) -> str:
     return kind.upper() or "STATUS"
 
 
+#: Pages of 50 comments read for one post in one refresh. A cursor that never ends stops here.
+MAX_COMMENT_PAGES = 20
+
+
 class FacebookService:
     @staticmethod
     async def sync_posts(
@@ -162,7 +166,7 @@ class FacebookService:
 
     @staticmethod
     async def sync_comments(session, tenant_id, credentials: dict, post_id: str) -> int:
-        page = await facebook_pages.list_comments(credentials, post_id)
+        """Store every comment on the post, following Meta's pages to the end (up to a cap)."""
         n = 0
 
         async def _upsert(c: dict, parent: str | None) -> None:
@@ -196,10 +200,27 @@ class FacebookService:
             )
             n += 1
 
-        for top in page["items"]:
-            await _upsert(top, None)
-            for reply in (top.get("comments") or {}).get("data") or []:
-                await _upsert(reply, str(top["id"]))
+        async def _pages(object_id: str):
+            """Meta's pages for one post or comment, until it says there is no next one."""
+            after = None
+            for _ in range(MAX_COMMENT_PAGES):
+                page = await facebook_pages.list_comments(credentials, object_id, after=after)
+                yield page["items"]
+                after = page.get("next")
+                if not after:
+                    return
+
+        async for items in _pages(post_id):
+            for top in items:
+                await _upsert(top, None)
+                inline = top.get("comments") or {}
+                for reply in inline.get("data") or []:
+                    await _upsert(reply, str(top["id"]))
+                # The inline list holds a comment's first replies only; Meta marks a longer one.
+                if (inline.get("paging") or {}).get("next"):
+                    async for more in _pages(str(top["id"])):
+                        for reply in more:
+                            await _upsert(reply, str(top["id"]))
         return n
 
     # ---- acting for the Page ----
