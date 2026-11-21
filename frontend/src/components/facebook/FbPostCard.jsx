@@ -82,7 +82,10 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
       <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
         <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
-        {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
+        <div className="flex items-center gap-3">
+          {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
+          {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count">{post.sharesCount} {ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span>}
+        </div>
       </div>
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
         <button type="button" aria-pressed={liked} disabled={busy} onClick={like} className={cn("flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} />{ar ? "أعجبني" : "Like"}</button>
