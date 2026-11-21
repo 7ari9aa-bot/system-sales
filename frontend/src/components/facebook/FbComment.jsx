@@ -102,11 +102,11 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
               ))}
             </span>
             <p dir="auto" className="whitespace-pre-wrap break-words">{comment.text}</p>
-            {shownLikes > 0 && <span className="absolute -bottom-2.5 end-1 inline-flex items-center gap-0.5 rounded-full bg-white px-1 py-px text-[12px] shadow-[0_1px_2px_rgba(0,0,0,0.3)]" style={{ color: FB.text2 }}><span className="grid h-4 w-4 place-items-center rounded-full text-[9px] text-white" style={{ background: FB.blue }}>👍</span>{shownLikes}</span>}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 text-[12px]" style={{ color: FB.text2 }}>
-            {commentActions(comment, depth).like && <button type="button" aria-pressed={liked} disabled={busy} onClick={toggleLike} className={cn(link, liked && "text-[#0866ff]")}>{ar ? "أعجبني" : "Like"}</button>}
+            {commentActions(comment, depth).like && <button type="button" aria-pressed={liked} disabled={busy} onClick={toggleLike} className={cn(link, liked && "text-[#0866ff]")}>{liked ? (ar ? "إزالة أعجبني" : "Remove like") : (ar ? "أعجبني" : "Like")}</button>}
             {actions_.reply && <button type="button" onClick={() => { setReplying((v) => !v); setPrivateOpen(false); setTagged(true); }} className={link}>{ar ? "رد" : "Reply"}</button>}
+            <span data-testid="comment-like-count" className="inline-flex items-center gap-1 font-normal" title={ar ? "الإعجابات" : "Likes"}><span className="grid h-4 w-4 place-items-center rounded-full text-[9px] text-white" style={{ background: FB.blue }} aria-hidden="true">👍</span>{shownLikes}</span>
             {comment.hidden && <span className="font-normal">{ar ? "مخفي" : "Hidden"}</span>}
             {!comment.isPage && (
               <button type="button" disabled={busy} onClick={() => run(() => actions.hide(comment.id, postId, !comment.hidden))} className={link}>{comment.hidden ? (ar ? "إظهار" : "Unhide") : (ar ? "إخفاء" : "Hide")}</button>

@@ -32,7 +32,7 @@ const InstagramUserPage = lazy(() => import('@/pages/instagram/InstagramUserPage
 const InstagramSettingsPage = lazy(() => import('@/pages/instagram/InstagramSettingsPage'));
 const FacebookLayout = lazy(() => import('@/pages/facebook/FacebookLayout'));
 const FacebookPostsPage = lazy(() => import('@/pages/facebook/FacebookPostsPage'));
-const FacebookMessagesPage = lazy(() => import('@/pages/facebook/FacebookMessagesPage'));
+const FacebookMessagesRedirect = lazy(() => import('@/pages/facebook/FacebookMessagesRedirect'));
 const FacebookActivityPage = lazy(() => import('@/pages/facebook/FacebookActivityPage'));
 const FacebookInsightsPage = lazy(() => import('@/pages/facebook/FacebookInsightsPage'));
 const FacebookReelsPage = lazy(() => import('@/pages/facebook/FacebookReelsPage'));
@@ -141,8 +141,8 @@ const DashboardRoutes = () => (
           <Route index element={<Navigate to="posts" replace />} />
           <Route path="posts" element={<FacebookPostsPage />} />
           <Route path="posts/:postId" element={<FacebookPostsPage />} />
-          <Route path="messages" element={<FacebookMessagesPage />} />
-          <Route path="messages/:threadId" element={<FacebookMessagesPage />} />
+          <Route path="messages" element={<FacebookMessagesRedirect />} />
+          <Route path="messages/:threadId" element={<FacebookMessagesRedirect />} />
           <Route path="activity" element={<FacebookActivityPage />} />
           <Route path="reels" element={<FacebookReelsPage />} />
           <Route path="insights" element={<FacebookInsightsPage />} />
