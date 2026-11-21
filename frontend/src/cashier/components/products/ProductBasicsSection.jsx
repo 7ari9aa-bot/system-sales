@@ -5,16 +5,14 @@ import FormField from "@/cashier/components/products/FormField";
 import { DOT, GRID2, INPUT, SECTION, SECTION_HEAD, SECTION_TITLE, SELECT_TRIGGER, TEXTAREA } from "@/cashier/components/products/formStyles";
 import NamedPicker from "@/cashier/components/products/NamedPicker";
 import { useBrands, useCategories, useCreateBrand, useCreateCategory } from "@/cashier/api/useCatalogWrite";
+import { useShopOptions } from "@/cashier/api/useShopOptions";
+import { resolveSizePreset, sizePresetChoices } from "@/cashier/lib/shopOptions";
 
-const SIZE_PRESETS = [
-  { key: "clothing", label: "ملابس (S — XXL)" },
-  { key: "kids", label: "مقاسات أطفال" },
-  { key: "shoes", label: "مقاسات أحذية" },
-  { key: "one", label: "مقاس واحد" },
-];
 
 // بيانات الموديل الأساسية: الاسم والفئة والعلامة ونظام المقاسات والوصف.
 export default function ProductBasicsSection({ form, onPatch, sizePreset, onSizePresetChange }) {
+  const { options } = useShopOptions();
+  const sizeChoices = sizePresetChoices(options.sizeSets);
   const categories = useCategories();
   const brands = useBrands();
   const createCategory = useCreateCategory();
@@ -58,12 +56,12 @@ export default function ProductBasicsSection({ form, onPatch, sizePreset, onSize
         </FormField>
 
         <FormField label="نظام المقاسات">
-          <Select value={sizePreset} onValueChange={onSizePresetChange}>
+          <Select value={resolveSizePreset(options.sizeSets, sizePreset)} onValueChange={onSizePresetChange}>
             <SelectTrigger className={SELECT_TRIGGER}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SIZE_PRESETS.map((p) => (
+              {sizeChoices.map((p) => (
                 <SelectItem key={p.key} value={p.key}>
                   {p.label}
                 </SelectItem>

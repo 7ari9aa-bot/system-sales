@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 604,
-    "sha256": "9b6de3f9a35fcb0a22cb3bcfc4b27f85883c9ddc6ed4dc66d510f367daf7f605",
-    "typed_operations": 339
+    "operations": 605,
+    "sha256": "3830df9f610dd349bea0df8c55d644c546e20a5d2829303e088217a58fb0a216",
+    "typed_operations": 340
   },
   "spec": {
     "components": {
@@ -23761,6 +23761,29 @@
             "token"
           ],
           "title": "VerifyEmailRequest",
+          "type": "object"
+        },
+        "VisibleScreensOut": {
+          "properties": {
+            "channel_allocation": {
+              "title": "Channel Allocation",
+              "type": "boolean"
+            },
+            "units_of_measure": {
+              "title": "Units Of Measure",
+              "type": "boolean"
+            },
+            "warehouse_transfers": {
+              "title": "Warehouse Transfers",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "warehouse_transfers",
+            "channel_allocation",
+            "units_of_measure"
+          ],
+          "title": "VisibleScreensOut",
           "type": "object"
         },
         "VoidRequest": {
@@ -54561,6 +54584,104 @@
             }
           },
           "summary": "Get Stock Summary",
+          "tags": [
+            "inventory"
+          ]
+        }
+      },
+      "/api/v1/inventory/screens": {
+        "get": {
+          "description": "Which optional stock screens this shop shows. Open to any member: a cashier needs it to draw\nthe menu, and it carries no setting value beyond shown or hidden.",
+          "operationId": "get_visible_screens_api_v1_inventory_screens_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/VisibleScreensOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Visible Screens",
           "tags": [
             "inventory"
           ]

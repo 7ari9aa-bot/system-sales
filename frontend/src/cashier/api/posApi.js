@@ -86,8 +86,10 @@ export const posApi = {
     post(`/pos/registers/${seg(registerId)}/open-day`, { opening_float: String(openingFloat) }),
 
   /* ---- shift ---- */
-  // The close records the day; nothing is counted, so there is no body to send.
-  closeSession: async (id) => post(`/pos/sessions/${seg(id)}/close`, {}),
+  // A till that takes payments counts its drawer: `body` is { counted_cash, variance_reason? } (see closePlan.js).
+  // A till that does not has no drawer and sends nothing, exactly as before.
+  closeSession: async (id, body) => post(`/pos/sessions/${seg(id)}/close`, body ?? {}),
+  drawer: (id) => api(`/pos/sessions/${seg(id)}/drawer`),
   listCashMovements: (id) => api(`/pos/sessions/${seg(id)}/cash-movements`),
   addCashMovement: async (id, { reason, amount, notes }, intent) =>
     post(

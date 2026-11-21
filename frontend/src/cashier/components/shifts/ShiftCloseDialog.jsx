@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
+import { Input } from "@/cashier/components/ui/input";
+import { Textarea } from "@/cashier/components/ui/textarea";
 import { fmtMoney } from "@/cashier/lib/format";
+import { closeProblems, countsDrawer, gapMinor } from "@/cashier/api/closePlan";
 
 // إغلاق اليوم: تسجيل لما حدث فقط (رصيد البداية + الفواتير − المرتجعات)، وليس جردًا للدرج.
 // `preview` = the backend's close-preview (every figure computed from the ledger, not on the client).
@@ -13,8 +17,27 @@ export function heldInvoicesPhrase(n) {
   return `توجد ${n} فاتورة معلقة`;
 }
 
-export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null }) {
+export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null, drawer = null, rules = null }) {
+  const [counted, setCounted] = useState("");
+  const [reason, setReason] = useState("");
   if (!shift) return null;
+
+  // A till that takes payments has a drawer to count. One that does not closes exactly as it always has.
+  const tillRules = { take_payments: preview?.take_payments };
+  const counts = countsDrawer(tillRules);
+  const expected = drawer?.expected_cash ?? null;
+  const gap = gapMinor(counted, expected);
+  const problems = closeProblems({
+    rules: tillRules,
+    counted,
+    expected,
+    reason,
+    reasonRequired: rules?.reasonRequired ?? true,
+    threshold: rules?.threshold ?? 0,
+    // Whether this user is a manager is the server's call: it refuses a gap over the limit with the reason why.
+    canApprove: true,
+  });
+  const needsReason = counts && gap !== null && gap !== 0 && (rules?.reasonRequired ?? true);
 
   const ready = Boolean(preview) && !previewLoading;
   const money = (v) => (ready ? fmtMoney(Number(v ?? 0)) : "…");
@@ -48,9 +71,37 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
               <span>{money(preview?.closing_balance)}</span>
             </div>
           </div>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            الإغلاق يسجّل ما حدث في اليوم فقط. لا يُطلب عدّ الدرج ولا يُحسب عجز أو زيادة.
-          </p>
+          {counts ? (
+            <div className="grid gap-2 rounded-xl border border-border p-3 text-xs" data-testid="drawer-count">
+              <div className="num flex justify-between py-0.5">
+                <span className="text-muted-foreground">المتوقع في الدرج</span>
+                <span>{expected == null ? "…" : fmtMoney(Number(expected))}</span>
+              </div>
+              <label className="grid gap-1">
+                <span className="font-semibold">النقدية الفعلية في الدرج (عدّها بإيدك)</span>
+                <Input inputMode="decimal" dir="ltr" value={counted} onChange={(e) => setCounted(e.target.value)} placeholder="0.00" aria-label="النقدية الفعلية" />
+              </label>
+              {gap !== null ? (
+                <div className={`num flex justify-between font-bold ${gap === 0 ? "text-emerald-600" : "text-rose-600"}`} data-testid="drawer-gap">
+                  <span>{gap === 0 ? "الدرج مطابق" : gap < 0 ? "عجز" : "زيادة"}</span>
+                  <span>{gap === 0 ? "" : fmtMoney(Math.abs(gap) / 100)}</span>
+                </div>
+              ) : null}
+              {needsReason ? (
+                <label className="grid gap-1">
+                  <span className="font-semibold">سبب الفرق (مطلوب)</span>
+                  <Textarea rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-label="سبب الفرق" />
+                </label>
+              ) : null}
+              {gap !== null && gap !== 0 && (rules?.threshold ?? 0) > 0 && Math.abs(gap) > Math.round(rules.threshold * 100) ? (
+                <p className="text-[11px] leading-relaxed text-amber-700">الفرق أكبر من الحد المسموح ({fmtMoney(rules.threshold)}): الإغلاق يحتاج مديرًا بصلاحية الموافقة.</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              الإغلاق يسجّل ما حدث في اليوم فقط. لا يُطلب عدّ الدرج ولا يُحسب عجز أو زيادة.
+            </p>
+          )}
 
           {heldCount > 0 ? (
             <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
@@ -77,8 +128,8 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
           </Button>
           <Button
             className="font-bold"
-            disabled={!ready || pending}
-            onClick={() => onSubmit()}
+            disabled={!ready || pending || (counts && (expected == null || problems.length > 0))}
+            onClick={() => onSubmit(counts ? { counted, expected, reason } : undefined)}
           >
             {pending ? "جارٍ الإغلاق…" : heldCount > 0 ? "تأكيد الإغلاق وتصفير المعلقة" : "تأكيد إغلاق اليوم"}
           </Button>

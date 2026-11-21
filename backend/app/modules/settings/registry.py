@@ -220,6 +220,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.variance_approval_threshold",  # pos/service.py::close_session
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
+        "inventory.show_warehouse_transfers",  # inventory/services/screens.py::visible_screens
+        "inventory.show_channel_allocation",  # inventory/services/screens.py::visible_screens
+        "inventory.show_units_of_measure",  # inventory/services/screens.py::visible_screens
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
         "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
@@ -968,6 +971,62 @@ _reg(
         label_en="Track Warehouse Locations",
         description_ar="تتبّع مكان كل صنف داخل المستودع (رف، ممر، صندوق).",
         description_en="Track where each item sits inside a warehouse (shelf, aisle, bin).",
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.show_warehouse_transfers",
+        domain="inventory",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار التحويلات بين المخازن",
+        label_en="Show transfers between warehouses",
+        description_ar=(
+            "يُظهر شاشة تحويل البضاعة بين المخازن. أطفئه لمحل بمخزن واحد. لا يحذف أي بيانات."
+        ),
+        description_en=(
+            "Shows the screen for moving stock between warehouses. "
+            "Turn off for a one-store shop. Deletes no data."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.show_channel_allocation",
+        domain="inventory",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار تخصيص المخزون للبيع أونلاين",
+        label_en="Show online stock allocation",
+        description_ar=(
+            "يُظهر شاشة تخصيص كميات للبيع عبر القنوات الإلكترونية. "
+            "أطفئه لمحل بيع مباشر فقط. لا يحذف أي بيانات."
+        ),
+        description_en=(
+            "Shows the screen that reserves quantities for online channels. "
+            "Turn off for a walk-in-only shop. Deletes no data."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.show_units_of_measure",
+        domain="inventory",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار وحدات القياس",
+        label_en="Show units of measure",
+        description_ar=(
+            "يُظهر اختيار وحدة القياس وتحويلها (كرتونة، دستة). "
+            "أطفئه لمحل يبيع بالقطعة فقط. لا يحذف أي بيانات."
+        ),
+        description_en=(
+            "Shows unit-of-measure choice and conversion (carton, dozen). "
+            "Turn off for a shop that sells by the piece only. Deletes no data."
+        ),
     )
 )
 _reg(
