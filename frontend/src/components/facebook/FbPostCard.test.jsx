@@ -1,0 +1,21 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import FbPostCard from "@/components/facebook/FbPostCard";
+
+const post = { id: "1_2", text: "hello", picture: "", createdAt: "2026-11-21T08:00:00Z", reactions: 3, comments: [] };
+const html = (extra = {}) => renderToStaticMarkup(<FbPostCard post={{ ...post, ...extra }} pageName="Fihrist" lang="en" actions={{}} />);
+
+describe("a Page post card", () => {
+  it("renders a real post without crashing the page", () => {
+    expect(() => html()).not.toThrow();
+  });
+  it("shows the post text and the reactions summary", () => {
+    const out = html();
+    expect(out).toContain("hello");
+    expect(out).toContain('data-kind="LIKE"');
+  });
+  it("shows no reactions summary when the post has none", () => {
+    expect(html({ reactions: 0 })).not.toContain('data-kind="LIKE"');
+  });
+});

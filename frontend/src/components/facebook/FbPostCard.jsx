@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import FbAvatar from "@/components/facebook/FbAvatar";
 import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
+import FbReactionSummary from "@/components/facebook/FbReactionSummary";
 import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
 import { commentWindow } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
