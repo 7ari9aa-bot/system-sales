@@ -65,6 +65,14 @@ describe("which actions a comment offers", () => {
     expect(commentActions(theirs, 1).reply).toBe(false);
     expect(commentActions({ ...theirs, hidden: true }, 0).reply).toBe(false);
   });
+  it("offers Like on the Page's own comment, as Facebook does", () => {
+    expect(commentActions(pages, 0).like).toBe(true);
+    expect(commentActions(theirs, 0).like).toBe(true);
+  });
+  it("draws the Like button on the Page's own comment", () => {
+    const out = renderToStaticMarkup(<FbComment comment={pages} postId="p1" pageName="Fihrist" lang="en" actions={{}} />);
+    expect(out).toContain(">Like<");
+  });
   it("never offers Hide or a private message on the Page's own comment", () => {
     const a = commentActions(pages, 0);
     expect(a.hide).toBe(false);

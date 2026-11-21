@@ -78,6 +78,10 @@ Rate limits for Pages calls made with a Page or system user token:
 
 Consequence for the Page-likes-own-comment item: the docs make it plausible and the UI proves Facebook allows it, but only a real `POST` with a Page token can settle the API side. Unknown stays UNVERIFIED until then.
 
+## Like on the Page's own comment: now drawn, API result pending
+
+Branch `feat/facebook-page-like-comment` (not merged). The Like button now shows on the Page's own comment, as on Facebook (tested in the owner's browser). Two tests failed first, then passed. Pressing it calls the existing `POST /facebook/objects/{id}/like`; if Meta rejects it the screen shows the error and does not keep the like (the existing `run` wrapper). The first real press on the test Page is what settles the API side. Known gap: the initial pressed state is not read from Meta's `user_likes`, because storing it needs a new column and migration; the like count shown is the stored `like_count`.
+
 ## Release state
 
 main = c14fa23c. It carries the whole parity line (comment look, post card look, comment order gateway, comment sort menu, shares count, the matrices and this report) plus the migration fe2026112013. Verified after the push: frontend suite 174 files, 2400 tests green; the affected backend tests (facebook pages, shares count, migrations, openapi lock) 28 passed; Vercel production deployment of c14fa23c READY and its bundle contains the sort menu, the share counter and the comment counter; the Northflank build of c14fa23c succeeded, its log shows `Running upgrade fe2026112012 -> fe2026112013` and the new container is running. A visual check on the live site was not done: the owner's browser tools were unavailable.
