@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { cn } from "@/cashier/lib/utils";
+import { buttonVariants } from "@/cashier/components/ui/button";
 import { gateMessage, setupAction, startButtonLook, startDayParts, tillLabel } from "./WorkingSessionGate";
 
 describe("gateMessage", () => {
@@ -85,12 +87,31 @@ describe("startButtonLook", () => {
     expect(className).toContain("bg-orange-100");
     expect(className).toContain("border-orange-300");
     expect(className).toContain("text-orange-800");
-    expect(className).toContain("opacity-100");
+    expect(className).toContain("disabled:opacity-100");
   });
 
   it("once it can be pressed it uses the normal primary look, with no waiting colours", () => {
     const { className } = startButtonLook(false);
     expect(className).toBe("w-full");
     expect(className).not.toContain("orange");
+  });
+});
+
+describe("the waiting start button after the real class merge", () => {
+  const merged = (waiting) =>
+    cn(buttonVariants({ className: startButtonLook(waiting).className })).split(/\s+/);
+
+  it("loses the half-faded base look and the primary fill, so it is not washed out", () => {
+    const c = merged(true);
+    expect(c).not.toContain("disabled:opacity-50");
+    expect(c).not.toContain("bg-primary");
+    expect(c).toContain("bg-orange-100");
+    expect(c).toContain("disabled:opacity-100");
+  });
+
+  it("when it can be pressed it keeps the normal primary look and the base fade rule", () => {
+    const c = merged(false);
+    expect(c).toContain("bg-primary");
+    expect(c).toContain("disabled:opacity-50");
   });
 });
