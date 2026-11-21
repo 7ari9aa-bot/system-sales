@@ -27,6 +27,10 @@ Counts come from `grep -c '| STATUS |'` on each file.
 
 Frontend full suite on this branch: 168 files, 2244 tests passing. ESLint clean on the touched files.
 
+## Branch state
+
+`feat/facebook-full-parity` now contains every feature branch, each merged with `--no-ff` so the history keeps them apart: feat/facebook-comment-look (19da5e0e), feat/facebook-comment-order (dbbed9ff), feat/facebook-post-card-look, and the three matrix branches feat/facebook-matrix-engage, feat/facebook-matrix-insights, feat/facebook-matrix-publish. Nothing is merged to main. Backend check on the merged tree: `pytest tests/test_facebook_pages.py` 11 passed (the full backend suite is never run, per the standing rule).
+
 ## Open items, not done
 
 - Page liking a comment the Page itself wrote: Meta's docs are silent. Left hidden until tested against the real API.
