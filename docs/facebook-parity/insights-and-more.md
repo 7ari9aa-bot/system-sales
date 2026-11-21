@@ -132,3 +132,80 @@ those three page metrics.
 | Messenger customer profile from the PSID (name, picture) | `GET /{psid}?fields=first_name,last_name,profile_pic` | `pages_messaging` and the MESSAGING task | No. `grep` for `psid`, `first_name` and `profile_pic` in `messenger.py` returns nothing | UNVERIFIED (the field list is well known but I did not load its reference page) | https://developers.facebook.com/docs/messenger-platform/identity/user-profile/ |
 | Messenger handover protocol, thread control | `POST /me/take_thread_control`, `pass_thread_control`, `request_thread_control` | `pages_messaging` and the handover feature | No | MISSING-ALLOWED | https://developers.facebook.com/docs/messenger-platform/handover-protocol/ |
 | Messenger message templates, status callbacks | webhook `message_template_status_update` | `pages_messaging` | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Page ratings and recommendations, list them | `GET /{page-id}/ratings` | `pages_read_engagement` and/or `pages_read_user_content` (error 283 names both), plus the MODERATE task. Parent Page tokens cannot read a child Page's recommendations | No. `grep` for `ratings`, `reviews`, `recommend` and `rating` across the conversations module, `frontend/src/pages/facebook` and `facebookApi.js` finds nothing | API-FORBIDDEN (the `Recommendation` object page says: "This field is deprecated for v22.0 and future versions. Attempting to query an edge or field that returns a recommendation using v22.0 or later will return error code 12." We are on v27.0) | https://developers.facebook.com/docs/graph-api/reference/recommendation/ |
+| Page ratings, the star average and count as Page fields | `GET /{page-id}?fields=overall_star_rating,rating_count` | `overall_star_rating` is public; `rating_count` needs PPCA or PPMA | No | UNVERIFIED (the fields are still documented in the v27.0 Page reference, but with recommendations deprecated for v22+ I could not confirm they still return a value on v27.0) | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Page reviews, reading the text of a review | `GET /{page-id}/ratings?fields=review_text,reviewer,created_time,rating` | as above | No | API-FORBIDDEN (same `Recommendation` deprecation, error 12 on v22.0 and later) | https://developers.facebook.com/docs/graph-api/reference/recommendation/ |
+| Page reviews, replying to a review | no documented edge | n/a | No | UNVERIFIED (I found no Graph API edge for replying to a recommendation; Meta Business Suite does it in the UI only) | https://developers.facebook.com/docs/graph-api/reference/recommendation/ |
+| Page recommendations, webhook on a new one | webhook `ratings` field in `subscribed_fields` | `pages_manage_metadata` | No. `ratings` appears in the documented `subscribed_fields` enum but nothing in our code subscribes to it | UNVERIFIED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Page roles, list | `GET /{page-id}/roles` | Page access token; error 283 names `pages_read_engagement` / `pages_read_user_content` / `pages_manage_ads` / `pages_manage_metadata`. Only returns people who do not belong to a business; business users need `/assigned_users` | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/roles/ |
+| Page roles, business-assigned users | `GET /{page-id}/assigned_users?fields=name,tasks` | `pages_read_engagement`, `business_management` for a business system user | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Page roles, add or change a role | `POST /{page-id}/roles` or `/assigned_users` | `pages_manage_metadata` and the MANAGE task | No | UNVERIFIED (the `/roles` reference documents reading and the `tasks` field, not a create or update operation; the assigned_users write form is not on that page) | https://developers.facebook.com/docs/graph-api/reference/page/roles/ |
+| Page roles, remove a role | `DELETE /{page-id}/roles` | as above | No | UNVERIFIED | https://developers.facebook.com/docs/graph-api/reference/page/roles/ |
+| Call to action button, read | `GET /{page-id}/call_to_actions` | Page Public Content Access feature, and a user token for someone with a role on the Page | No. `grep` finds `call_to_action` only in `instagram.py` (Instagram question buttons) and `whatsapp_interactive.py` (WhatsApp CTA url buttons). Nothing for the Page | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/call_to_actions/ |
+| Call to action button, create or change | `POST /{page-id}/call_to_actions` | as above | No | UNVERIFIED (the `call_to_actions` reference documents reading only; the write form is not on that page) | https://developers.facebook.com/docs/graph-api/reference/page/call_to_actions/ |
+| Call to action button, delete | `DELETE /{page-id}/call_to_actions` | as above | No | UNVERIFIED | https://developers.facebook.com/docs/graph-api/reference/page/call_to_actions/ |
+| Call to action clicks | `GET /{page-id}/insights?metric=page_total_actions` | `read_insights` and ANALYZE | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/insights/ |
+| Page visits, profile views over time | `GET /{page-id}/insights?metric=page_views_total` | `read_insights` and ANALYZE | No | MISSING-ALLOWED (this is the last surviving Page views metric) | https://developers.facebook.com/docs/graph-api/reference/page/insights/ |
+| Page visits, individual visitor list | no edge | n/a | No | API-FORBIDDEN (Page Insights returns aggregate counts only; there is no edge that lists who viewed a Page) | https://developers.facebook.com/docs/graph-api/reference/page/insights/ |
+| Page visits, check-ins count | `GET /{page-id}?fields=checkins,were_here_count,can_checkin` | PPCA or PPMA for public data; disabled when the Page hides check-ins | No. None of the three fields is requested | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Page visits, location and child Pages | `GET /{page-id}/locations` | PPCA | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/locations/ |
+| Page settings read | `GET /{page-id}/settings` | Page access token | No | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/settings/ |
+| Page publishing tools, scheduling in the native composer | `GET /{page-id}/scheduled_posts` | `pages_read_engagement`, MANAGE | Partly. Our app has its own scheduler (`check_schedule`, `list_scheduled`, `GET /facebook/scheduled`) and lists Meta's scheduled posts, but there is no Meta-side publishing tools screen to mirror | DONE (our own scheduler stands in for the Meta one) | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Business Suite, a unified cross-channel inbox (Messenger plus Instagram plus comments in one list) | no single edge; needs `/conversations` plus `/feed` plus the Instagram edge | `pages_messaging` plus `instagram_manage_messages` | Partly. Our inbox merges channels through `_allowed_channels` and our own tables, so the merge exists but is fed by webhooks, not by Meta reads | MISSING-ALLOWED (the merge is ours; the Meta-side backfill is missing) | https://developers.facebook.com/docs/graph-api/reference/page/conversations/ |
+| Business Suite, saved replies and canned responses | no edge | n/a | No | API-FORBIDDEN (saved replies are a Business Suite UI feature; the Messenger Platform has no saved-reply API. Closest is the persistent menu and quick replies) | https://developers.facebook.com/docs/graph-api/reference/page/messenger_profile/ |
+| Business Suite, automated responses and away messages | `POST /me/messenger_profile` covers greeting and ice breakers only | `pages_messaging` | No | API-FORBIDDEN (the full automation builder, including away and instant replies with conditions, is UI only. Greeting and ice breakers are the only API-reachable pieces) | https://developers.facebook.com/docs/graph-api/reference/page/messenger_profile/ |
+| Business Suite, labels on conversations | `POST /{page-id}/custom_labels`, `POST /{conversation-id}/custom_labels` | `pages_messaging`, `pages_manage_metadata` | No. Our own `list-state` and status fields are app-side, not Meta labels | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Business Suite, Ads and boosting from a post | Marketing API `POST /{post-id}/...` boost endpoints | `ads_management`, `pages_manage_ads` | No | MISSING-ALLOWED (out of scope for parity of the Page surface, but the API does allow it) | https://developers.facebook.com/docs/marketing-api/ |
+| Business Suite, Insights report export (CSV, PDF) | no edge | n/a | No | API-FORBIDDEN (export is a Business Suite UI feature; the API returns JSON metrics only) | https://developers.facebook.com/docs/graph-api/reference/page/insights/ |
+| Business Suite, Page shop and commerce | `GET /{page-id}/commerce_orders`, `shop_setup_status`, `product_catalogs` | `catalog_management`, `pages_manage_metadata` | No | MISSING-ALLOWED (available, well outside this parity scope) | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Business Suite, Page quality, integrity and policy status | Page Integrity API and webhook | `pages_manage_metadata` | No | UNVERIFIED (the Jan 2026 changelog announces it but I did not load its reference page) | https://developers.facebook.com/documentation/pages-api/integrity-webhook |
+| Business Suite, live video scheduling and monitoring | `GET /{page-id}/live_videos` | `pages_read_engagement`, `publish_video` to create | No. `facebook_video.py` publishes video but nothing reads or lists live videos | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/ |
+| Business Suite, Page inbox search and filters by tag, label, assignee | no single edge; `/conversations` plus app-side filtering | `pages_messaging` | Partly. Our `/inbox` supports status and cursor filters only, no label or assignee filter | MISSING-ALLOWED | https://developers.facebook.com/docs/graph-api/reference/page/conversations/ |
+
+## Part 3: what this means for parity
+
+The Page owner's own Facebook app shows six things we cannot reproduce through the Graph API at
+all, and no amount of front end work changes that:
+
+1. Reviews and recommendations. The `Recommendation` object is deprecated for v22.0 and later, so
+   `GET /{page-id}/ratings` returns error 12 on our v27.0. The star average and count may survive
+   as Page fields, but that is unconfirmed here. A reviews tab in our app would have to be a
+   manual note, not Meta data.
+2. Who viewed the Page. Only `page_views_total` exists, an aggregate. There is no visitor list.
+3. Saved replies, the automation builder, and CSV or PDF report export. Business Suite UI only.
+4. Reel interactions inside Page level insights. The insights doc says so directly. Per reel
+   numbers exist on `video_insights` instead.
+5. Impressions and Page fans. Removed in November 2025. `page_media_view` and `page_follows` are the
+   honest replacements, and our app already uses only those.
+6. Post clicks, engaged users and negative feedback. Removed in September 2024.
+
+The things that are genuinely buildable and missing, ranked by how often a Page owner would touch
+them, are the MISSING-ALLOWED rows in this order:
+
+1. Messenger sender actions and receipts (typing, seen, react, and reading the customer's read and
+   delivery webhooks). Every real chat has these. Our own `policy.py` already models the 24h and
+   7 day windows for Messenger, and `read_signal_service.py` then refuses Messenger at line 95.
+2. Messenger HUMAN_AGENT tag on the wire. `policy.py` says a human may answer up to 168 hours, and
+   `messenger.py` never sends `messaging_type` and `tag`, so Meta rejects the message our own policy
+   just allowed. This is a correctness bug, not a feature gap.
+3. Messenger quick replies and the persistent menu. Both are one JSON field on a request we already
+   send, and both are everywhere in Messenger.
+4. Page info edit (about, hours, phone, website, category, cover). A Page owner expects to fix a
+   phone number without leaving the app. Nothing exists: no `POST /facebook/page`, no form.
+5. Reel insights and post video insights. We list reels and publish videos, and then show no
+   numbers for either.
+6. Messenger conversation backfill from `/{page-id}/conversations`. Without it, the inbox is empty
+   until the first webhook arrives.
+7. Ratings as Page fields (`overall_star_rating`, `rating_count`) and check-ins
+   (`checkins`, `were_here_count`). One extra field in a request we already make.
+8. Call to action read, Page roles read, Page settings read, and the remaining insight metrics
+   (`page_views_total`, `page_total_actions`, `page_total_media_view_unique`, the video and
+   reaction breakdowns). Small, additive, and mostly one field list away.
+
+Two rows deserve a warning because they look like gaps but are traps:
+
+- `page_views` versus `page_views_total`. The first was removed in 2024, the second is alive. A
+  naive port of an old tutorial will fetch the dead one and get an invalid metric error.
+- `page_fans` versus `page_follows`. `fan_count` as a Page field still returns a number (it maps to
+  `followers_count` on New Page Experience Pages), while `page_fans` as a metric is gone. So the
+  follower count is readable in two places but the fan *metric* is not.
