@@ -49,6 +49,14 @@ Not verified here: the Reels publishing flow on real Facebook (no reel was publi
 
 `feat/facebook-full-parity` now contains every feature branch, each merged with `--no-ff` so the history keeps them apart: feat/facebook-comment-look (19da5e0e), feat/facebook-comment-order (dbbed9ff), feat/facebook-post-card-look, and the three matrix branches feat/facebook-matrix-engage, feat/facebook-matrix-insights, feat/facebook-matrix-publish. Nothing is merged to main. Backend check on the merged tree: `pytest tests/test_facebook_pages.py` 11 passed (the full backend suite is never run, per the standing rule).
 
+## Page liking its own comment: tested on real Facebook
+
+Done on 2026-11-21 in the owner's browser, on the test Page "Fihrist", comment id 122112956013520999_2041588523218805 ("Author" comment written by the Page).
+
+- Facebook's own web UI offers Like, a thumbs-down and Reply on the Page's own comment (screenshot before the click).
+- One click on Like turned the thumb blue and showed a like icon with the counter 1. After a full reload the like was still there (blue thumb, counter 1), so it was saved by Facebook, not a client-side guess.
+- Not proven: that the Graph API edge `POST /{comment-id}/likes` accepts the same action with a Page token. The web UI and the API are different routes, and Meta's docs stay silent. Our own screen therefore keeps the Like button hidden on the Page's own comments (`FbComment.jsx`) until a real API call shows it works. Our API does not return a per comment like count either, so this could not be read back through our gateway.
+
 ## Release state
 
 main = c14fa23c. It carries the whole parity line (comment look, post card look, comment order gateway, comment sort menu, shares count, the matrices and this report) plus the migration fe2026112013. Verified after the push: frontend suite 174 files, 2400 tests green; the affected backend tests (facebook pages, shares count, migrations, openapi lock) 28 passed; Vercel production deployment of c14fa23c READY and its bundle contains the sort menu, the share counter and the comment counter; the Northflank build of c14fa23c succeeded, its log shows `Running upgrade fe2026112012 -> fe2026112013` and the new container is running. A visual check on the live site was not done: the owner's browser tools were unavailable.
