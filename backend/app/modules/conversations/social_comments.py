@@ -18,8 +18,67 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundComment
 from app.modules.conversations.models import SocialComment
+
+
+def comment_changed_payload(
+    *,
+    platform: str,
+    post_id: str | None,
+    comment_id: str,
+    parent_comment_id: str | None,
+    verb: str,
+) -> dict | None:
+    """What an open screen needs to refetch, and nothing more.
+
+    Ids only: the comment text stays in the database and reaches the screen through the
+    ordinary authenticated read, so a stream frame is never a second copy of customer text.
+    No post means no screen to wake (a screen refetches by post), so nothing is announced.
+    """
+    if not post_id:
+        return None
+    return {
+        "platform": platform,
+        "post_id": post_id,
+        "comment_id": comment_id,
+        "parent_comment_id": parent_comment_id,
+        "verb": verb,
+    }
+
+
+async def announce_comment_changed(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    row_id: uuid.UUID,
+    *,
+    platform: str,
+    post_id: str | None,
+    comment_id: str,
+    parent_comment_id: str | None,
+    verb: str,
+) -> bool:
+    """Stage the announcement in the caller's transaction (it commits with the comment)."""
+    payload = comment_changed_payload(
+        platform=platform,
+        post_id=post_id,
+        comment_id=comment_id,
+        parent_comment_id=parent_comment_id,
+        verb=verb,
+    )
+    if payload is None:
+        return False
+    await add_outbox_event(
+        session,
+        aggregate_type="social_comment",
+        aggregate_id=row_id,
+        event_type="social_comment.changed",
+        tenant_id=tenant_id,
+        payload=payload,
+        producer="social_comments",
+    )
+    return True
 
 
 class SocialCommentService:
@@ -42,9 +101,21 @@ class SocialCommentService:
         """
         commented_at = comment.commented_at or datetime.now(UTC)
         if comment.verb == "remove":
-            return await SocialCommentService._mark_removed(
+            removed_id = await SocialCommentService._mark_removed(
                 session, tenant_id, platform, comment.platform_comment_id, commented_at
             )
+            await announce_comment_changed(
+                session,
+                tenant_id,
+                removed_id,
+                platform=platform,
+                post_id=comment.post_id
+                or await SocialCommentService._post_of(session, removed_id),
+                comment_id=comment.platform_comment_id,
+                parent_comment_id=comment.parent_comment_id,
+                verb="remove",
+            )
+            return removed_id
         stmt = (
             pg_insert(SocialComment)
             .values(
@@ -72,7 +143,25 @@ class SocialCommentService:
             )
             .returning(SocialComment.id)
         )
-        return (await session.execute(stmt)).scalar_one()
+        row_id = (await session.execute(stmt)).scalar_one()
+        await announce_comment_changed(
+            session,
+            tenant_id,
+            row_id,
+            platform=platform,
+            post_id=comment.post_id,
+            comment_id=comment.platform_comment_id,
+            parent_comment_id=comment.parent_comment_id,
+            verb=comment.verb,
+        )
+        return row_id
+
+    @staticmethod
+    async def _post_of(session: AsyncSession, row_id: uuid.UUID) -> str | None:
+        """The post a stored comment belongs to (a remove event often omits it)."""
+        return (
+            await session.execute(select(SocialComment.post_id).where(SocialComment.id == row_id))
+        ).scalar_one_or_none()
 
     @staticmethod
     async def _mark_removed(
