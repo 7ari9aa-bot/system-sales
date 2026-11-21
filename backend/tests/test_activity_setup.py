@@ -420,3 +420,132 @@ async def test_the_history_names_who_reopened_it_through_the_route(db, tenant_ct
         )
     ).scalar()
     assert who == tenant_ctx.user.id
+
+
+# ── a request that carries no workspace ───────────────────────────────────────────────────────
+# The wizard is a shop-level decision: the marker and the preset live at TENANT scope, and every
+# tenant-scope setting is read the same whether or not the caller sent X-Workspace-Id. So a request
+# with no workspace must behave exactly like one with it — not refuse, not fall back to a branch,
+# and not write a branch-scoped row the till would then read differently.
+
+
+async def _seed_workspace(db, tid):
+    from app.modules.identity.models import Workspace
+
+    ws = Workspace(tenant_id=tid, name="HQ", slug=uuid.uuid4().hex[:12])
+    db.add(ws)
+    await db.flush()
+    return ws
+
+
+async def _call_in_workspace(db, ctx, method, path, *, perms, body=None, workspace_id=None):
+    """The same route, but with X-Workspace-Id set — the header resolve_scope reads."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+    from tests.security.test_role_authz_matrix import _authz_app
+
+    inner = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=ctx.user.id,
+            tenant_id=ctx.tenant_id,
+            role_code="x",
+            is_platform_admin=False,
+        ),
+        tenant_id=ctx.tenant_id,
+        role_code="x",
+        permission_codes=perms,
+    )
+    scoped = TenantContext(
+        session=db,
+        user=inner.user,
+        tenant_id=ctx.tenant_id,
+        role_code="x",
+        permission_codes=perms,
+        workspace_id=workspace_id,
+    )
+    app = _authz_app()
+
+    async def _db():
+        yield db
+
+    app.dependency_overrides[get_tenant_ctx] = lambda: scoped
+    app.dependency_overrides[get_db] = _db
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", timeout=20
+    ) as client:
+        return await client.request(method, path, json=body)
+
+
+async def test_a_request_with_no_workspace_reads_and_writes_the_same_as_one_with_it(
+    db, tenant_ctx
+) -> None:
+    tid = tenant_ctx.tenant_id
+    await mark_not_started(db, tid)
+    ws = await _seed_workspace(db, tid)
+
+    bare = await _call(db, tenant_ctx, "GET", BASE, perms=OWNER)
+    scoped = await _call_in_workspace(
+        db, tenant_ctx, "GET", BASE, perms=OWNER, workspace_id=ws.id
+    )
+    assert bare.status_code == 200 and scoped.status_code == 200, scoped.text
+    assert bare.json() == scoped.json()
+    assert bare.json()["needs_setup"] is True
+
+    # Complete through the SCOPED request: the marker must land where the unscoped read sees it.
+    done = await _call_in_workspace(
+        db,
+        tenant_ctx,
+        "POST",
+        f"{BASE}/complete",
+        perms=OWNER,
+        body={"vertical": "apparel", "apply_preset": False},
+        workspace_id=ws.id,
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["changed"] is True
+
+    after = await _call(db, tenant_ctx, "GET", BASE, perms=OWNER)
+    assert after.json()["state"] == DONE and after.json()["needs_setup"] is False
+
+    # And it is a TENANT row, not a branch row the till would read differently.
+    from sqlalchemy import select
+
+    from app.modules.settings.models import TenantSetting
+
+    rows = list(
+        (
+            await db.execute(
+                select(TenantSetting).where(
+                    TenantSetting.tenant_id == tid, TenantSetting.key == "business.setup_state"
+                )
+            )
+        ).scalars()
+    )
+    assert [(r.scope, r.scope_id) for r in rows] == [("tenant", None)]
+
+
+async def test_completing_with_and_without_a_workspace_lands_the_same_shop_setting(
+    db, tenant_ctx
+) -> None:
+    # One shop is finished from a bare request, then the same call is repeated from a request that
+    # names a workspace. The state and vertical are tenant-scope, so both calls must read the same:
+    # the wizard never writes a branch-scoped row the till would read differently.
+    tid = tenant_ctx.tenant_id
+    await mark_not_started(db, tid)
+    ws = await _seed_workspace(db, tid)
+    body = {"vertical": "apparel", "apply_preset": False}
+
+    bare = await _call(db, tenant_ctx, "POST", f"{BASE}/complete", perms=OWNER, body=body)
+    assert bare.status_code == 200, bare.text
+    again = await _call_in_workspace(
+        db, tenant_ctx, "POST", f"{BASE}/complete", perms=OWNER, body=body, workspace_id=ws.id
+    )
+    # The shop is already done: a second finish from a workspace-scoped request changes nothing.
+    assert again.status_code == 200, again.text
+    assert bare.json()["changed"] is True and bare.json()["vertical"] == "apparel"
+    assert again.json()["state"] == bare.json()["state"] == "done"
+    assert again.json()["changed"] is False
+    assert await read_state(db, tid) == "done"
+    assert await _vertical(db, tid) == "apparel"
