@@ -3,9 +3,12 @@ import FbAvatar from "@/components/facebook/FbAvatar";
 import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
 import FbReactionSummary from "@/components/facebook/FbReactionSummary";
-import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
+import { FbComment as CommentIcon, FbGlobe, FbLike, FbShare } from "@/components/facebook/fbIcons";
 import { COMMENT_SORTS, commentWindow, sortComments } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
+
+/** Facebook draws the order menu once the thread is fully open, never above a folded one. */
+export const commentSortShown = (comments, hidden) => (comments || []).length > 1 && hidden === 0;
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
 
@@ -99,12 +102,12 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       <div data-testid="fb-engagement-row" className="mx-4 flex items-center gap-4 border-b py-2.5 text-[15px]" style={{ borderColor: FB.divider, color: FB.text2 }}>
         {reactionsShown > 0 && <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />}
         <button type="button" data-testid="fb-comment-action" aria-pressed={commenting} aria-label={commentActionLabel(total, lang)} onClick={() => setCommenting((v) => !v)} className="inline-flex items-center gap-1.5 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]"><CommentIcon size={18} />{total > 0 && <span data-testid="fb-comment-count" aria-hidden="true">{total}</span>}</button>
-        {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count" className="inline-flex items-center gap-1.5">{post.sharesCount}<span className="sr-only">{ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span></span>}
+        <span data-testid="fb-share-mark" aria-hidden={(post.sharesCount || 0) > 0 ? undefined : "true"} className="inline-flex items-center gap-1.5">{(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count">{post.sharesCount}<span className="sr-only">{ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span></span>}<FbShare size={18} /></span>
         <button type="button" aria-label={ar ? "أعجبني" : "Like"} aria-pressed={liked} disabled={busy} onClick={like} className={cn("ms-auto grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} /></button>
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
-        {(post.comments || []).length > 1 && (
+        {commentSortShown(post.comments, win.hidden) && (
           <div className="relative">
             <button type="button" data-testid="fb-comment-sort" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[15px] font-semibold hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
               {COMMENT_SORTS.find((x) => x.id === sort)[ar ? "ar" : "en"]}
@@ -121,7 +124,7 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
         )}
         {win.hidden > 0 && (
           <button type="button" onClick={() => setSteps((n) => n + 1)} className="block text-[15px] font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]" style={{ color: FB.text2 }}>
-            {ar ? `عرض ${win.next} تعليقات أخرى` : `View ${win.next} more ${win.next === 1 ? "comment" : "comments"}`}
+            {ar ? "عرض المزيد من التعليقات" : "View more comments"}
           </button>
         )}
         {win.shown.map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}

@@ -1,7 +1,8 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import FbPostCard, { commentActionLabel, commentSubmitShown } from "@/components/facebook/FbPostCard";
+import { COMMENT_SORTS } from "@/lib/facebookApi";
+import FbPostCard, { commentActionLabel, commentSortShown, commentSubmitShown } from "@/components/facebook/FbPostCard";
 
 const post = { id: "1_2", text: "hello", picture: "", createdAt: "2026-11-21T08:00:00Z", reactions: 3, comments: [] };
 const html = (extra = {}) => renderToStaticMarkup(<FbPostCard post={{ ...post, ...extra }} pageName="Fihrist" lang="en" actions={{}} />);
@@ -112,14 +113,14 @@ describe("the comment sort menu, as Facebook shows it above a busy thread", () =
     expect(html({ comments: [] })).not.toContain('data-testid="fb-comment-sort"');
     expect(html({ comments: [two[0]] })).not.toContain('data-testid="fb-comment-sort"');
   });
-  it("shows once the thread has two comments, named 'Most relevant' to begin with", () => {
-    const out = html({ comments: two });
-    expect(out).toContain('data-testid="fb-comment-sort"');
-    expect(out).toContain("Most relevant");
+  it("shows once the thread has two comments and none are folded away", () => {
+    expect(commentSortShown(two, 0)).toBe(true);
+    expect(commentSortShown(two, 1)).toBe(false);
+    expect(commentSortShown([two[0]], 0)).toBe(false);
+    expect(commentSortShown(undefined, 0)).toBe(false);
   });
-  it("is in Arabic with the Arabic labels", () => {
-    const out = renderToStaticMarkup(<FbPostCard post={{ ...post, comments: two }} pageName="Fihrist" lang="ar" actions={{}} />);
-    expect(out).toContain("الأكثر ملاءمة");
+  it("is named 'Most relevant' to begin with, in Arabic too", () => {
+    expect(COMMENT_SORTS[0]).toMatchObject({ ar: "الأكثر ملاءمة", en: "Most relevant" });
   });
   it("draws the thread oldest first by default", () => {
     const out = html({ comments: two });
@@ -173,6 +174,30 @@ describe("a Page post card, as Facebook draws it on the Page home", () => {
     const out = html({ comments: withComments(3), commentsCount: 3 });
     expect(out).toContain("t2");
     expect(out).not.toContain(">t0<");
-    expect(out).toContain("View 2 more comments");
+    expect(out).toContain("View more comments");
+  });
+});
+
+describe("a Page post card, measured side by side with the real Page home", () => {
+  const some = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, text: `t${i}`, from: "Fihrist OS", commentedAt: `2026-11-21T1${i}:00:00Z`, replies: [] }));
+  it("shows the comment order menu when the whole short thread is in view", () => {
+    expect(html({ comments: some(1), commentsCount: 1 })).not.toContain('data-testid="fb-comment-sort"');
+  });
+  it("keeps the order menu off while comments are folded, as Facebook does; it shows once more are opened", () => {
+    expect(html({ comments: some(3), commentsCount: 3 })).not.toContain('data-testid="fb-comment-sort"');
+  });
+  it("says 'View more comments' with no number, as Facebook does", () => {
+    const out = html({ comments: some(3), commentsCount: 3 });
+    expect(out).toContain("View more comments");
+    expect(out).not.toContain("View 2 more comments");
+  });
+  it("says it in Arabic without a number too", () => {
+    const out = renderToStaticMarkup(<FbPostCard post={{ ...post, comments: some(3), commentsCount: 3 }} pageName="Fihrist" lang="ar" actions={{}} />);
+    expect(out).toContain("عرض المزيد من التعليقات");
+  });
+  it("draws Facebook's share arrow in the row even before anyone shared, as a non-clickable mark", () => {
+    const out = html({ reactions: 1, sharesCount: 0 });
+    expect(out).toContain('data-testid="fb-share-mark"');
+    expect(out).not.toMatch(/<button[^>]*data-testid="fb-share-mark"/);
   });
 });

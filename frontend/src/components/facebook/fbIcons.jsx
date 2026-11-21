@@ -35,6 +35,9 @@ export const FbLike = ({ filled, size = 20 }) => (
     <path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3Zm0 0 4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2.3l-1.2 6.500A2 2 0 0 1 17.8 20H7" />
   </svg>
 );
+export const FbShare = ({ size = 18 }) => (
+  <svg {...base(size)} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4l7 7-7 7v-4c-6 0-9 2-11 6 0-7 3-12 11-12V4Z" /></svg>
+);
 export const FbComment = ({ size = 20 }) => (
   <svg {...base(size)} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M21 12a8.5 8.5 0 0 1-12.3 7.600L3 21l1.5-5.300A8.5 8.5 0 1 1 21 12Z" /></svg>
 );
