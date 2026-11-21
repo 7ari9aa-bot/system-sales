@@ -30,6 +30,7 @@ export interface LogPort {
  */
 export interface RuntimePort {
   apiBaseUrl(): Promise<string | null>
+  saveApiBaseUrl?(url: string): Promise<boolean>
 }
 
 export interface PrinterDevice {
@@ -41,6 +42,7 @@ export interface PrinterDevice {
 export interface PrinterPort {
   listPrinters(): Promise<PrinterDevice[]>
   printRaw(data: Uint8Array): Promise<void>
+  openCashDrawer(printerName?: string): Promise<void>
 }
 
 export interface UpdateCheckResult {

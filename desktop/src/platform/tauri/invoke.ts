@@ -24,8 +24,11 @@ export interface CommandArgs {
   readonly log_write: { readonly record: LogRecordPayload }
   readonly list_printers: undefined
   readonly print_raw: { readonly data: number[] }
+  readonly open_cash_drawer: { readonly printerName?: string }
   readonly check_update: undefined
   readonly install_update: undefined
+  readonly read_settings: undefined
+  readonly write_settings: { readonly webAppUrl: string }
 }
 
 export interface CommandResults {
@@ -33,8 +36,11 @@ export interface CommandResults {
   readonly log_write: null
   readonly list_printers: unknown
   readonly print_raw: unknown
+  readonly open_cash_drawer: unknown
   readonly check_update: unknown
   readonly install_update: unknown
+  readonly read_settings: string | null
+  readonly write_settings: string
 }
 
 export type CommandName = keyof CommandArgs

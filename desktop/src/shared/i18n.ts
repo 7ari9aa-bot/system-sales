@@ -38,6 +38,18 @@ export const MESSAGES = {
     ar: 'هذه الواجهة تعمل داخل تطبيق سطح المكتب.',
     en: 'This interface runs inside the desktop app.',
   },
+  'boot.configureTitle': {
+    ar: 'تهيئة الاتصال بالنظام',
+    en: 'Server Connection Setup',
+  },
+  'boot.saveAndConnect': {
+    ar: 'حفظ والاتصال',
+    en: 'Save & Connect',
+  },
+  'boot.serverUrlPlaceholder': {
+    ar: 'أدخل رابط المتجر أو الخادم',
+    en: 'Enter store or server address',
+  },
 } as const satisfies Record<string, Record<Locale, string>>
 
 export type MessageKey = keyof typeof MESSAGES

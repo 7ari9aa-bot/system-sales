@@ -121,3 +121,37 @@ body {
     filter: brightness(1.08);
   }
 }
+
+.boot__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fh-space-2);
+  margin-block-start: var(--fh-space-2);
+}
+
+.boot__input {
+  border: 1px solid var(--fh-line);
+  border-radius: var(--fh-radius);
+  direction: ltr;
+  font: inherit;
+  padding-block: var(--fh-space-2);
+  padding-inline: var(--fh-space-3);
+  background: var(--fh-surface);
+  color: var(--fh-ink);
+}
+
+.boot__button {
+  align-self: flex-start;
+  background: var(--fh-accent);
+  border: 0;
+  border-radius: var(--fh-radius);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  padding-block: var(--fh-space-2);
+  padding-inline: var(--fh-space-3);
+}
+
+.boot__button:hover {
+  filter: brightness(1.08);
+}

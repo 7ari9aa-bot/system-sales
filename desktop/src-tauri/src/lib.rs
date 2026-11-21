@@ -102,8 +102,11 @@ pub fn run() {
             commands::log_write,
             commands::list_printers,
             commands::print_raw,
+            commands::open_cash_drawer,
             commands::check_update,
-            commands::install_update
+            commands::install_update,
+            commands::read_settings,
+            commands::write_settings
         ])
         .setup(|app| {
             let settings_path = app

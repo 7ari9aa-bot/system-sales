@@ -41,11 +41,28 @@ const runtime: RuntimePort = {
    * read in `DEV` alone: a production bundle must contain no host at all
    * (config/check-no-hardcoded-host.mjs is the gate that proves it).
    */
-  apiBaseUrl(): Promise<string | null> {
-    if (!import.meta.env.DEV) return Promise.resolve(null)
+  async apiBaseUrl(): Promise<string | null> {
+    try {
+      const settings = await call('read_settings')
+      if (typeof settings === 'string' && settings.trim() !== '') {
+        return settings
+      }
+    } catch {
+      // Settings file absent or unreadable
+    }
+
+    if (!import.meta.env.DEV) return null
     const configured: unknown = import.meta.env.FH_API_BASE_URL
 
-    return Promise.resolve(typeof configured === 'string' && configured.trim() !== '' ? configured : null)
+    return typeof configured === 'string' && configured.trim() !== '' ? configured : null
+  },
+  async saveApiBaseUrl(url: string): Promise<boolean> {
+    try {
+      await call('write_settings', { webAppUrl: url })
+      return true
+    } catch {
+      return false
+    }
   },
 }
 
@@ -60,6 +77,9 @@ const printer: PrinterPort = {
   },
   async printRaw(data: Uint8Array): Promise<void> {
     await call('print_raw', { data: Array.from(data) })
+  },
+  async openCashDrawer(printerName?: string): Promise<void> {
+    await call('open_cash_drawer', { printerName })
   },
 }
 

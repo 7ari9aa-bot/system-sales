@@ -78,11 +78,84 @@ pub struct PrinterDevice {
 
 #[tauri::command]
 pub fn list_printers() -> Vec<PrinterDevice> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
+            ])
+            .output();
+
+        if let Ok(out) = output {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                return text
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty())
+                    .map(|name| PrinterDevice {
+                        name: name.to_string(),
+                        vendor_id: None,
+                        product_id: None,
+                    })
+                    .collect();
+            }
+        }
+    }
     vec![]
 }
 
 #[tauri::command]
-pub fn print_raw(_data: Vec<u8>) -> Result<(), String> {
+pub fn print_raw(data: Vec<u8>) -> Result<(), String> {
+    if data.is_empty() {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("fihrist_print_job.bin");
+        if std::fs::write(&file_path, &data).is_ok() {
+            let cmd = format!("Get-Content -Path '{}' | Out-Printer", file_path.display());
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", &cmd])
+                .output();
+            let _ = std::fs::remove_file(&file_path);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_cash_drawer(printer_name: Option<String>) -> Result<(), String> {
+    // Standard ESC/POS kick pulse: ESC p m t1 t2
+    let kick_pulse: [u8; 5] = [0x1B, 0x70, 0x00, 0x19, 0xFA];
+
+    #[cfg(target_os = "windows")]
+    {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("fihrist_cash_drawer.bin");
+        if std::fs::write(&file_path, kick_pulse).is_ok() {
+            let cmd = match printer_name {
+                Some(name) if !name.is_empty() => {
+                    format!(
+                        "Get-Content -Path '{}' | Out-Printer -Name '{}'",
+                        file_path.display(),
+                        name.replace('\'', "''")
+                    )
+                }
+                _ => format!("Get-Content -Path '{}' | Out-Printer", file_path.display()),
+            };
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", &cmd])
+                .output();
+            let _ = std::fs::remove_file(&file_path);
+        }
+    }
+
     Ok(())
 }
 
@@ -108,4 +181,28 @@ pub fn check_update() -> UpdateCheckResult {
 #[tauri::command]
 pub fn install_update() -> Result<(), String> {
     Ok(())
+}
+
+#[tauri::command]
+pub fn read_settings(app: AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let path = app.path().app_config_dir().ok()?.join(crate::shell_url::SETTINGS_FILE_NAME);
+    crate::shell_url::read_settings_web_app_url(&path)
+}
+
+#[tauri::command]
+pub fn write_settings(app: AppHandle, web_app_url: String) -> Result<String, String> {
+    use tauri::Manager;
+    let validated = crate::shell_url::validate_web_app_url(&web_app_url)
+        .map_err(|e| format!("{e:?}"))?;
+
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(crate::shell_url::SETTINGS_FILE_NAME);
+
+    let obj = serde_json::json!({
+        "web_app_url": validated
+    });
+    std::fs::write(&path, obj.to_string()).map_err(|e| e.to_string())?;
+    Ok(validated)
 }

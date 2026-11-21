@@ -23,6 +23,7 @@ export function createNoopPlatform(options: NoopPlatformOptions = {}): Platform 
   const printer: PrinterPort = {
     listPrinters: () => Promise.resolve([]),
     printRaw: () => Promise.resolve(),
+    openCashDrawer: () => Promise.resolve(),
   }
 
   const updater: UpdaterPort = {
@@ -34,7 +35,10 @@ export function createNoopPlatform(options: NoopPlatformOptions = {}): Platform 
     kind: 'noop',
     shell: { appInfo: () => Promise.resolve(info) },
     log: { write },
-    runtime: { apiBaseUrl: () => Promise.resolve(options.apiBaseUrl ?? null) },
+    runtime: {
+      apiBaseUrl: () => Promise.resolve(options.apiBaseUrl ?? null),
+      saveApiBaseUrl: () => Promise.resolve(true),
+    },
     printer,
     updater,
   }

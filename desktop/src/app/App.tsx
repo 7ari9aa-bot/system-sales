@@ -12,6 +12,7 @@ import { parseRuntimeConfig } from '@/platform/runtime'
  */
 export function App({ platform }: { readonly platform: Platform }) {
   const [state, setState] = useState<BootState>({ status: 'checking' })
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -31,7 +32,17 @@ export function App({ platform }: { readonly platform: Platform }) {
     return () => {
       alive = false
     }
-  }, [platform])
+  }, [platform, refreshKey])
 
-  return <BootScreen state={state} />
+  const handleSave = (url: string): void => {
+    if (platform.runtime.saveApiBaseUrl) {
+      void platform.runtime.saveApiBaseUrl(url).then((ok) => {
+        if (ok) {
+          setRefreshKey((k) => k + 1)
+        }
+      })
+    }
+  }
+
+  return <BootScreen state={state} onSave={platform.runtime.saveApiBaseUrl ? handleSave : undefined} />
 }
