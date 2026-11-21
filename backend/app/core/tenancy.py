@@ -239,6 +239,31 @@ async def dispatch_tenant_created_hooks(session: AsyncSession, tenant_id: UUID) 
         await hook(session, tenant_id)
 
 
+# What the signup FORM told us (terms accepted, whether to offer the first-run setup). Same
+# decoupling contract as the created hooks: core owns the registry, identity dispatches after it
+# has made the account, and the module that stores the answer registers itself at import time, so
+# identity never imports it. ``choices`` is a plain dict the form built; a signup that is not the
+# form (Google sign-in, older callers) dispatches nothing.
+_signup_choice_hooks: list = []
+
+
+def register_signup_choices_hook(hook) -> None:
+    if hook not in _signup_choice_hooks:
+        _signup_choice_hooks.append(hook)
+
+
+def signup_choice_hooks() -> list:
+    """The registered signup-choice hooks, in registration order."""
+    return list(_signup_choice_hooks)
+
+
+async def dispatch_signup_choices_hooks(
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, choices: dict
+) -> None:
+    for hook in list(_signup_choice_hooks):
+        await hook(session, tenant_id, user_id, choices)
+
+
 # Tenant REACTIVATION lifecycle hooks — dispatched when a tenant transitions
 # back to "active" (from suspended/grace/past_due). Same decoupling contract
 # as the created hooks: core owns the registry, identity dispatches, the

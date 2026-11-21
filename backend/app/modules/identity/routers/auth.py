@@ -84,12 +84,15 @@ async def register(
     try:
         await service.AuthService.register(
             session,
-            tenant_name=body.tenant_name,
+            tenant_name=body.tenant_name or body.shop_name,
             tenant_slug=body.tenant_slug,
             email=body.email,
             password=body.password,
             full_name=body.full_name,
             visitor_id=body.visitor_id,
+            country_code=body.country_code,
+            terms_accepted=body.terms_accepted,
+            offer_activity_setup=True,
         )
     except service.EmailAlreadyRegistered:
         # The service already queued the re-verification on its way out. The

@@ -49,6 +49,7 @@ SCOPE_MODULES: frozenset[str] = frozenset(
         "core.dead_stock_report",
         "core.season_markdown",
         "core.shop_type",
+        "core.activity_setup",
     }
 )
 
@@ -78,6 +79,9 @@ GROUPS: dict[str, Group] = {
     ),
     "shop-type": Group(
         "core.shop_type", note="the owner picks the vertical (apparel, pharmacy, ...)"
+    ),
+    "activity-setup": Group(
+        "core.activity_setup", note="first-run setup: pick the vertical once, or skip"
     ),
     # --- inventory ---
     "inventory": Group("inventory", note="balances, movements, transfers, stocktakes, reports"),

@@ -393,13 +393,23 @@ class SettingsService:
         *,
         user_id: uuid.UUID | None = None,
         permissions: Collection[str] | None = None,
+        only_missing: bool = False,
     ) -> list[TenantSetting]:
-        """Apply a named preset at tenant scope. Returns the rows now holding its values."""
+        """Apply a named preset at tenant scope. Returns the rows now holding its values.
+
+        ``only_missing`` fills in just the keys the owner has never set and leaves every key that
+        already has an owner row exactly as it is. The first-run setup uses it, so choosing a
+        preset can never overwrite a choice the owner made; the preset screen keeps the default
+        (replace everything) because there the owner is asking for exactly that.
+        """
         from app.modules.settings.presets import PRESETS
 
         preset = PRESETS.get(preset_name)
         if preset is None:
             raise ValidationError(f"unknown preset {preset_name!r}")
+        if only_missing:
+            resolved = await self.resolve_many(list(preset))
+            preset = {k: v for k, v in preset.items() if resolved[k].is_default}
         return await self.bulk_set(
             preset,
             scope=Scope.TENANT,

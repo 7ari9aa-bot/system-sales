@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.activity_setup import router as activity_setup_router
 from app.core.config import get_settings
 from app.core.context import actor_kind_contextvar, credentials_audit_contextvar
 from app.core.db import engine
@@ -521,6 +522,7 @@ def create_app() -> FastAPI:
         taxation_router,
         customer_accounts_router,
         shop_type_router,
+        activity_setup_router,
         profit_report_router,
         sell_through_router,
         dead_stock_router,

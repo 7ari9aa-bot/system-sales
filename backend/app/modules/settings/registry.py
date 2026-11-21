@@ -230,6 +230,8 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
         "inventory.dead_stock_days",  # core/dead_stock_report.py::DeadStockReportService.report
         "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
+        "business.setup_state",  # core/activity_setup.py::read_state
+        "business.terms_accepted_at",  # identity/services/auth.py::_record_signup_choices (record)
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
         "business.legal_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
         "business.address.line1",  # pos/receipt_settings.py::receipt_settings
@@ -431,6 +433,45 @@ _reg(
             "Apparel, pharmacy, restaurant or general. It sets which capabilities "
             "start on; you can change each one."
         ),
+    )
+)
+
+# Has the owner been through the first-run activity setup? The default is "done" on purpose: a shop
+# that existed before the wizard has no row, so it reads "done" and is never sent to it. Only a
+# signup writes "not_started", and the setup flow moves it to "done" or "skipped"
+# (core/activity_setup.py is the only reader, and it is listed in ENFORCED_KEYS).
+SETUP_STATES: tuple[str, ...] = ("done", "not_started", "skipped")
+_reg(
+    SettingDef(
+        key="business.setup_state",
+        domain="business",
+        type=SettingType.ENUM,
+        default="done",
+        scopes=(Scope.TENANT,),
+        allowed_values=SETUP_STATES,
+        label_ar="حالة إعداد النشاط",
+        label_en="Activity setup state",
+        description_ar=(
+            "هل أنهى المالك إعداد نشاطه أول مرة. القيمة الافتراضية «تم» فلا يُسأل أي محل قديم."
+        ),
+        description_en="Whether the owner finished the first-run activity setup. Defaults to done.",
+    )
+)
+
+# When the owner accepted the terms at signup (an ISO timestamp). Empty means it was never
+# recorded: every shop that signed up before the form asked, and any client that sent no answer.
+# It is a record, not a gate: nothing reads it to allow or refuse anything.
+_reg(
+    SettingDef(
+        key="business.terms_accepted_at",
+        domain="business",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        label_ar="وقت قبول الشروط",
+        label_en="Terms accepted at",
+        description_ar="الوقت الذي وافق فيه المالك على الشروط عند التسجيل. فارغ يعني لم يُسجَّل.",
+        description_en="When the owner accepted the terms at signup. Empty means not recorded.",
     )
 )
 

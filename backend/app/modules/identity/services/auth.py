@@ -75,6 +75,9 @@ class AuthService:
         full_name: str | None,
         visitor_id: str | None = None,
         email_verified: bool = False,
+        country_code: str | None = None,
+        terms_accepted: bool | None = None,
+        offer_activity_setup: bool = False,
     ) -> tuple[User, Tenant]:
         """Create user + tenant + owner membership + seeded defaults.
 
@@ -124,6 +127,8 @@ class AuthService:
 
         owner_role = (await session.execute(select(Role).where(Role.code == "owner"))).scalar_one()
         tenant = Tenant(slug=tenant_slug, name=tenant_name, signup_visitor_id=visitor_id)
+        if country_code is not None:
+            tenant.country_code = country_code
         user = User(
             email=email.strip().lower(),
             password_hash=await hash_password_async(password) if password else "",
@@ -143,6 +148,15 @@ class AuthService:
         from app.modules.identity.bootstrap import seed_tenant_defaults
 
         await seed_tenant_defaults(session, tenant.id)
+        if offer_activity_setup or terms_accepted is True:
+            from app.core.tenancy import dispatch_signup_choices_hooks
+
+            await dispatch_signup_choices_hooks(
+                session,
+                tenant.id,
+                user.id,
+                {"offer_activity_setup": offer_activity_setup, "terms_accepted": terms_accepted},
+            )
         from app.core.tenancy import dispatch_tenant_created_hooks
 
         await dispatch_tenant_created_hooks(session, tenant.id)

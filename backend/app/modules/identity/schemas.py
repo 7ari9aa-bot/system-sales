@@ -36,6 +36,34 @@ class RegisterRequest(BaseModel):
 
     captcha_token: str | None = Field(default=None, max_length=2048)
 
+    # The shop's own name, the market it trades in, and whether the owner accepted the terms. All
+    # optional: an email and a password alone still make an account, exactly as before.
+    shop_name: str | None = Field(default=None, max_length=255)
+    country_code: str | None = Field(default=None, max_length=2)
+    terms_accepted: bool | None = None
+
+    @field_validator("shop_name", mode="before")
+    @classmethod
+    def _blank_shop_name_is_none(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    @field_validator("country_code", mode="after")
+    @classmethod
+    def _country_must_be_a_market_we_serve(cls, value):
+        # A wrong country is refused (422), never silently replaced by a default: the owner would
+        # otherwise be set up for a market they did not choose.
+        if value is None:
+            return None
+        from app.core.country import get_country
+
+        spec = get_country(value)
+        if spec is None or spec.launch_status != "live":
+            raise ValueError("country is not a market we serve yet")
+        return spec.code
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
