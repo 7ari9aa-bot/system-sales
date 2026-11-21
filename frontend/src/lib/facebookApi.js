@@ -38,12 +38,16 @@ export function fbAge(iso, lang = "ar") {
 /** How many comments a post shows before "View more comments", and each click opens. */
 export const COMMENTS_PER_STEP = 5;
 
+/** What a post shows before anyone presses "View more comments": Facebook's Page home draws just the newest one. */
+export const COMMENTS_FIRST_VIEW = 1;
+
 /** The slice of a post's comments to draw after `steps` clicks of "View more comments".
  *  The newest stay in view, as on Facebook; `hidden` is what is still folded away and `next` how many
  *  the next click opens. */
 export function commentWindow(comments, steps) {
   const list = comments || [];
-  const size = COMMENTS_PER_STEP * (1 + Math.max(0, steps || 0));
+  const opened = Math.max(0, steps || 0);
+  const size = COMMENTS_FIRST_VIEW + COMMENTS_PER_STEP * opened;
   const shown = list.length > size ? list.slice(list.length - size) : list;
   const hidden = list.length - shown.length;
   return { shown, hidden, next: Math.min(COMMENTS_PER_STEP, hidden) };
