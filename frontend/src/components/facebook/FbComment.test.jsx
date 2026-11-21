@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import FbComment, { commentHeader } from "@/components/facebook/FbComment";
+import FbComment, { commentActions, commentHeader } from "@/components/facebook/FbComment";
 
 const base = { id: "c1", author: "Fihrist", text: "hello there", timeLabel: "5m", likes: 0, replies: [] };
 const html = (comment = {}, props = {}) => renderToStaticMarkup(
@@ -49,5 +49,29 @@ describe("a comment's age", () => {
     const out = html({ author: "منى", timeLabel: "5 د" }, { lang: "ar" });
     expect(bubbleOf(out)).toContain("5 د");
     expect(actionRowOf(out)).not.toContain("5 د");
+  });
+});
+
+describe("which actions a comment offers", () => {
+  const theirs = { id: "c1", author: "Sara", isPage: false, hidden: false };
+  const pages = { id: "c2", author: "Fihrist", isPage: true, hidden: false };
+  it("offers Reply on the Page's own comment too, as Facebook does", () => {
+    expect(commentActions(pages, 0).reply).toBe(true);
+  });
+  it("offers Reply on someone else's comment", () => {
+    expect(commentActions(theirs, 0).reply).toBe(true);
+  });
+  it("offers no Reply inside a reply (threads are one level deep) or on a hidden comment", () => {
+    expect(commentActions(theirs, 1).reply).toBe(false);
+    expect(commentActions({ ...theirs, hidden: true }, 0).reply).toBe(false);
+  });
+  it("never offers Hide or a private message on the Page's own comment", () => {
+    const a = commentActions(pages, 0);
+    expect(a.hide).toBe(false);
+    expect(a.privateReply).toBe(false);
+  });
+  it("draws the Reply button on the Page's own comment", () => {
+    const out = renderToStaticMarkup(<FbComment comment={pages} postId="p1" pageName="Fihrist" lang="en" actions={{}} />);
+    expect(out).toContain(">Reply<");
   });
 });

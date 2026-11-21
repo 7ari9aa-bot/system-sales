@@ -13,6 +13,19 @@ export const canPrivateReply = (comment, now = Date.now()) => {
 
 /** What sits on a comment's name line, in order: the name, the Author badge on a Page's own comment,
  *  then the age. Facebook keeps the age up there beside the name, not under the bubble. */
+/** Which actions a comment offers. Reply is open on the Page's own comment as well, as on Facebook;
+ *  hiding and a private message only make sense for someone else's comment. */
+export function commentActions(comment, depth = 0) {
+  const own = !!comment.isPage;
+  const hidden = !!comment.hidden;
+  return {
+    like: !own,
+    reply: !hidden && depth === 0,
+    hide: !own,
+    privateReply: !own && !hidden,
+  };
+}
+
 export function commentHeader(comment, lang) {
   const ar = lang === "ar";
   const parts = [{ kind: "author", text: comment.author }];
@@ -56,6 +69,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
   const toggleLike = () => run(async () => { await actions.like(comment.id, !liked); setLiked((v) => !v); });
   const link = "font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] disabled:opacity-50";
   const shownLikes = (comment.likes || 0) + (liked ? 1 : 0);
+  const actions_ = commentActions(comment, depth);
   return (
     <div className={cn("min-w-0", comment.hidden && "opacity-60")}>
       <div className="flex items-start gap-2">
@@ -74,7 +88,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 text-[12px]" style={{ color: FB.text2 }}>
             {!comment.isPage && <button type="button" aria-pressed={liked} disabled={busy} onClick={toggleLike} className={cn(link, liked && "text-[#0866ff]")}>{ar ? "أعجبني" : "Like"}</button>}
-            {!comment.isPage && !comment.hidden && depth === 0 && <button type="button" onClick={() => { setReplying((v) => !v); setPrivateOpen(false); setTagged(true); }} className={link}>{ar ? "رد" : "Reply"}</button>}
+            {actions_.reply && <button type="button" onClick={() => { setReplying((v) => !v); setPrivateOpen(false); setTagged(true); }} className={link}>{ar ? "رد" : "Reply"}</button>}
             {comment.hidden && <span className="font-normal">{ar ? "مخفي" : "Hidden"}</span>}
             {!comment.isPage && (
               <button type="button" disabled={busy} onClick={() => run(() => actions.hide(comment.id, postId, !comment.hidden))} className={link}>{comment.hidden ? (ar ? "إظهار" : "Unhide") : (ar ? "إخفاء" : "Hide")}</button>
