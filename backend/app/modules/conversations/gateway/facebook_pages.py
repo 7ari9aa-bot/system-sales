@@ -311,14 +311,23 @@ class FacebookPagesClient:
         *,
         limit: int = 50,
         after: str | None = None,
+        order: str = "oldest",
         _client=None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "fields": f"{COMMENT_FIELDS},comments.limit(25){{{COMMENT_FIELDS}}}",
             "limit": max(1, min(limit, 100)),
-            "order": "chronological",
             "filter": "toplevel",
         }
+        # Facebook offers "Most relevant" and "Newest" above a post's comments. `ranked` asks Meta to
+        # rank, so it sends no `order` at all: any explicit value overrides the ranking. Meta may still
+        # rank regardless when it can, so `oldest` is a preference, not a guarantee.
+        if order == "oldest":
+            params["order"] = "chronological"
+        elif order == "newest":
+            params["order"] = "reverse_chronological"
+        elif order != "ranked":
+            raise ValueError(f"unknown comment order {order!r}: use oldest, newest or ranked")
         if after:
             params["after"] = after
         body = await self._graph(
