@@ -55,7 +55,7 @@ export const pageMeta = {
   security: c('الأمان وصلاحيات الوصول في منصة FIHRIST', 'Security and Access Controls for Sales Teams | FIHRIST'),
   privacy: c('سياسة الخصوصية واستخدام بيانات FIHRIST', 'FIHRIST Privacy Policy and Data Use'),
   terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
-  'data-deletion': c('حذف بياناتك من FIHRIST', 'Delete Your Data from FIHRIST'),
+  'data-deletion': c('تعليمات حذف بياناتك من منصة FIHRIST', 'How to Delete Your Data from FIHRIST'),
   'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
   support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
   selector: c('FIHRIST | اختر دولتك ولغتك - نظام المبيعات للمتاجر', 'FIHRIST | Select Country & Language - Sales OS for Stores'),

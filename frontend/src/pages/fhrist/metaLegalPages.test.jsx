@@ -60,3 +60,19 @@ describe('privacy policy and terms are fit to show Meta', () => {
     }
   })
 })
+
+// The production build (scripts/prerender-public-pages.mjs) refuses any page whose title is not
+// 30-60 characters or whose description is not 50-160. The first deploy of /data-deletion failed
+// on exactly this, so the same limits are checked here, before Vercel.
+describe('data deletion SEO copy fits the prerender limits', () => {
+  for (const locale of ['ar', 'en']) {
+    it(`title and description lengths (${locale})`, () => {
+      const t = pageMeta['data-deletion'][locale]
+      const d = pageDescription['data-deletion'][locale]
+      expect(t.length).toBeGreaterThanOrEqual(30)
+      expect(t.length).toBeLessThanOrEqual(60)
+      expect(d.length).toBeGreaterThanOrEqual(50)
+      expect(d.length).toBeLessThanOrEqual(160)
+    })
+  }
+})
