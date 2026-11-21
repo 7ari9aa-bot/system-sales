@@ -1,17 +1,15 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { ClipboardList, Download, History, Printer, Search, Upload } from "lucide-react";
+import { ClipboardList, Download, History, Printer, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
-import { Input } from "@/cashier/components/ui/input";
-import { Label } from "@/cashier/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import FilterPanel from "@/cashier/components/ui-kit/FilterPanel";
+import StockFilters from "@/cashier/components/inventory/StockFilters";
 import InventoryProductGrid from "@/cashier/components/inventory/InventoryProductGrid";
 import ProductDetailsDialog from "@/cashier/components/inventory/ProductDetailsDialog";
 import VariantMovementsDialog from "@/cashier/components/inventory/VariantMovementsDialog";
 import { costLabel } from "@/cashier/api/stockAdapter";
-import { useStock, useStockCategories, useStockSummary } from "@/cashier/api/useStock";
+import { useStock, useStockCategories, useStockSeasons, useStockSummary } from "@/cashier/api/useStock";
+import { useBrands } from "@/cashier/api/useCatalogWrite";
 import { INVENTORY_STATUS, fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 import { resolveOpenProduct } from "@/cashier/lib/inventoryGroups";
 import { exportCsv } from "@/cashier/lib/exportCsv";
@@ -21,6 +19,7 @@ const EXPORT_COLUMNS = [
   { header: "المنتج", key: "productName" },
   { header: "SKU", key: "sku" },
   { header: "الباركود", key: "barcode" },
+  { header: "الموسم", key: "season" },
   { header: "اللون", key: "color" },
   { header: "المقاس", key: "size" },
   { header: "الرصيد", key: "stock" },
@@ -33,23 +32,21 @@ const BTN =
   "h-auto gap-2 rounded-[10px] border-[#C7C2B8] !bg-white px-4 py-2.5 text-[13px] font-medium !text-[#3B3A36] !shadow-none transition-[box-shadow,border-color,background] duration-200 hover:border-[#E8761A] hover:!bg-white hover:!text-[#3B3A36] hover:shadow-[0_4px_12px_rgba(59,58,54,.1)] active:!bg-[#F4F1EC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 const BTN_PRIMARY =
   "h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2.5 text-[13px] font-semibold !text-white shadow-sm transition-all duration-200 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
-const FIELD =
-  "h-10 rounded-[10px] border-[#C7C2B8] bg-[#FBFAF7] px-3 text-[13px] text-[#3B3A36] transition-[border-color,box-shadow] duration-200 hover:border-[#E8761A] focus-visible:border-[#E8761A] focus-visible:ring-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E8761A]";
-const FIELD_LABEL = "mb-1.5 block text-[11px] font-medium text-[#7A766C]";
 
 export default function InventoryPage() {
-  const [term, setTerm] = useState("");
-  const [category, setCategory] = useState("");
-  const [status, setStatus] = useState("");
+  const [filters, setFilters] = useState({ term: "", category: "", brand: "", season: "", status: "" });
+  const { term, category, brand, season, status } = filters;
   const [movementsOf, setMovementsOf] = useState(null);
   const [detailsOf, setDetailsOf] = useState(null);
 
   // Search and status are filtered ON THE SERVER, so they reach every variant and the status can
   // never disagree with the backend rule. The totals below come from the summary endpoint, which
   // covers all active variants, not just the rows that happen to be on screen.
-  const stock = useStock({ term, categoryId: category, status });
+  const stock = useStock({ term, categoryId: category, brandId: brand, season, status });
   const summary = useStockSummary();
   const categories = useStockCategories();
+  const brands = useBrands();
+  const seasons = useStockSeasons();
   const rows = stock.data ?? [];
   const totals = summary.data;
   const openProduct = resolveOpenProduct(detailsOf, rows);
@@ -129,62 +126,7 @@ export default function InventoryPage() {
         />
       </div>
 
-      <FilterPanel
-        className="animate-inv-rise rounded-[14px] border-[#E3DED4] bg-white [animation-delay:.2s]"
-        activeCount={[category, status].filter(Boolean).length + (term ? 1 : 0)}
-        onReset={() => {
-          setTerm("");
-          setCategory("");
-          setStatus("");
-        }}
-      >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label className={FIELD_LABEL}>بحث بالمنتج أو الكود أو الباركود</Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9A958A]" />
-              <Input
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-                placeholder="بنطلون جينز، SKU-0003"
-                className={`pe-10 ${FIELD}`}
-              />
-            </div>
-          </div>
-          <div>
-            <Label className={FIELD_LABEL}>التصنيف</Label>
-            <Select value={category || "all"} onValueChange={(v) => setCategory(v === "all" ? "" : v)}>
-              <SelectTrigger className={FIELD}>
-                <SelectValue placeholder="كل التصنيفات" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل التصنيفات</SelectItem>
-                {(categories.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className={FIELD_LABEL}>حالة الرصيد</Label>
-            <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>
-              <SelectTrigger className={FIELD}>
-                <SelectValue placeholder="كل الحالات" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل الحالات</SelectItem>
-                {Object.entries(INVENTORY_STATUS).map(([key, s]) => (
-                  <SelectItem key={key} value={key}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </FilterPanel>
+      <StockFilters values={filters} onChange={setFilters} categories={categories.data ?? []} brands={brands.data ?? []} seasons={seasons.data ?? []} />
 
       {stock.isError ? (
         <div role="alert" className="rounded-2xl border border-[#E3DED4] bg-white p-6 text-center text-[13px]">
@@ -197,7 +139,7 @@ export default function InventoryPage() {
       ) : stock.isPending ? (
         <p className="py-10 text-center text-[13px] text-[#7A766C]">جاري تحميل المخزون…</p>
       ) : (
-        <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setStatus("low")} />
+        <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setFilters((f) => ({ ...f, status: "low" }))} />
       )}
 
       <ProductDetailsDialog

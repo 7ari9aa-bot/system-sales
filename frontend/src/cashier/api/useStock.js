@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { catalogApi } from "./catalogApi";
 import { posApi } from "./posApi";
-import { stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
+import { seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
 
 export const STOCK_KEY = ["cashier", "stock"];
 
@@ -44,3 +44,17 @@ export function useStockCategories() {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+/**
+ * The seasons this shop has used, for the season filter. Read with NO filter, so picking one season
+ * does not make the others vanish from the list. Cached like the categories: it changes only when
+ * a product's season is edited.
+ */
+export function useStockSeasons() {
+  return useQuery({
+    queryKey: [...STOCK_KEY, "seasons"],
+    queryFn: async () => seasonChoices((await posApi.stock(stockQuery())).map(stockRowFromApi)),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+

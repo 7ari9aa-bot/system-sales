@@ -100,14 +100,17 @@ async def test_season_and_brand_together_must_both_match(db, tenant_ctx) -> None
     assert none["totals"]["revenue"] == "0.00"
 
 
-async def test_a_season_is_matched_exactly_and_spaces_around_it_are_ignored(db, tenant_ctx) -> None:
+async def test_a_season_ignores_case_and_outer_spaces_like_the_product_list(db, tenant_ctx) -> None:
     await _shop(db, tenant_ctx)
-    assert _models(await _report(db, tenant_ctx.tenant_id, season="  SS26 ")) == [
-        "تيشيرت صيفي",
-        "قميص صيفي",
-    ]
+    both = ["تيشيرت صيفي", "قميص صيفي"]
+    for typed in ("SS26", "  SS26 ", "ss26", "Ss26"):
+        assert _models(await _report(db, tenant_ctx.tenant_id, season=typed)) == both, typed
+
+
+async def test_a_season_is_not_matched_by_a_part_of_it(db, tenant_ctx) -> None:
+    await _shop(db, tenant_ctx)
     assert (await _report(db, tenant_ctx.tenant_id, season="SS2"))["rows"] == []
-    assert (await _report(db, tenant_ctx.tenant_id, season="ss26"))["rows"] == []
+    assert (await _report(db, tenant_ctx.tenant_id, season="SS261"))["rows"] == []
 
 
 async def test_an_unknown_season_or_brand_is_an_empty_report_not_an_error(db, tenant_ctx) -> None:

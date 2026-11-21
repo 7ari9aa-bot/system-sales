@@ -80,8 +80,8 @@ class ProfitReportService:
         brand_id: UUID | None = None,
     ) -> dict[str, Any]:
         """One row per model, colour and size. ``season`` and ``brand_id`` narrow it to one season
-        or one brand (a season is the owner's own label, matched exactly); left out, every sale
-        is in, exactly as before."""
+        or one brand. A season is the owner's own label: case and outer spaces do not matter.
+        Left out, every sale is in, exactly as before."""
         lo, hi = _bounds(start, end)
 
         order_ok = [
@@ -177,7 +177,8 @@ class ProfitReportService:
         )
         product_ok = []
         if season is not None:
-            product_ok.append(Product.season == season.strip())
+            # Same rule as the product list: SS26, ss26 and ' SS26' are one season.
+            product_ok.append(func.lower(Product.season) == season.strip().lower())
         if brand_id is not None:
             product_ok.append(Product.brand_id == brand_id)
         # Discount already inside the line nets (a per-line percentage) is not taken off twice:

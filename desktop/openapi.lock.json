@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 608,
-    "sha256": "1639b67b1003c30bf7c4d7570fda60eb58bdb8b1d5a4c258cf0ca4f6f8e1f7cd",
+    "sha256": "79dd2eed25485c107d9f41ead1575812fc81d58aa16babb9b905489817635dbe",
     "typed_operations": 342
   },
   "spec": {
@@ -19935,6 +19935,17 @@
               ],
               "title": "Barcode"
             },
+            "brand_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            },
             "category": {
               "anyOf": [
                 {
@@ -19988,6 +19999,17 @@
               "title": "Reserved",
               "type": "integer"
             },
+            "season": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            },
             "sku": {
               "anyOf": [
                 {
@@ -20029,6 +20051,8 @@
             "product_title",
             "category_id",
             "category",
+            "brand_id",
+            "season",
             "sku",
             "options",
             "barcode",
@@ -74958,6 +74982,40 @@
                   }
                 ],
                 "title": "Category Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "brand_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
               }
             },
             {

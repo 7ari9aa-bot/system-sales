@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costLabel, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
+import { costLabel, seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
 
 const raw = (over = {}) => ({
   variant_id: "v1",
@@ -87,6 +87,59 @@ describe("stockQuery", () => {
 
   it("never sends a status the server would reject", () => {
     expect(new URLSearchParams(stockQuery({ status: "broken" })).has("status")).toBe(false);
+  });
+});
+
+describe("stockRowFromApi season and brand", () => {
+  it("carries the season and the brand of the product", () => {
+    const row = stockRowFromApi(raw({ season: "SS26", brand_id: "b1" }));
+    expect(row.season).toBe("SS26");
+    expect(row.brandId).toBe("b1");
+  });
+  it("a product with neither gives empty text and null, never undefined", () => {
+    const row = stockRowFromApi(raw({ season: null, brand_id: null }));
+    expect(row.season).toBe("");
+    expect(row.brandId).toBeNull();
+    const bare = stockRowFromApi(raw());
+    expect(bare.season).toBe("");
+    expect(bare.brandId).toBeNull();
+  });
+});
+
+describe("stockQuery season and brand", () => {
+  it("sends them when chosen, the season trimmed", () => {
+    const q = new URLSearchParams(stockQuery({ brandId: "b1", season: "  SS26 " }));
+    expect(q.get("brand_id")).toBe("b1");
+    expect(q.get("season")).toBe("SS26");
+  });
+  it("leaves them out when empty or blank, so 'all' means no filter", () => {
+    const q = new URLSearchParams(stockQuery({ brandId: "", season: "   " }));
+    expect(q.has("brand_id")).toBe(false);
+    expect(q.has("season")).toBe(false);
+  });
+  it("combines with the other filters", () => {
+    const q = new URLSearchParams(stockQuery({ term: "قميص", categoryId: "c1", brandId: "b1", season: "AW26", status: "low" }));
+    expect([...q.keys()].sort()).toEqual(["brand_id", "category_id", "limit", "season", "status", "term"]);
+  });
+});
+
+describe("seasonChoices", () => {
+  const rows = (...seasons) => seasons.map((season) => ({ season }));
+  it("lists each season the shop used once", () => {
+    expect(seasonChoices(rows("SS26", "AW26", "SS26"))).toEqual(["AW26", "SS26"]);
+  });
+  it("treats SS26 and ss26 as one season and keeps the first spelling", () => {
+    expect(seasonChoices(rows("SS26", "ss26", " Ss26 "))).toEqual(["SS26"]);
+  });
+  it("leaves out products with no season", () => {
+    expect(seasonChoices(rows("", null, undefined, "  ", "SS26"))).toEqual(["SS26"]);
+  });
+  it("is empty for no rows, and for nothing at all", () => {
+    expect(seasonChoices([])).toEqual([]);
+    expect(seasonChoices(undefined)).toEqual([]);
+  });
+  it("is sorted, so the list does not jump about when stock changes", () => {
+    expect(seasonChoices(rows("صيف 26", "شتاء 26", "خريف 25"))).toEqual(["خريف 25", "شتاء 26", "صيف 26"]);
   });
 });
 

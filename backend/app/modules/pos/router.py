@@ -1049,6 +1049,8 @@ class StockRow(BaseModel):
     product_title: str
     category_id: str | None
     category: str | None
+    brand_id: str | None
+    season: str | None
     sku: str | None
     options: dict[str, str]
     barcode: str | None
@@ -1083,6 +1085,8 @@ async def list_stock(
     ctx: PosStockReadCtx,
     term: Annotated[str | None, Query(max_length=100)] = None,
     category_id: UUID | None = None,
+    brand_id: UUID | None = None,
+    season: Annotated[str | None, Query(max_length=40)] = None,
     status: Annotated[str | None, Query(pattern="^(in|low|out)$")] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -1093,6 +1097,8 @@ async def list_stock(
         ctx.tenant_id,
         term=term,
         category_id=category_id,
+        brand_id=brand_id,
+        season=season,
         status=status,
         limit=limit,
         offset=offset,

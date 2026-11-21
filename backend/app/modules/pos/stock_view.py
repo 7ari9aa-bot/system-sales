@@ -106,12 +106,15 @@ class StockViewService:
         *,
         term: str | None = None,
         category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
         status: str | None = None,
         limit: int = 500,
         offset: int = 0,
     ) -> list[dict]:
         if status is not None and status not in {"in", "low", "out"}:
             raise ValidationError("status must be one of in, low, out")
+        wanted_season = (season or "").strip()
 
         limit = max(1, min(int(limit), 1000))
         offset = max(0, int(offset))
@@ -161,6 +164,11 @@ class StockViewService:
         )
         if category_id is not None:
             query = query.where(Product.category_id == category_id)
+        if brand_id is not None:
+            query = query.where(Product.brand_id == brand_id)
+        if wanted_season:
+            # Same rule as the product list: SS26, ss26 and ' SS26' are one season.
+            query = query.where(func.lower(Product.season) == wanted_season.lower())
         if term and term.strip():
             spelled = arabic_regex(term)
             codes = (
@@ -253,6 +261,8 @@ class StockViewService:
             "product_title": product.title,
             "category_id": str(product.category_id) if product.category_id else None,
             "category": category_name,
+            "brand_id": str(product.brand_id) if product.brand_id else None,
+            "season": product.season,
             "sku": variant.sku,
             "options": variant.option_values or {},
             "barcode": barcode,

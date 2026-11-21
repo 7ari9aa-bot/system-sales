@@ -36,6 +36,8 @@ export function stockRowFromApi(raw) {
     productName: raw.product_title,
     category: raw.category ?? "",
     categoryId: raw.category_id ?? null,
+    brandId: raw.brand_id ?? null,
+    season: raw.season ?? "",
     sku: raw.sku ?? "",
     barcode: raw.barcode ?? "",
     color,
@@ -67,10 +69,12 @@ export function stockSummaryFromApi(raw) {
 }
 
 /** Query string for GET /pos/stock. Empty filters are left out; the server rejects a bad status. */
-export function stockQuery({ term = "", categoryId = "", status = "", offset = 0, limit = STOCK_LIMIT } = {}) {
+export function stockQuery({ term = "", categoryId = "", brandId = "", season = "", status = "", offset = 0, limit = STOCK_LIMIT } = {}) {
   const p = new URLSearchParams();
   if (term.trim()) p.set("term", term.trim());
   if (categoryId) p.set("category_id", categoryId);
+  if (brandId) p.set("brand_id", brandId);
+  if (season.trim()) p.set("season", season.trim());
   if (STATUSES.includes(status)) p.set("status", status);
   p.set("limit", String(limit));
   if (offset) p.set("offset", String(offset));
@@ -81,3 +85,18 @@ export function stockQuery({ term = "", categoryId = "", status = "", offset = 0
 export function costLabel(value, format) {
   return value === null || value === undefined ? "غير معروفة" : format(value);
 }
+
+/**
+ * The seasons a shop has actually used, for the season filter: each once, in the owner's own
+ * spelling (the first one seen), sorted so the list does not jump around. SS26 and ss26 are one
+ * season, because the server matches them as one.
+ */
+export function seasonChoices(rows) {
+  const seen = new Map();
+  for (const row of rows ?? []) {
+    const name = String(row?.season ?? "").trim();
+    if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, "ar"));
+}
+
