@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import FbPostCard from "@/components/facebook/FbPostCard";
+import FbPostCard, { commentSubmitShown } from "@/components/facebook/FbPostCard";
 
 const post = { id: "1_2", text: "hello", picture: "", createdAt: "2026-11-21T08:00:00Z", reactions: 3, comments: [] };
 const html = (extra = {}) => renderToStaticMarkup(<FbPostCard post={{ ...post, ...extra }} pageName="Fihrist" lang="en" actions={{}} />);
@@ -34,5 +34,24 @@ describe("a Page post card, as Facebook draws an empty thread", () => {
     const out = renderToStaticMarkup(<FbPostCard post={{ ...post }} pageName="Fihrist" lang="ar" actions={{}} />);
     expect(out).toContain("لا توجد تعليقات حتى الآن");
     expect(out).toContain("كن أول من يعلّق");
+  });
+});
+
+describe("the Post button in the comment box", () => {
+  it("is hidden until there is something in the draft, as Facebook hides it", () => {
+    expect(commentSubmitShown("")).toBe(false);
+    expect(commentSubmitShown("   ")).toBe(false);
+    expect(commentSubmitShown(null)).toBe(false);
+    expect(commentSubmitShown(undefined)).toBe(false);
+  });
+  it("appears as soon as the draft has a word in it", () => {
+    expect(commentSubmitShown("h")).toBe(true);
+    expect(commentSubmitShown("  hello  ")).toBe(true);
+  });
+  it("is not in the empty comment box as it first draws", () => {
+    const out = html({ timeLabel: "3m" });
+    expect(out).toContain("Comment as Fihrist");
+    expect(out).not.toContain('data-testid="fb-comment-submit"');
+    expect(out).not.toContain(">Post<");
   });
 });

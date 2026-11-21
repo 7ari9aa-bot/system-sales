@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
 
+/** Facebook only draws the Post button in a comment box once there is something to post; an empty
+ *  box is just the placeholder and the picture icons. */
+export const commentSubmitShown = (draft) => String(draft || "").trim().length > 0;
+
 /** A Page post as Facebook draws it: header, text, picture, counts, Like / Comment, then the comments. */
 export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, onEdited, onDeleted, onOpenInsights }) {
   const ar = lang === "ar";
@@ -106,7 +110,9 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
           <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
           <div className="flex min-w-0 flex-1 items-center rounded-full px-3" style={{ background: FB.bubble }}>
             <input autoFocus={commenting} value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} dir="auto" aria-label={ar ? "اكتب تعليقًا" : "Write a comment"} placeholder={ar ? `التعليق باسم ${pageName}...` : `Comment as ${pageName}...`} className="min-w-0 flex-1 bg-transparent py-2 text-[15px] outline-none placeholder:text-[#65676b]" />
-            <button type="submit" disabled={!draft.trim() || busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
+            {commentSubmitShown(draft) && (
+              <button type="submit" data-testid="fb-comment-submit" disabled={busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
+            )}
           </div>
         </form>
       </div>
