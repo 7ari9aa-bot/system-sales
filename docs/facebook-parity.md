@@ -86,7 +86,7 @@ Branch `feat/facebook-page-like-comment` (not merged). The Like button now shows
 
 - Notifications header menu: opened on fihrist.world, shows "Mark all as read" and "Notification settings"; settings landed on /settings/channels. Same two items as real Facebook.
 - Like on the Page's own comment: the button shows beside Reply and Delete. Pressing it reached Meta: after a sync our counter went 1 to 2, matching Facebook's own 2 on that comment. So the API accepted a Page like on a comment the Page wrote (the Page token and pages_manage_engagement are enough). Caveat: that comment was already liked once from Facebook's UI, and the press added the second like instead of being refused, so the like was counted as a new one in the count; a repeat press on the same Page identity is not proven to toggle off.
-- Known gap left: the pressed state after a reload is not read from Meta's user_likes (needs a column and a migration), and the screen shows the count only after a sync.
+- Pressed state after a reload: now read from Meta's `user_likes` (Graph API v27 Comment node, "whether the viewer has liked this comment"; with a Page token the viewer is the Page). Stored in `social_comments.page_liked` (migration fe2026112014) on branch `feat/facebook-comment-user-likes`. The screen still shows a changed count only after a sync.
 
 ## Release state
 
