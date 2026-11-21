@@ -57,6 +57,27 @@ Done on 2026-11-21 in the owner's browser, on the test Page "Fihrist", comment i
 - One click on Like turned the thumb blue and showed a like icon with the counter 1. After a full reload the like was still there (blue thumb, counter 1), so it was saved by Facebook, not a client-side guess.
 - Not proven: that the Graph API edge `POST /{comment-id}/likes` accepts the same action with a Page token. The web UI and the API are different routes, and Meta's docs stay silent. Our own screen therefore keeps the Like button hidden on the Page's own comments (`FbComment.jsx`) until a real API call shows it works. Our API does not return a per comment like count either, so this could not be read back through our gateway.
 
+## API limits read from Meta's reference (v27.0), 2026-11-21
+
+Sources: https://developers.facebook.com/docs/graph-api/reference/object/likes/ , https://developers.facebook.com/docs/graph-api/reference/comment/ , https://developers.facebook.com/docs/graph-api/overview/rate-limiting/
+
+Likes edge on a Comment (`POST /{comment-id}/likes`):
+- Needs a Page access token requested by a person who can do the CREATE_CONTENT task, plus `pages_manage_engagement`.
+- "The Page must also be able to like the object (whether via API or on Facebook.com)". Facebook.com let the Page like its own comment (tested), so this condition holds for our comment. Meta still never names self-authored comments as allowed or forbidden.
+- The object must not already be liked by the Page. If the Page already reacted (wow, sad) a like succeeds but the reaction stays.
+- Delete (`DELETE /{id}/likes`) needs the MODERATE task, and a Page can only delete its own likes.
+- The Comment node has `like_count` and `user_likes` fields (viewer has liked). Our gateway does not return them, which is why the like could not be read back through it. Reading `user_likes` with the Page token is the proper way to verify.
+- Post likes: only aggregated `total_count` via `summary=true` is available.
+- The `like` count includes "like" and "care" reactions.
+
+Rate limits for Pages calls made with a Page or system user token:
+- Calls within 24 hours = 4800 x Number of Engaged Users (users who engaged with the Page in 24 hours). A near-empty test Page therefore has a very small quota.
+- Error 80001 means "too many calls to this Page account"; 613 is the generic rate limit; 368 means the action was judged abusive or disallowed; 200 is a permissions error.
+- Calls made with a user or app token follow platform limits instead: 200 x users per rolling hour.
+- Meta advises backing off on throttling; the response headers expose usage.
+
+Consequence for the Page-likes-own-comment item: the docs make it plausible and the UI proves Facebook allows it, but only a real `POST` with a Page token can settle the API side. Unknown stays UNVERIFIED until then.
+
 ## Release state
 
 main = c14fa23c. It carries the whole parity line (comment look, post card look, comment order gateway, comment sort menu, shares count, the matrices and this report) plus the migration fe2026112013. Verified after the push: frontend suite 174 files, 2400 tests green; the affected backend tests (facebook pages, shares count, migrations, openapi lock) 28 passed; Vercel production deployment of c14fa23c READY and its bundle contains the sort menu, the share counter and the comment counter; the Northflank build of c14fa23c succeeded, its log shows `Running upgrade fe2026112012 -> fe2026112013` and the new container is running. A visual check on the live site was not done: the owner's browser tools were unavailable.
