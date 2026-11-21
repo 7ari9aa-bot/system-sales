@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import AnnouncementBanner from "./AnnouncementBanner";
+import ActivitySetupGate from "@/cashier/components/setup/ActivitySetupGate";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,8 @@ export default function DashboardLayout() {
         {/* The platform's live announcement — never on the full-height work
             surfaces, where a shifting banner moves a fixed-height table. */}
         {!isFullHeight && <AnnouncementBanner />}
+        {/* First-run "what kind of shop is this?". Renders nothing unless the server says this owner is due. */}
+        <ActivitySetupGate />
         <main className={cn(
           "w-full min-w-0",
           (isInbox || isAssistant) && "h-[calc(100dvh-48px)] overflow-hidden p-0 lg:h-dvh",

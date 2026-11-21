@@ -4,11 +4,12 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
+import { UserPlus, Mail, Lock, Loader2, Store } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import Turnstile, { turnstileEnabled } from "@/components/Turnstile";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import { googleAuthorizeUrl } from "@/lib/googleAuth";
+import { COUNTRIES, registerPayload } from "@/lib/registerPayload";
 
 const c = (ar, en) => ({ ar, en });
 const tx = (copy, locale) => copy[locale];
@@ -18,6 +19,10 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // Optional: an email and a password alone still make an account.
+  const [shopName, setShopName] = useState("");
+  const [country, setCountry] = useState("EG");
+  const [terms, setTerms] = useState(false);
   const [error, setError] = useState("");
   const { register, login } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -33,7 +38,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await register(captchaToken ? { email, password, captcha_token: captchaToken } : { email, password });
+      await register(registerPayload({ email, password, captchaToken, shopName, country, terms }));
       await login(email, password);
       window.location.href = safeReturnTo();
     } catch (err) {
@@ -84,6 +89,23 @@ export default function Register() {
             <Input id="confirm" type="password" autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="auth-input" required />
           </div>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="shop-name" dir="auto">{tx(c("اسم المحل (اختياري)", "Shop name (optional)"), locale)}</Label>
+          <div className="relative">
+            <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Input id="shop-name" type="text" autoComplete="organization" maxLength={255} value={shopName} onChange={(e) => setShopName(e.target.value)} className="pl-10" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="country" dir="auto">{tx(c("الدولة", "Country"), locale)}</Label>
+          <select id="country" value={country} onChange={(e) => setCountry(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            {COUNTRIES.map((k) => (<option key={k.code} value={k.code}>{locale === "en" ? k.en : k.ar}</option>))}
+          </select>
+        </div>
+        <label className="flex items-start gap-2 text-sm" htmlFor="terms">
+          <input id="terms" type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1" />
+          <span dir="auto">{tx(c("أوافق على شروط الاستخدام وسياسة الخصوصية", "I agree to the terms of use and privacy policy"), locale)}</span>
+        </label>
         <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} action="register" />
         <Button type="submit" className="auth-btn-primary" disabled={loading || (turnstileEnabled() && !captchaToken)}>
           {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tx(c("جارٍ الإنشاء...", "Creating account..."), locale)}</>) : tx(c("إنشاء الحساب", "Create account"), locale)}

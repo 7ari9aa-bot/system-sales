@@ -88,6 +88,12 @@ export const catalogApi = {
   shopOptions: () => api("/apparel/options"),
   // Which optional stock screens the shop shows (the owner's three switches). Open to any member of the shop.
   stockScreens: () => api("/inventory/screens"),
+  // The first-run activity setup: whether this owner is due to be asked, then the answer or a skip.
+  activitySetup: () => api("/activity-setup"),
+  completeActivitySetup: (body) => post("/activity-setup/complete", body),
+  skipActivitySetup: () => post("/activity-setup/skip", {}),
+  // Ask again from settings: moves the marker back to not_started and touches nothing else.
+  reopenActivitySetup: () => post("/activity-setup/reopen", {}),
   categories: () => api("/categories"),
   brands: () => api("/brands"),
   createCategory: (name) => post("/categories", { name }),
