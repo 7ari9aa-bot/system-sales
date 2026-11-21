@@ -4,10 +4,23 @@ import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
 import FbReactionSummary from "@/components/facebook/FbReactionSummary";
 import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
-import { commentWindow } from "@/lib/facebookApi";
+import { COMMENT_SORTS, commentWindow, sortComments } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
+
+/** Facebook only draws the Post button in a comment box once there is something to post; an empty
+ *  box is just the placeholder and the picture icons. */
+export const commentSubmitShown = (draft) => String(draft || "").trim().length > 0;
+
+/** What a screen reader hears on the Comment action: Facebook puts the thread's count on that button,
+ *  so the count belongs in its name too ("Comment, 3 comments"). */
+export function commentActionLabel(count, lang) {
+  const ar = lang === "ar";
+  if (!(count > 0)) return ar ? "تعليق" : "Comment";
+  if (ar) return `تعليق، ${count === 1 ? "تعليق واحد" : `${count} تعليقات`}`;
+  return `Comment, ${count} ${count === 1 ? "comment" : "comments"}`;
+}
 
 /** A Page post as Facebook draws it: header, text, picture, counts, Like / Comment, then the comments. */
 export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, onEdited, onDeleted, onOpenInsights }) {
@@ -21,8 +34,11 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
   const [steps, setSteps] = useState(0);
+  const [sort, setSort] = useState("relevant");
+  const [sortOpen, setSortOpen] = useState(false);
   const total = Math.max(post.commentsCount || 0, countAll(post.comments));
-  const win = commentWindow(post.comments, steps);
+  const ordered = sortComments(post.comments, sort);
+  const win = commentWindow(ordered, steps);
 
   const run = async (fn, after) => {
     setBusy(true);
@@ -80,16 +96,32 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
         </form>
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
-      <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-        <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
-        {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
-      </div>
+      {reactionsShown > 0 && (
+        <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
+          <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
+        </div>
+      )}
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
         <button type="button" aria-pressed={liked} disabled={busy} onClick={like} className={cn("flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} />{ar ? "أعجبني" : "Like"}</button>
-        <button type="button" aria-pressed={commenting} onClick={() => setCommenting((v) => !v)} className="flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold text-[#65676b] hover:bg-[#f2f2f2]"><CommentIcon size={20} />{ar ? "تعليق" : "Comment"}</button>
+        <button type="button" data-testid="fb-comment-action" aria-pressed={commenting} aria-label={commentActionLabel(total, lang)} onClick={() => setCommenting((v) => !v)} className="flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold text-[#65676b] hover:bg-[#f2f2f2]"><CommentIcon size={20} />{ar ? "تعليق" : "Comment"}{total > 0 && <span data-testid="fb-comment-count" aria-hidden="true">{total}</span>}</button>
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
+        {(post.comments || []).length > 1 && (
+          <div className="relative">
+            <button type="button" data-testid="fb-comment-sort" aria-haspopup="menu" aria-expanded={sortOpen} onClick={() => setSortOpen((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[15px] font-semibold hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
+              {COMMENT_SORTS.find((x) => x.id === sort)[ar ? "ar" : "en"]}
+              <span aria-hidden="true" className="text-[11px]">▾</span>
+            </button>
+            {sortOpen && (
+              <div role="menu" className="absolute start-0 top-8 z-20 w-56 rounded-lg bg-white p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.1)]">
+                {COMMENT_SORTS.map((x) => (
+                  <button key={x.id} role="menuitemradio" aria-checked={sort === x.id} type="button" onClick={() => { setSort(x.id); setSortOpen(false); setSteps(0); }} className={cn(item, sort === x.id && "bg-[#e7f3ff] text-[#0866ff]")}>{x[ar ? "ar" : "en"]}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {win.hidden > 0 && (
           <button type="button" onClick={() => setSteps((n) => n + 1)} className="block text-[15px] font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]" style={{ color: FB.text2 }}>
             {ar ? `عرض ${win.next} تعليقات أخرى` : `View ${win.next} more ${win.next === 1 ? "comment" : "comments"}`}
@@ -106,7 +138,9 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
           <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
           <div className="flex min-w-0 flex-1 items-center rounded-full px-3" style={{ background: FB.bubble }}>
             <input autoFocus={commenting} value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} dir="auto" aria-label={ar ? "اكتب تعليقًا" : "Write a comment"} placeholder={ar ? `التعليق باسم ${pageName}...` : `Comment as ${pageName}...`} className="min-w-0 flex-1 bg-transparent py-2 text-[15px] outline-none placeholder:text-[#65676b]" />
-            <button type="submit" disabled={!draft.trim() || busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
+            {commentSubmitShown(draft) && (
+              <button type="submit" data-testid="fb-comment-submit" disabled={busy} className="px-1 text-[14px] font-semibold text-[#0866ff] disabled:text-[#bcc0c4]">{ar ? "نشر" : "Post"}</button>
+            )}
           </div>
         </form>
       </div>
