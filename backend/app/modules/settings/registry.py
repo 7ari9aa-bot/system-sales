@@ -204,6 +204,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
+        "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
         "business.trade_name",  # pos/receipt_settings.py::receipt_settings
         "business.legal_name",  # pos/receipt_settings.py::receipt_settings
         "business.address.line1",  # pos/receipt_settings.py::receipt_settings

@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -77,6 +78,9 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     # deactivated, never deleted, so the id stays resolvable.
     tax_class_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    # The owner's own label for the season this product belongs to (SS26, AW26...). Free text on
+    # purpose: a shop names its seasons, the system does not. NULL means not seasonal.
+    season: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     # §45 full text — DATABASE-DERIVED, never assign. `simple` is pinned because
     # a GENERATED column needs an IMMUTABLE expression and the 1-argument
@@ -97,6 +101,12 @@ class Product(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "slug", name="uq_products_tenant_slug"),
         Index("ix_products_tenant_status", "tenant_id", "status"),
+        Index(
+            "ix_products_tenant_season",
+            "tenant_id",
+            "season",
+            postgresql_where=text("season IS NOT NULL"),
+        ),
     )
 
 

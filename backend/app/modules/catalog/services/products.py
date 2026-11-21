@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,24 @@ from app.modules.catalog.services._common import (
     _positive_decimal,
 )
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
+
+SEASON_MAX_LENGTH = 40
+
+
+def _clean_season(raw: str | None) -> str | None:
+    """The season a caller means: spaces trimmed, blank means none, too long is refused.
+
+    Refused rather than cut: a season silently shortened to 40 characters would no longer match
+    the name the owner typed.
+    """
+    if raw is None:
+        return None
+    cleaned = str(raw).strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > SEASON_MAX_LENGTH:
+        raise ValueError(f"season must be at most {SEASON_MAX_LENGTH} characters")
+    return cleaned
 
 
 class ProductServiceMixin:
@@ -44,6 +62,7 @@ class ProductServiceMixin:
         brand_id: UUID | None = None,
         category_id: UUID | None = None,
         attributes: dict | None = None,
+        season: str | None = None,
     ) -> Product:
         """Create a product; the slug must be unique within the tenant."""
         duplicate = (
@@ -65,6 +84,7 @@ class ProductServiceMixin:
             brand_id=brand_id,
             category_id=category_id,
             attributes=attributes or {},
+            season=_clean_season(season),
         )
         try:
             async with session.begin_nested():
@@ -90,6 +110,7 @@ class ProductServiceMixin:
             "category_id",
             "attributes",
             "status",
+            "season",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -116,6 +137,8 @@ class ProductServiceMixin:
             if duplicate is not None:
                 raise ConflictError(f"product slug '{new_slug}' already exists")
 
+        if "season" in fields:
+            fields["season"] = _clean_season(fields["season"])
         for key, value in fields.items():
             setattr(product, key, value)
         await session.flush()
@@ -289,16 +312,22 @@ class ProductServiceMixin:
 
     @staticmethod
     async def list_products(
-        session: AsyncSession, tenant_id: UUID, *, limit: int = 100, offset: int = 0
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        season: str | None = None,
     ) -> list[Product]:
+        query = select(Product).where(Product.tenant_id == tenant_id)
+        wanted = _clean_season(season)
+        if wanted is not None:
+            # A shop types SS26 and ss26 and " SS26" meaning the same season.
+            query = query.where(func.lower(Product.season) == wanted.lower())
         rows = (
             (
                 await session.execute(
-                    select(Product)
-                    .where(Product.tenant_id == tenant_id)
-                    .order_by(Product.created_at.desc())
-                    .limit(limit)
-                    .offset(offset)
+                    query.order_by(Product.created_at.desc()).limit(limit).offset(offset)
                 )
             )
             .scalars()
