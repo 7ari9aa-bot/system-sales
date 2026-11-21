@@ -96,15 +96,11 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
         </form>
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
-      {(reactionsShown > 0 || (post.sharesCount || 0) > 0) && (
-        <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-          {reactionsShown > 0 ? <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} /> : <span />}
-          {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count">{post.sharesCount} {ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span>}
-        </div>
-      )}
-      <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
-        <button type="button" aria-pressed={liked} disabled={busy} onClick={like} className={cn("flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} />{ar ? "أعجبني" : "Like"}</button>
-        <button type="button" data-testid="fb-comment-action" aria-pressed={commenting} aria-label={commentActionLabel(total, lang)} onClick={() => setCommenting((v) => !v)} className="flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold text-[#65676b] hover:bg-[#f2f2f2]"><CommentIcon size={20} />{ar ? "تعليق" : "Comment"}{total > 0 && <span data-testid="fb-comment-count" aria-hidden="true">{total}</span>}</button>
+      <div data-testid="fb-engagement-row" className="mx-4 flex items-center gap-4 border-b py-2.5 text-[15px]" style={{ borderColor: FB.divider, color: FB.text2 }}>
+        {reactionsShown > 0 && <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />}
+        <button type="button" data-testid="fb-comment-action" aria-pressed={commenting} aria-label={commentActionLabel(total, lang)} onClick={() => setCommenting((v) => !v)} className="inline-flex items-center gap-1.5 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]"><CommentIcon size={18} />{total > 0 && <span data-testid="fb-comment-count" aria-hidden="true">{total}</span>}</button>
+        {(post.sharesCount || 0) > 0 && <span data-testid="fb-share-count" className="inline-flex items-center gap-1.5">{post.sharesCount}<span className="sr-only">{ar ? (post.sharesCount === 1 ? "مشاركة" : "مشاركات") : post.sharesCount === 1 ? "share" : "shares"}</span></span>}
+        <button type="button" aria-label={ar ? "أعجبني" : "Like"} aria-pressed={liked} disabled={busy} onClick={like} className={cn("ms-auto grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} /></button>
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
