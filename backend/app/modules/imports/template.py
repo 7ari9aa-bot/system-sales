@@ -19,13 +19,14 @@ from openpyxl.utils import get_column_letter
 from app.modules.imports.fields import (
     SHEET_FIELDS,
     SHEET_IMAGES,
+    SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
     SHEET_STOCK,
     SHEET_VARIANTS,
     FieldSpec,
 )
 
-TEMPLATE_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
+TEMPLATE_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES, SHEET_ITEM_CODES)
 
 # One believable value per column, shown as a comment on the header and NEVER as a data row: a
 # sample row would be imported as a real product the moment a merchant uploads the file as is.
@@ -51,6 +52,7 @@ _EXAMPLES: dict[str, dict[str, str]] = {
     },
     SHEET_STOCK: {"sku": "TEE-RED-M", "barcode": "", "warehouse": "", "quantity": "25"},
     SHEET_IMAGES: {"sku": "TEE-RED-M", "file_name": "https://example.com/photos/tee-red.jpg"},
+    SHEET_ITEM_CODES: {"sku": "TEE-RED-M", "code_type": "EGS", "code": "EG-123456789-TEE-RED-M"},
 }
 
 _HEADER_FILL = PatternFill("solid", start_color="1F2937")

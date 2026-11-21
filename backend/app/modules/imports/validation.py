@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from app.modules.imports import normalize as n
 from app.modules.imports.fields import (
     SHEET_IMAGES,
+    SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
     SHEET_STOCK,
     SHEET_VARIANTS,
@@ -355,6 +356,83 @@ def validate_images(
     return verdicts
 
 
+def validate_item_codes(
+    rows: list[tuple[int, dict[str, str]]],
+    mapping: dict[str, str | None],
+    *,
+    skus_in_file: set[str],
+    known_skus: set[str],
+    existing: dict[tuple[str, str], str],
+    held_by_sku: dict[tuple[str, str], str] | None = None,
+) -> list[RowVerdict]:
+    """A tax item code (EGS or GS1) for a SKU.
+
+    The SKU must exist (or be created by this file). ``existing`` maps ``(type, code)`` to the SKU
+    that already holds it: the same code on the same SKU is a skip (a re-run adds nothing), and on
+    a DIFFERENT SKU it is refused, never moved, because a code on the wrong variant would put the
+    wrong goods on a legal receipt. One variant carries one code per type, and one code belongs to
+    one variant: ``held_by_sku`` maps ``(type, SKU)`` to the code a variant already carries, so a
+    different code for a type it already has is refused instead of silently adding a second.
+    """
+    held_by_sku = held_by_sku or {}
+    verdicts: list[RowVerdict] = []
+    seen_code: dict[tuple[str, str], tuple[int, str]] = {}
+    seen_type: dict[tuple[str, str], int] = {}
+    for number, row in rows:
+        v = RowVerdict(SHEET_ITEM_CODES, number)
+        sku = _try(
+            v, "sku", n.parse_code, _get(row, mapping, "sku"), field="sku", max_len=n.SKU_MAX
+        )
+        kind = _try(v, "code_type", n.parse_item_code_type, _get(row, mapping, "code_type"))
+        code = None
+        if kind is not None:
+            code = _try(v, "code", n.parse_item_code, kind, _get(row, mapping, "code"))
+        elif not _get(row, mapping, "code"):
+            v.errors.append(RowError("code", "required", "code is required"))
+        if sku is None:
+            if not any(e.field == "sku" for e in v.errors):
+                v.errors.append(RowError("sku", "required", "sku is required"))
+        elif sku not in skus_in_file and sku not in known_skus:
+            v.errors.append(RowError("sku", "unknown_sku", f"no variant with SKU '{sku}'"))
+        if sku is not None and kind is not None and code is not None:
+            key = (kind, code)
+            owner = existing.get(key)
+            if key in seen_code:
+                v.errors.append(
+                    RowError(
+                        "code", "duplicate_in_file", f"same {kind} code as row {seen_code[key][0]}"
+                    )
+                )
+            elif owner is not None and owner != sku:
+                v.errors.append(
+                    RowError("code", "code_taken", f"this {kind} code is already on SKU '{owner}'")
+                )
+            elif held_by_sku.get((kind, sku), code) != code:
+                v.errors.append(
+                    RowError(
+                        "code",
+                        "second_code_for_type",
+                        f"SKU '{sku}' already has a {kind} code ({held_by_sku[(kind, sku)]})",
+                    )
+                )
+            elif (kind, sku) in seen_type and owner != sku:
+                v.errors.append(
+                    RowError(
+                        "code_type",
+                        "second_code_for_type",
+                        f"SKU '{sku}' already has a {kind} code on row {seen_type[(kind, sku)]}",
+                    )
+                )
+            else:
+                seen_code[key] = (number, sku)
+                seen_type.setdefault((kind, sku), number)
+        if v.ok:
+            v.values = {"sku": sku, "code_type": kind, "code": code}
+            v.action = "skip" if existing.get((kind, code)) == sku else "create"
+        verdicts.append(v)
+    return verdicts
+
+
 def summarize(verdicts: list[RowVerdict]) -> dict[str, object]:
     """Counters for the preview: how many rows would do what, and which errors dominate."""
     actions: dict[str, int] = defaultdict(int)
@@ -385,6 +463,7 @@ __all__ = [
     "RowVerdict",
     "summarize",
     "validate_images",
+    "validate_item_codes",
     "validate_products",
     "validate_stock",
     "validate_variants",

@@ -236,11 +236,32 @@ async def _attach_image(
     return image.id
 
 
+async def _attach_item_code(
+    session: AsyncSession, tenant_id: uuid.UUID, sku: str, code_type: str, code: str
+) -> uuid.UUID:
+    """Register the tax item code on the variant, through the catalog (it owns uniqueness)."""
+    from app.modules.catalog.service import CatalogService
+
+    variant_id = (
+        await session.execute(_VARIANT_BY_SKU, {"t": tenant_id, "sku": sku})
+    ).scalar_one_or_none()
+    if variant_id is None:
+        raise ApplyError("unknown_sku", f"no variant with SKU '{sku}'")
+    try:
+        row = await CatalogService.add_identifier(
+            session, tenant_id, variant_id, code_type.lower(), code
+        )
+    except DomainError as exc:
+        raise _refused(exc) from exc
+    return row.id
+
+
 PORTS = Ports(
     upsert_product=_upsert_product,
     upsert_variant=_upsert_variant,
     record_opening_stock=_record_opening_stock,
     attach_image=_attach_image,
+    attach_item_code=_attach_item_code,
 )
 
 

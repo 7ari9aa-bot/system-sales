@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from app.modules.imports.fields import (
     SHEET_FIELDS,
     SHEET_IMAGES,
+    SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
     SHEET_STOCK,
     SHEET_VARIANTS,
@@ -21,7 +22,13 @@ from tests.test_imports_http import BOTH, _upload, _xlsx, api  # noqa: F401, F81
 
 def test_the_template_has_one_sheet_per_importable_kind():
     wb = load_workbook(io.BytesIO(build_template()))
-    assert wb.sheetnames == [SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES]
+    assert wb.sheetnames == [
+        SHEET_PRODUCTS,
+        SHEET_VARIANTS,
+        SHEET_STOCK,
+        SHEET_IMAGES,
+        SHEET_ITEM_CODES,
+    ]
     assert set(TEMPLATE_SHEETS) == set(wb.sheetnames)
 
 

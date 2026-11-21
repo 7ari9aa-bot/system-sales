@@ -63,6 +63,21 @@ _IMAGES_ATTACHED = text(
     "WHERE i.tenant_id = :t AND v.sku IN :keys"
 ).bindparams(bindparam("keys", expanding=True))
 
+# A tax item code lives in product_identifiers (type egs / gs1). Two questions, both by the keys in
+# the file: who already holds this (type, code), and which of these SKUs already carry a code of
+# a type. Raw SQL for the same reason as the rest of this file: a read-model, no foreign tables.
+_CODE_OWNERS = text(
+    "SELECT i.type, i.value, v.sku FROM product_identifiers i "
+    "JOIN product_variants v ON v.tenant_id = i.tenant_id AND v.id = i.variant_id "
+    "WHERE i.tenant_id = :t AND i.type IN ('egs', 'gs1') AND i.value IN :keys"
+).bindparams(bindparam("keys", expanding=True))
+
+_CODES_OF_SKUS = text(
+    "SELECT i.type, v.sku, i.value FROM product_identifiers i "
+    "JOIN product_variants v ON v.tenant_id = i.tenant_id AND v.id = i.variant_id "
+    "WHERE i.tenant_id = :t AND i.type IN ('egs', 'gs1') AND v.sku IN :keys"
+).bindparams(bindparam("keys", expanding=True))
+
 _OPENING_DONE = text(
     "SELECT DISTINCT v.sku, w.code FROM inventory_movements m "
     "JOIN product_variants v ON v.id = m.variant_id JOIN warehouses w ON w.id = m.warehouse_id "
@@ -151,3 +166,25 @@ def default_warehouse(existing: Existing, chosen: str | None) -> str | None:
     if len(existing.warehouse_codes) == 1:
         return next(iter(existing.warehouse_codes))
     return None
+
+
+async def load_item_code_owners(
+    session: AsyncSession, tenant_id: uuid.UUID, codes: Iterable[str]
+) -> dict[tuple[str, str], str]:
+    """``(EGS|GS1, code) -> SKU`` for the codes in this file that some variant already holds."""
+    owners: dict[tuple[str, str], str] = {}
+    for batch in _chunks(sorted(set(codes))):
+        rows = await session.execute(_CODE_OWNERS, {"t": tenant_id, "keys": batch})
+        owners.update({(kind.upper(), value): sku for kind, value, sku in rows.all() if sku})
+    return owners
+
+
+async def load_codes_by_sku(
+    session: AsyncSession, tenant_id: uuid.UUID, skus: Iterable[str]
+) -> dict[tuple[str, str], str]:
+    """``(EGS|GS1, SKU) -> code`` for variants that already carry a code of that type."""
+    held: dict[tuple[str, str], str] = {}
+    for batch in _chunks(sorted(set(skus))):
+        rows = await session.execute(_CODES_OF_SKUS, {"t": tenant_id, "keys": batch})
+        held.update({(kind.upper(), sku): value for kind, sku, value in rows.all() if sku})
+    return held

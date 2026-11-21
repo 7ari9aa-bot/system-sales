@@ -24,6 +24,7 @@ SHEET_PRODUCTS = "Products"
 SHEET_VARIANTS = "Variants"
 SHEET_STOCK = "Opening Stock"
 SHEET_IMAGES = "Images"
+SHEET_ITEM_CODES = "Item Codes"
 
 PRODUCT_FIELDS: tuple[FieldSpec, ...] = (
     # Optional here: a one-sheet file of names and prices is what most shops have, and the
@@ -128,9 +129,43 @@ IMAGE_FIELDS: tuple[FieldSpec, ...] = (
     ),
 )
 
+ITEM_CODE_FIELDS: tuple[FieldSpec, ...] = (
+    FieldSpec(
+        "sku", "SKU", "SKU", ("sku", "itemcode", "كود", "كودالصنف", "رمزالصنف"), required=True
+    ),
+    FieldSpec(
+        "code_type",
+        "نوع الكود",
+        "Code type",
+        ("codetype", "type", "scheme", "itemtype", "نوعالكود", "النوع", "نوع"),
+        required=True,
+    ),
+    FieldSpec(
+        "code",
+        "كود الصنف الضريبي",
+        "Tax item code",
+        (
+            "code",
+            "egs",
+            "gs1",
+            "egscode",
+            "gs1code",
+            "gtin",
+            "taxcode",
+            "etacode",
+            "كودالصنفالضريبي",
+            "كودالضريبة",
+            "الكود",
+            "كودمصلحةالضرائب",
+        ),
+        required=True,
+    ),
+)
+
 SHEET_FIELDS: dict[str, tuple[FieldSpec, ...]] = {
     SHEET_PRODUCTS: PRODUCT_FIELDS,
     SHEET_VARIANTS: VARIANT_FIELDS,
     SHEET_STOCK: STOCK_FIELDS,
     SHEET_IMAGES: IMAGE_FIELDS,
+    SHEET_ITEM_CODES: ITEM_CODE_FIELDS,
 }

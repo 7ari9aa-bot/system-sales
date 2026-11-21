@@ -191,3 +191,47 @@ def slugify(value: str) -> str:
     text = clean_text(value).lower()
     text = re.sub(r"[^0-9a-z\u0600-\u06FF]+", "-", text).strip("-")
     return text[:SLUG_MAX]
+
+
+ITEM_CODE_MAX = 100
+_CODE_TYPE_ALIASES = {"EGS": "EGS", "GS1": "GS1", "GTIN": "GS1"}
+_GTIN_LENGTHS = (8, 12, 13, 14)
+
+
+def parse_item_code_type(raw: object) -> str:
+    """The authority's two item-code kinds, read in any case. Nothing else is a tax item code."""
+    text = clean_text(raw).upper()
+    if not text:
+        raise CellError("required", "code type is required (EGS or GS1)")
+    kind = _CODE_TYPE_ALIASES.get(text)
+    if kind is None:
+        raise CellError("bad_code_type", "code type must be EGS or GS1")
+    return kind
+
+
+def gtin_check_digit(body: str) -> str:
+    """The GS1 check digit for the digits before it (weights 3,1,3,1... from the right)."""
+    total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(body)))
+    return str((10 - total % 10) % 10)
+
+
+def parse_item_code(kind: str, raw: object) -> str:
+    """One tax item code, judged by what can be known without the authority.
+
+    Every code: trimmed, no spaces, not Excel's scientific notation (which silently destroys the
+    trailing digits), and bounded. A GS1 code must also be a real GTIN: 8, 12, 13 or 14 digits
+    whose last digit is the published check digit, so a mistyped digit is caught here instead of
+    being rejected by the authority a week later. An EGS code has a format the authority owns and
+    this code does not know, so it is kept exactly as written and never guessed at.
+    """
+    text = parse_code(raw, field="code", max_len=ITEM_CODE_MAX)
+    if text is None:
+        raise CellError("required", "code is required")
+    if kind == "GS1":
+        if not text.isascii() or not text.isdigit():
+            raise CellError("not_a_gtin", "a GS1 code is digits only")
+        if len(text) not in _GTIN_LENGTHS:
+            raise CellError("bad_length", "a GS1 code (GTIN) has 8, 12, 13 or 14 digits")
+        if gtin_check_digit(text[:-1]) != text[-1]:
+            raise CellError("bad_check_digit", "the last digit of this GTIN does not match")
+    return text

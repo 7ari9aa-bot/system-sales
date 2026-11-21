@@ -23,11 +23,21 @@ fields, previews what would change, and a background job applies it in resumable
 - `verdicts.py`: stores a validator verdict on its row (`parsed`: action and clean values, money as
   strings) and reads it back, so the run applies what the preview showed, not a re-parse of `raw`.
 - `apply.py`: applies one batch (at most 500 rows) of `valid` rows through `Ports`, sheet by sheet
-  (products, variants, opening stock). Each row runs in its own savepoint: a refusal or a database
+  (products, variants, item codes, opening stock, images). Each row runs in its own savepoint: a refusal or a database
   error fails that row alone. It imports no other module; `app/workers/import_runner.py` supplies
   the real catalog and inventory calls.
 - `mapping.py`: suggests which column is which field. A suggestion is shown, never applied
   silently.
+
+## Tax item codes (EGS / GS1)
+
+The `Item Codes` sheet (SKU, code type, code) registers the authority's item code on a variant as
+a `product_identifiers` row of type `egs` / `gs1`, through `CatalogService.add_identifier`. What it
+checks is only what can be known without the authority: a GS1 code must be a real GTIN (8, 12, 13
+or 14 digits with the published check digit), an EGS code is kept exactly as written because its
+format belongs to the authority. Whether a code is REGISTERED to this merchant needs their ETA
+account and is not checked here. A code already on another variant is refused, never moved; one
+variant carries one code per type; a re-run of the same file skips what is already there.
 
 ## Rules for working here
 

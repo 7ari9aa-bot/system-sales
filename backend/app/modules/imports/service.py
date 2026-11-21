@@ -33,6 +33,7 @@ from app.modules.imports.apply import BATCH_LIMIT
 from app.modules.imports.fields import (
     SHEET_FIELDS,
     SHEET_IMAGES,
+    SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
     SHEET_STOCK,
     SHEET_VARIANTS,
@@ -45,6 +46,7 @@ from app.modules.imports.validation import (
     RowVerdict,
     summarize,
     validate_images,
+    validate_item_codes,
     validate_products,
     validate_stock,
     validate_variants,
@@ -54,7 +56,7 @@ from app.modules.imports.verdicts import fields_for_row
 BLANK_POLICIES = ("keep", "clear")
 DEFAULT_OPTIONS = {"duplicate_policy": "create_only", "blank_policy": "keep"}
 # Sheets this phase understands. Anything else in the workbook is reported, not guessed at.
-KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
+KNOWN_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES, SHEET_ITEM_CODES)
 _EDITABLE = ("uploaded", "analyzed", "mapped", "validated")
 
 _STORE_VERDICTS = text(
@@ -278,19 +280,21 @@ async def validate_session(
     stock_skus = _collect(stock_rows, maps.get(SHEET_STOCK, {}), "sku")
     image_rows = rows.get(SHEET_IMAGES, [])
     image_skus = _collect(image_rows, maps.get(SHEET_IMAGES, {}), "sku")
+    code_rows = rows.get(SHEET_ITEM_CODES, [])
+    code_skus = _collect(code_rows, maps.get(SHEET_ITEM_CODES, {}), "sku")
     barcodes = _collect(variant_rows, maps.get(SHEET_VARIANTS, {}), "barcode")
 
     existing = await lookup.load_existing(
         session,
         tenant_id,
         product_refs=refs,
-        skus=skus | stock_skus | image_skus,
+        skus=skus | stock_skus | image_skus | code_skus,
         barcodes=barcodes,
     )
     existing.opening_stock_done = await lookup.load_opening_stock_done(
         session, tenant_id, stock_skus
     )
-    known = await lookup.known_variant_skus(session, tenant_id, stock_skus | image_skus)
+    known = await lookup.known_variant_skus(session, tenant_id, stock_skus | image_skus | code_skus)
     attached = await lookup.load_attached_images(session, tenant_id, image_skus)
 
     verdicts: dict[str, list[RowVerdict]] = {}
@@ -326,6 +330,18 @@ async def validate_session(
             skus_in_file=file_skus,
             known_skus=known,
             already_attached=attached,
+        )
+
+    if SHEET_ITEM_CODES in maps:
+        verdicts[SHEET_ITEM_CODES] = validate_item_codes(
+            code_rows,
+            maps[SHEET_ITEM_CODES],
+            skus_in_file=file_skus,
+            known_skus=known,
+            existing=await lookup.load_item_code_owners(
+                session, tenant_id, _collect(code_rows, maps[SHEET_ITEM_CODES], "code")
+            ),
+            held_by_sku=await lookup.load_codes_by_sku(session, tenant_id, code_skus),
         )
 
     # One UPDATE per 500 rows, not one per row: a full file is 100k rows. The chunk travels as

@@ -25,7 +25,13 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.imports.fields import SHEET_IMAGES, SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.modules.imports.fields import (
+    SHEET_IMAGES,
+    SHEET_ITEM_CODES,
+    SHEET_PRODUCTS,
+    SHEET_STOCK,
+    SHEET_VARIANTS,
+)
 from app.modules.imports.models import ImportRow
 
 logger = logging.getLogger(__name__)
@@ -38,7 +44,7 @@ IMAGE_BATCH_LIMIT = 25
 # Products before variants before stock: a variant needs its product, stock needs its variant.
 # Pictures go last: they are the slowest rows (each one is a download) and the least critical, so
 # a shop that runs out of time still has every product, price and quantity in place.
-SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES)
+SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_ITEM_CODES, SHEET_STOCK, SHEET_IMAGES)
 OPENING_STOCK_REASON = "opening_stock"
 REFERENCE_TYPE = "import_session"
 
@@ -66,6 +72,8 @@ class Ports:
     ]
     # (sku, link) -> image id. Fetches the link, stores the bytes, attaches the picture.
     attach_image: Callable[[AsyncSession, uuid.UUID, str, str], Awaitable[uuid.UUID]]
+    # (sku, EGS|GS1, code) -> identifier id. Registers the tax item code on the variant.
+    attach_item_code: Callable[[AsyncSession, uuid.UUID, str, str, str], Awaitable[uuid.UUID]]
 
 
 @dataclass(slots=True)
@@ -212,6 +220,11 @@ async def _write(
             session, tenant_id, str(values["sku"]), str(values["url"])
         )
         return {"image_id": str(image_id), "action": "created"}
+    if row.sheet == SHEET_ITEM_CODES:
+        identifier_id = await ports.attach_item_code(
+            session, tenant_id, str(values["sku"]), str(values["code_type"]), str(values["code"])
+        )
+        return {"identifier_id": str(identifier_id), "action": "created"}
     raise ApplyError("unsupported_sheet", f"sheet {row.sheet!r} cannot be imported yet")
 
 
