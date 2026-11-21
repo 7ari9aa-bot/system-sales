@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import FbPostCard, { commentSubmitShown } from "@/components/facebook/FbPostCard";
+import FbPostCard, { commentActionLabel, commentSubmitShown } from "@/components/facebook/FbPostCard";
 
 const post = { id: "1_2", text: "hello", picture: "", createdAt: "2026-11-21T08:00:00Z", reactions: 3, comments: [] };
 const html = (extra = {}) => renderToStaticMarkup(<FbPostCard post={{ ...post, ...extra }} pageName="Fihrist" lang="en" actions={{}} />);
@@ -53,5 +53,51 @@ describe("the Post button in the comment box", () => {
     expect(out).toContain("Comment as Fihrist");
     expect(out).not.toContain('data-testid="fb-comment-submit"');
     expect(out).not.toContain(">Post<");
+  });
+});
+
+// The action bar's Comment button, as drawn: Facebook puts the thread's count on that button itself.
+const commentActionOf = (out) => (out.match(/<button[^>]*data-testid="fb-comment-action"[^>]*>.*?<\/button>/) || [""])[0];
+
+describe("the comment count on the action bar", () => {
+  it("is named in the Comment button's label, so a screen reader hears it", () => {
+    expect(commentActionLabel(3, "en")).toBe("Comment, 3 comments");
+    expect(commentActionLabel(1, "en")).toBe("Comment, 1 comment");
+    expect(commentActionLabel(0, "en")).toBe("Comment");
+    expect(commentActionLabel(3, "ar")).toBe("تعليق، 3 تعليقات");
+    expect(commentActionLabel(1, "ar")).toBe("تعليق، تعليق واحد");
+    expect(commentActionLabel(0, "ar")).toBe("تعليق");
+  });
+  it("is a number beside the Comment action, as Facebook shows it", () => {
+    const out = html({ commentsCount: 3 });
+    const action = commentActionOf(out);
+    expect(action).toContain(">Comment<");
+    expect(action).toContain('data-testid="fb-comment-count"');
+    expect(action).toContain(">3<");
+    expect(action).toContain('aria-label="Comment, 3 comments"');
+  });
+  it("is no longer a separate '3 comments' beside the reactions", () => {
+    const out = html({ commentsCount: 3 });
+    const countsRow = out.slice(out.indexOf('justify-between'), out.indexOf('grid grid-cols-2'));
+    expect(countsRow).not.toContain("comments");
+    expect(countsRow).not.toContain("تعليق");
+  });
+  it("draws no empty counts row when the post has neither reactions nor a separate count", () => {
+    const out = html({ reactions: 0, commentsCount: 3 });
+    expect(out).not.toContain("justify-between px-4 py-2.5");
+  });
+  it("stays off the button when the post has no comments", () => {
+    const action = commentActionOf(html({ commentsCount: 0 }));
+    expect(action).not.toContain('data-testid="fb-comment-count"');
+    expect(action).toContain('aria-label="Comment"');
+  });
+  it("counts the replies already loaded, so the number matches the thread", () => {
+    const comments = [{ id: "c1", author: "Mona", text: "hi", timeLabel: "5m", replies: [{ id: "c2", author: "Fihrist", text: "yo", timeLabel: "4m", isPage: true }] }];
+    expect(commentActionOf(html({ commentsCount: 0, comments }))).toContain(">2<");
+  });
+  it("is named in Arabic beside the Arabic action", () => {
+    const out = renderToStaticMarkup(<FbPostCard post={{ ...post, commentsCount: 2 }} pageName="Fihrist" lang="ar" actions={{}} />);
+    expect(commentActionOf(out)).toContain('aria-label="تعليق، 2 تعليقات"');
+    expect(commentActionOf(out)).toContain(">2<");
   });
 });

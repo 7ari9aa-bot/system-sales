@@ -13,6 +13,15 @@ const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.repl
  *  box is just the placeholder and the picture icons. */
 export const commentSubmitShown = (draft) => String(draft || "").trim().length > 0;
 
+/** What a screen reader hears on the Comment action: Facebook puts the thread's count on that button,
+ *  so the count belongs in its name too ("Comment, 3 comments"). */
+export function commentActionLabel(count, lang) {
+  const ar = lang === "ar";
+  if (!(count > 0)) return ar ? "تعليق" : "Comment";
+  if (ar) return `تعليق، ${count === 1 ? "تعليق واحد" : `${count} تعليقات`}`;
+  return `Comment, ${count} ${count === 1 ? "comment" : "comments"}`;
+}
+
 /** A Page post as Facebook draws it: header, text, picture, counts, Like / Comment, then the comments. */
 export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, onEdited, onDeleted, onOpenInsights }) {
   const ar = lang === "ar";
@@ -84,13 +93,14 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
         </form>
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
-      <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-        <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
-        {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
-      </div>
+      {reactionsShown > 0 && (
+        <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
+          <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
+        </div>
+      )}
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
         <button type="button" aria-pressed={liked} disabled={busy} onClick={like} className={cn("flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold hover:bg-[#f2f2f2] disabled:opacity-60", liked ? "text-[#0866ff]" : "text-[#65676b]")}><FbLike filled={liked} size={20} />{ar ? "أعجبني" : "Like"}</button>
-        <button type="button" aria-pressed={commenting} onClick={() => setCommenting((v) => !v)} className="flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold text-[#65676b] hover:bg-[#f2f2f2]"><CommentIcon size={20} />{ar ? "تعليق" : "Comment"}</button>
+        <button type="button" data-testid="fb-comment-action" aria-pressed={commenting} aria-label={commentActionLabel(total, lang)} onClick={() => setCommenting((v) => !v)} className="flex h-9 items-center justify-center gap-2 rounded-md text-[15px] font-semibold text-[#65676b] hover:bg-[#f2f2f2]"><CommentIcon size={20} />{ar ? "تعليق" : "Comment"}{total > 0 && <span data-testid="fb-comment-count" aria-hidden="true">{total}</span>}</button>
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
