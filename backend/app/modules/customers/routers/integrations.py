@@ -56,6 +56,12 @@ def _last_webhook_at(integration: Integration) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _meta_page_webhook_configured(settings) -> bool:
+    """Whether the Page webhook (Facebook and Messenger) can pass Meta's checks on this server."""
+    secret = settings.messenger_app_secret or getattr(settings, "meta_app_secret", "")
+    return bool(secret and settings.messenger_verify_token)
+
+
 def _webhook_status(integration: Integration) -> str:
     if integration.provider == "webchat":
         return "ready"
@@ -67,10 +73,11 @@ def _webhook_status(integration: Integration) -> str:
     configured = {
         "whatsapp": public_api_configured
         and bool(settings.whatsapp_app_secret and settings.whatsapp_verify_token),
-        "messenger": public_api_configured
-        and bool(settings.messenger_app_secret and settings.messenger_verify_token),
-        "facebook": public_api_configured
-        and bool(settings.messenger_app_secret and settings.messenger_verify_token),
+        # Facebook and Messenger share one adapter rule (gateway/messenger.py): the Meta app
+        # secret signs the webhook, the Messenger verify token opens the handshake. The badge
+        # must describe the webhook that actually answers, or it cries wolf on a working one.
+        "messenger": public_api_configured and _meta_page_webhook_configured(settings),
+        "facebook": public_api_configured and _meta_page_webhook_configured(settings),
         "instagram": public_api_configured
         and bool(settings.instagram_app_secret and settings.instagram_verify_token),
         "telegram": public_api_configured and telegram_webhook_secret_configured(),
