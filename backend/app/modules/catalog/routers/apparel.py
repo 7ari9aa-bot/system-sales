@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.catalog.apparel.barcode_service import BarcodeService
 from app.modules.catalog.apparel.label import SIZES, label_svg
+from app.modules.catalog.apparel.options import ShopOptionsService
 from app.modules.catalog.apparel.service import ApparelMatrixService
 from app.modules.errors import ConflictError, ValidationError
 
@@ -134,3 +135,46 @@ async def print_labels(
         f".l svg{{display:block}}</style>{labels}"
     )
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
+# ── The shop's own size sets and colours ───────────────────────────────────────────────────────
+
+
+class ColourIn(BaseModel):
+    name: str = Field(min_length=1, max_length=63)
+    hex: str | None = Field(default=None, max_length=7)
+
+
+class SaveSizeSetsRequest(BaseModel):
+    size_sets: dict[str, list[str]]
+
+
+class SaveColoursRequest(BaseModel):
+    colours: list[ColourIn]
+
+
+@router.get("/apparel/options")
+async def get_shop_options(ctx: TenantCtxDep):
+    """The size sets and colours this shop offers: its own, or the built-in lists if it has none."""
+    return await ShopOptionsService.get(ctx.session, ctx.tenant_id)
+
+
+@router.put("/apparel/options/size-sets")
+async def save_shop_size_sets(body: SaveSizeSetsRequest, ctx: WriteCtx):
+    await ShopOptionsService.save_size_sets(ctx.session, ctx.tenant_id, body.size_sets)
+    return await ShopOptionsService.get(ctx.session, ctx.tenant_id)
+
+
+@router.put("/apparel/options/colours")
+async def save_shop_colours(body: SaveColoursRequest, ctx: WriteCtx):
+    await ShopOptionsService.save_colours(
+        ctx.session, ctx.tenant_id, [c.model_dump() for c in body.colours]
+    )
+    return await ShopOptionsService.get(ctx.session, ctx.tenant_id)
+
+
+@router.delete("/apparel/options")
+async def reset_shop_options(ctx: WriteCtx):
+    """Forget the shop's own lists and go back to the built-in ones."""
+    await ShopOptionsService.reset(ctx.session, ctx.tenant_id)
+    return await ShopOptionsService.get(ctx.session, ctx.tenant_id)

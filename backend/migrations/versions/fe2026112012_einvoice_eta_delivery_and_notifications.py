@@ -13,8 +13,8 @@
   SECURITY DEFINER function that returns only ids (never credentials) and answers nothing when
   the key is unknown, the same posture as ``resolve_whatsapp_waba_tenant``.
 
-Revision ID: fe2026112011
-Revises: fe2026112010
+Revision ID: fe2026112012
+Revises: fe2026112011
 Create Date: 2026-11-20 09:30:00.000000
 """
 
@@ -24,8 +24,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "fe2026112011"
-down_revision: str | None = "fe2026112010"
+revision: str = "fe2026112012"
+down_revision: str | None = "fe2026112011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
