@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 593,
-    "sha256": "f7d3ea57d79ab3b0eee9265ffa981689d78398606b8a0c61b8bc8a6804998444",
+    "operations": 595,
+    "sha256": "4cae4c881da339b4263c47415a1507976239aa74e3a64b3116debadf6c4b9d26",
     "typed_operations": 335
   },
   "spec": {
@@ -4705,6 +4705,18 @@
                 }
               ],
               "title": "Price"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
             },
             "sku": {
               "anyOf": [
@@ -23254,6 +23266,18 @@
                 }
               ],
               "title": "Description"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
             },
             "slug": {
               "anyOf": [
@@ -75383,6 +75407,22 @@
               }
             },
             {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
+              }
+            },
+            {
               "in": "header",
               "name": "x-tenant-id",
               "required": false,
@@ -80787,6 +80827,201 @@
           "tags": [
             "orders"
           ]
+        }
+      },
+      "/api/v1/shop-type": {
+        "get": {
+          "description": "The kinds of shop the owner can say they run, and the one they run now.",
+          "operationId": "get_shop_type_api_v1_shop_type_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Shop Type"
+        }
+      },
+      "/api/v1/shop-type/{vertical}": {
+        "post": {
+          "description": "Say what kind of shop this is. A clothing shop with no categories gets a starting tree.",
+          "operationId": "choose_shop_type_api_v1_shop_type__vertical__post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "vertical",
+              "required": true,
+              "schema": {
+                "title": "Vertical",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Choose Shop Type"
         }
       },
       "/api/v1/sla/calendars": {

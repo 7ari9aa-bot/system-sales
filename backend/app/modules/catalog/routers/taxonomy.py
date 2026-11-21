@@ -191,24 +191,3 @@ async def ensure_default_warehouse(
         "address": w.address,
         "is_active": w.is_active,
     }
-
-
-# ── What kind of shop this is ──────────────────────────────────────────────────────────────────
-
-ShopTypeWriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
-
-
-@router.get("/shop-type")
-async def get_shop_type(ctx: TenantCtxDep):
-    """The kinds of shop the owner can say they run, and the one they run now."""
-    from app.modules.catalog.services.vertical_setup import current_vertical
-
-    return await current_vertical(ctx.session, ctx.tenant_id)
-
-
-@router.post("/shop-type/{vertical}")
-async def choose_shop_type(vertical: str, ctx: ShopTypeWriteCtx):
-    """Say what kind of shop this is. A clothing shop with no categories gets a starting tree."""
-    from app.modules.catalog.services.vertical_setup import choose_vertical
-
-    return await choose_vertical(ctx.session, ctx.tenant_id, vertical, user_id=ctx.user.id)

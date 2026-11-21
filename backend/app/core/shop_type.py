@@ -7,14 +7,18 @@ dict below), so another vertical's starting tree is another entry, not another c
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.models import Category
+from app.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
+from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.settings.service import SettingsService
 
 # Only the verticals that behave differently from a plain shop are offered. Pharmacy and
 # restaurant exist in the capability table, but choosing them today would change nothing, so the
@@ -33,10 +37,7 @@ STARTER_TREES: dict[str, dict[str, tuple[str, ...]]] = {
 APPAREL_STARTER_TREE = STARTER_TREES["apparel"]
 
 
-def _settings(session: AsyncSession, tenant_id: UUID):
-    # Lazy on purpose: a module-scope import would add a permanent catalog -> settings edge.
-    from app.modules.settings.service import SettingsService
-
+def _settings(session: AsyncSession, tenant_id: UUID) -> SettingsService:
     return SettingsService(session, tenant_id)
 
 
@@ -58,7 +59,6 @@ async def choose_vertical(
     never touches what the owner has already built. The setting and the tree are written in one
     savepoint: either both land or neither does.
     """
-    from app.modules.catalog.services import CatalogService
 
     if vertical not in CHOOSABLE_VERTICALS:
         raise ValidationError(f"vertical must be one of {sorted(CHOOSABLE_VERTICALS)}")
@@ -90,3 +90,21 @@ async def current_vertical(session: AsyncSession, tenant_id: UUID) -> dict[str, 
     """The vertical the shop runs now and the ones it may choose."""
     resolved = await _settings(session, tenant_id).resolve("business.vertical")
     return {"current": resolved.value, "choices": list(CHOOSABLE_VERTICALS)}
+
+
+# ── The routes ─────────────────────────────────────────────────────────────────────────────────
+
+router = APIRouter()
+ShopTypeWriteCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
+
+
+@router.get("/shop-type")
+async def get_shop_type(ctx: TenantCtxDep):
+    """The kinds of shop the owner can say they run, and the one they run now."""
+    return await current_vertical(ctx.session, ctx.tenant_id)
+
+
+@router.post("/shop-type/{vertical}")
+async def choose_shop_type(vertical: str, ctx: ShopTypeWriteCtx):
+    """Say what kind of shop this is. A clothing shop with no categories gets a starting tree."""
+    return await choose_vertical(ctx.session, ctx.tenant_id, vertical, user_id=ctx.user.id)

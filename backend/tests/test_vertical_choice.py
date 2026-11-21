@@ -14,12 +14,12 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
-from app.modules.catalog.models import Category
-from app.modules.catalog.services.vertical_setup import (
+from app.core.shop_type import (
     APPAREL_STARTER_TREE,
     CHOOSABLE_VERTICALS,
     choose_vertical,
 )
+from app.modules.catalog.models import Category
 from app.modules.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_the_has_categories_check_names_the_shop_in_its_own_statement(
     monkeypatch.setattr(db, "execute", spy)
     await choose_vertical(db, tid, "general", user_id=tenant_ctx.user.id)
     # general plants nothing, so ask the check directly
-    from app.modules.catalog.services.vertical_setup import _has_categories
+    from app.core.shop_type import _has_categories
 
     seen.clear()
     await _has_categories(db, tid)
