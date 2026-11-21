@@ -365,6 +365,12 @@ class AuthService:
                 # to the password + MFA form rather than skipping the factor.
                 raise GoogleMfaRequired("mfa enabled: sign in with password")
 
+        if tenant_id is not None:
+            # The audit row below names this tenant, and audit_logs only accepts a row whose
+            # tenant_id is NULL or equals app.tenant_id. A new account gets that GUC from
+            # `register`; an existing one signs in with only app.user_id bound, so the INSERT
+            # was refused by row-level security and every returning Google user got a 500.
+            await bind_tenant(session, tenant_id)
         pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
         await AuthService._audit(
             session, user.id, "auth.google_login", "user", str(user.id), tenant_id=tenant_id

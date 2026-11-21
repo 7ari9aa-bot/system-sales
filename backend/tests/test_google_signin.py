@@ -520,3 +520,67 @@ async def test_a_signup_that_fails_midway_leaves_no_half_made_workspace(db, monk
         )
     assert res.headers["location"] == "/login?error=google_failed"
     assert (await db.execute(select(User).where(User.email == email))).scalar_one_or_none() is None
+
+
+# ----------------------- a RETURNING user, in a request that starts with no tenant bound
+
+
+async def _forget_the_tenant(db) -> None:
+    """Make the session look like the start of a fresh request.
+
+    The test session is one long transaction, so the tenant that `register` bound earlier in the
+    test would still be bound at sign-in and hide the bug. In production every request opens a new
+    transaction with neither GUC set; `set_config(.., true)` is transaction-local.
+    """
+    await db.execute(text("SELECT set_config('app.tenant_id', '', true)"))
+    await db.execute(text("SELECT set_config('app.user_id', '', true)"))
+
+
+async def test_a_returning_google_user_can_sign_in_when_no_tenant_is_bound_yet(db):
+    """Production 500: the audit row names the tenant, audit_logs refuses a row whose tenant is
+    not the bound one, and an existing account used to sign in with only app.user_id bound.
+    A new account was unaffected (register binds the tenant), so only RETURNING users failed."""
+    email = _addr()
+    _user, tenant = await AuthService.register(
+        db,
+        tenant_name="Returning",
+        tenant_slug=f"ret-{uuid.uuid4().hex[:8]}",
+        email=email,
+        password=None,
+        full_name="Ret",
+        email_verified=True,
+    )
+    await _forget_the_tenant(db)
+
+    pair, _got, tenant_id = await AuthService.login_with_google(
+        db, email=email, email_verified=True
+    )
+
+    assert tenant_id == tenant.id and pair.access_token
+    written = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM audit_logs "
+                "WHERE tenant_id = :t AND action = 'auth.google_login'"
+            ),
+            {"t": tenant.id},
+        )
+    ).scalar_one()
+    assert written == 1, "the sign-in must leave its audit row"
+
+
+async def test_the_test_session_really_enforces_audit_logs_rls(db):
+    """Guard for the test above: if the suite ran as a BYPASSRLS role it would prove nothing."""
+    bypass = (
+        await db.execute(text("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user"))
+    ).scalar_one()
+    assert bypass is False, "point DATABASE_URL_APP_ADMIN at sales_app, not postgres"
+    await _forget_the_tenant(db)
+    with pytest.raises(Exception, match="row-level security"):
+        async with db.begin_nested():
+            await db.execute(
+                text(
+                    "INSERT INTO audit_logs (id, tenant_id, action, resource_type, source) "
+                    "VALUES (gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'human')"
+                )
+            )
