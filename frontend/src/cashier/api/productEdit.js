@@ -2,6 +2,7 @@
 // the SMALLEST set of backend calls. Pure functions, so they are tested without a network.
 
 import { toWire } from "./money";
+import { materialText } from "@/cashier/lib/material";
 
 const text = (v) => String(v ?? "").trim();
 
@@ -24,6 +25,7 @@ export function productToForm(product, identifiersByVariant = {}) {
     categoryId: product.category_id ?? "",
     brandId: product.brand_id ?? "",
     season: product.season ?? "",
+    material: materialText(product.material),
     sku: variants[0]?.sku ?? "",
     colors: uniq(variants.map((v) => v.color)),
     sizes: uniq(variants.map((v) => v.size)),
@@ -43,6 +45,8 @@ export function planProductEdit(before, after) {
   if ((after.categoryId || "") !== (before.categoryId || "")) product.category_id = after.categoryId || null;
   if ((after.brandId || "") !== (before.brandId || "")) product.brand_id = after.brandId || null;
   if (text(after.season) !== text(before.season)) product.season = text(after.season) || null;
+  // الخامة بتتقارن وتتبعت بعد التشذيب: الفاضي بيتبعت null (يمسح الخامة)، والنص "null" مش خامة.
+  if (materialText(after.material) !== materialText(before.material)) product.material = materialText(after.material) || null;
 
   const byId = new Map(before.variants.map((v) => [v.id, v]));
   const variantPatches = [];

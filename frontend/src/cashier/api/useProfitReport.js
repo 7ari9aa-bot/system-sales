@@ -21,15 +21,15 @@ export function shapeProfit(data) {
 }
 
 /**
- * الربح في فترة، مفلتر بالعلامة والموسم. الاستعلام نفسه من profitQuery (نهاية الفترة مفتوحة،
+ * الربح في فترة، مفلتر بالعلامة والموسم والخامة. الاستعلام نفسه من profitQuery (نهاية الفترة مفتوحة،
  * فاليوم داخل الحساب). الـ403 مش بيتعاد: المستخدم مش من حقه يشوف التكلفة والربح، وإعادة المحاولة
  * مش هتغيّر ده.
  *
  * `enabled` بيخلّي الطلب يتبعت لما التاب بتاعه يتفتح بس: كاشير بيدخل شاشة التقارير مش محتاج
  * طلب بيترفض بـ403 ويسجّل خطأ كل مرة، والمدير بياخد التقرير أول ما يفتح التاب.
  */
-export function useProfitReport({ period = "7d", brandId = "", season = "", enabled = true } = {}) {
-  const query = profitQuery({ period, brandId, season });
+export function useProfitReport({ period = "7d", brandId = "", season = "", material = "", enabled = true } = {}) {
+  const query = profitQuery({ period, brandId, season, material });
   return useQuery({
     // The query string IS the cache key: two different windows can never share an answer.
     queryKey: [...PROFIT_KEY, query],

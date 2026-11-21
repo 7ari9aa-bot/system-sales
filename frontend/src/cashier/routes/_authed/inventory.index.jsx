@@ -1,14 +1,15 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { ClipboardList, Download, History, Printer, Upload } from "lucide-react";
+import { ClipboardList, Download, History, Percent, Printer, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import StockFilters from "@/cashier/components/inventory/StockFilters";
 import InventoryProductGrid from "@/cashier/components/inventory/InventoryProductGrid";
 import ProductDetailsDialog from "@/cashier/components/inventory/ProductDetailsDialog";
 import VariantMovementsDialog from "@/cashier/components/inventory/VariantMovementsDialog";
+import SeasonMarkdownDialog from "@/cashier/components/inventory/SeasonMarkdownDialog";
 import { costLabel } from "@/cashier/api/stockAdapter";
-import { useStock, useStockCategories, useStockSeasons, useStockSummary } from "@/cashier/api/useStock";
+import { useStock, useStockCategories, useStockMaterials, useStockSeasons, useStockSummary } from "@/cashier/api/useStock";
 import { useBrands } from "@/cashier/api/useCatalogWrite";
 import { INVENTORY_STATUS, fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 import { resolveOpenProduct } from "@/cashier/lib/inventoryGroups";
@@ -20,6 +21,7 @@ const EXPORT_COLUMNS = [
   { header: "SKU", key: "sku" },
   { header: "الباركود", key: "barcode" },
   { header: "الموسم", key: "season" },
+  { header: "الخامة", key: "material" },
   { header: "اللون", key: "color" },
   { header: "المقاس", key: "size" },
   { header: "الرصيد", key: "stock" },
@@ -34,19 +36,21 @@ const BTN_PRIMARY =
   "h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2.5 text-[13px] font-semibold !text-white shadow-sm transition-all duration-200 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 
 export default function InventoryPage() {
-  const [filters, setFilters] = useState({ term: "", category: "", brand: "", season: "", status: "" });
-  const { term, category, brand, season, status } = filters;
+  const [filters, setFilters] = useState({ term: "", category: "", brand: "", season: "", material: "", status: "" });
+  const { term, category, brand, season, material, status } = filters;
   const [movementsOf, setMovementsOf] = useState(null);
   const [detailsOf, setDetailsOf] = useState(null);
+  const [markdownOpen, setMarkdownOpen] = useState(false);
 
   // Search and status are filtered ON THE SERVER, so they reach every variant and the status can
   // never disagree with the backend rule. The totals below come from the summary endpoint, which
   // covers all active variants, not just the rows that happen to be on screen.
-  const stock = useStock({ term, categoryId: category, brandId: brand, season, status });
+  const stock = useStock({ term, categoryId: category, brandId: brand, season, material, status });
   const summary = useStockSummary();
   const categories = useStockCategories();
   const brands = useBrands();
   const seasons = useStockSeasons();
+  const materials = useStockMaterials();
   const rows = stock.data ?? [];
   const totals = summary.data;
   const openProduct = resolveOpenProduct(detailsOf, rows);
@@ -83,6 +87,10 @@ export default function InventoryPage() {
               <History />
               حركة الأصناف
             </Link>
+          </Button>
+          <Button variant="outline" className={BTN} onClick={() => setMarkdownOpen(true)}>
+            <Percent />
+            تخفيض موسم
           </Button>
           <Button asChild variant="outline" className={BTN}>
             <Link to="/cashier/labels">
@@ -126,7 +134,14 @@ export default function InventoryPage() {
         />
       </div>
 
-      <StockFilters values={filters} onChange={setFilters} categories={categories.data ?? []} brands={brands.data ?? []} seasons={seasons.data ?? []} />
+      <StockFilters
+        values={filters}
+        onChange={setFilters}
+        categories={categories.data ?? []}
+        brands={brands.data ?? []}
+        seasons={seasons.data ?? []}
+        materials={materials.data ?? []}
+      />
 
       {stock.isError ? (
         <div role="alert" className="rounded-2xl border border-[#E3DED4] bg-white p-6 text-center text-[13px]">
@@ -147,6 +162,13 @@ export default function InventoryPage() {
         open={!!openProduct}
         onOpenChange={(open) => !open && setDetailsOf(null)}
         onMovements={setMovementsOf}
+      />
+
+      <SeasonMarkdownDialog
+        open={markdownOpen}
+        onOpenChange={setMarkdownOpen}
+        seasons={seasons.data ?? []}
+        brands={brands.data ?? []}
       />
 
       <VariantMovementsDialog

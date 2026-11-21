@@ -10,6 +10,7 @@
  */
 import { fromMinor, toMinor } from "./money";
 import { periodRange } from "@/cashier/lib/period";
+import { materialText } from "@/cashier/lib/material";
 
 /** Plain non-negative decimal text, with an optional sign in front of it. */
 const SIGNED_RE = /^([+-]?)(\d+(?:\.\d+)?)$/;
@@ -47,7 +48,7 @@ const addDay = (dateKey) => new Date(Date.parse(`${dateKey}T00:00:00Z`) + DAY_MS
  * but the server's range ends BEFORE `end`, so the end is the day after: sending `until` as it is would
  * leave out the last day, and "today" would always read as nothing.
  */
-export function profitQuery({ period = "7d", brandId = "", season = "", now = new Date() } = {}) {
+export function profitQuery({ period = "7d", brandId = "", season = "", material = "", now = new Date() } = {}) {
   const { since, until } = periodRange(period, now);
   const p = new URLSearchParams({ start: since, end: addDay(until) });
   if (brandId) p.set("brand_id", brandId);
@@ -55,6 +56,10 @@ export function profitQuery({ period = "7d", brandId = "", season = "", now = ne
   // absent season would be sent as a filter for a season literally named "null". Treat it as blank.
   const seasonText = season === null || season === undefined ? "" : String(season).trim();
   if (seasonText) p.set("season", seasonText);
+  // نفس الحكاية للخامة: materialText بتشيل القيمة الغايبة والفاضية والنص "null"، فالفلتر
+  // ما بيتبعتش غير لما يكون فيه خامة حقيقية مختارة.
+  const materialValue = materialText(material);
+  if (materialValue) p.set("material", materialValue);
   return p.toString();
 }
 
@@ -63,6 +68,7 @@ export function profitRows(apiRows = []) {
     id: r.variant_id,
     model: r.model ?? "",
     season: r.season ?? "",
+    material: materialText(r.material),
     brandId: r.brand_id ?? null,
     size: r.size ?? "",
     colour: r.colour ?? "",

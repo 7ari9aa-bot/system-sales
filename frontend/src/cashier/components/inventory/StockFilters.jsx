@@ -32,17 +32,17 @@ function Pick({ label, allLabel, value, onChange, options }) {
 }
 
 /**
- * The stock screen's filters: search, category, brand, season and stock status. Pure: the page owns
- * the values and the lists, so what is drawn is exactly what is passed in.
+ * The stock screen's filters: search, category, brand, season, material (fabric) and stock status.
+ * Pure: the page owns the values and the lists, so what is drawn is exactly what is passed in.
  */
-export default function StockFilters({ values, onChange, categories = [], brands = [], seasons = [] }) {
-  const { term = "", category = "", brand = "", season = "", status = "" } = values;
+export default function StockFilters({ values, onChange, categories = [], brands = [], seasons = [], materials = [] }) {
+  const { term = "", category = "", brand = "", season = "", material = "", status = "" } = values;
   const set = (key) => (v) => onChange({ ...values, [key]: v });
   return (
     <FilterPanel
       className="animate-inv-rise rounded-[14px] border-[#E3DED4] bg-white [animation-delay:.2s]"
-      activeCount={[category, brand, season, status].filter(Boolean).length + (term ? 1 : 0)}
-      onReset={() => onChange({ term: "", category: "", brand: "", season: "", status: "" })}
+      activeCount={[category, brand, season, material, status].filter(Boolean).length + (term ? 1 : 0)}
+      onReset={() => onChange({ term: "", category: "", brand: "", season: "", material: "", status: "" })}
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
@@ -55,6 +55,7 @@ export default function StockFilters({ values, onChange, categories = [], brands
         <Pick label="التصنيف" allLabel="كل التصنيفات" value={category} onChange={set("category")} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
         <Pick label="العلامة التجارية" allLabel="كل العلامات" value={brand} onChange={set("brand")} options={brands.map((b) => ({ value: b.id, label: b.name }))} />
         <Pick label="الموسم" allLabel="كل المواسم" value={season} onChange={set("season")} options={seasons.map((name) => ({ value: name, label: name }))} />
+        <Pick label="الخامة" allLabel="كل الخامات" value={material} onChange={set("material")} options={materials.map((name) => ({ value: name, label: name }))} />
         <Pick label="حالة الرصيد" allLabel="كل الحالات" value={status} onChange={set("status")} options={Object.entries(INVENTORY_STATUS).map(([key, st]) => ({ value: key, label: st.label }))} />
       </div>
     </FilterPanel>

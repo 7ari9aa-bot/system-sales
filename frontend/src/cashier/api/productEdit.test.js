@@ -85,3 +85,49 @@ describe("planProductEdit sends only what changed", () => {
     expect(() => planProductEdit(before, after)).toThrow();
   });
 });
+
+describe("material: read into the form and sent only when it changed", () => {
+  it("reads the product's material into the form", () => {
+    expect(productToForm({ ...backend, material: "قطن" }).material).toBe("قطن");
+    expect(productToForm({ ...backend, material: "  كتان  " }).material).toBe("كتان");
+  });
+  it("a product with no material reads as empty text, never 'null' or undefined", () => {
+    expect(productToForm({ ...backend, material: null }).material).toBe("");
+    expect(productToForm(backend).material).toBe("");
+    expect(productToForm({ ...backend, material: "null" }).material).toBe("");
+  });
+  it("changing the material sends only the material, trimmed", () => {
+    const b = productToForm({ ...backend, material: "قطن" });
+    expect(planProductEdit(b, { ...structuredClone(b), material: "  كتان " }).product).toEqual({ material: "كتان" });
+  });
+  it("clearing the material sends null, not an empty string", () => {
+    const b = productToForm({ ...backend, material: "قطن" });
+    expect(planProductEdit(b, { ...structuredClone(b), material: "   " }).product).toEqual({ material: null });
+    expect(planProductEdit(b, { ...structuredClone(b), material: null }).product).toEqual({ material: null });
+  });
+  it("the text 'null' is never sent as a material: it clears it like a blank does", () => {
+    const b = productToForm({ ...backend, material: "قطن" });
+    expect(planProductEdit(b, { ...structuredClone(b), material: "null" }).product).toEqual({ material: null });
+    expect(planProductEdit(b, { ...structuredClone(b), material: " NULL " }).product).toEqual({ material: null });
+  });
+  it("an untouched material sends nothing, so a product edited for another reason keeps it", () => {
+    const b = productToForm({ ...backend, material: "قطن" });
+    const plan = planProductEdit(b, { ...structuredClone(b), name: "اسم جديد" });
+    expect(plan.product).toEqual({ title: "اسم جديد" });
+    expect(plan.product).not.toHaveProperty("material");
+  });
+  it("adding a material to a product that had none sends it", () => {
+    expect(planProductEdit(before, { ...structuredClone(before), material: "صوف" }).product).toEqual({ material: "صوف" });
+  });
+  it("a whitespace-only change is not a change", () => {
+    const b = productToForm({ ...backend, material: "قطن" });
+    expect(planProductEdit(b, { ...structuredClone(b), material: "  قطن  " }).empty).toBe(true);
+  });
+  it("material and season are independent: changing both sends both", () => {
+    const b = productToForm({ ...backend, season: "SS26", material: "قطن" });
+    expect(planProductEdit(b, { ...structuredClone(b), season: "AW26", material: "كتان" }).product).toEqual({
+      season: "AW26",
+      material: "كتان",
+    });
+  });
+});

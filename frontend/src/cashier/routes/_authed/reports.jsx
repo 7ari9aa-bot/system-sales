@@ -11,11 +11,18 @@ import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useSalesReport, useTopProducts } from "@/cashier/api/usePosSale";
 import ProductsReportSection from "@/cashier/components/reports/ProductsReportSection";
-import { useStock, useStockSeasons } from "@/cashier/api/useStock";
+import { useStock, useStockMaterials, useStockSeasons } from "@/cashier/api/useStock";
 import { valuationByCategory } from "@/cashier/api/inventoryValuation";
 import InventoryReportSection from "@/cashier/components/reports/InventoryReportSection";
 import ProfitReportSection from "@/cashier/components/reports/ProfitReportSection";
 import ProfitFilters from "@/cashier/components/reports/ProfitFilters";
+import SellThroughSection from "@/cashier/components/reports/SellThroughSection";
+import DeadStockSection from "@/cashier/components/reports/DeadStockSection";
+import { useSellThrough } from "@/cashier/api/useSellThrough";
+import { useDeadStock } from "@/cashier/api/useDeadStock";
+import { errorKind } from "@/cashier/components/reports/profitView";
+import { sellThroughErrorNotice } from "@/cashier/components/reports/sellThroughView";
+import { deadStockErrorNotice } from "@/cashier/components/reports/deadStockView";
 import { useProfitReport } from "@/cashier/api/useProfitReport";
 import { profitErrorNotice } from "@/cashier/components/reports/profitView";
 import { useBrands } from "@/cashier/api/useCatalogWrite";
@@ -36,6 +43,8 @@ const REPORTS = [
   { key: "products", label: "الأصناف" },
   { key: "inventory", label: "تقييم المخزون" },
   { key: "profit", label: "الربح" },
+  { key: "sellthrough", label: "التصريف" },
+  { key: "deadstock", label: "راكد" },
   { key: "zreport", label: "إغلاق اليوم (Z)" },
 ];
 
@@ -45,8 +54,8 @@ const TAB_TRIGGER =
 export default function ReportsPage() {
   const [period, setPeriod] = useState("7d");
   const [tab, setTab] = useState(REPORTS[0].key);
-  // فلتر العلامة والموسم بتاع تقرير الربح لوحده: الفترة هي فلتر الصفحة المشترك.
-  const [profitFilters, setProfitFilters] = useState({ brand: "", season: "" });
+  // فلتر العلامة والموسم والخامة بتاع تقرير الربح لوحده: الفترة هي فلتر الصفحة المشترك.
+  const [profitFilters, setProfitFilters] = useState({ brand: "", season: "", material: "" });
 
   const stockQuery = useStock({});
   const valuation = valuationByCategory(stockQuery.data ?? []);
@@ -60,11 +69,28 @@ export default function ReportsPage() {
     period,
     brandId: profitFilters.brand,
     season: profitFilters.season,
+    material: profitFilters.material,
     enabled: tab === "profit",
   });
+  // التصريف بيستخدم نفس فلاتر الربح (علامة وموسم وخامة)، والراكد مالوش فلاتر: مدته من إعدادات المحل.
+  const sellThroughResult = useSellThrough({
+    period,
+    brandId: profitFilters.brand,
+    season: profitFilters.season,
+    material: profitFilters.material,
+    enabled: tab === "sellthrough",
+  });
+  const deadStockResult = useDeadStock({ enabled: tab === "deadstock" });
   const brandsQuery = useBrands();
   const seasonsQuery = useStockSeasons();
+  const materialsQuery = useStockMaterials();
   const profitNotice = profitQueryResult.isError ? profitErrorNotice(profitQueryResult.error) : null;
+  const sellThroughNotice = sellThroughResult.isError
+    ? sellThroughErrorNotice(sellThroughResult.error, errorKind(sellThroughResult.error))
+    : null;
+  const deadStockNotice = deadStockResult.isError
+    ? deadStockErrorNotice(deadStockResult.error, errorKind(deadStockResult.error))
+    : null;
 
   // ورديات نفس الفترة المختارة من الخادم (تقرير Z يتبع فلتر الفترة مثل باقي التقارير).
   const { user } = useAuth();
@@ -134,6 +160,7 @@ export default function ReportsPage() {
               onChange={setProfitFilters}
               brands={brandsQuery.data ?? []}
               seasons={seasonsQuery.data ?? []}
+              materials={materialsQuery.data ?? []}
             />
             {profitQueryResult.isPending ? (
               <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل تقرير الربح…</p>
@@ -155,6 +182,58 @@ export default function ReportsPage() {
               />
             )}
           </div>
+        </TabsContent>
+        <TabsContent value="sellthrough" className="mt-0">
+          <div className="space-y-3">
+            <ProfitFilters
+              values={profitFilters}
+              onChange={setProfitFilters}
+              brands={brandsQuery.data ?? []}
+              seasons={seasonsQuery.data ?? []}
+              materials={materialsQuery.data ?? []}
+            />
+            {sellThroughResult.isPending ? (
+              <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل تقرير التصريف…</p>
+            ) : sellThroughNotice ? (
+              <p
+                className={
+                  sellThroughNotice.tone === "forbidden"
+                    ? "border border-[#DED8CD] bg-white px-4 py-6 text-center text-[12.5px] text-[#7A766C]"
+                    : "p-6 text-center text-sm font-semibold text-rose-600"
+                }
+                role="alert"
+              >
+                {sellThroughNotice.message}
+              </p>
+            ) : (
+              <SellThroughSection
+                rows={sellThroughResult.data?.rows ?? []}
+                totals={sellThroughResult.data?.totals ?? null}
+              />
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="deadstock" className="mt-0">
+          {deadStockResult.isPending ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">جارٍ تحميل المخزون الراكد…</p>
+          ) : deadStockNotice ? (
+            <p
+              className={
+                deadStockNotice.tone === "forbidden"
+                  ? "border border-[#DED8CD] bg-white px-4 py-6 text-center text-[12.5px] text-[#7A766C]"
+                  : "p-6 text-center text-sm font-semibold text-rose-600"
+              }
+              role="alert"
+            >
+              {deadStockNotice.message}
+            </p>
+          ) : (
+            <DeadStockSection
+              days={deadStockResult.data?.days ?? null}
+              rows={deadStockResult.data?.rows ?? []}
+              totals={deadStockResult.data?.totals ?? null}
+            />
+          )}
         </TabsContent>
         <TabsContent value="zreport" className="mt-0">
           {shifts.isLoading ? (

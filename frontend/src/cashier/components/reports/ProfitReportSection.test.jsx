@@ -111,23 +111,25 @@ describe("the profit filters", () => {
     return found;
   }
 
-  const empty = { brand: "", season: "" };
+  const empty = { brand: "", season: "", material: "" };
   const brands = [{ id: "b1", name: "نيل" }, { id: "b2", name: "دلتا" }];
   const seasons = ["AW26", "SS26"];
+  const materials = ["قطن", "كتان"];
 
   // onChange is passed through: a render with a no-op handler would swallow the very call the
   // "keeps the other filter" test is trying to observe.
   const picks = (values, onChange = () => {}) =>
-    collect(ProfitFilters({ values, onChange, brands, seasons }).props.children).filter((n) => n.props?.allLabel);
+    collect(ProfitFilters({ values, onChange, brands, seasons, materials }).props.children).filter((n) => n.props?.allLabel);
 
-  it("offers a brand and a season filter, each with its Arabic label", () => {
-    const html = renderToStaticMarkup(<ProfitFilters values={empty} onChange={() => {}} brands={brands} seasons={seasons} />);
+  it("offers a brand, a season and a material filter, each with its Arabic label", () => {
+    const html = renderToStaticMarkup(<ProfitFilters values={empty} onChange={() => {}} brands={brands} seasons={seasons} materials={materials} />);
     expect(html).toContain("العلامة التجارية");
     expect(html).toContain("الموسم");
+    expect(html).toContain("الخامة");
   });
 
   it("tells each box what 'all' is called", () => {
-    expect(picks(empty).map((n) => n.props.allLabel)).toEqual(["كل العلامات", "كل المواسم"]);
+    expect(picks(empty).map((n) => n.props.allLabel)).toEqual(["كل العلامات", "كل المواسم", "كل الخامات"]);
   });
 
   it("hands each box the chosen value and the real brand names", () => {
@@ -136,32 +138,44 @@ describe("the profit filters", () => {
     expect(brandPick.value).toBe("b2");
     expect(brandPick.options.find((o) => o.value === "b2").label).toBe("دلتا");
     expect(found.find((n) => n.props.label === "الموسم").props.value).toBe("SS26");
+    const materialPick = picks({ material: "قطن" }).find((n) => n.props.label === "الخامة").props;
+    expect(materialPick.value).toBe("قطن");
+    expect(materialPick.options).toEqual([
+      { value: "قطن", label: "قطن" },
+      { value: "كتان", label: "كتان" },
+    ]);
   });
 
   it("counts the filters in use", () => {
-    const html = (values) => renderToStaticMarkup(<ProfitFilters values={values} onChange={() => {}} brands={brands} seasons={seasons} />);
+    const html = (values) =>
+      renderToStaticMarkup(<ProfitFilters values={values} onChange={() => {}} brands={brands} seasons={seasons} materials={materials} />);
     expect(html(empty)).not.toMatch(/num rounded-full/);
     expect(html({ brand: "b1", season: "" })).toMatch(/num rounded-full[^>]*>1</);
     expect(html({ brand: "b1", season: "AW26" })).toMatch(/num rounded-full[^>]*>2</);
+    expect(html({ brand: "b1", season: "AW26", material: "قطن" })).toMatch(/num rounded-full[^>]*>3</);
   });
 
-  it("clears both filters on reset, and keeps the other one when one changes", () => {
+  it("clears every filter on reset, and keeps the others when one changes", () => {
     let got = null;
     const onChange = (v) => {
       got = v;
     };
-    const panel = ProfitFilters({ values: { brand: "b1", season: "AW26" }, onChange, brands, seasons });
+    const panel = ProfitFilters({ values: { brand: "b1", season: "AW26", material: "قطن" }, onChange, brands, seasons, materials });
     // FilterPanel is the root: its onReset and each Pick's onChange are the two ways values move.
     expect(panel.props.onReset).toBeTypeOf("function");
     panel.props.onReset();
-    expect(got).toEqual({ brand: "", season: "" });
+    expect(got).toEqual({ brand: "", season: "", material: "" });
 
-    const seasonPick = picks({ brand: "b1", season: "AW26" }, onChange).find((n) => n.props.label === "الموسم");
+    const seasonPick = picks({ brand: "b1", season: "AW26", material: "قطن" }, onChange).find((n) => n.props.label === "الموسم");
     seasonPick.props.onChange("SS26");
-    expect(got).toEqual({ brand: "b1", season: "SS26" });
+    expect(got).toEqual({ brand: "b1", season: "SS26", material: "قطن" });
+
+    const materialPick = picks({ brand: "b1", season: "AW26", material: "قطن" }, onChange).find((n) => n.props.label === "الخامة");
+    materialPick.props.onChange("كتان");
+    expect(got).toEqual({ brand: "b1", season: "AW26", material: "كتان" });
   });
 
-  it("works before the brand and season lists have loaded", () => {
+  it("works before the brand, season and material lists have loaded", () => {
     expect(() => renderToStaticMarkup(<ProfitFilters values={empty} onChange={() => {}} />)).not.toThrow();
   });
 });

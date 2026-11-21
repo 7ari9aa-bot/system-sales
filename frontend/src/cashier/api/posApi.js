@@ -81,6 +81,15 @@ export const posApi = {
   /** Profit by model, colour and size over the server's half-open [start, end); `query` comes from profitQuery(). */
   profitByVariant: (query = "") => api(`/reports/profit/by-variant${query ? `?${query}` : ""}`),
 
+  /** What sold against what is left, per model, colour and size, over [start, end); `query` comes from profitQuery(). */
+  sellThrough: (query = "") => api(`/reports/sell-through${query ? `?${query}` : ""}`),
+  /** What a season would cost per size at this percent. Writes nothing; returns the token apply needs. */
+  seasonMarkdownPreview: (body) => post("/catalog/season-markdown/preview", body),
+  /** Writes the previewed prices, all or nothing. 409 when the catalog moved since the preview. */
+  seasonMarkdownApply: (body) => post("/catalog/season-markdown/apply", body),
+  /** Sizes with stock and no sale for N days; `days` (7..730) overrides the shop's own setting for one look. */
+  deadStock: (days) => api(`/reports/dead-stock${days ? `?days=${encodeURIComponent(String(days))}` : ""}`),
+
   /** Has today been started on this register? Read-only: { started, session|null }. It never opens a day. */
   workingSession: async (registerId) => post(`/pos/registers/${seg(registerId)}/working-session`, {}),
   /** Start the day with the drawer's real opening balance (required). A second call keeps the first figure. */

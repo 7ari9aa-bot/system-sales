@@ -7,10 +7,17 @@ import NamedPicker from "@/cashier/components/products/NamedPicker";
 import { useBrands, useCategories, useCreateBrand, useCreateCategory } from "@/cashier/api/useCatalogWrite";
 import { useShopOptions } from "@/cashier/api/useShopOptions";
 import { resolveSizePreset, sizePresetChoices } from "@/cashier/lib/shopOptions";
+import { MATERIAL_MAX_LENGTH } from "@/cashier/lib/material";
+
+// معرّف قائمة اقتراحات الخامة. ثابت لأن الخانة واحدة في الصفحة، والاقتراحات نفسها بتيجي من
+// خامات المحل اللي استخدمها فعلاً (زي ما المواسم بتيجي من مواسم المحل).
+const MATERIAL_LIST_ID = "product-material-options";
 
 
-// بيانات الموديل الأساسية: الاسم والفئة والعلامة ونظام المقاسات والوصف.
-export default function ProductBasicsSection({ form, onPatch, sizePreset, onSizePresetChange }) {
+// بيانات الموديل الأساسية: الاسم والفئة والعلامة والموسم والخامة ونظام المقاسات والوصف.
+// `materials` هي خامات المحل نفسه (نصوص) اللي بتتعرض كاقتراحات في خانة الخامة؛ الخانة نفسها
+// نص حر، فصاحب المحل يقدر يكتب خامة جديدة من غير ما يختار من القائمة.
+export default function ProductBasicsSection({ form, onPatch, sizePreset, onSizePresetChange, materials = [] }) {
   const { options } = useShopOptions();
   const sizeChoices = sizePresetChoices(options.sizeSets);
   const categories = useCategories();
@@ -65,6 +72,22 @@ export default function ProductBasicsSection({ form, onPatch, sizePreset, onSize
           />
         </FormField>
 
+        <FormField label="الخامة">
+          <Input
+            value={form.material ?? ""}
+            onChange={(e) => onPatch({ material: e.target.value })}
+            maxLength={MATERIAL_MAX_LENGTH}
+            list={MATERIAL_LIST_ID}
+            placeholder="مثال: قطن"
+            className={INPUT}
+          />
+          <datalist id={MATERIAL_LIST_ID}>
+            {materials.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </FormField>
+
         <FormField label="نظام المقاسات">
           <Select value={resolveSizePreset(options.sizeSets, sizePreset)} onValueChange={onSizePresetChange}>
             <SelectTrigger className={SELECT_TRIGGER}>
@@ -86,7 +109,7 @@ export default function ProductBasicsSection({ form, onPatch, sizePreset, onSize
           value={form.description}
           onChange={(e) => onPatch({ description: e.target.value })}
           rows={3}
-          placeholder="خامة، طريقة الغسيل، ملاحظات الجودة…"
+          placeholder="طريقة الغسيل، ملاحظات الجودة، تفاصيل القصّة…"
           className={TEXTAREA}
         />
       </FormField>

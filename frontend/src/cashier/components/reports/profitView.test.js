@@ -163,6 +163,7 @@ describe("the totals row", () => {
     expect(profitTotalsRow(totals)).toEqual({
       variant: "الإجمالي",
       season: "",
+      material: "",
       units: "40",
       revenue: "5,000.00 ج.م",
       cost: "3,000.00 ج.م",
@@ -201,7 +202,7 @@ describe("the columns the table is drawn from", () => {
   const loss = { profit: -30, margin: -12.5, revenue: 100, cost: 130, unitsSold: 2, model: "قميص", season: "" };
 
   it("keeps the column order and keys the totals row relies on", () => {
-    expect(profitColumns().map((c) => c.key)).toEqual(["variant", "season", "units", "revenue", "cost", "profit", "margin"]);
+    expect(profitColumns().map((c) => c.key)).toEqual(["variant", "season", "material", "units", "revenue", "cost", "profit", "margin"]);
   });
   it("draws a loss in the loss tone and a profit in the strong tone", () => {
     expect(col("profit").tone(loss)).toBe("loss");
@@ -217,6 +218,13 @@ describe("the columns the table is drawn from", () => {
   it("falls back to a dash for a missing season, never to an empty cell", () => {
     expect(col("season").text(loss)).toBe("—");
     expect(col("season").text({ season: "AW26" })).toBe("AW26");
+  });
+  it("prints the material next to the season, with the same dash for a product that has none", () => {
+    expect(col("material").header).toBe("الخامة");
+    expect(col("material").text(loss)).toBe("—");
+    expect(col("material").text({ material: "قطن" })).toBe("قطن");
+    expect(col("material").text({ material: null })).toBe("—");
+    expect(col("material").tone()).toBe("muted");
   });
   it("carries the model as title and colour/size as the sub line, and the estimate mark", () => {
     expect(col("variant").text(loss)).toBe("قميص");

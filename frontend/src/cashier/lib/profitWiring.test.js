@@ -18,16 +18,22 @@ describe("the profit tab is on the reports page and asks for what the owner pick
     expect(page).toMatch(/enabled: tab === "profit"/);
   });
 
-  it("the period, brand and season on screen are the ones sent", () => {
+  it("the period, brand, season and material on screen are the ones sent", () => {
     const call = page.match(/useProfitReport\(\{[\s\S]*?\}\)/)?.[0] ?? "";
     expect(call).toMatch(/\bperiod,/);
     expect(call).toMatch(/brandId: profitFilters\.brand,/);
     expect(call).toMatch(/season: profitFilters\.season,/);
+    expect(call).toMatch(/material: profitFilters\.material,/);
   });
 
-  it("the filters start empty (every brand, every season) and are what the filter box edits", () => {
-    expect(page).toMatch(/useState\(\{ brand: "", season: "" \}\)/);
+  it("the filters start empty (every brand, every season, every material) and are what the filter box edits", () => {
+    expect(page).toMatch(/useState\(\{ brand: "", season: "", material: "" \}\)/);
     expect(page).toMatch(/<ProfitFilters\s+values=\{profitFilters\}\s+onChange=\{setProfitFilters\}/);
+  });
+
+  it("the filter box is given the shop's own materials, so it can offer them", () => {
+    expect(page).toMatch(/const materialsQuery = useStockMaterials\(\)/);
+    expect(page).toMatch(/materials=\{materialsQuery\.data \?\? \[\]\}/);
   });
 
   it("a refused or failed request shows its notice instead of a table, and the table gets the rows and totals", () => {

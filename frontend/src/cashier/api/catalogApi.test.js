@@ -80,6 +80,32 @@ describe("createProduct builds a SELLABLE product in the right order", () => {
     expect(calls.at(-1).body).toEqual({ status: "active" });
   });
 
+  it("a material typed on the form goes with the same final PATCH, trimmed", async () => {
+    await catalogApi.createProduct({ ...good, material: "  قطن  " }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ material: "قطن", status: "active" });
+  });
+
+  it("no material typed sends none, so a product without one stays without one", async () => {
+    await catalogApi.createProduct({ ...good, material: "   " }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ status: "active" });
+    await catalogApi.createProduct({ ...good, material: null }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ status: "active" });
+  });
+
+  it("the text 'null' is never sent as a material", async () => {
+    await catalogApi.createProduct({ ...good, material: " null " }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ status: "active" });
+    expect(JSON.stringify(calls)).not.toContain("null\"");
+  });
+
+  it("material, season, category and brand all travel on the one activation PATCH", async () => {
+    await catalogApi.createProduct(
+      { ...good, season: " صيف ", material: " قطن ", categoryId: "c1", brandId: "b1" },
+      { warehouseId: "w1", slugToken: "t" },
+    );
+    expect(calls.at(-1).body).toEqual({ category_id: "c1", brand_id: "b1", season: "صيف", material: "قطن", status: "active" });
+  });
+
   it("sends the barcode only when present, and stock only when > 0", async () => {
     await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" });
     expect(calls.filter((c) => /identifiers$/.test(c.path))).toHaveLength(1);

@@ -63,6 +63,7 @@ export function profitColumns() {
       sub: (r) => variantLabel(r).detail,
     },
     { key: "season", header: "الموسم", tone: () => "muted", text: (r) => r.season || "—" },
+    { key: "material", header: "الخامة", tone: () => "muted", text: (r) => r.material || "—" },
     { key: "units", header: "القطع", align: "center", tone: () => "", text: (r) => unitsText(r) },
     { key: "revenue", header: "الإيراد", align: "end", tone: () => "", text: (r) => moneyCell(r.revenue) },
     { key: "cost", header: "التكلفة", align: "end", tone: () => "muted", text: (r) => moneyCell(r.cost) },
@@ -143,6 +144,7 @@ export function profitTotalsRow(totals) {
   return {
     variant: "الإجمالي",
     season: "",
+    material: "",
     units: fmtInt(totals.unitsSold),
     revenue: moneyCell(totals.revenue),
     cost: moneyCell(totals.cost),

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { catalogApi } from "./catalogApi";
 import { posApi } from "./posApi";
-import { seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
+import { materialChoices, seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
 
 export const STOCK_KEY = ["cashier", "stock"];
 
@@ -58,3 +58,17 @@ export function useStockSeasons() {
   });
 }
 
+
+/**
+ * The materials (fabrics) this shop has used, for the material filter and for the product form's
+ * suggestions. Read with NO filter, for the same reason as the seasons: picking one material must
+ * not make the others vanish from the list. Cached like the categories: it changes only when a
+ * product's material is edited.
+ */
+export function useStockMaterials() {
+  return useQuery({
+    queryKey: [...STOCK_KEY, "materials"],
+    queryFn: async () => materialChoices((await posApi.stock(stockQuery())).map(stockRowFromApi)),
+    staleTime: 5 * 60 * 1000,
+  });
+}

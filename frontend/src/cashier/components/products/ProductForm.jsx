@@ -9,6 +9,7 @@ import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
 import { useShopOptions } from "@/cashier/api/useShopOptions";
+import { useStockMaterials } from "@/cashier/api/useStock";
 import { resolveSizePreset } from "@/cashier/lib/shopOptions";
 import { nextSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
@@ -25,6 +26,7 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
     categoryId: product?.categoryId ?? "",
     brandId: product?.brandId ?? "",
     season: product?.season ?? "",
+    material: product?.material ?? "",
     description: product?.description ?? "",
     sellPrice: product?.sellPrice ?? "",
     threshold: product?.threshold ?? "",
@@ -42,6 +44,9 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   );
 
   const { options: shopOptions } = useShopOptions();
+  // اقتراحات الخامة هي خامات المحل نفسه (زي ما المواسم بتيجي من مواسم المحل): قائمة مقترحة،
+  // والخانة نفسها نص حر فصاحب المحل يقدر يكتب خامة جديدة.
+  const { data: materials = [] } = useStockMaterials();
   const presetSizes = shopOptions.sizeSets[resolveSizePreset(shopOptions.sizeSets, sizePreset)] ?? [];
 
   function patch(fields) {
@@ -124,7 +129,13 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
       <div className={WRAP}>
         <div className={MAIN_COL}>
           <div className={`${CARD} ${CARD_PAD} flex animate-up flex-col gap-7 [animation-delay:.15s]`}>
-            <ProductBasicsSection form={form} onPatch={patch} sizePreset={sizePreset} onSizePresetChange={(v) => { setSizePreset(v); setSizes([]); }} />
+            <ProductBasicsSection
+              form={form}
+              onPatch={patch}
+              sizePreset={sizePreset}
+              onSizePresetChange={(v) => { setSizePreset(v); setSizes([]); }}
+              materials={materials}
+            />
             <ProductPricingSection form={form} onPatch={patch} />
             <ProductVariantsPicker
               colors={colors}

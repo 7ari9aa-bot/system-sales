@@ -14,6 +14,7 @@
  */
 import { api } from "@/lib/api";
 import { toWire } from "./money";
+import { materialText } from "@/cashier/lib/material";
 
 const seg = (v) => encodeURIComponent(String(v));
 const text = (v) => String(v ?? "").trim();
@@ -194,6 +195,9 @@ export const catalogApi = {
     if (input.categoryId) classify.category_id = input.categoryId;
     if (input.brandId) classify.brand_id = input.brandId;
     if (String(input.season ?? "").trim()) classify.season = String(input.season).trim();
+    // الخامة زي الموسم بالظبط: بتتبعت مع نفس PATCH التفعيل، مشذّبة، والفاضية مش بتتبعت خالص
+    // (ولو الفاضي ده كان معناه "امسح الخامة" فده شغل التعديل في productEdit، مش الإنشاء).
+    if (materialText(input.material)) classify.material = materialText(input.material);
     await step("تفعيل المنتج", () => patch(`/products/${seg(product.id)}`, { ...classify, status: "active" }));
     return { product: { ...product, status: "active" }, variants: out };
   },

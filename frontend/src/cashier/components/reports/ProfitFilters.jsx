@@ -26,12 +26,12 @@ function Pick({ label, allLabel, value, onChange, options }) {
 }
 
 /**
- * فلاتر تقرير الربح: العلامة التجارية والموسم. الفترة في لوحة الفلاتر العليا لأنها مشتركة بين كل
- * التقارير، فمش بتتكرر هنا. المكوّن نقي: الصفحة بتملك القيم والقوائم، فاللي بيتعرض هو بالظبط
- * اللي بيتسلّم — و"all" بتترجع قيمة فاضية، يعني الفلتر اتشال.
+ * فلاتر تقرير الربح: العلامة التجارية والموسم والخامة. الفترة في لوحة الفلاتر العليا لأنها مشتركة
+ * بين كل التقارير، فمش بتتكرر هنا. المكوّن نقي: الصفحة بتملك القيم والقوائم، فاللي بيتعرض هو
+ * بالظبط اللي بيتسلّم — و"all" بتترجع قيمة فاضية، يعني الفلتر اتشال.
  */
-export default function ProfitFilters({ values, onChange, brands = [], seasons = [] }) {
-  const { brand = "", season = "" } = values ?? {};
+export default function ProfitFilters({ values, onChange, brands = [], seasons = [], materials = [] }) {
+  const { brand = "", season = "", material = "" } = values ?? {};
   const set = (key) => (v) => onChange({ ...values, [key]: v });
 
   return (
@@ -39,10 +39,10 @@ export default function ProfitFilters({ values, onChange, brands = [], seasons =
       className={FILTER_PANEL}
       headerClassName={FILTER_PANEL_HEADER}
       contentClassName={FILTER_PANEL_CONTENT}
-      activeCount={[brand, season].filter(Boolean).length}
-      onReset={() => onChange({ brand: "", season: "" })}
+      activeCount={[brand, season, material].filter(Boolean).length}
+      onReset={() => onChange({ brand: "", season: "", material: "" })}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Pick
           label="العلامة التجارية"
           allLabel="كل العلامات"
@@ -56,6 +56,13 @@ export default function ProfitFilters({ values, onChange, brands = [], seasons =
           value={season}
           onChange={set("season")}
           options={seasons.map((name) => ({ value: name, label: name }))}
+        />
+        <Pick
+          label="الخامة"
+          allLabel="كل الخامات"
+          value={material}
+          onChange={set("material")}
+          options={materials.map((name) => ({ value: name, label: name }))}
         />
       </div>
     </FilterPanel>
