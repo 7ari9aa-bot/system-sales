@@ -7,7 +7,9 @@ invents what it cannot know:
 * VAT: ``einvoice.prices_include_vat`` says whether shelf prices already carry it. The line's
   recorded NET (``OrderItem.total``) is the truth the customer paid, so VAT is derived FROM it and
   the receipt total equals the till total to the piastre.
-* Payment: ``einvoice.default_payment_method`` (the till does not ask how the customer paid).
+* Payment: what the customer really paid (``OrderPayment``), as ONE code by the shop's
+  ``einvoice.split_payment_rule``; ``einvoice.default_payment_method`` only when nothing was
+  recorded (a sale on account, or a till that takes no payments).
 * Item codes: ``ProductIdentifier`` rows of type ``egs`` / ``gs1``. A line without one makes the
   receipt wait with a precise reason; it is never sent with a made-up code.
 
@@ -28,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.catalog.models import ProductIdentifier
 from app.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
 from app.modules.einvoice.providers.eta.calc import price_excluding_vat, q5
-from app.modules.einvoice.providers.eta.codes import UNIT_EACH
+from app.modules.einvoice.providers.eta.codes import UNIT_EACH, payment_method_for_tender
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,8 @@ class EtaSettings:
     unit_code: str = UNIT_EACH
     delivery_mode: str = "FC"
     warn_hours_before_deadline: int = 24
+    split_payment_rule: str = "largest"
+    settings_confirmed: bool = False
 
 
 async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettings:
@@ -66,6 +70,8 @@ async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettin
         unit_code=str(await svc.value("einvoice.unit_code")),
         delivery_mode=str(await svc.value("einvoice.delivery_mode")),
         warn_hours_before_deadline=int(await svc.value("einvoice.warn_hours_before_deadline")),
+        split_payment_rule=str(await svc.value("einvoice.split_payment_rule")),
+        settings_confirmed=bool(await svc.value("einvoice.settings_confirmed")),
     )
 
 
@@ -226,6 +232,51 @@ async def vat_rate_percent(session: AsyncSession, issued_at: datetime) -> Decima
     return (fraction * _HUNDRED).quantize(Decimal("0.01"))
 
 
+# When two codes tie on money, the one a person would call the "main" way wins: never chance.
+_TIE_ORDER = ("C", "V")
+
+
+def payment_method_for(lines, *, rule: str, fallback: str) -> str:
+    """The ONE ETA payment code for a sale paid in one or more lines.
+
+    ``lines`` are ``(till_method, amount)`` pairs. Each is translated to the authority's code
+    first (a wallet and a bank transfer are both ``O``), the amounts of lines sharing a code are
+    added, and then the shop's rule picks the winner:
+
+    * ``largest``: the code that took the most money.
+    * ``cash_first``: cash whenever any cash was taken, otherwise the largest.
+
+    An exact tie goes cash, then card, then the code that sorts first, so the answer never
+    depends on the order the lines were typed. With no line at all the shop's own default
+    ``fallback`` is used: that is a sale on account, or a till that takes no payments.
+    """
+    totals: dict[str, Decimal] = {}
+    for method, amount in lines:
+        code = str(payment_method_for_tender(method).value)
+        totals[code] = totals.get(code, Decimal(0)) + Decimal(str(amount))
+    if not totals:
+        return fallback
+    if rule == "cash_first" and totals.get("C", Decimal(0)) > 0:
+        return "C"
+
+    def rank(code: str) -> tuple:
+        tie = _TIE_ORDER.index(code) if code in _TIE_ORDER else len(_TIE_ORDER)
+        return (-totals[code], tie, code)
+
+    return min(totals, key=rank)
+
+
+async def _paid_lines(session: AsyncSession, tenant_id: uuid.UUID, order_id: uuid.UUID) -> list:
+    """What the customer actually paid on this order: only money that was really captured."""
+    from app.modules.orders.service import OrderService
+
+    return [
+        (p.method, p.amount)
+        for p in await OrderService.list_payments(session, tenant_id, order_id, limit=200)
+        if p.status == "captured"
+    ]
+
+
 async def build_context(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -350,7 +401,11 @@ async def build_context(
     subtotal = q5(sum((line.subtotal for line in lines), Decimal(0)))
     tax_total = q5(sum((line.tax_amount for line in lines), Decimal(0)))
     extras: dict = {
-        "payment_method": settings.default_payment_method,
+        "payment_method": payment_method_for(
+            await _paid_lines(session, tenant_id, receipt.order_id),
+            rule=settings.split_payment_rule,
+            fallback=settings.default_payment_method,
+        ),
         "delivery_mode": settings.delivery_mode,
         "store_profile": await eta_branch(session, tenant_id),
     }
@@ -414,8 +469,15 @@ async def issue_for_receipt(
     from app.modules.einvoice.service import EInvoiceService
 
     try:
-        if not (await eta_settings(session, tenant_id)).enabled:
+        shop = await eta_settings(session, tenant_id)
+        if not shop.enabled:
             return HookResult(False, "disabled")
+        if not shop.settings_confirmed:
+            return HookResult(
+                False,
+                "the merchant has not confirmed the price, VAT and payment settings "
+                "(einvoice.settings_confirmed): confirm them to start issuing",
+            )
         device = (
             await session.execute(
                 select(EInvoiceDevice).where(

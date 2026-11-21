@@ -141,6 +141,7 @@ describe("friendly names for coded choices", () => {
       "einvoice.default_payment_method": ["C", "V", "CC", "VC", "VO", "PR", "GC", "P", "O"],
       "einvoice.vat_category": ["taxable", "exempt", "non_taxable"],
       "einvoice.delivery_mode": ["FC", "TO", "TC"],
+      "einvoice.split_payment_rule": ["largest", "cash_first"],
     };
     for (const [key, values] of Object.entries(allowed)) {
       expect(Object.keys(CHOICE_LABELS_AR[key]).sort()).toEqual([...values].sort());

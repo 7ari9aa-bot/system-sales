@@ -295,7 +295,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # registered item codes and the order lines; einvoice -> settings/notifications/identity for the
 # merchant's warning window, the owner's bell and the callback key lookup; plus the shared tables
 # those read. Reading the till's own tables from einvoice (einvoice -> pos) was REMOVED.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 275
+# 275 -> 276 on 2026-11-21: ONE deliberate edge, pos/eta_adapter.py -> orders.service
+# (OrderService.list_payments, function scope). The e-receipt must say how the customer REALLY paid
+# and the till writes that as order payments. Through the service, never the table; orders never
+# imports pos, so no new cycle (test_no_new_module_import_cycles).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 276
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

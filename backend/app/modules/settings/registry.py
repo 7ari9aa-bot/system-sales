@@ -199,8 +199,10 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
         "einvoice.eta_enabled",  # pos/eta_adapter.py::eta_settings
+        "einvoice.settings_confirmed",  # pos/eta_adapter.py::eta_settings
         "einvoice.prices_include_vat",  # pos/eta_adapter.py::eta_settings
         "einvoice.default_payment_method",  # pos/eta_adapter.py::eta_settings
+        "einvoice.split_payment_rule",  # pos/eta_adapter.py::eta_settings
         "einvoice.vat_category",  # pos/eta_adapter.py::eta_settings
         "einvoice.unit_code",  # pos/eta_adapter.py::eta_settings
         "einvoice.delivery_mode",  # pos/eta_adapter.py::eta_settings
@@ -472,6 +474,26 @@ _reg(
 )
 _reg(
     SettingDef(
+        key="einvoice.settings_confirmed",
+        domain="einvoice",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="راجعت إعدادات الأسعار والضريبة والدفع وأكّدتها",
+        label_en="I reviewed the price, VAT and payment settings",
+        description_ar=(
+            "الأسعار شاملة الضريبة أو لا، وفئة الضريبة، وطريقة الدفع الاحتياطية بتختلف من محل "
+            "لمحل. القيم الأولية مجرد اقتراح، ولن يصدر أي إيصال قبل ما تراجعها وتؤكد."
+        ),
+        description_en=(
+            "Whether prices include VAT, the VAT category and the fallback payment method differ "
+            "from shop to shop. The starting values are suggestions: no receipt is issued until "
+            "you confirm them."
+        ),
+    )
+)
+_reg(
+    SettingDef(
         key="einvoice.prices_include_vat",
         domain="einvoice",
         type=SettingType.BOOL,
@@ -493,8 +515,32 @@ _reg(
         allowed_values=("C", "V", "CC", "VC", "VO", "PR", "GC", "P", "O"),
         label_ar="طريقة الدفع الافتراضية في الإيصال",
         label_en="Default receipt payment method",
-        description_ar="الكاشير لا يسجّل طريقة الدفع، والمصلحة تشترطها: تُستخدم هذه القيمة.",
-        description_en="The till does not record how the customer paid; ETA requires it.",
+        description_ar=(
+            "تُستخدم فقط لو البيع ما سجّل طريقة دفع (بيع على الحساب، أو كاشير لا يستلم نقودًا)."
+        ),
+        description_en=(
+            "Used only when the sale recorded no payment (on account, or a till that takes none)."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="einvoice.split_payment_rule",
+        domain="einvoice",
+        type=SettingType.ENUM,
+        default="largest",
+        scopes=(Scope.TENANT,),
+        allowed_values=("largest", "cash_first"),
+        label_ar="قاعدة الدفع المقسّم في الإيصال",
+        label_en="Split-payment rule on the receipt",
+        description_ar=(
+            "الإيصال بيقبل طريقة دفع واحدة. لو العميل دفع بأكتر من طريقة: "
+            "الأكبر مبلغًا، أو نقدي لو فيه أي مبلغ نقدي."
+        ),
+        description_en=(
+            "A receipt carries one payment method. When a sale is split: the method that took "
+            "the most money, or cash whenever any cash was taken."
+        ),
     )
 )
 _reg(

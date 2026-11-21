@@ -53,6 +53,10 @@ export const CHOICE_LABELS_AR = {
     P: "نقاط",
     O: "أخرى (محفظة، إنستاباي، تحويل)",
   },
+  "einvoice.split_payment_rule": {
+    largest: "الطريقة اللي دفعت أكبر مبلغ",
+    cash_first: "نقدي لو فيه أي مبلغ نقدي",
+  },
   "einvoice.vat_category": {
     taxable: "خاضع للضريبة (14%)",
     exempt: "معفى من الضريبة",

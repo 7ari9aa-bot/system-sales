@@ -31,12 +31,19 @@ BRANCH = {
     "einvoice.branch_building_number": "14",
 }
 SHOP = {"business.tax_id": "674859545", "business.legal_name": "متجر الملابس"}
+CONFIRMED = {"einvoice.settings_confirmed": True}
 
 
 async def _shop(db, tid, *, enabled=True, till=True, code=True, **extra):
     """A store with a till; returns (register, shift, variant). Settings are the merchant's."""
     svc = SettingsService(db, tid)
-    for key, value in {**SHOP, **BRANCH, "einvoice.eta_enabled": enabled, **extra}.items():
+    for key, value in {
+        **SHOP,
+        **BRANCH,
+        **CONFIRMED,
+        "einvoice.eta_enabled": enabled,
+        **extra,
+    }.items():
         await svc.set(key, value)
 
     class Ctx:
@@ -83,6 +90,46 @@ async def _docs(db, tid) -> list[EInvoiceDocument]:
             )
         ).scalars()
     )
+
+
+class TestTheMerchantMustConfirmTheMoneySettings:
+    """Prices with or without VAT, the VAT category and the fallback payment method all differ
+    from shop to shop. Their starting values are only suggestions, so nothing is issued until
+    the merchant has looked at them and confirmed."""
+
+    async def test_enabled_but_not_confirmed_issues_nothing_and_the_sale_goes_through(
+        self, db, tenant_ctx
+    ):
+        tid = tenant_ctx.tenant_id
+        _r, shift, variant, ctx = await _shop(db, tid, **{"einvoice.settings_confirmed": False})
+        sold = await _sell(db, tid, shift, variant, ctx)
+        assert sold["receipt_id"]
+        assert await _docs(db, tid) == []
+
+    async def test_the_reason_names_what_to_do(self, db, tenant_ctx):
+        from app.modules.pos.eta_adapter import issue_for_receipt
+
+        tid = tenant_ctx.tenant_id
+        register, shift, variant, ctx = await _shop(
+            db, tid, **{"einvoice.settings_confirmed": False}
+        )
+        sold = await _sell(db, tid, shift, variant, ctx)
+        receipt = (
+            await db.execute(sa.select(PosReceipt).where(PosReceipt.id == sold["receipt_id"]))
+        ).scalar_one()
+        result = await issue_for_receipt(db, tid, receipt, register_code=register.code)
+        assert result.issued is False and "confirm" in (result.skipped or "")
+
+    async def test_confirming_turns_it_on(self, db, tenant_ctx):
+        tid = tenant_ctx.tenant_id
+        _r, shift, variant, ctx = await _shop(db, tid)  # _shop confirms by default
+        await _sell(db, tid, shift, variant, ctx)
+        assert len(await _docs(db, tid)) == 1
+
+    async def test_a_new_shop_starts_unconfirmed(self, db, tenant_ctx):
+        from app.modules.pos.eta_adapter import eta_settings
+
+        assert (await eta_settings(db, tenant_ctx.tenant_id)).settings_confirmed is False
 
 
 class TestShopDetailsTheMerchantHasNotEntered:
