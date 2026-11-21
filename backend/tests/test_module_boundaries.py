@@ -287,8 +287,8 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 
 
 # 258 -> 275 on 2026-11-20: the ETA e-receipt layer (branch feat/eta-ereceipt-layer), +17 edges
-# MEASURED after merging main (main alone is 258). Not yet confirmed by the owner: to be decided in
-# review. All in endorsed directions and NO new cycle (test_no_new_module_import_cycles):
+# MEASURED after merging main (main alone is 258). Raise approved by the owner on 2026-11-21.
+# All in endorsed directions and NO new cycle (test_no_new_module_import_cycles):
 # the cashier -> e-invoice hook is pos/eta_adapter.py (the till is the caller, so it lives with
 # the till and einvoice never imports pos), which reads einvoice (the provider, models, tax codes
 # x8), settings.service (the merchant's e-receipt choices x3), billing's VAT table, the catalog's
