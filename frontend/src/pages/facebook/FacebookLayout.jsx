@@ -21,6 +21,7 @@ function Badge({ count }) {
 function TopBar({ onCreate }) {
   const { lang, unreadMessages, unanswered, pageName, pageAvatar, canAct } = useFacebookData();
   const { pathname } = useLocation();
+  const { setActiveChannel } = useInbox();
   const ar = lang === "ar";
   const tab = (active) => cn(
     "relative grid h-12 min-w-0 flex-1 place-items-center sm:min-w-[56px] rounded-lg transition-colors hover:bg-[#f2f2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] sm:max-w-[110px]",
@@ -28,7 +29,6 @@ function TopBar({ onCreate }) {
   );
   const underline = (active) => active && <span className="absolute inset-x-1 bottom-[-4px] h-[3px] rounded-t-full" style={{ background: FB.blue }} />;
   const onPosts = pathname === "/facebook" || pathname.startsWith("/facebook/posts");
-  const onMessages = pathname.startsWith("/facebook/messages");
   const onActivity = pathname.startsWith("/facebook/activity");
   const onReels = pathname.startsWith("/facebook/reels");
   const onInsights = pathname.startsWith("/facebook/insights");
@@ -41,9 +41,6 @@ function TopBar({ onCreate }) {
         </NavLink>
         <NavLink to="/facebook/reels" className={() => tab(onReels)} aria-label={ar ? "الريلز والستوري" : "Reels and Stories"} title={ar ? "الريلز والستوري" : "Reels and Stories"}>
           <FbReels filled={onReels} size={26} />{underline(onReels)}
-        </NavLink>
-        <NavLink to="/facebook/messages" className={() => tab(onMessages)} aria-label={ar ? "الرسائل" : "Messages"} title={ar ? "الرسائل" : "Messages"}>
-          <span className="relative"><FbMessenger filled={onMessages} size={26} /><Badge count={unreadMessages} /></span>{underline(onMessages)}
         </NavLink>
         <NavLink to="/facebook/activity" className={() => tab(onActivity)} aria-label={ar ? "الإشعارات" : "Notifications"} title={ar ? "الإشعارات" : "Notifications"}>
           <span className="relative"><FbBell filled={onActivity} size={26} /><Badge count={unanswered} /></span>{underline(onActivity)}
@@ -61,6 +58,9 @@ function TopBar({ onCreate }) {
         <NavLink to="/inbox" aria-label={ar ? "كل القنوات" : "All channels"} title={ar ? "كل القنوات" : "All channels"} className="grid h-10 w-10 place-items-center rounded-full bg-[#e4e6eb] text-[#050505] transition-colors hover:bg-[#d8dadf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
           <FbChannels size={20} />
         </NavLink>
+        <button type="button" data-testid="fb-messenger-link" onClick={() => setActiveChannel("messenger")} aria-label="Messenger" title={ar ? "افتح قناة ماسنجر" : "Open the Messenger channel"} className="relative grid h-10 w-10 place-items-center rounded-full bg-[#e4e6eb] text-[#050505] transition-colors hover:bg-[#d8dadf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]">
+          <FbMessenger size={20} /><Badge count={unreadMessages} />
+        </button>
         <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e7f3ff] text-[15px] font-bold text-[#0866ff]" title={pageName} aria-label={pageName}>
           {pageAvatar ? <img src={pageAvatar} alt="" className="h-full w-full object-cover" /> : (pageName || "F").slice(0, 1)}
         </span>

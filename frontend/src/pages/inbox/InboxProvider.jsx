@@ -5,6 +5,7 @@ import { readSignalBody, supportsReadSignal } from "@/components/inbox/whatsapp/
 import { visibleRows } from "@/components/inbox/whatsapp/chatListState";
 import { CHANNELS, getChannel } from "@/lib/channels";
 import { api } from "@/lib/api";
+import { channelFromSearch, inboxPathFor } from "./channelFromSearch";
 import { useInstagramPosts } from "@/hooks/useInstagramPosts";
 import { useProfileBackfill } from "@/hooks/useProfileBackfill";
 import { appendLocalMessage, sendReaction, sendReply, setMyReaction } from "@/lib/inboxSend";
@@ -146,12 +147,12 @@ export function InboxProvider({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const forcedChannel = location.pathname.startsWith("/instagram") ? "instagram" : location.pathname.startsWith("/facebook") ? "facebook" : null;
-  const [storedChannel, setStoredChannel] = useState("whatsapp");
+  const [storedChannel, setStoredChannel] = useState(() => channelFromSearch(location.search) || "whatsapp");
   const activeChannel = forcedChannel || storedChannel;
   const setActiveChannel = (id) => {
     if (id === "instagram" && forcedChannel !== "instagram") { setStoredChannel("instagram"); navigate("/instagram/direct/inbox"); return; }
     if (id === "facebook" && forcedChannel !== "facebook") { setStoredChannel("facebook"); navigate("/facebook/posts"); return; }
-    if (forcedChannel && id !== forcedChannel) { setStoredChannel(id); navigate("/inbox"); return; }
+    if (forcedChannel && id !== forcedChannel) { setStoredChannel(id); navigate(inboxPathFor(id)); return; }
     setStoredChannel(id);
   };
   const [instagramPosts, setInstagramPosts] = useState([]);
