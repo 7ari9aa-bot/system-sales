@@ -71,20 +71,22 @@ describe("the comment count on the action bar", () => {
   it("is a number beside the Comment action, as Facebook shows it", () => {
     const out = html({ commentsCount: 3 });
     const action = commentActionOf(out);
-    expect(action).toContain(">Comment<");
     expect(action).toContain('data-testid="fb-comment-count"');
     expect(action).toContain(">3<");
     expect(action).toContain('aria-label="Comment, 3 comments"');
   });
   it("is no longer a separate '3 comments' beside the reactions", () => {
     const out = html({ commentsCount: 3 });
-    const countsRow = out.slice(out.indexOf('justify-between'), out.indexOf('grid grid-cols-2'));
-    expect(countsRow).not.toContain("comments");
-    expect(countsRow).not.toContain("تعليق");
+    const countsRow = out.match(/<div[^>]*data-testid="fb-engagement-row"[\s\S]*?<\/div>/)?.[0] || "";
+    expect(countsRow).toContain('data-testid="fb-comment-count"');
+    const visible = countsRow.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    expect(visible).not.toMatch(/comments/i);
+    expect(visible).not.toContain("تعليق");
   });
-  it("draws no empty counts row when the post has neither reactions nor a separate count", () => {
+  it("draws no reactions badge when there are none, but keeps the one row of actions", () => {
     const out = html({ reactions: 0, commentsCount: 3 });
-    expect(out).not.toContain("justify-between px-4 py-2.5");
+    expect(out).not.toContain('data-kind="LIKE"');
+    expect(out).toContain('data-testid="fb-engagement-row"');
   });
   it("stays off the button when the post has no comments", () => {
     const action = commentActionOf(html({ commentsCount: 0 }));
@@ -129,14 +131,14 @@ describe("the share counter, as Facebook draws it beside the comment count", () 
   it("shows how many times the post was shared", () => {
     const out = html({ sharesCount: 4 });
     expect(out).toContain('data-testid="fb-share-count"');
-    expect(out).toContain("4 shares");
+    expect(out).toMatch(/fb-share-count[^>]*>4<span class="sr-only">shares</);
   });
   it("says 1 share in the singular", () => {
-    expect(html({ sharesCount: 1 })).toContain("1 share<");
+    expect(html({ sharesCount: 1 })).toMatch(/fb-share-count[^>]*>1<span class="sr-only">share</);
   });
   it("still shows the share count on a post nobody has reacted to", () => {
     const out = html({ reactions: 0, sharesCount: 2 });
-    expect(out).toContain("2 shares");
+    expect(out).toMatch(/fb-share-count[^>]*>2<span class="sr-only">shares</);
     expect(out).not.toContain('data-kind="LIKE"');
   });
   it("draws nothing when nobody shared, as Facebook does", () => {
@@ -145,6 +147,32 @@ describe("the share counter, as Facebook draws it beside the comment count", () 
   });
   it("speaks Arabic on the Arabic screen", () => {
     const out = renderToStaticMarkup(<FbPostCard post={{ ...post, sharesCount: 3 }} pageName="Fihrist" lang="ar" actions={{}} />);
-    expect(out).toContain("3 مشاركات");
+    expect(out).toMatch(/fb-share-count[^>]*>3<span class="sr-only">مشاركات</);
+  });
+});
+
+describe("a Page post card, as Facebook draws it on the Page home", () => {
+  const withComments = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, text: `t${i}`, from: "Fihrist OS", commentedAt: `2026-11-21T1${i}:00:00Z`, replies: [] }));
+  const row = (extra) => html({ reactions: 1, ...extra }).match(/<div[^>]*data-testid="fb-engagement-row"[\s\S]*?<\/div>/)?.[0] || "";
+
+  it("puts likes, comments and shares in one row of counters", () => {
+    const r = row({ comments: withComments(3), commentsCount: 3, sharesCount: 2 });
+    expect(r).toContain('data-kind="LIKE"');
+    expect(r).toContain('data-testid="fb-comment-count"');
+    expect(r).toContain('data-testid="fb-share-count"');
+  });
+  it("has a Like button that is an icon named like Facebook's, not a text row under a divider", () => {
+    const out = html({ reactions: 1 });
+    expect(out).toContain('aria-label="Like"');
+    expect(out).not.toMatch(/<button[^>]*>(?:<svg[\s\S]*?<\/svg>)?Like<\/button>/);
+  });
+  it("still opens the comment box from the comment counter", () => {
+    expect(html({ comments: withComments(3), commentsCount: 3 })).toMatch(/data-testid="fb-comment-action"[^>]*aria-pressed/);
+  });
+  it("shows only the newest comment first, with View more comments", () => {
+    const out = html({ comments: withComments(3), commentsCount: 3 });
+    expect(out).toContain("t2");
+    expect(out).not.toContain(">t0<");
+    expect(out).toContain("View 2 more comments");
   });
 });
