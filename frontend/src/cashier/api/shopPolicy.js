@@ -6,9 +6,16 @@
  */
 
 /** The settings an owner can change here: this domain, wired to real behaviour, tenant-wide. */
-export function policyDefinitions(definitions, { domain = "pos" } = {}) {
+export function policyDefinitions(definitions, { domain = "pos", keys = null } = {}) {
   const domains = Array.isArray(domain) ? domain : [domain];
-  return (definitions ?? []).filter((d) => domains.includes(d.domain) && d.enforced && (d.scopes ?? []).includes("tenant"));
+  // `keys` narrows a screen to the settings it is about, in the order given: the shop profile shows
+  // the business details and not the industry choice that shares their domain. Without it, nothing
+  // changes for a screen that asks for a whole domain.
+  const wanted = Array.isArray(keys) ? keys : null;
+  const rows = (definitions ?? []).filter(
+    (d) => domains.includes(d.domain) && d.enforced && (d.scopes ?? []).includes("tenant") && (!wanted || wanted.includes(d.key)),
+  );
+  return wanted ? [...rows].sort((a, b) => wanted.indexOf(a.key) - wanted.indexOf(b.key)) : rows;
 }
 
 /** What the form starts from: the effective value of each setting, as the server resolved it. */

@@ -22,17 +22,17 @@ import {
 // يقرأه النظام فعلًا (enforced)، وأي إعداد جديد يُربط بالخادم يظهر وحده. كل حقل يحمل عنوانه ووصفه من المحرك.
 // القيم هنا على مستوى المحل كله. الحفظ يرسل ما تغيّر فقط.
 
-export function useShopPolicy(domain) {
+export function useShopPolicy(domain, keys = null) {
   const domains = Array.isArray(domain) ? domain : [domain];
   return useQuery({
-    queryKey: ["settings", "shop-policy", ...domains],
+    queryKey: ["settings", "shop-policy", ...domains, ...(keys ?? [])],
     staleTime: 0,
     queryFn: async () => {
       // One request pair per domain; the screen shows them as a single form, in the order given.
       const parts = await Promise.all(
         domains.map(async (d) => {
           const [definitions, effective] = await Promise.all([api(`/settings/definitions?domain=${d}`), api(`/settings/effective?domain=${d}`)]);
-          return { defs: policyDefinitions(definitions, { domain: d }), effective };
+          return { defs: policyDefinitions(definitions, { domain: d, keys }), effective };
         }),
       );
       return {
@@ -128,10 +128,13 @@ export default function ShopPolicySettings({
   domain = "pos",
   title = "سياسة المحل",
   description = "المرتجع والاستبدال والخصم. كل ما تضبطه هنا يطبّقه الكاشير والنظام فعلًا.",
+  keys = null,
+  emptyText = null,
+  alsoRefresh = [],
 }) {
   const qc = useQueryClient();
-  const QUERY = ["settings", "shop-policy", ...(Array.isArray(domain) ? domain : [domain])];
-  const { data, isLoading, error: loadError } = useShopPolicy(domain);
+  const QUERY = ["settings", "shop-policy", ...(Array.isArray(domain) ? domain : [domain]), ...(keys ?? [])];
+  const { data, isLoading, error: loadError } = useShopPolicy(domain, keys);
   const [draft, setDraft] = useState(null); // what the form holds: numbers/bools as values, lists as text
   const [saving, setSaving] = useState(false);
 
@@ -177,7 +180,11 @@ export default function ShopPolicySettings({
     try {
       await api("/settings/bulk", { method: "POST", body: { scope: "tenant", settings: Object.fromEntries(changes.map((c) => [c.key, c.value])) } });
       // Everything that read these values starts again from the server, so the till picks them up too.
-      await Promise.all([qc.invalidateQueries({ queryKey: QUERY }), qc.invalidateQueries({ queryKey: ["cashier", "return-policy"] })]);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: QUERY }),
+        qc.invalidateQueries({ queryKey: ["cashier", "return-policy"] }),
+        ...alsoRefresh.map((queryKey) => qc.invalidateQueries({ queryKey })),
+      ]);
       toast.success(changes.length === 1 ? "تم حفظ التعديل" : `تم حفظ ${changes.length} تعديلات`);
     } catch (e) {
       toast.error(policyErrorMessage(e));
@@ -214,6 +221,7 @@ export default function ShopPolicySettings({
         </button>
       }
     >
+      {data.defs.length === 0 && emptyText && <p className="py-4 text-[13px] text-muted-foreground">{emptyText}</p>}
       {data.defs.map((d) => (
         <Field key={d.key} def={d} value={draft[d.key]} text={draft[d.key] ?? ""} error={parsed.errors[d.key]} onChange={(v) => setDraft((p) => ({ ...p, [d.key]: v }))} />
       ))}

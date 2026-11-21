@@ -122,6 +122,42 @@ describe("policyDefinitions for several domains at once", () => {
   });
 });
 
+describe("policyDefinitions narrowed to the settings a screen is about", () => {
+  const defs = [
+    def({ key: "business.vertical", domain: "business" }),
+    def({ key: "business.phone", domain: "business" }),
+    def({ key: "business.trade_name", domain: "business" }),
+    def({ key: "business.website", domain: "business", enforced: false }),
+    def({ key: "print.copies", domain: "print", scopes: ["tenant", "register"] }),
+    def({ key: "print.branch_only", domain: "print", scopes: ["branch"] }),
+  ];
+  it("keeps only the named settings, so the industry choice does not appear on the shop profile", () => {
+    const out = policyDefinitions(defs, { domain: "business", keys: ["business.trade_name", "business.phone"] });
+    expect(out.map((d) => d.key)).toEqual(["business.trade_name", "business.phone"]);
+  });
+  it("lists them in the order asked for, not the order the server sent", () => {
+    const out = policyDefinitions(defs, { domain: "business", keys: ["business.phone", "business.trade_name"] });
+    expect(out.map((d) => d.key)).toEqual(["business.phone", "business.trade_name"]);
+  });
+  it("still hides a named setting that nothing reads or that cannot be set shop-wide", () => {
+    expect(policyDefinitions(defs, { domain: "business", keys: ["business.website"] })).toEqual([]);
+    expect(policyDefinitions(defs, { domain: "print", keys: ["print.branch_only"] })).toEqual([]);
+  });
+  it("a name outside the asked domain is not pulled in", () => {
+    expect(policyDefinitions(defs, { domain: "print", keys: ["business.phone"] })).toEqual([]);
+  });
+  it("without keys a whole domain comes back as before", () => {
+    expect(policyDefinitions(defs, { domain: "business" }).map((d) => d.key)).toEqual([
+      "business.vertical",
+      "business.phone",
+      "business.trade_name",
+    ]);
+  });
+  it("an empty list means nothing is on the screen, not everything", () => {
+    expect(policyDefinitions(defs, { domain: "business", keys: [] })).toEqual([]);
+  });
+});
+
 describe("policyDefinitions for another domain", () => {
   it("takes the domain it is asked for", () => {
     const defs = [def({ key: "a" }), def({ key: "b", domain: "einvoice" })];
