@@ -517,6 +517,7 @@ class OrderService:
         shipping_total: object = None,
         tax_total: object = None,
         note: str | None = None,
+        prescription: dict | None = None,
         # §8: function-scope imports — avoids module-scope service coupling.
     ) -> Order:
         from app.core.tenancy import resolve_tenant_currency
@@ -712,7 +713,11 @@ class OrderService:
             placed_at=_now(),
             # The invoice remark rides in `extra` beside the warehouse: it is a label on the
             # order, not a queryable column, so it needs no schema change.
-            extra={"warehouse_id": str(warehouse.id), **({"note": note} if note else {})},
+            extra={
+                "warehouse_id": str(warehouse.id),
+                **({"note": note} if note else {}),
+                **({"prescription": prescription} if prescription else {}),
+            },
         )
 
         # §140: durable reservation rows next to the balance hold — one per

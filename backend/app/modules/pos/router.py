@@ -246,6 +246,15 @@ class PaymentLine(BaseModel):
     reference: str | None = Field(default=None, max_length=63)
 
 
+class PrescriptionRef(BaseModel):
+    """The prescription a medicine was sold against: its number and who it is for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    number: str = Field(min_length=1, max_length=63)
+    name: str = Field(min_length=1, max_length=127)
+
+
 class RecordSaleRequest(BaseModel):
     """A counter sale. The cashier records WHAT was sold and, if the shop turned it on, HOW it
     was paid.
@@ -275,6 +284,9 @@ class RecordSaleRequest(BaseModel):
     # Put whatever the customer did not pay now on their credit account. Needs a named customer
     # and the shop's pos.allow_sale_on_account; refused when the account's limit would be passed.
     on_account: bool = False
+    # Required for a prescription-only product when the shop turned on ``prescription_required``;
+    # kept on the invoice otherwise.
+    prescription: PrescriptionRef | None = None
 
 
 class WorkingSessionOut(BaseModel):
@@ -593,6 +605,7 @@ async def record_sale(
         payments=[line.model_dump() for line in body.payments] if body.payments else None,
         on_account=body.on_account,
         idempotency_key=idempotency_key,
+        prescription=body.prescription.model_dump() if body.prescription else None,
     )
 
 

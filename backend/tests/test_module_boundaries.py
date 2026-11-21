@@ -299,7 +299,17 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # (OrderService.list_payments, function scope). The e-receipt must say how the customer REALLY paid
 # and the till writes that as order payments. Through the service, never the table; orders never
 # imports pos, so no new cycle (test_no_new_module_import_cycles).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 276
+# 276 -> 278 on 2026-11-21: TWO deliberate edges for the prescription check at the till
+# (pos/service.py::_check_prescription, function scope), pos -> catalog.service (which products are
+# in the cart and whether each is marked prescription-only) and pos -> settings.capabilities (does
+# this workspace require a prescription; the vertical sets the default, so the answer cannot be had
+# without asking the capability table). Through a service and a function, never a table, one
+# direction, and neither catalog nor settings imports pos, so no new cycle. Moving the check into
+# orders.create_order instead would put it on every order (web and marketplace too) and still add
+# orders -> settings.capabilities, so the till is the right owner. NOTE: main was already at 277
+# against this ceiling before this change (one edge from another commit, not written down here), so
+# this test stays red by that one edge until its owner records it.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 278
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

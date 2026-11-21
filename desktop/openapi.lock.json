@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 608,
-    "sha256": "4cb6c24f8782605f743dba24916bf60068dd37f70140ed766d6fbf65b94fc401",
+    "sha256": "5fcd16a5044c51da5c8e1ae306b68719219b44408350b3c8c8f0f0bc5a26a357",
     "typed_operations": 342
   },
   "spec": {
@@ -15509,6 +15509,30 @@
           "title": "PostCommentsToggleRequest",
           "type": "object"
         },
+        "PrescriptionRef": {
+          "additionalProperties": false,
+          "description": "The prescription a medicine was sold against: its number and who it is for.",
+          "properties": {
+            "name": {
+              "maxLength": 127,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "number": {
+              "maxLength": 63,
+              "minLength": 1,
+              "title": "Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "number",
+            "name"
+          ],
+          "title": "PrescriptionRef",
+          "type": "object"
+        },
         "ProfileOut": {
           "properties": {
             "activity_code": {
@@ -16643,6 +16667,16 @@
                 }
               ],
               "title": "Payments"
+            },
+            "prescription": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PrescriptionRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [

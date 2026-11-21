@@ -1289,6 +1289,39 @@ class PosService(PosReceiptReads):
         raise ConflictError("could not start the day for this register")
 
     @staticmethod
+    async def _check_prescription(
+        session: AsyncSession, tenant_id: UUID, items: list[dict], reference: dict | None
+    ) -> dict[str, str] | None:
+        """Refuse a prescription-only product sold without a named prescription.
+
+        The workspace's answer decides (the vertical sets the default), so a shop without the
+        capability is never refused and an ordinary cart never costs more than the two reads.
+        """
+        from app.modules.catalog.service import CatalogService
+        from app.modules.pos.prescription import ensure_prescription_given
+        from app.modules.settings.capabilities import shop_capabilities
+
+        wanted: set[UUID] = set()
+        for item in items:
+            try:
+                wanted.add(UUID(str(item["variant_id"])))
+            except (KeyError, ValueError):
+                continue  # the pricing step reports a malformed id with the proper message
+        products: list = []
+        if wanted:
+            variants = await CatalogService.get_variants_by_ids(session, tenant_id, wanted)
+            found = await CatalogService.get_products_by_ids(
+                session, tenant_id, sorted({v.product_id for v in variants.values()})
+            )
+            products = list(found.values())
+        caps = (await shop_capabilities(session, tenant_id))["capabilities"]
+        return ensure_prescription_given(
+            required=bool(caps.get("prescription_required")),
+            products=products,
+            reference=reference,
+        )
+
+    @staticmethod
     async def record_sale(
         session: AsyncSession,
         tenant_id: UUID,
@@ -1305,8 +1338,12 @@ class PosService(PosReceiptReads):
         payments: list[dict] | None = None,
         on_account: bool = False,
         idempotency_key: str | None = None,
+        prescription: dict | None = None,
     ) -> dict:
         """RECORD a counter sale: what was sold, at what price, by whom.
+
+        ``prescription`` (``{"number", "name"}``) is required for a prescription-only product when
+        the workspace has ``prescription_required`` on; otherwise it is stored if given.
 
         ``on_account`` puts whatever the customer did not pay now on their credit account. It needs
         ``pos.allow_sale_on_account`` AND ``pos.take_payments`` on, a customer named on the sale
@@ -1360,6 +1397,7 @@ class PosService(PosReceiptReads):
         await PosService._ensure_within_discount_ceiling(
             session, tenant_id, profile, items, discount_total, override=discount_override
         )
+        prescription = await PosService._check_prescription(session, tenant_id, items, prescription)
         customer_notice: str | None = None
         if customer_id is None and customer_phone and customer_phone.strip():
             from app.modules.customers.service import CustomerService
@@ -1429,6 +1467,7 @@ class PosService(PosReceiptReads):
             warehouse_id=register.warehouse_id,
             discount_total=discount_total,
             note=note,
+            prescription=prescription,
         )
         tender = None
         if take_payments:
