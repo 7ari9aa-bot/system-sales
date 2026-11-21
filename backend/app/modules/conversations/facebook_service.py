@@ -65,6 +65,15 @@ def _count(node: Any) -> int:
     return int(((node or {}).get("summary") or {}).get("total_count") or 0)
 
 
+def _shares(post: dict) -> int:
+    """Meta sends `shares: {count}` and leaves the field out when nobody shared. Never negative."""
+    raw = ((post or {}).get("shares") or {}).get("count")
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _media_type(post: dict) -> str:
     atts = (post.get("attachments") or {}).get("data") or []
     kind = str((atts[0] if atts else {}).get("media_type") or post.get("status_type") or "")
@@ -101,12 +110,13 @@ class FacebookService:
                 permalink=p.get("permalink_url"),
                 like_count=_count(p.get("reactions")),
                 comments_count=_count(p.get("comments")),
+                shares_count=_shares(p),
                 posted_at=_time(p.get("created_time")),
                 synced_at=now,
             )
             keep = ("caption", "media_url", "thumbnail_url", "media_type", "permalink")
             update_cols = {
-                k: values[k] for k in (*keep, "like_count", "comments_count", "synced_at")
+                k: values[k] for k in (*keep, "like_count", "comments_count", "shares_count", "synced_at")
             }
             await session.execute(
                 pg_insert(SocialPost)

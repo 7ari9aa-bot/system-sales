@@ -56,6 +56,10 @@ describe("comments nest one level and hide what was removed", () => {
     const p = toFacebookPost({ id: "p", message: "m", picture: "u", reactions: 5, comments: 3, posted_at: new Date(NOW).toISOString() }, [], "en");
     expect(p).toMatchObject({ id: "p", text: "m", picture: "u", reactions: 5, commentsCount: 3 });
   });
+  it("carries the share count, and reads 0 for an older server that does not send it", () => {
+    expect(toFacebookPost({ id: "p", shares: 6 }, [], "en").sharesCount).toBe(6);
+    expect(toFacebookPost({ id: "p" }, [], "en").sharesCount).toBe(0);
+  });
 });
 
 describe("fbAge", () => {

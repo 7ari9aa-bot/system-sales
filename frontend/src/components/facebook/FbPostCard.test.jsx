@@ -101,3 +101,22 @@ describe("the comment count on the action bar", () => {
     expect(commentActionOf(out)).toContain(">2<");
   });
 });
+
+describe("the share counter, as Facebook draws it beside the comment count", () => {
+  it("shows how many times the post was shared", () => {
+    const out = html({ sharesCount: 4 });
+    expect(out).toContain('data-testid="fb-share-count"');
+    expect(out).toContain("4 shares");
+  });
+  it("says 1 share in the singular", () => {
+    expect(html({ sharesCount: 1 })).toContain("1 share<");
+  });
+  it("draws nothing when nobody shared, as Facebook does", () => {
+    expect(html({ sharesCount: 0 })).not.toContain("fb-share-count");
+    expect(html({})).not.toContain("fb-share-count");
+  });
+  it("speaks Arabic on the Arabic screen", () => {
+    const out = renderToStaticMarkup(<FbPostCard post={{ ...post, sharesCount: 3 }} pageName="Fihrist" lang="ar" actions={{}} />);
+    expect(out).toContain("3 مشاركات");
+  });
+});
