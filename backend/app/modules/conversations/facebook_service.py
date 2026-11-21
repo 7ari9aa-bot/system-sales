@@ -65,6 +65,14 @@ def _count(node: Any) -> int:
     return int(((node or {}).get("summary") or {}).get("total_count") or 0)
 
 
+def _page_liked(comment: dict | None) -> bool:
+    """Meta's `user_likes`: whether the viewer (the Page, with a Page token) liked the comment.
+
+    Only a real boolean true counts; anything else (missing, null, a string) is "not liked".
+    """
+    return (comment or {}).get("user_likes") is True
+
+
 def _shares(post: dict) -> int:
     """Meta sends `shares: {count}` and leaves the field out when nobody shared. Never negative."""
     raw = ((post or {}).get("shares") or {}).get("count")
@@ -202,13 +210,18 @@ class FacebookService:
                     body=c.get("message"),
                     permalink=c.get("permalink_url"),
                     like_count=int(c.get("like_count") or 0),
+                    page_liked=_page_liked(c),
                     commented_at=_time(c.get("created_time")),
                     status="hidden" if c.get("is_hidden") else "visible",
                 )
                 .on_conflict_do_update(
                     index_elements=["tenant_id", "platform", "comment_id"],
                     # status is NOT updated: a sync must not undo a moderation decision.
-                    set_={"body": c.get("message"), "like_count": int(c.get("like_count") or 0)},
+                    set_={
+                        "body": c.get("message"),
+                        "like_count": int(c.get("like_count") or 0),
+                        "page_liked": _page_liked(c),
+                    },
                 )
             )
             n += 1

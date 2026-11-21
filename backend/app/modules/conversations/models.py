@@ -461,6 +461,8 @@ class SocialComment(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
     body: Mapped[str | None] = mapped_column(Text)
     permalink: Mapped[str | None] = mapped_column(Text)
     like_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    # Meta's `user_likes`: the connected Page itself has liked this comment (Facebook only).
+    page_liked: Mapped[bool] = mapped_column(default=False, server_default="false")
     # Platform time (when the comment was written), not our receipt time —
     # backfilled deliveries must land in the window they belong to.
     commented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

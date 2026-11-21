@@ -40,7 +40,7 @@ POST_FIELDS = (
 )
 COMMENT_FIELDS = (
     "id,message,created_time,from{id,name},like_count,comment_count,is_hidden,"
-    "parent{id},permalink_url,can_hide,can_remove,can_reply_privately"
+    "parent{id},permalink_url,can_hide,can_remove,can_reply_privately,user_likes"
 )
 
 # Replacements for the removed metrics (Meta, "Deprecated Page Insights Metrics").

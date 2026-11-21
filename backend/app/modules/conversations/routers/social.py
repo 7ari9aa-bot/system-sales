@@ -99,6 +99,7 @@ def _comment_out(c: SocialComment) -> dict:
         "username": c.username or c.author_name,
         "body": c.body,
         "like_count": c.like_count,
+        "page_liked": bool(c.page_liked),
         "commented_at": c.commented_at.isoformat() if c.commented_at else None,
         "status": c.status,
         "is_page_reply": c.is_page_reply,
