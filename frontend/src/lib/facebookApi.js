@@ -11,6 +11,8 @@ export const FB_LIMITS = {
   scheduleMaxDays: 30,
   maxCommentChars: 8000,
   maxPictureBytes: 4 * 1024 * 1024,
+  // Pictures in one post. Meta takes more, but a longer album fails often; the server holds the same cap.
+  maxPictures: 10,
 };
 
 // What the Pages API takes for a picture. The server reads the real type from the file's bytes;
@@ -120,13 +122,31 @@ export async function readPictureAsBase64(file) {
   return btoa(binary);
 }
 
-export async function publishFacebookPost({ message, link, picture, scheduleAt }) {
+/** The album after picking more files: what was there, then the new ones, without a file picked twice,
+ *  cut at the album limit. The result's `left` counts the files that did not fit. */
+export function addPictures(current, picked) {
+  const out = [...(current || [])];
+  let left = 0;
+  for (const file of Array.from(picked || [])) {
+    if (out.some((f) => f.name === file.name && f.size === file.size && f.type === file.type)) continue;
+    if (out.length >= FB_LIMITS.maxPictures) left += 1;
+    else out.push(file);
+  }
+  out.left = left;
+  return out;
+}
+
+export async function publishFacebookPost({ message, link, picture, pictures, scheduleAt }) {
+  const album = pictures || [];
+  const hasPictures = !!picture || album.length > 0;
   return api("/facebook/posts", {
     method: "POST",
     body: {
       message: (message || "").trim() || null,
-      link: picture ? null : (link || "").trim() || null,
+      link: hasPictures ? null : (link || "").trim() || null,
       picture: picture ? await readPictureAsBase64(picture) : null,
+      // Only an album adds the field, so a text, link or single-picture post is sent exactly as it was.
+      ...(album.length ? { pictures: await Promise.all(album.map(readPictureAsBase64)) } : {}),
       schedule_at: scheduleAt ? new Date(scheduleAt).toISOString() : null,
     },
   });
@@ -174,13 +194,17 @@ export async function fetchFacebookInsights() {
 }
 
 /** Why this post cannot be sent, or "" when it can. Checked before anything leaves the browser. */
-export function facebookPostProblem({ message = "", link = "", picture = null, scheduleAt = "" }, lang = "ar", now = Date.now()) {
+export function facebookPostProblem({ message = "", link = "", picture = null, pictures = [], scheduleAt = "" }, lang = "ar", now = Date.now()) {
   const ar = lang === "ar";
   const text = message.trim();
   const url = link.trim();
-  if (picture) {
-    if (!FB_PICTURE_TYPES.includes(picture.type)) return ar ? "الصورة يجب أن تكون JPEG أو PNG أو GIF أو BMP أو WEBP" : "The picture must be a JPEG, PNG, GIF, BMP or WEBP";
-    if (picture.size > FB_LIMITS.maxPictureBytes) return ar ? "الصورة أكبر من 4 ميغابايت" : "The picture is larger than 4 MB";
+  const files = [...(picture ? [picture] : []), ...(pictures || [])];
+  if (files.length > FB_LIMITS.maxPictures) return ar ? `المنشور يحمل ${FB_LIMITS.maxPictures} صور كحد أقصى` : `A post carries at most ${FB_LIMITS.maxPictures} pictures`;
+  if (files.length) {
+    for (const file of files) {
+      if (!FB_PICTURE_TYPES.includes(file.type)) return ar ? "الصورة يجب أن تكون JPEG أو PNG أو GIF أو BMP أو WEBP" : "The picture must be a JPEG, PNG, GIF, BMP or WEBP";
+      if (file.size > FB_LIMITS.maxPictureBytes) return ar ? "الصورة أكبر من 4 ميغابايت" : "The picture is larger than 4 MB";
+    }
     if (url) return ar ? "المنشور يحمل صورة أو رابطًا، ليس الاثنين" : "A post carries a picture or a link, not both";
   } else if (!text && !url) return ar ? "اكتب نصًا أو أضف صورة أو رابطًا" : "Write something, or add a picture or a link";
   if (text.length > FB_LIMITS.maxPostChars) return ar ? "المنشور أطول من الحد المسموح" : "The post is longer than Facebook allows";
