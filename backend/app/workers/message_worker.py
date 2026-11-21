@@ -66,11 +66,13 @@ from app.modules.conversations.voice import STTProvider, VoiceService, stt_cost_
 from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import DeliveryAttempt, Integration, ProcessedEvent
 from app.workers.base import (
+    DeferredError,
     PermanentError,
     RetryableError,
     StreamWorker,
     defer_unless_tenant_allows,
 )
+from app.workers.outbound_retry import is_transient_refusal, next_retry_delay
 
 logger = logging.getLogger(__name__)
 
@@ -523,6 +525,12 @@ class MessageWorker(StreamWorker):
         # Phase 2 — the provider call (no transaction held across the hop).
         status, provider_id, error = await self._send(plan)
 
+        # A refusal Meta itself calls temporary (a rate limit) is tried again later instead of
+        # failing for good. Only FAILED qualifies: UNKNOWN may already have reached the customer
+        # and is never resent. See ``outbound_retry`` for the rules and the codes.
+        if status == "failed":
+            await self._defer_if_transient(tenant_id, message_id, plan, error)
+
         # Phase 3 — outcome (§127): the ProcessedEvent consumer-inbox row
         # commits in the SAME transaction as the terminal status, so a
         # replayed event can never apply the effect twice; a replay whose
@@ -555,6 +563,68 @@ class MessageWorker(StreamWorker):
             # the §130 reconciliation guard in _deliver_one and dead-letters
             # — blind resending is forbidden (§129).
             raise RetryableError(error or "unknown delivery outcome")
+
+    async def _defer_if_transient(
+        self, tenant_id: uuid.UUID, message_id: uuid.UUID, plan: _SendPlan, error: str | None
+    ) -> None:
+        """Put a temporarily refused message back in the queue and defer the event, or return.
+
+        Returning means "not retryable, carry on to the normal FAILED outcome". Raising
+        ``DeferredError`` re-stages the event after a delay without spending the retry budget.
+
+        No ``ProcessedEvent`` is written for a deferred attempt: that row means "the effect
+        happened", and the consumer inbox would otherwise swallow the retry (the redelivered event
+        keeps the same outbox id on purpose) and leave the message queued for ever. The refusal
+        itself is still recorded as a ``DeliveryAttempt``, which is also what counts the budget.
+        """
+        if not is_transient_refusal(error):
+            return
+        async with SessionLocal() as session:
+            async with session.begin():
+                await bind_tenant(session, tenant_id)
+                refused = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(DeliveryAttempt)
+                        .where(
+                            DeliveryAttempt.tenant_id == tenant_id,
+                            DeliveryAttempt.message_id == message_id,
+                            DeliveryAttempt.outcome == "failed",
+                        )
+                    )
+                ).scalar_one()
+                delay = next_retry_delay(int(refused) + 1)
+                if delay is None:
+                    return  # the budget is spent: let it fail, and tell the owner, as before
+                message = (
+                    await session.execute(
+                        select(Message).where(
+                            Message.tenant_id == tenant_id, Message.id == message_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if message is None or message.status != "sending":
+                    return
+                message.status = "queued"
+                message.error = f"retrying in {delay}s: {error}"[:500]
+                session.add(
+                    DeliveryAttempt(
+                        tenant_id=tenant_id,
+                        message_id=message_id,
+                        provider=plan.adapter.name,
+                        outcome="failed",
+                        request_payload={
+                            "customer_ref": plan.outbound.customer_ref,
+                            "template_name": plan.outbound.template_name,
+                            "has_media": bool(plan.outbound.media_url),
+                            "will_retry_in_seconds": delay,
+                        },
+                        error=error,
+                    )
+                )
+        raise DeferredError(
+            f"transient provider refusal, retrying in {delay}s", delay_seconds=delay
+        )
 
     async def _deliver_one(
         self, session, tenant_id: uuid.UUID, message_id: uuid.UUID
