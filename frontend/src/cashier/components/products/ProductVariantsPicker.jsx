@@ -1,11 +1,12 @@
 import { Wand2 } from "lucide-react";
 import FormField from "@/cashier/components/products/FormField";
 import { CHIP, CHIP_ON, CHIPS, DOT, PRIMARY_BTN, SECTION, SECTION_HEAD, SECTION_TITLE, SWATCH_DOT } from "@/cashier/components/products/formStyles";
-import { COLORS } from "@/cashier/lib/uiConstants";
+import { useShopOptions } from "@/cashier/api/useShopOptions";
 import { cn } from "@/cashier/lib/utils";
 
 // اختيار الألوان والمقاسات ثم توليد جدول التركيبات.
 export default function ProductVariantsPicker({ colors, onToggleColor, sizes, onToggleSize, presetSizes, canGenerate, onGenerate }) {
+  const { options } = useShopOptions();
   return (
     <div className={SECTION}>
       <div className={SECTION_HEAD}>
@@ -15,14 +16,14 @@ export default function ProductVariantsPicker({ colors, onToggleColor, sizes, on
 
       <FormField label="الألوان المتاحة">
         <div className={CHIPS}>
-          {COLORS.map((c) => (
+          {options.colours.map((c) => (
             <button
               key={c.name}
               type="button"
               onClick={() => onToggleColor(c.name)}
               className={cn(CHIP, "group", colors.includes(c.name) && CHIP_ON)}
             >
-              <span className={SWATCH_DOT} style={{ backgroundColor: c.hex }} />
+              <span className={SWATCH_DOT} style={{ backgroundColor: c.hex ?? "#A1A1AA" }} />
               {c.name}
             </button>
           ))}

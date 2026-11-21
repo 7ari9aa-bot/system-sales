@@ -84,6 +84,9 @@ function optionValues(v) {
 export const catalogApi = {
   warehouses: () => api("/warehouses"),
   ensureDefaultWarehouse: () => post("/warehouses/ensure-default", {}),
+  shopOptions: () => api("/apparel/options"),
+  // Which optional stock screens the shop shows (the owner's three switches). Open to any member of the shop.
+  stockScreens: () => api("/inventory/screens"),
   categories: () => api("/categories"),
   brands: () => api("/brands"),
   createCategory: (name) => post("/categories", { name }),

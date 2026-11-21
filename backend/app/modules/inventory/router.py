@@ -28,6 +28,7 @@ from app.modules.inventory.service import (
     WarehouseLocationService,
 )
 from app.modules.inventory.services.expiry import expiry_report
+from app.modules.inventory.services.screens import visible_screens
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -1108,6 +1109,19 @@ class ChannelAvailabilityOut(BaseModel):
 
 class MarkSerialsRequest(BaseModel):
     serial_codes: list[str] = Field(min_length=1)
+
+
+class VisibleScreensOut(BaseModel):
+    warehouse_transfers: bool
+    channel_allocation: bool
+    units_of_measure: bool
+
+
+@router.get("/screens", response_model=VisibleScreensOut)
+async def get_visible_screens(ctx: TenantCtxDep) -> dict[str, bool]:
+    """Which optional stock screens this shop shows. Open to any member: a cashier needs it to draw
+    the menu, and it carries no setting value beyond shown or hidden."""
+    return await visible_screens(ctx.session, ctx.tenant_id)
 
 
 @router.get("/channel-allocations", response_model=list[ChannelAllocationOut])

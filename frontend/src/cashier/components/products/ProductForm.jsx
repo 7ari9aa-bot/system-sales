@@ -8,7 +8,8 @@ import ProductSummarySection from "@/cashier/components/products/ProductSummaryS
 import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
-import { SIZE_SETS } from "@/cashier/lib/uiConstants";
+import { useShopOptions } from "@/cashier/api/useShopOptions";
+import { resolveSizePreset } from "@/cashier/lib/shopOptions";
 import { nextSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
 import { imageProblem, imagesOf } from "@/cashier/api/productImage";
@@ -39,7 +40,8 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
       : [],
   );
 
-  const presetSizes = SIZE_SETS[sizePreset] ?? [];
+  const { options: shopOptions } = useShopOptions();
+  const presetSizes = shopOptions.sizeSets[resolveSizePreset(shopOptions.sizeSets, sizePreset)] ?? [];
 
   function patch(fields) {
     setForm((prev) => ({ ...prev, ...fields }));

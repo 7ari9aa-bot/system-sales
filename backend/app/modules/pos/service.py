@@ -2095,6 +2095,11 @@ class PosService(PosReceiptReads):
         return {
             "session_id": pos_session.id,
             "status": pos_session.status,
+            # Whether this close counts a drawer. The screen asks for the count only then, so it can
+            # never disagree with ``close_session``, which refuses a close that lacks one.
+            "take_payments": bool(
+                await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+            ),
             **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()},
         }
 

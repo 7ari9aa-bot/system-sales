@@ -71,12 +71,14 @@ def test_the_preset_keeps_the_low_stock_alert_and_the_size_colour_matrix_on() ->
     assert p["inventory.stocktake_approval_required"] is True
 
 
-def test_the_preset_does_not_claim_to_hide_what_has_no_switch() -> None:
-    """Online allocation, warehouse transfers and units of measure have no setting to flip. A
-    preset naming one would be a promise nothing keeps."""
-    for key in PRESETS[NAME]:
-        assert "uom" not in key and "unit_of_measure" not in key
-        assert "transfer" not in key and "channel" not in key
+def test_the_preset_hides_transfers_online_allocation_and_units_of_measure() -> None:
+    """A one-store, walk-in-only shop does not use these three screens, and each has a switch."""
+    for key in (
+        "inventory.show_warehouse_transfers",
+        "inventory.show_channel_allocation",
+        "inventory.show_units_of_measure",
+    ):
+        assert PRESETS[NAME][key] is False, key
 
 
 def test_the_older_presets_are_unchanged() -> None:
@@ -205,6 +207,9 @@ _EXPECTED = {
     "inventory.quality_check_on_receipt": False,
     "inventory.fifo_enabled": True,
     "inventory.stocktake_approval_required": True,
+    "inventory.show_warehouse_transfers": False,
+    "inventory.show_channel_allocation": False,
+    "inventory.show_units_of_measure": False,
     "capability.serial_tracking": False,
     "capability.lot_expiry": False,
     "capability.fefo_picking": False,

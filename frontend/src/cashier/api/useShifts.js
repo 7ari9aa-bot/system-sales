@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/lib/api";
 import { posApi } from "./posApi";
 import { bootstrapPos, chooseRegister, resolveShiftState, resolveWorkingSession, startDay } from "./shiftState";
 import { nameEmployees, shiftsFromApi } from "./shiftAdapter";
@@ -70,6 +71,38 @@ export function useClosePreview(sessionId, enabled) {
     enabled: Boolean(sessionId) && enabled,
     staleTime: 0,
     gcTime: 0,
+  });
+}
+
+/** What the drawer should hold now, from the drawer ledger. Only a till that counts a drawer asks. */
+export function useDrawerExpected(sessionId, enabled) {
+  return useQuery({
+    queryKey: ["cashier", "drawer", sessionId],
+    queryFn: () => posApi.drawer(sessionId),
+    enabled: Boolean(sessionId) && enabled,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+/**
+ * The owner's two close rules. Reading them needs settings:read, which a cashier may not have: then the answer is
+ * simply unknown and the screen assumes the strict side (a reason is asked, the limit is unknown) while the server
+ * stays the one that decides and says why it refuses.
+ */
+export function useCloseRules(enabled) {
+  return useQuery({
+    queryKey: ["cashier", "close-rules"],
+    queryFn: async () => {
+      const got = await api("/settings/effective?keys=pos.variance_reason_required,pos.variance_approval_threshold");
+      return {
+        reasonRequired: got?.["pos.variance_reason_required"]?.value !== false,
+        threshold: Number(got?.["pos.variance_approval_threshold"]?.value ?? 0) || 0,
+      };
+    },
+    enabled,
+    retry: false,
+    staleTime: 60 * 1000,
   });
 }
 
@@ -144,7 +177,7 @@ export function useCloseShift() {
   const qc = useQueryClient();
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: ({ sessionId }) => posApi.closeSession(sessionId),
+    mutationFn: ({ sessionId, body }) => posApi.closeSession(sessionId, body),
     // The server clears the shift's parked carts in the close; drop the cached lists so none shows stale.
     onSuccess: (_closed, { sessionId }) => {
       qc.removeQueries({ queryKey: ["cashier", "held", sessionId] });

@@ -46,11 +46,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { useStockScreens } from "@/cashier/api/useShopOptions";
+import { activeOrFirst, visibleTabs } from "@/cashier/lib/stockScreens";
+
 export default function InventoryPage() {
   const { lang } = useI18n();
   const isAr = lang === "ar";
 
-  const [activeTab, setActiveTab] = useState("receipts"); // receipts | transfers | replenishment | locations | valuation | traceability
+  const [activeTabRaw, setActiveTab] = useState("receipts"); // receipts | transfers | replenishment | locations | valuation | traceability | allocations
+  // The owner can hide the transfers and online-allocation tabs; nothing is removed, so turning one back on restores it.
+  const screens = useStockScreens();
+
+  const allTabs = [
+    { id: "receipts", label: isAr ? "أذونات الاستلام والجودة" : "Goods Receipts & QC", icon: ClipboardCheck },
+    { id: "transfers", label: isAr ? "التحويلات بين المستودعات (D6)" : "Stock Transfers (D6)", icon: ArrowLeftRight },
+    { id: "replenishment", label: isAr ? "محرك التجديد وإعادة الشراء" : "Replenishment Engine", icon: TrendingUp },
+    { id: "locations", label: isAr ? "المواقع والرفوف الداخلية" : "Locations & Bins", icon: MapPin },
+    { id: "valuation", label: isAr ? "تقييم FIFO والتكاليف" : "Valuation & Landed Cost", icon: Layers },
+    { id: "traceability", label: isAr ? "التتبع والدفعات والسيريال" : "Traceability & Serials", icon: Barcode },
+    { id: "allocations", label: isAr ? "تخصيص القنوات" : "Channel Allocations", icon: Share2 },
+  ];
+  const shownTabs = visibleTabs(allTabs, screens);
+  // If the tab being viewed was just hidden, show the first one still shown.
+  const activeTab = activeOrFirst(activeTabRaw, shownTabs);
   const [warehouses, setWarehouses] = useState([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -766,15 +784,7 @@ export default function InventoryPage() {
       {/* Workspace Tabs Navigation */}
       <div className="border-b border-[#EBE7DF] bg-white px-6 sm:px-8">
         <div className="flex gap-2 overflow-x-auto">
-          {[
-            { id: "receipts", label: isAr ? "أذونات الاستلام والجودة" : "Goods Receipts & QC", icon: ClipboardCheck },
-            { id: "transfers", label: isAr ? "التحويلات بين المستودعات (D6)" : "Stock Transfers (D6)", icon: ArrowLeftRight },
-            { id: "replenishment", label: isAr ? "محرك التجديد وإعادة الشراء" : "Replenishment Engine", icon: TrendingUp },
-            { id: "locations", label: isAr ? "المواقع والرفوف الداخلية" : "Locations & Bins", icon: MapPin },
-            { id: "valuation", label: isAr ? "تقييم FIFO والتكاليف" : "Valuation & Landed Cost", icon: Layers },
-            { id: "traceability", label: isAr ? "التتبع والدفعات والسيريال" : "Traceability & Serials", icon: Barcode },
-            { id: "allocations", label: isAr ? "تخصيص القنوات" : "Channel Allocations", icon: Share2 },
-          ].map((tab) => {
+          {shownTabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (

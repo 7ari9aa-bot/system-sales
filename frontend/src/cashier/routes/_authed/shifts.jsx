@@ -16,8 +16,9 @@ import shiftColumns from "@/cashier/components/shifts/shiftColumns";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { canStartAnotherDay } from "@/cashier/api/shiftState";
 import { closeSummary, coverageNote, employeeMap, shiftEmployees, shiftsSummary } from "@/cashier/api/shiftAdapter";
-import { useClosePreview, useCloseShift, useHeldCount, useOpenChoice, useOpenShift, useShifts } from "@/cashier/api/useShifts";
+import { useClosePreview, useCloseRules, useCloseShift, useDrawerExpected, useHeldCount, useOpenChoice, useOpenShift, useShifts } from "@/cashier/api/useShifts";
 import { useAuth } from "@/lib/AuthContext";
+import { closeBody, countsDrawer } from "@/cashier/api/closePlan";
 import { useTenantUsers } from "@/cashier/api/useTenantUsers";
 import { fmtInt, fmtMoney, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
 
@@ -47,6 +48,10 @@ export default function ShiftsPage() {
   const [report, setReport] = useState(null);
   const preview = useClosePreview(closing?.id, Boolean(closing));
   const heldCount = useHeldCount(closing?.id, Boolean(closing));
+  // The server says whether this close counts a drawer (close-preview.take_payments); the row itself does not carry it.
+  const countsCash = Boolean(closing) && countsDrawer({ take_payments: preview.data?.take_payments });
+  const drawer = useDrawerExpected(closing?.id, countsCash);
+  const closeRules = useCloseRules(countsCash);
 
   const summary = shiftsSummary(rows);
   const filtered = rows.filter((r) => {
@@ -67,10 +72,10 @@ export default function ShiftsPage() {
     );
   }
 
-  function submitClose() {
+  function submitClose(count) {
     const shift = closing;
     closeShift.mutate(
-      { sessionId: shift.id },
+      { sessionId: shift.id, body: count ? closeBody({ rules: { take_payments: true }, ...count }) : undefined },
       {
         onSuccess: (closed) => {
           setClosing(null);
@@ -152,7 +157,7 @@ export default function ShiftsPage() {
       />
 
       <ShiftOpenDialog open={openDialog} onOpenChange={(v) => { setOpenDialog(v); if (!v) openShift.reset(); }} onSubmit={submitOpen} pending={openShift.isPending} error={messageOf(openShift.error)} />
-      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
+      <ShiftCloseDialog open={Boolean(closing)} onOpenChange={(v) => { if (!v) { setClosing(null); closeShift.reset(); } }} shift={closing} heldCount={heldCount.data ?? 0} preview={preview.data} previewLoading={preview.isLoading} onSubmit={submitClose} drawer={drawer.data ?? null} rules={closeRules.data ?? null} pending={closeShift.isPending} error={messageOf(closeShift.error) || (preview.error ? messageOf(preview.error) : null)} />
       <ShiftDetailsDialog open={Boolean(details)} onOpenChange={(open) => !open && setDetails(null)} shift={details} />
       <DayReport open={Boolean(report)} onOpenChange={(open) => !open && setReport(null)} shift={report} />
     </LedgerPage>

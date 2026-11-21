@@ -89,9 +89,9 @@ PRESETS: dict[str, dict[str, object]] = {
     # ---- Preset 5: محل ملابس أرضي (فرع واحد، كاشير واحد، نقدي) -------------
     # Chosen on purpose by the owner (POST /settings/presets/apparel_ground_shop); picking the
     # apparel vertical alone never applies it, so a shop that already chose apparel keeps working
-    # as it does. Everything here is a value for a switch that already exists. Online allocation,
-    # transfers between warehouses and units of measure have no switch in the registry, so they
-    # cannot be set here; hiding them is the screen's job, and no preset pretends to do it.
+    # as it does. Everything here is a value for a switch that already exists. The last three hide
+    # the screens a one-store, walk-in-only shop does not use (transfers between warehouses, online
+    # stock allocation, units of measure); they hide only, and the owner can turn any back on.
     "apparel_ground_shop": {
         "business.type": "retail",
         "business.vertical": "apparel",
@@ -108,6 +108,9 @@ PRESETS: dict[str, dict[str, object]] = {
         "inventory.quality_check_on_receipt": False,
         "inventory.fifo_enabled": True,
         "inventory.stocktake_approval_required": True,
+        "inventory.show_warehouse_transfers": False,
+        "inventory.show_channel_allocation": False,
+        "inventory.show_units_of_measure": False,
         "capability.serial_tracking": False,
         "capability.lot_expiry": False,
         "capability.fefo_picking": False,
