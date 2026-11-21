@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import FbAvatar from "@/components/facebook/FbAvatar";
 import { FB } from "@/components/facebook/fbTheme";
 import { cn } from "@/lib/utils";
 import { needsAnswer, useFacebookData } from "./useFacebookData";
-import { groupNotifications } from "./notificationGroups";
+import { groupNotifications, headerMenuItems, loadReadMark, saveReadMark } from "./notificationGroups";
 
 /** The small round badge Facebook puts on a notification's avatar: here, a comment bubble. */
 function CommentBadge() {
@@ -21,6 +21,10 @@ export default function FacebookActivityPage() {
   const ar = lang === "ar";
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const store = typeof window === "undefined" ? null : window.localStorage;
+  const [readUpTo, setReadUpTo] = useState(() => loadReadMark(store, "page"));
   const items = useMemo(() => {
     const out = [];
     for (const post of posts) {
@@ -29,7 +33,7 @@ export default function FacebookActivityPage() {
     }
     return out;
   }, [posts]);
-  const { fresh, earlier, hiddenCount } = useMemo(() => groupNotifications(items, { onlyUnread, showAll }), [items, onlyUnread, showAll]);
+  const { fresh, earlier, hiddenCount } = useMemo(() => groupNotifications(items, { onlyUnread, showAll, readUpTo }), [items, onlyUnread, showAll, readUpTo]);
   const empty = fresh.length === 0 && earlier.length === 0;
 
   const row = ({ comment, post, waiting }) => (
@@ -49,7 +53,22 @@ export default function FacebookActivityPage() {
   return (
     <div className="h-full overflow-y-auto" data-testid="facebook-activity">
       <div className="mx-auto my-4 w-full max-w-[680px] rounded-lg bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-        <h1 className="px-1 text-[24px] font-bold">{ar ? "الإشعارات" : "Notifications"}</h1>
+        <div className="relative flex items-center justify-between">
+          <h1 className="px-1 text-[24px] font-bold">{ar ? "الإشعارات" : "Notifications"}</h1>
+          <button type="button" aria-label={ar ? "خيارات" : "Options"} aria-haspopup="menu" aria-expanded={menuOpen} data-testid="fb-notif-menu" onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-[20px] font-bold leading-none hover:bg-[#f2f2f2]" style={{ color: FB.text }}>⋯</button>
+          {menuOpen && (
+            <ul role="menu" className="absolute end-0 top-10 z-10 min-w-[220px] rounded-lg bg-white p-2 shadow-[0_2px_12px_rgba(0,0,0,0.2)]">
+              {headerMenuItems(lang).map((m) => (
+                <li key={m.id} role="none">
+                  <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-start text-[15px] font-semibold hover:bg-[#f2f2f2]" onClick={() => {
+                    setMenuOpen(false);
+                    if (m.id === "markAllRead") { const at = Date.now(); saveReadMark(store, "page", at); setReadUpTo(at); } else navigate(m.to);
+                  }}>{m.label}</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <div className="mb-2 mt-1 flex gap-1" role="tablist">
           <button type="button" role="tab" aria-selected={!onlyUnread} className={tab(!onlyUnread)} onClick={() => setOnlyUnread(false)}>{ar ? "الكل" : "All"}</button>
           <button type="button" role="tab" aria-selected={onlyUnread} className={tab(onlyUnread)} onClick={() => setOnlyUnread(true)}>{ar ? "غير مقروءة" : "Unread"}</button>
