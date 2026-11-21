@@ -83,3 +83,28 @@ describe("which actions a comment offers", () => {
     expect(out).toContain(">Reply<");
   });
 });
+
+// The Page's own like state comes from Meta's `user_likes`, so the button starts pressed when the
+// Page already liked the comment. The stored count already includes that like, so the screen must
+// not add it a second time.
+describe("the Page's like on a comment", () => {
+  it("starts pressed when Meta says the Page already liked it", () => {
+    expect(html({ pageLiked: true })).toContain('aria-pressed="true"');
+    expect(html({ pageLiked: false })).toContain('aria-pressed="false"');
+    expect(html({})).toContain('aria-pressed="false"');
+  });
+  it("shows the stored count as is when nothing changed on screen", async () => {
+    const { shownLikeCount } = await import("@/components/facebook/FbComment");
+    expect(shownLikeCount({ likes: 2, pageLiked: true }, true)).toBe(2);
+    expect(shownLikeCount({ likes: 1, pageLiked: false }, false)).toBe(1);
+  });
+  it("adds one for a like pressed now, and takes one off for an un-like of a stored like", async () => {
+    const { shownLikeCount } = await import("@/components/facebook/FbComment");
+    expect(shownLikeCount({ likes: 1, pageLiked: false }, true)).toBe(2);
+    expect(shownLikeCount({ likes: 2, pageLiked: true }, false)).toBe(1);
+  });
+  it("never goes below zero on a stale count", async () => {
+    const { shownLikeCount } = await import("@/components/facebook/FbComment");
+    expect(shownLikeCount({ likes: 0, pageLiked: true }, false)).toBe(0);
+  });
+});

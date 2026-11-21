@@ -28,6 +28,14 @@ export function commentActions(comment, depth = 0) {
   };
 }
 
+/** The like count to draw. Meta's count already includes a like the Page gave earlier (`pageLiked`), so
+ *  only a change made on this screen moves it: +1 for a new like, -1 for taking back a stored one. */
+export function shownLikeCount(comment, liked) {
+  const stored = comment.likes || 0;
+  const was = !!comment.pageLiked;
+  return Math.max(0, stored + (liked && !was ? 1 : 0) - (!liked && was ? 1 : 0));
+}
+
 export function commentHeader(comment, lang) {
   const ar = lang === "ar";
   const parts = [{ kind: "author", text: comment.author }];
@@ -42,7 +50,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
   const [replying, setReplying] = useState(false);
   const [privateOpen, setPrivateOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(!!comment.pageLiked);
   const [tagged, setTagged] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -70,7 +78,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
   };
   const toggleLike = () => run(async () => { await actions.like(comment.id, !liked); setLiked((v) => !v); });
   const link = "font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff] disabled:opacity-50";
-  const shownLikes = (comment.likes || 0) + (liked ? 1 : 0);
+  const shownLikes = shownLikeCount(comment, liked);
   const actions_ = commentActions(comment, depth);
   return (
     <div className={cn("min-w-0", comment.hidden && "opacity-60")}>

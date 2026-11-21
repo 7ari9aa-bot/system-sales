@@ -87,6 +87,7 @@ export function toFacebookComments(items, lang = "ar", pageName = "") {
         text: c.body || "",
         authorRef: c.author_ref || null,
         likes: c.like_count || 0,
+        pageLiked: c.page_liked === true,
         isPage: !!c.is_page_reply,
         hidden: c.status === "hidden",
         repliedAt: c.replied_at,

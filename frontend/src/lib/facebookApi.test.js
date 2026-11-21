@@ -119,3 +119,15 @@ describe("a large picture is encoded without overflowing the stack", () => {
     expect(Buffer.from(b64, "base64").equals(Buffer.from(bytes))).toBe(true);
   });
 });
+
+describe("the Page's like on a comment, read from Meta", () => {
+  it("carries page_liked into the comment as pageLiked", () => {
+    const rows = [
+      { id: "c1", body: "a", commented_at: "2026-11-21T10:00:00Z", page_liked: true, like_count: 2 },
+      { id: "c2", body: "b", commented_at: "2026-11-21T10:01:00Z", page_liked: false },
+      { id: "c3", body: "c", commented_at: "2026-11-21T10:02:00Z" },
+    ];
+    const out = toFacebookComments(rows, "en", "Shop");
+    expect(out.map((c) => c.pageLiked)).toEqual([true, false, false]);
+  });
+});
