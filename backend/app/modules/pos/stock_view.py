@@ -56,6 +56,9 @@ VariantStockSetting = table(  # noqa: N816
 
 # A scan code a person would print on a label: prefer a retail code over an internal token.
 _BARCODE_PRIORITY = ("ean", "gtin", "upc", "barcode")
+# These name the item to the tax authority (Egypt's e-receipt); they are on no label and nobody
+# scans them, so they must never be passed off as the item's barcode.
+_NOT_A_SCAN_CODE = frozenset({"egs", "gs1"})
 
 
 class StockViewService:
@@ -214,6 +217,8 @@ class StockViewService:
         ).all()
         best: dict = {}
         for variant_id, kind, value in found:
+            if kind in _NOT_A_SCAN_CODE:
+                continue
             rank = _BARCODE_PRIORITY.index(kind) if kind in _BARCODE_PRIORITY else 99
             if variant_id not in best or rank < best[variant_id][0]:
                 best[variant_id] = (rank, value)

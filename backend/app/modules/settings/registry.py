@@ -196,22 +196,22 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.return_reasons",  # pos/service.py::_clean_return_reason
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
-        "einvoice.eta_enabled",  # einvoice/pos_adapter.py::eta_settings
-        "einvoice.prices_include_vat",  # einvoice/pos_adapter.py::eta_settings
-        "einvoice.default_payment_method",  # einvoice/pos_adapter.py::eta_settings
-        "einvoice.vat_category",  # einvoice/pos_adapter.py::eta_settings
-        "einvoice.unit_code",  # einvoice/pos_adapter.py::eta_settings
-        "einvoice.delivery_mode",  # einvoice/pos_adapter.py::eta_settings
+        "einvoice.eta_enabled",  # pos/eta_adapter.py::eta_settings
+        "einvoice.prices_include_vat",  # pos/eta_adapter.py::eta_settings
+        "einvoice.default_payment_method",  # pos/eta_adapter.py::eta_settings
+        "einvoice.vat_category",  # pos/eta_adapter.py::eta_settings
+        "einvoice.unit_code",  # pos/eta_adapter.py::eta_settings
+        "einvoice.delivery_mode",  # pos/eta_adapter.py::eta_settings
         "einvoice.warn_hours_before_deadline",  # einvoice/providers/eta/delivery.py
-        "einvoice.branch_code",  # einvoice/pos_adapter.py::eta_branch
-        "einvoice.activity_code",  # einvoice/pos_adapter.py::eta_branch
-        "einvoice.branch_governate",  # einvoice/pos_adapter.py::eta_branch
-        "einvoice.branch_region_city",  # einvoice/pos_adapter.py::eta_branch
-        "einvoice.branch_street",  # einvoice/pos_adapter.py::eta_branch
-        "einvoice.branch_building_number",  # einvoice/pos_adapter.py::eta_branch
-        "business.legal_name",  # einvoice/pos_adapter.py::_seller
-        "business.trade_name",  # einvoice/pos_adapter.py::_seller
-        "business.tax_id",  # einvoice/pos_adapter.py::_seller
+        "einvoice.branch_code",  # pos/eta_adapter.py::eta_branch
+        "einvoice.activity_code",  # pos/eta_adapter.py::eta_branch
+        "einvoice.branch_governate",  # pos/eta_adapter.py::eta_branch
+        "einvoice.branch_region_city",  # pos/eta_adapter.py::eta_branch
+        "einvoice.branch_street",  # pos/eta_adapter.py::eta_branch
+        "einvoice.branch_building_number",  # pos/eta_adapter.py::eta_branch
+        "business.legal_name",  # pos/eta_adapter.py::_seller
+        "business.trade_name",  # pos/eta_adapter.py::_seller
+        "business.tax_id",  # pos/eta_adapter.py::_seller
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
     }

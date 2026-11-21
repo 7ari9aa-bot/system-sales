@@ -253,7 +253,16 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # pos/service.py::_resolve_customer (pos.require_customer, the shop-wide default under a till's
 # own switch) and inventory/services/replenishment.py::set_policy
 # (inventory.safety_stock_default, used when a policy states no buffer of its own).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 244
+# 244 -> 262 on 2026-11-20 (the ETA e-receipt layer, branch feat/eta-ereceipt-layer; to be
+# confirmed in review): +18 deliberate edges, all in endorsed directions and NO new cycle
+# (verified: SCCs unchanged):
+# the cashier -> e-invoice hook is pos/eta_adapter.py (the till is the caller, so it lives with
+# the till and einvoice never imports pos), which reads einvoice (the provider, models, tax codes
+# x8), settings.service (the merchant's e-receipt choices x3), billing's VAT table, the catalog's
+# registered item codes and the order lines; einvoice -> settings/notifications/identity for the
+# merchant's warning window, the owner's bell and the callback key lookup; plus the shared tables
+# those read. Reading the till's own tables from einvoice (einvoice -> pos) was REMOVED.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 262
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 573,
-    "sha256": "7b5be324716548f80b6d902c48a74d8791a2a27028b30120301015628823f86b",
-    "typed_operations": 320
+    "operations": 575,
+    "sha256": "bc6937a671adf9fcf2e4e99bc59e1369b9c414d5445562befab8a72003c6ed8e",
+    "typed_operations": 322
   },
   "spec": {
     "components": {
@@ -221,7 +221,7 @@
           "description": "§179: one closed-vocabulary scan code on one sellable unit.",
           "properties": {
             "identifier_type": {
-              "pattern": "^(gtin|ean|upc|barcode|qr_token|external)$",
+              "pattern": "^(gtin|ean|upc|barcode|qr_token|external|egs|gs1)$",
               "title": "Identifier Type",
               "type": "string"
             },
@@ -40511,6 +40511,52 @@
           "summary": "Reconcile Effect",
           "tags": [
             "effects"
+          ]
+        }
+      },
+      "/api/v1/einvoice/eta/notifications/general": {
+        "put": {
+          "operationId": "general_notification_api_v1_einvoice_eta_notifications_general_put",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response General Notification Api V1 Einvoice Eta Notifications General Put",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "General Notification",
+          "tags": [
+            "einvoice"
+          ]
+        }
+      },
+      "/api/v1/einvoice/eta/notifications/receipts": {
+        "put": {
+          "operationId": "receipt_notification_api_v1_einvoice_eta_notifications_receipts_put",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Receipt Notification Api V1 Einvoice Eta Notifications Receipts Put",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Receipt Notification",
+          "tags": [
+            "einvoice"
           ]
         }
       },

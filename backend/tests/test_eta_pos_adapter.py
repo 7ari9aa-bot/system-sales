@@ -16,8 +16,8 @@ import sqlalchemy as sa
 import app.core.model_registry  # noqa: F401
 from app.core.errors import ValidationError
 from app.modules.catalog.service import CatalogService
-from app.modules.einvoice.pos_adapter import NotReady, build_context, eta_settings, split_line
 from app.modules.einvoice.providers.eta.calc import q5
+from app.modules.pos.eta_adapter import NotReady, build_context, eta_settings, split_line
 from app.modules.pos.models import PosReceipt
 from app.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService

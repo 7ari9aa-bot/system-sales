@@ -1453,7 +1453,7 @@ class PosService(PosReceiptReads):
         and a missing tax number or item code must not stop them leaving (see
         ``issue_for_receipt``). The register's code names the e-receipt till.
         """
-        from app.modules.einvoice.pos_adapter import issue_for_receipt
+        from app.modules.pos.eta_adapter import issue_for_receipt
 
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
         await issue_for_receipt(session, tenant_id, receipt, register_code=register.code)

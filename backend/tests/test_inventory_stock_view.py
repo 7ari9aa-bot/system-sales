@@ -254,6 +254,22 @@ async def test_filtering_by_status_and_search_term(db, tenant_ctx):
         await StockViewService.list_stock(db, tenant_ctx.tenant_id, status="broken")
 
 
+async def test_an_authority_item_code_is_never_shown_as_the_items_barcode(db, tenant_ctx):
+    """``egs``/``gs1`` name the item TO THE TAX AUTHORITY. They are on no label, so the stock list
+    shows a real scan code when there is one, and nothing when there is only an authority code."""
+    _p, with_both, _w = await _variant(db, tenant_ctx, stock=5)
+    _p, only_authority, _w = await _variant(db, tenant_ctx, stock=5)
+    tid = tenant_ctx.tenant_id
+    await CatalogService.add_identifier(db, tid, with_both.id, "egs", "EG-674859545-1")
+    await CatalogService.add_identifier(db, tid, with_both.id, "ean", "5012345678900")
+    await CatalogService.add_identifier(db, tid, only_authority.id, "gs1", "6221234567890")
+    await CatalogService.add_identifier(db, tid, only_authority.id, "egs", "EG-674859545-2")
+
+    shown = {r["variant_id"]: r["barcode"] for r in await StockViewService.list_stock(db, tid)}
+    assert shown[str(with_both.id)] == "5012345678900"
+    assert shown[str(only_authority.id)] is None
+
+
 def _gate_codes(path: str, method: str) -> set[str]:
     """The permission codes a LIVE route is wired to (the gate sits in Depends, not in the body)."""
     from app.modules.identity.deps import require_permission

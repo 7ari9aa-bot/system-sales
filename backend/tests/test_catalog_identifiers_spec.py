@@ -8,8 +8,10 @@ matters even with no database present:
 1. The routes are actually mounted — a resolver nobody can reach is the CC1
    gap in a different costume.
 2. The type vocabulary is closed (§179): {gtin, ean, upc, barcode, qr_token,
-   external}. An open string would let one importer invent "EAN13" and another
-   "ean-13" and split the same barcode across two rows.
+   external, egs, gs1}. An open string would let one importer invent "EAN13" and
+   another "ean-13" and split the same barcode across two rows. ``egs`` and ``gs1`` are the
+   two item-code systems of Egypt's e-receipt authority: they identify an item TO THE
+   AUTHORITY and are never scanned, so a barcode lookup must not match them.
 3. The resolver is registered as a job-handler-style single point: POS (§189)
    is gated on resolving through it, not through its own query.
 """
@@ -44,4 +46,6 @@ def test_identifier_type_is_a_closed_vocabulary() -> None:
         "barcode",
         "qr_token",
         "external",
+        "egs",
+        "gs1",
     }
