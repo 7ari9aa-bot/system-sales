@@ -30,6 +30,7 @@ const MESSAGES = {
     "Your account uses two-step verification. Sign in with your email and password",
   ],
   google_account_unavailable: ["هذا الحساب غير متاح لتسجيل الدخول حالياً", "This account cannot sign in right now"],
+  google_failed: ["حصلت مشكلة في تسجيل الدخول بجوجل، جرّب مرة أخرى بعد قليل", "Something went wrong signing in with Google, please try again shortly"],
 };
 
 /** The readable message for a ?error=google_* code, or "" when it is not ours. */
