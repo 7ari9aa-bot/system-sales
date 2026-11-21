@@ -15,6 +15,7 @@ import UsersSettings from "@/cashier/components/settings/UsersSettings";
 import BackupTab from "@/cashier/components/settings/BackupTab";
 import ShopPolicySettings from "@/cashier/components/settings/ShopPolicySettings";
 import ReceiptTracking from "@/cashier/components/settings/ReceiptTracking";
+import TaxSettings from "@/cashier/components/settings/TaxSettings";
 
 /** إعدادات الكاشير — البروفايلات والكاشيرات وسماحيات الموظفين.
  *
@@ -568,7 +569,7 @@ function ProfilesAndRegistersTab() {
 const TABS = [
   { value: "shop", label: "بيانات المحل", icon: Store },
   { value: "policy", label: "سياسة المحل", icon: Undo2 },
-  { value: "einvoice", label: "الإيصال الإلكتروني", icon: FileCheck2 },
+  { value: "einvoice", label: "الضرائب والإيصال الإلكتروني", icon: FileCheck2 },
   { value: "receipts", label: "متابعة الإيصالات", icon: ScrollText },
   { value: "print", label: "الطباعة والباركود", icon: Printer },
   { value: "lists", label: "الفئات", icon: Tags },
@@ -598,13 +599,7 @@ export default function PosSettings() {
         </TabsList>
         <TabsContent value="shop" className="mt-4"><ShopProfileForm /></TabsContent>
         <TabsContent value="policy" className="mt-4"><ShopPolicySettings /></TabsContent>
-        <TabsContent value="einvoice" className="mt-4">
-          <ShopPolicySettings
-            domain={["business", "einvoice"]}
-            title="الإيصال الإلكتروني (مصلحة الضرائب)"
-            description="اسم محلك ورقمه الضريبي وبيانات فرعك كما هي مسجلة لدى المصلحة. كل قيمة هنا تقررها أنت، ولا يُرسل أي إيصال قبل تفعيله."
-          />
-        </TabsContent>
+        <TabsContent value="einvoice" className="mt-4"><TaxSettings /></TabsContent>
         <TabsContent value="receipts" className="mt-4"><ReceiptTracking /></TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
         <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>

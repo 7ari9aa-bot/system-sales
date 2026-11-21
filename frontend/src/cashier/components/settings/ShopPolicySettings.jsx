@@ -22,7 +22,7 @@ import {
 // يقرأه النظام فعلًا (enforced)، وأي إعداد جديد يُربط بالخادم يظهر وحده. كل حقل يحمل عنوانه ووصفه من المحرك.
 // القيم هنا على مستوى المحل كله. الحفظ يرسل ما تغيّر فقط.
 
-function useShopPolicy(domain) {
+export function useShopPolicy(domain) {
   const domains = Array.isArray(domain) ? domain : [domain];
   return useQuery({
     queryKey: ["settings", "shop-policy", ...domains],
