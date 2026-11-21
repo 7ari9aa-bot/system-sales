@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { useShiftSales } from "@/cashier/api/usePosSale";
 import { totalsOf } from "@/cashier/api/salesLog";
-import { fmtDateTime, fmtInt, fmtMoney, fmtMoneyOrDash } from "@/cashier/lib/format";
+import { fmtDateTime, fmtInt, fmtMoney, fmtMoneyDeduction, fmtMoneyOrDash } from "@/cashier/lib/format";
 
 /** The day's figures from the shift row and its invoices. Pure, so it is tested without React. */
 export function dayReportFigures(shift, sales = []) {
@@ -80,7 +80,7 @@ export default function DayReport({ open, onOpenChange, shift }) {
           <Row label="عدد الفواتير" value={f.invoices == null ? "—" : fmtInt(f.invoices)} />
           <Row label="عدد القطع المباعة" value={f.pieces == null ? "—" : fmtInt(f.pieces)} />
           <Row label="إجمالي المبيعات" value={fmtMoneyOrDash(f.total)} strong />
-          <Row label={`المرتجعات (${fmtInt(f.returnDocs.length)})`} value={f.returns == null ? "—" : `−${fmtMoney(f.returns)}`} />
+          <Row label={`المرتجعات (${fmtInt(f.returnDocs.length)})`} value={f.returns == null ? "—" : fmtMoneyDeduction(f.returns)} />
           <Row label="رصيد نهاية اليوم" value={fmtMoneyOrDash(f.closing)} strong />
         </div>
 

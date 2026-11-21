@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
-import { fmtDateTime, fmtInt, fmtMoney, fmtMoneyOrDash } from "@/cashier/lib/format";
+import { fmtDateTime, fmtInt, fmtMoney, fmtMoneyDeduction, fmtMoneyOrDash } from "@/cashier/lib/format";
 
 function Row({ label, value, tone }) {
   return (
@@ -36,7 +36,7 @@ export default function ShiftDetailsDialog({ open, onOpenChange, shift }) {
         <div className="rounded-xl border border-border p-3">
           <Row label="رصيد بداية اليوم" value={fmtMoney(shift.openingCash)} />
           <Row label="إجمالي الفواتير" value={fmtMoneyOrDash(shift.salesTotal)} />
-          <Row label="إجمالي المرتجعات" value={shift.returnsTotal == null ? "—" : `−${fmtMoney(shift.returnsTotal)}`} tone="text-rose-600" />
+          <Row label="إجمالي المرتجعات" value={shift.returnsTotal == null ? "—" : fmtMoneyDeduction(shift.returnsTotal)} tone="text-rose-600" />
           <Row label="رصيد نهاية اليوم" value={fmtMoneyOrDash(shift.closingBalance)} tone="font-bold" />
         </div>
 

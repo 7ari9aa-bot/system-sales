@@ -2,7 +2,7 @@ import { Eye, FileText, LockKeyhole } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { BTN, BTN_PRIMARY, CELL_ACCENT, CELL_EMPTY, CELL_MAIN, CELL_NUM, CELL_SUB, TD, TH } from "@/cashier/components/ui-kit/ledgerStyles";
-import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
+import { fmtDate, fmtMoney, fmtMoneyDeduction, fmtMoneyOrDash, fmtTime } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 
 // لون الفرق: مطابق، زيادة، أو عجز.
@@ -49,7 +49,7 @@ export default function shiftColumns({ onClose, onDetails, onReport }) {
       headerClassName: TH,
       className: TD,
       align: "end",
-      render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{r.returnsTotal == null ? "—" : `−${fmtMoney(r.returnsTotal)}`}</span>,
+      render: (r) => <span className={`${CELL_NUM} text-rose-600`}>{r.returnsTotal == null ? "—" : fmtMoneyDeduction(r.returnsTotal)}</span>,
     },
     { key: "closingBalance", header: "رصيد نهاية اليوم", headerClassName: TH, className: TD, align: "end", render: (r) => <span className={CELL_ACCENT}>{fmtMoneyOrDash(r.closingBalance)}</span> },
     {

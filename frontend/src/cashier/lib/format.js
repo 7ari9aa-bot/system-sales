@@ -30,6 +30,13 @@ export function fmtMoney(value) {
   return `${groupedNumber(n, 2)} ${CURRENCY}`;
 }
 
+/** An amount taken out of the drawer (returns, a deduction): a minus sign only when it is not nothing.
+ * A return of -0.004 rounds to 0.00, and a bare `−${fmtMoney(...)}` wrote "−0.00" for it. */
+export function fmtMoneyDeduction(value) {
+  const body = fmtMoney(Math.abs(Number(value) || 0));
+  return body.startsWith("0.00 ") ? body : `−${body}`;
+}
+
 /** A figure that may be unknown (null/undefined): "—" instead of a zero that looks like a real amount. */
 export function fmtMoneyOrDash(value) {
   return value === null || value === undefined ? "—" : fmtMoney(value);
