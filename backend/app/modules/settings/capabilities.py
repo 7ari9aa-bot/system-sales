@@ -34,6 +34,11 @@ class Capability:
     label_en: str
     description_ar: str
     description_en: str
+    # Verticals where this capability is MANDATORY: a rule the shop cannot opt out of (a legal duty
+    # of that trade), as opposed to a convenience the owner switches on and off. Empty for every
+    # capability today, so nothing is forced anywhere yet; the mechanism is here so the first legal
+    # rule is a row of data and not a new code path.
+    mandatory_in: tuple[str, ...] = ()
 
 
 CAPABILITIES: dict[str, Capability] = {
@@ -113,6 +118,15 @@ def defaults_for(vertical: str | None) -> dict[str, bool]:
     return {name: v in cap.on_for for name, cap in CAPABILITIES.items()}
 
 
+def is_mandatory(name: str, vertical: str | None) -> bool:
+    """Is this capability forced on for the vertical, whatever the owner chose?"""
+    cap = CAPABILITIES.get(name)
+    if cap is None:
+        return False
+    v = vertical if vertical in VERTICALS else DEFAULT_VERTICAL
+    return v in cap.mandatory_in
+
+
 def capability_enabled(
     name: str,
     *,
@@ -122,10 +136,13 @@ def capability_enabled(
     """Is this capability on for the shop? The owner's switch wins; otherwise the vertical decides.
 
     Only a real boolean counts as the owner's choice, so a stray string or number can never switch
-    a capability on. A name nobody defined is off.
+    a capability on. A name nobody defined is off. A capability that is mandatory for the vertical
+    is on and the owner's switch cannot turn it off.
     """
     if name not in CAPABILITIES:
         return False
+    if is_mandatory(name, vertical):
+        return True
     chosen = (overrides or {}).get(name)
     if isinstance(chosen, bool):
         return chosen
@@ -178,4 +195,6 @@ async def shop_capabilities(
         "capabilities": {
             n: capability_enabled(n, vertical=vertical, overrides=chosen) for n in CAPABILITIES
         },
+        # The ones the owner cannot switch off here, so a screen can lock the switch.
+        "mandatory": sorted(n for n in CAPABILITIES if is_mandatory(n, vertical)),
     }
