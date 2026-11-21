@@ -130,3 +130,36 @@ describe("the pressed state follows Meta until the person presses it", () => {
     expect(likedNow({ pageLiked: false }, true)).toBe(true);
   });
 });
+
+// Facebook's own comment (read from its page): "Like" (or "Remove like" once pressed), then "Reply",
+// then the like count as a plain number in that same row, zero included. No floating bubble.
+describe("the like count on a comment", () => {
+  it("is a number in the action row, even at zero, like Facebook", () => {
+    const row = actionRowOf(html({ likes: 0 }));
+    expect(row).toMatch(/data-testid="comment-like-count"[\s\S]*?<\/span>0<\/span>/);
+  });
+  it("shows the real count there, and no bubble floats over the comment", () => {
+    const out = html({ likes: 2 });
+    expect(actionRowOf(out)).toMatch(/data-testid="comment-like-count"[\s\S]*?<\/span>2<\/span>/);
+    expect(bubbleOf(out)).not.toContain("absolute -bottom-2.5");
+  });
+  it("comes after Reply in the row", () => {
+    const row = actionRowOf(html({ likes: 2 }, { actions: {} }));
+    expect(row.indexOf(">Reply<")).toBeGreaterThan(-1);
+    expect(row.indexOf("comment-like-count")).toBeGreaterThan(row.indexOf(">Reply<"));
+  });
+});
+
+describe("the like button once the Page has liked the comment", () => {
+  it("reads 'Remove like', as Facebook words it", () => {
+    const out = html({ likes: 1, pageLiked: true, isPage: true });
+    expect(out).toContain(">Remove like<");
+  });
+  it("reads 'إزالة أعجبني' in Arabic", () => {
+    const out = html({ likes: 1, pageLiked: true, isPage: true }, { lang: "ar" });
+    expect(out).toContain(">إزالة أعجبني<");
+  });
+  it("reads 'Like' before the Page has liked it", () => {
+    expect(html({ likes: 0, pageLiked: false, isPage: true })).toContain(">Like<");
+  });
+});
