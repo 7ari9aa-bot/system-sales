@@ -23,6 +23,7 @@ export function productToForm(product, identifiersByVariant = {}) {
     description: product.description ?? "",
     categoryId: product.category_id ?? "",
     brandId: product.brand_id ?? "",
+    season: product.season ?? "",
     sku: variants[0]?.sku ?? "",
     colors: uniq(variants.map((v) => v.color)),
     sizes: uniq(variants.map((v) => v.size)),
@@ -41,6 +42,7 @@ export function planProductEdit(before, after) {
   if (text(after.description) !== text(before.description)) product.description = text(after.description) || null;
   if ((after.categoryId || "") !== (before.categoryId || "")) product.category_id = after.categoryId || null;
   if ((after.brandId || "") !== (before.brandId || "")) product.brand_id = after.brandId || null;
+  if (text(after.season) !== text(before.season)) product.season = text(after.season) || null;
 
   const byId = new Map(before.variants.map((v) => [v.id, v]));
   const variantPatches = [];

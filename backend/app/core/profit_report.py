@@ -76,7 +76,12 @@ class ProfitReportService:
         start: date | datetime,
         end: date | datetime,
         channel: str | None = None,
+        season: str | None = None,
+        brand_id: UUID | None = None,
     ) -> dict[str, Any]:
+        """One row per model, colour and size. ``season`` and ``brand_id`` narrow it to one season
+        or one brand (a season is the owner's own label, matched exactly); left out, every sale
+        is in, exactly as before."""
         lo, hi = _bounds(start, end)
 
         order_ok = [
@@ -170,12 +175,19 @@ class ProfitReportService:
             ),
             else_=0,
         )
+        product_ok = []
+        if season is not None:
+            product_ok.append(Product.season == season.strip())
+        if brand_id is not None:
+            product_ok.append(Product.brand_id == brand_id)
         # Discount already inside the line nets (a per-line percentage) is not taken off twice:
         # only the invoice-level part, the discount beyond what the line nets already reflect.
         stmt = (
             select(
                 ProductVariant.id.label("variant_id"),
                 Product.title.label("model"),
+                Product.season.label("season"),
+                Product.brand_id.label("brand_id"),
                 ProductVariant.option_values[SIZE_AXIS].astext.label("size"),
                 ProductVariant.option_values[COLOR_AXIS].astext.label("colour"),
                 func.sum(lines.c.units).label("units_sold"),
@@ -211,9 +223,12 @@ class ProfitReportService:
                     shelved.c.variant_id == lines.c.variant_id,
                 ),
             )
+            .where(*product_ok)
             .group_by(
                 ProductVariant.id,
                 Product.title,
+                Product.season,
+                Product.brand_id,
                 ProductVariant.option_values[SIZE_AXIS].astext,
                 ProductVariant.option_values[COLOR_AXIS].astext,
             )
@@ -240,6 +255,8 @@ class ProfitReportService:
                 {
                     "variant_id": str(r.variant_id),
                     "model": r.model,
+                    "season": r.season,
+                    "brand_id": str(r.brand_id) if r.brand_id else None,
                     "size": r.size,
                     "colour": r.colour,
                     "units_sold": units,
@@ -364,13 +381,20 @@ async def profit_summary(
 
 @router.get("/by-variant")
 async def profit_by_variant(
-    ctx: ProfitCtx, start: str, end: str, channel: str | None = None
+    ctx: ProfitCtx,
+    start: str,
+    end: str,
+    channel: str | None = None,
+    season: str | None = None,
+    brand_id: UUID | None = None,
 ) -> dict[str, Any]:
-    """One row per model, colour and size, most profitable first."""
+    """One row per model, colour and size, most profitable first; optionally one season or brand."""
     return await ProfitReportService.by_variant(
         ctx.session,
         ctx.tenant_id,
         start=_parse(start, "start"),
         end=_parse(end, "end"),
         channel=channel,
+        season=season,
+        brand_id=brand_id,
     )

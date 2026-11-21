@@ -34,7 +34,7 @@ export default function ProductEditor({ product }) {
   async function handleSubmit(values) {
     try {
       if (!isEdit) {
-        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, variants: values.variants });
+        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, variants: values.variants });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
         if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع");
         setFormKey((k) => k + 1);

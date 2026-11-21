@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 608,
-    "sha256": "5fcd16a5044c51da5c8e1ae306b68719219b44408350b3c8c8f0f0bc5a26a357",
+    "sha256": "1639b67b1003c30bf7c4d7570fda60eb58bdb8b1d5a4c258cf0ca4f6f8e1f7cd",
     "typed_operations": 342
   },
   "spec": {
@@ -79739,7 +79739,7 @@
       },
       "/api/v1/reports/profit/by-variant": {
         "get": {
-          "description": "One row per model, colour and size, most profitable first.",
+          "description": "One row per model, colour and size, most profitable first; optionally one season or brand.",
           "operationId": "profit_by_variant_api_v1_reports_profit_by_variant_get",
           "parameters": [
             {
@@ -79774,6 +79774,39 @@
                   }
                 ],
                 "title": "Channel"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "brand_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand Id"
               }
             },
             {

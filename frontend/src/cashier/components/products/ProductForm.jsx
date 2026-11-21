@@ -24,6 +24,7 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
     name: product?.name ?? "",
     categoryId: product?.categoryId ?? "",
     brandId: product?.brandId ?? "",
+    season: product?.season ?? "",
     description: product?.description ?? "",
     sellPrice: product?.sellPrice ?? "",
     threshold: product?.threshold ?? "",

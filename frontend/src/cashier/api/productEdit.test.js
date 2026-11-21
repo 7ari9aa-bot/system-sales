@@ -44,6 +44,24 @@ describe("planProductEdit sends only what changed", () => {
     const b = { ...structuredClone(before), brandId: "b1" };
     expect(planProductEdit(b, { ...structuredClone(b), brandId: "" }).product).toEqual({ brand_id: null });
   });
+  it("reads the season of a product, and an unseasonal one as empty text", () => {
+    expect(productToForm({ ...backend, season: "SS26" }).season).toBe("SS26");
+    expect(productToForm({ ...backend, season: null }).season).toBe("");
+    expect(productToForm(backend).season).toBe("");
+  });
+  it("changing the season sends only the season", () => {
+    const b = productToForm({ ...backend, season: "SS26" });
+    expect(planProductEdit(b, { ...structuredClone(b), season: "AW26" }).product).toEqual({ season: "AW26" });
+  });
+  it("clearing the season sends null, not an empty string", () => {
+    const b = productToForm({ ...backend, season: "SS26" });
+    expect(planProductEdit(b, { ...structuredClone(b), season: "  " }).product).toEqual({ season: null });
+  });
+  it("an untouched season sends nothing, so a product edited for another reason keeps it", () => {
+    const b = productToForm({ ...backend, season: "SS26" });
+    const plan = planProductEdit(b, { ...structuredClone(b), name: "اسم جديد" });
+    expect(plan.product).toEqual({ title: "اسم جديد" });
+  });
   it("a price change patches only that variant", () => {
     const after = structuredClone(before);
     after.variants[1].sellPrice = "500";

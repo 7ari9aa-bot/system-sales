@@ -55,6 +55,16 @@ export default function ProductBasicsSection({ form, onPatch, sizePreset, onSize
           />
         </FormField>
 
+        <FormField label="الموسم">
+          <Input
+            value={form.season ?? ""}
+            onChange={(e) => onPatch({ season: e.target.value })}
+            maxLength={40}
+            placeholder="مثال: صيف 26"
+            className={INPUT}
+          />
+        </FormField>
+
         <FormField label="نظام المقاسات">
           <Select value={resolveSizePreset(options.sizeSets, sizePreset)} onValueChange={onSizePresetChange}>
             <SelectTrigger className={SELECT_TRIGGER}>

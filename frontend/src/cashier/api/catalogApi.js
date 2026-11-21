@@ -193,6 +193,7 @@ export const catalogApi = {
     const classify = {};
     if (input.categoryId) classify.category_id = input.categoryId;
     if (input.brandId) classify.brand_id = input.brandId;
+    if (String(input.season ?? "").trim()) classify.season = String(input.season).trim();
     await step("تفعيل المنتج", () => patch(`/products/${seg(product.id)}`, { ...classify, status: "active" }));
     return { product: { ...product, status: "active" }, variants: out };
   },

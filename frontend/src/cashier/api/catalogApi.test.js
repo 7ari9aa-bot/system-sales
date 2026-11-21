@@ -70,6 +70,16 @@ describe("createProduct builds a SELLABLE product in the right order", () => {
     expect(r.product.status).toBe("active");
   });
 
+  it("a season typed on the form goes with the same final PATCH, trimmed", async () => {
+    await catalogApi.createProduct({ ...good, season: "  صيف 26 " }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ season: "صيف 26", status: "active" });
+  });
+
+  it("no season typed sends none, so a product without one stays without one", async () => {
+    await catalogApi.createProduct({ ...good, season: "   " }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.at(-1).body).toEqual({ status: "active" });
+  });
+
   it("sends the barcode only when present, and stock only when > 0", async () => {
     await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" });
     expect(calls.filter((c) => /identifiers$/.test(c.path))).toHaveLength(1);
