@@ -31,8 +31,18 @@ router = APIRouter(tags=["facebook"])
 _PROVIDER = "facebook"
 
 
+from app.modules.conversations.gateway.facebook_pages import MAX_PHOTOS_PER_POST  # noqa: E402
+
+
 class TextRequest(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
+
+
+class ReplyRequest(BaseModel):
+    """A reply, optionally tagging people who commented on the post (Meta's @mention)."""
+
+    text: str = Field(min_length=1, max_length=8000)
+    mention: list[str] = Field(default_factory=list, max_length=5)
 
 
 class HideRequest(BaseModel):
@@ -44,7 +54,7 @@ class LikeRequest(BaseModel):
 
 
 class PublishRequest(BaseModel):
-    """Text, a link, or one picture; `schedule_at` schedules it.
+    """Text, a link, or pictures; `schedule_at` schedules it.
 
     The picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public
     https link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.
@@ -54,6 +64,11 @@ class PublishRequest(BaseModel):
     link: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     photo_url: str | None = Field(default=None, max_length=2000, pattern=r"^https://")
     picture: str | None = Field(default=None, max_length=(MAX_PICTURE_BYTES * 4) // 3 + 200)
+    pictures: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_PHOTOS_PER_POST,
+        description="Several picture files (base64), posted as one album.",
+    )
     schedule_at: datetime | None = None
 
 
@@ -141,15 +156,26 @@ async def publish_post(
 ):
     if body.picture and body.photo_url:
         raise ValidationError("send a picture file or a picture link, not both")
-    if body.picture and body.link:
+    if (body.picture or body.pictures) and body.link:
         raise ValidationError("a post carries a picture or a link, not both")
+    if body.pictures and (body.picture or body.photo_url):
+        raise ValidationError("send one picture or a list of pictures, not both")
     creds = await _credentials(ctx, send=True)
-    if body.picture:
+    if len(body.pictures) > 1:
+        post_id = await FacebookService.publish_pictures(
+            ctx.session,
+            ctx.tenant_id,
+            creds,
+            pictures=[_decode_picture(p) for p in body.pictures],
+            message=body.message,
+            schedule_at=body.schedule_at,
+        )
+    elif body.pictures or body.picture:
         post_id = await FacebookService.publish_picture(
             ctx.session,
             ctx.tenant_id,
             creds,
-            picture=_decode_picture(body.picture),
+            picture=_decode_picture((body.pictures or [body.picture])[0]),
             message=body.message,
             schedule_at=body.schedule_at,
         )
@@ -312,19 +338,25 @@ async def list_post_comments(
     if refresh:
         await FacebookService.sync_comments(ctx.session, ctx.tenant_id, creds, post_id)
     rows = await FacebookService.list_comments(ctx.session, ctx.tenant_id, post_id)
-    return {"items": [_comment_out(c) for c in rows]}
+    return {"items": [{**_comment_out(c), "author_ref": c.author_ref} for c in rows]}
 
 
 @router.post("/facebook/objects/{object_id}/comments", status_code=201)
 async def comment_or_reply(
     object_id: str,
-    body: TextRequest,
+    body: ReplyRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
     """A comment on a post, or a reply when `object_id` is a comment."""
     creds = await _credentials(ctx, send=True)
     row = await FacebookService.reply(
-        ctx.session, ctx.tenant_id, creds, object_id, body.text, user_id=ctx.user.id
+        ctx.session,
+        ctx.tenant_id,
+        creds,
+        object_id,
+        body.text,
+        user_id=ctx.user.id,
+        mention=body.mention,
     )
     return _comment_out(row)
 
@@ -339,6 +371,20 @@ async def like_object(
     creds = await _credentials(ctx, send=True)
     await facebook_pages.set_like(creds, object_id, body.liked)
     return {"id": object_id, "liked": body.liked}
+
+
+@router.get("/facebook/objects/{object_id}/reactions")
+async def object_reactions(
+    object_id: str,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """A post's or comment's reactions by kind (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), counts only.
+
+    A Page can read every kind but write only a like, so this is for display.
+    """
+    creds = await _credentials(ctx, send=False)
+    kinds = await facebook_pages.get_reaction_breakdown(creds, object_id)
+    return {"id": object_id, "total": sum(kinds.values()), "kinds": kinds}
 
 
 @router.post("/facebook/comments/{comment_id}/hide")

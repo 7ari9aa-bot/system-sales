@@ -75,6 +75,24 @@ def check_schedule(when: datetime | int, *, now: float | None = None) -> int:
     return stamp
 
 
+def mention_tag(psids: list[str]) -> str:
+    """Meta's `@[PSID]` tag (`@[1,2]` for several) that notifies the people it names.
+
+    The ids come from comments already on the Page, never from typed text, so anything that is not a
+    plain number is refused before a request is made. One person is tagged once.
+    """
+    seen: list[str] = []
+    for raw in psids or []:
+        value = str(raw).strip()
+        if not value.isdigit():
+            raise ValueError("a mention needs the numeric id of someone who commented on the Page")
+        if value not in seen:
+            seen.append(value)
+    if not seen:
+        raise ValueError("a mention needs at least one person to tag")
+    return "@[" + ",".join(seen) + "]"
+
+
 def check_metrics(metrics: list[str]) -> list[str]:
     bad = [m for m in metrics if m in REMOVED_METRICS]
     if bad:
@@ -94,6 +112,13 @@ def page_token_and_id(credentials: ProviderCredentials) -> tuple[str, str]:
     token = credentials.get("page_access_token") or credentials.get("api_key") or ""
     page_id = credentials.get("account_id") or credentials.get("page_id") or ""
     return str(token), str(page_id)
+
+
+#: Pictures in one Page post. Meta takes more, but a longer album fails often and half-uploads.
+MAX_PHOTOS_PER_POST = 10
+
+#: The reaction kinds Meta counts, in the order Facebook shows them.
+REACTION_KINDS = ("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY")
 
 
 class FacebookPagesClient:
@@ -190,18 +215,33 @@ class FacebookPagesClient:
         message: str | None = None,
         link: str | None = None,
         photo_url: str | None = None,
+        photo_urls: list[str] | None = None,
         schedule_at: datetime | int | None = None,
         _client=None,
     ) -> str:
-        """Publish now, or schedule. A photo goes to /photos, everything else to /feed."""
+        """Publish now, or schedule. One photo goes to /photos, several to /feed as attached media,
+        everything else to /feed."""
         message = (message or "").strip() or None
-        if not (message or link or photo_url):
+        photos = [u for u in (photo_urls or []) if u]
+        if photo_url and photos:
+            raise ValueError(
+                "a post carries a picture or a link, not both: send one form of picture"
+            )
+        if len(photos) > MAX_PHOTOS_PER_POST:
+            raise ValueError(f"a post carries at most {MAX_PHOTOS_PER_POST} pictures")
+        if len(photos) == 1:
+            photo_url, photos = photos[0], []
+        if not (message or link or photo_url or photos):
             raise ValueError("a post needs text, a link or a picture")
         if message and len(message) > MAX_POST_CHARS:
             raise ValueError(f"a post is at most {MAX_POST_CHARS:,} characters")
-        if photo_url and link:
+        if (photo_url or photos) and link:
             raise ValueError("a post carries a picture or a link, not both")
         _, page_id = self._creds(credentials)
+        if photos:
+            return await self._publish_album(
+                credentials, page_id, message, photos, schedule_at, _client
+            )
         data: dict[str, Any] = {}
         if message:
             data["caption" if photo_url else "message"] = message
@@ -216,6 +256,38 @@ class FacebookPagesClient:
         body = await self._graph(
             "POST", f"{page_id}/{edge}", credentials, data=data, _client=_client
         )
+        return str(body.get("post_id") or body.get("id"))
+
+    async def _publish_album(
+        self, credentials, page_id: str, message, photos: list[str], schedule_at, _client
+    ) -> str:
+        """Several pictures: upload each unpublished, then one /feed post lists their ids.
+
+        Meta has no single call for it. The time to publish belongs to the post, not to the photos,
+        so a scheduled album schedules the feed post and leaves the uploads unpublished.
+        """
+        when = check_schedule(schedule_at) if schedule_at is not None else None
+        ids: list[str] = []
+        for url in photos:
+            up = await self._graph(
+                "POST",
+                f"{page_id}/photos",
+                credentials,
+                data={"url": url, "published": "false"},
+                _client=_client,
+            )
+            if not up.get("id"):
+                raise ValueError("Facebook did not accept one of the pictures")
+            ids.append(str(up["id"]))
+        data: dict[str, Any] = {
+            f"attached_media[{i}]": _json({"media_fbid": pid}) for i, pid in enumerate(ids)
+        }
+        if message:
+            data["message"] = message
+        if when is not None:
+            data["published"] = "false"
+            data["scheduled_publish_time"] = str(when)
+        body = await self._graph("POST", f"{page_id}/feed", credentials, data=data, _client=_client)
         return str(body.get("post_id") or body.get("id"))
 
     async def update_post(
@@ -255,12 +327,24 @@ class FacebookPagesClient:
         return self._page(body)
 
     async def comment(
-        self, credentials: ProviderCredentials, object_id: str, text: str, _client=None
+        self,
+        credentials: ProviderCredentials,
+        object_id: str,
+        text: str,
+        *,
+        mention: list[str] | None = None,
+        _client=None,
     ) -> str:
-        """A comment on a post, or a reply when `object_id` is a comment."""
+        """A comment on a post, or a reply when `object_id` is a comment.
+
+        `mention` tags people who commented on the Page (Pages API: Comments and @mentions); Meta
+        notifies them. The tag leads the text, as Facebook's own reply box puts it.
+        """
         text = text.strip()
         if not text:
             raise ValueError("a comment cannot be empty")
+        if mention:
+            text = f"{mention_tag(mention)} {text}"
         body = await self._graph(
             "POST", f"{object_id}/comments", credentials, data={"message": text}, _client=_client
         )
@@ -281,6 +365,27 @@ class FacebookPagesClient:
         self, credentials: ProviderCredentials, comment_id: str, _client=None
     ) -> None:
         await self._graph("DELETE", comment_id, credentials, _client=_client)
+
+    async def get_reaction_breakdown(
+        self, credentials: ProviderCredentials, object_id: str, _client=None
+    ) -> dict[str, int]:
+        """A post's (or comment's) reactions by kind, in Facebook's order, in ONE request.
+
+        Meta's Object Reactions edge counts one kind per call (`reactions.type(LOVE)`), so each kind
+        is an aliased edge of the same read. Counts only (`limit(0)`), never the people. A Page can
+        read all six kinds but write only a like, so this feeds the display, not a reaction picker.
+        """
+        edges = ",".join(
+            f"reactions.type({kind}).limit(0).summary(true).as({kind.lower()})"
+            for kind in REACTION_KINDS
+        )
+        body = await self._graph(
+            "GET", object_id, credentials, params={"fields": edges}, _client=_client
+        )
+        return {
+            kind: int(((body.get(kind.lower()) or {}).get("summary") or {}).get("total_count") or 0)
+            for kind in REACTION_KINDS
+        }
 
     async def set_like(
         self, credentials: ProviderCredentials, object_id: str, liked: bool, _client=None

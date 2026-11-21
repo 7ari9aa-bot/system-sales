@@ -206,6 +206,33 @@ export function friendlyMetaError(raw, isAr) {
 }
 
 /** Open a centered popup window. */
+/** What FB.login's answer means for the WhatsApp connect.
+ *  Facebook calls back as soon as its window is closed or refused, with no code. That is final, so
+ *  the button must be freed now, like Facebook/Messenger/Instagram do when their window closes, and
+ *  not after the 10 minute signup timeout. A window that stopped on a message from Meta itself
+ *  ("can't onboard customers right now") ends here too, so the reason names the Meta app. */
+export function whatsappLoginOutcome(response, isAr) {
+  const code = response?.authResponse?.code;
+  if (code) return { code };
+  return {
+    error: new Error(isAr
+      ? "لم يكتمل الربط في نافذة فيسبوك. إن توقفت النافذة عند عبارة «ليس بإمكان التطبيق تأهيل العملاء الآن» فهذا إعداد تطبيق ميتا نفسه (التحقق من النشاط التجاري وTech Provider ومراجعة التطبيق) وليس عطلًا هنا، وتفاصيله في docs/META_SETUP.md. وإن ظهرت «App not active» فالتطبيق غير مفعّل. غير ذلك أعد المحاولة."
+      : "The Facebook window closed before the connect finished. If it stopped on \"can't onboard customers right now\", that is the Meta app's own setup (business verification, Tech Provider, App Review), not a fault here; see docs/META_SETUP.md. If it said \"App not active\", the app is switched off. Otherwise try again."),
+  };
+}
+
+/** A line shown under the "Connecting…" banner once WhatsApp has waited long enough that the window is
+ *  probably parked on a message from Meta. Facebook/Messenger/Instagram watch their window and free the
+ *  button when it closes; WhatsApp's Facebook window gives no signal while it sits on that message, so
+ *  without this the page just spins. */
+export const CONNECTING_HINT_AFTER_MS = 45_000;
+export function connectingHint(elapsedMs, channelId, isAr) {
+  if (channelId !== "whatsapp" || elapsedMs < CONNECTING_HINT_AFTER_MS) return "";
+  return isAr
+    ? "لو توقفت نافذة فيسبوك عند رسالة من ميتا مثل «ليس بإمكان التطبيق تأهيل العملاء الآن» فهذا إعداد تطبيق ميتا (التحقق من النشاط التجاري وTech Provider ومراجعة التطبيق) وليس عطلًا هنا. أغلق النافذة وراجع docs/META_SETUP.md، وانسخ Session ID من أسفلها لدعم ميتا."
+    : "If the Facebook window stopped on a message from Meta such as \"can't onboard customers right now\", that is the Meta app's own setup (business verification, Tech Provider, App Review), not a fault here. Close the window, see docs/META_SETUP.md, and copy the Session ID at its bottom for Meta Support.";
+}
+
 function openCenteredPopup(url, name, w = 600, h = 700) {
   const left = window.screenX + (window.outerWidth - w) / 2;
   const top = window.screenY + (window.outerHeight - h) / 2;
@@ -236,6 +263,13 @@ export default function ChannelsSettings() {
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
   const [metaConnecting, setMetaConnecting] = React.useState("");
+  const [connectingMs, setConnectingMs] = React.useState(0);
+  React.useEffect(() => {
+    if (!metaConnecting) { setConnectingMs(0); return undefined; }
+    const startedAt = Date.now();
+    const tick = window.setInterval(() => setConnectingMs(Date.now() - startedAt), 5000);
+    return () => window.clearInterval(tick);
+  }, [metaConnecting]);
   const [whatsappSdkLoading, setWhatsappSdkLoading] = React.useState(true);
   const [whatsappSdkError, setWhatsappSdkError] = React.useState("");
   const whatsappSignupRef = React.useRef(null);
@@ -490,9 +524,9 @@ export default function ChannelsSettings() {
         window.addEventListener("message", onMessage);
         fb.login(
           (response) => {
-            const code = response?.authResponse?.code;
-            if (code) resolveCode(code);
-            else rejectCode(new Error(isAr ? "لم يُرجع فيسبوك رمز التفويض. إن ظهرت في نافذة فيسبوك عبارة \"App not active\" فتطبيق ميتا نفسه غير مفعّل، وعلى مالك التطبيق إعادة تفعيله من لوحة مطوّري ميتا (انظر docs/META_SETUP.md). غير ذلك أعد المحاولة." : "Facebook returned no authorization code. If the Facebook window said \"App not active\", the Meta app itself is switched off: its owner must reactivate it in the Meta developer console (see docs/META_SETUP.md). Otherwise try again."));
+            const outcome = whatsappLoginOutcome(response, isAr);
+            if (outcome.code) resolveCode(outcome.code);
+            else rejectCode(outcome.error);
           },
           {
             config_id: configId,
@@ -802,7 +836,8 @@ export default function ChannelsSettings() {
           <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
           <span>{isAr
             ? `جارٍ فتح نافذة ربط ${t(`channel.${metaConnecting}`)}. أكمل خطوات تسجيل الدخول فيها بعد ظهورها؛ ستظهر هنا نتيجة الربط.`
-            : `Opening the ${t(`channel.${metaConnecting}`)} connect window. Complete sign-in there when it appears; the result will show here.`}</span>
+            : `Opening the ${t(`channel.${metaConnecting}`)} connect window. Complete sign-in there when it appears; the result will show here.`}
+            {connectingHint(connectingMs, metaConnecting, isAr) && <span className="mt-1 block text-amber-700" data-testid="connecting-hint">{connectingHint(connectingMs, metaConnecting, isAr)}</span>}</span>
         </div>}
 
         {loading && channels.length === 0 ? (

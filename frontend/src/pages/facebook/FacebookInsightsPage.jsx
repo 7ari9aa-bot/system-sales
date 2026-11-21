@@ -1,7 +1,8 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FB } from "@/components/facebook/fbTheme";
-import { fetchFacebookInsights } from "@/lib/facebookApi";
+import FbSparkline from "@/components/facebook/FbSparkline";
+import { dailySeries, fetchFacebookInsights } from "@/lib/facebookApi";
 import { useFacebookData } from "./useFacebookData";
 
 // Only the metrics Meta still serves (the old reach, impressions and fan metrics were removed).
@@ -18,7 +19,7 @@ export default function FacebookInsightsPage() {
   const q = useQuery({ queryKey: ["facebook-insights"], queryFn: fetchFacebookInsights, enabled: canAct, retry: 0, staleTime: 5 * 60 * 1000 });
   const cards = (q.data || []).map((m) => {
     const values = (m.values || []).map((v) => v.value).filter((v) => typeof v === "number");
-    return { name: m.name, total: values.reduce((a, b) => a + b, 0), last: values.at(-1), days: values.length, has: values.length > 0 };
+    return { name: m.name, series: dailySeries(m), total: values.reduce((a, b) => a + b, 0), last: values.at(-1), days: values.length, has: values.length > 0 };
   });
   const fmt = (n) => Number(n).toLocaleString(ar ? "ar-EG" : "en-GB");
   return (
@@ -35,6 +36,7 @@ export default function FacebookInsightsPage() {
               <p className="text-[13px]" style={{ color: FB.text2 }}>{LABELS[c.name]?.[ar ? "ar" : "en"] || c.name}</p>
               <p className="mt-1 text-[28px] font-bold leading-none">{c.has ? fmt(c.name === "page_follows" ? c.last : c.total) : "—"}</p>
               <p className="mt-1 text-[12px]" style={{ color: FB.text2 }}>{c.has ? (c.name === "page_follows" ? (ar ? "الآن" : "Now") : ar ? `آخر ${c.days} أيام` : `Last ${c.days} days`) : (ar ? "لا بيانات بعد" : "No data yet")}</p>
+              <FbSparkline series={c.series} lang={lang} label={LABELS[c.name]?.[ar ? "ar" : "en"] || c.name} />
             </div>
           ))}
         </div>

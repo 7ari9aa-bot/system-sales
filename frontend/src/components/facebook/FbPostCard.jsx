@@ -3,6 +3,7 @@ import FbAvatar from "@/components/facebook/FbAvatar";
 import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
 import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
+import { commentWindow } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
@@ -18,7 +19,9 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
+  const [steps, setSteps] = useState(0);
   const total = Math.max(post.commentsCount || 0, countAll(post.comments));
+  const win = commentWindow(post.comments, steps);
 
   const run = async (fn, after) => {
     setBusy(true);
@@ -77,7 +80,7 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       ) : post.text ? <p dir="auto" className="whitespace-pre-wrap break-words px-4 pb-3 pt-2 text-[15px] leading-[1.33]">{post.text}</p> : <div className="h-2" />}
       {post.picture && <img src={post.picture} alt="" loading="lazy" className="max-h-[560px] w-full bg-[#f2f4f7] object-cover" />}
       <div className="flex items-center justify-between px-4 py-2.5 text-[15px]" style={{ color: FB.text2 }}>
-        <span className="inline-flex items-center gap-1.5">{reactionsShown > 0 && <><span className="grid h-[18px] w-[18px] place-items-center rounded-full text-white" style={{ background: FB.blue }}><FbLike filled size={11} /></span>{reactionsShown}</>}</span>
+        <FbReactionSummary objectId={post.id} total={reactionsShown} lang={lang} />
         {total > 0 && <span>{total} {ar ? "تعليق" : total === 1 ? "comment" : "comments"}</span>}
       </div>
       <div className="mx-4 grid grid-cols-2 border-y py-1" style={{ borderColor: FB.divider }}>
@@ -86,7 +89,12 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
-        {(post.comments || []).map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}
+        {win.hidden > 0 && (
+          <button type="button" onClick={() => setSteps((n) => n + 1)} className="block text-[15px] font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]" style={{ color: FB.text2 }}>
+            {ar ? `عرض ${win.next} تعليقات أخرى` : `View ${win.next} more ${win.next === 1 ? "comment" : "comments"}`}
+          </button>
+        )}
+        {win.shown.map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}
         {commenting && (
           <form onSubmit={sendComment} className="flex items-center gap-2">
             <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
