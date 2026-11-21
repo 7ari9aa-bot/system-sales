@@ -3,6 +3,7 @@ import FbAvatar from "@/components/facebook/FbAvatar";
 import FbComment from "@/components/facebook/FbComment";
 import { FB } from "@/components/facebook/fbTheme";
 import { FbComment as CommentIcon, FbGlobe, FbLike } from "@/components/facebook/fbIcons";
+import { commentWindow } from "@/lib/facebookApi";
 import { cn } from "@/lib/utils";
 
 const countAll = (comments) => (comments || []).reduce((n, c) => n + 1 + (c.replies || []).length, 0);
@@ -18,7 +19,9 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
+  const [steps, setSteps] = useState(0);
   const total = Math.max(post.commentsCount || 0, countAll(post.comments));
+  const win = commentWindow(post.comments, steps);
 
   const run = async (fn, after) => {
     setBusy(true);
@@ -86,7 +89,12 @@ export default function FbPostCard({ post, pageName, pageAvatar, lang, actions, 
       </div>
       {error && <p role="alert" className="px-4 pt-2 text-[13px]" style={{ color: FB.red }}>{error}</p>}
       <div className="space-y-3 px-4 py-3">
-        {(post.comments || []).map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}
+        {win.hidden > 0 && (
+          <button type="button" onClick={() => setSteps((n) => n + 1)} className="block text-[15px] font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0866ff]" style={{ color: FB.text2 }}>
+            {ar ? `عرض ${win.next} تعليقات أخرى` : `View ${win.next} more ${win.next === 1 ? "comment" : "comments"}`}
+          </button>
+        )}
+        {win.shown.map((c) => <FbComment key={c.id} comment={c} postId={post.id} pageName={pageName} pageAvatar={pageAvatar} lang={lang} actions={actions} />)}
         {commenting && (
           <form onSubmit={sendComment} className="flex items-center gap-2">
             <FbAvatar src={pageAvatar} name={pageName} size="h-8 w-8" />
