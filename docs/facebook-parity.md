@@ -112,3 +112,11 @@ Open, measured, not changed:
 - Facebook shows one comment under the post with "View more comments" on the Page home; our window opens five (`COMMENTS_PER_STEP`). On the opened post (modal) Facebook showed all three. The count depends on the view, so it is not changed.
 - The thumbs-down on a comment ("Downvote comment") has no Graph API endpoint and is not copied.
 - Comments made on Facebook reach our screen only after "Refresh" (the screen showed 1 comment against Facebook's 3 until Refresh, then 3). No webhook from Meta has arrived yet.
+
+## Page-home post look, on owner approval ("قلد فيسبوك الاصلي في كل حاجة"), main 5c7cc7d0
+
+Built from the measured DOM of Facebook's Page home (likes 1, comments 3, share, then a Like icon at the far end of one row, no text Like / Comment row; one comment under the post with "View more comments"):
+- One row (`fb-engagement-row`): reactions summary, comment counter (still opens the comment box), share counter, Like icon at the end. 
+- First view shows only the newest comment (`COMMENTS_FIRST_VIEW = 1`); "View more comments" still opens five.
+Tests failed first (3), older tests that pinned the text row were updated, two that had become hollow were rewritten to test the new row. Frontend 197 files / 2800 tests green, lint clean. Vercel READY on 5c7cc7d0 and the live `FacebookPostsPage` chunk contains `fb-engagement-row`.
+NOT verified by eye: the owner's local browser tools were unavailable after the deploy, so the rendered row was not compared to Facebook on screen. The row's spacing, icon size and the share control (no Graph API share action, so it is a count only) are built from the measured order of elements, not from a pixel comparison.
