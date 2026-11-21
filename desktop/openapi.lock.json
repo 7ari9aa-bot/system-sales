@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 602,
-    "sha256": "ee8538213baa1addfe48b2e27b2a6f133e65ea96278a9d35001f4eb5c737b236",
+    "operations": 603,
+    "sha256": "0da438642d93f52147d9db165b2bf35cd702be409c76624df52afb2f229e1524",
     "typed_operations": 337
   },
   "spec": {
@@ -44974,6 +44974,111 @@
             }
           },
           "summary": "Like Object",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/objects/{object_id}/reactions": {
+        "get": {
+          "description": "A post's or comment's reactions by kind (LIKE, LOVE, HAHA, WOW, SAD, ANGRY), counts only.\n\nA Page can read every kind but write only a like, so this is for display.",
+          "operationId": "object_reactions_api_v1_facebook_objects__object_id__reactions_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "object_id",
+              "required": true,
+              "schema": {
+                "title": "Object Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Object Reactions",
           "tags": [
             "facebook"
           ]
