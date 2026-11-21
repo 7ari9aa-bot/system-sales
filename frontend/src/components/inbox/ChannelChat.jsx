@@ -33,6 +33,8 @@ import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
 import TemplatePicker from "./whatsapp/TemplatePicker";
+import InteractiveComposer from "./whatsapp/InteractiveComposer";
+import { composerAvailability } from "./whatsapp/composerState";
 import AttachPreview from "./whatsapp/AttachPreview";
 import VoiceRecorder from "./whatsapp/VoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
@@ -41,7 +43,7 @@ import IgAttachPreview from "./instagram/IgAttachPreview";
 import ChannelAttachPreview from "./ChannelAttachPreview";
 import { checkFile as checkChannelFile, mimeOf as mimeOfChannelFile } from "./channelAttachments";
 import { uploadMedia } from "@/lib/inboxSend";
-import { ChoiceBody, ContactBody, DocumentBody, LocationBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
+import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, OrderBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
@@ -69,6 +71,7 @@ export default function ChannelChat({
   messagesError = "",
   onRetryMessages,
   sending = false,
+  sendError = "",
   pendingDecision = false,
   t,
   onSend,
@@ -94,6 +97,7 @@ export default function ChannelChat({
   const [quickReplies, setQuickReplies] = useState([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [interactiveOpen, setInteractiveOpen] = useState(false);
   // WhatsApp only: the file the agent picked (or the voice note just recorded),
   // shown in a preview until Send uploads it and sends the message.
   const [attachment, setAttachment] = useState(null); // { file, kind, asSticker, audioUrl? }
@@ -628,6 +632,18 @@ export default function ChannelChat({
         />
       )}
 
+      {isWhatsApp && (
+        <InteractiveComposer
+          open={interactiveOpen}
+          lang={lang}
+          fontFamily={WHATSAPP_FONT}
+          windowOpen={composerAvailability({ lastCustomerMessageAt: conversation.lastCustomerMessageAt, now: new Date() }).canType}
+          sendError={sendError}
+          onClose={() => setInteractiveOpen(false)}
+          onSend={async (interactive) => (await onSend?.(conversation.id, "", { interactive })) !== false}
+        />
+      )}
+
       {isWhatsApp && attachment && (
         <AttachPreview
           file={attachment.file}
@@ -710,6 +726,7 @@ export default function ChannelChat({
             onPickFile={pickFile}
             onStartVoice={() => { setAttachError(""); setIsRecordingVoice(true); }}
             onOpenTemplates={() => setTemplatesOpen(true)}
+            onOpenInteractive={() => setInteractiveOpen(true)}
           />
         ) : isTelegram ? (
           <div dir="ltr" className="flex h-10 items-center gap-1 rounded-md bg-white px-2 sm:h-11 sm:gap-2 sm:px-3" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.08)" }}>
@@ -1011,6 +1028,10 @@ function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _
       media = withCaption(<LocationBody body={m.text} lang={_lang} />, "");
     } else if (kind === "contact") {
       media = withCaption(<ContactBody body={m.text} lang={_lang} />, "");
+    } else if (kind === "interactive") {
+      media = withCaption(<InteractiveBody message={m.interactive} lang={_lang} />, "");
+    } else if (kind === "order") {
+      media = withCaption(<OrderBody order={m.order} lang={_lang} />, "");
     } else if (kind === "buttons" || kind === "list") {
       media = withCaption(<ChoiceBody body={m.text} kind={kind} lang={_lang} />, "");
     } else if (kind === "unsupported") {

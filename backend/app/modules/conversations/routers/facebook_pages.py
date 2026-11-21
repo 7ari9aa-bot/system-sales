@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.conversations.facebook_service import MAX_PICTURE_BYTES, FacebookService
 from app.modules.conversations.gateway import facebook_video
-from app.modules.conversations.gateway.facebook_pages import facebook_pages
+from app.modules.conversations.gateway.facebook_pages import facebook_pages, page_token_and_id
 from app.modules.conversations.routers._deps import TenantContext, require_permission
 from app.modules.conversations.routers.inbox import (
     _allowed_channels,
@@ -92,7 +92,8 @@ async def _credentials(ctx: TenantContext, *, send: bool) -> dict:
         if sendable is not None and _PROVIDER not in sendable:
             raise PermissionDeniedError("sending is not enabled for this user on this channel")
     config = await _channel_config(ctx, _PROVIDER)
-    if not config or not config.get("api_key") or not config.get("account_id"):
+    token, page_id = page_token_and_id(config or {})
+    if not token or not page_id:
         raise ConflictError("Facebook is not connected")
     return config
 
@@ -336,7 +337,7 @@ async def like_object(
 ):
     """The Page likes (or un-likes) a post or comment as itself."""
     creds = await _credentials(ctx, send=True)
-    await facebook_pages.like(creds, object_id, body.liked)
+    await facebook_pages.set_like(creds, object_id, body.liked)
     return {"id": object_id, "liked": body.liked}
 
 

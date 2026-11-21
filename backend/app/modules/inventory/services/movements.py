@@ -160,12 +160,20 @@ class MovementServiceMixin:
             session, tenant_id, variant_id, warehouse_id
         )
 
-        available = balance.on_hand - getattr(balance, "quarantined", 0) - balance.reserved
+        # Units in an expired batch are on the shelf but not sellable, exactly like quarantined
+        # ones. Only a shop that tracks expiry subtracts them (sellable_quantity checks that).
+        from app.modules.inventory.services.expiry import sellable_quantity
+
+        sellable = await sellable_quantity(
+            session, tenant_id, variant_id, warehouse_id, on_hand=balance.on_hand
+        )
+        expired = balance.on_hand - sellable
+        available = sellable - getattr(balance, "quarantined", 0) - balance.reserved
         if available < quantity:
             raise InsufficientStockError(
                 f"cannot reserve {quantity} of variant {variant_id} in warehouse "
                 f"{warehouse_id}: on_hand={balance.on_hand}, "
-                f"reserved={balance.reserved}, available={available}"
+                f"reserved={balance.reserved}, expired={expired}, available={available}"
             )
 
         if channel:

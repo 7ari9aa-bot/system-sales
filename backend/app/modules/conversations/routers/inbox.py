@@ -298,12 +298,48 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "my_reaction": (reactions.get(m.id) or {}).get("outbound") or "",
                 # The tap-to-reply buttons we sent under this message (Instagram).
                 "quick_replies": [] if m.deleted else _quick_replies(m),
+                # The buttons / list / link button we sent (WhatsApp), for the bubble to draw.
+                "interactive": None if m.deleted else _present_interactive(m),
+                # A cart the customer sent from the catalog (WhatsApp): products and quantities.
+                "order": None if m.deleted else _present_order(m),
             }
         )
     return items
 
 
 _CARD_KEYS = ("share", "story_reply", "story_mention")
+
+
+def _present_interactive(m) -> dict | None:
+    """The interactive message we sent, rebuilt and checked, or None.
+
+    Never the stored dict as-is: it is run through the same builder that produced what Meta got,
+    so the browser only ever sees a checked shape, and a row whose spec no longer passes (a rule
+    that tightened since) shows its plain text instead of failing the whole conversation.
+    """
+    spec = (m.provider_metadata or {}).get("interactive")
+    if not spec or m.direction != "outbound":
+        return None
+    from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+
+    try:
+        return build_interactive(spec)
+    except ValidationError:
+        return None
+
+
+def _present_order(m) -> dict | None:
+    """The cart a customer sent, re-read through the same checker that produced its summary.
+
+    The stored webhook body never leaves as-is: only the checked shape does, so a hostile or
+    broken payload cannot put anything else on the agent's screen. Customer messages only.
+    """
+    if m.content_type != "order" or m.direction != "inbound":
+        return None
+    payload = m.payload if isinstance(m.payload, dict) else {}
+    from app.modules.conversations.gateway.whatsapp_order import parse_order
+
+    return parse_order(payload.get("raw"))
 
 
 def _quick_replies(m) -> list[str]:
@@ -482,7 +518,25 @@ async def send_message(
             raise ValidationError("a quick reply is at most 20 characters")
         if len(set(quick_replies)) != len(quick_replies):
             raise ValidationError("quick replies must be different from each other")
-    if not body.body and not body.template_name and body.media_id is None and not instagram_extra:
+    interactive_text: str | None = None
+    if body.interactive is not None:
+        if conversation.channel != "whatsapp":
+            raise ValidationError("buttons and lists can only be sent on WhatsApp")
+        if body.template_name or body.media_id is not None or instagram_extra or quick_replies:
+            raise ValidationError("an interactive message carries nothing else")
+        # Its text lives in the spec; a separate `body` would be silently ignored.
+        if body.body:
+            raise ValidationError("write the text inside the interactive message, not beside it")
+        from app.modules.conversations.gateway.whatsapp_interactive import preview_text
+
+        interactive_text = preview_text(body.interactive)  # raises, naming the bad field
+    if (
+        not body.body
+        and not body.template_name
+        and body.media_id is None
+        and not instagram_extra
+        and interactive_text is None
+    ):
         raise ValidationError("message needs body, media_id or template_name")
     if body.media_id is not None and body.template_name:
         raise ValidationError("a template cannot carry an uploaded file")
@@ -531,6 +585,12 @@ async def send_message(
         }
     elif quick_replies:
         media_kwargs = {"provider_metadata": {"instagram_quick_replies": quick_replies}}
+    elif interactive_text is not None:
+        caption = interactive_text
+        media_kwargs = {
+            "content_type": "interactive",
+            "provider_metadata": {"interactive": body.interactive},
+        }
     if body.media_id is not None:
         media = await OutboundMediaService.claim(
             ctx.session, ctx.tenant_id, media_id=body.media_id, conversation_id=conversation_id

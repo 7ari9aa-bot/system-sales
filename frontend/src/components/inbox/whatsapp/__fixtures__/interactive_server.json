@@ -1,0 +1,215 @@
+{
+  "buttons_full": {
+    "server": {
+      "action": {
+        "buttons": [
+          {
+            "reply": {
+              "id": "btn_1",
+              "title": "تأكيد"
+            },
+            "type": "reply"
+          },
+          {
+            "reply": {
+              "id": "btn_2",
+              "title": "إلغاء"
+            },
+            "type": "reply"
+          }
+        ]
+      },
+      "body": {
+        "text": "تأكيد الطلب؟"
+      },
+      "footer": {
+        "text": "شكرًا"
+      },
+      "header": {
+        "text": "Order #7",
+        "type": "text"
+      },
+      "type": "button"
+    },
+    "spec": {
+      "body": "تأكيد الطلب؟",
+      "buttons": [
+        {
+          "id": "btn_1",
+          "title": "تأكيد"
+        },
+        {
+          "id": "btn_2",
+          "title": "إلغاء"
+        }
+      ],
+      "footer": "شكرًا",
+      "header": {
+        "text": "Order #7",
+        "type": "text"
+      },
+      "kind": "buttons"
+    }
+  },
+  "buttons_minimal": {
+    "server": {
+      "action": {
+        "buttons": [
+          {
+            "reply": {
+              "id": "btn_1",
+              "title": "Yes"
+            },
+            "type": "reply"
+          }
+        ]
+      },
+      "body": {
+        "text": "Ok?"
+      },
+      "type": "button"
+    },
+    "spec": {
+      "body": "Ok?",
+      "buttons": [
+        {
+          "id": "btn_1",
+          "title": "Yes"
+        }
+      ],
+      "kind": "buttons"
+    }
+  },
+  "cta": {
+    "server": {
+      "action": {
+        "name": "cta_url",
+        "parameters": {
+          "display_text": "فتح",
+          "url": "https://fihrist.world/o/1?a=1&b=2"
+        }
+      },
+      "body": {
+        "text": "تابع"
+      },
+      "type": "cta_url"
+    },
+    "spec": {
+      "body": "تابع",
+      "kind": "cta_url",
+      "label": "فتح",
+      "url": "https://fihrist.world/o/1?a=1&b=2"
+    }
+  },
+  "cta_with_header": {
+    "server": {
+      "action": {
+        "name": "cta_url",
+        "parameters": {
+          "display_text": "L",
+          "url": "http://x.example/a"
+        }
+      },
+      "body": {
+        "text": "b"
+      },
+      "footer": {
+        "text": "f"
+      },
+      "header": {
+        "text": "H",
+        "type": "text"
+      },
+      "type": "cta_url"
+    },
+    "spec": {
+      "body": "b",
+      "footer": "f",
+      "header": {
+        "text": "H",
+        "type": "text"
+      },
+      "kind": "cta_url",
+      "label": "L",
+      "url": "http://x.example/a"
+    }
+  },
+  "list_full": {
+    "server": {
+      "action": {
+        "button": "الخيارات",
+        "sections": [
+          {
+            "rows": [
+              {
+                "description": "يوم",
+                "id": "row_1_1",
+                "title": "سريع"
+              },
+              {
+                "id": "row_1_2",
+                "title": "عادي"
+              }
+            ],
+            "title": "A"
+          },
+          {
+            "rows": [
+              {
+                "id": "row_2_1",
+                "title": "x"
+              }
+            ],
+            "title": "B"
+          }
+        ]
+      },
+      "body": {
+        "text": "اختر"
+      },
+      "footer": {
+        "text": "F"
+      },
+      "header": {
+        "text": "H",
+        "type": "text"
+      },
+      "type": "list"
+    },
+    "spec": {
+      "body": "اختر",
+      "button": "الخيارات",
+      "footer": "F",
+      "header": {
+        "text": "H",
+        "type": "text"
+      },
+      "kind": "list",
+      "sections": [
+        {
+          "rows": [
+            {
+              "description": "يوم",
+              "id": "row_1_1",
+              "title": "سريع"
+            },
+            {
+              "id": "row_1_2",
+              "title": "عادي"
+            }
+          ],
+          "title": "A"
+        },
+        {
+          "rows": [
+            {
+              "id": "row_2_1",
+              "title": "x"
+            }
+          ],
+          "title": "B"
+        }
+      ]
+    }
+  }
+}

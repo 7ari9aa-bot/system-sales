@@ -253,16 +253,49 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # pos/service.py::_resolve_customer (pos.require_customer, the shop-wide default under a till's
 # own switch) and inventory/services/replenishment.py::set_policy
 # (inventory.safety_stock_default, used when a policy states no buffer of its own).
-# 244 -> 262 on 2026-11-20 (the ETA e-receipt layer, branch feat/eta-ereceipt-layer; to be
-# confirmed in review): +18 deliberate edges, all in endorsed directions and NO new cycle
-# (verified: SCCs unchanged):
+# 244 -> 246 on 2026-11-20. main had ALREADY drifted to 245 with no recorded reason (this test
+# was red on main before this change); that one is not explained here. The second is deliberate:
+# ONE edge, pos/service.py::_order_numbering -> expenses.service (NumberingService).
+# A cashier receipt is a fiscal document: its number must be consecutive with no gaps, which
+# only the shared gap-free ``document_counters`` counter guarantees (purchasing already draws
+# POs and returns from it the same way). The old random suffix could not be audited for a
+# missing receipt. Lazy and declared, no new cycle (test_no_new_module_import_cycles).
+# 246 -> 247 on 2026-11-20: the new taxation module's router imports identity.deps for
+# require_permission, exactly as every other module's router does. Not avoidable: the permission
+# check lives in identity.
+# 247 -> 249 on 2026-11-20: orders reads taxation (service for the tax profile and classes, calc
+# for the exact split) to extract the tax inside a shelf price. One direction only: taxation never
+# imports orders, and both imports are function-scope.
+# 249 -> 251 on 2026-11-20: customer_accounts imports identity.deps (require_permission, as every
+# router does) and customers.service (CustomerService.get, which refuses an archived or merged-away
+# customer: no credit account for someone who no longer exists). Through the service, not tables.
+# 251 -> 253 on 2026-11-20: the till posts the unpaid part of a sale on account through
+# customer_accounts.service, and asks customers.service whether the buyer is blocked. Both go
+# through a service, never a table, and only pos reaches into them (they never import pos).
+# 253 -> 254 on 2026-11-20: the apparel grid asks inventory.service how many of each variant can be
+# sold (one batched read that applies on_hand - quarantined - reserved), instead of reading the
+# balance table itself. Through a service, one direction.
+# 254 -> 258 on 2026-11-20 (recorded after the fact; main was red on this test). Two parts:
+#  * +1 was never written down. 254 was measured at the apparel commit, then 73817a70 (the till
+#    selling on a customer's account) added pos -> customer_accounts.service and pos ->
+#    customers.service, which the 251 -> 253 note already describes as deliberate, so the real
+#    count was 255 from then on while this ceiling stayed 254.
+#  * +3 are the expiry report (1d548eb3): inventory -> settings.capabilities (which features a shop
+#    has), inventory -> settings.service (the alert window, a function-scope import) and
+#    inventory -> catalog.models (product names on the lot rows). Read-only, one direction, no new
+#    cycle (test_no_new_module_import_cycles). catalog.models should become a catalog read-model.
+
+
+# 258 -> 275 on 2026-11-20: the ETA e-receipt layer (branch feat/eta-ereceipt-layer), +17 edges
+# MEASURED after merging main (main alone is 258). Not yet confirmed by the owner: to be decided in
+# review. All in endorsed directions and NO new cycle (test_no_new_module_import_cycles):
 # the cashier -> e-invoice hook is pos/eta_adapter.py (the till is the caller, so it lives with
 # the till and einvoice never imports pos), which reads einvoice (the provider, models, tax codes
 # x8), settings.service (the merchant's e-receipt choices x3), billing's VAT table, the catalog's
 # registered item codes and the order lines; einvoice -> settings/notifications/identity for the
 # merchant's warning window, the owner's bell and the callback key lookup; plus the shared tables
 # those read. Reading the till's own tables from einvoice (einvoice -> pos) was REMOVED.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 262
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 275
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

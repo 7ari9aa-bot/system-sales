@@ -15,12 +15,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.privacy.models import Consent, DataSubjectRequest
 from app.modules.privacy.service import DataRequestService, DeletionService
 
@@ -221,3 +221,79 @@ async def execute_data_request(ctx: WriteCtx, request_id: uuid.UUID):
         requested_by_user_id=ctx.user.id,
     )
     return {"request_id": str(request.id), "report": report}
+
+
+# ------------------------------------- Meta data-deletion callback (public) -----
+
+# Reached by Meta, not by a signed-in user: the only credential is the signed request itself, so
+# these routes carry no tenant auth. Nothing here erases data (see `meta_deletion`).
+public_router = APIRouter(prefix="/webhooks/meta/data-deletion", tags=["privacy"])
+
+
+def _deletion_status_url(confirmation_code: str) -> str:
+    from app.core.config import get_settings
+
+    base = get_settings().api_public_base_url.strip().rstrip("/")
+    return f"{base}/api/v1/webhooks/meta/data-deletion/status/{confirmation_code}"
+
+
+@public_router.post("")
+async def meta_data_deletion(request: Request, session: DbSession):
+    """Meta's data-deletion callback: verify `signed_request`, open a deletion request.
+
+    Meta needs `{url, confirmation_code}` back. The merchant executes the request from the
+    privacy screen; see `app.modules.privacy.meta_deletion` for why it is not automatic.
+    """
+    from urllib.parse import parse_qs
+
+    from app.core.config import get_settings
+    from app.core.meta_diagnostics import record_channel_issue
+    from app.modules.privacy.meta_deletion import (
+        InvalidSignedRequest,
+        file_deletion_request,
+        parse_signed_request,
+    )
+
+    # Parsed by hand: it is a one-field urlencoded body, and `request.form()` would need the
+    # python-multipart dependency this service does not otherwise carry.
+    raw = (await request.body())[:65536].decode("utf-8", errors="replace")
+    form = {k: v[0] for k, v in parse_qs(raw, keep_blank_values=True).items() if v}
+    settings = get_settings()
+    secrets = [
+        s.strip()
+        for s in (
+            settings.meta_app_secret,
+            settings.messenger_app_secret,
+            settings.instagram_app_secret,
+        )
+        if s and s.strip()
+    ]
+    data = None
+    for secret in dict.fromkeys(secrets):
+        try:
+            data = parse_signed_request(str(form.get("signed_request") or ""), secret)
+            break
+        except InvalidSignedRequest:
+            continue
+    if data is None:
+        await record_channel_issue("webhook.deletion_bad_signature", channel="meta")
+        raise HTTPException(status_code=400, detail="invalid signed_request")
+    user_id = str(data.get("user_id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="signed_request has no user_id")
+    filed = await file_deletion_request(session, user_id)
+    return {
+        "url": _deletion_status_url(filed.confirmation_code),
+        "confirmation_code": filed.confirmation_code,
+    }
+
+
+@public_router.get("/status/{confirmation_code}")
+async def meta_data_deletion_status(confirmation_code: str, session: DbSession):
+    """The page Meta shows the person: where their deletion request stands."""
+    from app.modules.privacy.meta_deletion import deletion_status
+
+    status = await deletion_status(session, confirmation_code)
+    if status == "unknown":
+        raise NotFoundError("unknown confirmation code")
+    return {"confirmation_code": confirmation_code, "status": status}

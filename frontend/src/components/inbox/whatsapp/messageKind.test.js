@@ -85,3 +85,18 @@ describe("looksLikeFileName", () => {
     expect(looksLikeFileName("")).toBe(false);
   });
 });
+
+describe("an interactive message we sent", () => {
+  const spec = { type: "button", body: { text: "x" }, action: { buttons: [] } };
+  test("is its own kind when the server sent a checked spec", () => {
+    expect(messageKind({ contentType: "interactive", interactive: spec })).toBe("interactive");
+  });
+  test("without a spec it reads as the plain text it is, never as a customer's tap", () => {
+    expect(messageKind({ contentType: "interactive", interactive: null })).toBe("text");
+    expect(messageKind({ contentType: "interactive" })).toBe("text");
+  });
+  test("a customer's tap is still a tap", () => {
+    expect(messageKind({ contentType: "buttons" })).toBe("buttons");
+    expect(messageKind({ contentType: "list" })).toBe("list");
+  });
+});

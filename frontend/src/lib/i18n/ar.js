@@ -1243,4 +1243,12 @@ export default {
   "pos.printer.printReceipt": "طباعة الإيصال (ESC/POS)",
   "pos.printer.printSuccess": "تم إرسال أمر الطباعة بنجاح.",
   "pos.printer.notSupported": "متصفحك لا يدعم WebUSB/WebBluetooth.",
+  "pos.printer.err.usb_unsupported": "المتصفح ده مش بيدعم الطباعة عبر USB. استخدم Chrome أو Edge.",
+  "pos.printer.err.bt_unsupported": "المتصفح ده مش بيدعم الطباعة عبر بلوتوث. استخدم Chrome أو Edge.",
+  "pos.printer.err.no_characteristic": "طابعة البلوتوث دي مش بتستقبل أوامر الطباعة. جرّب طابعة تانية.",
+  "pos.printer.err.not_connected": "مفيش طابعة متصلة. اربط طابعة USB أو بلوتوث الأول.",
+  "pos.printer.err.connectUsb": "تعذّر الاتصال بطابعة USB. اتأكد إنها شغالة وموصولة وجرّب تاني.",
+  "pos.printer.err.connectBluetooth": "تعذّر الاتصال بطابعة البلوتوث. اتأكد إنها شغالة وقريبة وجرّب تاني.",
+  "pos.printer.err.testPrint": "تعذّرت الطباعة التجريبية. اتأكد من اتصال الطابعة وإن فيها ورق.",
+  "pos.printer.err.kick": "تعذّر فتح درج النقدية. اتأكد إن الدرج موصول بالطابعة.",
 };

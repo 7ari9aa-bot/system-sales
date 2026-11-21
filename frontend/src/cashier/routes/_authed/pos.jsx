@@ -32,7 +32,8 @@ import { clearedIfStill, createScanQueue } from "@/cashier/lib/scanQueue";
 import { scanRefusalText } from "../../api/scanRefusal";
 import { useOfflineSync } from "@/cashier/lib/useOfflineSync";
 import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
-import { buildReceiptEscPos } from "@/cashier/lib/escpos";
+import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
+import { printableReceipt, receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
@@ -333,24 +334,21 @@ function PosScreen({ user, session }) {
     }
   }
 
-  async function confirmSale() {
+  async function confirmSale(tender = {}) {
     if (!offlineSync.isOnline) {
+      // A till that records payments cannot settle a sale later: the server would refuse it.
+      const offline = whenOffline(session.tender);
+      if (!offline.queue) {
+        toast.error(offline.message);
+        return;
+      }
       try {
-        const payload = {
-          items: lines.map((l) => ({
-            variant_id: l.variantId,
-            quantity: l.quantity,
-            ...(l.discount ? { discount: l.discount } : {}),
-            ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
-            ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
-          })),
-          customer_phone: customerPhone?.trim() || undefined,
-          customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
-          customer_id: pickedCustomer?.id || undefined,
-          discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
-          note: sale.note || undefined,
-        };
-        await enqueueOfflineSale({ registerId: session.register_id, payload });
+        const { payload, intentKey } = sale.offlineSale({
+          customerId: pickedCustomer?.id,
+          customerPhone,
+          customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
+        });
+        await enqueueOfflineSale({ registerId: session.register_id, payload, intentKey });
         await offlineSync.refreshCount();
         toast.info("تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
         resetInvoice();
@@ -368,6 +366,7 @@ function PosScreen({ user, session }) {
         customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
         customerId: pickedCustomer?.id,
         customerPhone,
+        ...saleTender(tender),
       });
 
       for (const line of lines) {
@@ -382,19 +381,9 @@ function PosScreen({ user, session }) {
 
       if (isPrinterConnected()) {
         try {
-          const bytes = buildReceiptEscPos({
-            shopName: session?.profile?.name || "FIHRIST POS",
-            receiptNumber: r?.number || r?.order_number || "",
-            items: lines.map((l) => ({
-              name: l.title || l.name || "Item",
-              quantity: l.quantity,
-              unit_price: l.price,
-              total: l.total,
-            })),
-            total: r?.total ?? sale.quote.total,
-            discount: sale.quote.discount,
-          });
-          printRaw(bytes).catch(() => {});
+          const bytes = receiptBytes(printableReceipt(r, { fallbackName: session?.profile?.name || "فهرست" }));
+          // The owner decides how many copies a till prints.
+          for (let n = 0; n < (r?.shop?.copies ?? 1); n += 1) printRaw(bytes).catch(() => {});
           kickCashDrawer().catch(() => {});
         } catch {
           /* printer errors are non-fatal to the sale */
@@ -413,23 +402,14 @@ function PosScreen({ user, session }) {
       setCustomerPhone("");
       setPickedCustomer(null);
     } catch (e) {
-      if (!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) {
+      if ((!navigator.onLine || e?.message?.includes("Failed to fetch") || e?.message?.includes("NetworkError")) && whenOffline(session.tender).queue) {
         try {
-          const payload = {
-            items: lines.map((l) => ({
-              variant_id: l.variantId,
-              quantity: l.quantity,
-              ...(l.discount ? { discount: l.discount } : {}),
-              ...(l.serialCodes?.length ? { serial_codes: l.serialCodes } : {}),
-              ...(l.lotNumber ? { lot_number: l.lotNumber } : {}),
-            })),
-            customer_phone: customerPhone?.trim() || undefined,
-            customer_name: (displayCustomer === "عميل نقدي" ? "" : displayCustomer)?.trim() || undefined,
-            customer_id: pickedCustomer?.id || undefined,
-            discount_total: sale.quote.discount ? String(sale.quote.discount) : undefined,
-            note: sale.note || undefined,
-          };
-          await enqueueOfflineSale({ registerId: session.register_id, payload });
+          const { payload, intentKey } = sale.offlineSale({
+            customerId: pickedCustomer?.id,
+            customerPhone,
+            customerName: displayCustomer === "عميل نقدي" ? "" : displayCustomer,
+          });
+          await enqueueOfflineSale({ registerId: session.register_id, payload, intentKey });
           await offlineSync.refreshCount();
           toast.info("انقطع الاتصال: تم حفظ الفاتورة محلياً وستُرسل تلقائياً فور عودة الاتصال.");
           resetInvoice();
@@ -603,6 +583,8 @@ function PosScreen({ user, session }) {
         onConfirm={confirmSale}
         pending={sale.paying}
         error={sale.payError}
+        rules={session.tender}
+        customer={{ customerId: pickedCustomer?.id, customerPhone }}
       />
 
       <NoteDialog

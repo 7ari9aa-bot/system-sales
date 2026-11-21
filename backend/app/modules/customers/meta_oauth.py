@@ -38,7 +38,7 @@ from app.modules.customers.meta_scopes import (
     granted_scopes_from_permissions,
     missing_facebook_scopes,
 )
-from app.modules.customers.schemas import MetaOAuthStartOut
+from app.modules.customers.schemas import MetaOAuthChoosePageOut, MetaOAuthStartOut
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.integration_verifier import verify_channel_credentials
 from app.modules.platform.models import Integration
@@ -184,6 +184,29 @@ async def meta_oauth_start(
     return {"authorize_url": authorize_url}
 
 
+def _graph_json(response: httpx.Response, *, step: str) -> dict:
+    """The JSON body of a Graph response, or a retryable outage.
+
+    A 429, a 5xx, or a body that is not a JSON object (a gateway's HTML page, a captive portal)
+    means Meta, or the path to it, is unavailable. That is NOT a configuration mistake, so it must
+    never reach the owner as one. A 4xx that carries Meta's own ``error`` object is returned as is:
+    the caller names Meta's explanation.
+    """
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ExternalProviderError(f"Meta is temporarily unavailable ({step}).", retryable=True)
+    try:
+        payload = response.json()
+    except ValueError:
+        raise ExternalProviderError(
+            f"Meta returned an unreadable response ({step}).", retryable=True
+        ) from None
+    if not isinstance(payload, dict):
+        raise ExternalProviderError(
+            f"Meta returned an unexpected response ({step}).", retryable=True
+        )
+    return payload
+
+
 def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     """Meta error message from a Graph response, if the call failed."""
     error = payload.get("error")
@@ -194,6 +217,40 @@ def _meta_graph_error(payload: dict, *, step: str) -> str | None:
     return f"{step} failed ({code}): {message}" if code else f"{step} failed: {message}"
 
 
+async def _flag(
+    key: str, provider: str | None, tenant_id: uuid.UUID | None, details: dict | None = None
+) -> None:
+    """Name a linking failure on the channel's trail. Never raises, never changes the outcome."""
+    from app.core.meta_diagnostics import record_channel_issue
+
+    await record_channel_issue(key, channel=provider, tenant_id=tenant_id, details=details)
+
+
+def _graph_fields(payload: dict) -> dict:
+    """Meta's own error fields (code, subcode, type, fbtrace_id) for a failed Graph response."""
+    from app.core.meta_diagnostics import graph_error_fields
+
+    return graph_error_fields(payload.get("error") if isinstance(payload, dict) else None)
+
+
+async def _existing_subscribed_fields(http, *, page_id: str, page_token: str) -> list[str]:
+    """The webhook fields this app already has on the Page, or [] when they cannot be read."""
+    try:
+        response = await http.get(
+            f"{_GRAPH}/{page_id}/subscribed_apps", params={"access_token": page_token}
+        )
+        if not response.is_success:
+            return []
+        data = response.json().get("data")
+    except (httpx.RequestError, ValueError, AttributeError):
+        return []
+    fields: list[str] = []
+    for entry in data if isinstance(data, list) else []:
+        raw = entry.get("subscribed_fields") if isinstance(entry, dict) else None
+        fields.extend(f for f in (raw if isinstance(raw, list) else []) if isinstance(f, str) and f)
+    return fields
+
+
 async def _subscribe_page_to_app(
     http, *, page_id: str, page_token: str, provider: str = "messenger"
 ) -> None:
@@ -201,11 +258,18 @@ async def _subscribe_page_to_app(
 
     The fields are the channel's own: a Facebook Page also needs `feed` for its comments and
     an Instagram account `comments`, which the base messaging fields alone never deliver."""
+    wanted = subscribed_fields(provider)
+    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
+    # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
+    # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
+    # fields are still written, exactly as before.
+    kept = await _existing_subscribed_fields(http, page_id=page_id, page_token=page_token)
+    merged = list(dict.fromkeys([*wanted.split(","), *kept]))
     try:
         response = await http.post(
             f"{_GRAPH}/{page_id}/subscribed_apps",
             params={
-                "subscribed_fields": subscribed_fields(provider),
+                "subscribed_fields": ",".join(merged),
                 "access_token": page_token,
             },
         )
@@ -337,7 +401,7 @@ async def _meta_exchange_and_connect(
     ) as http:
         # 1) Authorization code → user token (server-to-server; the app
         #    secret must never see the browser).
-        swap = (
+        swap = _graph_json(
             await http.get(
                 f"{_GRAPH}/oauth/access_token",
                 params={
@@ -346,14 +410,17 @@ async def _meta_exchange_and_connect(
                     "redirect_uri": redirect_uri,
                     "code": code,
                 },
-            )
-        ).json()
+            ),
+            step="code exchange",
+        )
         failure = _meta_graph_error(swap, step="code exchange")
         if failure:
             _logger.warning("meta_oauth.exchange_failed %s", failure)
+            await _flag("link.code_exchange_failed", provider, tenant_id, _graph_fields(swap))
             raise ValidationError(failure[:200])
         user_token = swap.get("access_token")
         if not user_token:
+            await _flag("link.code_exchange_failed", provider, tenant_id, {"reason": "no_token"})
             raise ValidationError("Meta rejected the authorization code.")
 
         # 2) Short-lived → LONG-LIVED user token (fb_exchange_token grant).
@@ -370,20 +437,27 @@ async def _meta_exchange_and_connect(
                 "client_secret": app_secret,
                 "fb_exchange_token": user_token,
             }
-            if _config_id:
+            if _config_id and provider == "instagram":
                 # Business Login system-user tokens support the rolling
                 # 60-day refresh contract documented by Meta.
                 exchange_params["set_token_expires_in_60_days"] = "true"
-            long_lived = (
+            long_lived = _graph_json(
                 await http.get(
                     f"{_GRAPH}/oauth/access_token",
                     params=exchange_params,
-                )
-            ).json()
+                ),
+                step="long-lived exchange",
+            )
             long_token = long_lived.get("access_token")
             if not long_token:
                 failure = _meta_graph_error(long_lived, step="long-lived exchange")
                 _logger.warning("meta_oauth.longlived_failed %s", failure)
+                await _flag(
+                    "link.code_exchange_failed",
+                    provider,
+                    tenant_id,
+                    {"step": "long_lived", **_graph_fields(long_lived)},
+                )
                 raise ValidationError(
                     (failure or "Meta refused the long-lived token exchange.")[:200]
                 )
@@ -393,37 +467,63 @@ async def _meta_exchange_and_connect(
         # 2b) What the owner actually ticked. The dialog lets them untick a single permission and
         #     still continue, and a Facebook channel without posting or comment rights would show
         #     as connected and then fail on its first post. Refuse it here, naming what is missing.
-        permissions = (
-            await http.get(f"{_GRAPH}/me/permissions", params={"access_token": user_token})
-        ).json()
+        permissions = _graph_json(
+            await http.get(f"{_GRAPH}/me/permissions", params={"access_token": user_token}),
+            step="permissions",
+        )
         granted = granted_scopes_from_permissions(permissions)
         if provider == "facebook":
             lacking = missing_facebook_scopes(granted)
             if lacking:
                 _logger.warning("meta_oauth.facebook_scopes_missing %s", ",".join(lacking))
+                await _flag("link.scopes_missing", provider, tenant_id, {"missing": list(lacking)})
                 raise ValidationError(
                     "لم تُمنح كل صلاحيات فيسبوك المطلوبة للنشر والتعليقات والإحصاءات "
                     f"({', '.join(lacking)}). أعد الربط وفعّل كل الصلاحيات في نافذة فيسبوك."
                 )
 
         # 3) Pages the operator manages, WITH their page tokens.
-        accounts = (
+        accounts = _graph_json(
             await http.get(
                 f"{_GRAPH}/me/accounts",
                 params={"fields": _PAGE_FIELDS, "access_token": user_token},
-            )
-        ).json()
+            ),
+            step="page listing",
+        )
         failure = _meta_graph_error(accounts, step="page listing")
         if failure:
             _logger.warning("meta_oauth.accounts_failed %s", failure)
+            await _flag(
+                "link.code_exchange_failed",
+                provider,
+                tenant_id,
+                {"step": "page_listing", **_graph_fields(accounts)},
+            )
             raise ValidationError(failure[:200])
 
         all_pages = accounts.get("data", [])
         if not all_pages:
+            await _flag("link.no_pages", provider, tenant_id, {"granted": sorted(granted)})
             raise ValidationError(
                 "لم يتم العثور على أي صفحة فيسبوك في حسابك — يجب إنشاء صفحة فيسبوك وتحديدها عند منح الصلاحيات."  # noqa: E501
             )
 
+        # Evidence for support: which pages Meta returned and whether each carries an
+        # Instagram business account. Ids and names only; never a token.
+        _logger.info(
+            "meta_oauth.pages provider=%s granted=%s pages=%s",
+            provider,
+            ",".join(sorted(granted)) if granted else "-",
+            [
+                {
+                    "id": str(p.get("id")),
+                    "name": p.get("name"),
+                    "tasks": p.get("tasks"),
+                    "ig": (p.get("instagram_business_account") or {}).get("id"),
+                }
+                for p in all_pages
+            ],
+        )
         pages = _messaging_pages(all_pages)
         if len(pages) > 1:
             # One channel holds one Page and the owner ticked several: ask which, instead of
@@ -492,6 +592,12 @@ async def _connect_page(
         ig_id = str(ig_account.get("id") or "")
         if not ig_id:
             page_title = page.get("name") or str(page.get("id") or "المحددة")
+            await _flag(
+                "link.no_instagram_account",
+                provider,
+                tenant_id,
+                {"page_id": str(page.get("id")), "page_name": page.get("name")},
+            )
             raise ValidationError(
                 f"صفحة فيسبوك '{page_title}' غير مرتبطة بحساب إنستجرام احترافي — اربط الحساب في Meta Business Suite أولاً."  # noqa: E501
             )
@@ -501,9 +607,19 @@ async def _connect_page(
     verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
     # A channel that cannot receive provider webhooks is not connected.
-    await _subscribe_page_to_app(
-        http, page_id=str(page["id"]), page_token=page_token, provider=provider
-    )
+    try:
+        await _subscribe_page_to_app(
+            http, page_id=str(page["id"]), page_token=page_token, provider=provider
+        )
+    except ExternalProviderError as exc:
+        # Without this subscription nothing the customer sends would ever arrive.
+        await _flag(
+            "link.subscription_failed",
+            provider,
+            tenant_id,
+            {"page_id": str(page["id"]), "reason": str(exc)[:200]},
+        )
+        raise
 
     from app.core.meta_tokens import token_expiry
 
@@ -511,7 +627,9 @@ async def _connect_page(
         "source_access_token": user_token,
         "page_id": str(page["id"]),
         "expires_at": token_expiry(expires_in),
-        "refreshable": bool(_config_id and expires_in),
+        # Only Instagram is linked through a Business Login configuration; for Messenger and
+        # Facebook the Instagram setting says nothing about their token.
+        "refreshable": bool(provider == "instagram" and _config_id and expires_in),
     }
 
     existing = (
@@ -575,7 +693,6 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
 
     payload_json = _json.dumps(result)
     safe_json = payload_json.replace("<", "\\u003c").replace(">", "\\u003e")
-    safe_origin = _json.dumps(frontend_origin)
 
     is_connected = "connected" in result
     is_choosing = "choose" in result
@@ -614,6 +731,11 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
             subtitle_text = (
                 "صفحة فيسبوك المحددة غير مرتبطة بحساب إنستجرام احترافي (Business/Creator)."  # noqa: E501
             )
+        elif s.startswith("meta_unavailable"):
+            title_text = "فيسبوك غير متاح مؤقتاً"
+            subtitle_text = (
+                "خوادم فيسبوك لا تستجيب الآن. هذه ليست مشكلة في الإعدادات. أعد المحاولة بعد دقيقة."  # noqa: E501
+            )
         elif "missing_code_or_state" in s:
             subtitle_text = "أُلغيت العملية أو لم يُرجع فيسبوك رمز التفويض."
         elif "invalid_state" in s:
@@ -621,14 +743,15 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
         else:
             subtitle_text = s[:200]
 
-        action_html = '<button onclick="window.close()" class="btn-close">إغلاق النافذة</button>'
+        action_html = (
+            '<button id="meta-oauth-close" type="button" class="btn-close">إغلاق النافذة</button>'
+        )
 
     esc_title = _html.escape(title_text)
     esc_subtitle = _html.escape(subtitle_text)
 
-    auto_close_js = (
-        "setTimeout(function(){ window.close(); }, 1400);" if is_connected or is_choosing else ""
-    )
+    autoclose_flag = "1" if (is_connected or is_choosing) else "0"
+    esc_origin = _html.escape(frontend_origin.rstrip("/"), quote=True)
 
     return f"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -722,32 +845,41 @@ def _popup_html(result: dict, frontend_origin: str) -> str:
   <p class="desc">{esc_subtitle}</p>
   {action_html}
 </div>
-<script>
-(function(){{
-  var msg = {safe_json};
-  var origin = {safe_origin};
-  
-  if (window.opener) {{
-    try {{
-      window.opener.postMessage(msg, origin || "*");
-    }} catch (e) {{
-      try {{ window.opener.postMessage(msg, "*"); }} catch (_) {{}}
-    }}
-  }}
-
-  try {{
-    var bc = new BroadcastChannel("meta_oauth");
-    bc.postMessage(msg);
-  }} catch (_) {{}}
-
-  try {{
-    localStorage.setItem("meta_oauth_result", JSON.stringify(msg));
-  }} catch (_) {{}}
-
-  {auto_close_js}
-}})();
-</script>
+<script id="meta-oauth-data" type="application/json"
+  data-origin="{esc_origin}" data-autoclose="{autoclose_flag}">{safe_json}</script>
+<script src="{esc_origin}/meta-oauth-result.js"></script>
 </body></html>"""
+
+
+def _popup_response(result: dict, frontend_origin: str):
+    """The OAuth result page, with headers that let it report back to the opener.
+
+    Two things silently broke the "connected" confirmation although the channel
+    itself connected fine:
+
+    * COOP ``same-origin`` (stamped on every API response) severed
+      ``window.opener`` after the round trip through facebook.com. It is relaxed
+      for this one response.
+    * The page's inline script never ran: ``/api/v1/...`` is proxied through
+      Vercel, which stamps ``script-src 'self'`` on every path, and the API's own
+      ``default-src 'none'`` blocks it too. The script is therefore an external
+      same-origin file and the result travels as inert JSON data, so no inline
+      code is needed and the site CSP stays strict.
+    """
+    from fastapi.responses import HTMLResponse
+
+    origin = frontend_origin.rstrip("/")
+    return HTMLResponse(
+        _popup_html(result, frontend_origin),
+        headers={
+            "Content-Security-Policy": (
+                f"default-src 'none'; script-src {origin}; style-src 'unsafe-inline'; "
+                "img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            ),
+            "Cross-Origin-Opener-Policy": "unsafe-none",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 class MetaOAuthPageChoiceIn(BaseModel):
@@ -755,7 +887,9 @@ class MetaOAuthPageChoiceIn(BaseModel):
     page_id: str = Field(min_length=1, max_length=64, pattern=r"^[0-9]+$")
 
 
-@meta_oauth_router.post("/integrations/meta/oauth/choose-page")
+@meta_oauth_router.post(
+    "/integrations/meta/oauth/choose-page", response_model=MetaOAuthChoosePageOut
+)
 async def meta_oauth_choose_page(
     body: MetaOAuthPageChoiceIn,
     session: DbSession,
@@ -782,12 +916,13 @@ async def meta_oauth_choose_page(
         timeout=httpx.Timeout(8.0, connect=3.0), follow_redirects=False
     ) as http:
         # Page tokens are never parked: list the Pages again from the user token.
-        accounts = (
+        accounts = _graph_json(
             await http.get(
                 f"{_GRAPH}/me/accounts",
                 params={"fields": _PAGE_FIELDS, "access_token": secrets["user_token"]},
-            )
-        ).json()
+            ),
+            step="page listing",
+        )
         failure = _meta_graph_error(accounts, step="page listing")
         if failure:
             _logger.warning("meta_oauth.choose_accounts_failed %s", failure)
@@ -827,7 +962,6 @@ async def meta_oauth_callback(
     Every outcome posts back to the opener window via postMessage / BroadcastChannel —
     the operator never leaves the settings page. Meta's own dialog errors
     (access_denied, Invalid Scopes, etc.) are carried through verbatim."""
-    from fastapi.responses import HTMLResponse
 
     from app.core.config import get_settings
     from app.core.db import bind_tenant
@@ -842,7 +976,7 @@ async def meta_oauth_callback(
             result["error"] = value
         if extra:
             result.update(extra)
-        return HTMLResponse(_popup_html(result, frontend))
+        return _popup_response(result, frontend)
 
     # Meta redirects here with error params when the DIALOG failed
     if (error or error_code or error_message) and not code:
@@ -854,6 +988,12 @@ async def meta_oauth_callback(
             error,
             error_code,
             description[:200],
+        )
+        await _flag(
+            "link.window_closed" if error == "access_denied" else "link.code_exchange_failed",
+            None,
+            None,
+            {"error": error, "error_code": error_code, "description": description[:200]},
         )
         return _back("error", detail)
 
@@ -879,6 +1019,12 @@ async def meta_oauth_callback(
             provider,
             {"choose": {"ticket": choice.ticket, "provider": provider, "pages": choice.choices}},
         )
+    except ExternalProviderError as exc:
+        # Meta (or the path to it) is down or rate limiting: say so, and say it is retryable.
+        await session.rollback()
+        _logger.warning("meta_oauth.provider_unavailable provider=%s reason=%s", provider, exc)
+        await _flag("link.provider_unavailable", provider, None, {"reason": str(exc)[:200]})
+        return _back("error", f"meta_unavailable:{str(exc)[:120]}")
     except DomainError as exc:
         await session.rollback()
         return _back("error", f"{provider}:{str(exc)[:120]}")

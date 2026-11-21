@@ -27,6 +27,7 @@ from app.modules.inventory.service import (
     ValuationService,
     WarehouseLocationService,
 )
+from app.modules.inventory.services.expiry import expiry_report
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -934,6 +935,12 @@ async def set_tracking_policy(
         "mode": pol.mode,
         "expiry_required": pol.expiry_required,
     }
+
+
+@router.get("/expiry-report")
+async def get_expiry_report(ctx: TenantCtxDep):
+    """Expired and soon-to-expire batches; the owner sets the window."""
+    return await expiry_report(ctx.session, ctx.tenant_id)
 
 
 @router.get("/variants/{variant_id}/lots")

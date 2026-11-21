@@ -30,7 +30,7 @@ const WORDS = {
  */
 export default function Composer({
   value, onChange, onSend, onToggleEmoji, onCancelReply, replyingTo, customerName,
-  lastCustomerMessageAt, sending = false, lang = "ar", now, fontFamily, onPickFile, onStartVoice, onOpenTemplates,
+  lastCustomerMessageAt, sending = false, lang = "ar", now, fontFamily, onPickFile, onStartVoice, onOpenTemplates, onOpenInteractive,
 }) {
   const w = WORDS[lang] || WORDS.en;
   const ref = useRef(null);
@@ -82,7 +82,7 @@ export default function Composer({
       <div dir="ltr" data-testid="composer-capsule" className="flex min-h-[52px] items-end gap-0 rounded-[28px] bg-[var(--wa-bg-capsule)] px-1 py-1 sm:gap-0.5 sm:px-2 shadow-[0_1px_3px_rgba(11,20,26,0.13)]">
         <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label={w.attach} aria-haspopup="menu" aria-expanded={menuOpen} title={w.attach} data-testid="composer-attach" className={iconBtn}><PlusIcon size={26} className={menuOpen ? "rotate-45 transition-transform" : "transition-transform"} /></button>
         <button type="button" onClick={onToggleEmoji} aria-label={w.emoji} title={w.emoji} data-testid="composer-emoji" className={iconBtn}><EmojiIcon size={26} /></button>
-        <AttachMenu open={menuOpen} onClose={() => setMenuOpen(false)} onPick={(file, opts) => onPickFile?.(file, opts)} onOpenTemplates={onOpenTemplates} lang={lang} />
+        <AttachMenu open={menuOpen} onClose={() => setMenuOpen(false)} onPick={(file, opts) => onPickFile?.(file, opts)} onOpenTemplates={onOpenTemplates} onOpenInteractive={onOpenInteractive} lang={lang} />
         <div className="mx-1 min-w-0 flex-1">
           <textarea
             ref={ref}

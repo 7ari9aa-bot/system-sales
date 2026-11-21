@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from app.modules.settings.capabilities import CAPABILITIES, DEFAULT_VERTICAL, VERTICALS
+
 
 class SettingType(enum.StrEnum):
     BOOL = "bool"
@@ -209,11 +211,24 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "einvoice.branch_region_city",  # pos/eta_adapter.py::eta_branch
         "einvoice.branch_street",  # pos/eta_adapter.py::eta_branch
         "einvoice.branch_building_number",  # pos/eta_adapter.py::eta_branch
-        "business.legal_name",  # pos/eta_adapter.py::_seller
-        "business.trade_name",  # pos/eta_adapter.py::_seller
-        "business.tax_id",  # pos/eta_adapter.py::_seller
+        "pos.take_payments",  # pos/service.py::record_sale
+        "pos.allow_sale_on_account",  # pos/service.py::record_sale
+        "pos.reference_required_methods",  # pos/service.py::record_sale
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "inventory.safety_stock_default",  # inventory/services/replenishment.py::set_policy
+        "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
+        "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
+        "business.legal_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
+        "business.address.line1",  # pos/receipt_settings.py::receipt_settings
+        "business.address.city",  # pos/receipt_settings.py::receipt_settings
+        "business.phone",  # pos/receipt_settings.py::receipt_settings
+        "business.tax_id",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
+        "print.paper_width",  # pos/receipt_settings.py::receipt_settings
+        "print.show_logo",  # pos/receipt_settings.py::receipt_settings
+        "print.header_text",  # pos/receipt_settings.py::receipt_settings
+        "print.footer_text",  # pos/receipt_settings.py::receipt_settings
+        "print.copies",  # pos/receipt_settings.py::receipt_settings
+        "print.show_tax_detail",  # pos/receipt_settings.py::receipt_settings
     }
 )
 
@@ -385,6 +400,43 @@ _reg(
         description_en="The kind of business. It decides which settings you see.",
     )
 )
+
+_reg(
+    SettingDef(
+        key="business.vertical",
+        domain="business",
+        type=SettingType.ENUM,
+        default=DEFAULT_VERTICAL,
+        scopes=(Scope.TENANT,),
+        allowed_values=VERTICALS,
+        label_ar="قطاع النشاط",
+        label_en="Industry",
+        description_ar=(
+            "ملابس أو صيدلية أو مطعم أو عام. يحدد القدرات المفعّلة مبدئياً وتعدّل كل واحدة منها بنفسك."
+        ),
+        description_en=(
+            "Apparel, pharmacy, restaurant or general. It sets which capabilities "
+            "start on; you can change each one."
+        ),
+    )
+)
+
+# One owner switch per capability. The vertical only chooses the starting answer (see
+# ``capabilities.capability_enabled``), so the list lives in one place: capabilities.CAPABILITIES.
+for _cap in CAPABILITIES.values():
+    _reg(
+        SettingDef(
+            key=f"capability.{_cap.name}",
+            domain="business",
+            type=SettingType.BOOL,
+            default=False,
+            scopes=(Scope.TENANT,),
+            label_ar=_cap.label_ar,
+            label_en=_cap.label_en,
+            description_ar=_cap.description_ar,
+            description_en=_cap.description_en,
+        )
+    )
 
 # ============================= POS & SALES ================================
 
@@ -676,6 +728,72 @@ _reg(
         description_en="The reasons a cashier can pick from on a return. Saved on each item.",
     )
 )
+_reg(
+    SettingDef(
+        key="pos.take_payments",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="تسجيل وسائل الدفع",
+        label_en="Record Payments at the Till",
+        description_ar=(
+            "عند التفعيل يسجّل الكاشير كيف دفع الزبون (كاش أو كارت أو تحويل) والباقي، "
+            "وتدخل المبالغ النقدية في حركة الدرج. عند الإيقاف يسجّل البيع فقط كما كان."
+        ),
+        description_en=(
+            "When on, the cashier records how the customer paid (cash, card, transfer) and the "
+            "change, and cash goes into the drawer ledger. When off, a sale is recorded only."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.allow_sale_on_account",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="البيع بالآجل على حساب العميل",
+        label_en="Sell on Customer Account",
+        description_ar=(
+            "عند التفعيل يستطيع الكاشير تسجيل جزء من البيع (أو كله) على حساب عميل له حساب آجل "
+            "وحد ائتمان. لا يعمل إلا مع تسجيل وسائل الدفع، ويلزم تحديد العميل صراحة."
+        ),
+        description_en=(
+            "When on, the cashier can put part or all of a sale on the account of a customer who "
+            "has a credit account and limit. Needs payments recording, and a named customer."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.reference_required_methods",
+        domain="pos",
+        type=SettingType.LIST,
+        default=["card", "bank_transfer", "wallet"],
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="وسائل دفع تتطلب رقماً مرجعياً",
+        label_en="Payment Methods That Need a Reference",
+        description_ar=(
+            "وسائل الدفع التي يجب أن يكتب الكاشير معها رقم العملية أو الموافقة "
+            "(مثل رقم إيصال ماكينة الكارت أو رقم تحويل إنستاباي)."
+        ),
+        description_en=(
+            "Payment methods that need an approval or transfer number typed by the cashier "
+            "(a card terminal slip number, an instant-transfer reference)."
+        ),
+    )
+)
 # ============================== INVENTORY =================================
 #
 # There is deliberately no "allow negative stock" switch here (nor pos.allow_negative_stock_sale).
@@ -693,6 +811,21 @@ _reg(
         label_en="Auto Reserve for Orders",
         description_ar="حجز مخزون الطلب تلقائياً عند إنشائه.",
         description_en="Reserve an order's stock automatically when it is created.",
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.expiry_alert_days",
+        domain="inventory",
+        type=SettingType.NUMBER,
+        default=30,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=730,
+        label_ar="تنبيه قرب الانتهاء (أيام)",
+        label_en="Expiry alert window (days)",
+        description_ar="الدفعة التي تنتهي صلاحيتها خلال هذه المدة تظهر في تقرير قرب الانتهاء.",
+        description_en="A batch that expires within this many days appears in the expiry report.",
     )
 )
 _reg(

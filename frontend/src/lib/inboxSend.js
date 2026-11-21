@@ -22,14 +22,14 @@ export const TIMEOUT_MESSAGE =
   "Sending took too long. It may have gone through: check the conversation before sending again.";
 
 /** @returns {Promise<{ok: true, sent: object|null} | {ok: false, error: string}>} */
-export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null, mediaId = null, heart = false, sharePostId = null, quickReplies = null, templateName = null, templateVars = null, templateLanguage = null } = {}) {
+export async function sendReply(conversationId, text, { api = defaultApi, intents = sendIntents, replyToId = null, mediaId = null, heart = false, sharePostId = null, quickReplies = null, templateName = null, templateVars = null, templateLanguage = null, interactive = null } = {}) {
   const slot = `send:${conversationId}`;
   // Which message is being answered, and which uploaded file goes with it, are
   // part of the intention: the same words with a different file (or as a reply
   // to a different message) must be a new send, not a replay.
   // A template is part of the intention too: two different templates (or the same one with other
   // values) to one conversation must never share a key, or the second would replay the first.
-  const key = intents.take(slot, { text, replyToId, mediaId, heart, sharePostId, quickReplies, templateName, templateVars, templateLanguage });
+  const key = intents.take(slot, { text, replyToId, mediaId, heart, sharePostId, quickReplies, templateName, templateVars, templateLanguage, interactive });
   try {
     const body = {};
     if (text) body.body = text;
@@ -45,6 +45,8 @@ export async function sendReply(conversationId, text, { api = defaultApi, intent
     if (heart) body.instagram_heart = true;
     if (sharePostId) body.instagram_share_post_id = String(sharePostId);
     if (quickReplies?.length) body.instagram_quick_replies = quickReplies;
+    // WhatsApp only: buttons, a list or a link button. Its text lives inside it, so `text` stays empty.
+    if (interactive) body.interactive = interactive;
     const sent = await api(`/conversations/${conversationId}/messages`, {
       method: "POST",
       body,

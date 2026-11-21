@@ -1017,6 +1017,36 @@ class SupplierReturnService:
         return list((await session.execute(q.limit(limit).offset(offset))).scalars())
 
 
+def _clean_batch(raw: dict[str, Any], idx: int) -> tuple[str | None, datetime | None]:
+    """The batch a receipt line names, validated. No code means no batch: nothing else changes."""
+    code = str(raw.get("lot_code") or "").strip()[:64] or None
+    expires = raw.get("lot_expires_at")
+    if expires in (None, ""):
+        return code, None
+    if code is None:
+        raise ValidationError(f"line {idx}: lot_expires_at needs a lot_code")
+    try:
+        when = expires if isinstance(expires, datetime) else datetime.fromisoformat(str(expires))
+    except ValueError as exc:
+        raise ValidationError(f"line {idx}: lot_expires_at is not a valid date") from exc
+    return code, when if when.tzinfo else when.replace(tzinfo=UTC)
+
+
+async def _batch_for(
+    session: AsyncSession, tenant_id: UUID, gr_line: GoodsReceiptLine
+) -> UUID | None:
+    """The batch this line names (found or made by inventory), or None when it names none."""
+    if not gr_line.lot_code:
+        return None
+    return await _inventory().find_or_create_lot(
+        session,
+        tenant_id,
+        variant_id=gr_line.variant_id,
+        lot_code=gr_line.lot_code,
+        expires_at=gr_line.lot_expires_at,
+    )
+
+
 class GoodsReceiptService:
     """Create, post, and cancel goods receipts (partial receiving for POs, D5).
 
@@ -1118,6 +1148,8 @@ class GoodsReceiptService:
                     f"line {idx}: condition must be one of {sorted(GOODS_RECEIPT_CONDITIONS)}"
                 )
 
+            lot_code, lot_expires_at = _clean_batch(raw, idx)
+
             already = po_line.quantity_received or 0
             remaining = po_line.quantity - already
             if qty > remaining and not over_receipt_allowed:
@@ -1141,6 +1173,8 @@ class GoodsReceiptService:
                     "unit_cost": unit_cost,
                     "line_total": line_total,
                     "condition": condition,
+                    "lot_code": lot_code,
+                    "lot_expires_at": lot_expires_at,
                 }
             )
 
@@ -1170,6 +1204,8 @@ class GoodsReceiptService:
                     line_total=cl["line_total"],
                     position=position,
                     condition=cl["condition"],
+                    lot_code=cl["lot_code"],
+                    lot_expires_at=cl["lot_expires_at"],
                 )
             )
         await session.flush()
@@ -1277,6 +1313,7 @@ class GoodsReceiptService:
                 unit_cost=Decimal(gr_line.unit_cost),
                 source_type="goods_receipt",
                 source_id=receipt.id,
+                lot_id=await _batch_for(session, tenant_id, gr_line),
             )
 
             po_line = (

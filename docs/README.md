@@ -32,8 +32,8 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 
 | Area | Files |
 |---|---|
-| Channels (WhatsApp, Instagram, Messenger, Telegram, web chat) | [CHANNELS.md](CHANNELS.md), [META_SETUP.md](META_SETUP.md), [channels/](channels/) |
-| Cashier / POS | [POS_IMPLEMENTATION_PLAN.md](POS_IMPLEMENTATION_PLAN.md), [POS_EXPANSION_PLAN.md](POS_EXPANSION_PLAN.md), [POS_ERPNEXT_STUDY.md](POS_ERPNEXT_STUDY.md), [COMMERCE_CORE_ARCHITECTURE.md](COMMERCE_CORE_ARCHITECTURE.md) |
+| Channels (WhatsApp, Instagram, Messenger, Telegram, web chat) | [CHANNELS.md](CHANNELS.md), [META_SETUP.md](META_SETUP.md), [META_CHANNELS_REVIEW.md](META_CHANNELS_REVIEW.md), [channels/](channels/) |
+| Cashier / POS | [POS_IMPLEMENTATION_PLAN.md](POS_IMPLEMENTATION_PLAN.md), [POS_EXPANSION_PLAN.md](POS_EXPANSION_PLAN.md), [POS_ERPNEXT_STUDY.md](POS_ERPNEXT_STUDY.md), [COMMERCE_CORE_ARCHITECTURE.md](COMMERCE_CORE_ARCHITECTURE.md), [EGYPT_PAYMENT_CASH_DESIGN.md](EGYPT_PAYMENT_CASH_DESIGN.md) (proposal: payment, drawer and shop profiles for Egypt) |
 | Customer commerce (deposits, orders, payments) | [COMMERCE_FIT_REPORT.md](COMMERCE_FIT_REPORT.md) — Phase 0: what the commerce spec asks for vs what the code already owns, the real gaps, and the blocking decisions. |
 | Customer AI agent | [design/](design/) (core design, M1 handoff, red team) |
 | Desktop app | [DESKTOP_ARCH_REVIEW.md](DESKTOP_ARCH_REVIEW.md), and `desktop/docs/` in the repo root |

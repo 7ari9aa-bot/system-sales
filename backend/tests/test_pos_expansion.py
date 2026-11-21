@@ -44,11 +44,18 @@ def test_profile_routes_are_mounted() -> None:
     assert "/api/v1/pos/sessions/{session_id}/reconciliation" not in paths
 
 
-def test_close_takes_no_counted_figure() -> None:
-    """The close is not a drawer count: the route has no body model asking for one."""
+def test_close_counts_a_drawer_only_as_an_optional_body() -> None:
+    """The close counts a drawer only for a till that takes payments.
+
+    The body is optional, so a shop that never turned ``pos.take_payments`` on closes with no
+    body at all, exactly as before. The reconciliation route stays gone: the count rides on the
+    close itself. ``test_pos_take_payments`` proves the three cases (required, refused, absent).
+    """
     import app.modules.pos.router as router
 
-    assert not hasattr(router, "CloseSessionRequest")
+    model = router.CloseSessionRequest
+    assert model.model_fields["counted_cash"].default is None
+    assert model.model_config.get("extra") == "forbid"
 
 
 # ----------------------------------------------------------- DB-backed ----

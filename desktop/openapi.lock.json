@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 575,
-    "sha256": "bc6937a671adf9fcf2e4e99bc59e1369b9c414d5445562befab8a72003c6ed8e",
-    "typed_operations": 322
+    "operations": 595,
+    "sha256": "86c2749b7c814f8d95c6c60763f0c27052888c6418c8dd9e7f6b03debbd97080",
+    "typed_operations": 337
   },
   "spec": {
     "components": {
@@ -75,7 +75,7 @@
           "properties": {
             "items": {
               "items": {
-                "$ref": "#/components/schemas/AccountOut"
+                "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
               },
               "title": "Items",
               "type": "array"
@@ -90,57 +90,6 @@
             "total"
           ],
           "title": "AccountListOut",
-          "type": "object"
-        },
-        "AccountOut": {
-          "properties": {
-            "account_id": {
-              "format": "uuid",
-              "title": "Account Id",
-              "type": "string"
-            },
-            "account_type": {
-              "title": "Account Type",
-              "type": "string"
-            },
-            "code": {
-              "title": "Code",
-              "type": "string"
-            },
-            "created_at": {
-              "format": "date-time",
-              "title": "Created At",
-              "type": "string"
-            },
-            "currency": {
-              "title": "Currency",
-              "type": "string"
-            },
-            "is_active": {
-              "title": "Is Active",
-              "type": "boolean"
-            },
-            "name": {
-              "title": "Name",
-              "type": "string"
-            },
-            "tenant_id": {
-              "format": "uuid",
-              "title": "Tenant Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "account_id",
-            "tenant_id",
-            "code",
-            "name",
-            "account_type",
-            "currency",
-            "is_active",
-            "created_at"
-          ],
-          "title": "AccountOut",
           "type": "object"
         },
         "ActivityOut": {
@@ -447,6 +396,29 @@
             "is_default"
           ],
           "title": "AddressOut",
+          "type": "object"
+        },
+        "AdjustRequest": {
+          "properties": {
+            "amount": {
+              "description": "+ raises debt, - lowers it",
+              "maxLength": 21,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            },
+            "reason": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "amount",
+            "reason"
+          ],
+          "title": "AdjustRequest",
           "type": "object"
         },
         "AgentCapabilityOut": {
@@ -1089,6 +1061,21 @@
             "target"
           ],
           "title": "AlertDestination",
+          "type": "object"
+        },
+        "AmountRequest": {
+          "properties": {
+            "amount": {
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Amount",
+              "type": "string"
+            }
+          },
+          "required": [
+            "amount"
+          ],
+          "title": "AmountRequest",
           "type": "object"
         },
         "AnalysisOut": {
@@ -2008,6 +1995,28 @@
           "title": "Archived",
           "type": "object"
         },
+        "AssignBarcodesRequest": {
+          "properties": {
+            "variant_ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "maxItems": 500,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Ids"
+            }
+          },
+          "title": "AssignBarcodesRequest",
+          "type": "object"
+        },
         "AssignRequest": {
           "properties": {
             "user_id": {
@@ -2605,6 +2614,35 @@
             "updated_at"
           ],
           "title": "AutonomyBudgetOut",
+          "type": "object"
+        },
+        "BarcodesOut": {
+          "properties": {
+            "already_had_one": {
+              "title": "Already Had One",
+              "type": "integer"
+            },
+            "assigned": {
+              "title": "Assigned",
+              "type": "integer"
+            },
+            "codes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "format": "uuid"
+              },
+              "title": "Codes",
+              "type": "object"
+            }
+          },
+          "required": [
+            "assigned",
+            "already_had_one",
+            "codes"
+          ],
+          "title": "BarcodesOut",
           "type": "object"
         },
         "BlockState": {
@@ -3953,6 +3991,26 @@
           "title": "ClosePeriodRequest",
           "type": "object"
         },
+        "CloseSessionRequest": {
+          "additionalProperties": false,
+          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.",
+          "properties": {
+            "counted_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Cash"
+            }
+          },
+          "title": "CloseSessionRequest",
+          "type": "object"
+        },
         "CommentHideRequest": {
           "properties": {
             "hidden": {
@@ -4838,6 +4896,17 @@
         },
         "CurrentTenant": {
           "properties": {
+            "currency": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            },
             "id": {
               "format": "uuid",
               "title": "Id",
@@ -6034,6 +6103,18 @@
             "started": {
               "title": "Started",
               "type": "boolean"
+            },
+            "tender": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tender"
             }
           },
           "required": [
@@ -7661,59 +7742,6 @@
           "title": "EntryCreate",
           "type": "object"
         },
-        "EntryOut": {
-          "properties": {
-            "account_code": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Account Code"
-            },
-            "account_id": {
-              "format": "uuid",
-              "title": "Account Id",
-              "type": "string"
-            },
-            "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "title": "Amount",
-              "type": "string"
-            },
-            "entry_id": {
-              "format": "uuid",
-              "title": "Entry Id",
-              "type": "string"
-            },
-            "entry_type": {
-              "title": "Entry Type",
-              "type": "string"
-            },
-            "memo": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Memo"
-            }
-          },
-          "required": [
-            "entry_id",
-            "account_id",
-            "entry_type",
-            "amount"
-          ],
-          "title": "EntryOut",
-          "type": "object"
-        },
         "EvaluationCreateRequest": {
           "properties": {
             "agent_id": {
@@ -9322,6 +9350,69 @@
             "checks"
           ],
           "title": "FullDiagnosticsOut",
+          "type": "object"
+        },
+        "GenerateMatrixRequest": {
+          "properties": {
+            "color_codes": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color Codes"
+            },
+            "colors": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Colors",
+              "type": "array"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Price"
+            },
+            "sizes": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "title": "Sizes",
+              "type": "array"
+            },
+            "sku_prefix": {
+              "maxLength": 30,
+              "minLength": 1,
+              "title": "Sku Prefix",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sizes",
+            "colors",
+            "price",
+            "sku_prefix"
+          ],
+          "title": "GenerateMatrixRequest",
           "type": "object"
         },
         "GoodsReceiptIn": {
@@ -11990,6 +12081,41 @@
           "title": "MarketingSummaryOut",
           "type": "object"
         },
+        "MatrixCreatedOut": {
+          "properties": {
+            "created": {
+              "title": "Created",
+              "type": "integer"
+            },
+            "skipped": {
+              "title": "Skipped",
+              "type": "integer"
+            },
+            "skipped_skus": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Skipped Skus",
+              "type": "array"
+            },
+            "variant_ids": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "title": "Variant Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "created",
+            "skipped",
+            "variant_ids",
+            "skipped_skus"
+          ],
+          "title": "MatrixCreatedOut",
+          "type": "object"
+        },
         "MaturityPolicy": {
           "description": "How fast a metric settles to its final value for this store.",
           "properties": {
@@ -12492,6 +12618,20 @@
             "content"
           ],
           "title": "MessageSendRequest",
+          "type": "object"
+        },
+        "MetaOAuthChoosePageOut": {
+          "description": "Contract for POST /integrations/meta/oauth/choose-page: which channel was connected,\nas ``<provider>:<display name>`` (the popup shows it back to the owner).",
+          "properties": {
+            "connected": {
+              "title": "Connected",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connected"
+          ],
+          "title": "MetaOAuthChoosePageOut",
           "type": "object"
         },
         "MetaOAuthPageChoiceIn": {
@@ -13486,6 +13626,36 @@
             "opening_float"
           ],
           "title": "OpenDayRequest",
+          "type": "object"
+        },
+        "OpenRequest": {
+          "properties": {
+            "credit_limit": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Credit Limit"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "title": "OpenRequest",
           "type": "object"
         },
         "OpenStocktakeRequest": {
@@ -14501,6 +14671,53 @@
           "title": "PaymentIn",
           "type": "object"
         },
+        "PaymentLine": {
+          "additionalProperties": false,
+          "description": "One way the customer paid. ``tendered`` is only for cash (the note handed over).",
+          "properties": {
+            "amount": {
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "method": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Method",
+              "type": "string"
+            },
+            "reference": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference"
+            },
+            "tendered": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tendered"
+            }
+          },
+          "required": [
+            "method",
+            "amount"
+          ],
+          "title": "PaymentLine",
+          "type": "object"
+        },
         "PaymentMethodInfo": {
           "properties": {
             "key": {
@@ -15241,6 +15458,334 @@
           "title": "PostCommentsToggleRequest",
           "type": "object"
         },
+        "ProfileOut": {
+          "properties": {
+            "activity_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Code"
+            },
+            "branch_code": {
+              "title": "Branch Code",
+              "type": "string"
+            },
+            "building_number": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Building Number"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "commercial_register": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commercial Register"
+            },
+            "country_code": {
+              "title": "Country Code",
+              "type": "string"
+            },
+            "governorate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Governorate"
+            },
+            "legal_name": {
+              "title": "Legal Name",
+              "type": "string"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "postal_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            },
+            "street": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Street"
+            },
+            "tax_registration_number": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Registration Number"
+            },
+            "trade_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Name"
+            },
+            "vat_status": {
+              "title": "Vat Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "legal_name",
+            "trade_name",
+            "vat_status",
+            "tax_registration_number",
+            "commercial_register",
+            "activity_code",
+            "branch_code",
+            "governorate",
+            "city",
+            "street",
+            "building_number",
+            "postal_code",
+            "phone",
+            "country_code"
+          ],
+          "title": "ProfileOut",
+          "type": "object"
+        },
+        "ProfileRequest": {
+          "properties": {
+            "activity_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Code"
+            },
+            "branch_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch Code"
+            },
+            "building_number": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Building Number"
+            },
+            "city": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "commercial_register": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commercial Register"
+            },
+            "governorate": {
+              "anyOf": [
+                {
+                  "maxLength": 63,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Governorate"
+            },
+            "legal_name": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Legal Name",
+              "type": "string"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            },
+            "postal_code": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            },
+            "street": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Street"
+            },
+            "tax_registration_number": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Registration Number"
+            },
+            "trade_name": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Name"
+            },
+            "vat_status": {
+              "default": "not_registered",
+              "pattern": "^(registered|not_registered)$",
+              "title": "Vat Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "legal_name"
+          ],
+          "title": "ProfileRequest",
+          "type": "object"
+        },
+        "ProfileResponse": {
+          "properties": {
+            "missing_for_e_receipt": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Missing For E Receipt",
+              "type": "array"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProfileOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "profile",
+            "missing_for_e_receipt"
+          ],
+          "title": "ProfileResponse",
+          "type": "object"
+        },
         "ProfileUpdate": {
           "description": "The parts of an account its owner may rewrite about themselves.\n\nDeliberately narrow: the full name is the one personal fact the API owns.\nEmail is not here — changing it is a verified-identity operation (prove the\ninbox, then move the login), not a field edit, and the address is the key\ninvitations bind to. The workspace name is not here either: it belongs to\nthe shop (``PUT /tenants/{id}/name``), not to the person.",
           "properties": {
@@ -15739,6 +16284,17 @@
         },
         "RecordSaleOut": {
           "properties": {
+            "change": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change"
+            },
             "customer_notice": {
               "anyOf": [
                 {
@@ -15750,9 +16306,31 @@
               ],
               "title": "Customer Notice"
             },
+            "deposit_used": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deposit Used"
+            },
             "grand_total": {
               "title": "Grand Total",
               "type": "string"
+            },
+            "on_account": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On Account"
             },
             "order_id": {
               "format": "uuid",
@@ -15762,6 +16340,17 @@
             "order_number": {
               "title": "Order Number",
               "type": "string"
+            },
+            "paid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paid"
             },
             "receipt_id": {
               "format": "uuid",
@@ -15785,7 +16374,7 @@
         },
         "RecordSaleRequest": {
           "additionalProperties": false,
-          "description": "A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.\n\n``extra=\"forbid\"``: a client that still sends ``method``/``amount``/``tenders`` or a seller\nid is refused rather than ignored. Ignoring a payment field would let the client believe\nmoney was handled; the seller is always the authenticated caller, never a body field.",
+          "description": "A counter sale. The cashier records WHAT was sold and, if the shop turned it on, HOW it\nwas paid.\n\n``extra=\"forbid\"``: a client that sends an unknown field or a seller id is refused rather\nthan ignored; the seller is always the authenticated caller, never a body field. ``payments``\nis accepted only when the shop's ``pos.take_payments`` is on, and required then. Ignoring a\npayment field would let the client believe money was handled, so a till that does not record\npayments refuses it.",
           "properties": {
             "customer_id": {
               "anyOf": [
@@ -15854,6 +16443,26 @@
                 }
               ],
               "title": "Note"
+            },
+            "on_account": {
+              "default": false,
+              "title": "On Account",
+              "type": "boolean"
+            },
+            "payments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentLine"
+                  },
+                  "maxItems": 8,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payments"
             }
           },
           "required": [
@@ -16866,6 +17475,21 @@
             "net_aov"
           ],
           "title": "RevenueSummaryOut",
+          "type": "object"
+        },
+        "ReverseRequest": {
+          "properties": {
+            "reason": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "title": "ReverseRequest",
           "type": "object"
         },
         "RoasRowOut": {
@@ -18209,6 +18833,18 @@
                 }
               ],
               "title": "Instagram Share Post Id"
+            },
+            "interactive": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interactive"
             },
             "media_id": {
               "anyOf": [
@@ -20037,6 +20673,91 @@
             }
           },
           "title": "TaskUpdate",
+          "type": "object"
+        },
+        "TaxClassOut": {
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "eta_sub_type": {
+              "title": "Eta Sub Type",
+              "type": "string"
+            },
+            "eta_tax_type": {
+              "title": "Eta Tax Type",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "is_default": {
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rate": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Rate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "code",
+            "name",
+            "rate",
+            "eta_tax_type",
+            "eta_sub_type",
+            "is_default",
+            "is_active"
+          ],
+          "title": "TaxClassOut",
+          "type": "object"
+        },
+        "TaxClassRequest": {
+          "properties": {
+            "code": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "eta_sub_type": {
+              "default": "V009",
+              "maxLength": 15,
+              "title": "Eta Sub Type",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "rate": {
+              "maxLength": 8,
+              "minLength": 1,
+              "title": "Rate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "name",
+            "rate"
+          ],
+          "title": "TaxClassRequest",
           "type": "object"
         },
         "TelemetryEventIn": {
@@ -22055,7 +22776,7 @@
             },
             "entries": {
               "items": {
-                "$ref": "#/components/schemas/EntryOut"
+                "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
               },
               "title": "Entries",
               "type": "array"
@@ -23921,6 +24642,259 @@
             }
           },
           "title": "WorkspaceUpdate",
+          "type": "object"
+        },
+        "app__modules__customer_accounts__router__AccountOut": {
+          "properties": {
+            "available_credit": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Available Credit"
+            },
+            "balance": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Balance",
+              "type": "string"
+            },
+            "credit_held": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Credit Held",
+              "type": "string"
+            },
+            "credit_limit": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Credit Limit"
+            },
+            "customer_id": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "owes": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Owes",
+              "type": "string"
+            }
+          },
+          "required": [
+            "customer_id",
+            "credit_limit",
+            "note",
+            "balance",
+            "owes",
+            "credit_held",
+            "available_credit"
+          ],
+          "title": "AccountOut",
+          "type": "object"
+        },
+        "app__modules__customer_accounts__router__EntryOut": {
+          "properties": {
+            "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "balance_after": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Balance After",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "entry_type": {
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "order_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "reverses_entry_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverses Entry Id"
+            },
+            "seq": {
+              "title": "Seq",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "seq",
+            "entry_type",
+            "amount",
+            "balance_after",
+            "order_id",
+            "reverses_entry_id",
+            "reason",
+            "created_at"
+          ],
+          "title": "EntryOut",
+          "type": "object"
+        },
+        "app__modules__financial__schemas__AccountOut": {
+          "properties": {
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "account_type": {
+              "title": "Account Type",
+              "type": "string"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id",
+            "tenant_id",
+            "code",
+            "name",
+            "account_type",
+            "currency",
+            "is_active",
+            "created_at"
+          ],
+          "title": "AccountOut",
+          "type": "object"
+        },
+        "app__modules__financial__schemas__EntryOut": {
+          "properties": {
+            "account_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Code"
+            },
+            "account_id": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Amount",
+              "type": "string"
+            },
+            "entry_id": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            },
+            "entry_type": {
+              "title": "Entry Type",
+              "type": "string"
+            },
+            "memo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memo"
+            }
+          },
+          "required": [
+            "entry_id",
+            "account_id",
+            "entry_type",
+            "amount"
+          ],
+          "title": "EntryOut",
           "type": "object"
         },
         "app__modules__identity__schemas__LocationOut": {
@@ -36927,6 +37901,853 @@
           ]
         }
       },
+      "/api/v1/customer-accounts/entries/{entry_id}/reverse": {
+        "post": {
+          "operationId": "reverse_api_v1_customer_accounts_entries__entry_id__reverse_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "entry_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Entry Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reverse",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}": {
+        "get": {
+          "operationId": "get_account_api_v1_customer_accounts__customer_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Account",
+          "tags": [
+            "customer-accounts"
+          ]
+        },
+        "put": {
+          "operationId": "open_account_api_v1_customer_accounts__customer_id__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Account",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/adjustments": {
+        "post": {
+          "operationId": "adjust_api_v1_customer_accounts__customer_id__adjustments_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Adjust",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/deposits": {
+        "post": {
+          "operationId": "take_deposit_api_v1_customer_accounts__customer_id__deposits_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Take Deposit",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/payments": {
+        "post": {
+          "operationId": "receive_payment_api_v1_customer_accounts__customer_id__payments_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Receive Payment",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
+      "/api/v1/customer-accounts/{customer_id}/statement": {
+        "get": {
+          "operationId": "statement_api_v1_customer_accounts__customer_id__statement_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "customer_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Customer Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 200,
+                "maximum": 1000,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    },
+                    "title": "Response Statement Api V1 Customer Accounts  Customer Id  Statement Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Statement",
+          "tags": [
+            "customer-accounts"
+          ]
+        }
+      },
       "/api/v1/customers": {
         "get": {
           "operationId": "list_customers_api_v1_customers_get",
@@ -44375,7 +46196,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/AccountOut"
+                    "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
                   }
                 }
               },
@@ -44826,7 +46647,7 @@
                 "application/json": {
                   "schema": {
                     "items": {
-                      "$ref": "#/components/schemas/EntryOut"
+                      "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
                     },
                     "title": "Response List Transaction Entries Api V1 Financial Transactions  Transaction Id  Entries Get",
                     "type": "array"
@@ -48377,7 +50198,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/MetaOAuthChoosePageOut"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -49525,6 +51348,102 @@
             }
           },
           "summary": "Get Channel Availability",
+          "tags": [
+            "inventory"
+          ]
+        }
+      },
+      "/api/v1/inventory/expiry-report": {
+        "get": {
+          "description": "Expired and soon-to-expire batches; the owner sets the window.",
+          "operationId": "get_expiry_report_api_v1_inventory_expiry_report_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Expiry Report",
           "tags": [
             "inventory"
           ]
@@ -68970,7 +70889,7 @@
       },
       "/api/v1/pos/registers/{register_id}/sales": {
         "post": {
-          "description": "Record a sale: no shift to open, no payment to take. Stock comes off the shelf.",
+          "description": "Record a sale: stock comes off the shelf; payment is taken only if the shop turned it on.",
           "operationId": "record_sale_api_v1_pos_registers__register_id__sales_post",
           "parameters": [
             {
@@ -68981,6 +70900,23 @@
                 "format": "uuid",
                 "title": "Register Id",
                 "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "Idempotency-Key",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Idempotency-Key"
               }
             },
             {
@@ -70118,6 +72054,23 @@
               }
             }
           ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CloseSessionRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
           "responses": {
             "200": {
               "content": {
@@ -70245,6 +72198,112 @@
             }
           },
           "summary": "Get Close Preview",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/sessions/{session_id}/drawer": {
+        "get": {
+          "description": "Expected cash from the drawer ledger and what each payment method collected.",
+          "operationId": "drawer_summary_api_v1_pos_sessions__session_id__drawer_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Drawer Summary",
           "tags": [
             "pos"
           ]
@@ -73886,6 +75945,124 @@
           ]
         }
       },
+      "/api/v1/products/{product_id}/barcodes": {
+        "post": {
+          "description": "Give every variant of the garment that has no barcode one of the shop's own.",
+          "operationId": "assign_barcodes_api_v1_products__product_id__barcodes_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignBarcodesRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BarcodesOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Assign Barcodes",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
       "/api/v1/products/{product_id}/images": {
         "get": {
           "operationId": "list_product_images_api_v1_products__product_id__images_get",
@@ -74204,6 +76381,378 @@
             }
           },
           "summary": "Upload Product Image",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/{product_id}/labels": {
+        "get": {
+          "description": "A print-ready page with one label per variant (times ``copies``), each at its real size.\n\nLabelling is a separate, write-protected step (POST .../barcodes): a variant without a code\nmakes this refuse rather than print a label nobody can scan.",
+          "operationId": "print_labels_api_v1_products__product_id__labels_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "size",
+              "required": false,
+              "schema": {
+                "default": "medium",
+                "title": "Size",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "copies",
+              "required": false,
+              "schema": {
+                "default": 1,
+                "maximum": 20,
+                "minimum": 1,
+                "title": "Copies",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "variant_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Variant Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "text/html": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Print Labels",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/{product_id}/matrix": {
+        "get": {
+          "description": "The garment as a grid: colours down, sizes across, sellable stock in each cell.",
+          "operationId": "read_matrix_api_v1_products__product_id__matrix_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read Matrix",
+          "tags": [
+            "catalog"
+          ]
+        },
+        "post": {
+          "description": "Add every missing size x colour variant of a garment, all or none.",
+          "operationId": "generate_matrix_api_v1_products__product_id__matrix_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateMatrixRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MatrixCreatedOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Generate Matrix",
           "tags": [
             "catalog"
           ]
@@ -76805,6 +79354,106 @@
             }
           },
           "summary": "Bulk Set Settings",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/capabilities": {
+        "get": {
+          "description": "The shop's vertical and what it can do, as its owner has set them (final answers).",
+          "operationId": "get_shop_capabilities_api_v1_settings_capabilities_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Get Shop Capabilities Api V1 Settings Capabilities Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Shop Capabilities",
           "tags": [
             "settings"
           ]
@@ -82010,6 +84659,414 @@
           ]
         }
       },
+      "/api/v1/taxation/classes": {
+        "get": {
+          "operationId": "list_classes_api_v1_taxation_classes_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/TaxClassOut"
+                    },
+                    "title": "Response List Classes Api V1 Taxation Classes Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Classes",
+          "tags": [
+            "taxation"
+          ]
+        },
+        "post": {
+          "operationId": "create_class_api_v1_taxation_classes_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxClassRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaxClassOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Class",
+          "tags": [
+            "taxation"
+          ]
+        }
+      },
+      "/api/v1/taxation/profile": {
+        "get": {
+          "operationId": "get_profile_api_v1_taxation_profile_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProfileResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Profile",
+          "tags": [
+            "taxation"
+          ]
+        },
+        "put": {
+          "operationId": "put_profile_api_v1_taxation_profile_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProfileResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Put Profile",
+          "tags": [
+            "taxation"
+          ]
+        }
+      },
       "/api/v1/tenants/{tenant_id}/currency": {
         "get": {
           "description": "§47 read: which currency this tenant trades in.\n\nThe PUT has always been here; the money a screen renders has a currency, so\na client must be able to ASK for it rather than assume one. The lifecycle\nservice already loads the same tenant row, so this reuses that read rather\nthan adding a second one.",
@@ -85518,6 +88575,67 @@
           "summary": "Rotate Webhook Secret",
           "tags": [
             "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion": {
+        "post": {
+          "description": "Meta's data-deletion callback: verify `signed_request`, open a deletion request.\n\nMeta needs `{url, confirmation_code}` back. The merchant executes the request from the\nprivacy screen; see `app.modules.privacy.meta_deletion` for why it is not automatic.",
+          "operationId": "meta_data_deletion_api_v1_webhooks_meta_data_deletion_post",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Meta Data Deletion",
+          "tags": [
+            "privacy"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/data-deletion/status/{confirmation_code}": {
+        "get": {
+          "description": "The page Meta shows the person: where their deletion request stands.",
+          "operationId": "meta_data_deletion_status_api_v1_webhooks_meta_data_deletion_status__confirmation_code__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "confirmation_code",
+              "required": true,
+              "schema": {
+                "title": "Confirmation Code",
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Meta Data Deletion Status",
+          "tags": [
+            "privacy"
           ]
         }
       },

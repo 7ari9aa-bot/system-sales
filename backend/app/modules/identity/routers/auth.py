@@ -227,7 +227,9 @@ async def me(user: CurrentUserDep, session: DbSession):
         avatar_url=avatar.read_url(full.avatar_url),
         mfa_enabled=await is_mfa_enabled(session, user_id=user.id),
         tenants=[
-            schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
+            schemas.CurrentTenant(
+                id=t.id, name=t.name, slug=t.slug, role_code=role, currency=t.currency
+            )
             for t, role in tenants
         ],
     )
@@ -334,7 +336,9 @@ async def accept_invitation(body: schemas.AcceptInvitationRequest, session: DbSe
         full_name=user.full_name,
         is_platform_admin=user.is_platform_admin,
         tenants=[
-            schemas.CurrentTenant(id=t.id, name=t.name, slug=t.slug, role_code=role)
+            schemas.CurrentTenant(
+                id=t.id, name=t.name, slug=t.slug, role_code=role, currency=t.currency
+            )
             for t, role in tenants
         ],
     )

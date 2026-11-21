@@ -34,6 +34,7 @@ import app.core.model_registry  # noqa: F401
 import app.workers.import_runner  # noqa: F401
 from app.core.events.bus import RedisStreamsBus
 from app.core.events.outbox import OutboxRelay
+from app.core.log_redaction import install_secret_redaction
 from app.core.redis import close_redis, get_redis
 from app.workers.base import StreamWorker
 from app.workers.campaign_worker import CampaignWorker
@@ -56,6 +57,7 @@ WORKER_LOG_FORMAT = (
 
 install_log_correlation()
 logging.basicConfig(level=logging.INFO, format=WORKER_LOG_FORMAT)
+install_secret_redaction()
 logger = logging.getLogger(__name__)
 
 POOLS: dict[str, type[StreamWorker]] = {

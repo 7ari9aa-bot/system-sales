@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { previewLines, toDisplay } from "@/components/inbox/whatsapp/interactiveForm";
 import { useLocation, useNavigate } from "react-router-dom";
 import { readSignalBody, supportsReadSignal } from "@/components/inbox/whatsapp/readSignal";
 import { visibleRows } from "@/components/inbox/whatsapp/chatListState";
@@ -69,6 +70,8 @@ function toMessage(message) {
     reactions: Array.isArray(message.reactions) ? message.reactions : [],
     myReaction: message.my_reaction || "",
     quickReplies: Array.isArray(message.quick_replies) ? message.quick_replies : [],
+    interactive: message.interactive || null,
+    order: message.order || null,
   };
 }
 
@@ -643,7 +646,7 @@ export function InboxProvider({ children }) {
     setSending(true);
     setError(null);
     try {
-      const result = await sendReply(conversationId, opts.template ? "" : text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null, quickReplies: opts.quickReplies || null, templateName: opts.template?.name || null, templateVars: opts.template?.vars || null, templateLanguage: opts.template?.language || null });
+      const result = await sendReply(conversationId, opts.template || opts.interactive ? "" : text, { replyToId: opts.replyTo?.id || null, mediaId: opts.mediaId || null, heart: Boolean(opts.heart), sharePostId: opts.sharePostId || null, quickReplies: opts.quickReplies || null, templateName: opts.template?.name || null, templateVars: opts.template?.vars || null, templateLanguage: opts.template?.language || null, interactive: opts.interactive || null });
       if (!result.ok) {
         setError(result.error);
         return false;
@@ -669,11 +672,13 @@ export function InboxProvider({ children }) {
         // The heart is stored like an incoming one (a sticker holding the heart) so it draws the same.
         ...(opts.quickReplies?.length ? { quickReplies: opts.quickReplies } : {}),
         ...(opts.heart ? { contentType: "sticker" } : {}),
+        // Buttons / a list / a link show at once, drawn from what was typed; the reload swaps in the server's copy.
+        ...(opts.interactive ? { contentType: "interactive", interactive: toDisplay(opts.interactive) } : {}),
         // A shared post shows at once as the same card an incoming one draws, until the list reloads from the server.
         ...(opts.sharePostId && opts.sharedPost
           ? { contentType: "share", card: { type: "share", kind: "ig_post", url: opts.sharedPost.permalink || null, title: opts.sharedPost.caption || null } }
           : {}),
-        text: opts.heart ? "\u2764\ufe0f" : (opts.template?.preview ?? text),
+        text: opts.heart ? "\u2764\ufe0f" : (opts.interactive ? previewLines(opts.interactive) : (opts.template?.preview ?? text)),
         time: displayTime(createdAt),
         createdAt,
         status: sent?.status || "queued",

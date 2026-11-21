@@ -10,6 +10,7 @@ from app.modules.automation import models as automation  # noqa: F401
 from app.modules.billing import models as billing  # noqa: F401
 from app.modules.catalog import models as catalog  # noqa: F401
 from app.modules.conversations import models as conversations  # noqa: F401
+from app.modules.customer_accounts import models as customer_accounts  # noqa: F401
 from app.modules.customers import models as customers  # noqa: F401
 from app.modules.decisions import models as decisions  # noqa: F401
 from app.modules.evidence import models as evidence  # noqa: F401
@@ -26,3 +27,4 @@ from app.modules.privacy import models as privacy  # noqa: F401
 from app.modules.purchasing import models as purchasing  # noqa: F401
 from app.modules.segments.service import Segment  # noqa: F401  (model lives in service.py)
 from app.modules.settings import models as settings  # noqa: F401
+from app.modules.taxation import models as taxation  # noqa: F401

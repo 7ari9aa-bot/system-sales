@@ -8,13 +8,18 @@ const VIDEO_EXT = /\.(mp4|mov|webm|3gp|mkv)(\?|#|$)/i;
 const AUDIO_EXT = /\.(ogg|opus|mp3|m4a|aac|wav|amr)(\?|#|$)/i;
 const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|txt|csv|zip|rar)(\?|#|$)/i;
 
-/** @returns {"text"|"image"|"video"|"voice"|"document"|"sticker"|"location"|"contact"|"buttons"|"list"|"unsupported"} */
+/** @returns {"text"|"image"|"video"|"voice"|"document"|"sticker"|"location"|"contact"|"buttons"|"list"|"interactive"|"order"|"unsupported"} */
 export function messageKind(m) {
   const type = m?.contentType;
   const media = m?.mediaType;
   const url = m?.mediaUrl || "";
   if (type === "location") return "location";
   if (type === "contact") return "contact";
+  // Our own message with choices under it. Only when the server sent a checked spec: without one
+  // (an old row, a spec that no longer passes) it falls through and reads as the plain text it is.
+  if (type === "interactive" && m?.interactive) return "interactive";
+  // A cart from the catalog: only when the server sent a checked one. Without it, plain text.
+  if (type === "order" && m?.order) return "order";
   if (type === "buttons") return "buttons";
   if (type === "list") return "list";
   if (type === "unsupported") return "unsupported";

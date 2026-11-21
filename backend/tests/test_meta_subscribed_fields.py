@@ -6,9 +6,11 @@ def test_instagram_subscribes_to_comments_reactions_and_seen():
     assert {"messages", "comments", "message_reactions", "messaging_seen"} <= f
 
 
-def test_other_channels_keep_the_original_fields():
+def test_messenger_keeps_the_original_fields_and_facebook_adds_feed():
     base = "messages,messaging_postbacks,messaging_referrals,message_deliveries"
-    assert subscribed_fields("messenger") == base == subscribed_fields("facebook")
+    assert subscribed_fields("messenger") == base
+    # A Facebook Page's comments arrive on `feed`; everything else is Messenger's own list.
+    assert subscribed_fields("facebook") == base + ",feed"
 
 
 def test_instagram_asks_for_comment_and_publish_permissions():

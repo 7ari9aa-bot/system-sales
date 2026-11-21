@@ -18,7 +18,7 @@ from app.modules.customers import meta_oauth as mo
 
 TENANT = uuid.uuid4()
 USER = str(uuid.uuid4())
-USER_TOKEN = "LONG-LIVED-USER-TOKEN-never-shown-to-the-browser"
+USER_TOKEN = "fake-LONG-LIVED-USER-TOKEN-never-shown-to-the-browser"
 PAGES = [
     {"id": "111", "name": "Shop One", "access_token": "PAGE-TOKEN-1", "tasks": ["MESSAGING"]},
     {"id": "222", "name": "Shop Two", "access_token": "PAGE-TOKEN-2", "tasks": ["MANAGE"]},

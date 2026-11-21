@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator
 
 from app.modules.errors import ValidationError
@@ -233,12 +233,28 @@ class QuoteRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
 
 
-class RecordSaleRequest(BaseModel):
-    """A counter sale. The cashier records WHAT was sold; how it was paid is not part of it.
+class PaymentLine(BaseModel):
+    """One way the customer paid. ``tendered`` is only for cash (the note handed over)."""
 
-    ``extra="forbid"``: a client that still sends ``method``/``amount``/``tenders`` or a seller
-    id is refused rather than ignored. Ignoring a payment field would let the client believe
-    money was handled; the seller is always the authenticated caller, never a body field.
+    model_config = ConfigDict(extra="forbid")
+
+    method: str = Field(min_length=1, max_length=31)
+    amount: str = Field(pattern=_MONEY)
+    tendered: str | None = Field(default=None, pattern=_MONEY)
+    # Card approval number, transfer reference. Required for the methods the shop lists in
+    # ``pos.reference_required_methods``.
+    reference: str | None = Field(default=None, max_length=63)
+
+
+class RecordSaleRequest(BaseModel):
+    """A counter sale. The cashier records WHAT was sold and, if the shop turned it on, HOW it
+    was paid.
+
+    ``extra="forbid"``: a client that sends an unknown field or a seller id is refused rather
+    than ignored; the seller is always the authenticated caller, never a body field. ``payments``
+    is accepted only when the shop's ``pos.take_payments`` is on, and required then. Ignoring a
+    payment field would let the client believe money was handled, so a till that does not record
+    payments refuses it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -255,6 +271,10 @@ class RecordSaleRequest(BaseModel):
     discount_total: str | None = Field(default=None, pattern=_MONEY)
     # A free-text remark on the invoice (e.g. "gift", "deliver tomorrow"); blank counts as none.
     note: str | None = Field(default=None, max_length=512)
+    payments: list[PaymentLine] | None = Field(default=None, max_length=8)
+    # Put whatever the customer did not pay now on their credit account. Needs a named customer
+    # and the shop's pos.allow_sale_on_account; refused when the account's limit would be passed.
+    on_account: bool = False
 
 
 class WorkingSessionOut(BaseModel):
@@ -279,6 +299,14 @@ class RecordSaleOut(BaseModel):
     # not be attached to the invoice: the sale itself still went through, but the customer will not
     # be able to follow it from a chat. The till shows a notice and the cashier can fix it.
     customer_notice: str | None = None
+    # Set only when the till records payments: what was collected and the change handed back
+    # (change is None when nothing was paid in cash).
+    paid: str | None = None
+    change: str | None = None
+    # The part of the sale put on the customer's account; None when the sale was not on account.
+    on_account: str | None = None
+    # How much of the customer's held deposit paid for this sale (None when not on account).
+    deposit_used: str | None = None
 
 
 class HoldCartRequest(BaseModel):
@@ -481,6 +509,19 @@ class DayStateOut(BaseModel):
 
     started: bool
     session: WorkingSessionOut | None = None
+    # How this till may take money (payments recorded, sale on account, methods, references).
+    # None until the day has started, because it is read from the day's own till.
+    tender: dict | None = None
+
+
+async def _day_state(ctx, found) -> dict:
+    if found is None:
+        return {"started": False, "session": None, "tender": None}
+    return {
+        "started": True,
+        "session": _session_out(found),
+        "tender": await PosService.tender_rules(ctx.session, ctx.tenant_id, found),
+    }
 
 
 @router.post("/registers/{register_id}/working-session", response_model=DayStateOut)
@@ -491,7 +532,7 @@ async def working_session(register_id: UUID, ctx: PosWriteCtx):
     ``started: false`` and the screen asks for the balance (``POST .../open-day``).
     """
     found = await PosService.working_session(ctx.session, ctx.tenant_id, register_id)
-    return {"started": found is not None, "session": _session_out(found) if found else None}
+    return await _day_state(ctx, found)
 
 
 @router.post("/registers/{register_id}/open-day", response_model=DayStateOut, status_code=201)
@@ -505,14 +546,18 @@ async def open_day(register_id: UUID, body: OpenDayRequest, ctx: PosWriteCtx):
         opening_float=body.opening_float,
         actor_user_id=ctx.user.id,
     )
-    return {"started": True, "session": _session_out(opened)}
+    return await _day_state(ctx, opened)
 
 
 @router.post("/registers/{register_id}/sales", status_code=201, response_model=RecordSaleOut)
 async def record_sale(
-    register_id: UUID, body: RecordSaleRequest, ctx: PosWriteCtx, override: OverrideDep
+    register_id: UUID,
+    body: RecordSaleRequest,
+    ctx: PosWriteCtx,
+    override: OverrideDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ):
-    """Record a sale: no shift to open, no payment to take. Stock comes off the shelf."""
+    """Record a sale: stock comes off the shelf; payment is taken only if the shop turned it on."""
     return await PosService.record_sale(
         ctx.session,
         ctx.tenant_id,
@@ -525,19 +570,42 @@ async def record_sale(
         note=(body.note or "").strip() or None,
         actor_user_id=ctx.user.id,
         discount_override=override.active,
+        payments=[line.model_dump() for line in body.payments] if body.payments else None,
+        on_account=body.on_account,
+        idempotency_key=idempotency_key,
     )
 
 
+class CloseSessionRequest(BaseModel):
+    """The close. ``counted_cash`` is required when the till takes payments and refused when not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    counted_cash: str | None = Field(default=None, pattern=_MONEY)
+
+
 @router.post("/sessions/{session_id}/close")
-async def close_session(session_id: UUID, ctx: PosWriteCtx, override: OverrideDep):
+async def close_session(
+    session_id: UUID,
+    ctx: PosWriteCtx,
+    override: OverrideDep,
+    body: CloseSessionRequest | None = None,
+):
     pos_session = await PosService.close_session(
         ctx.session,
         ctx.tenant_id,
         session_id,
         closed_by=ctx.user.id,
         shift_override=override.active,
+        counted_cash=body.counted_cash if body is not None else None,
     )
     return _session_out(pos_session)
+
+
+@router.get("/sessions/{session_id}/drawer")
+async def drawer_summary(session_id: UUID, ctx: PosReadCtx):
+    """Expected cash from the drawer ledger and what each payment method collected."""
+    return await PosService.drawer_summary(ctx.session, ctx.tenant_id, session_id)
 
 
 class CashMovementRequest(BaseModel):
@@ -763,6 +831,7 @@ async def get_receipt(receipt_id: UUID, ctx: PosReadCtx):
         },
         "lines": [{**line, "variant_id": str(line["variant_id"])} for line in payload["lines"]],
         "tenders": payload["tenders"],
+        "shop": payload["shop"],
     }
 
 

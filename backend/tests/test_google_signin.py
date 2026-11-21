@@ -392,3 +392,195 @@ async def test_google_does_not_bypass_mfa(db, monkeypatch):
     monkeypatch.setattr("app.core.mfa.is_mfa_enabled", _mfa_on)
     with pytest.raises(GoogleMfaRequired):
         await AuthService.login_with_google(db, email=email, email_verified=True)
+
+
+# ------------------------------------------- an unexpected failure must not be a bare JSON 500
+
+
+class _WatchedSession:
+    """Stands in for the request session and remembers whether it was rolled back."""
+
+    def __init__(self):
+        self.rolled_back = 0
+
+    async def rollback(self):
+        self.rolled_back += 1
+
+
+def _client_with(session, monkeypatch):
+    monkeypatch.setattr(google_router, "_google_config", lambda: ("cid", "secret"))
+    app = FastAPI()
+    app.include_router(google_router.router, prefix="/api/v1")
+
+    async def _session():
+        yield session
+
+    from app.modules.identity.deps import get_db
+
+    app.dependency_overrides[get_db] = _session
+    return TestClient(app, follow_redirects=False)
+
+
+def test_an_unexpected_error_sends_the_person_back_to_login_and_rolls_back(monkeypatch, caplog):
+    """It used to be `{"error": {"code": "internal_error"}}` on a page with no way back."""
+    _fake_google(monkeypatch, {"email": "a@b.com", "email_verified": True})
+    session = _WatchedSession()
+
+    async def broken(session, **kw):
+        raise RuntimeError('relation "x" does not exist')
+
+    monkeypatch.setattr(AuthService, "login_with_google", staticmethod(broken))
+    with caplog.at_level("ERROR"):
+        res = _client_with(session, monkeypatch).get(
+            "/api/v1/auth/google/callback", params={"code": "c", "state": _valid_state()}
+        )
+    assert res.status_code == 302
+    assert res.headers["location"] == "/login?error=google_failed"
+    assert not res.headers.get_list("set-cookie"), "no session may be issued on a failure"
+    assert session.rolled_back == 1, "get_db commits on a normal return: roll back first"
+    logged = [r for r in caplog.records if r.getMessage() == "unhandled_error"]
+    assert logged and logged[0].error == "RuntimeError"
+    assert logged[0].exc_info, "the traceback is what an operator needs"
+
+
+def test_a_failing_google_network_call_is_a_retry_not_a_server_error(monkeypatch):
+    import httpx
+
+    class _Down:
+        def __init__(self, *a, **k): ...
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a): ...
+        async def post(self, *a, **k):
+            raise httpx.ConnectTimeout("google is unreachable")
+
+    monkeypatch.setattr(google_router.httpx, "AsyncClient", _Down)
+    res = _client_with(_WatchedSession(), monkeypatch).get(
+        "/api/v1/auth/google/callback", params={"code": "c", "state": _valid_state()}
+    )
+    assert res.status_code == 302
+    assert res.headers["location"] == "/login?error=google_token_exchange"
+
+
+def test_the_known_refusals_do_not_roll_back_or_change(monkeypatch):
+    """The new catch-all must not swallow the cases that already had a readable code."""
+    _fake_google(monkeypatch, {"email": "a@b.com", "email_verified": True})
+    session = _WatchedSession()
+
+    async def mfa(session, **kw):
+        raise GoogleMfaRequired("mfa")
+
+    monkeypatch.setattr(AuthService, "login_with_google", staticmethod(mfa))
+    res = _client_with(session, monkeypatch).get(
+        "/api/v1/auth/google/callback", params={"code": "c", "state": _valid_state()}
+    )
+    assert res.headers["location"] == "/login?error=google_mfa_required"
+    assert session.rolled_back == 0
+
+
+async def test_a_signup_that_fails_midway_leaves_no_half_made_workspace(db, monkeypatch):
+    """The real danger of swallowing an error: `get_db` commits whatever was written so far.
+
+    `register` has already flushed the user and tenant when the tenant-created hooks run. If a
+    hook raises and the route answers normally, that half-made workspace would be committed
+    with no defaults seeded. The rollback has to take it back.
+    """
+    from httpx import ASGITransport
+    from httpx import AsyncClient as RealClient  # captured BEFORE _fake_google replaces it
+
+    from app.core import tenancy
+
+    email = _addr()
+
+    async def boom(session, tenant_id):
+        raise RuntimeError("an AI provisioning hook failed")
+
+    monkeypatch.setattr(tenancy, "_tenant_created_hooks", [boom])
+    _fake_google(monkeypatch, {"email": email, "email_verified": True})
+    monkeypatch.setattr(google_router, "_google_config", lambda: ("cid", "secret"))
+    app = FastAPI()
+    app.include_router(google_router.router, prefix="/api/v1")
+
+    async def _session():
+        # What get_db does: one transaction for the request, committed on a normal return.
+        async with db.begin_nested() as tx:
+            yield db
+            await tx.commit() if tx.is_active else None
+
+    from app.modules.identity.deps import get_db
+
+    app.dependency_overrides[get_db] = _session
+
+    async with RealClient(
+        transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False
+    ) as client:
+        res = await client.get(
+            "/api/v1/auth/google/callback", params={"code": "c", "state": _valid_state()}
+        )
+    assert res.headers["location"] == "/login?error=google_failed"
+    assert (await db.execute(select(User).where(User.email == email))).scalar_one_or_none() is None
+
+
+# ----------------------- a RETURNING user, in a request that starts with no tenant bound
+
+
+async def _forget_the_tenant(db) -> None:
+    """Make the session look like the start of a fresh request.
+
+    The test session is one long transaction, so the tenant that `register` bound earlier in the
+    test would still be bound at sign-in and hide the bug. In production every request opens a new
+    transaction with neither GUC set; `set_config(.., true)` is transaction-local.
+    """
+    await db.execute(text("SELECT set_config('app.tenant_id', '', true)"))
+    await db.execute(text("SELECT set_config('app.user_id', '', true)"))
+
+
+async def test_a_returning_google_user_can_sign_in_when_no_tenant_is_bound_yet(db):
+    """Production 500: the audit row names the tenant, audit_logs refuses a row whose tenant is
+    not the bound one, and an existing account used to sign in with only app.user_id bound.
+    A new account was unaffected (register binds the tenant), so only RETURNING users failed."""
+    email = _addr()
+    _user, tenant = await AuthService.register(
+        db,
+        tenant_name="Returning",
+        tenant_slug=f"ret-{uuid.uuid4().hex[:8]}",
+        email=email,
+        password=None,
+        full_name="Ret",
+        email_verified=True,
+    )
+    await _forget_the_tenant(db)
+
+    pair, _got, tenant_id = await AuthService.login_with_google(
+        db, email=email, email_verified=True
+    )
+
+    assert tenant_id == tenant.id and pair.access_token
+    written = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM audit_logs "
+                "WHERE tenant_id = :t AND action = 'auth.google_login'"
+            ),
+            {"t": tenant.id},
+        )
+    ).scalar_one()
+    assert written == 1, "the sign-in must leave its audit row"
+
+
+async def test_the_test_session_really_enforces_audit_logs_rls(db):
+    """Guard for the test above: if the suite ran as a BYPASSRLS role it would prove nothing."""
+    bypass = (
+        await db.execute(text("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user"))
+    ).scalar_one()
+    assert bypass is False, "point DATABASE_URL_APP_ADMIN at sales_app, not postgres"
+    await _forget_the_tenant(db)
+    with pytest.raises(Exception, match="row-level security"):
+        async with db.begin_nested():
+            await db.execute(
+                text(
+                    "INSERT INTO audit_logs (id, tenant_id, action, resource_type, source) "
+                    "VALUES (gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'human')"
+                )
+            )

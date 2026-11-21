@@ -22,10 +22,10 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sequences import next_sequence as core_next_sequence
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.expenses.models import (
     EXPENSE_PAYMENT_METHODS,
-    DocumentCounter,
     Expense,
     ExpenseCategory,
 )
@@ -60,29 +60,17 @@ class NumberingService:
     """Gap-free document numbers per tenant, kind and year."""
 
     @staticmethod
+    async def next_sequence(session: AsyncSession, tenant_id: UUID, kind: str, *, year: int) -> int:
+        """The next whole number of a (kind, year) counter (see ``app.core.sequences``)."""
+        return await core_next_sequence(session, tenant_id, kind, year=year)
+
+    @staticmethod
     async def next_number(
         session: AsyncSession, tenant_id: UUID, kind: str, *, on: date | None = None
     ) -> str:
         year = (on or datetime.now(UTC).date()).year
-        await session.execute(
-            pg_insert(DocumentCounter)
-            .values(id=uuid.uuid4(), tenant_id=tenant_id, kind=kind, year=year, last_seq=0)
-            .on_conflict_do_nothing(constraint="uq_document_counters_tenant_kind_year")
-        )
-        counter = (
-            await session.execute(
-                select(DocumentCounter)
-                .where(
-                    DocumentCounter.tenant_id == tenant_id,
-                    DocumentCounter.kind == kind,
-                    DocumentCounter.year == year,
-                )
-                .with_for_update()
-            )
-        ).scalar_one()
-        counter.last_seq += 1
-        await session.flush()
-        return f"{kind}-{year}-{counter.last_seq:04d}"
+        seq = await NumberingService.next_sequence(session, tenant_id, kind, year=year)
+        return f"{kind}-{year}-{seq:04d}"
 
 
 class ExpenseService:

@@ -1,3 +1,4 @@
+import { PrinterError } from "./printerErrors";
 /**
  * Hardware printer bridge for ESC/POS thermal printers.
  * Supports WebUSB and WebBluetooth interfaces with automatic endpoint resolution.
@@ -36,7 +37,7 @@ export function getConnectedPrinterName() {
  */
 export async function connectUsbPrinter() {
   if (!isWebUsbSupported()) {
-    throw new Error("WebUSB is not supported in this browser.");
+    throw new PrinterError("usb_unsupported");
   }
 
   // Common thermal printer USB class is 7 (Printer) or vendor-specific
@@ -87,7 +88,7 @@ export async function connectUsbPrinter() {
  */
 export async function connectBluetoothPrinter() {
   if (!isWebBluetoothSupported()) {
-    throw new Error("WebBluetooth is not supported in this browser.");
+    throw new PrinterError("bt_unsupported");
   }
 
   // Standard SPP/Serial port services for bluetooth thermal printers
@@ -113,7 +114,7 @@ export async function connectBluetoothPrinter() {
   }
 
   if (!writeCharacteristic) {
-    throw new Error("No writable characteristic found on bluetooth printer.");
+    throw new PrinterError("no_characteristic");
   }
 
   activeBtCharacteristic = writeCharacteristic;
@@ -154,7 +155,7 @@ export async function printRaw(data) {
     return;
   }
 
-  throw new Error("No printer connected. Connect a USB or Bluetooth printer first.");
+  throw new PrinterError("not_connected");
 }
 
 /**

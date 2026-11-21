@@ -12,6 +12,7 @@
  *     is rejected locally with a clear message.
  */
 import { api } from "@/lib/api";
+import { validReceiptEmail } from "./receiptEmail";
 import { toWire } from "./money";
 
 export const BALANCES_LIMIT = 5000;
@@ -185,8 +186,8 @@ export const posApi = {
   variantCostHistory: (id) => api(`/variant-costs/${seg(id)}/history`),
 
   /* ---- money (intent required) ---- */
-  /** Record a sale: what was sold, to whom, at what discount. There is no payment in this call. */
-  recordSale: async (registerId, { items, customerId, customerPhone, customerName, discountTotal, note }, intent) =>
+  /** Record a sale: what was sold, to whom, at what discount. `payments` and `onAccount` go only when the till records payments. */
+  recordSale: async (registerId, { items, customerId, customerPhone, customerName, discountTotal, note, payments, onAccount }, intent) =>
     post(
       `/pos/registers/${seg(registerId)}/sales`,
       compact({
@@ -197,9 +198,18 @@ export const posApi = {
         customer_name: String(customerName ?? "").trim() || undefined,
         discount_total: opt(discountTotal),
         note: String(note ?? "").trim() || undefined,
+        // Only for a till that records payments (see tenderPlan.js); the server refuses them otherwise.
+        payments: payments?.length ? payments : undefined,
+        on_account: onAccount ? true : undefined,
       }),
       needIntent(intent),
     ),
+  /** Queue "email me this receipt". The server sends it from a worker; this only asks. */
+  emailReceipt: (receiptId, email) => {
+    const address = String(email ?? "").trim();
+    if (!validReceiptEmail(address)) throw new TypeError("posApi: a single valid email address is required");
+    return post(`/pos/receipts/${seg(receiptId)}/email`, { email: address });
+  },
   // The shop's own choices for returns (restock default, reasons, windows), resolved for this till.
   returnPolicy: (id) => api(`/pos/sessions/${seg(id)}/return-policy`),
   returnSale: async (id, { orderId, lines: l, restock }, intent) =>

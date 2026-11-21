@@ -1,0 +1,60 @@
+{
+  "long_id": {
+    "catalog_id": "c1",
+    "items": [
+      {
+        "currency": "EGP",
+        "quantity": 1,
+        "retailer_id": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "shown_price": 9.5
+      }
+    ],
+    "note": "",
+    "skipped": 0
+  },
+  "one_line": {
+    "catalog_id": "c1",
+    "items": [
+      {
+        "currency": "EGP",
+        "quantity": 1,
+        "retailer_id": "SKU-1",
+        "shown_price": 9.5
+      }
+    ],
+    "note": "",
+    "skipped": 0
+  },
+  "one_unreadable": {
+    "catalog_id": "c1",
+    "items": [
+      {
+        "currency": "EGP",
+        "quantity": 3,
+        "retailer_id": "SKU-1",
+        "shown_price": 9.5
+      }
+    ],
+    "note": "",
+    "skipped": 1
+  },
+  "two_lines_with_note": {
+    "catalog_id": "c1",
+    "items": [
+      {
+        "currency": "EGP",
+        "quantity": 2,
+        "retailer_id": "SKU-RED-M",
+        "shown_price": 9.5
+      },
+      {
+        "currency": "EGP",
+        "quantity": 1,
+        "retailer_id": "حذاء-42",
+        "shown_price": 9.5
+      }
+    ],
+    "note": "بسرعة لو سمحت",
+    "skipped": 0
+  }
+}

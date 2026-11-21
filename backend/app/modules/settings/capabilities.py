@@ -1,0 +1,157 @@
+"""Capabilities: what a shop can do, decided by its vertical and finally by its owner.
+
+A *vertical* (apparel, pharmacy, restaurant, general) is only a starting point: it picks the
+default answer for each capability. Each capability is also its own owner setting
+(``capability.<name>``), so a pharmacy that wants size and colour variants, or a clothes shop that
+tracks expiry, turns it on without any code change. Code asks ``capability_enabled`` and never
+compares a vertical's name, which is how a fourth vertical is added as data and not as branches.
+
+This module is pure: it holds the table and the decision. The settings registry builds the owner's
+switches from ``CAPABILITIES``, so there is one list and not two to keep in step.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+VERTICALS: tuple[str, ...] = ("general", "apparel", "pharmacy", "restaurant")
+DEFAULT_VERTICAL = "general"
+
+
+@dataclass(frozen=True)
+class Capability:
+    """One thing a shop may or may not do, with the verticals that start with it switched on."""
+
+    name: str
+    on_for: tuple[str, ...]
+    label_ar: str
+    label_en: str
+    description_ar: str
+    description_en: str
+
+
+CAPABILITIES: dict[str, Capability] = {
+    c.name: c
+    for c in (
+        Capability(
+            "variant_matrix",
+            ("apparel",),
+            "مصفوفة المقاس واللون",
+            "Size and colour matrix",
+            "يعرّف المنتج بمقاسات وألوان ويبيع كل تركيبة برصيدها.",
+            "Define a product by size and colour and sell each combination with its own stock.",
+        ),
+        Capability(
+            "lot_expiry",
+            ("pharmacy",),
+            "دفعات وتاريخ صلاحية",
+            "Batches and expiry dates",
+            "يسجّل كل توريد كدفعة بتاريخ انتهاء ويمنع بيع المنتهي.",
+            "Record each delivery as a batch with an expiry date; refuse to sell expired stock.",
+        ),
+        Capability(
+            "fefo_picking",
+            ("pharmacy",),
+            "صرف الأقرب انتهاءً أولاً",
+            "Sell the soonest-expiring first",
+            "يصرف من الدفعة الأقرب انتهاءً تلقائياً عند البيع.",
+            "Take from the soonest-expiring batch automatically at the till.",
+        ),
+        Capability(
+            "prescription_required",
+            ("pharmacy",),
+            "أصناف تتطلب روشتة",
+            "Prescription-only items",
+            "يمنع بيع الصنف المعلّم «بروشتة» دون تسجيل رقم الروشتة.",
+            "Block a prescription-only item unless a prescription number is recorded.",
+        ),
+        Capability(
+            "modifiers",
+            ("restaurant",),
+            "إضافات وخيارات الأصناف",
+            "Item add-ons and options",
+            "يسمح بإضافات وخيارات على الصنف (حجم، إضافة جبن...).",
+            "Allow add-ons and options on an item (size, extra cheese, and so on).",
+        ),
+        Capability(
+            "recipe_bom",
+            ("restaurant",),
+            "وصفات ومكونات",
+            "Recipes and ingredients",
+            "يخصم مكونات الصنف من المخزون عند بيعه.",
+            "Deduct an item's ingredients from stock when it is sold.",
+        ),
+        Capability(
+            "serial_tracking",
+            (),
+            "أرقام تسلسلية",
+            "Serial numbers",
+            "يتتبّع كل وحدة برقمها التسلسلي.",
+            "Track each unit by its serial number.",
+        ),
+        Capability(
+            "weight_scale",
+            (),
+            "بيع بالوزن",
+            "Sell by weight",
+            "يقبل كميات عشرية ويقرأ الوزن من ميزان.",
+            "Accept fractional quantities and read weight from a scale.",
+        ),
+    )
+}
+
+
+def defaults_for(vertical: str | None) -> dict[str, bool]:
+    """The starting answer per capability; an unknown vertical is the plain shop."""
+    v = vertical if vertical in VERTICALS else DEFAULT_VERTICAL
+    return {name: v in cap.on_for for name, cap in CAPABILITIES.items()}
+
+
+def capability_enabled(
+    name: str,
+    *,
+    vertical: str | None,
+    overrides: Mapping[str, object] | None = None,
+) -> bool:
+    """Is this capability on for the shop? The owner's switch wins; otherwise the vertical decides.
+
+    Only a real boolean counts as the owner's choice, so a stray string or number can never switch
+    a capability on. A name nobody defined is off.
+    """
+    if name not in CAPABILITIES:
+        return False
+    chosen = (overrides or {}).get(name)
+    if isinstance(chosen, bool):
+        return chosen
+    return defaults_for(vertical)[name]
+
+
+async def shop_capabilities(session: AsyncSession, tenant_id: UUID) -> dict[str, object]:
+    """The shop's vertical and the final answer for every capability, as its owner has set them.
+
+    The reply is the resolved answer, never a rule: no client works out what a vertical implies.
+    """
+    from app.modules.settings.service import SettingsService  # settings reads itself lazily
+
+    keys = ["business.vertical", *(f"capability.{n}" for n in CAPABILITIES)]
+    resolved = await SettingsService(session, tenant_id).resolve_many(keys)
+    vertical = resolved["business.vertical"].value
+    # Only a setting the owner actually set is a choice; an untouched one is the registry's
+    # default (False) and must not outrank the vertical.
+    chosen = {
+        n: resolved[f"capability.{n}"].value
+        for n in CAPABILITIES
+        if not resolved[f"capability.{n}"].is_default
+    }
+    return {
+        "vertical": vertical,
+        "capabilities": {
+            n: capability_enabled(n, vertical=vertical, overrides=chosen) for n in CAPABILITIES
+        },
+    }

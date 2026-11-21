@@ -229,9 +229,19 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
     [catalog, loadFreshCatalog],
   );
 
-  /** Record the sale. There is no payment step: no tender, no change, no method. */
+  /**
+   * The current invoice, ready for the offline queue: the body `recordSale` takes plus the key it
+   * must replay under (the key of a tap that already left the screen, if there was one).
+   */
+  const offlineSale = useCallback(
+    ({ customerId, customerPhone, customerName } = {}) =>
+      sale.offlineSnapshot({ cart, discountTotal, customerId, customerPhone, customerName, note }),
+    [sale, cart, discountTotal, note],
+  );
+
+  /** Record the sale. `payments`/`onAccount` are sent only by a till that records payments (see tenderPlan.js). */
   const confirm = useCallback(
-    async ({ customerId, cashier, customerName, customerPhone } = {}) => {
+    async ({ customerId, cashier, customerName, customerPhone, payments, onAccount } = {}) => {
       if (!sale) throw new Error("لا توجد جلسة بيع");
       setPaying(true);
       setPayError(null);
@@ -243,6 +253,8 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
           customerPhone,
           customerName,
           note,
+          payments,
+          onAccount,
         });
         const names = Object.fromEntries(catalog.map((v) => [v.id, v.productName]));
         const receipt = receiptFromApi(detail, { cashier, customerName, names });
@@ -264,7 +276,7 @@ export function usePosSale({ sessionId, registerId, catalog = [], onSold, loadFr
 
   const scan = useCallback((value) => posApi.scan(sessionId, { identifierType: "barcode", value }), [sessionId]);
 
-  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, note, setNote, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, confirm, paying, payError, searchCatalog };
+  return { lines, scan, hold, restore, quote, discountTotal, invoiceDiscount, setInvoiceDiscount, note, setNote, add, setQty, stepQty, setLineDiscount, remove, restoreLine, clear, confirm, offlineSale, paying, payError, searchCatalog };
 }
 
 /**

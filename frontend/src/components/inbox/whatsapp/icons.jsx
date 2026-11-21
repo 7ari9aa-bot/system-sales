@@ -227,3 +227,11 @@ export const ListIcon = (p) => (
     <circle cx="4" cy="18" r=".8" fill="currentColor" />
   </Svg>
 );
+
+export const LinkOutIcon = (p) => (
+  <Svg {...p}>
+    <path d="M14 4h6v6" />
+    <path d="M20 4l-9 9" />
+    <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+  </Svg>
+);

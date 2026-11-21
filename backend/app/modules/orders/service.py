@@ -12,6 +12,7 @@ without a database; this module only supplies the aggregates they run on.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -244,6 +245,15 @@ def line_title(
     return f"{product} - {variant}"
 
 
+@dataclass(frozen=True)
+class _TaxPlan:
+    """Tax already inside the prices: the order total and one rate and amount per line."""
+
+    total: Decimal
+    rates: list
+    taxes: list
+
+
 class OrderService:
     """All order business rules; static methods taking (session, tenant_id)."""
 
@@ -373,6 +383,30 @@ class OrderService:
         return list(rows)
 
     @staticmethod
+    async def collected_by_method(
+        session: AsyncSession, tenant_id: UUID, order_ids: list[UUID]
+    ) -> dict[str, Decimal]:
+        """What each payment method captured across the given orders (captured rows only).
+
+        The cashier's day-end figure: the card total to compare with the terminal slip, the
+        transfers with the account. Refunds are not netted; they are their own rows.
+        """
+        if not order_ids:
+            return {}
+        rows = (
+            await session.execute(
+                select(OrderPayment.method, func.coalesce(func.sum(OrderPayment.amount), 0))
+                .where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id.in_(order_ids),
+                    OrderPayment.status == "captured",
+                )
+                .group_by(OrderPayment.method)
+            )
+        ).all()
+        return {str(method): to_money(total, "collected") for method, total in rows}
+
+    @staticmethod
     async def list_status_history(
         session: AsyncSession,
         tenant_id: UUID,
@@ -431,6 +465,42 @@ class OrderService:
         }
 
     # ---------------------------------------------------------- create ----
+
+    @staticmethod
+    async def _plan_included_tax(session, tenant_id, prepared, products, *, order_discount):
+        """Per-line tax inside the prices. All zero unless the business is VAT-registered.
+
+        Lazy imports on purpose: orders reads taxation, never the other way round.
+        """
+        from app.modules.taxation.service import TaxationService
+
+        zero = Decimal("0.00")
+        count = len(prepared)
+        plan = _TaxPlan(total=zero, rates=[Decimal("0")] * count, taxes=[zero] * count)
+        profile = await TaxationService.get_profile(session, tenant_id)
+        if profile is None or profile.vat_status != "registered":
+            return plan
+
+        from app.modules.taxation.calc import allocate_discount, split_line
+
+        classes = {
+            row.id: row for row in await TaxationService.ensure_default_classes(session, tenant_id)
+        }
+        default_class = await TaxationService.default_class(session, tenant_id)
+        nets = []
+        rates = []
+        for variant, quantity, price, pct in prepared:
+            gross = to_money(price * quantity, "line gross")
+            nets.append(gross - to_money(gross * pct / Decimal("100"), "line discount"))
+            product = products.get(variant.product_id)
+            chosen = classes.get(getattr(product, "tax_class_id", None)) or default_class
+            rates.append(Decimal(str(chosen.rate)))
+        shares = allocate_discount(nets, to_money(order_discount or 0, "discount"))
+        taxes = [
+            split_line(net - share, rate, prices_include_tax=True).tax
+            for net, share, rate in zip(nets, shares, rates, strict=True)
+        ]
+        return _TaxPlan(total=sum(taxes, zero), rates=rates, taxes=taxes)
 
     @staticmethod
     async def create_order(
@@ -619,6 +689,12 @@ class OrderService:
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
 
+        # Tax INSIDE the shelf prices, extracted per line for the tax return and the e-receipt.
+        # It never changes grand_total: a shop that turns VAT on charges its customers the same.
+        tax_plan = await OrderService._plan_included_tax(
+            session, tenant_id, prepared, products, order_discount=discount_total
+        )
+
         order = await OrderService._insert_order(
             session,
             tenant_id,
@@ -630,6 +706,7 @@ class OrderService:
             process_state="stock_reserved",
             currency=currency,
             **totals,
+            tax_included=tax_plan.total,
             channel=channel,
             shipping_address=shipping_address,
             placed_at=_now(),
@@ -653,7 +730,7 @@ class OrderService:
             )
 
         # Line snapshots (title/sku frozen at purchase time).
-        for variant, quantity, price, pct in prepared:
+        for position, (variant, quantity, price, pct) in enumerate(prepared):
             product = products.get(variant.product_id)
             line_gross = to_money(price * quantity, "line gross")
             line_discount = to_money(line_gross * pct / Decimal("100"), "line discount")
@@ -672,6 +749,8 @@ class OrderService:
                     unit_price=price,
                     discount_pct=pct,
                     total=to_money(line_gross - line_discount, "line total"),
+                    tax_rate=tax_plan.rates[position],
+                    tax_included=tax_plan.taxes[position],
                 )
             )
 

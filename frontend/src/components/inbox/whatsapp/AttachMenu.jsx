@@ -2,8 +2,8 @@ import React, { useEffect, useRef } from "react";
 import { CameraIcon, FileIcon, ListIcon } from "./icons";
 
 const WORDS = {
-  ar: { menu: "إرفاق", document: "مستند", media: "صور وفيديو", sticker: "ملصق", camera: "كاميرا", template: "قالب" },
-  en: { menu: "Attach", document: "Document", media: "Photos & videos", sticker: "Sticker", camera: "Camera", template: "Template" },
+  ar: { menu: "إرفاق", document: "مستند", media: "صور وفيديو", sticker: "ملصق", camera: "كاميرا", template: "قالب", interactive: "أزرار أو قائمة" },
+  en: { menu: "Attach", document: "Document", media: "Photos & videos", sticker: "Sticker", camera: "Camera", template: "Template", interactive: "Buttons or list" },
 };
 
 const DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,text/plain";
@@ -14,7 +14,7 @@ const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/3gpp";
  * the browser's own file picker; the picked file goes to the preview, never
  * straight to the customer.
  */
-export default function AttachMenu({ open, onClose, onPick, onOpenTemplates, lang = "ar" }) {
+export default function AttachMenu({ open, onClose, onPick, onOpenTemplates, onOpenInteractive, lang = "ar" }) {
   const w = WORDS[lang] || WORDS.en;
   const ref = useRef(null);
   const docRef = useRef(null);
@@ -55,6 +55,11 @@ export default function AttachMenu({ open, onClose, onPick, onOpenTemplates, lan
           <button type="button" role="menuitem" className={item} data-testid="attach-sticker" onClick={() => stickerRef.current?.click()}>
             <span className="grid h-9 w-9 place-items-center rounded-full bg-[#02a698] text-lg text-white" aria-hidden="true">☺</span>{w.sticker}
           </button>
+          {onOpenInteractive && (
+            <button type="button" role="menuitem" className={item} data-testid="attach-interactive" onClick={() => { onClose?.(); onOpenInteractive(); }}>
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-[#0a7cff] text-white"><ListIcon size={20} /></span>{w.interactive}
+            </button>
+          )}
           {onOpenTemplates && (
             <button type="button" role="menuitem" className={item} data-testid="attach-template" onClick={() => { onClose?.(); onOpenTemplates(); }}>
               <span className="grid h-9 w-9 place-items-center rounded-full bg-[#00a884] text-white"><ListIcon size={20} /></span>{w.template}
