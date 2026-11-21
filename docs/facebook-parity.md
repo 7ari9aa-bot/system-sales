@@ -100,3 +100,15 @@ main = c14fa23c. It carries the whole parity line (comment look, post card look,
 - Notifications header "..." button: inspected on real Facebook on 2026-11-21. The menu has two items: "Mark all as read" and "Notification settings". Both are now built on branch `feat/facebook-notifications-menu`. Meta gives no read state for a Page's comments, so "read" is a time kept in the browser (localStorage) and the Unread tab hides what is at or before it; the settings item opens /settings/channels, where the Page is connected.
 - Publishing matrix: reels are confirmed against Meta's reference; stories, pin, live, albums, events, polls and call-to-action are UNVERIFIED because Meta's own pages did not load from the sandbox. Nothing there is claimed either way.
 - The ranked list of MISSING-ALLOWED items is in the two matrix files above.
+
+## Measured on 2026-11-21 against the real Page (main 5fda4c9b, Vercel READY)
+
+Shipped and seen on the live site: the Messenger tab is gone from the Facebook bar and a round Messenger button sits beside the Page avatar; a comment's like count is a number in the action row after Reply, zero included; a Page comment the Page already liked reads "Remove like".
+
+Found live, then fixed (`fix/facebook-messenger-link-not-connected`, 5172d254, test failed first): the Messenger button opened `/inbox?channel=messenger` and the inbox sent the owner straight back to `/facebook/posts`, because Messenger is "not connected" on this account (Channels shows only Facebook connected) and the inbox falls back to the first connected channel. The button now goes to `/settings/channels` when Messenger is not connected, and opens the channel when it is. Seen on the live site after deploy: it lands on Channels.
+
+Open, measured, not changed:
+- Facebook's own Page home draws the post's counts as one row of buttons (likes 1, comments 3, share) with a like icon, and no text "Like"/"Comment" row below. Our card keeps the Like / Comment row because the Comment button opens the comment box. Which of the two views to copy is the owner's call.
+- Facebook shows one comment under the post with "View more comments" on the Page home; our window opens five (`COMMENTS_PER_STEP`). On the opened post (modal) Facebook showed all three. The count depends on the view, so it is not changed.
+- The thumbs-down on a comment ("Downvote comment") has no Graph API endpoint and is not copied.
+- Comments made on Facebook reach our screen only after "Refresh" (the screen showed 1 comment against Facebook's 3 until Refresh, then 3). No webhook from Meta has arrived yet.
