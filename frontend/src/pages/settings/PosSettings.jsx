@@ -10,6 +10,7 @@ import "@/cashier/cashier.css";
 import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
 import { createProfileBody, updateProfileBody } from "./posProfileBody";
 import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
+import ReportsAccessSettings from "@/cashier/components/settings/ReportsAccessSettings";
 import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
 import UsersSettings from "@/cashier/components/settings/UsersSettings";
 import BackupTab from "@/cashier/components/settings/BackupTab";
@@ -603,7 +604,7 @@ export default function PosSettings() {
         <TabsContent value="receipts" className="mt-4"><ReceiptTracking /></TabsContent>
         <TabsContent value="print" className="mt-4"><PrintAndBarcodeSettings /></TabsContent>
         <TabsContent value="lists" className="mt-4"><CategoriesSettings /></TabsContent>
-        <TabsContent value="users" className="mt-4"><UsersSettings /></TabsContent>
+        <TabsContent value="users" className="mt-4"><UsersSettings /><ReportsAccessSettings /></TabsContent>
         <TabsContent value="backup" className="mt-4"><BackupTab /></TabsContent>
         <TabsContent value="devices" className="mt-4"><ProfilesAndRegistersTab /></TabsContent>
       </Tabs>

@@ -253,12 +253,13 @@ describe("the notice shown instead of the table", () => {
     expect(profitErrorNotice(null)).toBeNull();
     expect(profitErrorNotice(undefined)).toBeNull();
   });
-  it("tells a refused user the report is for the owner or manager, and offers no retry", () => {
+  it("tells a refused user the report is for the owner, and the manager only when the owner allows it, with no retry", () => {
     for (const status of [403, 401]) {
       const n = profitErrorNotice({ status });
       expect(n.tone).toBe("forbidden");
       expect(n.kind).toBe(status === 403 ? "forbidden" : "unauthorized");
-      expect(n.message).toContain("لصاحب المحل أو المدير");
+      expect(n.message).toContain("لصاحب المحل");
+      expect(n.message).toContain("لو صاحب المحل سمح");
       expect(n.message).not.toContain("حاول مرة");
     }
   });
