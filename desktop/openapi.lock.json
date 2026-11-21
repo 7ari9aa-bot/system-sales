@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 608,
-    "sha256": "ae7cdb4962196762d686efd95554b5cc54133ed0db30cf08ccc54c391d148a57",
-    "typed_operations": 342
+    "operations": 612,
+    "sha256": "b902bb4affca440f066ad82a37df6b93868277584033687148769d4d08009c8e",
+    "typed_operations": 346
   },
   "spec": {
     "components": {
@@ -24996,6 +24996,81 @@
           "title": "WorkspaceUpdate",
           "type": "object"
         },
+        "_ApplyBody": {
+          "properties": {
+            "brand_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            },
+            "percent": {
+              "maxLength": 8,
+              "minLength": 1,
+              "title": "Percent",
+              "type": "string"
+            },
+            "season": {
+              "maxLength": 60,
+              "minLength": 1,
+              "title": "Season",
+              "type": "string"
+            },
+            "token": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "season",
+            "percent",
+            "token"
+          ],
+          "title": "_ApplyBody",
+          "type": "object"
+        },
+        "_Body": {
+          "properties": {
+            "brand_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            },
+            "percent": {
+              "maxLength": 8,
+              "minLength": 1,
+              "title": "Percent",
+              "type": "string"
+            },
+            "season": {
+              "maxLength": 60,
+              "minLength": 1,
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          "required": [
+            "season",
+            "percent"
+          ],
+          "title": "_Body",
+          "type": "object"
+        },
         "app__modules__activity__router__SummaryOut": {
           "properties": {
             "counts": {
@@ -36949,6 +37024,226 @@
           "summary": "Start Campaign",
           "tags": [
             "marketing"
+          ]
+        }
+      },
+      "/api/v1/catalog/season-markdown/apply": {
+        "post": {
+          "description": "Write the previewed prices, all or nothing. 409 if the catalog moved since the preview.",
+          "operationId": "season_markdown_apply_api_v1_catalog_season_markdown_apply_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ApplyBody"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Season Markdown Apply Api V1 Catalog Season Markdown Apply Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Season Markdown Apply",
+          "tags": [
+            "season-markdown"
+          ]
+        }
+      },
+      "/api/v1/catalog/season-markdown/preview": {
+        "post": {
+          "description": "What a season would cost per size at this percent. Writes nothing.",
+          "operationId": "season_markdown_preview_api_v1_catalog_season_markdown_preview_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Body"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Season Markdown Preview Api V1 Catalog Season Markdown Preview Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Season Markdown Preview",
+          "tags": [
+            "season-markdown"
           ]
         }
       },
@@ -79730,6 +80025,124 @@
           ]
         }
       },
+      "/api/v1/reports/dead-stock": {
+        "get": {
+          "description": "Sizes with stock and no sale for the shop's own number of days, with their value at cost.",
+          "operationId": "dead_stock_api_v1_reports_dead_stock_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "days",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maximum": 730,
+                    "minimum": 7,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Days"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Dead Stock Api V1 Reports Dead Stock Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Dead Stock",
+          "tags": [
+            "dead-stock"
+          ]
+        }
+      },
       "/api/v1/reports/profit": {
         "get": {
           "description": "Gross profit, expenses, net profit and stock at cost over [start, end).",
@@ -80044,6 +80457,189 @@
           "summary": "Profit By Variant",
           "tags": [
             "profit"
+          ]
+        }
+      },
+      "/api/v1/reports/sell-through": {
+        "get": {
+          "description": "One row per model, colour and size: sold, left on the shelf, and the share sold.",
+          "operationId": "sell_through_api_v1_reports_sell_through_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "start",
+              "required": true,
+              "schema": {
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "end",
+              "required": true,
+              "schema": {
+                "title": "End",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "channel",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Channel"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
+              }
+            },
+            {
+              "in": "query",
+              "name": "brand_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Sell Through Api V1 Reports Sell Through Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Sell Through",
+          "tags": [
+            "sell-through"
           ]
         }
       },

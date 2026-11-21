@@ -45,6 +45,9 @@ SCOPE_MODULES: frozenset[str] = frozenset(
         "customers",
         "activity",
         "core.profit_report",
+        "core.sell_through_report",
+        "core.dead_stock_report",
+        "core.season_markdown",
         "core.shop_type",
     }
 )
@@ -68,13 +71,18 @@ GROUPS: dict[str, Group] = {
     # --- cashier ---
     "pos": Group("pos", note="registers, shifts, cash movements, selling, returns, exchanges"),
     "activity": Group("activity", note="the audit trail the cashier reads"),
-    "reports": Group("core.profit_report", note="profit by model / colour / size"),
+    "reports": Group(
+        "core.profit_report",
+        note="profit and sell-through by model / colour / size",
+        also=("core.sell_through_report", "core.dead_stock_report"),
+    ),
     "shop-type": Group(
         "core.shop_type", note="the owner picks the vertical (apparel, pharmacy, ...)"
     ),
     # --- inventory ---
     "inventory": Group("inventory", note="balances, movements, transfers, stocktakes, reports"),
     # --- catalog ---
+    "catalog": Group("core.season_markdown", note="take a percent off a whole season"),
     "products": Group("catalog"),
     "variants": Group("catalog"),
     "categories": Group("catalog"),

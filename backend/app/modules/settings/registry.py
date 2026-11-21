@@ -228,6 +228,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.show_channel_allocation",  # inventory/services/screens.py::visible_screens
         "inventory.show_units_of_measure",  # inventory/services/screens.py::visible_screens
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
+        "inventory.dead_stock_days",  # core/dead_stock_report.py::DeadStockReportService.report
         "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
         "business.legal_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
@@ -928,6 +929,24 @@ _reg(
         label_en="Expiry alert window (days)",
         description_ar="الدفعة التي تنتهي صلاحيتها خلال هذه المدة تظهر في تقرير قرب الانتهاء.",
         description_en="A batch that expires within this many days appears in the expiry report.",
+    )
+)
+_reg(
+    SettingDef(
+        key="inventory.dead_stock_days",
+        domain="inventory",
+        type=SettingType.NUMBER,
+        default=60,
+        scopes=(Scope.TENANT,),
+        min_value=7,
+        max_value=730,
+        label_ar="اعتبار الصنف راكد بعد (أيام بلا بيع)",
+        label_en="Dead stock after (days without a sale)",
+        description_ar="الصنف الذي له رصيد ولم يُبَع خلال هذه المدة يظهر في تقرير المخزون الراكد.",
+        description_en=(
+            "A variant with stock and no sale within this many days appears in the "
+            "dead-stock report."
+        ),
     )
 )
 _reg(

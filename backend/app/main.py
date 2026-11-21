@@ -23,6 +23,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import get_settings
 from app.core.context import actor_kind_contextvar, credentials_audit_contextvar
 from app.core.db import engine
+from app.core.dead_stock_report import router as dead_stock_router
 from app.core.errors import (
     DomainError,
     PermissionDeniedError,
@@ -47,6 +48,8 @@ from app.core.observability import (
 )
 from app.core.profit_report import router as profit_report_router
 from app.core.redis import close_redis, get_redis
+from app.core.season_markdown import router as season_markdown_router
+from app.core.sell_through_report import router as sell_through_router
 from app.core.shop_type import router as shop_type_router
 from app.modules.activity.router import router as activity_router
 from app.modules.ai.router import router as ai_router
@@ -519,6 +522,9 @@ def create_app() -> FastAPI:
         customer_accounts_router,
         shop_type_router,
         profit_report_router,
+        sell_through_router,
+        dead_stock_router,
+        season_markdown_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)
