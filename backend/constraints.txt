@@ -11,13 +11,13 @@ asyncpg==0.31.0
 bcrypt==5.0.0
 boto3==1.43.108
 botocore==1.43.108
-certifi==2026.7.22
+certifi==2026.10.18
 cffi==2.1.1
 click==8.4.2
 colorama==0.4.6
 coverage==7.16.2
 cryptography==50.0.2
-dnspython==2.8.0
+dnspython==2.9.2
 email-validator==2.3.0
 et-xmlfile==2.0.0
 fakeredis==2.39.0
@@ -32,7 +32,7 @@ jmespath==1.1.0
 mako==1.4.1
 markupsafe==3.0.3
 openpyxl==3.1.5
-opentelemetry-api==1.45.0
+opentelemetry-api==1.45.2
 orjson==3.12.0
 packaging==26.2
 pglast==8.4
@@ -48,7 +48,7 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 python-dateutil==2.9.0.post0
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 redis==8.1.0
 ruff==0.16.10
 s3transfer==0.19.2
@@ -60,5 +60,5 @@ structlog==26.1.0
 typing-extensions==4.16.0
 typing-inspection==0.4.2
 tzdata==2026.5
-urllib3==2.7.0
+urllib3==2.8.0
 uvicorn==0.54.0
