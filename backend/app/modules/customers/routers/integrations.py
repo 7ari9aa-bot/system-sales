@@ -445,11 +445,22 @@ async def verify_integration(
 
     _activate_verified_channel(integration)
     verified_at = datetime.now(UTC).isoformat()
+    # Verify refreshes what it just learned (when, and under which name) and keeps what only the
+    # link could record. `granted_scopes` is written once, by the OAuth flow; replacing the block
+    # wholesale erased it, so the next GET reported every Page permission missing and told the
+    # owner of a healthy channel to reconnect. `last_failure` is the one thing a success retires.
+    previous = (integration.config or {}).get("_connection")
+    kept = {
+        key: value
+        for key, value in (previous if isinstance(previous, dict) else {}).items()
+        if key != "last_failure"
+    }
     integration.config = {
         **verified.identity_config,
-        "_connection": _verification_metadata(
-            verified_at=verified_at, display_name=verified.display_name
-        ),
+        "_connection": {
+            **kept,
+            **_verification_metadata(verified_at=verified_at, display_name=verified.display_name),
+        },
     }
     try:
         await ctx.session.flush()
