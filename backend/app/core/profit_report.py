@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import Integer, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import PermissionDeniedError
 from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import ValidationError
@@ -363,9 +364,33 @@ class ProfitReportService:
 
 
 router = APIRouter(prefix="/reports/profit", tags=["profit"])
-#: What the shop paid for its stock and what it earns on it is not for a till operator: the same
-#: manager gate as the cashier custody report, which also names people and money.
-ProfitCtx = Annotated[TenantContext, Depends(require_permission("pos:override"))]
+PROFIT_SETTING = "reports.managers_see_profit"
+
+
+class _ProfitGate:
+    """Who may read what the shop paid for its stock and what it earns on it, or reprice a season.
+
+    Never a till operator: without ``pos:override`` the answer is no, whatever the shop set. The
+    shop owner (the holder of ``settings:write``) always may. A manager may while the OWNER leaves
+    ``reports.managers_see_profit`` on, which is how every shop behaved before the setting existed,
+    so it defaults to on. The owner is found by what the role can do, not by the name of the role.
+    """
+
+    async def __call__(
+        self, ctx: Annotated[TenantContext, Depends(require_permission("pos:override"))]
+    ) -> TenantContext:
+        if "settings:write" in ctx.permission_codes:
+            return ctx
+        # Imported here, like dead_stock_report: a module-level import would add one more edge.
+        from app.modules.settings.service import SettingsService
+
+        allowed = (await SettingsService(ctx.session, ctx.tenant_id).resolve(PROFIT_SETTING)).value
+        if allowed is not True:
+            raise PermissionDeniedError("the shop owner keeps the profit reports to themselves")
+        return ctx
+
+
+ProfitCtx = Annotated[TenantContext, Depends(_ProfitGate())]
 
 
 def _parse(value: str, what: str) -> datetime:

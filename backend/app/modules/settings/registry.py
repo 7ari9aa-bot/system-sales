@@ -231,6 +231,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.dead_stock_days",  # core/dead_stock_report.py::DeadStockReportService.report
         "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
         "business.setup_state",  # core/activity_setup.py::read_state
+        "reports.managers_see_profit",  # core/profit_report.py::_ProfitGate
         "business.terms_accepted_at",  # identity/services/auth.py::_record_signup_choices (record)
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
         "business.legal_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
@@ -455,6 +456,26 @@ _reg(
             "هل أنهى المالك إعداد نشاطه أول مرة. القيمة الافتراضية «تم» فلا يُسأل أي محل قديم."
         ),
         description_en="Whether the owner finished the first-run activity setup. Defaults to done.",
+    )
+)
+
+_reg(
+    SettingDef(
+        key="reports.managers_see_profit",
+        domain="business",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="المدير يرى تقارير التكلفة والربح ويطبّق تخفيض الموسم",
+        label_en="Managers see cost and profit reports and can apply a season markdown",
+        description_ar=(
+            "يظهر للمدير تقرير الربح والتصريف والمخزون الراكد وتخفيض الموسم. "
+            "عند الإيقاف يبقى ذلك لصاحب المحل وحده. الكاشير لا يراها في الحالتين."
+        ),
+        description_en=(
+            "A manager may open the profit, sell-through and dead-stock reports and apply a "
+            "season markdown. Off leaves them to the shop owner alone. A cashier never sees them."
+        ),
     )
 )
 
