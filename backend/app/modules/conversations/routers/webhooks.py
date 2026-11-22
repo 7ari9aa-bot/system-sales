@@ -9,7 +9,7 @@ import sys
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import NotFoundError, PermissionDeniedError
@@ -25,6 +25,13 @@ from app.modules.conversations.routers._deps import DbSession
 from app.modules.platform.models import Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
+
+#: A channel that still RECEIVES deliveries keeps its transport health current whatever its
+#: connection state says. One waiting to be reconnected (`reauth_required`) or limited by Meta
+#: (`restricted`) still gets webhooks, and recording only active ones left exactly those looking
+#: as if nothing had ever arrived. A removed channel (`disconnected`, `disabled`) is absent on
+#: purpose.
+HEALTH_TRACKED_STATUSES = ("active", "connected", "reauth_required", "restricted")
 
 webhook_router = APIRouter(tags=["channels"])
 
@@ -196,6 +203,39 @@ async def meta_page_webhook(request: Request, session: DbSession):
     }
 
 
+async def _record_transport_health(session, tenant_id, channel: str) -> None:
+    """Stamp the channel's `webhook_health` with "a delivery just arrived".
+
+    This is transport health, not a claim that the event was processed: the durable
+    WebhookEvent/outbox path tracks processing independently. See HEALTH_TRACKED_STATUSES for
+    which channels are stamped.
+    """
+    integration = (
+        await session.execute(
+            select(Integration)
+            .where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == channel,
+                Integration.kind == "channel",
+                Integration.status.in_(HEALTH_TRACKED_STATUSES),
+            )
+            # Two rows for one provider can coexist (an old one awaiting reconnect and the new
+            # active one); the live connection is the one that owns the health.
+            .order_by(
+                case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                Integration.id,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        return
+    health = dict(integration.webhook_health or {})
+    health.update({"last_webhook_at": datetime.now(UTC).isoformat(), "consecutive_failures": 0})
+    health.pop("last_error", None)
+    integration.webhook_health = health
+
+
 async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes) -> dict:
     """Tenant -> health -> replay guard -> durable row -> outbox, for one account's envelope."""
     tenant_key = adapter.resolve_tenant_key(payload)
@@ -234,28 +274,7 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes)
     # silently never materialized.)
     await bind_tenant(session, tenant_id)
 
-    # This is transport health, not a claim that the event was processed. The
-    # durable WebhookEvent/outbox path below tracks processing independently.
-    integration = (
-        await session.execute(
-            select(Integration).where(
-                Integration.tenant_id == tenant_id,
-                Integration.provider == channel,
-                Integration.kind == "channel",
-                Integration.status.in_(("active", "connected")),
-            )
-        )
-    ).scalar_one_or_none()
-    if integration is not None:
-        health = dict(integration.webhook_health or {})
-        health.update(
-            {
-                "last_webhook_at": datetime.now(UTC).isoformat(),
-                "consecutive_failures": 0,
-            }
-        )
-        health.pop("last_error", None)
-        integration.webhook_health = health
+    await _record_transport_health(session, tenant_id, channel)
 
     # S10: durable ingress record + replay rejection. Both providers sign a
     # STATIC HMAC over the raw body — neither contract carries a timestamp or
