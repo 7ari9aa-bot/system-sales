@@ -21,6 +21,16 @@ describe("ConfirmSaleDialog: confirm a sale, nothing to pay", () => {
     expect(h).not.toMatch(/الباقي|المتبقي|بطاقة|محفظة/);
   });
 
+  // The confirm button once looked pale on the live till. A pale button is the disabled look (half opacity), so the one
+  // thing to guard is that a normal sale (a total, nothing pending) leaves it ENABLED and in the primary colour.
+  it("a normal sale leaves the confirm button enabled and in the primary colour", () => {
+    const h = html({});
+    const tag = (h.match(/<button[^>]*>(?=[^<]*تأكيد البيع وطباعة الفاتورة)/) || [""])[0];
+    expect(tag).toContain("<button");
+    expect(tag).not.toContain('disabled=""');
+    expect(tag).toContain("bg-primary");
+  });
+
   it("is disabled while pending and for a zero total; an error is shown", () => {
     expect(html({ pending: true })).toMatch(/<button[^>]*disabled[^>]*>[^<]*جارٍ تسجيل البيع/);
     expect(html({ total: "0.00" })).toMatch(/<button[^>]*disabled[^>]*>[^<]*تأكيد البيع/);
