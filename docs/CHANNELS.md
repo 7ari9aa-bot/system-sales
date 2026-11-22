@@ -18,8 +18,8 @@
 | القناة | المفتاح | الحقول المطلوبة | هوية الربط | الويبهوك |
 |---|---|---|---|---|
 | واتساب | `whatsapp` | `access_token` + `phone_number_id` | `phone_number_id` | `/webhooks/whatsapp` |
-| فيسبوك | `facebook` | `page_access_token` + `page_id` | `account_id` | `/webhooks/facebook` |
-| ماسنجر | `messenger` | `api_key` (توكن الصفحة) | `account_id` | `/webhooks/messenger` |
+| فيسبوك | `facebook` | `page_access_token` + `page_id` | `account_id` | `/webhooks/meta/page` (يخدم ماسنجر وفيسبوك معًا) |
+| ماسنجر | `messenger` | `api_key` (توكن الصفحة) | `account_id` | `/webhooks/meta/page` (نفس الرابط) |
 | انستجرام | `instagram` | `api_key` + `account_id` | `account_id` | `/webhooks/instagram` |
 | تيليجرام | `telegram` | `bot_token` | `bot_id` | يُسجَّل تلقائياً على الخادم |
 | شات الموقع | `webchat` | — (يولّد مفتاحاً عاماً) | `public_key` | داخلي |

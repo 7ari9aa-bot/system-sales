@@ -12,13 +12,13 @@ Reviewed at commit `c0617b1e`. Status column: `fixed` (this change), `open`, `re
 | A2 | High | `meta_oauth.py:365,530` | `refreshable` is derived from `_config_id`, which is the Instagram config id, so Messenger/Facebook are marked refreshable by an unrelated setting. A short-lived token is stored if `expires_in` is missing. | `"refreshable": bool(_config_id and expires_in)` | open |
 | A3 | High | `meta_oauth.py:187` | `_meta_graph_error` keeps only `code`; drops `error_subcode`, `type`, `fbtrace_id`. 190/463 (expired) and 190/460 (password changed) become the same text. | `f"{step} failed ({code}): {message}"` | fixed (fields now recorded) |
 | A4 | High | `meta_token_refresh.py:72-82` | Only 190/102 and 401/403 mean "reconnect". 10, 200, 368 and subcodes 463/467 fall into a generic retry every 12 h and the channel stays `active`. | `if code in {190, 102} or status in {401, 403}` | open |
-| A5 | Medium | `meta_oauth.py:205` | `POST /{page}/subscribed_apps` REPLACES the field list. Linking Messenger on a Page already linked as Facebook drops `feed`. | `"facebook": base + ",feed"` vs messenger = base | open |
+| A5 | Medium | `meta_oauth.py:205` | `POST /{page}/subscribed_apps` REPLACES the field list. Linking Messenger on a Page already linked as Facebook drops `feed`. | `"facebook": base + ",feed"` vs messenger = base | fixed (the Page subscription is merged, and on disconnect narrowed to the sibling's fields) |
 | A6 | Medium | `integrations.py:446-453` | A successful verify rewrites `_connection` and wipes `granted_scopes`, so a false "reconnect" badge appears. | `config = {**identity, "_connection": _verification_metadata(...)}` | open |
 | A7 | Medium | `meta_oauth.py:795` | The page-choice ticket is consumed (`getdel`) before tenant/user/page are checked; a bad or repeated request burns it. | `parked = await _take_page_choice(...)` first | open |
 | A8 | Medium | `meta_oauth.py:886` | `except Exception: return _back("error","invalid_state")` logs nothing. | no logger call | open |
 | A9 | Medium | `meta_oauth.py:308` | `except ValueError: return None` hides a corrupt ticket as "expired". | | open |
 | A10 | Medium | `meta_oauth.py:340-415` | `.json()` is called with no status check; a 429/5xx HTML body raises `ValueError` and shows as a config error. | | open |
-| A11 | Medium | `meta_oauth.py:249` | `_messaging_pages` returns ALL pages when any lacks `tasks`. | `return pages or all_pages` | open |
+| A11 | Medium | `meta_oauth.py:249` | `_messaging_pages` returns ALL pages when any lacks `tasks`. | `return pages or all_pages` | fixed (a Page whose tasks exclude messaging is no longer offered) |
 | A12 | Medium | `facebook_pages.py:85-96` | Reads token and page id from credentials only; OAuth keeps the page id in `config`. Whether config is merged at every call site is **Unconfirmed**. | | unconfirmed |
 | A13 | Medium | `facebook.py:33,46` vs `messenger.py:57,68` | Facebook accepts fallback secrets (`meta_app_secret`, `whatsapp_verify_token`) that Messenger does not: one deployment can pass one webhook and fail the other. | | open |
 | A14 | Medium | `integrations.py:70-75` | Facebook webhook status requires `messenger_*` settings only, while the adapter accepts fallbacks: false "server setup required". | | open |
@@ -35,18 +35,18 @@ Reviewed at commit `c0617b1e`. Status column: `fixed` (this change), `open`, `re
 |---|---|---|---|---|
 | W1 | High | `ChannelsSettings.jsx:491` | `FB.login` sends no `sessionInfoVersion` while the code waits for `WA_EMBEDDED_SIGNUP` events. Meta's v5 notes say the value is ignored (always 5), so this is **not** the cause; kept only as a test gap. | retracted |
 | W2 | High | `ChannelsSettings.jsx:448,507` | The code is exchanged only after `Promise.all([code, session])` with a 10 min timer. Meta's code lives 5 min. | open |
-| W3 | High | `ChannelsSettings.jsx:462` | `CANCEL` and `ERROR` share one message; Meta's `error_code`/`error_message` are discarded. | open |
+| W3 | High | `ChannelsSettings.jsx:462` | `CANCEL` and `ERROR` share one message; Meta's `error_code`/`error_message` are discarded. | fixed (`whatsappSignupInterruption` shows Meta's message, error id and session id) |
 | W4 | High | `meta_whatsapp_signup.py:142` | Code-exchange failure drops Meta's error and logs nothing. | fixed (recorded) |
 | W5 | High | `meta_whatsapp_signup.py:282,313` | An unknown phone status is treated as "not connected" and `/register` is called, spending one of Meta's limited attempts (133016). | open |
 | W6 | High | `meta_whatsapp_signup.py:315,343` | PIN is generated before the call and stored only on success: a lost response makes the next attempt use a different PIN. | open |
-| W7 | Medium | `meta_whatsapp_signup.py:326` | Only 133016 is special-cased; other register errors show a misleading "finish verifying". | open |
+| W7 | Medium | `meta_whatsapp_signup.py:326` | Only 133016 is special-cased; other register errors show a misleading "finish verifying". | fixed (`_register_error` maps the documented Meta codes) |
 | W8 | Medium | `meta_whatsapp_signup.py:399-405` | App is subscribed to the WABA BEFORE registering the number; a register failure leaves an orphan subscription. | open |
 | W9 | Medium | `meta_whatsapp_signup.py:427` | No `IntegrityError` handling on flush (the manual path has it). | open |
 | W10 | Medium | `meta_whatsapp_signup.py` | No audit row for an embedded connect (manual connect writes one). | open |
 | W11 | Medium | `ChannelsSettings.jsx:101` | `isMetaSdkOrigin` accepts any `*.facebook.com` origin and never checks `event.source`. | open |
-| W12 | Medium | `whatsapp.py:197` | Status updates keep only `errors[0].message`; the numeric code (131047, 131026, 131051, 132000...) is dropped. | open |
+| W12 | Medium | `whatsapp.py:197` | Status updates keep only `errors[0].message`; the numeric code (131047, 131026, 131051, 132000...) is dropped. | fixed (code, title and details kept on the stored error) |
 | W13 | Medium | `whatsapp.py:325` | Any >=400 becomes one error; 429/130429 is not marked retryable. | open |
-| W14 | Medium | `docs/META_SETUP.md:143` | `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` and the app-level callback URL are not documented for WhatsApp; both checks fail closed. | open |
+| W14 | Medium | `docs/META_SETUP.md:143` | `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` and the app-level callback URL are not documented for WhatsApp; both checks fail closed. | fixed (`META_SETUP.md` rewritten per Meta object) |
 | W15 | Low | `ChannelsSettings.jsx:70` | SDK locale hardcoded `en_US`; `fbAsyncInit` overwritten per call can stall to the 15 s timeout. | open |
 | W16 | Low | `meta_whatsapp_signup.py` `/complete` | Not idempotent: a retry re-sends a one-time code and shows an error for a channel that is connected. | open |
 | W17 | Test gap | `loadFacebookSdk.test.js` | No test for `FB.login` options, FINISH/CANCEL/ERROR, or the timeout. | open |
@@ -100,3 +100,28 @@ Reviewed at commit `c0617b1e`. Status column: `fixed` (this change), `open`, `re
 * **Not researched (no source found, so nothing is claimed):** Instagram linking rules and review needs,
   Messenger tags after 2025, signature-with-raw-body pitfalls, Meta disabling a failing webhook, development
   mode behaviour for testers, Graph version sunset dates, the numeric limit behind 133016, codes 32 and 613.
+
+## E. Webhook architecture rework (branch `feat/meta-channels-unified`)
+
+Meta gives an app one callback URL per object type, so Messenger and Facebook (both the `Page`
+object) could not each own a path, and Instagram's fields were being sent to the Page subscription,
+which does not configure them.
+
+| # | Severity | Problem | Status |
+|---|---|---|---|
+| E1 | Critical | Messenger and Facebook shared one Meta object but had two callback paths; events landed on whichever path was registered. | fixed: `POST /webhooks/meta/page` splits `messaging` to Messenger and `changes` to Facebook |
+| E2 | Critical | `comments`, `message_reactions`, `messaging_seen` were sent to `/{page}/subscribed_apps` for Instagram; they are not Page fields. | fixed: only Page fields are sent; Instagram's are set on the Instagram object |
+| E3 | Critical | The setup guide registered every channel under the Page object. | fixed: three independent setups |
+| E4 | Critical | "Connected" proved nothing about delivery. | fixed: `GET /integrations/{id}/diagnostics` and the "Diagnose channel" button (app-level dashboard setup still cannot be read from the server; it is inferred from traffic) |
+| E5 | High | Disconnect only changed a row; Meta kept delivering. | fixed: removes (or narrows, when a sibling channel stays) the subscription, records the outcome, retry route |
+| E6 | High | Postbacks, referrals, reads, deliveries, reactions, echoes, handovers and albums were dropped by Messenger. | fixed |
+| E7 | High | A human reply after 24 h had no `HUMAN_AGENT` tag. | fixed |
+| E8 | High | Ad-opened conversations (Click-to-Messenger / Click-to-Direct) got the 24 h window, not 7 days. | fixed (marker kept in `messaging_policy_state`, no migration) |
+| E9 | Medium | Instagram reactions had no dedupe id; mentions were ignored; referrals were not parsed. | fixed |
+| E10 | Medium | Messenger customers had no name. | fixed (Graph lookup, cached, never fails ingest) |
+| E11 | Medium | Instagram permissions were never checked for what the channel needs. | fixed (`missing_scopes` for Instagram) |
+| E12 | Medium | No history backfill for Messenger conversations. | open |
+| E13 | Medium | Page mentions (`mention`) on Facebook and Page comments do not open a conversation. | open (design decision: comments stay a separate surface) |
+| E14 | Medium | WABA account, quality and template update events are not handled. | open |
+| E15 | Medium | The unified route is tested against fakes. It has not been run against a live Meta app. | open: needs the dashboard setup in `META_SETUP.md` and a test Page |
+
