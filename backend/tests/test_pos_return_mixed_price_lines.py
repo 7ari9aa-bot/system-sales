@@ -216,3 +216,98 @@ async def test_the_stored_invoice_line_carries_the_product_name(db, tenant_ctx) 
     for item in items:
         assert item.title not in ("", "سعة كبيرة")  # the variant's own name alone is not enough
         assert item.title.startswith("تيشيرت")  # the product name leads
+
+
+async def _three_items_big_discount(db, tenant_ctx):
+    """Three variants at 33.33 with a 10.00 order discount: the invoice is 89.99.
+
+    Each line's share of the discount is 3.33 (3.3333 rounded), so the three shares add up to
+    9.99, one cent short of the discount, and the lines alone would refund 90.00.
+    """
+    register = await _register(db, tenant_ctx)
+    pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    customer = await _customer(db, tenant_ctx)
+    variants = [await _sellable_variant(db, tenant_ctx, price="33.33", stock=20) for _ in range(3)]
+    sold = await pos_sell(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        customer_id=customer.id,
+        items=[{"variant_id": str(v.id), "quantity": 1} for v in variants],
+        discount_total="10.00",
+    )
+    assert Decimal(sold["grand_total"]) == Decimal("89.99")
+    return pos_session, sold, variants
+
+
+async def test_a_ten_pound_discount_over_three_lines_refunds_the_invoice_to_the_cent(
+    db, tenant_ctx
+) -> None:
+    pos_session, sold, variants = await _three_items_big_discount(db, tenant_ctx)
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        pos_session.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(v.id), "quantity": 1} for v in variants],
+    )
+    assert Decimal(result["refunded_total"]) == Decimal("89.99")  # not 90.00
+
+
+async def test_returning_those_three_lines_one_by_one_never_exceeds_the_invoice(
+    db, tenant_ctx
+) -> None:
+    pos_session, sold, variants = await _three_items_big_discount(db, tenant_ctx)
+    total = Decimal("0")
+    for v in variants:
+        result = await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(v.id), "quantity": 1}],
+        )
+        total += Decimal(result["refunded_total"])
+    assert total == Decimal("89.99")
+
+
+async def _half_cent_variant_beside_another_item(db, tenant_ctx):
+    """Variant A sold as 1 x 10.00 + 1 x 10.01 (average 10.005) next to variant B at 50.00.
+
+    The invoice is 70.01. Because B is on the same invoice, A's own value (20.01) must hold on its
+    own: the invoice-wide cap cannot be what stops A over-refunding by half a cent.
+    """
+    pos_session, sold, variant_a = await _half_cent_lines(db, tenant_ctx)
+    variant_b = await _sellable_variant(db, tenant_ctx, price="50.00", stock=20)
+    order = await db.get(Order, sold["order_id"])
+    db.add(
+        OrderItem(
+            tenant_id=tenant_ctx.tenant_id,
+            order_id=order.id,
+            variant_id=variant_b.id,
+            title="B",
+            quantity=1,
+            unit_price=Decimal("50.00"),
+            total=Decimal("50.00"),
+        )
+    )
+    order.subtotal = order.grand_total = Decimal("70.01")
+    await db.flush()
+    return pos_session, sold, variant_a, variant_b
+
+
+async def test_the_last_units_of_a_variant_take_exactly_what_is_left_of_that_variant(
+    db, tenant_ctx
+) -> None:
+    pos_session, sold, a, _b = await _half_cent_variant_beside_another_item(db, tenant_ctx)
+    total = Decimal("0")
+    for _ in range(2):
+        result = await PosService.return_sale(
+            db,
+            tenant_ctx.tenant_id,
+            pos_session.id,
+            order_id=sold["order_id"],
+            lines=[{"variant_id": str(a.id), "quantity": 1}],
+        )
+        total += Decimal(result["refunded_total"])
+    assert total == Decimal("20.01")  # A's own value, not 20.02, with B still on the invoice
