@@ -30,8 +30,15 @@ describe("variants list fits a narrow card without sideways scrolling", () => {
   it("stacks cards by default and only becomes a table on a wide screen", () => {
     const h = html();
     expect(h).toMatch(/data-variant-card/);
-    expect(h).toMatch(/lg:hidden/);
-    expect(h).toMatch(/hidden[^"]*lg:block/);
+    expect(h).toMatch(/@container/);
+    expect(h).toMatch(/@\[860px\]:hidden/);
+    expect(h).toMatch(/hidden[^"]*@\[860px\]:block/);
+  });
+
+  it("switches on the width of its own card, not the screen (the card is far narrower than the screen)", () => {
+    // A screen-width breakpoint (lg:) showed the 820px table inside a ~380px card on a 1150px screen.
+    const h = html();
+    expect(h).not.toMatch(/\blg:(hidden|block)\b/);
   });
 
   it("the wide table is not forced wider than its card on a narrow one", () => {

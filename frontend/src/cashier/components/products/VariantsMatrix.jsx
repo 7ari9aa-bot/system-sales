@@ -21,7 +21,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
   }
 
   return (
-    <div className="space-y-3">
+    <div className="@container space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="num text-xs text-muted-foreground">{rows.length} تركيبة (لون × مقاس)</p>
         <div className="flex gap-2">
@@ -36,7 +36,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
         </div>
       </div>
 
-      <ul className="space-y-2 lg:hidden">
+      <ul className="space-y-2 @[860px]:hidden">
         {rows.map((row) => (
           <li key={row.id} data-variant-card className="space-y-2 rounded-xl border border-border bg-card p-3">
             <div className="flex items-center justify-between gap-2">
@@ -80,7 +80,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
         ))}
       </ul>
 
-      <div className="scroll-slim hidden overflow-x-auto rounded-xl border border-border lg:block">
+      <div className="scroll-slim hidden overflow-x-auto rounded-xl border border-border @[860px]:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs text-muted-foreground">
