@@ -150,8 +150,16 @@ class MessengerAdapter(ChannelAdapter):
         if not message:
             return []
 
+        # An echo is the Page's own outgoing message coming back on the `message_echoes` field.
+        # Without this guard the store's reply is stored as an INBOUND customer message, so the
+        # agent's own words appear in the thread as if the customer had written them.
+        if message.get("is_echo"):
+            return []
+
         text = message.get("text")
         attachments = message.get("attachments", [])
+        # A quote rides the message as the mid of the message being answered.
+        reply_to = (message.get("reply_to") or {}).get("mid")
 
         content_type = "text"
         media_url = None
@@ -180,6 +188,7 @@ class MessengerAdapter(ChannelAdapter):
                 media_url=media_url,
                 media_type=content_type if media_url else None,
                 content_type=content_type,
+                reply_to_message_id=reply_to,
                 conversation_ref=str(recipient.get("id", "")),
                 raw=payload,
             )
@@ -240,6 +249,17 @@ class MessengerAdapter(ChannelAdapter):
                 payloads.append({"recipient": recipient, "message": {"text": message.body}})
         else:
             payloads.append({"recipient": recipient, "message": {"text": message.body or ""}})
+
+        # The policy layer grants a human a 7-day window, but Meta only honours it when the request
+        # says so: without the tag a reply after hour 24 is refused by the provider even though we
+        # allowed it. Instagram already sends this; Messenger did not.
+        for payload in payloads:
+            if message.meta.get("human_agent"):
+                payload["messaging_type"] = "MESSAGE_TAG"
+                payload["tag"] = "HUMAN_AGENT"
+            reply_to = message.meta.get("reply_to_provider_id")
+            if reply_to:
+                payload["reply_to"] = {"mid": reply_to}
 
         async def _post_one(client: httpx.AsyncClient, payload: dict[str, Any]) -> str:
             resp = await client.post(url, headers=headers, json=payload)
