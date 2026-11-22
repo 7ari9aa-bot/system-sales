@@ -139,6 +139,26 @@ describe('<CashierView> POS Cashier Workstation', () => {
     expect(screen.getByText(/السلة فارغة/)).toBeTruthy()
   })
 
+  it('completes card checkout without pulsing cash drawer', async () => {
+    const { openCashDrawer, printRaw } = setup()
+
+    const productCard = screen.getByText('تي شيرت قطن مصري أسود').closest('.pos-product-card')
+    fireEvent.click(productCard!)
+
+    const checkoutBtn = screen.getByRole('button', { name: /دفع \[F1\]/ })
+    fireEvent.click(checkoutBtn)
+
+    // Click Card payment (مدى / بطاقة)
+    const cardBtn = screen.getByText(/💳 مدى \/ بطاقة/)
+    fireEvent.click(cardBtn)
+
+    await waitFor(() => {
+      expect(printRaw).toHaveBeenCalled()
+    })
+    expect(openCashDrawer).not.toHaveBeenCalled()
+    expect(screen.getByText(/السلة فارغة/)).toBeTruthy()
+  })
+
   it('handles Escape key to close open modals', () => {
     setup()
 

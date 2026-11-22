@@ -4,6 +4,7 @@ import { TriangleAlert } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import { useStartDay, useWorkingSession } from "@/cashier/api/useShifts";
 import { parseOpeningBalance } from "@/cashier/api/shiftState";
+import PageSkeleton from "@/cashier/components/ui-kit/PageSkeleton";
 
 const PICK_KEY = "cashier:register";
 
@@ -47,8 +48,8 @@ export function startDayParts(register) {
 /** How the start button looks. While it waits for the number it must still read as a button. */
 export function startButtonLook(waiting) {
   return waiting
-    ? { className: "h-11 w-full border-2 border-orange-500 bg-orange-200 text-base font-bold text-orange-950 disabled:opacity-100", waiting: true }
-    : { className: "w-full", waiting: false };
+    ? { className: "pos-start-day pos-start-day--waiting h-11 w-full border-2 border-orange-500 bg-orange-200 text-base font-bold text-orange-950 disabled:opacity-100", waiting: true }
+    : { className: "pos-start-day w-full", waiting: false };
 }
 
 /** The message for a till that cannot be used. Pure, so it can be tested without a screen. */
@@ -157,7 +158,7 @@ export default function WorkingSessionGate({ children }) {
   const [registerId, setRegisterId] = useState(readPickedRegister);
   const till = useWorkingSession({ registerId });
   if (till.isLoading) {
-    return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
+    return <PageSkeleton label="جارٍ قراءة حالة الوردية…" rows={3} testId="working-session-gate-loading" />;
   }
   const state = till.data ?? { status: "error", message: till.error?.message };
   if (state.status === "choose") {

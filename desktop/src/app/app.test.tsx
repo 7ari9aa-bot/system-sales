@@ -52,4 +52,16 @@ describe('<App> boot states', () => {
 
     expect(await screen.findByText(/api\.fihrist\.app\/api\/v1$/)).toBeTruthy()
   })
+
+  it('renders login view when server is configured but session is unauthenticated', async () => {
+    const unauthedPlatform = createNoopPlatform({
+      apiBaseUrl: 'https://api.fihrist.app/api/v1/',
+      initialSession: null,
+    })
+    renderApp(unauthedPlatform)
+
+    expect(await screen.findByText(/تسجيل الدخول إلى محطة العمل ونقطة البيع/)).toBeTruthy()
+    expect(screen.getByLabelText(/البريد الإلكتروني/)).toBeTruthy()
+    expect(screen.getByLabelText(/كلمة المرور/)).toBeTruthy()
+  })
 })

@@ -56,6 +56,7 @@ async def test_the_owner_corrects_a_code_and_the_till_finds_the_right_one(db, te
     await _file(owner, variant.id, "ean", "2991000102949")
 
     scan = f"/api/v1/pos/sessions/{shift.id}/scan"
+
     def body(value):
         return {"identifier_type": "barcode", "value": value}
 

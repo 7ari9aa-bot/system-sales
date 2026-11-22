@@ -597,6 +597,73 @@ async def test_a_sale_made_on_the_real_till_is_reported_at_the_cost_the_ledger_b
     assert rep["totals"]["cost_is_complete"] is True
 
 
+async def test_a_till_sale_of_stock_with_no_cost_layer_is_flagged_not_a_hundred_percent_margin(
+    db, tenant_ctx
+) -> None:
+    """A product added from the add-product screen has stock but no purchase cost yet (its cost
+    comes from purchase invoices). Selling it on the real till must report the cost as UNKNOWN,
+    the way the movement ledger defines NULL, and not as a free item with a 100% margin."""
+    from app.modules.pos.models import PosSession
+    from tests._pos_helpers import start_day, till
+    from tests._pos_sell import sell
+
+    tid = tenant_ctx.tenant_id
+    shift, variant, _customer = await till(db, tenant_ctx)
+    session = await db.get(PosSession, shift.id)
+    await start_day(db, tenant_ctx, session.register_id)
+    await sell(db, tid, shift.id, items=[{"variant_id": variant.id, "quantity": 3}])
+
+    rep = await ProfitReportService.by_variant(
+        db,
+        tid,
+        start=datetime.now(UTC).date() - timedelta(days=1),
+        end=datetime.now(UTC).date() + timedelta(days=2),
+    )
+    row = rep["rows"][0]
+    assert row["units_without_cost"] == 3
+    assert rep["totals"]["units_without_cost"] == 3
+    assert rep["totals"]["cost_is_complete"] is False
+
+
+async def test_a_till_sale_only_partly_covered_by_cost_layers_is_flagged_not_costed_as_free(
+    db, tenant_ctx
+) -> None:
+    """Two units have a purchase cost layer, the third does not. The movement's cost is then
+    unknown for the sale as a whole, so the report flags all three units instead of costing the
+    third as free (which would understate the cost and overstate the profit)."""
+    from app.modules.inventory.service import ValuationService
+    from app.modules.pos.models import PosSession
+    from tests._pos_helpers import start_day, till
+    from tests._pos_sell import sell
+
+    tid = tenant_ctx.tenant_id
+    shift, variant, _customer = await till(db, tenant_ctx)
+    session = await db.get(PosSession, shift.id)
+    await start_day(db, tenant_ctx, session.register_id)
+    wh_id = (
+        await db.execute(
+            __import__("sqlalchemy").text(
+                "select warehouse_id from inventory_balances where variant_id = :v"
+            ),
+            {"v": variant.id},
+        )
+    ).scalar_one()
+    await ValuationService.create_cost_layer(
+        db, tid, variant_id=variant.id, warehouse_id=wh_id, quantity=2, unit_cost="40.00"
+    )
+    await sell(db, tid, shift.id, items=[{"variant_id": variant.id, "quantity": 3}])
+
+    rep = await ProfitReportService.by_variant(
+        db,
+        tid,
+        start=datetime.now(UTC).date() - timedelta(days=1),
+        end=datetime.now(UTC).date() + timedelta(days=2),
+    )
+    row = rep["rows"][0]
+    assert row["units_without_cost"] == 3
+    assert rep["totals"]["cost_is_complete"] is False
+
+
 # ── over HTTP ──────────────────────────────────────────────────────────────────────────────────
 
 

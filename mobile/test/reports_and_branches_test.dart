@@ -46,6 +46,22 @@ void main() {
       expect(authVm.activeBranch.id, equals(secondBranch.id));
       expect(authVm.activeBranch.name, equals(secondBranch.name));
     });
+
+    test('AuthViewModel terminal lock and unlock with PIN', () {
+      final authVm = AuthViewModel();
+      expect(authVm.isTerminalLocked, isFalse);
+
+      authVm.lockTerminal();
+      expect(authVm.isTerminalLocked, isTrue);
+
+      final failed = authVm.unlockTerminal('12');
+      expect(failed, isFalse);
+      expect(authVm.isTerminalLocked, isTrue);
+
+      final success = authVm.unlockTerminal('1234');
+      expect(success, isTrue);
+      expect(authVm.isTerminalLocked, isFalse);
+    });
   });
 
   group('ReportsScreen & BranchSwitcher Widgets', () {

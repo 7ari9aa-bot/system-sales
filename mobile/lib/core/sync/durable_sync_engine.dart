@@ -77,10 +77,17 @@ class DurableSyncEngine {
     }
   }
 
-  /// Reset a conflict or rejected operation back to PENDING for retry
-  Future<void> retryOperation(String uuid) async {
+  /// Reset a conflict or rejected operation back to PENDING for retry with tenant scoping
+  Future<void> retryOperation(String uuid, {String? tenantId}) async {
     try {
       final db = await _localDb.database;
+      final where = tenantId != null && tenantId.isNotEmpty
+          ? 'operation_uuid = ? AND tenant_id = ?'
+          : 'operation_uuid = ?';
+      final whereArgs = tenantId != null && tenantId.isNotEmpty
+          ? [uuid, tenantId]
+          : [uuid];
+
       await db.update(
         'durable_operations',
         {
@@ -88,20 +95,27 @@ class DurableSyncEngine {
           'error_message': null,
           'retry_count': 0,
         },
-        where: 'operation_uuid = ?',
-        whereArgs: [uuid],
+        where: where,
+        whereArgs: whereArgs,
       );
     } catch (_) {}
   }
 
-  /// Discard and delete an operation from local queue
-  Future<void> discardOperation(String uuid) async {
+  /// Discard and delete an operation from local queue with tenant scoping
+  Future<void> discardOperation(String uuid, {String? tenantId}) async {
     try {
       final db = await _localDb.database;
+      final where = tenantId != null && tenantId.isNotEmpty
+          ? 'operation_uuid = ? AND tenant_id = ?'
+          : 'operation_uuid = ?';
+      final whereArgs = tenantId != null && tenantId.isNotEmpty
+          ? [uuid, tenantId]
+          : [uuid];
+
       await db.delete(
         'durable_operations',
-        where: 'operation_uuid = ?',
-        whereArgs: [uuid],
+        where: where,
+        whereArgs: whereArgs,
       );
     } catch (_) {}
   }
@@ -220,22 +234,25 @@ class DurableSyncEngine {
     switch (op.operationType) {
       case 'pos_sale':
       case 'sale':
-        endpoint = op.registerId != null
-            ? '/api/v1/pos/registers/${op.registerId}/sales'
-            : '/api/v1/pos/sales';
+        endpoint = '/api/v1/pos/registers/${op.registerId ?? 'reg_default'}/sales';
         break;
       case 'stock_adjustment':
       case 'inventory_movement':
         endpoint = '/api/v1/inventory/movements';
         break;
       case 'create_product':
-        endpoint = '/api/v1/catalog/products';
+        endpoint = '/api/v1/products';
+        break;
+      case 'receive_purchase_order':
+        final poId = op.payloadSnapshot['order_id'] ?? op.payloadSnapshot['purchase_order_id'];
+        endpoint = '/api/v1/purchasing/purchase-orders/$poId/receive';
         break;
       case 'stocktake_count':
-        endpoint = '/api/v1/inventory/stocktakes/count';
+        final stId = op.payloadSnapshot['stocktake_id'] ?? 'default';
+        endpoint = '/api/v1/pos/stocktakes/$stId/counts';
         break;
       default:
-        endpoint = '/api/v1/operations/sync';
+        endpoint = '/api/v1/inventory/movements';
     }
 
     try {

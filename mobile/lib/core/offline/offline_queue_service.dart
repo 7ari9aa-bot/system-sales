@@ -165,6 +165,7 @@ class OfflineQueueService {
           items: mockItems,
           paymentMethod: sale.paymentMethod,
           total: sale.total,
+          idempotencyKey: sale.idempotencyKey,
         );
 
         if (result['success'] == true || result['id'] != null || result['order_id'] != null) {

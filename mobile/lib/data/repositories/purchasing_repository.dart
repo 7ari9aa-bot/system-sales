@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../core/api/api_endpoints.dart';
 import '../../core/secure_storage/secure_token_store.dart';
 import '../../core/sync/durable_operation.dart';
 import '../../core/sync/durable_sync_engine.dart';
@@ -102,7 +103,7 @@ class PurchasingRepository {
 
   Future<List<PurchaseOrder>> getPurchaseOrders() async {
     try {
-      final res = await _apiClient.get('/api/v1/purchasing/orders');
+      final res = await _apiClient.get(ApiEndpoints.purchaseOrders);
       if (res is List<dynamic>) {
         return res.map((json) => PurchaseOrder.fromJson(json as Map<String, dynamic>)).toList();
       }
@@ -152,7 +153,7 @@ class PurchasingRepository {
     bool sentOnline = false;
     try {
       final response = await _apiClient.post(
-        '/api/v1/purchasing/orders/$orderId/receive',
+        ApiEndpoints.purchaseOrderReceive(orderId),
         body: payload,
       );
       if (response != null) {

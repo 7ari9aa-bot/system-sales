@@ -195,6 +195,9 @@ class ValuationService:
         await session.flush()
         return {
             "consumed_quantity": quantity,
+            # What the layers really covered. With allow_partial this can be less than the
+            # quantity asked for; a caller that books a cost must not treat the rest as free.
+            "covered_quantity": sum(c["quantity"] for c in consumed_layers),
             "total_cogs": total_cogs.quantize(Decimal("0.0001")),
             "consumed_layers": consumed_layers,
         }

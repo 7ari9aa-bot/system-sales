@@ -210,15 +210,19 @@ pub fn open_customer_display(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn read_settings(app: AppHandle) -> Option<String> {
     use tauri::Manager;
-    let path = app.path().app_config_dir().ok()?.join(crate::shell_url::SETTINGS_FILE_NAME);
+    let path = app
+        .path()
+        .app_config_dir()
+        .ok()?
+        .join(crate::shell_url::SETTINGS_FILE_NAME);
     crate::shell_url::read_settings_web_app_url(&path)
 }
 
 #[tauri::command]
 pub fn write_settings(app: AppHandle, web_app_url: String) -> Result<String, String> {
     use tauri::Manager;
-    let validated = crate::shell_url::validate_web_app_url(&web_app_url)
-        .map_err(|e| format!("{e:?}"))?;
+    let validated =
+        crate::shell_url::validate_web_app_url(&web_app_url).map_err(|e| format!("{e:?}"))?;
 
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -229,4 +233,39 @@ pub fn write_settings(app: AppHandle, web_app_url: String) -> Result<String, Str
     });
     std::fs::write(&path, obj.to_string()).map_err(|e| e.to_string())?;
     Ok(validated)
+}
+
+pub const SESSION_FILE_NAME: &str = "fihrist-session.json";
+
+#[tauri::command]
+pub fn read_auth_session(app: AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let path = app.path().app_config_dir().ok()?.join(SESSION_FILE_NAME);
+    if path.exists() {
+        std::fs::read_to_string(&path).ok()
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub fn write_auth_session(app: AppHandle, session_json: String) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(SESSION_FILE_NAME);
+    std::fs::write(&path, session_json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_auth_session(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Ok(dir) = app.path().app_config_dir() {
+        let path = dir.join(SESSION_FILE_NAME);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    Ok(())
 }

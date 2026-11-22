@@ -58,6 +58,62 @@ export interface UpdaterPort {
   downloadAndInstall(): Promise<void>
 }
 
+export interface AuthUser {
+  readonly id: string
+  readonly name: string
+  readonly email: string
+  readonly role: string
+  readonly permissions: readonly string[]
+}
+
+export interface AuthTenant {
+  readonly id: string
+  readonly name: string
+  readonly subdomain: string
+}
+
+export interface AuthBranch {
+  readonly id: string
+  readonly name: string
+}
+
+export interface AuthRegister {
+  readonly id: string
+  readonly name: string
+}
+
+export interface AuthSession {
+  readonly token: string
+  readonly user: AuthUser
+  readonly tenant: AuthTenant
+  readonly branch?: AuthBranch
+  readonly register?: AuthRegister
+}
+
+export interface LoginCredentials {
+  readonly email: string
+  readonly password: string
+  readonly subdomain?: string
+}
+
+export interface AuthPort {
+  getSession(): Promise<AuthSession | null>
+  login(credentials: LoginCredentials): Promise<AuthSession>
+  logout(): Promise<void>
+  switchBranch(branch: AuthBranch): Promise<void>
+  switchRegister(register: AuthRegister): Promise<void>
+}
+
+export interface HttpRequestOptions {
+  readonly method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  readonly headers?: Record<string, string>
+  readonly body?: unknown
+}
+
+export interface HttpPort {
+  request<T = unknown>(endpoint: string, options?: HttpRequestOptions): Promise<T>
+}
+
 export interface Platform {
   readonly kind: PlatformKind
   readonly shell: ShellPort
@@ -65,9 +121,12 @@ export interface Platform {
   readonly runtime: RuntimePort
   readonly printer: PrinterPort
   readonly updater: UpdaterPort
+  readonly auth: AuthPort
+  readonly http: HttpPort
 }
 
 export interface NoopPlatformOptions {
   readonly onLog?: (record: LogRecord) => void
   readonly apiBaseUrl?: string | null
+  readonly initialSession?: AuthSession | null
 }

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "@/cashier/components/ui/sonner";
+import PageSkeleton from "@/cashier/components/ui-kit/PageSkeleton";
 import "./cashier.css";
 
 // كل صفحات الكاشير تُحمَّل عند الطلب حتى لا تثقل باقي النظام.
@@ -37,7 +38,7 @@ function CashierLayout() {
   // الهيكل (السايدبار والتنقل) جاي من DashboardLayout في النظام الرئيسي؛ هنا بس الثيم المعزول.
   return (
     <div className={fixed ? "cashier-root cashier-fixed" : "cashier-root"} dir="rtl">
-      <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">جارٍ التحميل…</div>}>
+      <Suspense fallback={<PageSkeleton />}>
         <Outlet />
       </Suspense>
       {/* Every toast() in the cashier (sale done, stock warnings, errors) needs this host; the main app mounts a different toaster. */}

@@ -1,5 +1,5 @@
 import { useState, type FC } from 'react'
-import type { Platform } from '@/platform'
+import type { AuthSession, Platform } from '@/platform'
 import { DashboardView } from '@/features/dashboard/DashboardView'
 import { CashierView } from '@/features/cashier/CashierView'
 import { InventoryView } from '@/features/inventory/InventoryView'
@@ -13,10 +13,16 @@ export type WorkstationTab = 'dashboard' | 'cashier' | 'inventory' | 'purchasing
 
 export const AppShell: FC<{
   readonly platform: Platform
+  readonly session?: AuthSession | null
+  readonly onLogout?: () => void
   readonly apiBaseUrl: string
   readonly onSaveUrl: (url: string) => void
-}> = ({ platform, apiBaseUrl, onSaveUrl }) => {
+}> = ({ platform, session, onLogout, apiBaseUrl, onSaveUrl }) => {
   const [activeTab, setActiveTab] = useState<WorkstationTab>('cashier')
+
+  const permissions = session?.user?.permissions ?? ['*']
+  const isOwnerOrAdmin = session?.user?.role === 'owner' || session?.user?.role === 'admin'
+  const hasPerm = (perm: string): boolean => isOwnerOrAdmin || permissions.includes('*') || permissions.includes(perm)
 
   return (
     <div className="workstation" dir="rtl">
@@ -37,59 +43,71 @@ export const AppShell: FC<{
             <span>نقطة البيع (الكاشير)</span>
           </button>
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'dashboard' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <span>📊</span>
-            <span>لوحة التحكم</span>
-          </button>
+          {hasPerm('dashboard:read') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'dashboard' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              <span>📊</span>
+              <span>لوحة التحكم</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'inventory' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('inventory')}
-          >
-            <span>📦</span>
-            <span>إدارة المخزون</span>
-          </button>
+          {hasPerm('inventory:read') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'inventory' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('inventory')}
+            >
+              <span>📦</span>
+              <span>إدارة المخزون</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'purchasing' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('purchasing')}
-          >
-            <span>🚚</span>
-            <span>المشتريات والموردون</span>
-          </button>
+          {hasPerm('purchasing:read') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'purchasing' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('purchasing')}
+            >
+              <span>🚚</span>
+              <span>المشتريات والموردون</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'reports' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('reports')}
-          >
-            <span>📈</span>
-            <span>التقارير والتحليلات</span>
-          </button>
+          {hasPerm('reports:read') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'reports' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('reports')}
+            >
+              <span>📈</span>
+              <span>التقارير والتحليلات</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'team' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('team')}
-          >
-            <span>👥</span>
-            <span>الموظفون والصلاحيات</span>
-          </button>
+          {hasPerm('team:manage') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'team' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('team')}
+            >
+              <span>👥</span>
+              <span>الموظفون والصلاحيات</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            className={`workstation__nav-item ${activeTab === 'inbox' ? 'workstation__nav-item--active' : ''}`}
-            onClick={() => setActiveTab('inbox')}
-          >
-            <span>💬</span>
-            <span>صندوق الوارد (Omnichannel)</span>
-          </button>
+          {hasPerm('inbox:read') && (
+            <button
+              type="button"
+              className={`workstation__nav-item ${activeTab === 'inbox' ? 'workstation__nav-item--active' : ''}`}
+              onClick={() => setActiveTab('inbox')}
+            >
+              <span>💬</span>
+              <span>صندوق الوارد (Omnichannel)</span>
+            </button>
+          )}
 
           <div style={{ marginTop: 'auto', borderTop: '1px solid #282f3d', paddingTop: '0.5rem' }}>
             <button
@@ -120,7 +138,7 @@ export const AppShell: FC<{
               {activeTab === 'settings' && 'إعدادات المنظومة والمحطة'}
             </h1>
             <div style={{ fontSize: '0.75rem', color: 'var(--fh-ink-muted)' }}>
-              المتجر: <strong>متجر فهرس التجريبي</strong> | الفرع: <strong>الفرع الرئيسي</strong> | الكاشير: <strong>أحمد سالم</strong>
+              المتجر: <strong>{session?.tenant?.name ?? 'متجر فهرس التجريبي'}</strong> | الفرع: <strong>{session?.branch?.name ?? 'الفرع الرئيسي'}</strong> | الكاشير: <strong>{session?.user?.name ?? 'أحمد سالم'}</strong>
             </div>
           </div>
 
@@ -131,6 +149,24 @@ export const AppShell: FC<{
             <span className="workstation__badge workstation__badge--online">
               ● متصل: {apiBaseUrl}
             </span>
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="boot__button"
+                style={{
+                  background: '#dc2626',
+                  fontSize: '0.75rem',
+                  padding: '0.35rem 0.65rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: 'none',
+                }}
+                title="تسجيل الخروج من المحطة"
+              >
+                تسجيل الخروج
+              </button>
+            )}
           </div>
         </header>
 

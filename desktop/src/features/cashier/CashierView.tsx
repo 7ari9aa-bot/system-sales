@@ -152,7 +152,14 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
 
   const handleCheckout = useCallback(async (method: string): Promise<void> => {
     try {
-      await platform.printer.openCashDrawer()
+      const isCash = method.includes('نقدي') || method.toLowerCase().includes('cash')
+      if (isCash) {
+        try {
+          await platform.printer.openCashDrawer()
+        } catch {
+          // Cash drawer pulse failed or unattached, continue
+        }
+      }
 
       const receiptText = `\x1B\x40\x1B\x61\x01FIHRIST SALES OS\n` +
         `Simplified Tax Invoice\n` +
@@ -167,7 +174,6 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
       await platform.printer.printRaw(encoder.encode(receiptText))
 
       // Update shift sales metrics
-      const isCash = method.includes('نقدي')
       setShift((prev) => ({
         ...prev,
         totalSalesCents: prev.totalSalesCents + totalCents,

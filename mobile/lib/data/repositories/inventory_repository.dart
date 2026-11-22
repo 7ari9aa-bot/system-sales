@@ -83,7 +83,7 @@ class InventoryRepository {
     try {
       final response = await _apiClient.get(
         ApiEndpoints.posStock,
-        queryParams: q.isNotEmpty ? {'search': q} : null,
+        queryParams: q.isNotEmpty ? {'term': q} : null,
       );
 
       if (response is List && response.isNotEmpty) {
@@ -177,7 +177,8 @@ class InventoryRepository {
     if (deltaQuantity <= 0) return false;
 
     final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
-    final userId = (await _tokenStore.getUserId()) ?? 'unknown_user';
+    final userId = (await _tokenStore.getUserId()) ?? 'operator';
+    final deviceId = await _tokenStore.getOrCreateDeviceId();
     final targetWarehouseId = warehouseId ?? '00000000-0000-0000-0000-000000000001';
 
     final int newStock = direction == 'in'
@@ -221,7 +222,7 @@ class InventoryRepository {
         operationUuid: opUuid,
         tenantId: tenantId,
         userId: userId,
-        deviceId: 'mobile_device',
+        deviceId: deviceId,
         operationType: 'inventory_movement',
         payloadSnapshot: payload,
         idempotencyKey: idempotencyKey,
@@ -290,19 +291,28 @@ class InventoryRepository {
 
     // Send to backend
     bool sentOnline = false;
+    final slug = product.name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+
+    final payload = {
+      'id': pId,
+      'title': product.name,
+      'name': product.name,
+      'slug': slug.isNotEmpty ? slug : 'prod-${DateTime.now().millisecondsSinceEpoch}',
+      'price': product.price,
+      'barcode': product.barcode,
+      'sku': product.sku,
+      'category': product.category,
+      'initial_stock': initialStock,
+      'cost_price': product.costPrice,
+    };
+
     try {
       final response = await _apiClient.post(
-        '/api/v1/catalog/products',
-        body: {
-          'id': pId,
-          'name': product.name,
-          'price': product.price,
-          'barcode': product.barcode,
-          'sku': product.sku,
-          'category': product.category,
-          'initial_stock': initialStock,
-          'cost_price': product.costPrice,
-        },
+        ApiEndpoints.products,
+        body: payload,
       );
       if (response != null) {
         sentOnline = true;
@@ -312,22 +322,17 @@ class InventoryRepository {
     }
 
     if (!sentOnline) {
+      final deviceId = await _tokenStore.getOrCreateDeviceId();
+      final userId = (await _tokenStore.getUserId()) ?? 'operator';
+
       // Enqueue in durable operations
       final op = DurableOperation(
         operationUuid: 'create_prod_${DateTime.now().millisecondsSinceEpoch}',
         tenantId: tenantId,
-        userId: (await _tokenStore.getUserId()) ?? 'unknown_user',
-        deviceId: 'mobile_device',
+        userId: userId,
+        deviceId: deviceId,
         operationType: 'create_product',
-        payloadSnapshot: {
-          'id': pId,
-          'name': product.name,
-          'price': product.price,
-          'barcode': product.barcode,
-          'sku': product.sku,
-          'category': product.category,
-          'initial_stock': initialStock,
-        },
+        payloadSnapshot: payload,
         idempotencyKey: 'idemp_create_$pId',
         status: DurableOperationStatus.pending,
         createdAt: DateTime.now(),

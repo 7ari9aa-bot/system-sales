@@ -106,7 +106,10 @@ pub fn run() {
             commands::install_update,
             commands::open_customer_display,
             commands::read_settings,
-            commands::write_settings
+            commands::write_settings,
+            commands::read_auth_session,
+            commands::write_auth_session,
+            commands::clear_auth_session
         ])
         .setup(|app| {
             log::info!("launching native Fihrist desktop workstation");

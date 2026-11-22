@@ -2,6 +2,7 @@ enum ChannelType {
   whatsapp,
   instagram,
   telegram,
+  messenger,
   web,
   other;
 
@@ -13,6 +14,9 @@ enum ChannelType {
         return ChannelType.instagram;
       case 'telegram':
         return ChannelType.telegram;
+      case 'messenger':
+      case 'facebook':
+        return ChannelType.messenger;
       case 'web':
         return ChannelType.web;
       default:
@@ -121,16 +125,19 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final sender = json['sender_type']?.toString() ?? json['role']?.toString() ?? 'agent';
+    final direction = json['direction']?.toString();
     return ChatMessage(
       id: json['id']?.toString() ?? '',
       conversationId: json['conversation_id']?.toString() ?? '',
       senderType: sender,
-      text: json['text']?.toString() ?? json['content']?.toString() ?? '',
+      text: json['body']?.toString() ?? json['text']?.toString() ?? json['content']?.toString() ?? '',
       mediaUrl: json['media_url']?.toString(),
-      timestamp: json['timestamp'] != null
-          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      isOutgoing: sender == 'agent' || sender == 'ai' || sender == 'assistant',
+      timestamp: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : (json['timestamp'] != null
+              ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+              : DateTime.now()),
+      isOutgoing: direction == 'outbound' || sender == 'agent' || sender == 'ai' || sender == 'assistant',
     );
   }
 

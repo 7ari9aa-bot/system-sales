@@ -1,59 +1,42 @@
-# Fihrist Desktop
+# Fihrist Desktop Workstation
 
-A Tauri 2 desktop shell with a React 19 + TypeScript interface, for the same Sales OS backend
-the web app uses. **It is at Phase 0.5: wrap mode.** The shell loads the deployed web
-application (the real product — cashier, inbox, dashboard) into its `main` window and
-injects a barcode-scan bridge, so a shop PC gets the whole system as a native app with
-USB-scanner support. When no web-app URL resolves it falls back to the Phase 0 scaffold
-SPA. See `docs/platform-boundary.md` (wrap-mode section), `docs/phase0-report.md` for what
-Phase 0 delivered, and `docs/phase0-gates.md` for the gates that must keep passing.
+A high-performance Tauri 2 native desktop application with a React 19 + TypeScript interface,
+delivering the full conversational-commerce Sales OS directly to store PCs, cashier terminals,
+and back-office workstations.
 
-Read the root [AGENTS.md](../AGENTS.md) first for the project map.
+## Architecture Overview
 
-## Wrap mode in one paragraph
+Fihrist Desktop runs as a standalone native workstation SPA embedded within the Tauri shell:
 
-Window creation moved to Rust (`src-tauri/src/lib.rs`): `shell_url.rs` resolves the web-app
-URL — settings file (`<app-config-dir>/fihrist-desktop.json`, key `web_app_url`) →
-`FH_WEB_APP_URL` env → the reviewed default — and the window is built with the scan bridge
-as an `initialization_script`. The bridge (`src/platform/scanner/scan_bridge.js`, one file
-shared verbatim with the shell and its tests) listens globally for keyboard-wedge scanner
-bursts (layout-immune `event.code` decoding — Arabic keyboards safe) and dispatches a DOM
-`fihrist:scan` event; the web app's POS screen (`frontend/src/lib/scannerBridge.js`) feeds
-that into its existing scan pipeline when the cashier's focus is outside a text field.
-Auth is the web app's own (HttpOnly cookies, persisted by the WebView profile); there is
-no native auth, no token store, and no Tauri IPC exposed to the remote page.
+- **Native React Workstation:** The UI is compiled into the desktop bundle (`index.html`) and loaded directly via `WebviewUrl::App`.
+- **Integrated POS & Scanner Bridge:** Built-in hardware keyboard-wedge scanner bridge (`scan_bridge.js`) injected at startup. Listens globally for USB and wireless barcode scanner bursts (`event.code` based, completely layout-immune and safe for Arabic keyboards) and dispatches DOM `fihrist:scan` events.
+- **Hardware Integration:** Native Rust commands for thermal receipt printing (ESC/POS raw bytes), cash drawer kick pulse (`open_cash_drawer`), and secondary customer-facing display window (`open_customer_display`).
+- **Secure Session Management:** Hardware-level session storage via Tauri platform commands (`read_auth_session`, `write_auth_session`, `clear_auth_session`) stored in `<app-config-dir>/fihrist-session.json`.
+- **Full Module Suite:**
+  - 🛒 **نقطة البيع (Cashier POS):** Live catalog search, hardware barcode scanning, VAT-inclusive 15% tax calculation, held carts queue, payment methods (Cash, Mada/Card, Apple Pay, Split), and shift Z-reports.
+  - 📊 **لوحة التحكم (Dashboard):** Real-time daily KPIs, average basket, stock alerts, and shift metrics.
+  - 📦 **المخزون (Inventory):** SKU/Barcode catalog, stock level tracking, low-stock warnings, and stocktake reconciliation.
+  - 🚚 **المشتريات (Purchasing):** Supplier management, purchase orders, and shipment receiving.
+  - 📈 **التقارير (Reports):** Financial summaries, sales by payment method, and margins.
+  - 👥 **الموظفون (Team):** Team directory, roles, and granular permission enforcement.
+  - 💬 **صندوق الوارد (Omnichannel Inbox):** Unified customer conversations across WhatsApp, Messenger, and web chat.
+  - ⚙️ **الإعدادات (Settings):** Workstation configuration, printer selection, cash drawer test, and server settings.
 
-## The one rule that shapes the code
+## Platform Boundary Rule
 
-The React tree never calls `invoke()`, `fetch()`, opens an `EventSource`, or touches web
-storage. It talks to a small "platform" interface; only `src/platform/tauri/` knows a Tauri
-runtime exists. Browsers and tests run on an in-memory platform (`src/platform/noop.ts`).
-Full explanation and how it is enforced: [docs/platform-boundary.md](docs/platform-boundary.md).
+The React tree never directly calls `invoke()`, `fetch()`, opens an `EventSource`, or touches web storage (`localStorage` / `sessionStorage`).
+Instead, all components interact exclusively through the abstract `Platform` interface (`src/platform/port.ts`):
+- Production uses the Tauri adapter (`src/platform/tauri/`).
+- Browser dev mode (`npm run dev`) and Vitest unit tests use the in-memory platform (`src/platform/noop.ts`).
 
-## Layout
+This architectural boundary is strictly verified by `config/check-platform-boundary.mjs` and enforced by CI.
 
-| Path | What it holds |
-|---|---|
-| `src/main.tsx`, `src/app/` | Bootstrap, boot screen, error boundary, query client |
-| `src/platform/` | The platform interfaces (`port.ts`), the browser/test platform (`noop.ts`), boot-config validation, `scanner/` (the scan bridge — plain JS shared with the Rust shell), and `tauri/` (the only place that touches Tauri) |
-| `src/shared/` | Small utilities: i18n, logging, money |
-| `src/features/`, `src/components/`, `src/state/` | Empty placeholders, each with a README, waiting for Phase 1 |
-| `src-tauri/` | The Rust side: `tauri.conf.json`, capabilities, icons |
-| `config/` | Scripts that fail the build on a boundary violation or a hard-coded host |
-| `e2e/` | Placeholder (README only) for Phase 1 end-to-end tests |
-| `docs/` | Boundary rules and the Phase 0 report and gates |
-| `openapi.lock.json` | The backend API contract this app was built against |
-
-## Commands
+## Verification & Commands
 
 ```bash
+cd desktop
 npm ci
 npm run dev        # Vite dev server on http://127.0.0.1:5183
-npm run verify     # everything CI runs: boundary, typecheck, lint, test, build, host check
-npm run tauri      # Tauri CLI (needs the Rust toolchain)
+npm run verify     # Full verification suite: boundary, typecheck, lint, vitest, build, host check
+npm run tauri dev  # Launch native Tauri desktop application
 ```
-
-Node 24 and Rust 1.98.1 are pinned (`package.json` `engines`, `rust-toolchain.toml`) so a red
-build is never caused by a drifting toolchain. CI for this folder is
-`.github/workflows/desktop-ci.yml`; it runs only when `desktop/**` changes, which is why the
-main `ci.yml` never mentions it.

@@ -58,28 +58,24 @@ class SecureTokenStore {
   Future<String?> _safeRead(String key) async {
     try {
       return await _secureStorage.read(key: key);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(key);
+    } catch (e) {
+      // Hardware secure keystore error - never read sensitive keys from insecure storage
+      return null;
     }
   }
 
   Future<void> _safeWrite(String key, String value) async {
     try {
       await _secureStorage.write(key: key, value: value);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, value);
+    } catch (e) {
+      throw Exception('فشل التخزين في وحدة التخزين المشفرة للجهاز (Keystore/Keychain): $e');
     }
   }
 
   Future<void> _safeDelete(String key) async {
     try {
       await _secureStorage.delete(key: key);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(key);
-    }
+    } catch (_) {}
   }
 
   Future<String?> getTenantSubdomain() async {

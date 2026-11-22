@@ -128,3 +128,38 @@
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: fixed; inset: 0; margin: 0; padding: 16px; width: 100%; background: #fff; }
 }
+
+/* زر «ابدأ اليوم» في شاشة رصيد البداية.
+   تنسيقه محسوم هنا بقاعدة غير متسبّقة (unlayered) وبمحدّد أعلى من قاعدة إعادة ضبط الموقع التسويقي
+   `button{border:0;background:none}` التي قد تتقدّم على أدوات Tailwind، فيظهر الزر كنص عائم بلا خلفية ولا إطار.
+   الحالة المنتظرة (لم يُكتب الرصيد بعد) تبقى زرًا واضحًا بخلفية برتقالية فاتحة وإطار برتقالي سميك ونص غامق. */
+.cashier-root .pos-start-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding-inline: 16px;
+  border: 2px solid hsl(var(--primary));
+  border-radius: 10px;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.cashier-root .pos-start-day:hover:not(:disabled) {
+  border-color: hsl(26 94% 44%);
+  background-color: hsl(26 94% 44%);
+}
+
+.cashier-root .pos-start-day--waiting,
+.cashier-root .pos-start-day--waiting:disabled {
+  border-color: hsl(var(--primary));
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  opacity: 1;
+  cursor: not-allowed;
+}

@@ -63,6 +63,37 @@ class AuthViewModel extends ChangeNotifier {
   List<Branch> get availableBranches => _availableBranches;
   Branch get activeBranch => _activeBranch;
 
+  bool _isTerminalLocked = false;
+  bool get isTerminalLocked => _isTerminalLocked;
+
+  void lockTerminal() {
+    _isTerminalLocked = true;
+    notifyListeners();
+  }
+
+  bool unlockTerminal(String pin) {
+    if (pin.trim().length >= 4) {
+      _isTerminalLocked = false;
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  bool hasPermission(String permission) {
+    if (_currentUser == null) return false;
+    final role = _currentUser!.role?.toLowerCase();
+    if (role == 'owner' || role == 'admin' || role == 'manager') return true;
+    if (_currentUser!.permissions.contains('*')) return true;
+    return _currentUser!.permissions.contains(permission);
+  }
+
+  bool get canApplyDiscounts => hasPermission('pos:discount') || hasPermission('pos:write');
+  bool get canCloseShift => hasPermission('pos:shift_close') || hasPermission('pos:write');
+  bool get canViewReports => hasPermission('reports:read');
+  bool get canManageInventory => hasPermission('inventory:write');
+  bool get canManageSettings => hasPermission('settings:manage');
+
   void switchBranch(Branch branch) {
     _activeBranch = branch;
     notifyListeners();

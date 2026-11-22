@@ -14,23 +14,15 @@ import { resolveSizePreset } from "@/cashier/lib/shopOptions";
 import { nextSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
 import { imageProblem, imagesOf } from "@/cashier/api/productImage";
+import { initialProductForm } from "@/cashier/components/products/productSeed";
 
 const MAX_PRODUCT_IMAGES = 4;
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
-export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels }) {
+export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels }) {
   const isEdit = !!product;
   const { data: existingSkus = [] } = useExistingSkus();
-  const [form, setForm] = useState({
-    name: product?.name ?? "",
-    categoryId: product?.categoryId ?? "",
-    brandId: product?.brandId ?? "",
-    season: product?.season ?? "",
-    material: product?.material ?? "",
-    description: product?.description ?? "",
-    sellPrice: product?.sellPrice ?? "",
-    threshold: product?.threshold ?? "",
-  });
+  const [form, setForm] = useState(() => initialProductForm(product, seed));
   const [colors, setColors] = useState(product?.colors ?? []);
   const [sizePreset, setSizePreset] = useState("clothing");
   const [sizes, setSizes] = useState(product?.sizes ?? []);

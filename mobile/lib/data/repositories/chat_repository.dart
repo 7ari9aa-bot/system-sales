@@ -16,12 +16,19 @@ class ChatRepository {
       }
 
       final response = await _apiClient.get(
-        ApiEndpoints.conversations,
+        ApiEndpoints.inbox,
         queryParams: query.isNotEmpty ? query : null,
       );
 
+      List<dynamic>? rawList;
       if (response is List) {
-        return response
+        rawList = response;
+      } else if (response is Map<String, dynamic> && response['items'] is List) {
+        rawList = response['items'] as List<dynamic>;
+      }
+
+      if (rawList != null) {
+        return rawList
             .map((item) =>
                 ConversationThread.fromJson(item as Map<String, dynamic>))
             .toList();
@@ -41,8 +48,15 @@ class ChatRepository {
         ApiEndpoints.conversationMessages(conversationId),
       );
 
+      List<dynamic>? rawList;
       if (response is List) {
-        return response
+        rawList = response;
+      } else if (response is Map<String, dynamic> && response['items'] is List) {
+        rawList = response['items'] as List<dynamic>;
+      }
+
+      if (rawList != null) {
+        return rawList
             .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
             .toList();
       }
@@ -73,7 +87,8 @@ class ChatRepository {
     required String conversationId,
     required String text,
   }) async {
-    final payload = {'content': text, 'sender_type': 'agent'};
+    // Backend SendMessageRequest requires 'body' field per OpenAPI contract
+    final payload = {'body': text, 'sender_type': 'agent'};
 
     try {
       final response = await _apiClient.post(

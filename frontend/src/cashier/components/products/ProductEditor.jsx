@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "sonner";
 import ProductForm from "@/cashier/components/products/ProductForm";
+import { nextProductSeed } from "@/cashier/components/products/productSeed";
 import BarcodeLabelsDialog from "@/cashier/components/products/BarcodeLabelsDialog";
 import { GLOW, PAGE } from "@/cashier/components/products/formStyles";
 import { useCreateProduct, useUpdateProduct } from "@/cashier/api/useCatalogWrite";
@@ -12,6 +13,9 @@ export default function ProductEditor({ product }) {
   const navigate = useNavigate();
   const [labels, setLabels] = useState(null);
   const [formKey, setFormKey] = useState(0);
+  // بيانات المحل اللي بتتكرر (موسم/فئة/ماركة/خامة) بتفضل في النموذج بعد الحفظ، فإدخال الموديل اللي بعده
+  // ما بيحتاجش يختارها من الأول. اللي بيخص المنتج نفسه بيتفضّى.
+  const [seed, setSeed] = useState(null);
   const isEdit = !!product;
   const create = useCreateProduct();
   const update = useUpdateProduct(product?.id);
@@ -36,7 +40,8 @@ export default function ProductEditor({ product }) {
       if (!isEdit) {
         const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, variants: values.variants });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
-        if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع");
+        if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — الموسم والفئة والماركة والخامة اتحفظوا للمنتج اللي بعده");
+        setSeed(nextProductSeed(values));
         setFormKey((k) => k + 1);
         return;
       }
@@ -62,6 +67,7 @@ export default function ProductEditor({ product }) {
       <ProductForm
         key={formKey}
         product={product}
+        seed={seed}
         onCancel={handleCancel}
         onPrintLabels={(rows) => setLabels({ rows, name: product?.name ?? "منتج جديد" })}
         onSubmit={handleSubmit}
