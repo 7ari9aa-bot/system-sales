@@ -19,7 +19,7 @@ import { initialProductForm } from "@/cashier/components/products/productSeed";
 const MAX_PRODUCT_IMAGES = 4;
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
-export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels }) {
+export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels, isSaving = false }) {
   const isEdit = !!product;
   // أساس الـSKU من السيرفر (استعلام واحد). العدّ في المتصفح بقى خطة رجوع بس لنشر قديم بلا الـendpoint.
   const { data: serverSkuBase } = useNextSkuBase();
@@ -169,6 +169,7 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
           onPickImages={pickImages}
           onRemovePicked={removePicked}
           canSave={canSave}
+          isSaving={isSaving}
           onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, imageFiles: picked.map((p) => p.file) })}
           onCancel={onCancel}
         />

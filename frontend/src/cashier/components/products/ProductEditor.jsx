@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductForm from "@/cashier/components/products/ProductForm";
 import { nextProductSeed } from "@/cashier/components/products/productSeed";
@@ -7,6 +7,7 @@ import BarcodeLabelsDialog from "@/cashier/components/products/BarcodeLabelsDial
 import { GLOW, PAGE } from "@/cashier/components/products/formStyles";
 import { useCreateProduct, useUpdateProduct } from "@/cashier/api/useCatalogWrite";
 import { uploadProductImages } from "@/cashier/api/productImage";
+import { createSaveGuard } from "@/cashier/lib/saveOnce";
 
 // شاشة إضافة / تعديل منتج (تُستخدم من مسار الإضافة ومسار التعديل).
 export default function ProductEditor({ product }) {
@@ -35,7 +36,16 @@ export default function ProductEditor({ product }) {
     return false;
   }
 
-  async function handleSubmit(values) {
+  // ضغطة تانية أثناء الحفظ بترجّع نفس الطلب بدل ما تعمل منتج تاني بنفس الاسم.
+  const saveGuard = useRef(null);
+  if (saveGuard.current === null) saveGuard.current = createSaveGuard((values) => save(values));
+  const isSaving = create.isPending || update.isPending;
+
+  function handleSubmit(values) {
+    return saveGuard.current(values);
+  }
+
+  async function save(values) {
     try {
       if (!isEdit) {
         const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants });
@@ -71,6 +81,7 @@ export default function ProductEditor({ product }) {
         onCancel={handleCancel}
         onPrintLabels={(rows) => setLabels({ rows, name: product?.name ?? "منتج جديد" })}
         onSubmit={handleSubmit}
+        isSaving={isSaving}
       />
 
       <BarcodeLabelsDialog open={!!labels} onOpenChange={(o) => !o && setLabels(null)} rows={labels?.rows ?? []} productName={labels?.name ?? ""} />

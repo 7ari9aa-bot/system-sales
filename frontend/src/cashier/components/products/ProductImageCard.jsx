@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { saveButtonState } from "@/cashier/lib/saveOnce";
 import { Download, ImageOff, Plus, X } from "lucide-react";
 import {
   CARD,
@@ -22,6 +23,7 @@ export default function ProductImageCard({
   onPickImages,
   onRemovePicked,
   canSave,
+  isSaving = false,
   onSave,
   onCancel,
 }) {
@@ -30,6 +32,7 @@ export default function ProductImageCard({
   const full = total >= maxImages;
   const openPicker = () => !full && inputRef.current?.click();
   const main = saved[0]?.url ?? picked[0]?.url ?? null;
+  const state = saveButtonState({ canSave, isSaving });
 
   return (
     <div className={`${CARD} ${CARD_PAD} ${SIDE}`}>
@@ -98,8 +101,14 @@ export default function ProductImageCard({
       />
 
       <div className={CTA_ROW}>
-        <button type="button" className={CTA_PRIMARY} disabled={!canSave} onClick={onSave}>
-          حفظ المنتج
+        <button
+          type="button"
+          className={CTA_PRIMARY}
+          disabled={state.disabled}
+          aria-busy={isSaving}
+          onClick={onSave}
+        >
+          {state.label}
         </button>
         <button type="button" className={CTA_ICON} onClick={onCancel} aria-label="إلغاء التعديلات">
           <X className="h-5 w-5" />
