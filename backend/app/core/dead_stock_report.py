@@ -29,7 +29,7 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profit_report import _NOT_A_SALE, ProfitCtx
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.modules.catalog.apparel.matrix import color_column, size_column
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.inventory.models import InventoryMovement
 from app.modules.orders.models import Order, OrderItem
@@ -131,8 +131,8 @@ class DeadStockReportService:
                 Product.season.label("season"),
                 Product.material.label("material"),
                 Product.brand_id.label("brand_id"),
-                ProductVariant.option_values[SIZE_AXIS].astext.label("size"),
-                ProductVariant.option_values[COLOR_AXIS].astext.label("colour"),
+                size_column(ProductVariant.option_values).label("size"),
+                color_column(ProductVariant.option_values).label("colour"),
                 sellable.label("on_hand"),
                 last_sale.c.last_sold_at.label("last_sold_at"),
                 _VariantCost.c.avg_cost.label("avg_cost"),

@@ -13,10 +13,57 @@ import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from sqlalchemy import func
+
 from app.modules.errors import ValidationError
 
 SIZE_AXIS = "المقاس"
 COLOR_AXIS = "اللون"
+
+#: The keys a variant's option_values may carry for each axis. The product form posts English keys
+#: while the matrix was written with the Arabic axis names, so reading one spelling only made every
+#: variant the form created invisible to the reports: the same garment appeared twice with no colour
+#: or size, and the matrix grid dropped it entirely. Read every known spelling; rewrite nothing.
+SIZE_KEYS = (SIZE_AXIS, "size", "Size", "SIZE")
+COLOR_KEYS = (COLOR_AXIS, "color", "colour", "Color", "Colour")
+
+
+def _axis_value(option_values: dict | None, keys: tuple[str, ...]) -> str | None:
+    """The first non-empty spelling of an axis in a variant's option_values, or None."""
+    for key in keys:
+        value = (option_values or {}).get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if value is not None and not isinstance(value, str):
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def size_of(option_values: dict | None) -> str | None:
+    """The size a variant carries, whichever spelling its option_values use."""
+    return _axis_value(option_values, SIZE_KEYS)
+
+
+def color_of(option_values: dict | None) -> str | None:
+    """The colour a variant carries, whichever spelling its option_values use."""
+    return _axis_value(option_values, COLOR_KEYS)
+
+
+def _axis_column(option_values_column, keys: tuple[str, ...]):
+    """The first non-empty spelling of an axis, read in SQL so a report never misses a variant."""
+    return func.coalesce(*[option_values_column[key].astext for key in keys])
+
+
+def size_column(option_values_column):
+    """SQL: a variant's size, whichever spelling its option_values use."""
+    return _axis_column(option_values_column, SIZE_KEYS)
+
+
+def color_column(option_values_column):
+    """SQL: a variant's colour, whichever spelling its option_values use."""
+    return _axis_column(option_values_column, COLOR_KEYS)
 
 #: Letter sizes in the order a rack is read. A size is matched case-insensitively.
 LETTER_SIZES = ("XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL")

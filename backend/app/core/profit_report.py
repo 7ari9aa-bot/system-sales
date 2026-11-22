@@ -29,7 +29,7 @@ from sqlalchemy import Integer, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import PermissionDeniedError
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.modules.catalog.apparel.matrix import color_column, size_column
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import ValidationError
 from app.modules.expenses.models import Expense
@@ -198,8 +198,8 @@ class ProfitReportService:
                 Product.season.label("season"),
                 Product.material.label("material"),
                 Product.brand_id.label("brand_id"),
-                ProductVariant.option_values[SIZE_AXIS].astext.label("size"),
-                ProductVariant.option_values[COLOR_AXIS].astext.label("colour"),
+                size_column(ProductVariant.option_values).label("size"),
+                color_column(ProductVariant.option_values).label("colour"),
                 func.sum(lines.c.units).label("units_sold"),
                 func.sum(lines.c.net - share).label("sales_net"),
                 func.coalesce(func.sum(costs.c.cost), 0).label("cost"),
@@ -240,8 +240,8 @@ class ProfitReportService:
                 Product.season,
                 Product.material,
                 Product.brand_id,
-                ProductVariant.option_values[SIZE_AXIS].astext,
-                ProductVariant.option_values[COLOR_AXIS].astext,
+                size_column(ProductVariant.option_values),
+                color_column(ProductVariant.option_values),
             )
         )
         result = (await session.execute(stmt)).all()

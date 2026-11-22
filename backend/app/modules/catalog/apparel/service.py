@@ -16,10 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.apparel.matrix import (
-    COLOR_AXIS,
-    SIZE_AXIS,
     Cell,
     build_matrix,
+    color_of,
+    size_of,
     size_sort_key,
 )
 from app.modules.catalog.models import ProductVariant
@@ -67,7 +67,7 @@ class ApparelMatrixService:
         )
 
         existing = await ApparelMatrixService._existing(session, tenant_id, product_id)
-        have = {(v.option_values.get(SIZE_AXIS), v.option_values.get(COLOR_AXIS)) for v in existing}
+        have = {(size_of(v.option_values), color_of(v.option_values)) for v in existing}
         todo = [c for c in cells if (c.size, c.color) not in have]
         skipped = [c.sku for c in cells if (c.size, c.color) in have]
 
@@ -144,8 +144,8 @@ class ApparelMatrixService:
         colors: list[str] = []
         grid: dict[str, dict[str, dict]] = {}
         for v in sorted(variants, key=lambda v: v.created_at):
-            size = v.option_values.get(SIZE_AXIS)
-            color = v.option_values.get(COLOR_AXIS)
+            size = size_of(v.option_values)
+            color = color_of(v.option_values)
             if size is None or color is None:
                 continue  # a variant outside the matrix (a plain one-size item) is not on the grid
             sizes.add(size)

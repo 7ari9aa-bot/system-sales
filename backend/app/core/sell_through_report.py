@@ -28,7 +28,7 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profit_report import ProfitCtx, ProfitReportService, _parse
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.modules.catalog.apparel.matrix import color_column, size_column
 from app.modules.catalog.models import Product, ProductVariant
 
 # inventory's balance table, declared light like the stock view does: this report only reads three
@@ -111,8 +111,8 @@ class SellThroughReportService:
                 Product.season.label("season"),
                 Product.material.label("material"),
                 Product.brand_id.label("brand_id"),
-                ProductVariant.option_values[SIZE_AXIS].astext.label("size"),
-                ProductVariant.option_values[COLOR_AXIS].astext.label("colour"),
+                size_column(ProductVariant.option_values).label("size"),
+                color_column(ProductVariant.option_values).label("colour"),
                 func.greatest(0, func.coalesce(held.c.sellable, 0)).label("on_hand"),
             )
             .select_from(ProductVariant)
