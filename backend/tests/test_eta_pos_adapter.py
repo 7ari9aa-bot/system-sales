@@ -209,7 +209,7 @@ class TestWhatItRefusesToGuess:
             )
         ).scalar_one()
         await CatalogService.add_identifier(
-            db, tenant_ctx.tenant_id, variant_id, "ean", "6221234567890"
+            db, tenant_ctx.tenant_id, variant_id, "ean", "6221234567891"
         )
         with pytest.raises(NotReady, match="no registered item code"):
             await build_context(db, tenant_ctx.tenant_id, receipt)

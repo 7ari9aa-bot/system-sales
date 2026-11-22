@@ -672,7 +672,9 @@ class HandoverRequest(BaseModel):
     response_model=CashMovementOut,
     status_code=201,
 )
-async def add_cash_movement(session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx):
+async def add_cash_movement(
+    session_id: UUID, body: CashMovementRequest, ctx: PosWriteCtx, override: OverrideDep
+):
     """Record a manual cash movement (pay-in, pay-out, cash drop) for an open session."""
     direction = "in" if body.reason == "pay_in" else "out"
     movement = await PosService.add_cash_movement(
@@ -684,6 +686,7 @@ async def add_cash_movement(session_id: UUID, body: CashMovementRequest, ctx: Po
         amount=body.amount,
         notes=body.notes,
         actor_user_id=ctx.user.id,
+        shift_override=override.active,
     )
     return CashMovementOut(
         id=movement.id,

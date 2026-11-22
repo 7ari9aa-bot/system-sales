@@ -182,3 +182,52 @@ async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenan
 
     closed = await close_session(shift.id, manager, await _grant(manager))
     assert closed["status"] == "CLOSED"
+
+
+async def test_a_stranger_cannot_take_cash_out_of_it_or_put_cash_in(db, tenant_ctx):
+    """A pay-out takes cash out without a sale, so it needs the holder (or a manager) too."""
+    shift, _h, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
+    for reason, direction in (("pay_out", "out"), ("cash_drop", "out"), ("pay_in", "in")):
+        with pytest.raises(PermissionDeniedError, match="drawer"):
+            await PosService.add_cash_movement(
+                db, tenant_ctx.tenant_id, shift.id,
+                direction=direction, reason=reason, amount="50.00", actor_user_id=stranger.id,
+            )  # fmt: skip
+    assert await PosService.list_cash_movements(db, tenant_ctx.tenant_id, shift.id) == []
+
+
+async def test_the_holder_and_a_manager_can_move_cash_on_it(db, tenant_ctx):
+    shift, holder, stranger, _v, _c = await _owned_shift(db, tenant_ctx)
+    mine = await PosService.add_cash_movement(
+        db, tenant_ctx.tenant_id, shift.id,
+        direction="out", reason="pay_out", amount="20.00", actor_user_id=holder.id,
+    )  # fmt: skip
+    covered = await PosService.add_cash_movement(
+        db, tenant_ctx.tenant_id, shift.id,
+        direction="in", reason="pay_in", amount="5.00", actor_user_id=stranger.id,
+        shift_override=True,
+    )  # fmt: skip
+    assert (mine.amount, covered.amount) == (Decimal("20.00"), Decimal("5.00"))
+
+
+async def test_a_drawer_with_no_holder_still_takes_cash_movements(db, tenant_ctx):
+    """A legacy shift with no holder behaves as before: cash can still be moved on it."""
+    from tests.test_pos_returns import _register as register_for
+
+    register = await register_for(db, tenant_ctx)
+    shift = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    row = await PosService.add_cash_movement(
+        db, tenant_ctx.tenant_id, shift.id,
+        direction="out", reason="pay_out", amount="10.00", actor_user_id=None,
+    )  # fmt: skip
+    assert row.amount == Decimal("10.00")
+
+
+async def test_an_unknown_actor_cannot_move_cash_on_a_held_drawer(db, tenant_ctx):
+    """HTTP always names the user, so a missing one is an internal caller: not a way around it."""
+    shift, _h, _s, _v, _c = await _owned_shift(db, tenant_ctx)
+    with pytest.raises(PermissionDeniedError, match="drawer"):
+        await PosService.add_cash_movement(
+            db, tenant_ctx.tenant_id, shift.id,
+            direction="out", reason="pay_out", amount="10.00", actor_user_id=None,
+        )  # fmt: skip

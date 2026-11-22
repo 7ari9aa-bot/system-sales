@@ -412,11 +412,15 @@ class PosService(PosReceiptReads):
         amount: object,
         notes: str | None = None,
         actor_user_id: UUID | None = None,
+        shift_override: bool = False,
     ) -> PosCashMovement:
         """Record a manual drawer movement (pay-in, pay-out, cash drop).
 
         NOT for sales or refunds — those are recorded by the sell/return flows.
-        Locks the session row to prevent race with close.
+        Locks the session row to prevent race with close. Like every other money operation on a
+        drawer it belongs to the cashier who holds it (or a manager with ``pos:override``): a
+        pay-out is the one way to take cash out of a drawer without a sale, so it cannot be open
+        to anybody who knows the session id.
         """
         _MANUAL_REASONS = {"pay_in", "pay_out", "cash_drop"}
         if reason not in _MANUAL_REASONS:
@@ -430,7 +434,10 @@ class PosService(PosReceiptReads):
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         if pos_session.status != "OPEN":
             raise ConflictError("cannot add cash movement to a closed session")
-        await PosService._ensure_may_operate(session, tenant_id, pos_session, actor_user_id)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=shift_override
+        )
 
         amt = _positive_amount(amount, "amount")
         movement = PosCashMovement(

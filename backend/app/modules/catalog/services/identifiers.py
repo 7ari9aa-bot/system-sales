@@ -44,12 +44,15 @@ class IdentifierServiceMixin:
         from app.modules.catalog.services import CatalogService
 
         cleaned = CatalogService._clean_identifier(identifier_type, value)
-        # A 13-digit code filed as an EAN/GTIN must carry the right check digit: a wrong one
-        # is a typo that scans nowhere and cannot be printed as a label. Other types (the
-        # shop's own free-form ``barcode``, SKUs, QR tokens) are left alone on purpose.
+        # The shop's OWN numbers (13 digits starting with 2, the in-store range this system
+        # generates) are always valid, so one with a wrong check digit is a typing slip that
+        # could never print as a label. A manufacturer's or an older internal code is left
+        # alone on purpose, whatever its check digit: the shop registers what is on its stock,
+        # and the till finds a registered code before it ever judges the digit.
         if (
             identifier_type in {"ean", "gtin"}
             and len(cleaned) == 13
+            and cleaned.startswith("2")
             and cleaned.isdigit()
             and not is_valid_ean13(cleaned)
         ):

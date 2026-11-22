@@ -57,3 +57,13 @@ async def test_short_or_lettered_ean_is_not_mistaken_for_a_checksum_error(db, te
         db, tenant_ctx.tenant_id, variant.id, "ean", "EAN-ONLY"
     )
     assert row.value == "EAN-ONLY"
+
+
+@pytest.mark.parametrize("kind", ["ean", "gtin"])
+async def test_a_manufacturer_or_older_code_is_kept_whatever_its_check_digit(db, tenant_ctx, kind):
+    """The shop files what is on its stock; the till finds a filed code before judging it."""
+    variant = await _variant(db, tenant_ctx)
+    row = await CatalogService.add_identifier(
+        db, tenant_ctx.tenant_id, variant.id, kind, "6221234567890"
+    )
+    assert row.value == "6221234567890"
