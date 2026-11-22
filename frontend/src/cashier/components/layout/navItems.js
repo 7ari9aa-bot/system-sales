@@ -5,6 +5,8 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
+  List,
+  Plus,
   Printer,
   Receipt,
   ReceiptText,
@@ -34,7 +36,8 @@ export const navGroups = [
     title: "المنتجات والمخزون",
     titleKey: "nav.productsAndStock",
     items: [
-      { to: "/products/new", label: "إضافة منتج", icon: Shirt },
+      { to: "/products", label: "المنتجات", icon: Shirt },
+      { to: "/products/new", label: "إضافة منتج", icon: Plus },
       { to: "/labels", label: "طباعة باركود", icon: Printer },
       { to: "/inventory", label: "المخزون", icon: Boxes },
       { to: "/supply-chain", label: "سلاسل الإمداد", icon: Truck },
@@ -64,6 +67,7 @@ export const flatNav = navGroups.flatMap((g) => g.items);
 
 export function pageTitle(pathname) {
   if (pathname === "/pos") return "الكاشير";
+  if (pathname === "/products") return "المنتجات";
   if (pathname === "/products/new") return "إضافة منتج";
   if (pathname.startsWith("/products/") && pathname.endsWith("/edit")) return "تعديل منتج";
   if (pathname === "/inventory/movements") return "حركة الأصناف";
