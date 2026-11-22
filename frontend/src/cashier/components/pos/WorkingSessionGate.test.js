@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { cn } from "@/cashier/lib/utils";
 import { buttonVariants } from "@/cashier/components/ui/button";
@@ -97,9 +98,16 @@ describe("startButtonLook", () => {
     expect(className).toContain("border-2");
   });
 
+  it("carries the stable class the stylesheet styles, so the reset cannot leave it as floating text", () => {
+    expect(startButtonLook(true).className).toContain("pos-start-day");
+    expect(startButtonLook(true).className).toContain("pos-start-day--waiting");
+    expect(startButtonLook(false).className).toContain("pos-start-day");
+    expect(startButtonLook(false).className).not.toContain("pos-start-day--waiting");
+  });
+
   it("once it can be pressed it uses the normal primary look, with no waiting colours", () => {
     const { className } = startButtonLook(false);
-    expect(className).toBe("w-full");
+    expect(className).toBe("pos-start-day w-full");
     expect(className).not.toContain("orange");
   });
 });
@@ -120,5 +128,29 @@ describe("the waiting start button after the real class merge", () => {
     const c = merged(false);
     expect(c).toContain("bg-primary");
     expect(c).toContain("disabled:opacity-50");
+  });
+});
+
+describe("the start button stylesheet", () => {
+  const css = readFileSync(new URL("../../cashier.css", import.meta.url), "utf8");
+
+  const rule = (selector) => {
+    const at = css.indexOf(selector);
+    return at === -1 ? "" : css.slice(at, css.indexOf("}", at));
+  };
+
+  it("gives the waiting button a real fill, border and readable text, not just utilities", () => {
+    const block = rule(".cashier-root .pos-start-day--waiting");
+    expect(block).toContain("background-color");
+    expect(block).toContain("border-color");
+    expect(block).toContain("color");
+    expect(block).toContain("opacity: 1");
+  });
+
+  it("keeps the pressable button filled with the primary colour", () => {
+    const block = rule(".cashier-root .pos-start-day {");
+    expect(block).toContain("background-color: hsl(var(--primary))");
+    expect(block).toContain("border: 2px solid hsl(var(--primary))");
+    expect(block).toContain("min-height: 44px");
   });
 });

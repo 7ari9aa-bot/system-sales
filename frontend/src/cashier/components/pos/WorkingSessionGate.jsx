@@ -47,8 +47,8 @@ export function startDayParts(register) {
 /** How the start button looks. While it waits for the number it must still read as a button. */
 export function startButtonLook(waiting) {
   return waiting
-    ? { className: "h-11 w-full border-2 border-orange-500 bg-orange-200 text-base font-bold text-orange-950 disabled:opacity-100", waiting: true }
-    : { className: "w-full", waiting: false };
+    ? { className: "pos-start-day pos-start-day--waiting h-11 w-full border-2 border-orange-500 bg-orange-200 text-base font-bold text-orange-950 disabled:opacity-100", waiting: true }
+    : { className: "pos-start-day w-full", waiting: false };
 }
 
 /** The message for a till that cannot be used. Pure, so it can be tested without a screen. */
