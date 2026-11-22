@@ -119,6 +119,17 @@ export function returnErrorMessage(err) {
   return m || "تعذّر تنفيذ المرتجع";
 }
 
+/** One sold line's charged total in cents from a returnable line (gross minus its own discount). */
+function soldNetMinorOf(l) {
+  const gross = l.unitPriceMinor * l.sold;
+  return gross - lineDiscountMinor(gross, l.linePct);
+}
+
+/** One piece's charged price in cents, rounded half up like the backend's per-line figure. */
+function unitNetMinor(l) {
+  return l.sold > 0 ? roundHalfUpDiv(soldNetMinorOf(l), l.sold) : l.unitPriceMinor;
+}
+
 /** The shape the return tables render (they predate the backend: barcode/size/colour are optional there). */
 export function tableLine(l) {
   return {
@@ -129,8 +140,10 @@ export function tableLine(l) {
     size: "",
     color: "",
     qty: l.sold,
-    unitNet: Number(fromMinor(l.unitPriceMinor)),
-    total: Number(fromMinor(l.unitPriceMinor * l.sold)),
+    // What the customer really paid: the line's own discount comes off, so a 300 shirt sold at 10% off
+    // reads 270 here, the same figure the refund estimate and the server use.
+    unitNet: Number(fromMinor(unitNetMinor(l))),
+    total: Number(fromMinor(soldNetMinorOf(l))),
   };
 }
 

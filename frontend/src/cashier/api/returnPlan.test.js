@@ -115,6 +115,16 @@ describe("tableLine", () => {
     const l = tableLine({ ...returnableLines(sale())[0], returnQty: 2 });
     expect(l).toMatchObject({ key: "v1", barcode: "SH-1", qty: 3, unitNet: 120, total: 360, returnQty: 2, maxQty: 3 });
   });
+  it("shows what was really paid when the line had its own discount (300 at 10% off reads 270)", () => {
+    const s = sale({ lines: [{ variant_id: "v1", title: "x", sku: "S", quantity: 2, unit_price: "300.00", discount_pct: "10.00", returned_qty: 0 }] });
+    const l = tableLine({ ...returnableLines(s)[0], returnQty: 1 });
+    expect(l).toMatchObject({ unitNet: 270, total: 540 });
+    expect(Number(estimateRefund(s, [{ ...returnableLines(s)[0], returnQty: 1 }]))).toBe(l.unitNet);
+  });
+  it("a line without a discount is unchanged", () => {
+    const l = tableLine(returnableLines(sale())[0]);
+    expect(l).toMatchObject({ unitNet: 120, total: 360 });
+  });
   it("does not invent size or colour", () => {
     const l = tableLine(returnableLines(sale())[0]);
     expect([l.size, l.color]).toEqual(["", ""]);
