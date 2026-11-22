@@ -60,7 +60,7 @@ export default function shiftColumns({ onClose, onDetails, onReport }) {
       sortable: false,
       align: "center",
       render: (r) => (
-        <span className="flex items-center justify-center gap-1.5">
+        <span className="flex flex-wrap items-center justify-center gap-1.5">
           <Button className={BTN} onClick={() => onReport(r)}>
             <FileText />
             تقرير اليوم
