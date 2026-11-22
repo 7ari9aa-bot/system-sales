@@ -742,7 +742,7 @@ async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -
 
 @pytest.mark.parametrize(
     ("provider", "field"),
-    [("facebook", "feed"), ("instagram", "comments"), ("messenger", "messages")],
+    [("facebook", "feed"), ("instagram", "messages"), ("messenger", "messages")],
 )
 async def test_the_subscription_asks_for_the_channels_own_fields(provider, field) -> None:
     from app.modules.customers.meta_oauth import _subscribe_page_to_app
