@@ -69,6 +69,9 @@ class IntakeVariant(BaseModel):
     stock: int = Field(default=0, ge=0)
     # اطلب من عدّاد المحل رقمًا (EAN-13) لو التركيبة مش معاها باركود
     auto_barcode: bool = False
+    # حد التنبيه: النموذج كان بيجمعه ويرميه، فالعميل كان بيظبطه ومبيتحفظش. None = مفيش حد،
+    # و0 معناها "بلا تنبيه" زي ما خدمة المخزون بتقراها.
+    reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class ProductIntakeRequest(BaseModel):
@@ -97,6 +100,7 @@ async def intake_product(body: ProductIntakeRequest, ctx: WriteCtx):
     from app.modules.catalog.apparel.barcode_service import BarcodeService
     from app.modules.catalog.service import CatalogService
     from app.modules.inventory.service import InventoryService
+    from app.modules.inventory.stock_view import StockLevelService
 
     wanted_stock = sum(v.stock for v in body.variants)
     if wanted_stock and body.warehouse_id is None:
@@ -127,6 +131,10 @@ async def intake_product(body: ProductIntakeRequest, ctx: WriteCtx):
         if code:
             await CatalogService.add_identifier(
                 ctx.session, ctx.tenant_id, variant.id, "barcode", code
+            )
+        if v.reorder_level is not None:
+            await StockLevelService.set_reorder_level(
+                ctx.session, ctx.tenant_id, variant.id, int(v.reorder_level)
             )
         if v.stock:
             await InventoryService.move(

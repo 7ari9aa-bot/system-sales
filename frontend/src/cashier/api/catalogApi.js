@@ -255,6 +255,15 @@ export function countToMovement({ variantId, warehouseId, onHand, counted, reaso
 }
 
 
+/** The form's alert level as the wire wants it: a whole number, or null for "no alert". */
+function reorderLevel(value) {
+  const text = String(value ?? "").trim();
+  if (text === "") return null;
+  const level = Number(text);
+  if (!Number.isInteger(level) || level < 0) return null;
+  return level;
+}
+
 /** True only for "this deploy has no /products/intake yet"; a real refusal must never fall back. */
 function isMissingIntakeEndpoint(e) {
   const status = e?.status ?? e?.cause?.status ?? 0;
@@ -282,6 +291,8 @@ async function createProductInOneRequest(input, { warehouseId, slugToken }) {
       barcode: String(v.barcode ?? "").trim() || null,
       stock: Number(v.stock ?? 0) || 0,
       auto_barcode: !!v.autoBarcode,
+      // حد التنبيه اللي التاجر كتبه في النموذج — كان بيتبعت في السلسلة القديمة ومبيتبعتش هنا.
+      reorder_level: reorderLevel(input.threshold),
     })),
   };
   const saved = await post("/products/intake", body);

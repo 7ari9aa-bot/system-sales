@@ -196,3 +196,42 @@ async def test_the_category_brand_season_and_fabric_land_in_the_same_request(db,
     assert str(product.brand_id) == brand["id"]  # noqa: E501
     assert product.season == "SS26"
     assert product.material == "قطن"
+
+
+async def test_the_alert_level_the_merchant_typed_is_saved_with_the_variants(db, tenant_ctx):
+    """حد التنبيه كان ظاهر في النموذج وبيتبعت للسيرفر ومبيتحفظش: الحقل كان بيترمي في الطلب."""
+    from app.modules.inventory.stock_view import StockLevelService
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    wh = await _warehouse(db, tenant_ctx)
+    body = _body(warehouse_id=str(wh.id))
+    body["variants"][0]["reorder_level"] = 5
+    body["variants"][1]["reorder_level"] = 0
+
+    r = await _call(owner, "POST", "/api/v1/products/intake", body)
+    assert r.status_code == 201, r.text
+    ids = [v["id"] for v in r.json()["variants"]]
+
+    levels = [
+        await StockLevelService.get_reorder_level(db, tenant_ctx.tenant_id, uuid.UUID(v))
+        for v in ids
+    ]
+    assert levels == [5, 0]
+
+
+async def test_a_negative_alert_level_is_refused_before_anything_is_saved(db, tenant_ctx):
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    wh = await _warehouse(db, tenant_ctx)
+    body = _body(warehouse_id=str(wh.id))
+    body["variants"][0]["reorder_level"] = -1
+
+    r = await _call(owner, "POST", "/api/v1/products/intake", body)
+    assert r.status_code == 422, r.text
+    assert (
+        await db.execute(
+            __import__("sqlalchemy").text(
+                "select count(*) from products where tenant_id = :t and title = 'تيشيرت قطن'"
+            ),
+            {"t": tenant_ctx.tenant_id},
+        )
+    ).scalar_one() == 0

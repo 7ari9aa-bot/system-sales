@@ -422,9 +422,26 @@ describe("createProduct saves the whole product in ONE request", () => {
     expect(body.status).toBe("active");
     expect(body.warehouse_id).toBe("w1");
     expect(body.variants).toEqual([
-      { sku: "TEE-BK-L", price: "150.00", option_values: { color: "أسود", size: "L" }, barcode: null, stock: 7, auto_barcode: true },
-      { sku: "TEE-BK-M", price: "150.00", option_values: { color: "أسود", size: "M" }, barcode: "6221234567891", stock: 0, auto_barcode: false },
+      { sku: "TEE-BK-L", price: "150.00", option_values: { color: "أسود", size: "L" }, barcode: null, stock: 7, auto_barcode: true, reorder_level: null },
+      { sku: "TEE-BK-M", price: "150.00", option_values: { color: "أسود", size: "M" }, barcode: "6221234567891", stock: 0, auto_barcode: false, reorder_level: null },
     ]);
+  });
+
+  // حد التنبيه كان ظاهر في النموذج وبيتبعت في السلسلة القديمة، لكن طلب الـintake كان بيرميه،
+  // فالتاجر بيظبطه ويفتح المنتج يلاقيه فاضي.
+  it("carries the alert level the merchant typed onto every variant", async () => {
+    intakeMissing = false;
+    await catalogApi.createProduct({ ...good, threshold: "5" }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls[0].body.variants.map((v) => v.reorder_level)).toEqual([5, 5]);
+  });
+
+  it("sends no alert level when the field is blank, and never a broken number", async () => {
+    intakeMissing = false;
+    await catalogApi.createProduct({ ...good, threshold: "" }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls[0].body.variants.map((v) => v.reorder_level)).toEqual([null, null]);
+    calls.length = 0;
+    await catalogApi.createProduct({ ...good, threshold: "-3" }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls[0].body.variants.map((v) => v.reorder_level)).toEqual([null, null]);
   });
 
   it("carries the classification on the same request, trimmed, and never the text 'null'", async () => {

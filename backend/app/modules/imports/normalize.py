@@ -20,6 +20,7 @@ _CURRENCY_WORDS = re.compile(r"(egp|usd|sar|aed|le|l\.e\.|جنيه|ج\.م|جم|�
 
 MAX_MONEY = Decimal("99999999.99")  # MONEY is Numeric(14, 2); keep a safe ceiling below it
 MAX_QUANTITY = Decimal("1000000")  # a sanity bound against a typo, mirrors the ledger's ceiling
+MAX_REORDER_LEVEL = Decimal("1000000")  # same ceiling the stock service enforces on a reorder level
 SKU_MAX = 63
 BARCODE_MAX = 127
 TITLE_MAX = 255
@@ -106,6 +107,23 @@ def parse_quantity(raw: object) -> Decimal:
     if value > MAX_QUANTITY:
         raise CellError("too_large", "quantity is implausibly large")
     return value
+
+
+def parse_reorder_level(raw: object) -> int | None:
+    """A variant's alert level: blank means "no alert", otherwise a whole number from 0 up."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    value = parse_decimal(text, field="reorder_level")
+    if value is None:
+        return None
+    if value < 0:
+        raise CellError("negative", "reorder level cannot be negative")
+    if value != value.to_integral_value():
+        raise CellError("not_whole", "reorder level must be a whole number")
+    if value > MAX_REORDER_LEVEL:
+        raise CellError("too_large", "reorder level is implausibly large")
+    return int(value)
 
 
 def parse_code(raw: object, *, field: str, max_len: int) -> str | None:

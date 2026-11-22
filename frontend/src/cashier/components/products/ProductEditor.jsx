@@ -38,7 +38,7 @@ export default function ProductEditor({ product }) {
   async function handleSubmit(values) {
     try {
       if (!isEdit) {
-        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, variants: values.variants });
+        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
         if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — الموسم والفئة والماركة والخامة اتحفظوا للمنتج اللي بعده");
         setSeed(nextProductSeed(values));

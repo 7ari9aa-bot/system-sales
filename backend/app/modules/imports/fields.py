@@ -50,6 +50,18 @@ PRODUCT_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec(
         "description", "الوصف", "Description", ("description", "body", "details", "الوصف", "تفاصيل")
     ),
+    FieldSpec(
+        "season",
+        "الموسم",
+        "Season",
+        ("season", "collection", "موسم", "الموسم", "المجموعة"),
+    ),
+    FieldSpec(
+        "material",
+        "الخامة",
+        "Material",
+        ("material", "fabric", "composition", "خامة", "الخامة", "القماش", "نوعالقماش"),
+    ),
     FieldSpec("status", "الحالة", "Status", ("status", "state", "الحالة")),
 )
 
@@ -82,6 +94,26 @@ VARIANT_FIELDS: tuple[FieldSpec, ...] = (
         "التكلفة",
         "Cost",
         ("cost", "costprice", "purchaseprice", "التكلفة", "سعرالشراء", "سعرالتكلفة"),
+    ),
+    # حد التنبيه كان في نموذج الإضافة اليدوي بس، فالتاجر اللي بيستورد 1000 صنف كان لازم يظبطه
+    # واحد واحد من شاشة المخزون بعدين.
+    FieldSpec(
+        "reorder_level",
+        "حد التنبيه",
+        "Reorder level",
+        (
+            "reorderlevel",
+            "reorder",
+            "minstock",
+            "minimumstock",
+            "minlevel",
+            "lowstock",
+            "restocklevel",
+            "حدالتنبيه",
+            "الحدالأدنى",
+            "حدإعادةالطلب",
+            "أقلرصيد",
+        ),
     ),
 )
 

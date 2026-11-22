@@ -116,6 +116,8 @@ def validate_products(
                 "category": n.clean_text(_get(row, mapping, "category")) or None,
                 "brand": n.clean_text(_get(row, mapping, "brand")) or None,
                 "description": n.clean_text(_get(row, mapping, "description")) or None,
+                "season": n.clean_text(_get(row, mapping, "season")) or None,
+                "material": n.clean_text(_get(row, mapping, "material")) or None,
             }
             v.action = _action(ref in existing.product_slugs, duplicate_policy)
         verdicts.append(v)
@@ -171,6 +173,9 @@ def validate_variants(
         cost = _try(v, "cost", n.parse_cost, _get(row, mapping, "cost"))
         color = n.clean_text(_get(row, mapping, "color")) or None
         size = n.clean_text(_get(row, mapping, "size")) or None
+        reorder_level = _try(
+            v, "reorder_level", n.parse_reorder_level, _get(row, mapping, "reorder_level")
+        )
 
         if (
             ref is not None
@@ -240,6 +245,7 @@ def validate_variants(
                 "cost": cost,
                 "color": color,
                 "size": size,
+                "reorder_level": reorder_level,
             }
             v.action = _action(sku is not None and sku in existing.sku_owner, duplicate_policy)
         verdicts.append(v)

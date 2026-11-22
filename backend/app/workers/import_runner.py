@@ -147,11 +147,17 @@ async def _upsert_product(
                 title=str(values["title"]),
                 slug=ref,
                 description=values.get("description"),  # type: ignore[arg-type]
+                season=values.get("season"),  # type: ignore[arg-type]
+                material=values.get("material"),  # type: ignore[arg-type]
             )
         else:
             fields: dict[str, object] = {"title": values["title"]}
             if values.get("description"):
                 fields["description"] = values["description"]
+            # A blank cell keeps what the product already says; a filled one is the merchant's word.
+            for key in ("season", "material"):
+                if values.get(key):
+                    fields[key] = values[key]
             product = await CatalogService.update_product(session, tenant_id, product_id, **fields)
 
         # The file's own words become the shop's taxonomy: an import that leaves every product
@@ -223,6 +229,13 @@ async def _upsert_variant(
             if options:
                 fields["option_values"] = options
             variant = await CatalogService.update_variant(session, tenant_id, variant_id, **fields)
+        level = values.get("reorder_level")
+        if level is not None:
+            from app.modules.inventory.stock_view import StockLevelService
+
+            await StockLevelService.set_reorder_level(
+                session, tenant_id, variant.id, int(level)
+            )
         barcode = values.get("barcode")
         if barcode:
             held = await CatalogService.list_identifiers(session, tenant_id, variant.id)
