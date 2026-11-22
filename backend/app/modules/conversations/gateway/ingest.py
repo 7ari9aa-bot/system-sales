@@ -12,6 +12,8 @@ owned by the webhook router.
 
 from __future__ import annotations
 
+import asyncio
+
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -162,6 +164,11 @@ class IngestService:
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=message.channel
         )
+        # Who is this customer? Messenger and Instagram name them only by a provider-scoped
+        # number, so a new thread would read as a bare id until someone asked for the profile.
+        # The read runs beside the message: it never delays the webhook's 200, never fails the
+        # ingest, and the profile service decides for itself when a refresh is due.
+        cls._enrich_profile_soon(tenant_id, customer.id, message.channel)
         # §155: a provider reply/reaction names its target by the PROVIDER's id
         # (a WhatsApp wamid), never by our UUID. Resolve it to the local message,
         # but only inside THIS conversation: a forged id naming another
@@ -265,6 +272,51 @@ class IngestService:
             aggregate_version=1,
         )
         return conversation.id
+
+    # ------------------------------------------------- who the customer is --
+
+    @staticmethod
+    def _enrich_profile_soon(
+        tenant_id: uuid.UUID, customer_id: uuid.UUID, channel: str
+    ) -> None:
+        """Learn a Meta customer's name and photo without making the webhook wait for Meta.
+
+        Fire-and-forget by design: the caller is the ingest path, which owes Meta a fast 200.
+        A refusal, a timeout or a missing channel config is a missing name, never a lost message.
+        """
+        if channel not in ("messenger", "instagram"):
+            return
+
+        async def _run() -> None:
+            from app.core.db import SessionLocal, bind_tenant
+            from app.modules.conversations.customer_profile import CustomerProfileService
+            from app.modules.platform.services.channel_access import channel_credentials_config
+
+            try:
+                async with SessionLocal() as bg:
+                    await bind_tenant(bg, tenant_id)
+                    config = await channel_credentials_config(bg, tenant_id, channel)
+                    if not config or not config.get("api_key"):
+                        return
+                    enrich = (
+                        CustomerProfileService.enrich_messenger_for
+                        if channel == "messenger"
+                        else CustomerProfileService.enrich_instagram_for
+                    )
+                    await enrich(bg, tenant_id, customer_id, config)
+                    await bg.commit()
+            except Exception:  # noqa: BLE001 - a name is a courtesy, a message is the job
+                logger.warning(
+                    "ingest.profile_enrich_failed tenant=%s channel=%s",
+                    tenant_id,
+                    channel,
+                    exc_info=True,
+                )
+
+        try:
+            asyncio.create_task(_run())
+        except RuntimeError:  # no running loop (a sync test, a CLI replay): skip the courtesy
+            logger.warning("ingest.profile_enrich_no_loop tenant=%s channel=%s", tenant_id, channel)
 
     # ------------------------------------------------ §24 ingress lifecycle --
 
