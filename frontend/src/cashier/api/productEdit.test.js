@@ -74,6 +74,26 @@ describe("planProductEdit sends only what changed", () => {
     const plan = planProductEdit(before, after);
     expect(plan.newBarcodes).toEqual([{ variantId: "v2", value: "2990000000028" }]);
   });
+  it("correcting a barcode the variant already has REPLACES it: the old id rides on the new code", () => {
+    const withIds = productToForm(backend, { v1: "2991000102947" }, { v1: "ident-1" });
+    const after = structuredClone(withIds);
+    after.variants[0].barcode = "2991000102949";
+    const plan = planProductEdit(withIds, after);
+    expect(plan.newBarcodes).toEqual([{ variantId: "v1", value: "2991000102949", replacesId: "ident-1" }]);
+  });
+  it("a first barcode on a variant that had none replaces nothing", () => {
+    const withIds = productToForm(backend, { v1: "2991000102947" }, { v1: "ident-1" });
+    const after = structuredClone(withIds);
+    after.variants[1].barcode = "2990000000028";
+    expect(planProductEdit(withIds, after).newBarcodes).toEqual([
+      { variantId: "v2", value: "2990000000028" },
+    ]);
+  });
+  it("the form carries the id of the barcode it shows", () => {
+    const f = productToForm(backend, { v1: "2991000102947" }, { v1: "ident-1" });
+    expect(f.variants[0]).toMatchObject({ barcode: "2991000102947", barcodeId: "ident-1" });
+    expect(f.variants[1].barcodeId).toBe("");
+  });
   it("a row without an id is a new combination", () => {
     const after = structuredClone(before);
     after.variants.push({ id: undefined, sku: "SKU-3", color: "أحمر", size: "M", sellPrice: "450", barcode: "", stock: 0 });

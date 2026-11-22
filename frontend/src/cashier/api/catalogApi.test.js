@@ -263,3 +263,58 @@ describe("a shop's own barcode with a wrong check digit is stopped before saving
     expect(validateProduct(withBarcode("SHOP-77"))).toEqual([]);
   });
 });
+
+
+describe("applyProductEdit: correcting a barcode", () => {
+  const plan = (replacesId) => ({
+    product: {},
+    variantPatches: [],
+    newVariants: [],
+    newBarcodes: [{ variantId: "v1", value: "2991000102949", ...(replacesId ? { replacesId } : {}) }],
+  });
+  const idx = (re) => calls.findIndex((c) => re.test(`${c.method} ${c.path}`));
+
+  it("files the right code FIRST, then deletes the wrong one through its own variant", async () => {
+    await catalogApi.applyProductEdit("p1", plan("ident-1"));
+    const added = idx(/^POST \/variants\/v1\/identifiers$/);
+    const removed = idx(/^DELETE \/variants\/v1\/identifiers\/ident-1$/);
+    expect(added).toBeGreaterThan(-1);
+    expect(removed).toBeGreaterThan(added);
+  });
+  it("if filing the right code fails, the old one is NOT deleted", async () => {
+    failOn = (path, opts) => opts.method === "POST" && /identifiers$/.test(path);
+    await expect(catalogApi.applyProductEdit("p1", plan("ident-1"))).rejects.toThrow();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+  it("a code that replaces nothing deletes nothing", async () => {
+    await catalogApi.applyProductEdit("p1", plan(null));
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+});
+
+describe("correcting a wrong barcode end to end (read, edit the form, plan, apply)", () => {
+  it("the stored wrong code is deleted and the right one filed, through the real chain", async () => {
+    const { api } = await import("@/lib/api");
+    const { planProductEdit, productToForm } = await import("./productEdit");
+    api.mockImplementation(async (path, opts = {}) => {
+      calls.push({ path, method: opts.method ?? "GET", body: opts.body });
+      if (path === "/products/p1") {
+        return { id: "p1", title: "تيشيرت", variants: [{ id: "v1", sku: "S1", price: "300.00", option_values: { color: "أسود", size: "M" } }] };
+      }
+      if (path === "/variants/v1/identifiers" && !opts.method) {
+        return [{ id: "ident-9", variant_id: "v1", identifier_type: "barcode", value: "2991000102947" }];
+      }
+      return { ok: true };
+    });
+
+    const read = await catalogApi.productForEdit("p1");
+    const before = productToForm(read.product, read.barcodes, read.barcodeIds);
+    const after = structuredClone(before);
+    after.variants[0].barcode = "2991000102949"; // the form row the user retyped
+    await catalogApi.applyProductEdit("p1", planProductEdit(before, after));
+
+    const writes = calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`);
+    expect(writes).toEqual(["POST /variants/v1/identifiers", "DELETE /variants/v1/identifiers/ident-9"]);
+    expect(calls.find((c) => c.method === "POST").body).toEqual({ identifier_type: "barcode", value: "2991000102949" });
+  });
+});

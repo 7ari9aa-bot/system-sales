@@ -133,10 +133,15 @@ export const catalogApi = {
       (product.variants ?? []).map(async (v) => {
         const ids = (await api(`/variants/${seg(v.id)}/identifiers`).catch(() => [])) ?? [];
         const list = Array.isArray(ids) ? ids : (ids.items ?? []);
-        return [v.id, list.find((i) => i.identifier_type === "barcode")?.value ?? ""];
+        const code = list.find((i) => i.identifier_type === "barcode");
+        return [v.id, code?.value ?? "", code?.id ?? ""];
       }),
     );
-    return { product, barcodes: Object.fromEntries(pairs) };
+    return {
+      product,
+      barcodes: Object.fromEntries(pairs.map(([id, value]) => [id, value])),
+      barcodeIds: Object.fromEntries(pairs.map(([id, , codeId]) => [id, codeId])),
+    };
   },
 
   /** Apply a plan from planProductEdit. Each step names itself in its error, and nothing runs twice. */
@@ -161,7 +166,11 @@ export const catalogApi = {
       );
       if (text(v.barcode)) await step(`حفظ باركود ${v.sku}`, () => post(`/variants/${seg(made.id)}/identifiers`, { identifier_type: "barcode", value: text(v.barcode) }));
     }
-    for (const b of plan.newBarcodes) await step("حفظ باركود", () => post(`/variants/${seg(b.variantId)}/identifiers`, { identifier_type: "barcode", value: b.value }));
+    for (const b of plan.newBarcodes) {
+      await step("حفظ باركود", () => post(`/variants/${seg(b.variantId)}/identifiers`, { identifier_type: "barcode", value: b.value }));
+      // Only after the right code is safely filed: a failed filing must never leave the variant with none.
+      if (b.replacesId) await step("حذف الباركود القديم", () => api(`/variants/${seg(b.variantId)}/identifiers/${seg(b.replacesId)}`, { method: "DELETE" }));
+    }
     return done;
   },
 

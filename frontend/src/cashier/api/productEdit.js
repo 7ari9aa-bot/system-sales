@@ -7,7 +7,7 @@ import { materialText } from "@/cashier/lib/material";
 const text = (v) => String(v ?? "").trim();
 
 /** A backend product (with its variants and barcodes) as the editor form's `product`. */
-export function productToForm(product, identifiersByVariant = {}) {
+export function productToForm(product, identifiersByVariant = {}, identifierIdsByVariant = {}) {
   const variants = (product.variants ?? []).map((v) => ({
     id: v.id,
     sku: v.sku ?? "",
@@ -15,6 +15,8 @@ export function productToForm(product, identifiersByVariant = {}) {
     size: v.option_values?.size ?? "",
     sellPrice: v.price == null ? "" : String(v.price),
     barcode: identifiersByVariant[v.id] ?? "",
+    // The stored code's own id, so correcting it can replace that row instead of piling a second one on.
+    barcodeId: identifierIdsByVariant[v.id] ?? "",
     isActive: v.is_active !== false,
   }));
   const uniq = (xs) => [...new Set(xs.filter(Boolean))];
@@ -62,7 +64,10 @@ export function planProductEdit(before, after) {
     if (text(row.sku) !== text(old.sku)) patch.sku = text(row.sku);
     if (String(row.sellPrice) !== String(old.sellPrice)) patch.price = toWire(row.sellPrice);
     if (patch.sku !== undefined || patch.price !== undefined) variantPatches.push({ id: row.id, patch });
-    if (text(row.barcode) && text(row.barcode) !== text(old.barcode)) newBarcodes.push({ variantId: row.id, value: text(row.barcode) });
+    if (text(row.barcode) && text(row.barcode) !== text(old.barcode)) {
+      // A variant that already carries a code is being corrected: the old row goes once the new one is filed.
+      newBarcodes.push({ variantId: row.id, value: text(row.barcode), ...(old.barcodeId ? { replacesId: old.barcodeId } : {}) });
+    }
   }
   const empty = !Object.keys(product).length && !variantPatches.length && !newVariants.length && !newBarcodes.length;
   return { product, variantPatches, newVariants, newBarcodes, empty };

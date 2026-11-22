@@ -72,16 +72,19 @@ export function useCreateBrand() {
   });
 }
 
+/** The read the edit screen runs: a product with each variant's stored barcode AND that barcode's id. */
+export async function readProductForEdit(productId) {
+  const { product, barcodes, barcodeIds } = await catalogApi.productForEdit(productId);
+  return productToForm(product, barcodes, barcodeIds);
+}
+
 /** One product from the backend, shaped for the editor form. An error means it does not exist. */
 export function useProductForEdit(productId) {
   return useQuery({
     queryKey: [...CATALOG_KEY, "edit", productId],
     staleTime: 0,
     retry: false,
-    queryFn: async () => {
-      const { product, barcodes } = await catalogApi.productForEdit(productId);
-      return productToForm(product, barcodes);
-    },
+    queryFn: () => readProductForEdit(productId),
   });
 }
 
