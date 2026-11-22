@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import UploadStep from "@/cashier/components/imports/UploadStep";
+import PasteRowsCard from "@/cashier/components/imports/PasteRowsCard";
 import MappingStep, { shownPolicy } from "@/cashier/components/imports/MappingStep";
 import ReviewStep from "@/cashier/components/imports/ReviewStep";
 import RunStep from "@/cashier/components/imports/RunStep";
@@ -13,6 +14,7 @@ import {
   useImportPreview,
   useImportSession,
   useSaveMapping,
+  usePasteImport,
   useStartImport,
   useUploadImport,
   useValidateImport,
@@ -32,11 +34,12 @@ export default function InventoryImportPage() {
   const preview = useImportPreview(id, step === "review" || step === "run");
 
   const upload = useUploadImport();
+  const paste = usePasteImport();
   const save = useSaveMapping(id);
   const validate = useValidateImport(id);
   const start = useStartImport(id);
   const cancel = useCancelImport(id);
-  const busy = upload.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
+  const busy = upload.isPending || paste.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
 
   const run = async (fn, after) => {
     setError("");
@@ -110,7 +113,22 @@ export default function InventoryImportPage() {
         </div>
       )}
 
-      {step === "upload" && !id && <UploadStep busy={upload.isPending} error={error} onFile={onFile} />}
+      {step === "upload" && !id && (
+        <>
+          <UploadStep busy={upload.isPending} error={error} onFile={onFile} />
+          <PasteRowsCard
+            busy={paste.isPending}
+            error=""
+            onPaste={(text) =>
+              run(() => paste.mutateAsync(text), (s) => {
+                setDraft({});
+                setPolicy(null);
+                setParams({ s: s.id });
+              })
+            }
+          />
+        </>
+      )}
       {session && step === "mapping" && (
         <MappingStep
           session={session}

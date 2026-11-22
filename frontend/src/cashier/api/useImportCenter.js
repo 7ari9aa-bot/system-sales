@@ -5,6 +5,7 @@ import {
   getImportPreview,
   getImportSession,
   listImportSessions,
+  pasteImportRows,
   saveImportMapping,
   startImport,
   uploadImportFile,
@@ -32,6 +33,15 @@ export async function readSession(qc, id, signal) {
     qc.invalidateQueries({ queryKey: [...IMPORT_KEY, "recent"] });
   }
   return next;
+}
+
+/** صفوف ملصوقة بتفتح جلسة استيراد، وبعدها نفس خطوات المركز بالظبط. */
+export function usePasteImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text) => pasteImportRows(text),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...IMPORT_KEY, "recent"] }),
+  });
 }
 
 /** One session. It refreshes by itself only while the import is running, and stops on its own. */

@@ -105,6 +105,10 @@ export const uploadImportFile = (file) => {
   });
 };
 
+/** صفوف ملصوقة من Excel: الباك بيحوّلها جلسة استيراد عادية بنفس المراجعة والتحقق. */
+export const pasteImportRows = (text) =>
+  api("/imports/sessions/paste", { method: "POST", body: { text } });
+
 export const getImportSession = (id, { signal } = {}) => api(base(id), { signal });
 export const listImportSessions = () => api("/imports/sessions?limit=10");
 export const saveImportMapping = (id, { mapping, options }) =>

@@ -119,6 +119,24 @@ async def upload(
     return {**_out(imp), **service.describe(imp)}
 
 
+class PasteRequest(BaseModel):
+    # ما يلصقه التاجر من Excel كما هو: سطر عناوين ثم صفوف، مفصولة بـTab أو فاصلة أو فاصلة منقوطة.
+    text: str = Field(min_length=1, max_length=2_000_000)
+
+
+@router.post("/sessions/paste", status_code=201)
+async def paste_session(ctx: Ctx, body: PasteRequest):
+    """صفوف ملصوقة من Excel بتبقى جلسة استيراد عادية، بنفس المراجعة والتحقق والتنفيذ."""
+    from app.modules.imports.paste import parse_pasted
+
+    sheets = parse_pasted(body.text)
+    imp = await service.create_session_from_rows(
+        ctx.session, ctx.tenant_id, sheets=sheets, user_id=ctx.user.id
+    )
+    await _audit(ctx, "import.pasted", imp, sheets=list(sheets))
+    return _out(imp)
+
+
 @router.get("/sessions")
 async def list_sessions(ctx: Ctx, limit: Annotated[int, Query(ge=1, le=100)] = 20):
     items = await service.list_sessions(ctx.session, ctx.tenant_id, limit=limit)

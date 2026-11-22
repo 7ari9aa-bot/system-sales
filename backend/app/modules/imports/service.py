@@ -164,6 +164,61 @@ async def create_session(
     return imp
 
 
+async def create_session_from_rows(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    sheets: dict[str, list[dict[str, str]]],
+    user_id: uuid.UUID | None,
+    file_name: str = "لصق من Excel",
+) -> ImportSession:
+    """A session built from rows the merchant pasted, not from a file.
+
+    Same shape as an upload: the rows are stored, the columns are guessed from their headers, and
+    everything after this point (mapping, validation, apply) cannot tell the two apart.
+    """
+    if not sheets:
+        raise ValidationError("لا يوجد صفوف في اللصق")
+
+    imp = ImportSession(
+        tenant_id=tenant_id,
+        kind="products",
+        status="analyzed",
+        file_name=file_name[:255],
+        file_size=0,
+        file_sha256=None,
+        options=dict(DEFAULT_OPTIONS),
+        created_by=user_id,
+    )
+    mapping: dict[str, dict[str, str | None]] = {}
+    counts: dict[str, int] = {}
+    session.add(imp)
+    await session.flush()
+    for key, rows in sheets.items():
+        if not rows:
+            continue
+        headers = list(rows[0].keys())
+        mapping[key] = suggest_mapping(key, headers)
+        counts[key] = len(rows)
+        session.add_all(
+            ImportRow(
+                tenant_id=tenant_id,
+                session_id=imp.id,
+                sheet=key,
+                row_number=i + 2,
+                raw=row,
+                status="pending",
+            )
+            for i, row in enumerate(rows)
+        )
+    if not mapping:
+        raise ValidationError("لا يوجد صفوف في اللصق")
+    imp.mapping = mapping
+    imp.stats = {"rows": counts, "ignored_sheets": [], "pasted": True}
+    await session.flush()
+    return imp
+
+
 def describe(imp: ImportSession) -> dict[str, Any]:
     """What the mapping screen needs: each sheet, its columns, the guess, and what is missing."""
     sheets = {}
