@@ -1,0 +1,11 @@
+# Fihrist Mobile - Google Play Release Keystore Configuration
+# Fill in your release keystore details and copy this file to "key.properties"
+# (key.properties is ignored by git to protect credentials)
+#
+# Generate keystore command:
+# keytool -genkey -v -keystore app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=upload-keystore.jks

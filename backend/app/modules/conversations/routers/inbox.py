@@ -843,7 +843,7 @@ async def refresh_customer_profile(
     conversation_id: uuid.UUID,
     ctx: TenantContext = Depends(require_permission("conversations:read")),
 ):
-    """Learn who an Instagram customer is (name, @handle, photo) when the chat does not show it yet.
+    """Learn who an Instagram or Messenger customer is (name, photo) when the chat shows a number.
 
     Meant to be called in the background when a chat row is a bare number or has no photo. It is
     rate-limited by what is already known (a week after a success, six hours after a refusal),
@@ -853,16 +853,18 @@ async def refresh_customer_profile(
 
     conversation = await ConversationService.get(ctx.session, ctx.tenant_id, conversation_id)
     await _ensure_channel_access(ctx, conversation)
-    if conversation.channel != "instagram" or conversation.customer_id is None:
-        return {"updated": False, "reason": "not_instagram"}
-    config = await _channel_access.channel_credentials_config(
-        ctx.session, ctx.tenant_id, "instagram"
-    )
+    if conversation.channel not in ("instagram", "messenger") or conversation.customer_id is None:
+        return {"updated": False, "reason": "not_supported_channel"}
+    channel = conversation.channel
+    config = await _channel_access.channel_credentials_config(ctx.session, ctx.tenant_id, channel)
     if not config or not config.get("api_key"):
         return {"updated": False, "reason": "not_connected"}
-    updated = await CustomerProfileService.enrich_instagram_for(
-        ctx.session, ctx.tenant_id, conversation.customer_id, config
+    enrich = (
+        CustomerProfileService.enrich_messenger_for
+        if channel == "messenger"
+        else CustomerProfileService.enrich_instagram_for
     )
+    updated = await enrich(ctx.session, ctx.tenant_id, conversation.customer_id, config)
     if updated is None:
         return {"updated": False, "reason": "no_customer"}
     return {"updated": updated}

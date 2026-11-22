@@ -52,6 +52,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Ensure Android SDK 36 Platform & Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-36" || true
+
       - name: Build Android Release APK & AppBundle
         run: |
           flutter build apk --release
