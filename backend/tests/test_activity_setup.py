@@ -486,9 +486,7 @@ async def test_a_request_with_no_workspace_reads_and_writes_the_same_as_one_with
     ws = await _seed_workspace(db, tid)
 
     bare = await _call(db, tenant_ctx, "GET", BASE, perms=OWNER)
-    scoped = await _call_in_workspace(
-        db, tenant_ctx, "GET", BASE, perms=OWNER, workspace_id=ws.id
-    )
+    scoped = await _call_in_workspace(db, tenant_ctx, "GET", BASE, perms=OWNER, workspace_id=ws.id)
     assert bare.status_code == 200 and scoped.status_code == 200, scoped.text
     assert bare.json() == scoped.json()
     assert bare.json()["needs_setup"] is True

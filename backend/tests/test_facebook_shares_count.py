@@ -28,7 +28,14 @@ def test_a_malformed_count_is_zero_not_a_crash() -> None:
 
 def test_the_post_output_carries_the_share_count() -> None:
     row = SimpleNamespace(
-        post_id="1_2", caption="hi", media_url=None, media_type="STATUS", permalink=None,
-        like_count=1, comments_count=2, shares_count=5, posted_at=None,
+        post_id="1_2",
+        caption="hi",
+        media_url=None,
+        media_type="STATUS",
+        permalink=None,
+        like_count=1,
+        comments_count=2,
+        shares_count=5,
+        posted_at=None,
     )
     assert _post_out(row)["shares"] == 5

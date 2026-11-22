@@ -109,8 +109,7 @@ class SocialCommentService:
                 tenant_id,
                 removed_id,
                 platform=platform,
-                post_id=comment.post_id
-                or await SocialCommentService._post_of(session, removed_id),
+                post_id=comment.post_id or await SocialCommentService._post_of(session, removed_id),
                 comment_id=comment.platform_comment_id,
                 parent_comment_id=comment.parent_comment_id,
                 verb="remove",

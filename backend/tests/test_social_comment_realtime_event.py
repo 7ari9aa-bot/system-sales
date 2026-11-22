@@ -77,8 +77,14 @@ async def test_announce_stages_one_outbox_event_on_the_comment_stream(monkeypatc
     monkeypatch.setattr(mod, "add_outbox_event", fake_add)
     tenant, row = uuid.uuid4(), uuid.uuid4()
     sent = await mod.announce_comment_changed(
-        None, tenant, row, platform="facebook", post_id="p-1", comment_id="c-1",
-        parent_comment_id=None, verb="add",
+        None,
+        tenant,
+        row,
+        platform="facebook",
+        post_id="p-1",
+        comment_id="c-1",
+        parent_comment_id=None,
+        verb="add",
     )
     assert sent is True
     (event,) = staged
@@ -96,7 +102,13 @@ async def test_announce_does_nothing_without_a_post(monkeypatch) -> None:
 
     monkeypatch.setattr(mod, "add_outbox_event", boom)
     sent = await mod.announce_comment_changed(
-        None, uuid.uuid4(), uuid.uuid4(), platform="facebook", post_id=None,
-        comment_id="c-1", parent_comment_id=None, verb="add",
+        None,
+        uuid.uuid4(),
+        uuid.uuid4(),
+        platform="facebook",
+        post_id=None,
+        comment_id="c-1",
+        parent_comment_id=None,
+        verb="add",
     )
     assert sent is False

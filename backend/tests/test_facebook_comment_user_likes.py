@@ -43,8 +43,18 @@ def test_the_model_has_a_defaulted_page_liked_column() -> None:
 
 def test_the_comment_output_carries_page_liked() -> None:
     row = SimpleNamespace(
-        comment_id="1_2", post_id="1", parent_comment_id=None, username="a", author_name="a",
-        body="hi", like_count=2, commented_at=datetime(2026, 11, 21, tzinfo=UTC), status="visible",
-        is_page_reply=True, replied_at=None, private_replied_at=None, page_liked=True,
+        comment_id="1_2",
+        post_id="1",
+        parent_comment_id=None,
+        username="a",
+        author_name="a",
+        body="hi",
+        like_count=2,
+        commented_at=datetime(2026, 11, 21, tzinfo=UTC),
+        status="visible",
+        is_page_reply=True,
+        replied_at=None,
+        private_replied_at=None,
+        page_liked=True,
     )
     assert _comment_out(row)["page_liked"] is True
