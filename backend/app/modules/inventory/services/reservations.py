@@ -129,7 +129,15 @@ class InventoryReservationService:
                 quantity=sold,
                 allow_partial=True,
             )
-            cost_value = consumption.get("total_cogs")
+            # The cost is only KNOWN when the layers covered every unit sold. A shortfall (stock
+            # added with no purchase cost yet, or too few layers) is booked as NULL, the ledger's
+            # own word for "cost unknown", so the profit report flags it. A 0.0000 here would
+            # read as a free item with a 100% margin.
+            cost_value = (
+                consumption.get("total_cogs")
+                if consumption.get("covered_quantity", 0) >= sold
+                else None
+            )
 
             await MovementServiceMixin._append(
                 session,
