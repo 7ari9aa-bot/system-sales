@@ -4,6 +4,7 @@ import { TriangleAlert } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import { useStartDay, useWorkingSession } from "@/cashier/api/useShifts";
 import { parseOpeningBalance } from "@/cashier/api/shiftState";
+import PageSkeleton from "@/cashier/components/ui-kit/PageSkeleton";
 
 const PICK_KEY = "cashier:register";
 
@@ -157,7 +158,7 @@ export default function WorkingSessionGate({ children }) {
   const [registerId, setRegisterId] = useState(readPickedRegister);
   const till = useWorkingSession({ registerId });
   if (till.isLoading) {
-    return <p className="p-8 text-center text-sm text-muted-foreground" role="status">جارٍ التحميل…</p>;
+    return <PageSkeleton label="جارٍ قراءة حالة الوردية…" rows={3} testId="working-session-gate-loading" />;
   }
   const state = till.data ?? { status: "error", message: till.error?.message };
   if (state.status === "choose") {
