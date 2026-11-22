@@ -143,8 +143,43 @@ class InstagramAdapter(ChannelAdapter):
 
     def parse_comments(self, payload: dict) -> list[InboundComment]:
         """Instagram post comments arrive on field "comments" in the same
-        signed envelope — the shared Meta change parser handles both."""
-        return parse_meta_comment_changes(payload)
+        signed envelope — the shared Meta change parser handles both. Mentions of the account
+        (field "mentions") ride the same path so a tag in someone else's comment or caption is
+        not lost."""
+        return [*parse_meta_comment_changes(payload), *self.parse_mentions(payload)]
+
+    @staticmethod
+    def parse_mentions(payload: dict) -> list[InboundComment]:
+        """Someone @-mentioned the account in a comment or a caption (field ``mentions``).
+
+        Meta sends only ids: ``media_id`` and, for a comment mention, ``comment_id``. They are
+        kept as a comment row with verb ``mention`` so the merchant sees the tag; the id is the
+        comment's (or, for a caption, the media's) so a redelivery is one row.
+        """
+        out: list[InboundComment] = []
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                if change.get("field") != "mentions":
+                    continue
+                value = change.get("value") or {}
+                media_id = str(value.get("media_id") or "").strip()
+                comment_id = str(value.get("comment_id") or "").strip()
+                key = comment_id or media_id
+                if not key:
+                    continue
+                out.append(
+                    InboundComment(
+                        platform_comment_id=f"mention:{key}",
+                        post_id=media_id or None,
+                        parent_comment_id=None,
+                        author_ref=None,
+                        author_name=None,
+                        body=None,
+                        verb="mention",
+                        raw=value,
+                    )
+                )
+        return out
 
     @staticmethod
     def account_ids(payload: dict) -> list[str]:
@@ -382,9 +417,14 @@ class InstagramAdapter(ChannelAdapter):
         emoji = (reaction.get("emoji") or "").strip()
         if action == "unreact" or not emoji:
             emoji = REACTION_REMOVED
+        # A reaction has no message id of its own. Without one the dedupe key was empty, so Meta
+        # redelivering the same event stored the same reaction twice. Made from who reacted to
+        # what, when, and whether it was added or withdrawn: the same event is one row.
+        stamp = event.get("timestamp") or ""
+        key = f"reaction:{sender.get('id', '')}:{target}:{stamp}:{action or 'react'}"
         return InboundMessage(
             channel="instagram",
-            channel_message_id=None,
+            channel_message_id=key,
             customer_ref=str(sender.get("id", "")),
             body=emoji,
             content_type="reaction",

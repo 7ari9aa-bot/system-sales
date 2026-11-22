@@ -297,6 +297,12 @@ class IngestService:
             await IngestService.apply_status_updates(
                 session, tenant_id, adapter.parse_status_updates(payload)
             )
+            # Messenger read receipts name a time, not a message: "read everything up to T".
+            parse_reads = getattr(adapter, "parse_read_watermarks", None)
+            if callable(parse_reads):
+                await IngestService.apply_read_watermarks(
+                    session, tenant_id, channel, parse_reads(payload)
+                )
             # Public comments ride the same signed envelope (field "feed" /
             # "comments"). They are interaction data, not conversation turns:
             # persisted for the analyst, never fanned out to the AI. Adapters
@@ -458,4 +464,58 @@ class IngestService:
                     Message.status.in_(allowed_from),
                 )
                 .values(**values)
+            )
+
+    @staticmethod
+    async def apply_read_watermarks(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, reads: list[dict]
+    ) -> None:
+        """Mark a customer's outbound messages ``read`` up to the provider's watermark.
+
+        A Messenger read receipt carries only a time (epoch milliseconds): everything sent before
+        it was read. Only OUR outbound rows in THIS customer's conversation on THIS channel that
+        are already sent or delivered are advanced, so a receipt can never regress a row, touch
+        another customer's thread, or mark a message that never left.
+        """
+        from app.modules.conversations.models import Message
+
+        for read in reads:
+            ref = str(read.get("customer_ref") or "").strip()
+            try:
+                watermark_ms = int(read.get("watermark"))
+            except (TypeError, ValueError):
+                continue
+            if not ref:
+                continue
+            cutoff = datetime.fromtimestamp(watermark_ms / 1000.0, tz=UTC)
+            # The customer's conversation is found through their channel identity with raw SQL,
+            # not the customers models: the conversations module must not grow a new import edge.
+            conversation_ids = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT c.id FROM conversations c "
+                            "JOIN customer_identities ci ON ci.customer_id = c.customer_id "
+                            "AND ci.tenant_id = c.tenant_id "
+                            "WHERE c.tenant_id = :tenant AND c.channel = :channel "
+                            "AND ci.channel = :channel AND ci.external_id = :ref"
+                        ),
+                        {"tenant": tenant_id, "channel": channel, "ref": ref},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not conversation_ids:
+                continue
+            await session.execute(
+                sa_update(Message)
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.conversation_id.in_(conversation_ids),
+                    Message.direction == "outbound",
+                    Message.status.in_(("sent", "delivered")),
+                    Message.created_at <= cutoff,
+                )
+                .values(status="read")
             )
