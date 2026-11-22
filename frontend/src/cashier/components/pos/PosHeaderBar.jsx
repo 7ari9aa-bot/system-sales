@@ -92,10 +92,10 @@ export default function PosHeaderBar({
             size="sm"
             className="h-8 gap-1.5 text-[11px]"
             onClick={onHandover}
-            title="تسليم الوردية لكاشير آخر"
+            title="تسليم الدرج والوردية المفتوحة لكاشير آخر، من غير إغلاق اليوم"
           >
             <Users className="h-3.5 w-3.5 text-blue-600" />
-            تسليم وردية
+            تسليم لكاشير آخر
           </Button>
         ) : null}
 
