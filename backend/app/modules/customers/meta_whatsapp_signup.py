@@ -598,6 +598,27 @@ async def whatsapp_signup_complete(
             "This WhatsApp number is already connected to another workspace."
         ) from None
 
+    # The manual connect writes this row; the one-click flow redirects the same webhook traffic
+    # and used to leave no trace. Identity only: never the token, the code or the PIN.
+    from app.modules.platform.service import AuditService
+
+    await AuditService.write(
+        session,
+        tenant_id,
+        ctx.user.id,
+        "integration.connected",
+        "integration",
+        str(integration.id),
+        after={
+            "provider": "whatsapp",
+            "status": integration.status,
+            "is_new": existing is None,
+            "via": "embedded_signup",
+            "phone_number_id": body.phone_number_id,
+            "waba_id": body.waba_id,
+        },
+    )
+
     logger.info(
         "whatsapp.embedded_signup_connected tenant=%s phone_number_id=%s waba=%s",
         tenant_id,
