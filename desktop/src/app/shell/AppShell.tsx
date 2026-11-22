@@ -4,10 +4,12 @@ import { DashboardView } from '@/features/dashboard/DashboardView'
 import { CashierView } from '@/features/cashier/CashierView'
 import { InventoryView } from '@/features/inventory/InventoryView'
 import { PurchasingView } from '@/features/purchasing/PurchasingView'
+import { ReportsView } from '@/features/reports/ReportsView'
+import { TeamView } from '@/features/team/TeamView'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 
-export type WorkstationTab = 'dashboard' | 'cashier' | 'inventory' | 'purchasing' | 'inbox' | 'settings'
+export type WorkstationTab = 'dashboard' | 'cashier' | 'inventory' | 'purchasing' | 'reports' | 'team' | 'inbox' | 'settings'
 
 export const AppShell: FC<{
   readonly platform: Platform
@@ -64,6 +66,24 @@ export const AppShell: FC<{
 
           <button
             type="button"
+            className={`workstation__nav-item ${activeTab === 'reports' ? 'workstation__nav-item--active' : ''}`}
+            onClick={() => setActiveTab('reports')}
+          >
+            <span>📈</span>
+            <span>التقارير والتحليلات</span>
+          </button>
+
+          <button
+            type="button"
+            className={`workstation__nav-item ${activeTab === 'team' ? 'workstation__nav-item--active' : ''}`}
+            onClick={() => setActiveTab('team')}
+          >
+            <span>👥</span>
+            <span>الموظفون والصلاحيات</span>
+          </button>
+
+          <button
+            type="button"
             className={`workstation__nav-item ${activeTab === 'inbox' ? 'workstation__nav-item--active' : ''}`}
             onClick={() => setActiveTab('inbox')}
           >
@@ -94,6 +114,8 @@ export const AppShell: FC<{
               {activeTab === 'dashboard' && 'لوحة التحكم والمؤشرات'}
               {activeTab === 'inventory' && 'المخزون والجرد الدوري'}
               {activeTab === 'purchasing' && 'المشتريات وإدارة الموردين'}
+              {activeTab === 'reports' && 'التقارير المالية والتحليلات'}
+              {activeTab === 'team' && 'إدارة الموظفين وفريق العمل'}
               {activeTab === 'inbox' && 'صندوق الوارد وخدمة العملاء'}
               {activeTab === 'settings' && 'إعدادات المنظومة والمحطة'}
             </h1>
@@ -118,6 +140,8 @@ export const AppShell: FC<{
           {activeTab === 'dashboard' && <DashboardView />}
           {activeTab === 'inventory' && <InventoryView />}
           {activeTab === 'purchasing' && <PurchasingView />}
+          {activeTab === 'reports' && <ReportsView />}
+          {activeTab === 'team' && <TeamView />}
           {activeTab === 'inbox' && <InboxView />}
           {activeTab === 'settings' && (
             <SettingsView

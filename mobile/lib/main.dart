@@ -8,6 +8,7 @@ import 'providers/chat_view_model.dart';
 import 'providers/dashboard_view_model.dart';
 import 'providers/inventory_view_model.dart';
 import 'providers/locale_view_model.dart';
+import 'providers/purchasing_view_model.dart';
 import 'ui/app.dart';
 
 void main() async {
@@ -28,6 +29,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => DashboardViewModel()),
         ChangeNotifierProvider(create: (_) => ThermalPrinterManager()),
         ChangeNotifierProvider(create: (_) => NotificationService()),
+        ChangeNotifierProvider(create: (_) => PurchasingViewModel()),
       ],
       child: const FihristApp(),
     ),

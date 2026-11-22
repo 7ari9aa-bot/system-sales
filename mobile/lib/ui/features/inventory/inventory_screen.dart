@@ -5,6 +5,7 @@ import '../../../data/models/product.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/inventory_view_model.dart';
 import '../cashier/widgets/camera_scanner_dialog.dart';
+import 'widgets/continuous_stocktake_dialog.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -622,6 +623,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
       appBar: AppBar(
         title: Text(l10n.inventoryTitle),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.document_scanner_outlined),
+            tooltip: 'الجرد المتتابع بالماسح',
+            onPressed: () async {
+              final count = await Navigator.push<int>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ContinuousStocktakeDialog(),
+                ),
+              );
+              if (count != null && count > 0 && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('تم تثبيت جرد $count صنف بنجاح'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+          ),
           IconButton(
             icon: invVm.isSyncing
                 ? const SizedBox(
