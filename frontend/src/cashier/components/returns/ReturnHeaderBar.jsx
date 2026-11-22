@@ -4,7 +4,7 @@ import { ClipboardList, RotateCcw } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 
 // رأس شاشة تسجيل المرتجع: رقم العملية والتاريخ والموظف، مع رابط سجل المرتجعات.
-export default function ReturnHeaderBar({ number, employee }) {
+export default function ReturnHeaderBar({ number, employee, title = "تسجيل مرتجع", numberLabel = "رقم المرتجع" }) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -20,9 +20,9 @@ export default function ReturnHeaderBar({ number, employee }) {
       <div className="min-w-0">
         <h2 className="font-heading flex items-center gap-2 text-xl font-extrabold leading-tight">
           <RotateCcw className="h-[18px] w-[18px] text-primary" aria-hidden="true" />
-          تسجيل مرتجع
+          {title}
         </h2>
-        {number ? <p className="num text-[11px] font-semibold text-muted-foreground">رقم المرتجع {number}</p> : null}
+        {number ? <p className="num text-[11px] font-semibold text-muted-foreground">{numberLabel} {number}</p> : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">

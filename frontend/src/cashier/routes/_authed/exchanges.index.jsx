@@ -214,7 +214,7 @@ function ExchangeScreen({ session }) {
 
   return (
     <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
-      <ReturnHeaderBar employee={user?.full_name || user?.email || ""} />
+      <ReturnHeaderBar title="تسجيل استبدال" numberLabel="رقم الاستبدال" employee={user?.full_name || user?.email || ""} />
       <ExchangeInvoiceSearch
         term={invoiceTerm}
         onTermChange={(v) => { setInvoiceTerm(v); setError(""); }}

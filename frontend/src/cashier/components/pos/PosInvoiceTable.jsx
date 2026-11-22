@@ -211,7 +211,19 @@ export default function PosInvoiceTable({
                         />
                       ) : null}
                     </td>
-                    <td className={cn(CELL, "truncate text-xs text-muted-foreground/70")} />
+                    <td className={cn(CELL, "truncate p-0.5 text-xs text-muted-foreground/70")}>
+                      {isEntryRow ? (
+                        // A touch screen has no Enter key: a visible add button runs the same submit.
+                        <button
+                          type="button"
+                          onClick={() => onBarcodeSubmit()}
+                          disabled={!String(barcode ?? "").trim()}
+                          className="h-8 rounded-md bg-primary px-4 text-[13px] font-bold !text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          إضافة
+                        </button>
+                      ) : null}
+                    </td>
                     <td className={CELL} />
                     <td className={CELL} />
                     <td className={CELL} />
