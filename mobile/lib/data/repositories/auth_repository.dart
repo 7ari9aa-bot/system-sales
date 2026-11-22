@@ -18,31 +18,42 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    // If tenantSubdomain is custom or default, adjust base url if needed
     final cleanSubdomain = tenantSubdomain.trim().toLowerCase();
 
     final response = await _apiClient.post(
       ApiEndpoints.login,
       body: {
+        'subdomain': cleanSubdomain,
         'email': email.trim(),
         'password': password,
       },
       includeAuth: false,
+      extraHeaders: {
+        'X-Tenant-Subdomain': cleanSubdomain,
+      },
     );
 
     if (response is Map<String, dynamic>) {
       final accessToken = response['access_token']?.toString() ??
-          response['token']?.toString() ??
-          '';
+          response['token']?.toString();
+      if (accessToken == null || accessToken.trim().isEmpty) {
+        throw ApiException(
+          statusCode: 401,
+          message: 'لم يتم استلام رمز دخول صالح من الخادم',
+        );
+      }
+
       final refreshToken = response['refresh_token']?.toString() ?? '';
       final tenantId = response['tenant_id']?.toString() ?? cleanSubdomain;
       final userData = response['user'] as Map<String, dynamic>? ?? response;
+      final userId = userData['id']?.toString() ?? response['user_id']?.toString();
 
       await _tokenStore.saveAuth(
         accessToken: accessToken,
         refreshToken: refreshToken,
         tenantId: tenantId,
         tenantSubdomain: cleanSubdomain,
+        userId: userId,
         userEmail: userData['email']?.toString() ?? email,
         userName: userData['name']?.toString(),
       );
@@ -66,13 +77,8 @@ class AuthRepository {
         return AuthUser.fromJson(response);
       }
     } catch (_) {
-      // Fallback to local stored info
-      final email = await _tokenStore.getUserEmail();
-      final name = await _tokenStore.getUserName();
-      final tenantId = await _tokenStore.getTenantId();
-      if (email != null && tenantId != null) {
-        return AuthUser(id: 'local', email: email, name: name, tenantId: tenantId);
-      }
+      // Never synthesize fake credentials when backend verification fails
+      return null;
     }
     return null;
   }

@@ -58,8 +58,8 @@ class CashierViewModel extends ChangeNotifier {
 
   int get cartCount => _cartItems.fold(0, (sum, item) => sum + item.quantity);
 
-  /// Calculates subtotal using exact cents arithmetic
-  String get subtotal {
+  /// Total amount (VAT inclusive) using exact cents arithmetic
+  String get total {
     BigInt totalCents = BigInt.zero;
     for (final item in _cartItems) {
       final unitCents = MoneyFormatter.toCents(item.effectiveUnitPrice);
@@ -68,19 +68,18 @@ class CashierViewModel extends ChangeNotifier {
     return MoneyFormatter.fromCents(totalCents);
   }
 
-  /// Calculates 15% VAT using integer rounding (no double precision error)
+  /// 15% VAT inclusive: (totalCents * 15) ~/ 115
   String get tax {
-    final subCents = MoneyFormatter.toCents(subtotal);
-    // 15% VAT: (cents * 15 + 50) ~/ 100
-    final taxCents = (subCents * BigInt.from(15) + BigInt.from(50)) ~/ BigInt.from(100);
+    final totalCents = MoneyFormatter.toCents(total);
+    final taxCents = (totalCents * BigInt.from(15)) ~/ BigInt.from(115);
     return MoneyFormatter.fromCents(taxCents);
   }
 
-  /// Total = Subtotal + Tax
-  String get total {
-    final subCents = MoneyFormatter.toCents(subtotal);
+  /// Subtotal (before VAT): Total - VAT
+  String get subtotal {
+    final totalCents = MoneyFormatter.toCents(total);
     final taxCents = MoneyFormatter.toCents(tax);
-    return MoneyFormatter.fromCents(subCents + taxCents);
+    return MoneyFormatter.fromCents(totalCents - taxCents);
   }
 
   Future<void> searchProducts(String query) async {

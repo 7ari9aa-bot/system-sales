@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/sync/durable_operation.dart';
 import '../../../../core/sync/durable_sync_engine.dart';
+import '../../../../providers/auth_view_model.dart';
 
 class SyncLogDialog extends StatefulWidget {
   const SyncLogDialog({super.key});
@@ -25,7 +27,8 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
 
   Future<void> _loadOperations() async {
     setState(() => _isLoading = true);
-    final ops = await _syncEngine.getAllOperations();
+    final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    final ops = await _syncEngine.getAllOperations(tenantId: tenantId);
     if (mounted) {
       setState(() {
         _operations = ops;
@@ -36,7 +39,8 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
 
   Future<void> _triggerSync() async {
     setState(() => _isSyncing = true);
-    final result = await _syncEngine.syncPendingOperations();
+    final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    final result = await _syncEngine.syncPendingOperations(tenantId: tenantId);
     await _loadOperations();
     if (mounted) {
       setState(() => _isSyncing = false);
@@ -52,7 +56,8 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
   }
 
   Future<void> _retryOperation(String uuid) async {
-    await _syncEngine.retryOperation(uuid);
+    final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    await _syncEngine.retryOperation(uuid, tenantId: tenantId);
     await _loadOperations();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,7 +70,8 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
   }
 
   Future<void> _discardOperation(String uuid) async {
-    await _syncEngine.discardOperation(uuid);
+    final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    await _syncEngine.discardOperation(uuid, tenantId: tenantId);
     await _loadOperations();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

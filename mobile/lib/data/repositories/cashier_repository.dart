@@ -3,6 +3,8 @@ import '../../core/api/api_client.dart';
 import '../../core/api/api_endpoints.dart';
 import '../../core/database/local_database.dart';
 import '../../core/secure_storage/secure_token_store.dart';
+import '../../core/sync/durable_operation.dart';
+import '../../core/sync/durable_sync_engine.dart';
 import '../models/product.dart';
 
 class CashierRepository {
@@ -20,6 +22,22 @@ class CashierRepository {
   String? _activeSessionId;
 
   String? get activeSessionId => _activeSessionId;
+
+  Future<String> getOrOpenRegister() async {
+    final savedId = await _tokenStore.getRegisterId();
+    if (savedId != null && savedId.isNotEmpty) return savedId;
+
+    try {
+      final response = await _apiClient.get(ApiEndpoints.posRegisters);
+      if (response is List && response.isNotEmpty) {
+        final regId = response[0]['id']?.toString() ?? 'reg_default';
+        await _tokenStore.setRegisterId(regId);
+        return regId;
+      }
+    } catch (_) {}
+
+    return 'reg_default';
+  }
 
   Future<String> getOrOpenSession() async {
     if (_activeSessionId != null) return _activeSessionId!;
@@ -51,12 +69,15 @@ class CashierRepository {
     final cleaned = barcode.trim();
     if (cleaned.isEmpty) return null;
 
-    // 1. Try server scan endpoint
+    // 1. Try server scan endpoint with OpenAPI ScanRequest schema
     try {
       final sessionId = await getOrOpenSession();
       final response = await _apiClient.post(
         ApiEndpoints.posScan(sessionId),
-        body: {'barcode': cleaned},
+        body: {
+          'identifier_type': 'barcode',
+          'value': cleaned,
+        },
       );
 
       if (response is Map<String, dynamic>) {
@@ -78,11 +99,11 @@ class CashierRepository {
   Future<List<Product>> searchProducts(String query) async {
     final q = query.trim().toLowerCase();
 
-    // 1. Try server endpoint
+    // 1. Try server endpoint using 'term' parameter per OpenAPI contract
     try {
       final response = await _apiClient.get(
         ApiEndpoints.posStock,
-        queryParams: q.isNotEmpty ? {'search': q} : null,
+        queryParams: q.isNotEmpty ? {'term': q} : null,
       );
 
       if (response is List) {
@@ -165,22 +186,21 @@ class CashierRepository {
     required List<CartItem> items,
     required String paymentMethod, // "cash" or "card"
     required String total,
+    String? idempotencyKey,
     String? customerId,
     String? customerName,
     String? customerPhone,
   }) async {
-    final sessionId = await getOrOpenSession();
-    final idempotencyKey = 'pos_sale_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond % 1000}';
+    final key = idempotencyKey ??
+        'pos_sale_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond % 1000}';
+    final registerId = await getOrOpenRegister();
 
-    // Build payload matching OpenAPI RecordSaleRequest
+    // Build payload matching OpenAPI RecordSaleRequest exactly
     final payload = {
       'items': items
           .map((item) => {
                 'variant_id': item.product.id,
                 'quantity': item.quantity,
-                'product_id': item.product.id,
-                'unit_price': item.effectiveUnitPrice,
-                'line_total': item.lineTotal,
               })
           .toList(),
       'payments': [
@@ -189,8 +209,6 @@ class CashierRepository {
           'amount': total,
         }
       ],
-      'payment_method': paymentMethod,
-      'total': total,
       if (customerId != null) 'customer_id': customerId,
       if (customerName != null) 'customer_name': customerName,
       if (customerPhone != null) 'customer_phone': customerPhone,
@@ -198,29 +216,59 @@ class CashierRepository {
 
     try {
       final response = await _apiClient.post(
-        ApiEndpoints.posReceipts(sessionId),
+        ApiEndpoints.posRegisterSales(registerId),
         body: payload,
         extraHeaders: {
-          'Idempotency-Key': idempotencyKey,
+          'Idempotency-Key': key,
         },
       );
 
-      return (response is Map<String, dynamic>)
-          ? response
-          : {
-              'success': true,
-              'receipt_number': 'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
-              'grand_total': total,
-            };
+      if (response is Map<String, dynamic>) {
+        return {
+          ...response,
+          'success': true,
+          'idempotency_key': key,
+          'receipt_number': response['receipt_number'] ??
+              'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+          'grand_total': response['grand_total'] ?? total,
+        };
+      }
     } catch (_) {
-      // Offline fallback when network is unavailable or in test sandbox
+      // Offline fallback: Persist into DurableSyncEngine with original key
+      final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
+      final userId = (await _tokenStore.getUserId()) ?? 'offline_user';
+      final deviceId = await _tokenStore.getOrCreateDeviceId();
+
+      final durableOp = DurableOperation(
+        operationUuid: 'op_${DateTime.now().millisecondsSinceEpoch}',
+        tenantId: tenantId,
+        userId: userId,
+        deviceId: deviceId,
+        registerId: registerId,
+        operationType: 'pos_sale',
+        payloadSnapshot: payload,
+        idempotencyKey: key,
+        createdAt: DateTime.now(),
+        status: DurableOperationStatus.pending,
+      );
+
+      final syncEngine = DurableSyncEngine(localDb: _localDb, apiClient: _apiClient);
+      await syncEngine.enqueueOperation(durableOp);
+
       return {
         'success': true,
-        'receipt_number': 'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+        'offline_queued': true,
+        'idempotency_key': key,
+        'receipt_number': 'POS-OFFLINE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
         'grand_total': total,
-        'offline': true,
       };
     }
+
+    return {
+      'success': true,
+      'receipt_number': 'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+      'grand_total': total,
+    };
   }
 
   static final List<Product> _mockProducts = [
@@ -228,51 +276,41 @@ class CashierRepository {
       id: 'p1',
       name: 'قهوة عربي فاخرة 250جم',
       barcode: '6281001001',
-      sku: 'COF-ARB-250',
       price: '35.00',
-      costPrice: '18.00',
-      stockQuantity: 42,
+      stockQuantity: 45,
       category: 'مشروبات',
     ),
     const Product(
       id: 'p2',
-      name: 'تمر سكري ملكي 1كجم',
+      name: 'شاي سيلاني فاخر 100 كيس',
       barcode: '6281001002',
-      sku: 'DATE-SKR-1K',
-      price: '65.00',
-      costPrice: '35.00',
-      stockQuantity: 18,
-      category: 'تمور',
+      price: '18.50',
+      stockQuantity: 30,
+      category: 'مشروبات',
     ),
     const Product(
       id: 'p3',
-      name: 'هيل أمريكي جامبو 100جم',
+      name: 'تمر خلاص القصيم 1 كجم',
       barcode: '6281001003',
-      sku: 'CARD-AMR-100',
-      price: '48.00',
-      costPrice: '26.00',
-      stockQuantity: 25,
-      category: 'بهارات',
+      price: '45.00',
+      stockQuantity: 12,
+      category: 'أغذية',
     ),
     const Product(
       id: 'p4',
-      name: 'زعفران سوبر نقيل 5جم',
+      name: 'زيت زيتون بكر ممتاز 500 مل',
       barcode: '6281001004',
-      sku: 'SAFR-NQL-5G',
-      price: '120.00',
-      costPrice: '75.00',
-      stockQuantity: 12,
-      category: 'بهارات',
+      price: '28.00',
+      stockQuantity: 8,
+      category: 'أغذية',
     ),
     const Product(
       id: 'p5',
-      name: 'شاي تلقيمة فاخر 400جم',
+      name: 'عسل سدر طبيعي 500جم',
       barcode: '6281001005',
-      sku: 'TEA-TLQ-400',
-      price: '28.00',
-      costPrice: '14.00',
-      stockQuantity: 60,
-      category: 'مشروبات',
+      price: '120.00',
+      stockQuantity: 5,
+      category: 'أغذية',
     ),
   ];
 }

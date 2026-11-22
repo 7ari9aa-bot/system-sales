@@ -55,6 +55,11 @@ class ApiClient {
       if (tenantId != null && tenantId.isNotEmpty) {
         headers['X-Tenant-Id'] = tenantId;
       }
+
+      final subdomain = await _tokenStore.getTenantSubdomain();
+      if (subdomain != null && subdomain.isNotEmpty) {
+        headers['X-Tenant-Subdomain'] = subdomain;
+      }
     }
 
     if (extraHeaders != null) {
@@ -107,6 +112,24 @@ class ApiClient {
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
     final response = await _http.put(
+      uri,
+      headers: headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+    return _handleResponse(response);
+  }
+
+  Future<dynamic> patch(
+    String endpoint, {
+    Map<String, dynamic>? body,
+    bool includeAuth = true,
+    Map<String, String>? extraHeaders,
+  }) async {
+    final baseUrl = await _getBaseUrl();
+    final uri = Uri.parse('$baseUrl$endpoint');
+    final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
+
+    final response = await _http.patch(
       uri,
       headers: headers,
       body: body != null ? jsonEncode(body) : null,
