@@ -123,9 +123,8 @@ class FacebookService:
                 synced_at=now,
             )
             keep = ("caption", "media_url", "thumbnail_url", "media_type", "permalink")
-            update_cols = {
-                k: values[k] for k in (*keep, "like_count", "comments_count", "shares_count", "synced_at")
-            }
+            counters = ("like_count", "comments_count", "shares_count", "synced_at")
+            update_cols = {k: values[k] for k in (*keep, *counters)}
             await session.execute(
                 pg_insert(SocialPost)
                 .values(**values)

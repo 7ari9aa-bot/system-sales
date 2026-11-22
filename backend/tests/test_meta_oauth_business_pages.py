@@ -1,4 +1,4 @@
-"""A Page owned by a Business Portfolio is missing from /me/accounts; the connect must still find it."""
+"""A Page owned by a Business Portfolio is absent from /me/accounts; connect must still find it."""
 
 from __future__ import annotations
 

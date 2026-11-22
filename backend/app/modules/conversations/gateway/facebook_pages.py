@@ -319,9 +319,10 @@ class FacebookPagesClient:
             "limit": max(1, min(limit, 100)),
             "filter": "toplevel",
         }
-        # Facebook offers "Most relevant" and "Newest" above a post's comments. `ranked` asks Meta to
-        # rank, so it sends no `order` at all: any explicit value overrides the ranking. Meta may still
-        # rank regardless when it can, so `oldest` is a preference, not a guarantee.
+        # Facebook offers "Most relevant" and "Newest" above a post's comments. `ranked` asks
+        # Meta to rank, so it sends no `order` at all: any explicit value overrides the ranking.
+        # Meta may still rank regardless when it can, so `oldest` is a preference, not a
+        # guarantee.
         if order == "oldest":
             params["order"] = "chronological"
         elif order == "newest":
