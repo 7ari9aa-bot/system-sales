@@ -5,6 +5,8 @@ import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import { colorHex } from "@/cashier/lib/uiConstants";
 
+const AUTO_HINT = "يتولّد تلقائيًا عند الحفظ";
+
 /** A row that already exists in the backend (new rows get a local `row-` id). Its stock changes by count, not here. */
 const isSaved = (row) => !String(row.id).startsWith("row-");
 
@@ -52,8 +54,8 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
                 <span className="text-[11px] font-semibold text-muted-foreground">الباركود</span>
                 <Input
                   value={row.barcode}
-                  placeholder="اضغط «توليد الباركودات»"
-                  onChange={(e) => onChange(row.id, { barcode: e.target.value })}
+                  placeholder={row.autoBarcode ? AUTO_HINT : "اضغط «توليد الباركودات»"}
+                  onChange={(e) => onChange(row.id, { barcode: e.target.value, autoBarcode: false })}
                   className="num h-8 w-full text-xs"
                 />
               </label>
@@ -105,8 +107,8 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
                 <td className="px-3 py-2">
                   <Input
                     value={row.barcode}
-                    placeholder={`اضغط «توليد الباركودات»`}
-                    onChange={(e) => onChange(row.id, { barcode: e.target.value })}
+                    placeholder={row.autoBarcode ? AUTO_HINT : "اضغط «توليد الباركودات»"}
+                    onChange={(e) => onChange(row.id, { barcode: e.target.value, autoBarcode: false })}
                     className="num h-8 w-[150px] text-xs"
                   />
                 </td>

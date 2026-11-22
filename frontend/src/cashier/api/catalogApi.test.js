@@ -56,6 +56,58 @@ describe("makeSlug", () => {
   it("stays within the backend's 255 limit", () => expect(makeSlug("a".repeat(900), "t").length).toBeLessThanOrEqual(255));
 });
 
+// The form used to invent a barcode itself (299 + a fixed formula): the first variant of every product got the SAME number,
+// the next product collided with it ("already registered") and the product was left half saved. The shop's own barcode is
+// now taken from the backend counter, which hands out valid, never-repeated EAN-13 numbers.
+describe("createProduct asks the backend for the shop's own barcodes", () => {
+  const auto = { ...good, variants: good.variants.map((v) => ({ ...v, barcode: "", autoBarcode: true })) };
+
+  it("never invents a number: no identifier is posted for an auto row, one backend call labels the garment", async () => {
+    await catalogApi.createProduct(auto, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.filter((c) => /\/identifiers$/.test(c.path))).toHaveLength(0);
+    const label = calls.filter((c) => c.path === "/products/p1/barcodes");
+    expect(label).toHaveLength(1);
+    expect(label[0].method).toBe("POST");
+  });
+
+  it("labels only after every variant exists and before the product goes live", async () => {
+    await catalogApi.createProduct(auto, { warehouseId: "w1", slugToken: "t" });
+    const at = (re) => calls.findIndex((c) => re.test(c.path));
+    const lastVariant = calls.map((c) => /variants$/.test(c.path)).lastIndexOf(true);
+    expect(at(/\/barcodes$/)).toBeGreaterThan(lastVariant);
+    expect(at(/\/barcodes$/)).toBeLessThan(calls.findIndex((c) => c.method === "PATCH" && c.path === "/products/p1"));
+  });
+
+  it("does not call the backend when no row asked for an automatic barcode", async () => {
+    await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.some((c) => /\/barcodes$/.test(c.path))).toBe(false);
+  });
+
+  it("a typed barcode still wins over automatic on the same row", async () => {
+    await catalogApi.createProduct({ ...good, variants: [{ ...good.variants[0], autoBarcode: true }] }, { warehouseId: "w1", slugToken: "t" });
+    expect(calls.some((c) => /\/identifiers$/.test(c.path))).toBe(true);
+    expect(calls.some((c) => /\/barcodes$/.test(c.path))).toBe(false);
+  });
+
+  it("a taken barcode is explained in Arabic, with the number and what was already saved", async () => {
+    // the exact text the server sent on the real screen
+    failOn = (path) => {
+      if (!/identifiers$/.test(path)) return false;
+      throw new Error("identifier:(SKU-0002-0101 barcode:2991000102947 already registered");
+    };
+    const err = await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" }).catch((e) => e);
+    expect(err.message).toMatch(/الباركود 2991000102947 مستخدم بالفعل/);
+    expect(err.message).toMatch(/تم حفظ: المنتج/);
+    expect(err.message).not.toMatch(/already registered/);
+  });
+
+  it("a taken SKU is explained in Arabic too", async () => {
+    failOn = (path) => /variants$/.test(path);
+    const err = await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" }).catch((e) => e);
+    expect(err.message).toMatch(/كود الصنف \(SKU\) مستخدم بالفعل/);
+  });
+});
+
 describe("createProduct builds a SELLABLE product in the right order", () => {
   it("product -> variants (+barcode, +opening stock) -> activate, with wire-string prices", async () => {
     const r = await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" });

@@ -111,7 +111,8 @@ export default function ProductForm({ product, onSubmit, onCancel, onPrintLabels
   }
 
   function generateBarcodes() {
-    setRows((prev) => prev.map((r, i) => ({ ...r, barcode: `299${String(1000000000 + r.sku.length * 7919 + i * 137).slice(0, 10)}` })));
+    // الرقم بيتاخد من عدّاد المحل في الباك عند الحفظ (EAN-13 صحيح ومش بيتكرر). هنا بنعلّم الصفوف اللي من غير باركود بس.
+    setRows((prev) => prev.map((r) => (String(r.barcode ?? "").trim() ? r : { ...r, autoBarcode: true })));
   }
 
   const canSave = form.name.trim().length > 2 && rows.length > 0 && rows.every((r) => Number(r.sellPrice) > 0);

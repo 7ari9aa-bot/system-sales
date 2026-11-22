@@ -45,6 +45,17 @@ export function nextSkuBase(existingSkus = []) {
   return `SKU-${String(next).padStart(4, "0")}`;
 }
 
+/** The server's duplicate answers are English identifiers: say it in the shop's own words. */
+function readable(e) {
+  const m = String(e?.message ?? e ?? "");
+  if (/already registered|already exists|duplicate/i.test(m)) {
+    const code = /barcode:\s*(\d+)/i.exec(m)?.[1];
+    if (code) return `الباركود ${code} مستخدم بالفعل لصنف تاني. امسحه من الخانة أو اضغط «توليد الباركودات» ليتولّد رقم جديد`;
+    if (/sku/i.test(m)) return "كود الصنف (SKU) مستخدم بالفعل. غيّره وجرّب تاني";
+  }
+  return m;
+}
+
 /** Validate the editor payload locally so an obviously wrong form never reaches the server. */
 export function validateProduct(input) {
   const errors = [];
@@ -151,7 +162,7 @@ export const catalogApi = {
       try {
         return await fn();
       } catch (e) {
-        const err = new Error(`تعذّر ${name}${created.length ? ` (تم حفظ: ${created.join("، ")})` : ""}: ${e?.message ?? e}`);
+        const err = new Error(`تعذّر ${name}${created.length ? ` (تم حفظ: ${created.join("، ")})` : ""}: ${readable(e)}`);
         err.cause = e;
         err.partial = [...created];
         throw err;
@@ -170,6 +181,7 @@ export const catalogApi = {
     created.push("المنتج");
 
     const out = [];
+    const wantsAuto = [];
     for (const v of input.variants) {
       let variant;
       try {
@@ -193,8 +205,12 @@ export const catalogApi = {
           post("/inventory/movements", { variant_id: variant.id, warehouse_id: warehouseId, direction: "in", quantity: qty, reason: "adjustment" }),
         );
       }
+      if (v.autoBarcode && !String(v.barcode ?? "").trim()) wantsAuto.push(variant.id);
       out.push(variant);
     }
+
+    // The shop's own barcodes come from the backend counter (valid EAN-13, never repeated), not from a formula here.
+    if (wantsAuto.length) await step("توليد الباركودات", () => post(`/products/${seg(product.id)}/barcodes`, { variant_ids: wantsAuto }));
 
     // Category and brand are not accepted by the create call: they are set with the same PATCH that activates.
     const classify = {};
