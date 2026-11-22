@@ -45,3 +45,19 @@ jobs:
 
       - name: Run Unit & Integration Tests
         run: flutter test
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build Android Release APK
+        run: flutter build apk --release
+
+      - name: Upload Android Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fihrist-mobile-release-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: warn

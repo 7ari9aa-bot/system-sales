@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from 'react'
-import type { Platform, PrinterDevice } from '@/platform'
+import type { AppInfo, Platform, PrinterDevice, UpdateCheckResult } from '@/platform'
 
 export const SettingsView: FC<{
   readonly platform: Platform
@@ -11,7 +11,14 @@ export const SettingsView: FC<{
   const [serverUrl, setServerUrl] = useState(currentApiUrl ?? '')
   const [hardwareStatus, setHardwareStatus] = useState<string | null>(null)
 
+  // App & Updates State
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null)
+
   useEffect(() => {
+    void platform.shell.appInfo().then(setAppInfo).catch(() => {})
     void platform.printer.listPrinters().then((list) => {
       setPrinters(list)
       if (list.length > 0 && !selectedPrinter) {
@@ -42,6 +49,33 @@ export const SettingsView: FC<{
       setHardwareStatus('تم إرسال أمر طباعة الإيصال التجريبي بنجاح.')
     } catch (e: unknown) {
       setHardwareStatus(`تعذر إرسال أمر الطباعة: ${String(e)}`)
+    }
+  }
+
+  const handleCheckUpdate = async (): Promise<void> => {
+    setIsCheckingUpdate(true)
+    setUpdateMessage(null)
+    try {
+      const res = await platform.updater.check()
+      setUpdateResult(res)
+      if (res.available) {
+        setUpdateMessage(`يتوفر إصدار جديد: v${res.version ?? 'أحدث'}!`)
+      } else {
+        setUpdateMessage('أنت تستخدم أحدث إصدار معتمد من تطبيق فهرست.')
+      }
+    } catch {
+      setUpdateMessage('تعذر التحقق من التحديثات في وضع عدم الاتصال.')
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
+
+  const handleInstallUpdate = async (): Promise<void> => {
+    try {
+      setUpdateMessage('جارٍ تنزيل وتثبيت التحديث...')
+      await platform.updater.downloadAndInstall()
+    } catch {
+      setUpdateMessage('حدث خطأ أثناء تثبيت التحديث.')
     }
   }
 
@@ -112,6 +146,46 @@ export const SettingsView: FC<{
         >
           حفظ إعدادات الخادم
         </button>
+      </div>
+
+      {/* Application & Auto-Updater Section */}
+      <div style={{ border: '1px solid var(--fh-line)', borderRadius: 'var(--fh-radius)', padding: '1.25rem', background: 'var(--fh-surface)', display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+        <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--fh-accent)' }}>🔄 إصدار النظام والتحديث التلقائي (Auto-Updater)</h3>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.02)', padding: '0.75rem 1rem', borderRadius: 'var(--fh-radius)' }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>{appInfo?.productName ?? 'Fihrist Desktop'}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--fh-ink-muted)' }}>
+              الإصدار الحالي: v{appInfo?.version ?? '0.1.0'} ({appInfo?.os ?? 'windows'})
+            </div>
+          </div>
+          <button
+            type="button"
+            className="boot__button"
+            disabled={isCheckingUpdate}
+            onClick={() => void handleCheckUpdate()}
+          >
+            {isCheckingUpdate ? 'جارٍ الفحص...' : 'فحص التحديثات الآن'}
+          </button>
+        </div>
+
+        {updateMessage && (
+          <div style={{ padding: '0.75rem 1rem', background: updateResult?.available ? '#fef3c7' : '#f1f5f9', color: updateResult?.available ? '#92400e' : 'var(--fh-ink)', borderRadius: 'var(--fh-radius)', fontSize: '0.9rem' }}>
+            {updateMessage}
+            {updateResult?.available && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="boot__button"
+                  style={{ background: '#059669', fontSize: '0.85rem' }}
+                  onClick={() => void handleInstallUpdate()}
+                >
+                  تنزيل وتثبيت التحديث الآن
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
