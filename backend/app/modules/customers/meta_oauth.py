@@ -351,6 +351,52 @@ async def _business_portfolio_pages(http, user_token: str) -> list[dict]:
     return list(found.values())
 
 
+async def _granted_target_pages(http, user_token: str) -> list[dict]:
+    """Pages the owner ticked on the dialog, found through the token's own grant, WITH tokens.
+
+    /me/accounts omits a Page that lives in a Business Portfolio, and /me/businesses needs
+    business_management, which the app does not ask for. Meta still records the exact assets the
+    owner picked in the token's granular scopes (`/debug_token`, `target_ids`), and a Page's own
+    node returns its page access_token to a user who holds a task on it. So read the ids from the
+    grant and fetch each Page directly. Best effort: any failure returns [].
+    """
+    from app.core.config import get_settings
+
+    s = get_settings()
+    app_token = f"{s.meta_app_id.strip()}|{s.meta_app_secret.strip()}"
+    found: dict[str, dict] = {}
+    try:
+        debug = _graph_json(
+            await http.get(
+                f"{_GRAPH}/debug_token",
+                params={"input_token": user_token, "access_token": app_token},
+            ),
+            step="token debug",
+        )
+        data = debug.get("data", {}) if isinstance(debug, dict) else {}
+        ids: list[str] = []
+        for scope in data.get("granular_scopes") or []:
+            if scope.get("scope") in {
+                "pages_show_list",
+                "pages_messaging",
+                "pages_manage_metadata",
+            }:
+                ids.extend(str(i) for i in scope.get("target_ids") or [])
+        for page_id in dict.fromkeys(ids):
+            page = _graph_json(
+                await http.get(
+                    f"{_GRAPH}/{page_id}",
+                    params={"fields": _PAGE_FIELDS, "access_token": user_token},
+                ),
+                step="granted page",
+            )
+            if isinstance(page, dict) and page.get("id") and page.get("access_token"):
+                found[str(page["id"])] = page
+    except Exception as exc:  # noqa: BLE001 - diagnostic fallback must never break the connect
+        _logger.warning("meta_oauth.granted_pages_failed %s", str(exc)[:200])
+    return list(found.values())
+
+
 def _messaging_pages(all_pages: list[dict]) -> list[dict]:
     """The Pages this operator can run messaging on (all of them when Meta lists no tasks)."""
     pages = [
@@ -557,8 +603,11 @@ async def _meta_exchange_and_connect(
         all_pages = accounts.get("data", [])
         if not all_pages:
             # A Page owned by a Business Portfolio is NOT listed by /me/accounts even when the
-            # operator manages it and granted every scope. Look it up through the portfolios.
+            # operator manages it and granted every scope. Look it up through the portfolios, then
+            # through the Pages named in the token's own grant.
             all_pages = await _business_portfolio_pages(http, user_token)
+        if not all_pages:
+            all_pages = await _granted_target_pages(http, user_token)
         if not all_pages:
             await _flag("link.no_pages", provider, tenant_id, {"granted": sorted(granted)})
             raise ValidationError(

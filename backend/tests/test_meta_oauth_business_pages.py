@@ -55,3 +55,36 @@ async def test_a_graph_failure_returns_no_pages_instead_of_breaking_the_connect(
     monkeypatch.setattr(meta_oauth, "_graph_json", lambda response, step: response.json())
     http = _Http({"/me/businesses": RuntimeError("boom")})
     assert await meta_oauth._business_portfolio_pages(http, "user-token") == []
+
+
+@pytest.mark.asyncio
+async def test_pages_named_in_the_token_grant_are_fetched_directly(monkeypatch):
+    monkeypatch.setattr(meta_oauth, "_graph_json", lambda response, step: response.json())
+    page = {
+        "id": "1504830666036731",
+        "name": "Fidsas",
+        "access_token": "page-token",
+        "instagram_business_account": {"id": "17841400000000000"},
+    }
+    http = _Http(
+        {
+            "/debug_token": {
+                "data": {
+                    "granular_scopes": [
+                        {"scope": "pages_messaging", "target_ids": ["1504830666036731"]},
+                        {"scope": "instagram_basic", "target_ids": ["17841400000000000"]},
+                    ]
+                }
+            },
+            "/1504830666036731": page,
+        }
+    )
+    assert await meta_oauth._granted_target_pages(http, "user-token") == [page]
+    assert not any(u.endswith("/17841400000000000") for u in http.urls)
+
+
+@pytest.mark.asyncio
+async def test_a_debug_token_failure_returns_no_pages(monkeypatch):
+    monkeypatch.setattr(meta_oauth, "_graph_json", lambda response, step: response.json())
+    http = _Http({"/debug_token": RuntimeError("boom")})
+    assert await meta_oauth._granted_target_pages(http, "user-token") == []
