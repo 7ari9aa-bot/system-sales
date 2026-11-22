@@ -91,7 +91,9 @@ def _ctx():
 
 
 def _body():
-    return signup.WhatsAppSignupCompleteBody(code=SECRET_CODE, waba_id="1001", phone_number_id="2002")
+    return signup.WhatsAppSignupCompleteBody(
+        code=SECRET_CODE, waba_id="1001", phone_number_id="2002"
+    )
 
 
 async def test_connecting_by_popup_writes_the_audit_row(harness):
