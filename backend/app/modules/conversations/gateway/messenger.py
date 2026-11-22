@@ -194,6 +194,42 @@ class MessengerAdapter(ChannelAdapter):
             )
         ]
 
+    async def get_user_profile(
+        self,
+        credentials: ProviderCredentials,
+        psid: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any] | None:
+        """The customer's name and photo by their page-scoped id, or None when Meta refuses.
+
+        A Messenger webhook names the sender only by a PSID, so without this read every thread
+        in the inbox is a number. A refusal is normal and is not an error: someone who has not
+        messaged the page has not consented, and the caller simply keeps the number.
+        """
+        token = credentials.get("api_key") or credentials.get("page_access_token")
+        if not token:
+            return None
+        url = f"{self._base}/{psid}"
+        params = {"fields": "name,profile_pic", "access_token": token}
+        try:
+            if _client is not None:
+                resp = await _client.get(url, params=params)
+            else:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(url, params=params)
+        except httpx.HTTPError:
+            return None
+        if resp.status_code != 200:
+            return None
+        data = resp.json() if resp.content else {}
+        if not isinstance(data, dict) or data.get("error"):
+            return None
+        name = (data.get("name") or "").strip() or None
+        pic = data.get("profile_pic") or None
+        if not name and not pic:
+            return None
+        return {"name": name, "profile_pic": pic}
+
     def build_sender_action(self, customer_ref: str, action: str) -> dict[str, Any]:
         """A sender action carries no message: it only tells the thread what the agent is doing."""
         return {"recipient": {"id": customer_ref}, "sender_action": action}
