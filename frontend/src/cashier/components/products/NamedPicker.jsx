@@ -41,8 +41,8 @@ export default function NamedPicker({ items, value, onChange, onCreate, loading,
   if (adding) {
     return (
       <div className="flex flex-col gap-1.5">
-        <div className="flex gap-2">
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} className={INPUT}
+        <div className="flex flex-wrap gap-2">
+          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} className={`${INPUT} min-w-0 flex-1 basis-32`}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} />
           <Button type="button" onClick={submit} disabled={busy || !name.trim()}>{busy ? "…" : "حفظ"}</Button>
           <Button type="button" variant="outline" onClick={() => { setAdding(false); setError(""); }}>إلغاء</Button>
@@ -53,9 +53,9 @@ export default function NamedPicker({ items, value, onChange, onCreate, loading,
   }
 
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <Select value={value || NONE} onValueChange={(v) => onChange(v === NONE ? "" : v)} disabled={loading}>
-        <SelectTrigger className={SELECT_TRIGGER}>
+        <SelectTrigger className={`${SELECT_TRIGGER} min-w-0 flex-1 basis-32`}>
           <SelectValue placeholder={loading ? "جارٍ التحميل…" : noneLabel} />
         </SelectTrigger>
         <SelectContent>
