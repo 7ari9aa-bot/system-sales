@@ -277,4 +277,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get discard => 'Discard';
+
+  @override
+  String get reportsTitle => 'Reports & Analytics';
+
+  @override
+  String get branchTitle => 'Branches & Locations';
+
+  @override
+  String get switchBranch => 'Switch Branch';
+
+  @override
+  String get activeBranch => 'Active Branch';
+
+  @override
+  String get deadStockReport => 'Dead Stock';
+
+  @override
+  String get stockValuation => 'Stock Valuation';
+
+  @override
+  String get cashReconciliation => 'Cash Reconciliation';
+
+  @override
+  String get aiInsights => 'AI Analytics Insights';
+
+  @override
+  String get exportSummary => 'Share Report';
 }

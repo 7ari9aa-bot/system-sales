@@ -6,6 +6,7 @@ import '../../../core/printer/thermal_printer_manager.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/auth_view_model.dart';
 import '../../../providers/locale_view_model.dart';
+import 'widgets/branch_switcher_dialog.dart';
 import 'widgets/printer_settings_dialog.dart';
 import 'widgets/sync_log_dialog.dart';
 
@@ -113,6 +114,46 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Branch Section
+          Text(
+            l10n.branchTitle,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.store, color: AppColors.secondary),
+              title: Text(authVm.activeBranch.name),
+              subtitle: Text(
+                '${authVm.activeBranch.code} • ${authVm.activeBranch.location}',
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const BranchSwitcherDialog(),
+                  );
+                },
+                child: Text(l10n.switchBranch),
               ),
             ),
           ),

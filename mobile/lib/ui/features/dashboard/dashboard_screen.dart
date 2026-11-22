@@ -8,6 +8,7 @@ import '../../../providers/auth_view_model.dart';
 import '../../../providers/dashboard_view_model.dart';
 import '../../../providers/locale_view_model.dart';
 import '../purchasing/purchasing_screen.dart';
+import '../reports/reports_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -234,6 +235,29 @@ class DashboardScreen extends StatelessWidget {
                                     fontSize: 13,
                                   ),
                                 ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.store, color: Colors.white, size: 12),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        authVm.activeBranch.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -321,6 +345,41 @@ class DashboardScreen extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const PurchasingScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Quick Operations: Reports & Analytics
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isDark ? Colors.white12 : Colors.grey.shade200,
+                        ),
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                          child: const Icon(Icons.analytics_outlined, color: AppColors.primary),
+                        ),
+                        title: const Text(
+                          'التقارير والتحليلات المالية',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: const Text(
+                          'تقارير المبيعات، المخزون الراكد، مطابقة الصندوق، وتوصيات الذكاء',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ReportsScreen(),
                             ),
                           );
                         },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/auth/auth_token_store.dart';
 import '../core/auth/biometric_service.dart';
+import '../data/models/branch.dart';
 import '../data/models/user.dart';
 import '../data/repositories/auth_repository.dart';
 
@@ -11,7 +12,9 @@ class AuthViewModel extends ChangeNotifier {
     AuthTokenStore? tokenStore,
   })  : _authRepository = authRepository ?? AuthRepository(),
         _biometricService = biometricService ?? BiometricService(),
-        _tokenStore = tokenStore ?? AuthTokenStore();
+        _tokenStore = tokenStore ?? AuthTokenStore() {
+    _activeBranch = _availableBranches.first;
+  }
 
   final AuthRepository _authRepository;
   final BiometricService _biometricService;
@@ -24,6 +27,32 @@ class AuthViewModel extends ChangeNotifier {
   bool _isBiometricAvailable = false;
   bool _isBiometricEnabled = false;
 
+  final List<Branch> _availableBranches = const [
+    Branch(
+      id: 'br_main',
+      name: 'الفرع الرئيسي - الرياض',
+      code: 'RUH-01',
+      location: 'طريق العليا، الرياض',
+      isMain: true,
+    ),
+    Branch(
+      id: 'br_jeddah',
+      name: 'فرع جدة - الشاطئ',
+      code: 'JED-01',
+      location: 'طريق الملك عبدالعزيز، جدة',
+      isMain: false,
+    ),
+    Branch(
+      id: 'br_khobar',
+      name: 'فرع الخبر - الظهران',
+      code: 'KHB-01',
+      location: 'طريق الملك فيصل، الخبر',
+      isMain: false,
+    ),
+  ];
+
+  late Branch _activeBranch;
+
   AuthUser? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -31,6 +60,13 @@ class AuthViewModel extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
   bool get isBiometricAvailable => _isBiometricAvailable;
   bool get isBiometricEnabled => _isBiometricEnabled;
+  List<Branch> get availableBranches => _availableBranches;
+  Branch get activeBranch => _activeBranch;
+
+  void switchBranch(Branch branch) {
+    _activeBranch = branch;
+    notifyListeners();
+  }
 
   Future<void> checkAuthStatus() async {
     _isLoading = true;

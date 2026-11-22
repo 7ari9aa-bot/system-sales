@@ -277,4 +277,31 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get discard => 'حذف';
+
+  @override
+  String get reportsTitle => 'التقارير والتحليلات';
+
+  @override
+  String get branchTitle => 'الفروع ومواقع العمل';
+
+  @override
+  String get switchBranch => 'تبديل الفرع';
+
+  @override
+  String get activeBranch => 'الفرع النشط';
+
+  @override
+  String get deadStockReport => 'المخزون الراكد';
+
+  @override
+  String get stockValuation => 'قيمة المخزون';
+
+  @override
+  String get cashReconciliation => 'مطابقة النقدية';
+
+  @override
+  String get aiInsights => 'توصيات وكيل التحليلات';
+
+  @override
+  String get exportSummary => 'مشاركة التقرير';
 }

@@ -634,6 +634,60 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'حذف'**
   String get discard;
+
+  /// No description provided for @reportsTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'التقارير والتحليلات'**
+  String get reportsTitle;
+
+  /// No description provided for @branchTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'الفروع ومواقع العمل'**
+  String get branchTitle;
+
+  /// No description provided for @switchBranch.
+  ///
+  /// In ar, this message translates to:
+  /// **'تبديل الفرع'**
+  String get switchBranch;
+
+  /// No description provided for @activeBranch.
+  ///
+  /// In ar, this message translates to:
+  /// **'الفرع النشط'**
+  String get activeBranch;
+
+  /// No description provided for @deadStockReport.
+  ///
+  /// In ar, this message translates to:
+  /// **'المخزون الراكد'**
+  String get deadStockReport;
+
+  /// No description provided for @stockValuation.
+  ///
+  /// In ar, this message translates to:
+  /// **'قيمة المخزون'**
+  String get stockValuation;
+
+  /// No description provided for @cashReconciliation.
+  ///
+  /// In ar, this message translates to:
+  /// **'مطابقة النقدية'**
+  String get cashReconciliation;
+
+  /// No description provided for @aiInsights.
+  ///
+  /// In ar, this message translates to:
+  /// **'توصيات وكيل التحليلات'**
+  String get aiInsights;
+
+  /// No description provided for @exportSummary.
+  ///
+  /// In ar, this message translates to:
+  /// **'مشاركة التقرير'**
+  String get exportSummary;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

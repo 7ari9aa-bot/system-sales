@@ -101,5 +101,14 @@
   "syncLog": "سجل المزامنة والعمليات",
   "syncConflicts": "التعارضات",
   "resolveConflict": "معالجة التعارض",
-  "discard": "حذف"
+  "discard": "حذف",
+  "reportsTitle": "التقارير والتحليلات",
+  "branchTitle": "الفروع ومواقع العمل",
+  "switchBranch": "تبديل الفرع",
+  "activeBranch": "الفرع النشط",
+  "deadStockReport": "المخزون الراكد",
+  "stockValuation": "قيمة المخزون",
+  "cashReconciliation": "مطابقة النقدية",
+  "aiInsights": "توصيات وكيل التحليلات",
+  "exportSummary": "مشاركة التقرير"
 }

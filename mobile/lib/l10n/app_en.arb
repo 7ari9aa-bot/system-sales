@@ -101,5 +101,14 @@
   "syncLog": "Sync & Offline Operations",
   "syncConflicts": "Conflicts",
   "resolveConflict": "Resolve Conflict",
-  "discard": "Discard"
+  "discard": "Discard",
+  "reportsTitle": "Reports & Analytics",
+  "branchTitle": "Branches & Locations",
+  "switchBranch": "Switch Branch",
+  "activeBranch": "Active Branch",
+  "deadStockReport": "Dead Stock",
+  "stockValuation": "Stock Valuation",
+  "cashReconciliation": "Cash Reconciliation",
+  "aiInsights": "AI Analytics Insights",
+  "exportSummary": "Share Report"
 }
