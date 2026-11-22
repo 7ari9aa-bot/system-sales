@@ -265,3 +265,78 @@ async def test_a_channel_missing_its_ids_is_not_needed_not_an_error(graph) -> No
 async def test_telegram_has_nothing_to_remove_on_meta(graph) -> None:
     assert await routes._remove_meta_subscription(_Ctx([]), _row("telegram", config={})) is None
     assert graph == []
+
+
+# ------------------------------------------------------------------ the diagnostics endpoint
+
+
+@pytest.fixture
+def counts_zero(monkeypatch):
+    """The shared fake session answers every query with the same rows; a COUNT must be a number."""
+    from tests import test_customers_http_surface as harness
+
+    original = harness._RecordingSession.execute
+
+    async def execute(self, stmt, *args, **kwargs):
+        if "count(" in str(stmt).lower():
+            return harness._Result([0])
+        return await original(self, stmt, *args, **kwargs)
+
+    monkeypatch.setattr(harness._RecordingSession, "execute", execute)
+
+
+async def test_the_diagnostics_endpoint_reports_without_leaking_the_token(
+    graph, counts_zero
+) -> None:
+    row = _row("messenger", config={"account_id": "111"})
+    row.webhook_health = {"last_webhook_at": "2026-11-22T10:00:00+00:00"}
+    response, _ = await _call(
+        "GET",
+        f"/api/v1/integrations/{row.id}/diagnostics",
+        rows=[
+            row,
+        ],
+        permissions={"settings:read"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["provider"] == "messenger"
+    assert body["webhook_object"] == "page"
+    assert {c["key"] for c in body["checks"]} >= {"connection", "server_webhook"}
+    assert "PAGE-TOKEN" not in response.text
+    # the live probes went to Graph with a Bearer header, never the URL
+    assert graph, "the subscription and permission probes were not made"
+    assert all("access_token" not in r.url.params for r in graph)
+    assert all(r.headers["authorization"] == "Bearer PAGE-TOKEN" for r in graph)
+
+
+async def test_diagnostics_need_settings_read() -> None:
+    row = _row("messenger")
+    response, _ = await _call(
+        "GET", f"/api/v1/integrations/{row.id}/diagnostics", rows=[row], permissions=set()
+    )
+    assert response.status_code == 403, response.text
+
+
+async def test_diagnostics_exist_for_meta_channels_only() -> None:
+    row = _row("telegram", config={})
+    response, _ = await _call(
+        "GET",
+        f"/api/v1/integrations/{row.id}/diagnostics",
+        rows=[row],
+        permissions={"settings:read"},
+    )
+    assert response.status_code == 400, response.text
+
+
+async def test_a_disconnected_channel_is_not_probed(graph, counts_zero) -> None:
+    row = _row("messenger", status="disconnected")
+    response, _ = await _call(
+        "GET",
+        f"/api/v1/integrations/{row.id}/diagnostics",
+        rows=[row],
+        permissions={"settings:read"},
+    )
+    assert response.status_code == 200, response.text
+    assert graph == []  # nothing is asked of Meta for a channel that is not connected
+    assert response.json()["state"] == "error"

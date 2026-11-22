@@ -8,7 +8,7 @@ from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
@@ -680,6 +680,87 @@ async def disconnect_integration(
         },
     )
     return _integration_output(integration)
+
+
+@platform_router.get(
+    "/integrations/{integration_id}/diagnostics",
+    response_model=schemas.ChannelDiagnosticsOut,
+)
+async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
+    """Why a Meta channel is, or is not, receiving: one named check per thing that can go wrong.
+
+    Reads our own records, then asks Meta live (subscription and permissions) with the channel's
+    own token. A Meta outage is reported as an unknown check, never as a failed request, and no
+    token or secret is ever returned.
+    """
+    import httpx
+
+    from app.core.config import get_settings
+    from app.modules.customers import meta_channel_diagnostics as diag
+    from app.modules.platform.models import WebhookEvent
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in diag.WEBHOOK_OBJECT:
+        raise ValidationError("Diagnostics exist for the Meta channels only.")
+
+    settings = get_settings()
+    config = integration.config if isinstance(integration.config, dict) else {}
+    connection = config.get("_connection") if isinstance(config.get("_connection"), dict) else {}
+    connected = integration.status in ("active", "connected", "restricted")
+
+    subscription = permissions = None
+    if connected:
+        credentials = await IntegrationCredentialsService.decrypt(ctx.session, integration)
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            if integration.provider == "whatsapp":
+                token = str(credentials.get("access_token") or "")
+                asset = str(config.get("waba_id") or "")
+            else:
+                token = str(
+                    credentials.get("api_key") or credentials.get("page_access_token") or ""
+                )
+                asset = _page_id_of(integration, credentials)
+            if token and asset:
+                subscription = await diag.probe_subscription(
+                    http, asset_id=asset, token=token, app_id=settings.meta_app_id or None
+                )
+            if token and integration.provider != "whatsapp":
+                permissions = await diag.probe_permissions(http, token=token)
+
+    failed = (
+        await ctx.session.execute(
+            select(func.count())
+            .select_from(WebhookEvent)
+            .where(
+                WebhookEvent.tenant_id == ctx.tenant_id,
+                WebhookEvent.provider == integration.provider,
+                WebhookEvent.processing_status.in_(("failed", "dead")),
+            )
+        )
+    ).scalar_one()
+
+    return diag.build_report(
+        provider=integration.provider,
+        status=_LEGACY_STATUS_ALIASES.get(integration.status, integration.status),
+        config=config,
+        webhook_health=integration.webhook_health,
+        recorded_scopes=connection.get("granted_scopes"),
+        subscription=subscription,
+        permissions=permissions,
+        server_webhook_ready=_webhook_status(integration) != "server_setup_required",
+        api_base_url=_telegram_webhook_base_url(),
+        failed_events=int(failed or 0),
+    )
 
 
 @platform_router.post(

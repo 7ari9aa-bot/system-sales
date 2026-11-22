@@ -386,6 +386,25 @@ class IntegrationOut(BaseModel):
     meta_cleanup: dict | None = None
 
 
+class ChannelDiagnosticCheck(BaseModel):
+    key: str
+    status: str  # ok | warning | error | unknown
+    summary: str
+    action: str | None = None
+    detail: dict | None = None
+
+
+class ChannelDiagnosticsOut(BaseModel):
+    """GET /integrations/{id}/diagnostics: one channel's health, as an ordered list of checks."""
+
+    provider: str
+    state: str  # the worst check: ok | warning | error | unknown
+    webhook_object: str | None = None
+    callback_url: str | None = None
+    last_webhook_at: str | None = None
+    checks: list[ChannelDiagnosticCheck]
+
+
 class IntegrationUpserted(BaseModel):
     id: UUID
     status: str
