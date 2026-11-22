@@ -161,7 +161,14 @@ class StockViewService:
                 (VariantCost.c.variant_id == ProductVariant.id)
                 & (VariantCost.c.tenant_id == tenant_id),
             )
-            .where(ProductVariant.tenant_id == tenant_id, ProductVariant.is_active.is_(True))
+            .where(
+                ProductVariant.tenant_id == tenant_id,
+                ProductVariant.is_active.is_(True),
+                # Archiving sets the product's status, not its variants'. The grid and its totals
+                # therefore kept counting an archived product forever, so the piece that was
+                # archived away stayed on the shelf on screen. A missing status reads as draft.
+                func.coalesce(Product.status, "draft") != "archived",
+            )
             .order_by(Product.title, ProductVariant.sku, ProductVariant.id)
         )
         if category_id is not None:
