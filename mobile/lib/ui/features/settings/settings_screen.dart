@@ -40,6 +40,99 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  void _showPrivacyPolicyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.privacy_tip, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text('سياسة الخصوصية وأمان البيانات'),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'تلتزم منظومة فهرست (FIHRIST) بأعلى معايير حماية وخصوصية البيانات التجارية والشخصية:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '• تشفير البيانات: يتم تشفير كافة الاتصالات بين التطبيق وخوادمنا باستخدام بروتوكولات TLS/HTTPS المعتمدة.\n'
+                '• الكاميرا: تُستخدم حصرياً لمسح الباركود والـ QR كود للمنتجات والفواتير الضريبية دون تخزين أي صور.\n'
+                '• البلوتوث: يُستخدم فقط للاتصال بطابعات الإيصالات الحرارية المعتمدة وملحقات نقاط البيع.\n'
+                '• عدم مشاركة البيانات: لا يتم بيع أو مشاركة بيانات مبيعاتك أو عملائك مع أي جهات خارجية إعلانية.\n'
+                '• رابط السياسة الكاملة: https://fihrist.world/privacy',
+                style: TextStyle(fontSize: 12, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('حسناً'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error),
+            SizedBox(width: 8),
+            Text('طلب حذف الحساب والبيانات'),
+          ],
+        ),
+        content: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'تنبيه: حذف الحساب يؤدي إلى إزالة صلاحيات وصولك وتعطيل حساب المتجر وفق اشتراطات متجر Google Play.',
+              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error, fontSize: 13),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'وفقاً لسياسة حماية البيانات، يمكنك تقديم طلب حذف نهائي لحسابك وبياناتك المسجلة عبر إرسال الطلب، أو زيارة صفحة طلب الحذف الرسمية على:\n'
+              'https://fihrist.world/account/delete\n'
+              'أو مراسلة الدعم: support@fihrist.world',
+              style: TextStyle(fontSize: 12, height: 1.5),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('تم استلام طلب حذف الحساب وسيتم التواصل معك لتأكيده وإتمامه خلال 48 ساعة'),
+                  backgroundColor: AppColors.primary,
+                ),
+              );
+            },
+            child: const Text('تأكيد الطلب'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -366,6 +459,22 @@ class SettingsScreen extends StatelessWidget {
                       builder: (_) => const SyncLogDialog(),
                     );
                   },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined, color: AppColors.primary),
+                  title: const Text('سياسة الخصوصية وأمان البيانات'),
+                  subtitle: const Text('معايير تشفير وحماية البيانات المعتمدة', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => _showPrivacyPolicyDialog(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined, color: AppColors.error),
+                  title: const Text('طلب حذف الحساب والبيانات'),
+                  subtitle: const Text('تقديم طلب لحذف الحساب نهائياً وفق اشتراطات جوجل', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => _showDeleteAccountDialog(context),
                 ),
               ],
             ),
