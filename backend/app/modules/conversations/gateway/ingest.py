@@ -289,7 +289,11 @@ class IngestService:
         await bind_tenant(session, tenant_id)
         accepted = 0
         async with session.begin_nested():
-            for message in adapter.parse_inbound(payload):
+            messages = adapter.parse_inbound(payload)
+            await IngestService.fill_customer_names(
+                session, tenant_id=tenant_id, adapter=adapter, channel=channel, messages=messages
+            )
+            for message in messages:
                 conversation_id = await IngestService.ingest(
                     session,
                     tenant_id=tenant_id,
@@ -469,6 +473,81 @@ class IngestService:
                 )
                 .values(**values)
             )
+
+    #: How long a looked-up name (or the fact that Meta would not give one) is remembered, so a
+    #: chatty customer costs one Graph call, not one per message.
+    _PROFILE_TTL_SECONDS = 24 * 60 * 60
+    _NO_PROFILE_TTL_SECONDS = 60 * 60
+
+    @classmethod
+    async def fill_customer_names(
+        cls,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        adapter,
+        channel: str,
+        messages: list,
+    ) -> None:
+        """Give a nameless sender their name from the provider, once. Best effort, never raises.
+
+        Only for adapters that can look a person up (``fetch_profile``) and only for a sender the
+        webhook did not already name. The lookup is cached, including a refusal for a shorter
+        time, so neither a busy customer nor a Page Meta will not answer for turns every message
+        into a Graph call. A failure of any kind leaves the message to be ingested as before.
+        """
+        fetch = getattr(adapter, "fetch_profile", None)
+        if not callable(fetch):
+            return
+        wanted = list(
+            dict.fromkeys(
+                m.customer_ref
+                for m in messages
+                if m.customer_ref and not getattr(m, "customer_name", None)
+            )
+        )
+        if not wanted:
+            return
+        try:
+            from app.core.redis import get_redis_or_none
+            from app.modules.platform.services.channel_access import channel_credentials_config
+
+            redis = get_redis_or_none()
+            credentials = None
+            for ref in wanted:
+                key = f"profile:{channel}:{tenant_id}:{ref}"
+                cached = None
+                if redis is not None:
+                    try:
+                        cached = await redis.get(key)
+                    except Exception:  # noqa: BLE001 - the cache is a courtesy
+                        cached = None
+                if cached is not None:
+                    name = cached.decode() if isinstance(cached, bytes) else str(cached)
+                else:
+                    if credentials is None:
+                        credentials = (
+                            await channel_credentials_config(session, tenant_id, channel) or {}
+                        )
+                    profile = await fetch(credentials, ref) if credentials else None
+                    name = (profile or {}).get("name", "")
+                    if redis is not None:
+                        try:
+                            await redis.set(
+                                key,
+                                name,
+                                ex=cls._PROFILE_TTL_SECONDS
+                                if name
+                                else cls._NO_PROFILE_TTL_SECONDS,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                if name:
+                    for message in messages:
+                        if message.customer_ref == ref and not message.customer_name:
+                            message.customer_name = name
+        except Exception:  # noqa: BLE001 - a name is never worth losing a received message
+            logger.warning("ingest.customer_name_lookup_failed channel=%s", channel, exc_info=True)
 
     @staticmethod
     def _came_from_ad(message) -> bool:

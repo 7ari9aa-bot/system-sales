@@ -399,6 +399,50 @@ class MessengerAdapter(ChannelAdapter):
                 )
         return out
 
+    async def fetch_profile(
+        self, credentials: dict, psid: str, *, _client: httpx.AsyncClient | None = None
+    ) -> dict[str, str] | None:
+        """The customer's name (and picture) from Meta, or None when Meta will not say.
+
+        Messenger webhooks carry only the page-scoped id, so a customer shows in the inbox as a
+        number. Meta answers ``GET /{psid}?fields=name,profile_pic`` with the Page token, but only
+        for a person who has messaged the Page, and may refuse (a user who blocked profile access,
+        a token without the right permission, rate limits). Every failure here is "no name": it
+        must never fail a message that was already received.
+        """
+        token = (credentials or {}).get("api_key") or (credentials or {}).get("page_access_token")
+        if not token or not psid:
+            return None
+        try:
+            if _client is not None:
+                response = await _client.get(
+                    f"{self._base}/{psid}",
+                    params={"fields": "name,profile_pic"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            else:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(
+                        f"{self._base}/{psid}",
+                        params={"fields": "name,profile_pic"},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+            if not response.is_success:
+                return None
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        name = str(data.get("name") or "").strip()
+        if not name:
+            return None
+        out = {"name": name[:255]}
+        picture = str(data.get("profile_pic") or "").strip()
+        if picture:
+            out["profile_pic"] = picture
+        return out
+
     async def send(
         self,
         credentials: ProviderCredentials,
