@@ -179,8 +179,17 @@ async def test_a_provider_failure_is_reported_never_raised(wire, monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_messenger_uses_the_same_sender_actions(wire) -> None:
+    """Messenger is the same Graph mechanism, so it sends mark_seen then typing_on."""
+    adapter, _ = wire
+    result = await _send(_conversation("messenger"), typing=True)
+    assert result.sent is True
+    assert adapter.calls == ["customer-1:mark_seen", "customer-1:typing_on"]
+
+
+@pytest.mark.asyncio
 async def test_other_channels_are_still_refused(wire) -> None:
     adapter, _ = wire
-    result = await _send(_conversation("messenger"), typing=False)
+    result = await _send(_conversation("telegram"), typing=False)
     assert (result.sent, result.skipped) == (False, "channel")
     assert adapter.calls == []

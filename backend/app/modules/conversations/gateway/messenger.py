@@ -194,6 +194,43 @@ class MessengerAdapter(ChannelAdapter):
             )
         ]
 
+    def build_sender_action(self, customer_ref: str, action: str) -> dict[str, Any]:
+        """A sender action carries no message: it only tells the thread what the agent is doing."""
+        return {"recipient": {"id": customer_ref}, "sender_action": action}
+
+    async def send_sender_action(
+        self,
+        credentials: ProviderCredentials,
+        customer_ref: str,
+        action: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        """mark_seen when the agent opens the chat, typing_on while they write.
+
+        The same Graph endpoint as a send, addressed to the customer's PSID. A courtesy signal:
+        the caller swallows a failure, and it never opens the 24h window.
+        """
+        token = credentials.get("api_key") or credentials.get("page_access_token")
+        if not token:
+            raise ExternalProviderError("messenger integration missing api_key")
+        url = f"{self._base}/me/messages"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        body = self.build_sender_action(customer_ref, action)
+
+        async def _post() -> None:
+            if _client is not None:
+                resp = await _client.post(url, headers=headers, json=body)
+            else:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+            data = parse_provider_body(resp, "messenger sender action")
+            if resp.status_code not in (200, 201):
+                raise ExternalProviderError(
+                    f"messenger {action} failed: HTTP {resp.status_code} — {str(data)[:200]}"
+                )
+
+        await get_breaker(PROVIDER_MESSENGER).call(_post)
+
     async def send(
         self,
         credentials: ProviderCredentials,

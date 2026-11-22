@@ -21,9 +21,9 @@ export function shouldSignalTyping({ text, lastSentAt, now = Date.now(), lastCus
 /** The request body for the server route. */
 export const readSignalBody = (typing) => ({ typing: Boolean(typing) });
 
-const SIGNAL_CHANNELS = ["whatsapp", "instagram"];
+const SIGNAL_CHANNELS = ["whatsapp", "instagram", "messenger"];
 
-/** Only WhatsApp and Instagram have these signals, and only for a chat that is really open. */
+/** WhatsApp, Instagram and Messenger all have these signals, and only for a chat that is open. */
 export const supportsReadSignal = (conversation) =>
   Boolean(conversation?.id) &&
   (SIGNAL_CHANNELS.includes(conversation.channel) || SIGNAL_CHANNELS.includes(conversation.channelId));

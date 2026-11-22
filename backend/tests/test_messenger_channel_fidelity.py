@@ -16,6 +16,7 @@ import json
 import uuid
 
 import httpx
+import pytest
 
 from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
 from app.modules.conversations.gateway.messenger import messenger_adapter
@@ -127,3 +128,26 @@ async def test_the_tag_rides_a_captioned_file_too():
     )
     assert len(sent) == 2
     assert all(p["tag"] == "HUMAN_AGENT" for p in sent)
+
+
+# ---------------------------------------------------------------- sender actions (seen / typing)
+
+
+async def test_mark_seen_is_a_sender_action_with_no_message_body():
+    sent: list = []
+    await messenger_adapter.send_sender_action(CREDS, "PSID-1", "mark_seen", _client=_client(sent))
+    assert sent == [{"recipient": {"id": "PSID-1"}, "sender_action": "mark_seen"}]
+    assert "message" not in sent[0]
+
+
+async def test_typing_on_is_a_sender_action_too():
+    sent: list = []
+    await messenger_adapter.send_sender_action(CREDS, "PSID-1", "typing_on", _client=_client(sent))
+    assert sent[0]["sender_action"] == "typing_on"
+
+
+async def test_a_refused_sender_action_raises_so_the_caller_can_stay_silent():
+    sent: list = []
+    client = _client(sent, status=400)
+    with pytest.raises(Exception):
+        await messenger_adapter.send_sender_action(CREDS, "PSID-1", "mark_seen", _client=client)

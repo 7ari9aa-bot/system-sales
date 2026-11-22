@@ -140,12 +140,12 @@ export default function ChannelChat({
   const isWhatsApp = channel.id === "whatsapp";
   const isInstagram = channel.id === "instagram";
 
-  // "typing…" on the customer's phone while an agent writes a WhatsApp or Instagram reply. One
+  // "typing…" on the customer's phone while an agent writes a WhatsApp, Instagram or Messenger reply. One
   // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
   // while there is text: it is a courtesy, so a failure is silent.
   const typingSentAtRef = useRef(null);
   useEffect(() => {
-    if (!(isWhatsApp || isInstagram) || !supportsReadSignal(conversation)) return;
+    if (!(isWhatsApp || isInstagram || isMessenger) || !supportsReadSignal(conversation)) return;
     if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
     typingSentAtRef.current = Date.now();
     api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});

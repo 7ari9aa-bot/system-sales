@@ -92,15 +92,16 @@ class ReadSignalService:
         It is a loader and not a value so the credentials are read, and the read audited, only
         AFTER every check above that can stop the signal. A chat opened outside the 24h window
         must not leave a "credentials read" row behind."""
-        if conversation.channel not in ("whatsapp", "instagram"):
+        if conversation.channel not in ("whatsapp", "instagram", "messenger"):
             return ReadSignalResult(False, "channel")
         if not MessagingPolicyService.evaluate(conversation).allowed:
             return ReadSignalResult(False, "window_closed")
-        if conversation.channel == "instagram":
-            return await ReadSignalService._send_instagram(
+        if conversation.channel in ("instagram", "messenger"):
+            return await ReadSignalService._send_sender_action(
                 session,
                 tenant_id,
                 conversation,
+                channel=conversation.channel,
                 typing=typing,
                 load_channel_config=load_channel_config,
             )
@@ -127,24 +128,25 @@ class ReadSignalService:
         return ReadSignalResult(True)
 
     @staticmethod
-    async def _send_instagram(
+    async def _send_sender_action(
         session: AsyncSession,
         tenant_id: uuid.UUID,
         conversation,
         *,
+        channel: str,
         typing: bool,
         load_channel_config: Callable[[], Awaitable[dict | None]] | None,
     ) -> ReadSignalResult:
-        """Instagram: ``mark_seen`` when a chat is opened, ``typing_on`` while the agent writes.
-
-        Needs the customer's page-scoped id (what the thread is addressed by), not a message
-        id, but still only fires when the customer has written something we received.
+        """Instagram and Messenger: ``mark_seen`` when a chat is opened, ``typing_on`` while the
+        agent writes. Both are the same Graph ``sender_action``, addressed to the customer's
+        page-scoped id (what the thread is addressed by) rather than a message id, and still fire
+        only when the customer has written something we received.
         """
         if not await ReadSignalService.latest_inbound_provider_id(
             session, tenant_id, conversation.id
         ):
             return ReadSignalResult(False, "no_message")
-        adapter = get_adapter("instagram")
+        adapter = get_adapter(channel)
         if adapter is None or not hasattr(adapter, "send_sender_action"):
             return ReadSignalResult(False, "unsupported")
         channel_config = await load_channel_config() if load_channel_config else None
@@ -160,7 +162,7 @@ class ReadSignalService:
                 await adapter.send_sender_action(credentials, customer_ref, "typing_on")
         except Exception as exc:  # noqa: BLE001 - a courtesy signal never blocks the agent
             logger.warning(
-                "instagram.read_signal_failed conversation=%s err=%s", conversation.id, exc
+                "%s.read_signal_failed conversation=%s err=%s", channel, conversation.id, exc
             )
             return ReadSignalResult(False, "provider_error")
         return ReadSignalResult(True)
