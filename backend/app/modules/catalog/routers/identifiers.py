@@ -39,6 +39,18 @@ async def list_variant_identifiers(variant_id: UUID, ctx: TenantCtxDep):
     return [_identifier_out(r) for r in rows]
 
 
+@router.delete("/variants/{variant_id}/identifiers/{identifier_id}", status_code=204)
+async def remove_variant_identifier(variant_id: UUID, identifier_id: UUID, ctx: WriteCtx):
+    """Correct a wrongly filed scan code: delete it, then file the right one.
+
+    The id must belong to the variant in the URL. Sales and invoices point at the variant, not at
+    the code, so nothing already sold is touched.
+    """
+    await CatalogService.remove_identifier(
+        ctx.session, ctx.tenant_id, identifier_id, variant_id=variant_id
+    )
+
+
 @router.get("/identifiers/{identifier_type}/{value}")
 async def resolve_identifier(identifier_type: str, value: str, ctx: TenantCtxDep):
     """§179: the only scan-entry point — one active variant or 404.

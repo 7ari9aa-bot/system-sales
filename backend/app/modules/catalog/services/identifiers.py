@@ -133,16 +133,25 @@ class IdentifierServiceMixin:
 
     @staticmethod
     async def remove_identifier(
-        session: AsyncSession, tenant_id: UUID, identifier_id: UUID
+        session: AsyncSession,
+        tenant_id: UUID,
+        identifier_id: UUID,
+        *,
+        variant_id: UUID | None = None,
     ) -> None:
-        row = (
-            await session.execute(
-                select(ProductIdentifier).where(
-                    ProductIdentifier.tenant_id == tenant_id,
-                    ProductIdentifier.id == identifier_id,
-                )
-            )
-        ).scalar_one_or_none()
+        """Delete one scan code (a correction is delete then re-add; the rows are facts).
+
+        Over HTTP the variant in the URL is passed too, so an id can only be removed through the
+        variant that owns it; no sale or invoice points at an identifier, only at the variant.
+        """
+        conditions = [
+            ProductIdentifier.tenant_id == tenant_id,
+            ProductIdentifier.id == identifier_id,
+        ]
+        if variant_id is not None:
+            conditions.append(ProductIdentifier.variant_id == variant_id)
+        found = await session.execute(select(ProductIdentifier).where(*conditions))
+        row = found.scalar_one_or_none()
         if row is None:
             raise NotFoundError(f"identifier {identifier_id} not found")
         await session.delete(row)
