@@ -7,6 +7,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/auth_view_model.dart';
 import '../../../providers/locale_view_model.dart';
 import 'widgets/printer_settings_dialog.dart';
+import 'widgets/sync_log_dialog.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -313,16 +314,17 @@ class SettingsScreen extends StatelessWidget {
                   trailing: Text('1.0.0 (v0.2.0-mobile)'),
                 ),
                 const Divider(height: 1),
-                const ListTile(
-                  leading: Icon(Icons.cloud_done_outlined, color: AppColors.success),
-                  title: Text('حالة المزامنة والاتصال'),
-                  trailing: Text(
-                    'متصل بالسحابة',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                ListTile(
+                  leading: const Icon(Icons.cloud_sync, color: AppColors.primary),
+                  title: const Text('سجل المزامنة والعمليات دون إنترنت'),
+                  subtitle: const Text('عرض الطابور وحل التعارضات (Conflicts)', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const SyncLogDialog(),
+                    );
+                  },
                 ),
               ],
             ),

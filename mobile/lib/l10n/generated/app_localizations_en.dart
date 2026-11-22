@@ -241,4 +241,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get loading => 'Loading...';
+
+  @override
+  String get addProduct => 'Add New Product';
+
+  @override
+  String get productName => 'Product Name';
+
+  @override
+  String get price => 'Selling Price';
+
+  @override
+  String get category => 'Category';
+
+  @override
+  String get initialStock => 'Initial Stock';
+
+  @override
+  String get productAddedSuccess => 'Product added successfully';
+
+  @override
+  String get shareInvoice => 'Share Invoice';
+
+  @override
+  String get shareViaWhatsApp => 'Share via WhatsApp';
+
+  @override
+  String get syncLog => 'Sync & Offline Operations';
+
+  @override
+  String get syncConflicts => 'Conflicts';
+
+  @override
+  String get resolveConflict => 'Resolve Conflict';
+
+  @override
+  String get discard => 'Discard';
 }

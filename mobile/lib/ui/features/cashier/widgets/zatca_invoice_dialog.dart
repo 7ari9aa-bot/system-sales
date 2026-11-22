@@ -265,11 +265,29 @@ class ZatcaInvoiceDialog extends StatelessWidget {
                       child: const Text('إغلاق'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.share, size: 16),
+                      label: const Text('واتساب / مشاركة'),
+                      onPressed: () {
+                        final text = _generateShareableText();
+                        Clipboard.setData(ClipboardData(text: text));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('تم نسخ نص الفاتورة لمشاركتها عبر واتساب أو الرسائل'),
+                            backgroundColor: AppColors.success,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.print, size: 18),
-                      label: const Text('طباعة الفاتورة'),
+                      icon: const Icon(Icons.print, size: 16),
+                      label: const Text('طباعة'),
                       onPressed: () async {
                         final printerManager = context.read<ThermalPrinterManager>();
                         final ok = await printerManager.printReceipt(
@@ -332,5 +350,25 @@ class ZatcaInvoiceDialog extends StatelessWidget {
 
   String _formatDate(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _generateShareableText() {
+    final buffer = StringBuffer();
+    buffer.writeln('🧾 *فاتورة ضريبية مبسطة*');
+    buffer.writeln('🏬 المتجر: $storeName');
+    buffer.writeln('🔢 الرقم الضريبي: $vatNumber');
+    buffer.writeln('📄 رقم الفاتورة: $receiptNumber');
+    buffer.writeln('📅 التاريخ: ${_formatDate(timestamp)}');
+    buffer.writeln('--------------------------------');
+    for (final item in items) {
+      buffer.writeln('• ${item.product.name} × ${item.quantity} = ${MoneyFormatter.format(item.lineTotal, currency: 'ر.س')}');
+    }
+    buffer.writeln('--------------------------------');
+    buffer.writeln('المجموع: ${MoneyFormatter.format(subtotal, currency: 'ر.س')}');
+    buffer.writeln('الضريبة (15%): ${MoneyFormatter.format(tax, currency: 'ر.س')}');
+    buffer.writeln('*الإجمالي النهائي: ${MoneyFormatter.format(total, currency: 'ر.س')}*');
+    buffer.writeln('طريقة الدفع: $paymentMethod');
+    buffer.writeln('✨ شكراً لتعاملكم معنا');
+    return buffer.toString();
   }
 }

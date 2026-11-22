@@ -87,5 +87,19 @@
   "retry": "Retry",
   "cancel": "Cancel",
   "save": "Save",
-  "loading": "Loading..."
+  "loading": "Loading...",
+
+  "addProduct": "Add New Product",
+  "productName": "Product Name",
+  "price": "Selling Price",
+  "category": "Category",
+  "initialStock": "Initial Stock",
+  "scanBarcode": "Scan Barcode",
+  "productAddedSuccess": "Product added successfully",
+  "shareInvoice": "Share Invoice",
+  "shareViaWhatsApp": "Share via WhatsApp",
+  "syncLog": "Sync & Offline Operations",
+  "syncConflicts": "Conflicts",
+  "resolveConflict": "Resolve Conflict",
+  "discard": "Discard"
 }

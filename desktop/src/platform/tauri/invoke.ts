@@ -27,6 +27,7 @@ export interface CommandArgs {
   readonly open_cash_drawer: { readonly printerName?: string }
   readonly check_update: undefined
   readonly install_update: undefined
+  readonly open_customer_display: undefined
   readonly read_settings: undefined
   readonly write_settings: { readonly webAppUrl: string }
 }
@@ -39,6 +40,7 @@ export interface CommandResults {
   readonly open_cash_drawer: unknown
   readonly check_update: unknown
   readonly install_update: unknown
+  readonly open_customer_display: unknown
   readonly read_settings: string | null
   readonly write_settings: string
 }

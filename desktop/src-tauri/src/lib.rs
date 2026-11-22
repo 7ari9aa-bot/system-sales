@@ -104,6 +104,7 @@ pub fn run() {
             commands::open_cash_drawer,
             commands::check_update,
             commands::install_update,
+            commands::open_customer_display,
             commands::read_settings,
             commands::write_settings
         ])

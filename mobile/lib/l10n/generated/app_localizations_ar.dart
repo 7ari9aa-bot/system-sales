@@ -241,4 +241,40 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get loading => 'جاري التحميل...';
+
+  @override
+  String get addProduct => 'إضافة منتج جديد';
+
+  @override
+  String get productName => 'اسم المنتج';
+
+  @override
+  String get price => 'سعر البيع';
+
+  @override
+  String get category => 'التصنيف';
+
+  @override
+  String get initialStock => 'الكمية الافتتاحية';
+
+  @override
+  String get productAddedSuccess => 'تمت إضافة المنتج بنجاح';
+
+  @override
+  String get shareInvoice => 'مشاركة الفاتورة';
+
+  @override
+  String get shareViaWhatsApp => 'مشاركة عبر واتساب';
+
+  @override
+  String get syncLog => 'سجل المزامنة والعمليات';
+
+  @override
+  String get syncConflicts => 'التعارضات';
+
+  @override
+  String get resolveConflict => 'معالجة التعارض';
+
+  @override
+  String get discard => 'حذف';
 }

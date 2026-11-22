@@ -562,6 +562,78 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'جاري التحميل...'**
   String get loading;
+
+  /// No description provided for @addProduct.
+  ///
+  /// In ar, this message translates to:
+  /// **'إضافة منتج جديد'**
+  String get addProduct;
+
+  /// No description provided for @productName.
+  ///
+  /// In ar, this message translates to:
+  /// **'اسم المنتج'**
+  String get productName;
+
+  /// No description provided for @price.
+  ///
+  /// In ar, this message translates to:
+  /// **'سعر البيع'**
+  String get price;
+
+  /// No description provided for @category.
+  ///
+  /// In ar, this message translates to:
+  /// **'التصنيف'**
+  String get category;
+
+  /// No description provided for @initialStock.
+  ///
+  /// In ar, this message translates to:
+  /// **'الكمية الافتتاحية'**
+  String get initialStock;
+
+  /// No description provided for @productAddedSuccess.
+  ///
+  /// In ar, this message translates to:
+  /// **'تمت إضافة المنتج بنجاح'**
+  String get productAddedSuccess;
+
+  /// No description provided for @shareInvoice.
+  ///
+  /// In ar, this message translates to:
+  /// **'مشاركة الفاتورة'**
+  String get shareInvoice;
+
+  /// No description provided for @shareViaWhatsApp.
+  ///
+  /// In ar, this message translates to:
+  /// **'مشاركة عبر واتساب'**
+  String get shareViaWhatsApp;
+
+  /// No description provided for @syncLog.
+  ///
+  /// In ar, this message translates to:
+  /// **'سجل المزامنة والعمليات'**
+  String get syncLog;
+
+  /// No description provided for @syncConflicts.
+  ///
+  /// In ar, this message translates to:
+  /// **'التعارضات'**
+  String get syncConflicts;
+
+  /// No description provided for @resolveConflict.
+  ///
+  /// In ar, this message translates to:
+  /// **'معالجة التعارض'**
+  String get resolveConflict;
+
+  /// No description provided for @discard.
+  ///
+  /// In ar, this message translates to:
+  /// **'حذف'**
+  String get discard;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

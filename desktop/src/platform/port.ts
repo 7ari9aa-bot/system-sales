@@ -9,9 +9,10 @@ export interface AppInfo {
   readonly os: 'windows' | 'macos' | 'linux' | 'unknown'
 }
 
-/** What the shell can tell us and do. Window management itself is Phase 2. */
+/** What the shell can tell us and do. */
 export interface ShellPort {
   appInfo(): Promise<AppInfo>
+  openCustomerDisplay(): Promise<boolean>
 }
 
 /**

@@ -184,6 +184,30 @@ pub fn install_update() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn open_customer_display(app: AppHandle) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+    if let Some(window) = app.get_webview_window("customer_display") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "customer_display",
+        WebviewUrl::App("index.html#customer-display".into()),
+    )
+    .title("Fihrist - شاشة العميل")
+    .inner_size(1024.0, 768.0)
+    .min_inner_size(640.0, 480.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn read_settings(app: AppHandle) -> Option<String> {
     use tauri::Manager;
     let path = app.path().app_config_dir().ok()?.join(crate::shell_url::SETTINGS_FILE_NAME);

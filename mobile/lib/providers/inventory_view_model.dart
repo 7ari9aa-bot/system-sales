@@ -122,6 +122,39 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
+  Future<Product?> createProduct({
+    required String name,
+    required String price,
+    String? barcode,
+    String? sku,
+    String? category,
+    int initialStock = 0,
+    String? costPrice,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final product = await _repository.createProduct(
+        name: name,
+        price: price,
+        barcode: barcode,
+        sku: sku,
+        category: category,
+        initialStock: initialStock,
+        costPrice: costPrice,
+      );
+      await loadInventory();
+      return product;
+    } catch (e) {
+      _errorMessage = e.toString();
+      return null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<SyncResult> syncQueue() async {
     _isSyncing = true;
     notifyListeners();

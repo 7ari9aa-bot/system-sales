@@ -78,6 +78,27 @@ void main() {
       expect(ok, isTrue);
     });
 
+    test('creates new product and adds to inventory', () async {
+      final repo = InventoryRepository();
+      final created = await repo.createProduct(
+        name: 'منتج سريع جديد',
+        price: '75.50',
+        barcode: '628999999001',
+        category: 'إلكترونيات',
+        initialStock: 12,
+      );
+
+      expect(created, isNotNull);
+      expect(created.name, 'منتج سريع جديد');
+      expect(created.price, '75.50');
+      expect(created.stockQuantity, 12);
+      expect(created.barcode, '628999999001');
+
+      final found = await repo.scanBarcode('628999999001');
+      expect(found, isNotNull);
+      expect(found!.name, 'منتج سريع جديد');
+    });
+
     test('InventoryViewModel loads and updates state', () async {
       final repo = InventoryRepository();
       final vm = InventoryViewModel(repository: repo);

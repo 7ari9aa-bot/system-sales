@@ -3,10 +3,11 @@ import type { Platform } from '@/platform'
 import { DashboardView } from '@/features/dashboard/DashboardView'
 import { CashierView } from '@/features/cashier/CashierView'
 import { InventoryView } from '@/features/inventory/InventoryView'
+import { PurchasingView } from '@/features/purchasing/PurchasingView'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 
-export type WorkstationTab = 'dashboard' | 'cashier' | 'inventory' | 'inbox' | 'settings'
+export type WorkstationTab = 'dashboard' | 'cashier' | 'inventory' | 'purchasing' | 'inbox' | 'settings'
 
 export const AppShell: FC<{
   readonly platform: Platform
@@ -54,6 +55,15 @@ export const AppShell: FC<{
 
           <button
             type="button"
+            className={`workstation__nav-item ${activeTab === 'purchasing' ? 'workstation__nav-item--active' : ''}`}
+            onClick={() => setActiveTab('purchasing')}
+          >
+            <span>🚚</span>
+            <span>المشتريات والموردون</span>
+          </button>
+
+          <button
+            type="button"
             className={`workstation__nav-item ${activeTab === 'inbox' ? 'workstation__nav-item--active' : ''}`}
             onClick={() => setActiveTab('inbox')}
           >
@@ -83,6 +93,7 @@ export const AppShell: FC<{
               {activeTab === 'cashier' && 'نقطة البيع والكاشير'}
               {activeTab === 'dashboard' && 'لوحة التحكم والمؤشرات'}
               {activeTab === 'inventory' && 'المخزون والجرد الدوري'}
+              {activeTab === 'purchasing' && 'المشتريات وإدارة الموردين'}
               {activeTab === 'inbox' && 'صندوق الوارد وخدمة العملاء'}
               {activeTab === 'settings' && 'إعدادات المنظومة والمحطة'}
             </h1>
@@ -106,6 +117,7 @@ export const AppShell: FC<{
           {activeTab === 'cashier' && <CashierView platform={platform} />}
           {activeTab === 'dashboard' && <DashboardView />}
           {activeTab === 'inventory' && <InventoryView />}
+          {activeTab === 'purchasing' && <PurchasingView />}
           {activeTab === 'inbox' && <InboxView />}
           {activeTab === 'settings' && (
             <SettingsView

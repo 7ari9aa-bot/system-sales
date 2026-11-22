@@ -33,7 +33,15 @@ export function createNoopPlatform(options: NoopPlatformOptions = {}): Platform 
 
   return {
     kind: 'noop',
-    shell: { appInfo: () => Promise.resolve(info) },
+    shell: {
+      appInfo: () => Promise.resolve(info),
+      openCustomerDisplay: () => {
+        if (typeof window !== 'undefined') {
+          window.open('#customer-display', 'fihrist_customer_display', 'width=1024,height=768')
+        }
+        return Promise.resolve(true)
+      },
+    },
     log: { write },
     runtime: {
       apiBaseUrl: () => Promise.resolve(options.apiBaseUrl ?? null),

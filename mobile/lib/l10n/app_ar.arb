@@ -87,5 +87,19 @@
   "retry": "إعادة المحاولة",
   "cancel": "إلغاء",
   "save": "حفظ",
-  "loading": "جاري التحميل..."
+  "loading": "جاري التحميل...",
+
+  "addProduct": "إضافة منتج جديد",
+  "productName": "اسم المنتج",
+  "price": "سعر البيع",
+  "category": "التصنيف",
+  "initialStock": "الكمية الافتتاحية",
+  "scanBarcode": "مسح الباركود",
+  "productAddedSuccess": "تمت إضافة المنتج بنجاح",
+  "shareInvoice": "مشاركة الفاتورة",
+  "shareViaWhatsApp": "مشاركة عبر واتساب",
+  "syncLog": "سجل المزامنة والعمليات",
+  "syncConflicts": "التعارضات",
+  "resolveConflict": "معالجة التعارض",
+  "discard": "حذف"
 }

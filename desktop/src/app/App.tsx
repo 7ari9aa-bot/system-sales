@@ -3,14 +3,19 @@ import { useEffect, useState, type FC } from 'react'
 import { BootScreen } from '@/app/boot-screen'
 import type { BootState } from '@/app/boot-state'
 import { AppShell } from '@/app/shell/AppShell'
+import { CustomerDisplayView } from '@/features/cashier/CustomerDisplayView'
 import type { Platform } from '@/platform'
 import { parseRuntimeConfig } from '@/platform/runtime'
 
 export const App: FC<{ readonly platform: Platform }> = ({ platform }) => {
+  const isCustomerDisplay = typeof window !== 'undefined' && window.location.hash === '#customer-display'
+
   const [state, setState] = useState<BootState>({ status: 'checking' })
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
+    if (isCustomerDisplay) return
+
     let alive = true
 
     void platform.runtime
@@ -28,7 +33,7 @@ export const App: FC<{ readonly platform: Platform }> = ({ platform }) => {
     return () => {
       alive = false
     }
-  }, [platform, refreshKey])
+  }, [platform, refreshKey, isCustomerDisplay])
 
   const handleSave = (url: string): void => {
     if (platform.runtime.saveApiBaseUrl) {
@@ -38,6 +43,11 @@ export const App: FC<{ readonly platform: Platform }> = ({ platform }) => {
         }
       })
     }
+  }
+
+  // If loaded as customer display secondary window, directly render customer display
+  if (isCustomerDisplay) {
+    return <CustomerDisplayView />
   }
 
   // If configuration is valid and server resolved, render the native desktop workstation shell!

@@ -429,6 +429,189 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  void _showAddProductDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final barcodeCtrl = TextEditingController();
+    final categoryCtrl = TextEditingController(text: 'عام');
+    final stockCtrl = TextEditingController(text: '10');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.add_box_outlined, color: AppColors.primary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          l10n.addProduct,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+
+                  // Product Name
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: l10n.productName,
+                      prefixIcon: const Icon(Icons.label_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Price
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: l10n.price,
+                      suffixText: 'ر.س',
+                      prefixIcon: const Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Barcode with Camera Scan button
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: barcodeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'الباركود / الكود',
+                            prefixIcon: Icon(Icons.qr_code),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.camera_alt),
+                        tooltip: 'مسح بالكاميرا',
+                        onPressed: () async {
+                          final code = await showDialog<String>(
+                            context: ctx,
+                            builder: (_) => const CameraScannerDialog(),
+                          );
+                          if (code != null && code.isNotEmpty) {
+                            setSheetState(() {
+                              barcodeCtrl.text = code;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Category & Initial Stock
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: categoryCtrl,
+                          decoration: InputDecoration(
+                            labelText: l10n.category,
+                            prefixIcon: const Icon(Icons.category_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: stockCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: l10n.initialStock,
+                            prefixIcon: const Icon(Icons.inventory_2_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Submit button
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () async {
+                      final name = nameCtrl.text.trim();
+                      final price = priceCtrl.text.trim();
+                      if (name.isEmpty || price.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('يرجى إدخال اسم المنتج والسعر على الأقل'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                        return;
+                      }
+
+                      final stock = int.tryParse(stockCtrl.text.trim()) ?? 0;
+                      Navigator.pop(ctx);
+
+                      final created = await context.read<InventoryViewModel>().createProduct(
+                            name: name,
+                            price: price,
+                            barcode: barcodeCtrl.text.trim().isNotEmpty ? barcodeCtrl.text.trim() : null,
+                            category: categoryCtrl.text.trim(),
+                            initialStock: stock,
+                          );
+
+                      if (context.mounted && created != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('${l10n.productAddedSuccess}: ${created.name}'),
+                            backgroundColor: AppColors.success,
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(l10n.save),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -600,6 +783,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add),
+        label: Text(l10n.addProduct),
+        onPressed: () => _showAddProductDialog(context),
       ),
     );
   }

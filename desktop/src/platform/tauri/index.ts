@@ -15,6 +15,14 @@ const shell: ShellPort = {
   async appInfo(): Promise<AppInfo> {
     return appInfoSchema.parse(await call('app_info'))
   },
+  async openCustomerDisplay(): Promise<boolean> {
+    try {
+      await call('open_customer_display')
+      return true
+    } catch {
+      return false
+    }
+  },
 }
 
 const log: LogPort = {

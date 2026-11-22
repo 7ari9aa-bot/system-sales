@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/auth_view_model.dart';
@@ -9,6 +10,130 @@ import '../../../providers/locale_view_model.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
+
+  void _showNotificationsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Consumer<NotificationService>(
+        builder: (ctx, notifService, _) {
+          final alerts = notifService.alerts;
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+
+          return ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.notifications_active, color: AppColors.primary),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'التنبيهات والإشعارات',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          if (notifService.unreadCount > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '${notifService.unreadCount}',
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (alerts.isNotEmpty)
+                        TextButton(
+                          onPressed: () => notifService.markAllAsRead(),
+                          child: const Text('قراءة الكل'),
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 16),
+                  Expanded(
+                    child: alerts.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.notifications_none, size: 48, color: Colors.grey[400]),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'لا توجد إشعارات جديدة حالياً',
+                                  style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: alerts.length,
+                            separatorBuilder: (_, __) => const Divider(height: 8),
+                            itemBuilder: (context, i) {
+                              final alert = alerts[i];
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: alert.isRead
+                                      ? Colors.grey.withValues(alpha: 0.15)
+                                      : AppColors.primary.withValues(alpha: 0.15),
+                                  child: Icon(
+                                    alert.type == NotificationType.newMessage
+                                        ? Icons.chat
+                                        : alert.type == NotificationType.newOrder
+                                            ? Icons.shopping_bag
+                                            : Icons.info,
+                                    size: 16,
+                                    color: alert.isRead ? Colors.grey : AppColors.primary,
+                                  ),
+                                ),
+                                title: Text(
+                                  alert.title,
+                                  style: TextStyle(
+                                    fontWeight: alert.isRead ? FontWeight.normal : FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  alert.body,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                trailing: Text(
+                                  '${alert.timestamp.hour.toString().padLeft(2, '0')}:${alert.timestamp.minute.toString().padLeft(2, '0')}',
+                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                ),
+                                onTap: () => notifService.markAsRead(alert.id),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +149,20 @@ class DashboardScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(l10n.dashboardTitle),
         actions: [
+          Consumer<NotificationService>(
+            builder: (context, notif, _) {
+              return IconButton(
+                icon: notif.unreadCount > 0
+                    ? Badge(
+                        label: Text('${notif.unreadCount}'),
+                        child: const Icon(Icons.notifications_outlined),
+                      )
+                    : const Icon(Icons.notifications_outlined),
+                onPressed: () => _showNotificationsSheet(context),
+                tooltip: 'التنبيهات',
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => dashboardVm.refresh(),

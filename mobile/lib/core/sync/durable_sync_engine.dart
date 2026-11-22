@@ -77,6 +77,35 @@ class DurableSyncEngine {
     }
   }
 
+  /// Reset a conflict or rejected operation back to PENDING for retry
+  Future<void> retryOperation(String uuid) async {
+    try {
+      final db = await _localDb.database;
+      await db.update(
+        'durable_operations',
+        {
+          'status': DurableOperationStatus.pending.toDbString(),
+          'error_message': null,
+          'retry_count': 0,
+        },
+        where: 'operation_uuid = ?',
+        whereArgs: [uuid],
+      );
+    } catch (_) {}
+  }
+
+  /// Discard and delete an operation from local queue
+  Future<void> discardOperation(String uuid) async {
+    try {
+      final db = await _localDb.database;
+      await db.delete(
+        'durable_operations',
+        where: 'operation_uuid = ?',
+        whereArgs: [uuid],
+      );
+    } catch (_) {}
+  }
+
   /// Execute synchronization of pending queue
   Future<SyncResult> syncPendingOperations({String? tenantId}) async {
     if (_isSyncing) {
@@ -186,21 +215,27 @@ class DurableSyncEngine {
   }
 
   Future<_OperationDispatchResult> _dispatchOperation(DurableOperation op) async {
-    // Determine target endpoint by operation type
+    // Determine target endpoint by operation type matching OpenAPI backend contracts
     String endpoint;
     switch (op.operationType) {
       case 'pos_sale':
       case 'sale':
-        endpoint = '/api/pos/orders';
+        endpoint = op.registerId != null
+            ? '/api/v1/pos/registers/${op.registerId}/sales'
+            : '/api/v1/pos/sales';
         break;
       case 'stock_adjustment':
-        endpoint = '/api/inventory/adjustments';
+      case 'inventory_movement':
+        endpoint = '/api/v1/inventory/movements';
+        break;
+      case 'create_product':
+        endpoint = '/api/v1/catalog/products';
         break;
       case 'stocktake_count':
-        endpoint = '/api/inventory/stocktakes/count';
+        endpoint = '/api/v1/inventory/stocktakes/count';
         break;
       default:
-        endpoint = '/api/operations/sync';
+        endpoint = '/api/v1/operations/sync';
     }
 
     try {

@@ -255,6 +255,89 @@ class InventoryRepository {
     );
   }
 
+  /// Create a new product (online or queued durable offline)
+  Future<Product> createProduct({
+    required String name,
+    required String price,
+    String? barcode,
+    String? sku,
+    String? category,
+    int initialStock = 0,
+    String? costPrice,
+  }) async {
+    final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
+    final pId = 'prod_${DateTime.now().millisecondsSinceEpoch}';
+    final generatedSku = (sku != null && sku.trim().isNotEmpty)
+        ? sku.trim()
+        : 'SKU-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+
+    final product = Product(
+      id: pId,
+      name: name.trim(),
+      price: price.trim(),
+      barcode: barcode?.trim().isEmpty == true ? null : barcode?.trim(),
+      sku: generatedSku,
+      category: (category != null && category.trim().isNotEmpty) ? category.trim() : 'عام',
+      stockQuantity: initialStock,
+      costPrice: costPrice?.trim().isEmpty == true ? null : costPrice?.trim(),
+    );
+
+    // Keep in-memory cache updated
+    _mockInventory.insert(0, product);
+
+    // Cache locally
+    await _cacheProduct(product);
+
+    // Send to backend
+    bool sentOnline = false;
+    try {
+      final response = await _apiClient.post(
+        '/api/v1/catalog/products',
+        body: {
+          'id': pId,
+          'name': product.name,
+          'price': product.price,
+          'barcode': product.barcode,
+          'sku': product.sku,
+          'category': product.category,
+          'initial_stock': initialStock,
+          'cost_price': product.costPrice,
+        },
+      );
+      if (response != null) {
+        sentOnline = true;
+      }
+    } catch (_) {
+      sentOnline = false;
+    }
+
+    if (!sentOnline) {
+      // Enqueue in durable operations
+      final op = DurableOperation(
+        operationUuid: 'create_prod_${DateTime.now().millisecondsSinceEpoch}',
+        tenantId: tenantId,
+        userId: (await _tokenStore.getUserId()) ?? 'unknown_user',
+        deviceId: 'mobile_device',
+        operationType: 'create_product',
+        payloadSnapshot: {
+          'id': pId,
+          'name': product.name,
+          'price': product.price,
+          'barcode': product.barcode,
+          'sku': product.sku,
+          'category': product.category,
+          'initial_stock': initialStock,
+        },
+        idempotencyKey: 'idemp_create_$pId',
+        status: DurableOperationStatus.pending,
+        createdAt: DateTime.now(),
+      );
+      await _syncEngine.enqueueOperation(op);
+    }
+
+    return product;
+  }
+
   Future<void> _cacheProduct(Product product) async {
     try {
       final db = await _localDb.database;
