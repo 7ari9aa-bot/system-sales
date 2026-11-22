@@ -85,6 +85,11 @@ class StatusUpdate:
     status: str  # sent | delivered | read | failed
     error: str | None = None
     timestamp: Any = None
+    #: What Meta said about a failure, kept apart so a temporary fault can be told from one that
+    #: needs the merchant (an expired payment method, a blocked number, a policy block).
+    error_code: int | None = None
+    error_title: str | None = None
+    error_details: str | None = None
 
 
 @dataclass

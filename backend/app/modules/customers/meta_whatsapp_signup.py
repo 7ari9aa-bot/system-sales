@@ -298,6 +298,91 @@ async def _phone_status(http: httpx.AsyncClient, *, phone_number_id: str, token:
     return str(status).upper() if status else None
 
 
+def _register_error(response: httpx.Response) -> ExternalProviderError:
+    """What to tell the owner when Meta refuses to register the number, by Meta's own error.
+
+    The code, subcode and Meta's text are kept in the message after the plain-language reason, so
+    a support request carries what Meta actually said instead of a generic "finish verifying".
+    """
+    code = subcode = None
+    meta_text = ""
+    try:
+        error = response.json().get("error") or {}
+        code = error.get("code")
+        subcode = error.get("error_subcode")
+        meta_text = str(error.get("error_user_msg") or error.get("message") or "").strip()
+    except (ValueError, AttributeError):
+        pass
+
+    # (message, retryable) per documented Meta code.
+    known: dict[int, tuple[str, bool]] = {
+        133016: (
+            "Meta stopped registering this number after too many attempts. "
+            "Wait 72 hours, then connect again.",
+            False,
+        ),
+        133005: (
+            "The two-step verification PIN on this number does not match. Remove or reset the "
+            "PIN in WhatsApp Manager, then connect again.",
+            False,
+        ),
+        133006: (
+            "This number must be verified again with Meta before it can be registered. "
+            "Verify it in the Facebook window, then connect again.",
+            False,
+        ),
+        133008: (
+            "Too many wrong two-step PIN attempts on this number. Wait before connecting again.",
+            False,
+        ),
+        133009: (
+            "The two-step PIN was entered too quickly after the last attempt. "
+            "Wait a minute, then connect again.",
+            True,
+        ),
+        133010: (
+            "Meta says this number is not registered yet. Connect again to finish registering it.",
+            True,
+        ),
+        133015: (
+            "This number was deleted recently and cannot be registered yet. "
+            "Wait a few minutes, then connect again.",
+            True,
+        ),
+        190: (
+            "Meta no longer accepts the connection to your Facebook account. "
+            "Connect again and approve every permission.",
+            False,
+        ),
+        10: (
+            "Meta says this app lacks permission to register the number. "
+            "Connect again and approve the WhatsApp permissions.",
+            False,
+        ),
+        200: (
+            "Meta says this app lacks permission to register the number. "
+            "Connect again and approve the WhatsApp permissions.",
+            False,
+        ),
+        80007: (
+            "Meta is limiting requests for this account right now. Wait a few minutes, then "
+            "connect again.",
+            True,
+        ),
+    }
+    reason, retryable = known.get(
+        code if isinstance(code, int) else -1,
+        (
+            "Meta refused to register this WhatsApp number. Finish verifying the number in the "
+            "Facebook window, then connect again.",
+            False,
+        ),
+    )
+    detail = f" [Meta {code}{f'/{subcode}' if subcode else ''}"
+    detail += f": {meta_text[:160]}]" if meta_text else "]"
+    return ExternalProviderError(reason + (detail if code is not None else ""), retryable=retryable)
+
+
 async def _register_phone_number(
     http: httpx.AsyncClient,
     *,
@@ -343,22 +428,7 @@ async def _register_phone_number(
             retryable=True,
         ) from None
     if response.is_error:
-        code = None
-        try:
-            code = (response.json().get("error") or {}).get("code")
-        except (ValueError, AttributeError):
-            pass
-        if code == 133016:
-            raise ExternalProviderError(
-                "Meta stopped registering this number after too many attempts. "
-                "Wait 72 hours, then connect again.",
-                retryable=False,
-            )
-        raise ExternalProviderError(
-            "Meta refused to register this WhatsApp number. Finish verifying the number in the "
-            "Facebook window, then connect again.",
-            retryable=False,
-        )
+        raise _register_error(response)
     await _forget_pending_pin(phone_number_id)
     return pin
 
