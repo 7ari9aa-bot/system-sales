@@ -32,3 +32,55 @@
 - **ممنوح وغير مطلوب في الكود:** `public_profile` — ممنوح لكنه لا يُطلب صراحةً في أي من الملفين.
 - **ممنوح لكن لا تستعمله قناة Messenger وحدها:** `pages_manage_posts`, `pages_manage_engagement`, `pages_read_user_content`, `read_insights` تُطلب لقناة Facebook فقط (`meta_scopes.py:18-24`)، فاتصال Messenger وحده يحملها بلا استعمال.
 - **غير مطلوب وغير ممنوح لكنه مطلوب وظيفيًا لميزات ناقصة:** `pages_utility_messaging` (رسائل Utility خارج نافذة الـ 24 ساعة) و`business_management` (إدارة أصول Business Manager)، ووسم `HUMAN_AGENT` (رد بشري خلال 7 أيام). غيابها يعني أن الرد خارج نافذة المراسلة القياسية غير متاح من المنتج اليوم.
+
+## Send API
+
+ما يستطيعه Messenger Send API مقابل ما يُرسله كود `system-sales` فعليًا. المصادر المقروءة لهذا القسم
+فقط: `backend/app/modules/conversations/gateway/messenger.py` (280 سطرًا)،
+`gateway/messenger_media.py` (136)، `conversations/policy.py` (260).
+كل المسارات تخرج من نقطة واحدة: `POST {graph}/{v27.0}/me/messages` — `messenger.py:201`.
+الحالة: **used** = يُبنى الحقل فعليًا على السلك، **partial** = المسار موجود لكن ناقص (لا تحقّق، لا fallback،
+أو لا يُرسل الحقل المطلوب)، **missing** = لا ذكر له في الملفات الثلاثة.
+
+| Capability | Meta allows | Used in code (file:line) | Status | UI effect |
+|---|---|---|---|---|
+| Text | `message.text` حتى 2000 حرف؛ داخل النافذة حر، خارجها يحتاج tag | `messenger.py:242` (فرع النص)، و`:239-240` (التعليق كرسالة نصية ثانية بعد المرفق) | used | فقاعة نص في محادثة العميل الحقيقية؛ لا شيء يُقصّ لأن الحد الأقصى 2000 حرف غير مُتحقَّق منه |
+| Image attachment | `type: image`، رابط https عام، ≤ 8 MB | `messenger_media.py:14` (الحد)، `:37-43` (التحويل)، `messenger.py:226-235` | used | صورة داخل الفقاعة تُفتح بملء الشاشة |
+| Video attachment | `type: video`، ≤ 25 MB | `messenger_media.py:14`، `messenger.py:226-235` | used | مشغّل فيديو داخل المحادثة |
+| Audio attachment | `type: audio`، ≤ 25 MB | `messenger_media.py:14`، `messenger.py:226-235` | used | مشغّل صوت/رسالة صوتية |
+| File attachment | `type: file`، ≤ 25 MB؛ أي نوع غير معروف يصبح `file` | `messenger_media.py:43` (fallback إلى `file`)، `:46-55`، `messenger.py:235` | used | بطاقة تنزيل باسم الملف |
+| Quick replies | حتى 13 زرًا، `title` ≤ 20 حرفًا، `quick_replies[]` على الرسالة | لا وجود لـ `quick_replies` في `messenger.py` (لا مسار يبنيه) | missing | أزرار فوق لوحة الكتابة عند العميل بضغطة واحدة (تأكيد طلب، اختيار فرع، تقييم) |
+| Generic template | حتى 10 عناصر (carousel) مع أزرار | `messenger.py:210-224` يمرّر `template_name`+`template_vars` كما هي إلى `template_type` | partial | كاروسيل بطاقات منتجات؛ يعمل فقط إن كان `template_vars` مبنيًا بشكل صحيح من الخارج، ولا تحقّق من عدد العناصر |
+| Button template | حتى 3 أزرار + نص | نفس المسار `messenger.py:210-224` | partial | رسالة بخيارات (تأكيد/إلغاء) |
+| Media template | عنصر واحد (صورة/فيديو) + زر واحد | نفس المسار `messenger.py:210-224` | partial | صورة كبيرة بزر تحته |
+| Receipt template | `template_type: receipt` مع order/summary/elements | نفس المسار `messenger.py:210-224` (لا بناء لـ order/summary) | partial | إيصال طلب منسّق بالأسعار والمجموع؛ حاليًا لا يُبنى الإيصال نفسه |
+| sender_action: `typing_on` | `POST` بـ `sender_action` بدل `message` | لا ذكر لـ `sender_action` في الملفات الثلاثة | missing | «يكتب الآن…» عند العميل أثناء رد الموظف |
+| sender_action: `typing_off` | كما أعلاه | لا ذكر | missing | إيقاف مؤشر الكتابة |
+| sender_action: `mark_seen` | `sender_action: mark_seen` | لا ذكر؛ و`parse_status_updates` تُرجع `[]` (`messenger.py:121-124`) فحالة القراءة لا تُنقل للاتجاهين | missing | «تمت الرؤية/Seen» تحت آخر رسالة للموظف في Messenger العميل |
+| Reactions | `sender_action: react`/`unreact` (دعم متغيّر؛ **unverified** بعد تعديلات 2026) | لا ذكر لـ `react`/`unreact` | missing | قلب/إيموجي على رسالة — عنصر أساسي في Messenger |
+| `reply_to` (quote) | `message.reply_to.mid` يقتبس رسالة سابقة | لا ذكر لـ `reply_to` | missing | اقتباس الرسالة داخل الفقاعة (شكل Messenger المعتاد للرد على رسالة محددة) |
+| Persistent menu | Messenger Profile API `POST /me/messenger_profile` `persistent_menu` | لا ذكر لـ `messenger_profile` | missing | قائمة ☰ ثابتة أسفل المحادثة عند العميل |
+| Get started button | `messenger_profile` → `get_started` | لا ذكر | missing | زر «ابدأ» في أول محادثة |
+| Greeting | `messenger_profile` → `greeting` | لا ذكر | missing | رسالة ترحيب تلقائية قبل أي رسالة |
+| Ice breakers | `messenger_profile` → `ice_breakers` | لا ذكر | missing | 4 أسئلة جاهزة تظهر عند فتح المحادثة أول مرة |
+| Message tags (`HUMAN_AGENT`, 7 أيام) | `messaging_type: MESSAGE_TAG` + `tag: HUMAN_AGENT`، رد بشري فقط، 7 أيام من آخر رسالة للعميل | السياسة تحسبه: `policy.py:51-53`، `:60`، `:88-89`، `:133-149` — لكن `messenger.py` لا يضع `tag` ولا `messaging_type` على السلك | partial | بدون الحقل: أي رد بعد 24 ساعة يفشل بـ error من Meta رغم أن السياسة سمحت به |
+| 24h standard window | حر داخل 24 ساعة من آخر رسالة للعميل؛ خارجها template/tag فقط | `policy.py:47`، `:58-66`، `:120-128` (السماح)، `:162-196` (الرفض/القالب) | used | الكومبوزر يمنع/يحذّر بعد 24 ساعة، ورسالة الخطأ تشرح السبب |
+| One-time notification | `notification_messages` token، رسالة واحدة، صالح سنة | لا ذكر لـ `notification_messages` | missing | «ذكّرني عندما يتوفر» — إشعار واحد بعد إغلاق النافذة |
+| Recurring notification | `notification_messages_frequency` (daily/weekly/…) بموافقة العميل | لا ذكر | missing | إشعارات متكررة للعروض/التذكيرات |
+| Private replies to comments | `recipient: {post_id|comment_id}` على `/PAGE-ID/messages`، رسالة واحدة، ≤ 7 أيام | الاستقبال موجود `messenger.py:126-130` (`parse_comments`)؛ لا مسار إرسال بـ `post_id`/`comment_id` | partial | «رد خاص» على تعليق يحوّله لمحادثة Messenger |
+| User profile fields (`name`, `profile_pic`) | `GET /{psid}?fields=first_name,last_name,profile_pic` + Business Asset User Profile Access (App Review) | `messenger.py:178` يضع `customer_name=None` صراحةً؛ لا طلب HTTP للملف الشخصي | missing | اسم وصورة العميل الحقيقيان في قائمة المحادثات ورأسها بدل PSID رقمي |
+
+### ملاحظات تنفيذية
+
+1. **أعلى أولوية تقنية**: `tag`/`messaging_type` غير موجودين في `messenger.py` — أي أن نافذة الـ 7 أيام
+   في `policy.py:133-149` قرار محلي فقط لا يعرفه Meta؛ الردّ البشري بعد 24 ساعة سيُرفض من الـ API.
+2. **`mark_seen` + `typing_on`** أرخص مكسب: طلبان صغيران يعطيان إحساس «الموظف موجود الآن».
+3. **`reply_to`** مطلوب لأن واجهة Fihrist ترسل `replyTo` أصلًا من `ChannelChat.jsx:235,268` — لكن
+   الـ adapter يتجاهله بصمت، فيُفقد الاقتباس دون أي خطأ.
+4. **`quick_replies`**: زر «أزرار» في الواجهة يعمل لإنستجرام فقط (`ChannelChat.jsx:233-235`) — مرشّح
+   لنسخه إلى Messenger لأن Meta تدعم 13 زرًا.
+5. **الملف الشخصي**: بدون `name`/`profile_pic` ستبدو محادثات Messenger أرقامًا، وهو أكبر فرق بصري عن
+   Messenger الحقيقي.
+6. ما لم يُتحقَّق منه من الكود أو من docs.meta (وسم `unverified` أعلاه): دعم `react`/`unreact` الحالي،
+   وأي حدود رقمية لم أذكرها صراحة (عدد أزرار quick replies، 2000 حرف، حدود القوالب) مصدرها صفحات
+   Send API في developers.facebook.com ولم تُقرأ سطرًا بسطر في هذا القسم.
