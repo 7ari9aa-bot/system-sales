@@ -30,6 +30,9 @@ export interface CommandArgs {
   readonly open_customer_display: undefined
   readonly read_settings: undefined
   readonly write_settings: { readonly webAppUrl: string }
+  readonly read_auth_session: undefined
+  readonly write_auth_session: { readonly sessionJson: string }
+  readonly clear_auth_session: undefined
 }
 
 export interface CommandResults {
@@ -43,6 +46,9 @@ export interface CommandResults {
   readonly open_customer_display: unknown
   readonly read_settings: string | null
   readonly write_settings: string
+  readonly read_auth_session: string | null
+  readonly write_auth_session: null
+  readonly clear_auth_session: null
 }
 
 export type CommandName = keyof CommandArgs

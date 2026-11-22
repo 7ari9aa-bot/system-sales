@@ -1,6 +1,6 @@
 import type { LogRecord } from '@/shared/log'
 
-import type { AppInfo, NoopPlatformOptions, Platform, PrinterPort, UpdaterPort } from './port'
+import type { AppInfo, AuthPort, AuthSession, HttpPort, NoopPlatformOptions, Platform, PrinterPort, UpdaterPort } from './port'
 
 /**
  * Not a stub to be replaced: this is what `vite dev` and every unit test run on.
@@ -31,6 +31,79 @@ export function createNoopPlatform(options: NoopPlatformOptions = {}): Platform 
     downloadAndInstall: () => Promise.resolve(),
   }
 
+  let currentSession: AuthSession | null =
+    options.initialSession !== undefined
+      ? options.initialSession
+      : {
+          token: 'test_mock_token_7788',
+          user: {
+            id: 'usr_mock_1',
+            name: 'أحمد سالم (مدير المتجر)',
+            email: 'manager@fihrist.local',
+            role: 'owner',
+            permissions: ['pos:read', 'pos:write', 'inventory:read', 'inventory:write', 'reports:read', 'team:manage'],
+          },
+          tenant: {
+            id: 't_mock_1',
+            name: 'متجر فهرس التجريبي',
+            subdomain: 'demo',
+          },
+          branch: {
+            id: 'br_main',
+            name: 'الفرع الرئيسي - الرياض',
+          },
+          register: {
+            id: 'reg_01',
+            name: 'كاشير نقطة 1',
+          },
+        }
+
+  const auth: AuthPort = {
+    getSession: () => Promise.resolve(currentSession),
+    login: (credentials) => {
+      currentSession = {
+        token: `test_token_${Date.now()}`,
+        user: {
+          id: 'usr_1',
+          name: credentials.email.split('@')[0] || 'المستخدم',
+          email: credentials.email,
+          role: 'owner',
+          permissions: ['*'],
+        },
+        tenant: {
+          id: 't_1',
+          name: 'متجر فهرس',
+          subdomain: credentials.subdomain || 'shop',
+        },
+        branch: { id: 'br_1', name: 'الفرع الرئيسي' },
+        register: { id: 'reg_1', name: 'محطة الكاشير الرئيسية' },
+      }
+      return Promise.resolve(currentSession)
+    },
+    logout: () => {
+      currentSession = null
+      return Promise.resolve()
+    },
+    switchBranch: (branch) => {
+      if (currentSession) {
+        currentSession = { ...currentSession, branch }
+      }
+      return Promise.resolve()
+    },
+    switchRegister: (register) => {
+      if (currentSession) {
+        currentSession = { ...currentSession, register }
+      }
+      return Promise.resolve()
+    },
+  }
+
+  const http: HttpPort = {
+    request: <T = unknown>(endpoint: string): Promise<T> => {
+      return Promise.resolve({ success: true, endpoint } as T)
+    },
+  }
+
   return {
     kind: 'noop',
     shell: {
@@ -49,5 +122,7 @@ export function createNoopPlatform(options: NoopPlatformOptions = {}): Platform 
     },
     printer,
     updater,
+    auth,
+    http,
   }
 }
