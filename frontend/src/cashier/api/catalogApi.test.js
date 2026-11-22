@@ -31,7 +31,15 @@ vi.mock("@/lib/api", () => ({ api: vi.fn(recordingApi) }));
 
 import { api } from "@/lib/api";
 
-import { catalogApi, countToMovement, isValidEan13, makeSlug, nextSkuBase, validateProduct } from "./catalogApi";
+import {
+  catalogApi,
+  countToMovement,
+  isValidEan13,
+  makeSlug,
+  nextSkuBase,
+  resolveSkuBase,
+  validateProduct,
+} from "./catalogApi";
 
 const good = {
   name: "تيشيرت قطن",
@@ -465,5 +473,30 @@ describe("createProduct falls back to the step chain only when the endpoint is m
     expect(err.status).toBe(400);
     expect(calls.filter((c) => c.path === "/products/intake")).toHaveLength(1);
     expect(calls.some((c) => c.path === "/products")).toBe(false);
+  });
+});
+
+// الشاشة كانت بتحمّل لحد 500 منتج بكل تركيباتهم عشان تحسب أعلى "SKU-0007" في المتصفح.
+// الرقم بقى يجي من السيرفر باستعلام واحد، والعدّ في المتصفح بقى خطة رجوع لنشر قديم بس.
+describe("the SKU base comes from the server", () => {
+  it("asks the server for it", async () => {
+    await catalogApi.nextSku();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ path: "/products/next-sku", method: "GET", body: undefined });
+  });
+
+  it("the server's answer wins over counting the catalog in the browser", () => {
+    const existing = ["SKU-0001-0101", "SKU-0002-0101"];
+    expect(resolveSkuBase({ serverBase: "SKU-0203", existingSkus: existing })).toBe("SKU-0203");
+  });
+
+  it("a deploy without the endpoint still gives a free base from the catalog it has", () => {
+    expect(resolveSkuBase({ serverBase: null, existingSkus: ["SKU-0007-0101"] })).toBe("SKU-0008");
+    expect(resolveSkuBase({ serverBase: null, existingSkus: [] })).toBe("SKU-0001");
+  });
+
+  it("editing keeps the product's own base, whoever asks", () => {
+    expect(resolveSkuBase({ product: { sku: "SKU-0042-0101" }, serverBase: "SKU-0203" })).toBe("SKU-0042");
+    expect(resolveSkuBase({ product: { sku: "SKU-0042" }, serverBase: null, existingSkus: ["SKU-0099-0101"] })).toBe("SKU-0042");
   });
 });

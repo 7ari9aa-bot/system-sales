@@ -85,6 +85,12 @@ class ProductIntakeRequest(BaseModel):
     variants: list[IntakeVariant] = Field(min_length=1, max_length=500)
 
 
+@router.get("/products/next-sku")
+async def next_sku(ctx: TenantCtxDep):
+    """The next SKU base for the add-product screen (SKU-0007), so the browser counts nothing."""
+    return {"base": await CatalogService.next_sku_base(ctx.session, ctx.tenant_id)}
+
+
 @router.post("/products/intake", status_code=201)
 async def intake_product(body: ProductIntakeRequest, ctx: WriteCtx):
     """Create a sellable product with all its variants in ONE transaction."""
