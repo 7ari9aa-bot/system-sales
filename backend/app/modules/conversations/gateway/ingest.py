@@ -168,6 +168,10 @@ class IngestService:
             if message.reply_to_message_id
             else None
         )
+        if cls._came_from_ad(message):
+            # Meta extends the messaging window to 7 days for a conversation that began from a
+            # Click-to-Messenger / Click-to-Direct ad. add_message turns this into the marker.
+            provider_metadata = {**(provider_metadata or {}), "from_ad": True}
 
         created = await ConversationService.add_message(
             session,
@@ -465,6 +469,25 @@ class IngestService:
                 )
                 .values(**values)
             )
+
+    @staticmethod
+    def _came_from_ad(message) -> bool:
+        """True when this inbound message carries a Click-to-Messenger / Click-to-Direct referral.
+
+        The adapters keep the provider's referral under ``raw["_messenger"]`` (Messenger) or
+        ``raw["_ig"]`` (Instagram); an ad shows as ``source == "ADS"`` or as an ``ad_id``.
+        """
+        raw = message.raw if isinstance(message.raw, dict) else {}
+        for key in ("_messenger", "_ig"):
+            extra = raw.get(key)
+            if not isinstance(extra, dict):
+                continue
+            referral = extra.get("referral")
+            if isinstance(referral, dict) and (
+                str(referral.get("source") or "").upper() == "ADS" or referral.get("ad_id")
+            ):
+                return True
+        return False
 
     @staticmethod
     async def apply_read_watermarks(

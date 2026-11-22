@@ -26,8 +26,10 @@ from app.modules.conversations.models import (
     normalize_conversation_status,
 )
 from app.modules.conversations.policy import (
+    AD_WINDOW_PREFIX,
     MessagingPolicyService,
     OutboundBlockedError,
+    ad_window_state,
     template_language,
 )
 
@@ -287,11 +289,17 @@ class ConversationService:
             # also moves on outbound and would keep the window open forever.
             conversation.last_customer_message_at = now
             conversation.unread_count += 1
+            if (provider_metadata or {}).get("from_ad"):
+                # The customer arrived from a Click-to-Messenger / Click-to-Direct ad: Meta keeps
+                # the standard window open for 7 days from this message.
+                conversation.messaging_policy_state = ad_window_state(now)
         elif decision is not None:
-            # Record the standing so the UI and the policy engine agree.
-            conversation.messaging_policy_state = (
-                "template_only" if decision.requires_template else "open"
-            )
+            # Record the standing so the UI and the policy engine agree. An ad marker is kept:
+            # overwriting it would drop the longer window the ad opened.
+            if not str(conversation.messaging_policy_state or "").startswith(AD_WINDOW_PREFIX):
+                conversation.messaging_policy_state = (
+                    "template_only" if decision.requires_template else "open"
+                )
         # §46: an agent or AI reply satisfies the first-response SLA. A no-op
         # when no SLA is running, and only for real replies — a system message
         # must not stop the clock.

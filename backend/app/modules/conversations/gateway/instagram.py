@@ -257,6 +257,11 @@ class InstagramAdapter(ChannelAdapter):
             parsed_postback = self._parse_postback(event, postback, sender, recipient, payload)
             return [parsed_postback] if parsed_postback is not None else []
 
+        referral = event.get("referral")
+        if isinstance(referral, dict):
+            parsed_referral = self._parse_referral(event, referral, sender, recipient, payload)
+            return [parsed_referral] if parsed_referral is not None else []
+
         reaction = event.get("reaction")
         if isinstance(reaction, dict):
             parsed = self._parse_reaction(event, reaction, sender, recipient, payload)
@@ -404,6 +409,34 @@ class InstagramAdapter(ChannelAdapter):
             content_type="text",
             conversation_ref=str(recipient.get("id", "")),
             raw={**payload, "_ig": {"postback_payload": postback.get("payload")}},
+        )
+
+    @staticmethod
+    def _parse_referral(
+        event: dict, referral: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        """How the customer reached the chat (an ad, an ig.me link). Kept as context.
+
+        An ad referral names the ad and is what opens the longer messaging window, so it is
+        stored under the same ``referral`` key the Messenger adapter uses. The id is made from who,
+        when and which ad: a redelivered event is one row.
+        """
+        if not sender.get("id"):
+            return None
+        source = str(referral.get("source") or "").strip()
+        ref = str(referral.get("ref") or "").strip()
+        ad_id = str(referral.get("ad_id") or "").strip()
+        stamp = event.get("timestamp") or ""
+        key = f"referral:{sender.get('id')}:{stamp}:{ad_id or ref or source}"
+        label = " / ".join(x for x in (source, ref, f"ad {ad_id}" if ad_id else "") if x)
+        return InboundMessage(
+            channel="instagram",
+            channel_message_id=key,
+            customer_ref=str(sender.get("id", "")),
+            body=label or "referral",
+            content_type="text",
+            conversation_ref=str(recipient.get("id", "")),
+            raw={**payload, "_ig": {"referral": referral}},
         )
 
     @staticmethod
