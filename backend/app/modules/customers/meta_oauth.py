@@ -330,6 +330,11 @@ async def _business_portfolio_pages(http, user_token: str) -> list[dict]:
             ),
             step="business listing",
         )
+        _logger.info(
+            "meta_oauth.business_listing businesses=%s error=%s",
+            len(biz.get("data", []) if isinstance(biz, dict) else []),
+            _graph_fields(biz) if isinstance(biz, dict) else None,
+        )
         for business in biz.get("data", []) if isinstance(biz, dict) else []:
             for edge in ("owned_pages", "client_pages"):
                 listing = _graph_json(
@@ -374,6 +379,15 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
             step="token debug",
         )
         data = debug.get("data", {}) if isinstance(debug, dict) else {}
+        _logger.info(
+            "meta_oauth.debug_token type=%s granular=%s error=%s",
+            data.get("type"),
+            {
+                str(sc.get("scope")): len(sc.get("target_ids") or [])
+                for sc in data.get("granular_scopes") or []
+            },
+            _graph_fields(debug) if isinstance(debug, dict) else None,
+        )
         ids: list[str] = []
         for scope in data.get("granular_scopes") or []:
             if scope.get("scope") in {
@@ -389,6 +403,13 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
                     params={"fields": _PAGE_FIELDS, "access_token": user_token},
                 ),
                 step="granted page",
+            )
+            _logger.info(
+                "meta_oauth.granted_page id=%s has_token=%s has_ig=%s error=%s",
+                page_id,
+                bool(isinstance(page, dict) and page.get("access_token")),
+                bool(isinstance(page, dict) and page.get("instagram_business_account")),
+                _graph_fields(page) if isinstance(page, dict) else None,
             )
             if isinstance(page, dict) and page.get("id") and page.get("access_token"):
                 found[str(page["id"])] = page
