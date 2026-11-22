@@ -40,8 +40,8 @@ class WhatsAppConnectionSpec(ConnectionSpec):
     ]
     identity_field = "phone_number_id"
     setup_notes = (
-        "من Meta Developer Console: أضف الرقم إلى تطبيقك، ثم استخدم Webhook URL "
-        "التالي مع Verify Token من إعدادات الخادم: /webhooks/whatsapp"
+        "من Meta Developer Console: على كائن WhatsApp Business Account سجّل Webhook URL "
+        "التالي مع Verify Token من إعدادات الخادم: /webhooks/whatsapp (حقل messages)"
     )
 
     async def verify(

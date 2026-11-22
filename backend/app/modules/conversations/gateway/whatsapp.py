@@ -201,12 +201,26 @@ class WhatsAppAdapter:
                 value = change.get("value", {})
                 for status in value.get("statuses", []):
                     errors = status.get("errors") or []
+                    first = errors[0] if errors and isinstance(errors[0], dict) else {}
+                    code = first.get("code")
+                    title = first.get("title") or first.get("message")
+                    details = (first.get("error_data") or {}).get("details") or first.get("details")
+                    # The stored error keeps Meta's code in front of its text, because the row has
+                    # one text column and the code is what support and the merchant search for.
+                    text = first.get("message") or title
+                    if text and code is not None:
+                        text = f"{code}: {text}"
+                    if text and details and details not in text:
+                        text = f"{text} ({details})"
                     updates.append(
                         StatusUpdate(
                             channel_message_id=status.get("id", ""),
                             status=status.get("status", ""),
-                            error=errors[0].get("message") if errors else None,
+                            error=text,
                             timestamp=status.get("timestamp"),
+                            error_code=code if isinstance(code, int) else None,
+                            error_title=title,
+                            error_details=details,
                         )
                     )
         return updates

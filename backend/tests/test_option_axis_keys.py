@@ -54,9 +54,7 @@ async def _variant_with(db, tid, opts):
     prod = await CatalogService.create_product(
         db, tid, title="قميص", slug=f"p-{uuid.uuid4().hex[:8]}"
     )
-    return await CatalogService.add_variant(
-        db, tid, prod.id, price="100.00", option_values=opts
-    )
+    return await CatalogService.add_variant(db, tid, prod.id, price="100.00", option_values=opts)
 
 
 @pytest.mark.asyncio
@@ -84,12 +82,8 @@ async def test_a_variant_added_with_english_keys_reaches_sell_through(db, tenant
 async def test_the_matrix_grid_keeps_a_variant_added_with_english_keys(db, tenant_ctx):
     """The grid used to `continue` past it, so the garment had no cells at all."""
     tid = tenant_ctx.tenant_id
-    product = await CatalogService.create_product(
-        db, tid, title="تيشيرت", slug="p-mixed-keys"
-    )
-    await CatalogService.add_variant(
-        db, tid, product.id, price="100.00", option_values=ENGLISH
-    )
+    product = await CatalogService.create_product(db, tid, title="تيشيرت", slug="p-mixed-keys")
+    await CatalogService.add_variant(db, tid, product.id, price="100.00", option_values=ENGLISH)
 
     grid = await ApparelMatrixService.view(db, tid, product.id)
     cells = [c for row in grid["cells"].values() for c in row.values()]
@@ -106,10 +100,14 @@ async def test_the_sql_reader_sees_english_keys_too(db, tenant_ctx):
     tid = tenant_ctx.tenant_id
     variant = await _variant_with(db, tid, ENGLISH)
     rows = (
-        await db.execute(
-            select(size_column(ProductVariant.option_values)).where(
-                ProductVariant.id == variant.id
+        (
+            await db.execute(
+                select(size_column(ProductVariant.option_values)).where(
+                    ProductVariant.id == variant.id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows == ["M"]

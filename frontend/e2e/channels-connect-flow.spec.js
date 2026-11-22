@@ -73,7 +73,56 @@ test("a cancelled WhatsApp popup is reported and nothing is sent", async ({ page
     },
   });
   await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
-  await expect(page.getByText(/cancelled before it completed|أُلغيت عملية الربط/)).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText(/signup window was closed before it finished|أُغلقت نافذة الربط قبل اكتمالها/)).toBeVisible({ timeout: 8000 });
+  expect(calls).toEqual([]);
+});
+
+test("a cancel names the step the owner left on", async ({ page }) => {
+  const calls = await open(page, {
+    sdk: () => {
+      window.FB = {
+        init() {},
+        login() {
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              origin: "https://www.facebook.com",
+              data: JSON.stringify({ type: "WA_EMBEDDED_SIGNUP", event: "CANCEL", data: { current_step: "PHONE_NUMBER_SETUP" } }),
+            }),
+          );
+        },
+      };
+    },
+  });
+  await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
+  await expect(page.getByText(/PHONE_NUMBER_SETUP/)).toBeVisible({ timeout: 8000 });
+  expect(calls).toEqual([]);
+});
+
+test("an error from Meta shows Meta's own reason and ids, not 'cancelled'", async ({ page }) => {
+  const calls = await open(page, {
+    sdk: () => {
+      window.FB = {
+        init() {},
+        login() {
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              origin: "https://www.facebook.com",
+              data: JSON.stringify({
+                type: "WA_EMBEDDED_SIGNUP",
+                event: "ERROR",
+                data: { error_message: "Phone number is blocked", error_id: "1234", session_id: "s-9" },
+              }),
+            }),
+          );
+        },
+      };
+    },
+  });
+  await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
+  const shown = page.getByText(/Phone number is blocked/);
+  await expect(shown).toBeVisible({ timeout: 8000 });
+  await expect(shown).toContainText("1234");
+  await expect(shown).toContainText("s-9");
   expect(calls).toEqual([]);
 });
 

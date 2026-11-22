@@ -65,6 +65,7 @@ def color_column(option_values_column):
     """SQL: a variant's colour, whichever spelling its option_values use."""
     return _axis_column(option_values_column, COLOR_KEYS)
 
+
 #: Letter sizes in the order a rack is read. A size is matched case-insensitively.
 LETTER_SIZES = ("XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL")
 #: Common ways a shopkeeper writes the same size. Normalised to the canonical letter form.

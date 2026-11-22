@@ -36,10 +36,13 @@ def test_a_facebook_page_subscribes_to_its_feed_and_messenger_does_not() -> None
     assert "feed" not in subscribed_fields("messenger").split(",")
 
 
-def test_instagram_keeps_its_own_fields() -> None:
+def test_instagram_page_subscription_has_no_instagram_only_fields() -> None:
+    """comments / mentions / message_reactions / messaging_seen are fields of the `instagram`
+    object, configured in the App Dashboard. Meta ignores or rejects them on a Page subscription,
+    and a rejection used to fail the whole link."""
     fields = subscribed_fields("instagram").split(",")
-    assert "comments" in fields
     assert "feed" not in fields
+    assert {"comments", "mentions", "message_reactions", "messaging_seen"}.isdisjoint(fields)
 
 
 def test_a_new_comment_on_a_post_is_parsed() -> None:

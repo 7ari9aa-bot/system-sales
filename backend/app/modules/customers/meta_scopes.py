@@ -36,6 +36,22 @@ def missing_facebook_scopes(granted: object) -> list[str]:
     return [scope for scope in FACEBOOK_PAGE_SCOPES if scope not in have]
 
 
+#: What an Instagram connection needs beyond chat: DMs, comments, and publishing. Missing one does
+#: not stop the account linking (DMs may still work) but the matching feature fails, so the
+#: connection lists them and the owner can connect again.
+INSTAGRAM_REQUIRED_SCOPES = (
+    "instagram_manage_messages",
+    "instagram_manage_comments",
+    "instagram_content_publish",
+)
+
+
+def missing_instagram_scopes(granted: object) -> list[str]:
+    """The Instagram permissions a connection lacks, in the order we ask for them."""
+    have = {str(x) for x in granted} if isinstance(granted, (list, tuple, set)) else set()
+    return [scope for scope in INSTAGRAM_REQUIRED_SCOPES if scope not in have]
+
+
 def granted_scopes_from_permissions(payload: object) -> list[str]:
     """Permissions Meta says the user GRANTED, from a `/me/permissions` answer.
 

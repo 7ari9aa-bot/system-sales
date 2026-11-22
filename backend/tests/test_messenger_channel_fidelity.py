@@ -18,6 +18,7 @@ import uuid
 import httpx
 import pytest
 
+from app.core.errors import ExternalProviderError
 from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
 from app.modules.conversations.gateway.messenger import messenger_adapter
 
@@ -108,7 +109,9 @@ async def test_an_ordinary_reply_carries_no_tag():
 async def test_a_quote_is_sent_beside_the_message():
     sent: list = []
     await messenger_adapter.send(
-        CREDS, _msg(body="رد على سؤالك", meta={"reply_to_provider_id": "mid.0"}), _client=_client(sent)
+        CREDS,
+        _msg(body="رد على سؤالك", meta={"reply_to_provider_id": "mid.0"}),
+        _client=_client(sent),
     )
     assert sent[0]["reply_to"] == {"mid": "mid.0"}
     assert sent[0]["message"] == {"text": "رد على سؤالك"}
@@ -149,5 +152,5 @@ async def test_typing_on_is_a_sender_action_too():
 async def test_a_refused_sender_action_raises_so_the_caller_can_stay_silent():
     sent: list = []
     client = _client(sent, status=400)
-    with pytest.raises(Exception):
+    with pytest.raises(ExternalProviderError):
         await messenger_adapter.send_sender_action(CREDS, "PSID-1", "mark_seen", _client=client)

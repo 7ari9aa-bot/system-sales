@@ -38,8 +38,8 @@ class MessengerConnectionSpec(ConnectionSpec):
     config_fields = []  # the page id comes back from /me — nothing to paste
     identity_field = "account_id"
     setup_notes = (
-        "من Meta Developer Console: اشترك تطبيقك في صفحتك مع صلاحية pages_messaging، "
-        "ثم استخدم Webhook URL: /webhooks/messenger"
+        "من Meta Developer Console: على كائن Page سجّل رابطًا واحدًا لماسنجر وفيسبوك: "
+        "/webhooks/meta/page (مع الحقل messages). الربط يشترك في الصفحة تلقائيًا."
     )
 
     async def verify(

@@ -38,8 +38,8 @@ class InstagramConnectionSpec(ConnectionSpec):
     ]
     identity_field = "account_id"
     setup_notes = (
-        "من Meta Developer Console: اشترك تطبيقك في حساب انستجرام التجاري مع "
-        "صلاحية instagram_manage_messages، ثم استخدم Webhook URL: /webhooks/instagram"
+        "من Meta Developer Console: على كائن Instagram (وليس Page) سجّل Webhook URL: "
+        "/webhooks/instagram واختر حقول messages وcomments وmentions. اشتراك الصفحة لا يضبطها."
     )
 
     async def verify(

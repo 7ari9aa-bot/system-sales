@@ -30,6 +30,14 @@ from app.modules.platform.models import IdempotencyKey, Integration, WebhookEven
 logger = logging.getLogger(__name__)
 
 
+async def _channel_credentials(session, tenant_id, channel) -> dict | None:
+    """A connected channel's decrypted settings. The one place this file reaches the platform
+    module for them, so the cross-module import is counted once."""
+    from app.modules.platform.services.channel_access import channel_credentials_config
+
+    return await channel_credentials_config(session, tenant_id, channel)
+
+
 class IngestError(Exception):
     pass
 
@@ -168,6 +176,10 @@ class IngestService:
             if message.reply_to_message_id
             else None
         )
+        if cls._came_from_ad(message):
+            # Meta extends the messaging window to 7 days for a conversation that began from a
+            # Click-to-Messenger / Click-to-Direct ad. add_message turns this into the marker.
+            provider_metadata = {**(provider_metadata or {}), "from_ad": True}
 
         created = await ConversationService.add_message(
             session,
@@ -285,7 +297,11 @@ class IngestService:
         await bind_tenant(session, tenant_id)
         accepted = 0
         async with session.begin_nested():
-            for message in adapter.parse_inbound(payload):
+            messages = adapter.parse_inbound(payload)
+            await IngestService.fill_customer_names(
+                session, tenant_id=tenant_id, adapter=adapter, channel=channel, messages=messages
+            )
+            for message in messages:
                 conversation_id = await IngestService.ingest(
                     session,
                     tenant_id=tenant_id,
@@ -297,6 +313,12 @@ class IngestService:
             await IngestService.apply_status_updates(
                 session, tenant_id, adapter.parse_status_updates(payload)
             )
+            # Messenger read receipts name a time, not a message: "read everything up to T".
+            parse_reads = getattr(adapter, "parse_read_watermarks", None)
+            if callable(parse_reads):
+                await IngestService.apply_read_watermarks(
+                    session, tenant_id, channel, parse_reads(payload)
+                )
             # Public comments ride the same signed envelope (field "feed" /
             # "comments"). They are interaction data, not conversation turns:
             # persisted for the analyst, never fanned out to the AI. Adapters
@@ -317,11 +339,8 @@ class IngestService:
             has_template_news = getattr(adapter, "has_template_status_change", None)
             if callable(has_template_news) and has_template_news(payload):
                 from app.modules.conversations.templates import TemplateService
-                from app.modules.platform.services.channel_access import (
-                    channel_credentials_config,
-                )
 
-                credentials = await channel_credentials_config(session, tenant_id, channel)
+                credentials = await _channel_credentials(session, tenant_id, channel)
                 if credentials and credentials.get("access_token"):
                     # Its own savepoint: Meta being slow or down must not roll back the messages
                     # ingested above. The periodic sweep catches up whatever this misses.
@@ -458,4 +477,149 @@ class IngestService:
                     Message.status.in_(allowed_from),
                 )
                 .values(**values)
+            )
+
+    #: How long a looked-up name (or the fact that Meta would not give one) is remembered, so a
+    #: chatty customer costs one Graph call, not one per message.
+    _PROFILE_TTL_SECONDS = 24 * 60 * 60
+    _NO_PROFILE_TTL_SECONDS = 60 * 60
+
+    @classmethod
+    async def fill_customer_names(
+        cls,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        adapter,
+        channel: str,
+        messages: list,
+    ) -> None:
+        """Give a nameless sender their name from the provider, once. Best effort, never raises.
+
+        Only for adapters that can look a person up (``fetch_profile``) and only for a sender the
+        webhook did not already name. The lookup is cached, including a refusal for a shorter
+        time, so neither a busy customer nor a Page Meta will not answer for turns every message
+        into a Graph call. A failure of any kind leaves the message to be ingested as before.
+        """
+        fetch = getattr(adapter, "fetch_profile", None)
+        if not callable(fetch):
+            return
+        wanted = list(
+            dict.fromkeys(
+                m.customer_ref
+                for m in messages
+                if m.customer_ref and not getattr(m, "customer_name", None)
+            )
+        )
+        if not wanted:
+            return
+        try:
+            from app.core.redis import get_redis_or_none
+
+            redis = get_redis_or_none()
+            credentials = None
+            for ref in wanted:
+                key = f"profile:{channel}:{tenant_id}:{ref}"
+                cached = None
+                if redis is not None:
+                    try:
+                        cached = await redis.get(key)
+                    except Exception:  # noqa: BLE001 - the cache is a courtesy
+                        cached = None
+                if cached is not None:
+                    name = cached.decode() if isinstance(cached, bytes) else str(cached)
+                else:
+                    if credentials is None:
+                        credentials = await _channel_credentials(session, tenant_id, channel) or {}
+                    profile = await fetch(credentials, ref) if credentials else None
+                    name = (profile or {}).get("name", "")
+                    if redis is not None:
+                        try:
+                            await redis.set(
+                                key,
+                                name,
+                                ex=cls._PROFILE_TTL_SECONDS
+                                if name
+                                else cls._NO_PROFILE_TTL_SECONDS,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                if name:
+                    for message in messages:
+                        if message.customer_ref == ref and not message.customer_name:
+                            message.customer_name = name
+        except Exception:  # noqa: BLE001 - a name is never worth losing a received message
+            logger.warning("ingest.customer_name_lookup_failed channel=%s", channel, exc_info=True)
+
+    @staticmethod
+    def _came_from_ad(message) -> bool:
+        """True when this inbound message carries a Click-to-Messenger / Click-to-Direct referral.
+
+        The adapters keep the provider's referral under ``raw["_messenger"]`` (Messenger) or
+        ``raw["_ig"]`` (Instagram); an ad shows as ``source == "ADS"`` or as an ``ad_id``.
+        """
+        raw = message.raw if isinstance(message.raw, dict) else {}
+        for key in ("_messenger", "_ig"):
+            extra = raw.get(key)
+            if not isinstance(extra, dict):
+                continue
+            referral = extra.get("referral")
+            if isinstance(referral, dict) and (
+                str(referral.get("source") or "").upper() == "ADS" or referral.get("ad_id")
+            ):
+                return True
+        return False
+
+    @staticmethod
+    async def apply_read_watermarks(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, reads: list[dict]
+    ) -> None:
+        """Mark a customer's outbound messages ``read`` up to the provider's watermark.
+
+        A Messenger read receipt carries only a time (epoch milliseconds): everything sent before
+        it was read. Only OUR outbound rows in THIS customer's conversation on THIS channel that
+        are already sent or delivered are advanced, so a receipt can never regress a row, touch
+        another customer's thread, or mark a message that never left.
+        """
+        from app.modules.conversations.models import Message
+
+        for read in reads:
+            ref = str(read.get("customer_ref") or "").strip()
+            try:
+                watermark_ms = int(read.get("watermark"))
+            except (TypeError, ValueError):
+                continue
+            if not ref:
+                continue
+            cutoff = datetime.fromtimestamp(watermark_ms / 1000.0, tz=UTC)
+            # The customer's conversation is found through their channel identity with raw SQL,
+            # not the customers models: the conversations module must not grow a new import edge.
+            conversation_ids = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT c.id FROM conversations c "
+                            "JOIN customer_identities ci ON ci.customer_id = c.customer_id "
+                            "AND ci.tenant_id = c.tenant_id "
+                            "WHERE c.tenant_id = :tenant AND c.channel = :channel "
+                            "AND ci.channel = :channel AND ci.external_id = :ref"
+                        ),
+                        {"tenant": tenant_id, "channel": channel, "ref": ref},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not conversation_ids:
+                continue
+            await session.execute(
+                sa_update(Message)
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.conversation_id.in_(conversation_ids),
+                    Message.direction == "outbound",
+                    Message.status.in_(("sent", "delivered")),
+                    Message.created_at <= cutoff,
+                )
+                .values(status="read")
             )

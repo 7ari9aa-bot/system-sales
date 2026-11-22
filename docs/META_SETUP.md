@@ -23,20 +23,60 @@ https://<api-host>/api/v1/integrations/meta/oauth/callback
 
 استبدل ما بين علامتي أصغر وأكبر بعنوان الـAPI العام الفعلي. أي اختلاف ولو حرفًا واحدًا بين المسجل والمُرسل يجعل فيسبوك يرفض العملية، وسيعود المتصفح بشرح الخطأ إلى صفحة القنوات.
 
-## ثالثًا: الـWebhooks
+## ثالثًا: الـWebhooks — ثلاثة إعدادات مستقلة
 
-سجّل نفس الرابط التالي في منتج Webhooks على كائن Page، وحدد الحقول المطلوبة: messages وmessaging_postbacks وmessaging_referrals وmessage_deliveries. وقيمة Verify Token تطابق MESSENGER_VERIFY_TOKEN أو INSTAGRAM_VERIFY_TOKEN حسب القناة.
+ميتا تعطي **رابط استقبال واحدًا لكل نوع كائن** داخل التطبيق، وليس لكل قناة. لذلك الإعداد ثلاثة أجزاء منفصلة، كل جزء له كائنه ورابطه وحقوله وتوكنه:
 
-```text
-https://<api-host>/api/v1/webhooks/messenger
-https://<api-host>/api/v1/webhooks/facebook
-https://<api-host>/api/v1/webhooks/instagram
-https://<api-host>/api/v1/webhooks/whatsapp
-```
+| الكائن في ميتا | القنوات | رابط الاستقبال |
+|---|---|---|
+| `Page` | ماسنجر + فيسبوك | `https://<api-host>/api/v1/webhooks/meta/page` |
+| `Instagram` | إنستجرام | `https://<api-host>/api/v1/webhooks/instagram` |
+| `WhatsApp Business Account` | واتساب | `https://<api-host>/api/v1/webhooks/whatsapp` |
 
-فيسبوك وماسنجر يتبعان نفس القاعدة تمامًا: يوقّع التطبيق الطلب بـ MESSENGER_APP_SECRET (أو META_APP_SECRET إن تُرك فارغًا)، ويفتح التحقق بـ MESSENGER_VERIFY_TOKEN فقط. توكن واتساب لا يُقبل لهما أبدًا. أما واتساب فعنوانه على مستوى التطبيق كله (WhatsApp ثم Configuration)، وتوكن التحقق وسرّه خاصان به كما في القسم السادس.
+**الاشتراك في الحقل يجب أن يحصل في مكانين معًا**، وإلا لن يصل الحدث ولو نجح الربط في صفحة القنوات:
 
-الخادم يشترك في حقول الصفحة تلقائيًا بعد نجاح الربط، لكن اشتراك التطبيق نفسه في منتج Webhooks مع رابط الاستقبال يبقى مسؤولية الإعداد.
+1. **على مستوى التطبيق** (لوحة المطورين ثم Webhooks): الكائن والرابط وتوكن التحقق والحقول. هذه خطوة يدوية للمشغّل، ولا يمكن للخادم قراءتها أو ضبطها.
+2. **على مستوى الأصل** (الصفحة أو حساب واتساب للأعمال): يفعله الخادم تلقائيًا عند الربط، ويزيله عند الفصل.
+
+### ١) كائن Page (ماسنجر وفيسبوك)
+
+الرابط: `https://<api-host>/api/v1/webhooks/meta/page`
+
+الحقول: `messages` و`messaging_postbacks` و`messaging_referrals` و`message_deliveries` و`message_reads` و`message_reactions` و`message_echoes` و`messaging_handovers` و`feed` و`mention`.
+
+الخادم يقسّم كل رسالة واردة بنفسه: ما كان تحت `messaging` (محادثات خاصة) يذهب إلى ماسنجر، وما كان تحت `changes` (منشورات وتعليقات وإشارات) يذهب إلى فيسبوك. فلا يهم أي القناتين مربوطة؛ يكفي رابط واحد، ولا يُسجَّل رابط ثانٍ على الكائن نفسه.
+
+التوقيع: `MESSENGER_APP_SECRET` (أو `META_APP_SECRET` إن تُرك فارغًا). التحقق: `MESSENGER_VERIFY_TOKEN`. توكن واتساب لا يُقبل هنا أبدًا.
+
+الروابط القديمة `/api/v1/webhooks/messenger` و`/api/v1/webhooks/facebook` ما زالت تعمل لمن سجّلها سابقًا، لكنها **لا تُسجَّل معًا** على الكائن نفسه: سجّل رابط `meta/page` فقط.
+
+### ٢) كائن Instagram
+
+الرابط: `https://<api-host>/api/v1/webhooks/instagram`
+
+الحقول: `messages` و`messaging_postbacks` و`message_reactions` و`messaging_seen` و`comments` و`mentions` و`live_comments`.
+
+مهم: اشتراك الصفحة المرتبطة (`/{page-id}/subscribed_apps`) **لا يضبط** Webhooks إنستجرام ولا يقبل حقولها. حقول إنستجرام تُختار من لوحة التطبيق على كائن Instagram نفسه، والخادم يشترك فقط في اشتراك الصفحة المرتبطة بالحساب.
+
+متطلبات الإنتاج: `instagram_manage_messages` و`instagram_manage_comments` يحتاجان Advanced Access وموافقة App Review، والحساب يجب أن يكون احترافيًا (Business أو Creator) ومرتبطًا بصفحة فيسبوك. بدون ذلك قد لا تصل الإشعارات رغم نجاح الربط.
+
+التوقيع: `INSTAGRAM_APP_SECRET`. التحقق: `INSTAGRAM_VERIFY_TOKEN`.
+
+### ٣) كائن WhatsApp Business Account
+
+الرابط: `https://<api-host>/api/v1/webhooks/whatsapp`
+
+الحقل: `messages` (ويشمل حالات التسليم والفشل)، ويُستحسن إضافة حقول حالة الحساب والرقم والقوالب.
+
+يُضبط من لوحة التطبيق: WhatsApp ثم Configuration، مرة واحدة للتطبيق كله. اشتراك التطبيق في حساب واتساب للأعمال (`/{waba-id}/subscribed_apps`) يفعله الخادم عند الربط ويزيله عند الفصل، لكنه **لا يغني** عن ضبط الرابط في اللوحة.
+
+التوقيع: `WHATSAPP_APP_SECRET`. التحقق: `WHATSAPP_VERIFY_TOKEN`.
+
+### التأكد من أن كل شيء يعمل
+
+من صفحة القنوات اضغط «تشخيص القناة»: تظهر حالة الاتصال والصلاحيات واشتراك الصفحة (يسأل ميتا مباشرة) وإعداد الخادم وآخر Webhook وصل وآخر خطأ. لو لم يصل أي حدث بعد، فالأرجح أن رابط التطبيق في اللوحة غير مضبوط (لا يمكن فحصه من الخادم). التطبيق يجب أن يكون في وضع **Live** كي تصل أحداث المستخدمين الحقيقيين.
+
+عند فصل قناة يزيل الخادم اشتراكها من ميتا. إن كانت الصفحة مشتركة معها قناة أخرى متصلة (مثل ماسنجر مع فيسبوك) يُبقي الاشتراك ويقتصر على حقول القناة الباقية. وإن تعذّر الوصول إلى ميتا يبقى الفصل محليًا ناجحًا وتُعلَّم الإزالة «معلّقة» لتُعاد من زر إعادة المحاولة.
 
 ## رابعًا: وضع التطوير وحساب المجرّب
 
@@ -149,20 +189,60 @@ https://<api-host>/api/v1/integrations/meta/oauth/callback
 
 Any mismatch between the registered URL and the one sent makes Meta refuse the flow; the browser returns to the channels page with the reason.
 
-## 3. Webhooks
+## 3. Webhooks: three independent setups
 
-In the `Webhooks` product, subscribe to the `Page` object with the fields `messages`, `messaging_postbacks`, `messaging_referrals`, `message_deliveries`, and the callback URLs:
+Meta gives an app **one callback URL per object type**, not one per channel. So there are three separate setups, each with its own object, URL, fields and token:
 
-```text
-https://<api-host>/api/v1/webhooks/messenger
-https://<api-host>/api/v1/webhooks/facebook
-https://<api-host>/api/v1/webhooks/instagram
-https://<api-host>/api/v1/webhooks/whatsapp
-```
+| Meta object | Channels | Callback URL |
+|---|---|---|
+| `Page` | Messenger + Facebook | `https://<api-host>/api/v1/webhooks/meta/page` |
+| `Instagram` | Instagram | `https://<api-host>/api/v1/webhooks/instagram` |
+| `WhatsApp Business Account` | WhatsApp | `https://<api-host>/api/v1/webhooks/whatsapp` |
 
-Facebook and Messenger follow one rule: the request is signed with `MESSENGER_APP_SECRET` (or `META_APP_SECRET` when it is empty) and the handshake opens with `MESSENGER_VERIFY_TOKEN` only. The WhatsApp token is never accepted for them. WhatsApp's callback is set once for the whole app (WhatsApp → Configuration), with its own verify token and secret, see section 6.
+**A field is delivered only when it is subscribed at both levels.** A connection that shows "connected" in the channels page can still receive nothing if either is missing:
 
-The verify token must match `MESSENGER_VERIFY_TOKEN` (Messenger and Facebook), `INSTAGRAM_VERIFY_TOKEN`, or `WHATSAPP_VERIFY_TOKEN`. The server subscribes the page itself after a successful connect; the app-level webhook subscription above is still operator setup.
+1. **App level** (developer dashboard → Webhooks): the object, the URL, the verify token and the fields. This is a manual operator step; the server can neither read nor set it.
+2. **Asset level** (the Page or the WhatsApp Business Account): the server does it on connect and removes it on disconnect.
+
+### 1) The Page object (Messenger and Facebook)
+
+URL: `https://<api-host>/api/v1/webhooks/meta/page`
+
+Fields: `messages`, `messaging_postbacks`, `messaging_referrals`, `message_deliveries`, `message_reads`, `message_reactions`, `message_echoes`, `messaging_handovers`, `feed`, `mention`.
+
+The server sorts each delivery itself: whatever sits under `messaging` (private chat) goes to Messenger, whatever sits under `changes` (posts, comments, mentions) goes to Facebook. It does not matter which of the two channels is connected; one URL covers both and a second URL is never registered on the same object.
+
+Signature: `MESSENGER_APP_SECRET` (or `META_APP_SECRET` when empty). Handshake: `MESSENGER_VERIFY_TOKEN`. The WhatsApp token is never accepted here.
+
+The older `/api/v1/webhooks/messenger` and `/api/v1/webhooks/facebook` URLs still work for anyone who registered them, but they are **not registered together** on the same object: register `meta/page` only.
+
+### 2) The Instagram object
+
+URL: `https://<api-host>/api/v1/webhooks/instagram`
+
+Fields: `messages`, `messaging_postbacks`, `message_reactions`, `messaging_seen`, `comments`, `mentions`, `live_comments`.
+
+Important: subscribing the linked Page (`/{page-id}/subscribed_apps`) does **not** configure Instagram webhooks and does not accept their fields. Instagram's fields are picked in the app dashboard on the Instagram object itself; the server only subscribes the Page that the account is linked to.
+
+Production requirements: `instagram_manage_messages` and `instagram_manage_comments` need Advanced Access and App Review, and the account must be a professional one (Business or Creator) linked to a Facebook Page. Without them notifications may not arrive even though the connect succeeded.
+
+Signature: `INSTAGRAM_APP_SECRET`. Handshake: `INSTAGRAM_VERIFY_TOKEN`.
+
+### 3) The WhatsApp Business Account object
+
+URL: `https://<api-host>/api/v1/webhooks/whatsapp`
+
+Field: `messages` (it carries delivery and failure statuses); adding the account, number and template update fields is recommended.
+
+Set in the app dashboard: WhatsApp → Configuration, once for the whole app. Subscribing the app to the business account (`/{waba-id}/subscribed_apps`) is done by the server on connect and removed on disconnect, but it **does not replace** setting the URL in the dashboard.
+
+Signature: `WHATSAPP_APP_SECRET`. Handshake: `WHATSAPP_VERIFY_TOKEN`.
+
+### Checking that it works
+
+On the channels page press "Diagnose channel": it shows the connection, permissions, the Page subscription (asked of Meta live), the server's webhook readiness, the last webhook received and the last error. If no event has ever arrived, the likeliest cause is the app-level URL missing in the dashboard (it cannot be checked from the server). The app must be **Live** for real users' events to arrive.
+
+Disconnecting a channel removes its subscription from Meta. If another connected channel still shares the Page (Messenger with Facebook) the subscription is kept and narrowed to the remaining channel's fields. If Meta cannot be reached the local disconnect still succeeds and the removal is marked "pending" so it can be retried.
 
 ## 4. Development mode and testers
 

@@ -42,8 +42,8 @@ class FacebookConnectionSpec(ConnectionSpec):
     ]
     identity_field = "account_id"
     setup_notes = (
-        "من Meta Developer Console: اشترك تطبيقك في صفحتك (Page subscribe) مع "
-        "صلاحية pages_messaging، ثم استخدم Webhook URL: /webhooks/facebook"
+        "من Meta Developer Console: على كائن Page سجّل رابطًا واحدًا لماسنجر وفيسبوك: "
+        "/webhooks/meta/page (مع الحقلين messages وfeed). الربط يشترك في الصفحة تلقائيًا."
     )
 
     async def verify(

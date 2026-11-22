@@ -68,15 +68,21 @@ _INSTAGRAM_SCOPES = (
     # to grant them; the DM scopes above are unchanged, so existing chats keep working.
     "instagram_manage_comments,instagram_content_publish"
 )
-# Webhook fields the page subscription asks for, per channel. Instagram comments are
-# delivered on the linked PAGE's subscription, so without `comments` a connected store
-# never receives one (the parser and the table exist, nothing would arrive).
-_BASE_SUBSCRIBED_FIELDS = "messages,messaging_postbacks,messaging_referrals,message_deliveries"
+# Webhook fields the PAGE subscription asks for, per channel. Only fields that exist on Meta's
+# `page` object are listed. Instagram's own fields (comments, mentions, message_reactions,
+# messaging_seen, live_comments) are NOT Page fields: Meta states that `subscribed_fields` on
+# /{page_id}/subscribed_apps does not configure Instagram webhooks. They are subscribed on the
+# `instagram` object in the App Dashboard (callback /webhooks/instagram, see docs/META_SETUP.md).
+# An Instagram connection still needs its linked Page subscribed, with the chat fields below.
+_BASE_SUBSCRIBED_FIELDS = (
+    "messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads"
+)
 _SUBSCRIBED_FIELDS = {
-    "instagram": _BASE_SUBSCRIBED_FIELDS + ",comments,message_reactions,messaging_seen",
+    "instagram": _BASE_SUBSCRIBED_FIELDS,
     # Facebook Page comments are delivered on the Page's `feed` field; without it a
-    # connected Page only ever gets its Messenger traffic.
-    "facebook": _BASE_SUBSCRIBED_FIELDS + ",feed",
+    # connected Page only ever gets its Messenger traffic. `mention` is the Page tagged
+    # in someone else's post or comment.
+    "facebook": _BASE_SUBSCRIBED_FIELDS + ",feed,mention",
 }
 
 
@@ -419,15 +425,20 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
 
 
 def _messaging_pages(all_pages: list[dict]) -> list[dict]:
-    """The Pages this operator can run messaging on (all of them when Meta lists no tasks)."""
-    pages = [
+    """The Pages this operator can run messaging on.
+
+    A Page whose `tasks` list is missing or empty is kept (older Graph answers omit it). A Page
+    whose list is present but names neither MESSAGING nor MANAGE is NOT one the operator can run
+    chat on, so it is never offered, not even as a fallback when nothing else qualifies: the old
+    fallback returned every Page and let the owner connect one Meta would then refuse.
+    """
+    return [
         page
         for page in all_pages
         if not page.get("tasks")
         or "MESSAGING" in (page.get("tasks") or [])
         or "MANAGE" in (page.get("tasks") or [])
     ]
-    return pages or all_pages
 
 
 def _page_choices(pages: list[dict]) -> list[dict]:

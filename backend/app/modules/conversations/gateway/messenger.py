@@ -119,9 +119,53 @@ class MessengerAdapter(ChannelAdapter):
         return [part for _key, part in parts]
 
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
-        # Meta delivery/read receipts arrive as messaging[0].delivery|read —
-        # inbound-only for now; the generic status path handles the rest.
-        return []
+        """Delivery receipts: ``messaging[].delivery.mids`` -> one ``delivered`` each.
+
+        A read receipt carries only a watermark (everything up to that time was read), not message
+        ids, so it cannot name a row here. It is surfaced by `parse_read_watermarks` instead and
+        applied against the conversation by the ingest step that knows our outbound rows.
+        """
+        updates: list[StatusUpdate] = []
+        for event in self._messaging_events(payload):
+            delivery = event.get("delivery")
+            if not isinstance(delivery, dict):
+                continue
+            watermark = delivery.get("watermark")
+            for mid in delivery.get("mids") or []:
+                if mid:
+                    updates.append(
+                        StatusUpdate(
+                            channel_message_id=str(mid),
+                            status="delivered",
+                            timestamp=watermark,
+                        )
+                    )
+        return updates
+
+    def parse_read_watermarks(self, payload: dict) -> list[dict]:
+        """Read receipts: ``{"customer_ref", "watermark"}``, one per ``messaging[].read`` event.
+
+        Messenger says "the customer read everything we sent up to <watermark>". Nothing in the
+        event names a message, so the caller marks the customer's outbound rows up to that time.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            read = event.get("read")
+            if isinstance(read, dict) and read.get("watermark") is not None:
+                out.append(
+                    {
+                        "customer_ref": str((event.get("sender") or {}).get("id", "")),
+                        "watermark": read.get("watermark"),
+                    }
+                )
+        return out
+
+    @staticmethod
+    def _messaging_events(payload: dict):
+        for entry in payload.get("entry", []) or []:
+            for event in entry.get("messaging", []) or []:
+                if isinstance(event, dict):
+                    yield event
 
     def parse_comments(self, payload: dict) -> list[InboundComment]:
         """Public page/post comments ride the SAME signed webhook envelope —
@@ -129,70 +173,275 @@ class MessengerAdapter(ChannelAdapter):
         return parse_meta_comment_changes(payload)
 
     def parse_inbound(self, payload: dict) -> list[InboundMessage]:
-        """Parse a Meta Messenger webhook payload into 0..1 messages.
+        """Parse a Meta Messenger webhook payload into 0..n messages.
 
-        Always a list — the dispatcher and the WebhookWorker iterate it, so the
-        ``None`` this used to return on an empty envelope crashed the hot path
-        instead of yielding zero messages.
+        Always a list — the dispatcher and the WebhookWorker iterate it. Events that are not a
+        customer's chat message (receipts, echoes of our own sends, thread-control handovers) yield
+        nothing here; they are surfaced by their own parse_* methods.
         """
-        entries = payload.get("entry", []) or []
         messages: list[InboundMessage] = []
-        for entry in entries:
-            for event in entry.get("messaging", []) or []:
-                messages.extend(self._parse_message_event(event, payload))
+        for event in self._messaging_events(payload):
+            messages.extend(self._parse_message_event(event, payload))
         return messages
 
     def _parse_message_event(self, event: dict, payload: dict) -> list[InboundMessage]:
-        sender = event.get("sender", {})
-        recipient = event.get("recipient", {})
-        message = event.get("message", {})
+        sender = event.get("sender") or {}
+        recipient = event.get("recipient") or {}
 
-        if not message:
+        postback = event.get("postback")
+        if isinstance(postback, dict):
+            parsed = self._parse_postback(event, postback, sender, recipient, payload)
+            return [parsed] if parsed is not None else []
+
+        referral = event.get("referral")
+        if isinstance(referral, dict):
+            parsed = self._parse_referral(event, referral, sender, recipient, payload)
+            return [parsed] if parsed is not None else []
+
+        reaction = event.get("reaction")
+        if isinstance(reaction, dict):
+            parsed = self._parse_reaction(event, reaction, sender, recipient, payload)
+            return [parsed] if parsed is not None else []
+
+        message = event.get("message")
+        if not isinstance(message, dict) or not message:
             return []
-
-        # An echo is the Page's own outgoing message coming back on the `message_echoes` field.
-        # Without this guard the store's reply is stored as an INBOUND customer message, so the
-        # agent's own words appear in the thread as if the customer had written them.
+        # Our own send echoed back by Meta: not something the customer said.
         if message.get("is_echo"):
             return []
 
-        text = message.get("text")
-        attachments = message.get("attachments", [])
-        # A quote rides the message as the mid of the message being answered.
-        reply_to = (message.get("reply_to") or {}).get("mid")
-
-        content_type = "text"
-        media_url = None
-
-        if attachments:
-            att = attachments[0]
-            att_type = att.get("type", "text")
-            type_map = {
-                "image": "image",
-                "audio": "voice",
-                "video": "video",
-                "file": "file",
-            }
-            content_type = type_map.get(att_type, "unsupported")
-            media_url = att.get("payload", {}).get("url")
-
         mid = message.get("mid")
+        text = message.get("text")
+        reply_to = (message.get("reply_to") or {}).get("mid")
+        attachments = [a for a in (message.get("attachments") or []) if isinstance(a, dict)]
+        if not attachments:
+            return [
+                self._build(sender, recipient, payload, mid, text, None, None, "text", reply_to)
+            ]
 
-        return [
-            InboundMessage(
-                channel=self.channel,
-                channel_message_id=mid,
-                customer_ref=str(sender.get("id", "")),
-                customer_name=None,
-                body=text,
-                media_url=media_url,
-                media_type=content_type if media_url else None,
-                content_type=content_type,
-                reply_to_message_id=reply_to,
-                conversation_ref=str(recipient.get("id", "")),
-                raw=payload,
+        # One event can carry several attachments (an album). Each becomes its own message so none
+        # is lost: the first keeps the provider id and the caption, the rest get a stable suffixed
+        # id (a retried delivery still dedupes) and no caption.
+        type_map = {"image": "image", "audio": "voice", "video": "video", "file": "file"}
+        out: list[InboundMessage] = []
+        for index, att in enumerate(attachments):
+            att_type = att.get("type", "")
+            content_type = type_map.get(att_type, "unsupported")
+            media_url = (att.get("payload") or {}).get("url")
+            if att_type == "location":
+                content_type = "location"
+            out.append(
+                self._build(
+                    sender,
+                    recipient,
+                    payload,
+                    mid if index == 0 or not mid else f"{mid}#{index}",
+                    text if index == 0 else None,
+                    media_url,
+                    content_type if media_url else None,
+                    content_type,
+                    reply_to,
+                )
             )
-        ]
+        return out
+
+    def _build(
+        self,
+        sender: dict,
+        recipient: dict,
+        payload: dict,
+        mid: str | None,
+        body: str | None,
+        media_url: str | None,
+        media_type: str | None,
+        content_type: str,
+        reply_to: str | None,
+    ) -> InboundMessage:
+        return InboundMessage(
+            channel=self.channel,
+            channel_message_id=mid,
+            customer_ref=str(sender.get("id", "")),
+            customer_name=None,
+            body=body,
+            media_url=media_url,
+            media_type=media_type,
+            content_type=content_type,
+            reply_to_message_id=reply_to,
+            conversation_ref=str(recipient.get("id", "")),
+            raw=payload,
+        )
+
+    def _parse_postback(
+        self, event: dict, postback: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        """A tap on a button, quick reply or persistent-menu item.
+
+        It reads as the customer saying the button's title. A postback has no message id, so the
+        id is made from who, when and what: the same tap redelivered is one message.
+        """
+        title = str(postback.get("title") or postback.get("payload") or "").strip()
+        if not title or not sender.get("id"):
+            return None
+        stamp = event.get("timestamp") or ""
+        key = f"postback:{sender.get('id')}:{stamp}:{postback.get('payload') or ''}"
+        ref = postback.get("referral")
+        return InboundMessage(
+            channel=self.channel,
+            channel_message_id=postback.get("mid") or key,
+            customer_ref=str(sender.get("id", "")),
+            body=title,
+            content_type="text",
+            conversation_ref=str(recipient.get("id", "")),
+            raw={
+                **payload,
+                "_messenger": {
+                    "postback_payload": postback.get("payload"),
+                    **({"referral": ref} if isinstance(ref, dict) else {}),
+                },
+            },
+        )
+
+    def _parse_referral(
+        self, event: dict, referral: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        """How the customer reached the chat (m.me link, ad, shop). Kept as context, not chatter.
+
+        Stored as a system-flavoured text row with a stable id so the source is visible on the
+        conversation and a redelivery is one row. An ad referral also names the ad id, which the
+        policy layer uses to extend the reply window.
+        """
+        if not sender.get("id"):
+            return None
+        source = str(referral.get("source") or "").strip()
+        ref = str(referral.get("ref") or "").strip()
+        ad_id = str(referral.get("ad_id") or "").strip()
+        stamp = event.get("timestamp") or ""
+        key = f"referral:{sender.get('id')}:{stamp}:{ad_id or ref or source}"
+        label = " / ".join(x for x in (source, ref, f"ad {ad_id}" if ad_id else "") if x)
+        return InboundMessage(
+            channel=self.channel,
+            channel_message_id=key,
+            customer_ref=str(sender.get("id", "")),
+            body=label or "referral",
+            content_type="text",
+            conversation_ref=str(recipient.get("id", "")),
+            raw={**payload, "_messenger": {"referral": referral}},
+        )
+
+    def _parse_reaction(
+        self, event: dict, reaction: dict, sender: dict, recipient: dict, payload: dict
+    ) -> InboundMessage | None:
+        """A customer's emoji on one of our messages. The id is derived from the event so a
+        redelivered reaction is one row, never a duplicate."""
+        target = reaction.get("mid")
+        if not target or not sender.get("id"):
+            return None
+        action = reaction.get("action")
+        emoji = (reaction.get("emoji") or reaction.get("reaction") or "").strip()
+        if action == "unreact" or not emoji:
+            emoji = "\u200b-"  # same "withdrawn" marker the Instagram adapter stores
+        stamp = event.get("timestamp") or ""
+        key = f"reaction:{sender.get('id')}:{target}:{stamp}:{action or 'react'}"
+        return InboundMessage(
+            channel=self.channel,
+            channel_message_id=key,
+            customer_ref=str(sender.get("id", "")),
+            body=emoji,
+            content_type="reaction",
+            reply_to_message_id=str(target),
+            conversation_ref=str(recipient.get("id", "")),
+            raw=payload,
+        )
+
+    def parse_handovers(self, payload: dict) -> list[dict]:
+        """Thread-control events: pass / take / request, and Meta Business AI hand-offs.
+
+        ``messaging_handovers`` carries ``pass_thread_control``, ``take_thread_control`` and
+        ``request_thread_control``. Returned as plain dicts so the caller can pause or resume the
+        AI on that conversation; nothing here changes state by itself.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            for kind in ("pass_thread_control", "take_thread_control", "request_thread_control"):
+                data = event.get(kind)
+                if isinstance(data, dict):
+                    out.append(
+                        {
+                            "customer_ref": str((event.get("sender") or {}).get("id", "")),
+                            "event": kind,
+                            "new_owner_app_id": data.get("new_owner_app_id"),
+                            "previous_owner_app_id": data.get("previous_owner_app_id"),
+                            "metadata": data.get("metadata"),
+                            "reason": data.get("handoff_reason") or data.get("reason"),
+                            "timestamp": event.get("timestamp"),
+                        }
+                    )
+        return out
+
+    def parse_echoes(self, payload: dict) -> list[dict]:
+        """Messages WE (or a human on the Page inbox) sent, echoed back: ``is_echo`` events.
+
+        ``customer_ref`` is the recipient (the customer) and ``app_id`` says which app sent it, so
+        a reply typed in Meta's own inbox can be told apart from one this system sent.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            message = event.get("message")
+            if isinstance(message, dict) and message.get("is_echo"):
+                out.append(
+                    {
+                        "customer_ref": str((event.get("recipient") or {}).get("id", "")),
+                        "mid": message.get("mid"),
+                        "app_id": message.get("app_id"),
+                        "text": message.get("text"),
+                        "timestamp": event.get("timestamp"),
+                    }
+                )
+        return out
+
+    async def fetch_profile(
+        self, credentials: dict, psid: str, *, _client: httpx.AsyncClient | None = None
+    ) -> dict[str, str] | None:
+        """The customer's name (and picture) from Meta, or None when Meta will not say.
+
+        Messenger webhooks carry only the page-scoped id, so a customer shows in the inbox as a
+        number. Meta answers ``GET /{psid}?fields=name,profile_pic`` with the Page token, but only
+        for a person who has messaged the Page, and may refuse (a user who blocked profile access,
+        a token without the right permission, rate limits). Every failure here is "no name": it
+        must never fail a message that was already received.
+        """
+        token = (credentials or {}).get("api_key") or (credentials or {}).get("page_access_token")
+        if not token or not psid:
+            return None
+        try:
+            if _client is not None:
+                response = await _client.get(
+                    f"{self._base}/{psid}",
+                    params={"fields": "name,profile_pic"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            else:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(
+                        f"{self._base}/{psid}",
+                        params={"fields": "name,profile_pic"},
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+            if not response.is_success:
+                return None
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        name = str(data.get("name") or "").strip()
+        if not name:
+            return None
+        out = {"name": name[:255]}
+        picture = str(data.get("profile_pic") or "").strip()
+        if picture:
+            out["profile_pic"] = picture
+        return out
 
     async def get_user_profile(
         self,

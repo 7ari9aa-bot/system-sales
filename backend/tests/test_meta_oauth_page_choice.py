@@ -58,9 +58,21 @@ def test_when_no_page_lists_tasks_they_are_all_offered() -> None:
     assert mo._messaging_pages(bare) == bare
 
 
-def test_when_nothing_qualifies_the_operators_pages_are_still_offered() -> None:
+def test_a_page_the_operator_cannot_message_on_is_never_offered() -> None:
+    """Meta says (tasks present, no MESSAGING/MANAGE) the operator cannot run chat on it. The old
+    fallback returned every Page when none qualified, so an unqualified Page could be connected."""
     only_ads = [{"id": "9", "name": "Ads", "tasks": ["ADVERTISE"]}]
-    assert mo._messaging_pages(only_ads) == only_ads
+    assert mo._messaging_pages(only_ads) == []
+
+
+def test_only_the_qualified_pages_are_offered_from_a_mixed_list() -> None:
+    mixed = [
+        {"id": "9", "name": "Ads", "tasks": ["ADVERTISE"]},
+        {"id": "1", "name": "Shop", "tasks": ["MESSAGING", "ANALYZE"]},
+        {"id": "2", "name": "Old", "tasks": []},
+        {"id": "3", "name": "Older"},
+    ]
+    assert [p["id"] for p in mo._messaging_pages(mixed)] == ["1", "2", "3"]
 
 
 def test_the_browser_sees_ids_and_names_never_tokens() -> None:

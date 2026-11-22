@@ -140,7 +140,7 @@ class CustomerProfileService:
         now: datetime | None = None,
         storage: Any = None,
     ) -> bool:
-        """Messenger's turn: a PSID becomes a name and a face. Returns True when something was learned.
+        """Messenger's turn: a PSID becomes a name and a face. True when something was learned.
 
         Same rules as Instagram — read once, retry rarely, never raise — because a Messenger
         webhook also names the sender only by a page-scoped number.
