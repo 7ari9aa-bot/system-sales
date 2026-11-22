@@ -23,13 +23,12 @@ class AuthRepository {
     final response = await _apiClient.post(
       ApiEndpoints.login,
       body: {
-        'subdomain': cleanSubdomain,
         'email': email.trim(),
         'password': password,
       },
       includeAuth: false,
       extraHeaders: {
-        'X-Tenant-Subdomain': cleanSubdomain,
+        if (cleanSubdomain.isNotEmpty) 'X-Tenant-Subdomain': cleanSubdomain,
       },
     );
 
@@ -44,21 +43,74 @@ class AuthRepository {
       }
 
       final refreshToken = response['refresh_token']?.toString() ?? '';
-      final tenantId = response['tenant_id']?.toString() ?? cleanSubdomain;
-      final userData = response['user'] as Map<String, dynamic>? ?? response;
-      final userId = userData['id']?.toString() ?? response['user_id']?.toString();
+
+      // Save token so upcoming me request sends Bearer header
+      await _tokenStore.saveAccessToken(accessToken);
+      if (refreshToken.isNotEmpty) {
+        await _tokenStore.saveRefreshToken(refreshToken);
+      }
+
+      // Fetch authentic user profile & tenant memberships from /auth/me
+      Map<String, dynamic> meData = {};
+      try {
+        final meRes = await _apiClient.get(
+          ApiEndpoints.me,
+          extraHeaders: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        );
+        if (meRes is Map<String, dynamic>) {
+          meData = meRes;
+        }
+      } catch (_) {
+        // If /auth/me unavailable, fallback to response payload
+      }
+
+      final rawTenants = (meData['tenants'] as List<dynamic>?) ?? [];
+      Map<String, dynamic>? selectedTenantMap;
+
+      if (rawTenants.isNotEmpty) {
+        if (cleanSubdomain.isNotEmpty) {
+          selectedTenantMap = rawTenants.cast<Map<String, dynamic>>().firstWhere(
+                (t) =>
+                    t['slug']?.toString().toLowerCase() == cleanSubdomain ||
+                    t['name']?.toString().toLowerCase() == cleanSubdomain,
+                orElse: () => rawTenants.first as Map<String, dynamic>,
+              );
+        } else {
+          selectedTenantMap = rawTenants.first as Map<String, dynamic>;
+        }
+      }
+
+      final realTenantId = selectedTenantMap?['id']?.toString() ??
+          response['tenant_id']?.toString() ??
+          (cleanSubdomain.isNotEmpty ? cleanSubdomain : 'default_tenant');
+      final realTenantSlug = selectedTenantMap?['slug']?.toString() ?? cleanSubdomain;
+      final realTenantName =
+          selectedTenantMap?['name']?.toString() ?? response['tenant_name']?.toString();
+      final userId = meData['id']?.toString() ?? response['user_id']?.toString();
+      final userName = meData['full_name']?.toString() ?? meData['name']?.toString();
+      final userEmail = meData['email']?.toString() ?? email;
 
       await _tokenStore.saveAuth(
         accessToken: accessToken,
         refreshToken: refreshToken,
-        tenantId: tenantId,
-        tenantSubdomain: cleanSubdomain,
+        tenantId: realTenantId,
+        tenantSubdomain: realTenantSlug,
         userId: userId,
-        userEmail: userData['email']?.toString() ?? email,
-        userName: userData['name']?.toString(),
+        userEmail: userEmail,
+        userName: userName,
       );
 
-      return AuthUser.fromJson(userData);
+      final userJson = {
+        ...response,
+        if (meData.isNotEmpty) ...meData,
+        'tenant_id': realTenantId,
+        'tenant_name': realTenantName,
+        'tenant_slug': realTenantSlug,
+      };
+
+      return AuthUser.fromJson(userJson);
     }
 
     throw ApiException(
@@ -74,7 +126,11 @@ class AuthRepository {
     try {
       final response = await _apiClient.get(ApiEndpoints.me);
       if (response is Map<String, dynamic>) {
-        return AuthUser.fromJson(response);
+        final savedTenantId = await _tokenStore.getTenantId();
+        return AuthUser.fromJson({
+          ...response,
+          if (savedTenantId != null && savedTenantId.isNotEmpty) 'tenant_id': savedTenantId,
+        });
       }
     } catch (_) {
       // Never synthesize fake credentials when backend verification fails
@@ -85,7 +141,13 @@ class AuthRepository {
 
   Future<void> logout() async {
     try {
-      await _apiClient.post(ApiEndpoints.logout);
+      final refreshToken = await _tokenStore.getRefreshToken();
+      await _apiClient.post(
+        ApiEndpoints.logout,
+        body: {
+          if (refreshToken != null && refreshToken.isNotEmpty) 'refresh_token': refreshToken,
+        },
+      );
     } catch (_) {}
     await _tokenStore.clear();
   }

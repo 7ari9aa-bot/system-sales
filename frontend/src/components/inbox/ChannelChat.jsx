@@ -17,10 +17,12 @@ import {
   Palette,
   Play,
   Pause,
+  ThumbsUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerSeenMessageId } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -138,12 +140,12 @@ export default function ChannelChat({
   const isWhatsApp = channel.id === "whatsapp";
   const isInstagram = channel.id === "instagram";
 
-  // "typing…" on the customer's phone while an agent writes a WhatsApp or Instagram reply. One
+  // "typing…" on the customer's phone while an agent writes a WhatsApp, Instagram or Messenger reply. One
   // signal per 20s (Meta clears it after 25s), only inside the 24h window, and only
   // while there is text: it is a courtesy, so a failure is silent.
   const typingSentAtRef = useRef(null);
   useEffect(() => {
-    if (!(isWhatsApp || isInstagram) || !supportsReadSignal(conversation)) return;
+    if (!(isWhatsApp || isInstagram || isMessenger) || !supportsReadSignal(conversation)) return;
     if (!shouldSignalTyping({ text, lastSentAt: typingSentAtRef.current, lastCustomerMessageAt: conversation.lastCustomerMessageAt })) return;
     typingSentAtRef.current = Date.now();
     api(`/conversations/${conversation.id}/read-signal`, { method: "POST", body: readSignalBody(true) }).catch(() => {});
@@ -181,6 +183,11 @@ export default function ChannelChat({
     }
     return null;
   })();
+
+  // Messenger's only receipt is the reader's avatar under the last bubble they opened, and its
+  // header says "Active now" while the customer is writing. Both are derived, never guessed.
+  const messengerSeenId = isMessenger ? messengerSeenMessageId(allMessages) : null;
+  const messengerActiveNow = isMessenger ? messengerPresence(conversation?.lastCustomerMessageAt) : null;
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -227,8 +234,8 @@ export default function ChannelChat({
 
   useEffect(() => () => clearTimeout(telegramScrollTimerRef.current), []);
 
-  async function submitMessage() {
-    const body = text.trim();
+  async function submitMessage(overrideBody) {
+    const body = String(overrideBody ?? text).trim();
     if (!body || sending || !conversation) return;
     const buttons = isInstagram ? quickReplies.map((t) => t.trim()).filter(Boolean) : [];
     if (isInstagram && quickReplies.length && quickReplyProblem(quickReplies, lang)) return;
@@ -370,7 +377,12 @@ export default function ChannelChat({
             <div dir={isWhatsApp || isTelegram || isInstagram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-left text-[15px] font-semibold text-[color:var(--wa-text)]" : isTelegram ? "text-left text-[15px] font-medium text-[#222]" : isInstagram ? "text-[14px] font-semibold text-[#262626]" : isMessenger ? "text-[15px] font-semibold text-[#050505]" : "text-[14px] font-semibold", isApp && "text-foreground")}>
               {conversation.customer}
             </div>
-            {!isMessenger && (
+            {isMessenger ? (
+              // Messenger prints "Active now" while the customer is writing, otherwise the page name.
+              <div data-testid="messenger-presence" className={cn("truncate text-[13px]", messengerActiveNow ? "text-[#0084FF]" : "text-[#65676B]")}>
+                {messengerActiveNow ? (lang === "ar" ? "نشط الآن" : "Active now") : channel.name}
+              </div>
+            ) : (
               <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
                 {isTelegram ? "bot" : isInstagram ? (String(conversation.handle || "").replace(/^@/, "") || channel.name) : channel.name}
               </div>
@@ -513,6 +525,8 @@ export default function ChannelChat({
         {visibleMessages.map((m, index) => {
           const dayKey = isWhatsApp || isInstagram || isMessenger || isTelegram ? getMessageDayKey(m.createdAt) : "";
           const previousDayKey = (isWhatsApp || isInstagram || isMessenger || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
+          // A run of bubbles from one person is one visual group in Messenger.
+          const messengerRow = isMessenger ? messengerGroup(visibleMessages, index) : null;
           return (
             <React.Fragment key={m.id}>
               {dayKey && dayKey !== previousDayKey && (
@@ -537,6 +551,9 @@ export default function ChannelChat({
                 onReact={onReact}
                 onOpenImage={setViewerId}
                 showSeen={isInstagram && m.status === "read" && m.id === lastSentId}
+                messengerRow={messengerRow}
+                messengerTheme={messengerTheme}
+                showSeenAvatar={isMessenger && m.id === messengerSeenId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
               />
             </React.Fragment>
@@ -873,17 +890,30 @@ export default function ChannelChat({
               disabled={sending}
               className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
             />
-            {text.trim() && (
+            {text.trim() ? (
               <button
                 type="button"
                 onClick={() => { void submitMessage(); }}
-                disabled={!text.trim() || sending}
+                disabled={sending}
                 aria-label={t("inbox.send")}
                 title={t("inbox.send")}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: th.out }}
+                style={{ background: messengerTheme.accent }}
               >
                 <Send className="h-4 w-4" />
+              </button>
+            ) : (
+              // Messenger keeps a blue thumbs-up in the send slot while the box is empty.
+              <button
+                type="button"
+                onClick={() => { void submitMessage("👍"); }}
+                disabled={sending}
+                aria-label={lang === "ar" ? "إرسال إعجاب" : "Send a like"}
+                title={lang === "ar" ? "إرسال إعجاب" : "Send a like"}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ background: messengerTheme.accent }}
+              >
+                <ThumbsUp className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -975,7 +1005,7 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
-function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger: _isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
+function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -1077,7 +1107,44 @@ function Bubble({ m, showSeen = false, isApp: _isApp, isWhatsApp, isInstagram: _
     );
   }
 
-  // Messenger & Instagram
+  // Messenger: a gradient bubble, 18px corners that square to 4px where two bubbles of the same
+  // group meet, the time alone (no ticks), and the reader's avatar under the last bubble they read.
+  if (isMessenger) {
+    const group = messengerRow || { first: true, last: true, alone: true, size: 1 };
+    return (
+      <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
+        <div
+          className={cn(
+            "max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
+            messengerBubbleCorners({ out, first: group.first, last: group.last })
+          )}
+          style={{
+            background: messengerBubbleBackground(messengerTheme, out),
+            color: out ? "#FFFFFF" : th?.inText || "#050505",
+          }}
+        >
+          {isAudio ? (
+            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
+          ) : (
+            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+              {m.text}{" "}
+              <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[11px]", out ? "text-white/80" : "text-[#65676B]")}>
+                {m.time}
+                {m.ai && <Sparkles className="h-3 w-3 text-amber-300" />}
+              </span>
+            </div>
+          )}
+        </div>
+        {showSeenAvatar && (
+          <span data-testid="messenger-seen-avatar" className="mt-1 inline-flex">
+            <ConversationAvatar conversation={_conversation} className="h-4 w-4 text-[8px]" />
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // Instagram
   return (
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div

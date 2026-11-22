@@ -54,8 +54,12 @@ void main() {
       authVm.lockTerminal();
       expect(authVm.isTerminalLocked, isTrue);
 
-      final failed = authVm.unlockTerminal('12');
-      expect(failed, isFalse);
+      final failedShort = authVm.unlockTerminal('12');
+      expect(failedShort, isFalse);
+      expect(authVm.isTerminalLocked, isTrue);
+
+      final failedWrong = authVm.unlockTerminal('9999');
+      expect(failedWrong, isFalse);
       expect(authVm.isTerminalLocked, isTrue);
 
       final success = authVm.unlockTerminal('1234');

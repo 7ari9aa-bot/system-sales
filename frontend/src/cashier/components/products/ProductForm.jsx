@@ -11,8 +11,8 @@ import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITL
 import { useShopOptions } from "@/cashier/api/useShopOptions";
 import { useStockMaterials } from "@/cashier/api/useStock";
 import { resolveSizePreset } from "@/cashier/lib/shopOptions";
-import { nextSkuBase } from "@/cashier/api/catalogApi";
-import { useExistingSkus } from "@/cashier/api/useCatalogWrite";
+import { resolveSkuBase } from "@/cashier/api/catalogApi";
+import { useExistingSkus, useNextSkuBase } from "@/cashier/api/useCatalogWrite";
 import { imageProblem, imagesOf } from "@/cashier/api/productImage";
 import { initialProductForm } from "@/cashier/components/products/productSeed";
 
@@ -21,7 +21,9 @@ const MAX_PRODUCT_IMAGES = 4;
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
 export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels }) {
   const isEdit = !!product;
-  const { data: existingSkus = [] } = useExistingSkus();
+  // أساس الـSKU من السيرفر (استعلام واحد). العدّ في المتصفح بقى خطة رجوع بس لنشر قديم بلا الـendpoint.
+  const { data: serverSkuBase } = useNextSkuBase();
+  const { data: existingSkus = [] } = useExistingSkus(serverSkuBase === null);
   const [form, setForm] = useState(() => initialProductForm(product, seed));
   const [colors, setColors] = useState(product?.colors ?? []);
   const [sizePreset, setSizePreset] = useState("clothing");
@@ -77,7 +79,7 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
   function generateRows() {
     // أساس SKU فريد من الأكواد الموجودة فعلاً في النظام (العشوائي كان يتكرر ويرفضه الباك بـ 409).
     // في التعديل نشيل لاحقة التركيبة من sku المنتج؛ في الإضافة الأساس جاهز (SKU-0203) ولا نقصّه.
-    const skuBase = product?.sku ? product.sku.replace(/-\d{2,4}$/, "") : nextSkuBase(existingSkus);
+    const skuBase = resolveSkuBase({ product, serverBase: serverSkuBase, existingSkus });
     const next = [];
     colors.forEach((color, ci) => {
       sizes.forEach((size, si) => {

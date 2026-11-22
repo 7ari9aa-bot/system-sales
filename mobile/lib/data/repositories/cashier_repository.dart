@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_endpoints.dart';
 import '../../core/database/local_database.dart';
+import '../../core/offline/offline_queue_service.dart';
 import '../../core/secure_storage/secure_token_store.dart';
 import '../../core/sync/durable_operation.dart';
 import '../../core/sync/durable_sync_engine.dart';
@@ -25,44 +26,76 @@ class CashierRepository {
 
   Future<String> getOrOpenRegister() async {
     final savedId = await _tokenStore.getRegisterId();
-    if (savedId != null && savedId.isNotEmpty) return savedId;
+    if (savedId != null && savedId.isNotEmpty && savedId != 'reg_default') return savedId;
 
     try {
       final response = await _apiClient.get(ApiEndpoints.posRegisters);
       if (response is List && response.isNotEmpty) {
-        final regId = response[0]['id']?.toString() ?? 'reg_default';
-        await _tokenStore.setRegisterId(regId);
-        return regId;
+        final regId = response[0]['id']?.toString();
+        if (regId != null && regId.isNotEmpty) {
+          await _tokenStore.setRegisterId(regId);
+          return regId;
+        }
       }
     } catch (_) {}
 
-    return 'reg_default';
+    if (savedId != null && savedId.isNotEmpty && savedId != 'reg_default') return savedId;
+    return '00000000-0000-0000-0000-000000000001';
   }
 
   Future<String> getOrOpenSession() async {
-    if (_activeSessionId != null) return _activeSessionId!;
+    if (_activeSessionId != null && _activeSessionId != 'session_default') {
+      return _activeSessionId!;
+    }
 
-    try {
-      final response = await _apiClient.get(ApiEndpoints.posSessions);
-      if (response is List && response.isNotEmpty) {
-        _activeSessionId = response[0]['id']?.toString();
-        return _activeSessionId!;
-      }
-    } catch (_) {}
+    final registerId = await getOrOpenRegister();
 
-    // Open new session
+    // 1. Check working session on register
     try {
-      final openResp = await _apiClient.post(
-        ApiEndpoints.posSessions,
-        body: {'opening_balance': '0.00'},
+      final wsResp = await _apiClient.post(
+        ApiEndpoints.posRegisterWorkingSession(registerId),
+        body: {},
       );
-      if (openResp is Map) {
-        _activeSessionId = openResp['id']?.toString();
+      if (wsResp is Map<String, dynamic>) {
+        if (wsResp['started'] == true && wsResp['session'] != null) {
+          final sid = wsResp['session']['id']?.toString();
+          if (sid != null && sid.isNotEmpty) {
+            _activeSessionId = sid;
+            return _activeSessionId!;
+          }
+        } else {
+          // 2. Day not started yet -> open day with 0.00 opening float
+          final openResp = await _apiClient.post(
+            ApiEndpoints.posRegisterOpen(registerId),
+            body: {'opening_float': '0.00'},
+          );
+          if (openResp is Map<String, dynamic> && openResp['session'] != null) {
+            final sid = openResp['session']['id']?.toString();
+            if (sid != null && sid.isNotEmpty) {
+              _activeSessionId = sid;
+              return _activeSessionId!;
+            }
+          }
+        }
       }
     } catch (_) {}
 
-    _activeSessionId ??= 'session_default';
-    return _activeSessionId!;
+    // 3. Fallback: list open sessions
+    try {
+      final response = await _apiClient.get(
+        ApiEndpoints.posSessions,
+        queryParams: {'register_id': registerId, 'status': 'OPEN'},
+      );
+      if (response is List && response.isNotEmpty) {
+        final sid = response[0]['id']?.toString();
+        if (sid != null && sid.isNotEmpty) {
+          _activeSessionId = sid;
+          return _activeSessionId!;
+        }
+      }
+    } catch (_) {}
+
+    return '00000000-0000-0000-0000-000000000002';
   }
 
   Future<Product?> scanBarcode(String barcode) async {
@@ -214,59 +247,74 @@ class CashierRepository {
       if (customerPhone != null) 'customer_phone': customerPhone,
     };
 
-    try {
-      final response = await _apiClient.post(
-        ApiEndpoints.posRegisterSales(registerId),
-        body: payload,
-        extraHeaders: {
-          'Idempotency-Key': key,
-        },
-      );
+    final token = await _tokenStore.getAccessToken();
+    if (token != null && token.isNotEmpty) {
+      try {
+        final response = await _apiClient.post(
+          ApiEndpoints.posRegisterSales(registerId),
+          body: payload,
+          extraHeaders: {
+            'Idempotency-Key': key,
+          },
+        );
 
-      if (response is Map<String, dynamic>) {
-        return {
-          ...response,
-          'success': true,
-          'idempotency_key': key,
-          'receipt_number': response['receipt_number'] ??
-              'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
-          'grand_total': response['grand_total'] ?? total,
-        };
+        if (response is Map<String, dynamic>) {
+          return {
+            ...response,
+            'success': true,
+            'idempotency_key': key,
+            'receipt_number': response['receipt_number'] ??
+                'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+            'grand_total': response['grand_total'] ?? total,
+          };
+        }
+      } on ApiException catch (e) {
+        // Re-throw genuine 4xx client/validation/auth errors (never mask business rejections as offline success)
+        if (e.statusCode >= 400 && e.statusCode < 500 && e.statusCode != 408) {
+          rethrow;
+        }
+        // 5xx or 408 falls through to offline queueing
+      } catch (_) {
+        // Network disconnect, timeout, or socket exception falls through to offline queueing
       }
-    } catch (_) {
-      // Offline fallback: Persist into DurableSyncEngine with original key
-      final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
-      final userId = (await _tokenStore.getUserId()) ?? 'offline_user';
-      final deviceId = await _tokenStore.getOrCreateDeviceId();
-
-      final durableOp = DurableOperation(
-        operationUuid: 'op_${DateTime.now().millisecondsSinceEpoch}',
-        tenantId: tenantId,
-        userId: userId,
-        deviceId: deviceId,
-        registerId: registerId,
-        operationType: 'pos_sale',
-        payloadSnapshot: payload,
-        idempotencyKey: key,
-        createdAt: DateTime.now(),
-        status: DurableOperationStatus.pending,
-      );
-
-      final syncEngine = DurableSyncEngine(localDb: _localDb, apiClient: _apiClient);
-      await syncEngine.enqueueOperation(durableOp);
-
-      return {
-        'success': true,
-        'offline_queued': true,
-        'idempotency_key': key,
-        'receipt_number': 'POS-OFFLINE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
-        'grand_total': total,
-      };
     }
+
+    // Offline fallback: Persist into DurableSyncEngine with original key
+    final tenantId = (await _tokenStore.getTenantId()) ?? 'unknown_tenant';
+    final userId = (await _tokenStore.getUserId()) ?? 'offline_user';
+    final deviceId = await _tokenStore.getOrCreateDeviceId();
+
+    final durableOp = DurableOperation(
+      operationUuid: 'op_${DateTime.now().millisecondsSinceEpoch}',
+      tenantId: tenantId,
+      userId: userId,
+      deviceId: deviceId,
+      registerId: registerId,
+      operationType: 'pos_sale',
+      payloadSnapshot: payload,
+      idempotencyKey: key,
+      createdAt: DateTime.now(),
+      status: DurableOperationStatus.pending,
+    );
+
+    final syncEngine = DurableSyncEngine(localDb: _localDb, apiClient: _apiClient);
+    await syncEngine.enqueueOperation(durableOp);
+
+    // Keep OfflineQueueService in lockstep
+    try {
+      final offlineQueue = OfflineQueueService();
+      await offlineQueue.enqueueSale(
+        items: items,
+        paymentMethod: paymentMethod,
+        total: total,
+      );
+    } catch (_) {}
 
     return {
       'success': true,
-      'receipt_number': 'POS-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
+      'offline_queued': true,
+      'idempotency_key': key,
+      'receipt_number': 'POS-OFFLINE-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}',
       'grand_total': total,
     };
   }

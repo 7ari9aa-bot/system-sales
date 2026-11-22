@@ -55,6 +55,9 @@ class SecureTokenStore {
   Future<String?> getTenantId() => _safeRead(_secKeyTenantId);
   Future<String?> getUserId() => _safeRead(_secKeyUserId);
 
+  Future<void> saveAccessToken(String token) => _safeWrite(_secKeyAccessToken, token);
+  Future<void> saveRefreshToken(String token) => _safeWrite(_secKeyRefreshToken, token);
+
   Future<String?> _safeRead(String key) async {
     try {
       return await _secureStorage.read(key: key);

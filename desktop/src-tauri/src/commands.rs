@@ -126,16 +126,20 @@ pub fn print_raw(data: Vec<u8>) -> Result<(), String> {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = data;
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub fn open_cash_drawer(printer_name: Option<String>) -> Result<(), String> {
-    // Standard ESC/POS kick pulse: ESC p m t1 t2
-    let kick_pulse: [u8; 5] = [0x1B, 0x70, 0x00, 0x19, 0xFA];
-
     #[cfg(target_os = "windows")]
     {
+        // Standard ESC/POS kick pulse: ESC p m t1 t2
+        let kick_pulse: [u8; 5] = [0x1B, 0x70, 0x00, 0x19, 0xFA];
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join("fihrist_cash_drawer.bin");
         if std::fs::write(&file_path, kick_pulse).is_ok() {
@@ -154,6 +158,11 @@ pub fn open_cash_drawer(printer_name: Option<String>) -> Result<(), String> {
                 .output();
             let _ = std::fs::remove_file(&file_path);
         }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = printer_name;
     }
 
     Ok(())

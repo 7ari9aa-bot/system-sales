@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -329,6 +329,27 @@ class VariantServiceMixin:
             .all()
         )
         return list(rows)
+
+    #: The screen hands out SKU-0007 (base) and SKU-0007-0101 (variant).
+    SKU_BASE_RE = r"^SKU-(\d+)"
+
+    @staticmethod
+    async def next_sku_base(session: AsyncSession, tenant_id: UUID) -> str:
+        """The next free "SKU-0001" base, from the highest SKU this shop already uses.
+
+        One aggregate query instead of shipping the catalog to the browser: the add-product screen
+        used to load up to 500 products, with every variant, only to count them in the page.
+        Codes that do not start with SKU- are ignored, so imported or vendor codes never push the
+        counter somewhere surprising.
+        """
+        series = VariantServiceMixin.SKU_BASE_RE
+        used = await session.scalar(
+            select(func.max(func.cast(func.substring(ProductVariant.sku, series), Integer))).where(
+                ProductVariant.tenant_id == tenant_id,
+                ProductVariant.sku.op("~")(series),
+            )
+        )
+        return f"SKU-{(used or 0) + 1:04d}"
 
     @staticmethod
     async def list_variants_for_products(

@@ -28,6 +28,15 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
   Future<void> _loadOperations() async {
     setState(() => _isLoading = true);
     final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    if (tenantId == null || tenantId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _operations = [];
+          _isLoading = false;
+        });
+      }
+      return;
+    }
     final ops = await _syncEngine.getAllOperations(tenantId: tenantId);
     if (mounted) {
       setState(() {
@@ -38,8 +47,17 @@ class _SyncLogDialogState extends State<SyncLogDialog> {
   }
 
   Future<void> _triggerSync() async {
-    setState(() => _isSyncing = true);
     final tenantId = context.read<AuthViewModel>().currentUser?.tenantId;
+    if (tenantId == null || tenantId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى تسجيل الدخول واختيار المتجر قبل المزامنة لضمان عزل البيانات'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    setState(() => _isSyncing = true);
     final result = await _syncEngine.syncPendingOperations(tenantId: tenantId);
     await _loadOperations();
     if (mounted) {

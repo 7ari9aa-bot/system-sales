@@ -30,6 +30,8 @@ class AuthTokenStore {
 
   Future<String?> getAccessToken() => _secureStore.getAccessToken();
   Future<String?> getRefreshToken() => _secureStore.getRefreshToken();
+  Future<void> saveAccessToken(String token) => _secureStore.saveAccessToken(token);
+  Future<void> saveRefreshToken(String token) => _secureStore.saveRefreshToken(token);
   Future<String?> getTenantId() => _secureStore.getTenantId();
   Future<String?> getUserId() => _secureStore.getUserId();
   Future<String?> getTenantSubdomain() => _secureStore.getTenantSubdomain();
@@ -37,6 +39,8 @@ class AuthTokenStore {
   Future<String?> getUserName() => _secureStore.getUserName();
   Future<String?> getBaseUrl() => _secureStore.getBaseUrl();
   Future<void> setBaseUrl(String url) => _secureStore.setBaseUrl(url);
+  Future<void> savePin(String pin) => _secureStore.savePin(pin);
+  Future<String?> getPin() => _secureStore.getPin();
   Future<void> clear() => _secureStore.clearSession();
   Future<bool> isAuthenticated() => _secureStore.isAuthenticated();
 }

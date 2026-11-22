@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError
 from app.modules.imports.apply import BATCH_LIMIT, REFERENCE_TYPE, ApplyError, Ports, apply_batch
+from app.modules.imports.fields import SHEET_VARIANTS
 from app.modules.imports.models import ImportSession
 from app.modules.imports.verdicts import values_of
 from app.modules.platform.models import Job
@@ -44,6 +45,33 @@ def _refused(exc: Exception) -> ApplyError:
     return ApplyError(type(exc).__name__.removesuffix("Error").lower() or "refused", str(exc))
 
 
+async def _taxonomy_id(
+    session: AsyncSession, tenant_id: uuid.UUID, *, catalog, kind: str, name: object
+) -> uuid.UUID | None:
+    """The shop's own category/brand id for a name in the file, created when it is new.
+
+    A merchant's spreadsheet says "بناطيل", not a uuid. Matching is case- and space-insensitive
+    (the same rule the shop's own pickers use) so an import never forks "بناطيل" and " بناطيل ".
+    """
+    wanted = str(name or "").strip()
+    if not wanted:
+        return None
+    rows = (
+        await catalog.list_brands(session, tenant_id)
+        if kind == "brand"
+        else await catalog.list_categories(session, tenant_id)
+    )
+    for row in rows:
+        if (row.name or "").strip().casefold() == wanted.casefold():
+            return row.id
+    made = (
+        await catalog.create_brand(session, tenant_id, name=wanted)
+        if kind == "brand"
+        else await catalog.create_category(session, tenant_id, name=wanted)
+    )
+    return made.id
+
+
 async def _upsert_product(
     session: AsyncSession, tenant_id: uuid.UUID, ref: str, values: dict, action: str
 ) -> uuid.UUID:
@@ -53,7 +81,8 @@ async def _upsert_product(
         product_id = (
             await session.execute(_PRODUCT_BY_SLUG, {"t": tenant_id, "slug": ref})
         ).scalar_one_or_none()
-        if product_id is None:
+        created = product_id is None
+        if created:
             product = await CatalogService.create_product(
                 session,
                 tenant_id,
@@ -66,9 +95,33 @@ async def _upsert_product(
             if values.get("description"):
                 fields["description"] = values["description"]
             product = await CatalogService.update_product(session, tenant_id, product_id, **fields)
-        if values.get("status") and product.status != values["status"]:
+
+        # The file's own words become the shop's taxonomy: an import that leaves every product
+        # uncategorised makes the catalog unusable the moment it lands.
+        classify: dict[str, object] = {}
+        category_id = await _taxonomy_id(
+            session, tenant_id, catalog=CatalogService, kind="category", name=values.get("category")
+        )
+        if category_id is not None:
+            classify["category_id"] = category_id
+        brand_id = await _taxonomy_id(
+            session, tenant_id, catalog=CatalogService, kind="brand", name=values.get("brand")
+        )
+        if brand_id is not None:
+            classify["brand_id"] = brand_id
+
+        # A stated status is the merchant's decision, always. A blank status on a product this
+        # import just created means they meant to sell it — it used to land as a draft and never
+        # reach the till. An existing product keeps the status it has (re-importing a price list
+        # must not resurrect something the shop archived on purpose).
+        stated = values.get("status")
+        if stated:
+            classify["status"] = stated
+        elif created:
+            classify["status"] = "active"
+        if classify:
             product = await CatalogService.update_product(
-                session, tenant_id, product.id, status=values["status"]
+                session, tenant_id, product.id, **classify
             )
         return product.id
     except DomainError as exc:
@@ -124,6 +177,14 @@ async def _upsert_variant(
         raise _refused(exc) from exc
 
 
+_DECLARED_COST = text(
+    "SELECT parsed->'values'->>'cost' AS cost FROM import_rows "
+    "WHERE tenant_id = :t AND session_id = :s AND sheet = :sheet "
+    "AND status IN ('valid','applied') "
+    "AND parsed->'values'->>'sku' = :sku ORDER BY row_number LIMIT 1"
+)
+
+
 async def _record_opening_stock(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -144,6 +205,15 @@ async def _record_opening_stock(
     ).scalar_one_or_none()
     if warehouse_id is None:
         raise ApplyError("unknown_warehouse", f"no active warehouse '{warehouse_code}'")
+    # The cost the file declared for this SKU travels with the stock it arrives with: a FIFO
+    # layer is the only place a cost lives here, so an opening balance recorded without it would
+    # value every sale at zero and make the profit report a guess.
+    declared = (
+        await session.execute(
+            _DECLARED_COST, {"t": tenant_id, "s": session_id, "sheet": SHEET_VARIANTS, "sku": sku}
+        )
+    ).scalar_one_or_none()
+    cost_value = Decimal(str(declared)) if declared not in (None, "") else None
     try:
         await InventoryService.move(
             session,
@@ -155,7 +225,21 @@ async def _record_opening_stock(
             reason="opening_stock",
             reference_type=REFERENCE_TYPE,
             reference_id=session_id,
+            cost_value=cost_value,
         )
+        if cost_value is not None:
+            # The movement records what the stock cost; the FIFO layer is what the valuation and
+            # the profit report actually read, so the two are written together.
+            await InventoryService.ValuationService.create_cost_layer(
+                session,
+                tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                quantity=int(quantity),
+                unit_cost=cost_value,
+                source_type=REFERENCE_TYPE,
+                source_id=session_id,
+            )
     except DomainError as exc:
         raise _refused(exc) from exc
     return variant_id

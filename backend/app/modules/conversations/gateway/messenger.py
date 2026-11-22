@@ -443,6 +443,43 @@ class MessengerAdapter(ChannelAdapter):
             out["profile_pic"] = picture
         return out
 
+    def build_sender_action(self, customer_ref: str, action: str) -> dict[str, Any]:
+        """A sender action carries no message: it only tells the thread what the agent is doing."""
+        return {"recipient": {"id": customer_ref}, "sender_action": action}
+
+    async def send_sender_action(
+        self,
+        credentials: ProviderCredentials,
+        customer_ref: str,
+        action: str,
+        _client: httpx.AsyncClient | None = None,
+    ) -> None:
+        """mark_seen when the agent opens the chat, typing_on while they write.
+
+        The same Graph endpoint as a send, addressed to the customer's PSID. A courtesy signal:
+        the caller swallows a failure, and it never opens the 24h window.
+        """
+        token = credentials.get("api_key") or credentials.get("page_access_token")
+        if not token:
+            raise ExternalProviderError("messenger integration missing api_key")
+        url = f"{self._base}/me/messages"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        body = self.build_sender_action(customer_ref, action)
+
+        async def _post() -> None:
+            if _client is not None:
+                resp = await _client.post(url, headers=headers, json=body)
+            else:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+            data = parse_provider_body(resp, "messenger sender action")
+            if resp.status_code not in (200, 201):
+                raise ExternalProviderError(
+                    f"messenger {action} failed: HTTP {resp.status_code} — {str(data)[:200]}"
+                )
+
+        await get_breaker(PROVIDER_MESSENGER).call(_post)
+
     async def send(
         self,
         credentials: ProviderCredentials,
@@ -499,13 +536,16 @@ class MessengerAdapter(ChannelAdapter):
         else:
             payloads.append({"recipient": recipient, "message": {"text": message.body or ""}})
 
-        # A person's reply after the 24h window (inside the 7-day human-agent window) MUST carry
-        # the HUMAN_AGENT tag or Meta refuses it. Every other send is left as it was: Meta treats
-        # a send with no messaging_type as a RESPONSE.
-        if message.meta.get("human_agent"):
-            for body in payloads:
-                body["messaging_type"] = "MESSAGE_TAG"
-                body["tag"] = "HUMAN_AGENT"
+        # The policy layer grants a human a 7-day window, but Meta only honours it when the request
+        # says so: without the tag a reply after hour 24 is refused by the provider even though we
+        # allowed it. Instagram already sends this; Messenger did not.
+        for payload in payloads:
+            if message.meta.get("human_agent"):
+                payload["messaging_type"] = "MESSAGE_TAG"
+                payload["tag"] = "HUMAN_AGENT"
+            reply_to = message.meta.get("reply_to_provider_id")
+            if reply_to:
+                payload["reply_to"] = {"mid": reply_to}
 
         async def _post_one(client: httpx.AsyncClient, payload: dict[str, Any]) -> str:
             resp = await client.post(url, headers=headers, json=payload)

@@ -122,8 +122,27 @@ const updater: UpdaterPort = {
   },
 }
 
+function buildApiUrl(baseUrl: string, endpoint: string): string {
+  const cleanBase = baseUrl.replace(/\/+$/, '')
+  const cleanEndpoint = endpoint.replace(/^\/+/, '')
+
+  if (cleanBase.endsWith('/api/v1')) {
+    if (cleanEndpoint.startsWith('api/v1/')) {
+      return `${cleanBase}/${cleanEndpoint.substring(7)}`
+    }
+    return `${cleanBase}/${cleanEndpoint}`
+  }
+
+  if (cleanEndpoint.startsWith('api/v1/')) {
+    return `${cleanBase}/${cleanEndpoint}`
+  }
+
+  return `${cleanBase}/api/v1/${cleanEndpoint}`
+}
+
 const authSessionSchema = z.object({
   token: z.string().min(1),
+  refreshToken: z.string().optional(),
   user: z.object({
     id: z.string(),
     name: z.string(),
@@ -135,6 +154,7 @@ const authSessionSchema = z.object({
     id: z.string(),
     name: z.string(),
     subdomain: z.string(),
+    currency: z.string().default('SAR'),
   }),
   branch: z
     .object({
@@ -168,21 +188,23 @@ const auth: AuthPort = {
 
   async login(credentials: LoginCredentials): Promise<AuthSession> {
     const baseUrl = (await runtime.apiBaseUrl()) || ''
-    const url = `${baseUrl.replace(/\/+$/, '')}/api/v1/auth/token`
+    const loginUrl = buildApiUrl(baseUrl, 'auth/login')
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     }
     if (credentials.subdomain) {
       headers['X-Tenant-Subdomain'] = credentials.subdomain
     }
 
-    const response = await fetch(url, {
+    // 1. Authenticate with email + password -> TokenPair
+    const response = await fetch(loginUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         email: credentials.email,
         password: credentials.password,
-        subdomain: credentials.subdomain,
       }),
     })
 
@@ -191,34 +213,129 @@ const auth: AuthPort = {
       throw new Error(`Login failed (${response.status}): ${err}`)
     }
 
-    const data = (await response.json()) as {
-      access_token?: string
-      token?: string
-      user?: { id?: string; name?: string; email?: string; role?: string; permissions?: string[] }
-      tenant?: { id?: string; name?: string; subdomain?: string }
-      branch?: { id: string; name: string }
-      register?: { id: string; name: string }
+    const tokenPair = (await response.json()) as {
+      access_token: string
+      refresh_token?: string
+      token_type?: string
+      expires_in?: number
     }
 
-    const token = data.access_token || data.token || ''
-    if (!token) throw new Error('No token received from login API')
+    if (!tokenPair.access_token) throw new Error('No access token received from login API')
+
+    // 2. Query /auth/me with Bearer token to discover identity & tenant memberships
+    const meUrl = buildApiUrl(baseUrl, 'auth/me')
+    const meRes = await fetch(meUrl, {
+      headers: {
+        Authorization: `Bearer ${tokenPair.access_token}`,
+        Accept: 'application/json',
+      },
+    })
+
+    if (!meRes.ok) {
+      const err = await meRes.text()
+      throw new Error(`Failed to load user profile (${meRes.status}): ${err}`)
+    }
+
+    const meData = (await meRes.json()) as {
+      id: string
+      email: string
+      full_name?: string
+      tenants: Array<{
+        id: string
+        name: string
+        slug: string
+        role_code?: string
+        currency?: string
+      }>
+    }
+
+    if (!meData.tenants || meData.tenants.length === 0) {
+      throw new Error('User has no active store memberships')
+    }
+
+    // Select active tenant matching subdomain or first tenant
+    let chosenTenant = meData.tenants[0]!
+    if (credentials.subdomain) {
+      const matched = meData.tenants.find(
+        (t) =>
+          t.slug.toLowerCase() === credentials.subdomain!.toLowerCase() ||
+          t.name.toLowerCase() === credentials.subdomain!.toLowerCase(),
+      )
+      if (matched) {
+        chosenTenant = matched
+      }
+    }
+
+    let activeAccessToken = tokenPair.access_token
+    let activeRefreshToken = tokenPair.refresh_token
+
+    // Switch tenant context on server if needed
+    if (chosenTenant && tokenPair.refresh_token) {
+      try {
+        const switchUrl = buildApiUrl(baseUrl, 'auth/switch-tenant')
+        const switchRes = await fetch(switchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${activeAccessToken}`,
+          },
+          body: JSON.stringify({
+            tenant_id: chosenTenant.id,
+            refresh_token: tokenPair.refresh_token,
+          }),
+        })
+        if (switchRes.ok) {
+          const switchedPair = (await switchRes.json()) as {
+            access_token?: string
+            refresh_token?: string
+          }
+          if (switchedPair.access_token) activeAccessToken = switchedPair.access_token
+          if (switchedPair.refresh_token) activeRefreshToken = switchedPair.refresh_token
+        }
+      } catch {
+        // Fall back to original token pair
+      }
+    }
+
+    // 3. Discover available registers for this tenant
+    let activeRegister: AuthRegister | undefined
+    try {
+      const regUrl = buildApiUrl(baseUrl, 'pos/registers')
+      const regRes = await fetch(regUrl, {
+        headers: {
+          Authorization: `Bearer ${activeAccessToken}`,
+          'X-Tenant-Id': chosenTenant.id,
+          Accept: 'application/json',
+        },
+      })
+      if (regRes.ok) {
+        const regList = (await regRes.json()) as Array<{ id: string; name: string }>
+        if (Array.isArray(regList) && regList.length > 0 && regList[0]) {
+          activeRegister = { id: regList[0].id, name: regList[0].name }
+        }
+      }
+    } catch {
+      // Offline or initial setup fallback
+    }
 
     const session: AuthSession = {
-      token,
+      token: activeAccessToken,
+      refreshToken: activeRefreshToken,
       user: {
-        id: data.user?.id || 'usr_1',
-        name: data.user?.name || credentials.email.split('@')[0] || 'User',
-        email: data.user?.email || credentials.email,
-        role: data.user?.role || 'cashier',
-        permissions: data.user?.permissions || ['pos:read', 'pos:write'],
+        id: meData.id,
+        name: meData.full_name || meData.email.split('@')[0] || 'User',
+        email: meData.email,
+        role: chosenTenant.role_code || 'cashier',
+        permissions: ['pos:read', 'pos:write', 'inventory:read'],
       },
       tenant: {
-        id: data.tenant?.id || 't_1',
-        name: data.tenant?.name || 'Fihrist Store',
-        subdomain: credentials.subdomain || data.tenant?.subdomain || 'shop',
+        id: chosenTenant.id,
+        name: chosenTenant.name,
+        subdomain: chosenTenant.slug,
+        currency: chosenTenant.currency || 'SAR',
       },
-      branch: data.branch || { id: 'br_main', name: 'الفرع الرئيسي' },
-      register: data.register || { id: 'reg_1', name: 'نقطة 1' },
+      branch: { id: 'br_main', name: 'الفرع الرئيسي' },
+      register: activeRegister,
     }
 
     cachedSession = session
@@ -227,6 +344,23 @@ const auth: AuthPort = {
   },
 
   async logout(): Promise<void> {
+    const session = cachedSession || (await auth.getSession())
+    if (session?.refreshToken) {
+      try {
+        const baseUrl = (await runtime.apiBaseUrl()) || ''
+        const logoutUrl = buildApiUrl(baseUrl, 'auth/logout')
+        await fetch(logoutUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ refresh_token: session.refreshToken }),
+        })
+      } catch {
+        // Continue clearing local session even if server unreachable
+      }
+    }
     cachedSession = null
     await call('clear_auth_session')
   },
@@ -252,9 +386,7 @@ const http: HttpPort = {
   async request<T = unknown>(endpoint: string, options: HttpRequestOptions = {}): Promise<T> {
     const baseUrl = (await runtime.apiBaseUrl()) || ''
     const session = await auth.getSession()
-    const url = endpoint.startsWith('http')
-      ? endpoint
-      : `${baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`
+    const url = endpoint.startsWith('http') ? endpoint : buildApiUrl(baseUrl, endpoint)
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

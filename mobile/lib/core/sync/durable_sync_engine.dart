@@ -33,20 +33,15 @@ class DurableSyncEngine {
 
   /// Get all pending operations for a tenant
   Future<List<DurableOperation>> getPendingOperations({String? tenantId}) async {
+    if (tenantId == null || tenantId.isEmpty) {
+      return [];
+    }
     try {
       final db = await _localDb.database;
-      final whereClauses = <String>["status IN ('PENDING', 'SENDING')"];
-      final whereArgs = <dynamic>[];
-
-      if (tenantId != null && tenantId.isNotEmpty) {
-        whereClauses.add('tenant_id = ?');
-        whereArgs.add(tenantId);
-      }
-
       final rows = await db.query(
         'durable_operations',
-        where: whereClauses.join(' AND '),
-        whereArgs: whereArgs,
+        where: "status IN ('PENDING', 'SENDING') AND tenant_id = ?",
+        whereArgs: [tenantId],
         orderBy: 'created_at ASC',
       );
 
@@ -58,15 +53,15 @@ class DurableSyncEngine {
 
   /// Get all operations (with their sync status) for auditing / display
   Future<List<DurableOperation>> getAllOperations({String? tenantId, int limit = 100}) async {
+    if (tenantId == null || tenantId.isEmpty) {
+      return [];
+    }
     try {
       final db = await _localDb.database;
-      final where = tenantId != null && tenantId.isNotEmpty ? 'tenant_id = ?' : null;
-      final whereArgs = tenantId != null && tenantId.isNotEmpty ? [tenantId] : null;
-
       final rows = await db.query(
         'durable_operations',
-        where: where,
-        whereArgs: whereArgs,
+        where: 'tenant_id = ?',
+        whereArgs: [tenantId],
         orderBy: 'created_at DESC',
         limit: limit,
       );
@@ -122,6 +117,9 @@ class DurableSyncEngine {
 
   /// Execute synchronization of pending queue
   Future<SyncResult> syncPendingOperations({String? tenantId}) async {
+    if (tenantId == null || tenantId.isEmpty) {
+      return SyncResult(successCount: 0, failedCount: 0, conflictCount: 0, skipped: true);
+    }
     if (_isSyncing) {
       return SyncResult(successCount: 0, failedCount: 0, conflictCount: 0, skipped: true);
     }
@@ -234,7 +232,15 @@ class DurableSyncEngine {
     switch (op.operationType) {
       case 'pos_sale':
       case 'sale':
-        endpoint = '/api/v1/pos/registers/${op.registerId ?? 'reg_default'}/sales';
+        final regId = op.registerId;
+        if (regId == null || regId.isEmpty || regId == 'reg_default') {
+          return _OperationDispatchResult(
+            isSuccess: false,
+            statusCode: 422,
+            errorMessage: 'معرّف نقطة البيع مفقود أو غير صالح للعملية',
+          );
+        }
+        endpoint = '/api/v1/pos/registers/$regId/sales';
         break;
       case 'stock_adjustment':
       case 'inventory_movement':

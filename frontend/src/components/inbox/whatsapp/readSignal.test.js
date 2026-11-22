@@ -34,13 +34,13 @@ describe("read signal", () => {
     expect(readSignalBody(false)).toEqual({ typing: false });
     expect(readSignalBody(undefined)).toEqual({ typing: false });
   });
-  test("only WhatsApp and Instagram chats with an id", () => {
+  test("only WhatsApp, Instagram and Messenger chats with an id", () => {
     expect(supportsReadSignal({ id: "1", channel: "whatsapp" })).toBe(true);
     expect(supportsReadSignal({ id: "1", channelId: "whatsapp" })).toBe(true);
     expect(supportsReadSignal({ id: "1", channel: "instagram" })).toBe(true);
     expect(supportsReadSignal({ id: "1", channelId: "instagram" })).toBe(true);
     expect(supportsReadSignal({ id: "1", channel: "telegram" })).toBe(false);
-    expect(supportsReadSignal({ id: "1", channel: "messenger" })).toBe(false);
+    expect(supportsReadSignal({ id: "1", channel: "messenger" })).toBe(true);
     expect(supportsReadSignal({ channel: "whatsapp" })).toBe(false);
     expect(supportsReadSignal(null)).toBe(false);
   });

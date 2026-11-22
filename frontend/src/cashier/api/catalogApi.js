@@ -47,6 +47,22 @@ export function nextSkuBase(existingSkus = []) {
   return `SKU-${String(next).padStart(4, "0")}`;
 }
 
+/**
+ * Which SKU base the form should use.
+ * Editing keeps the product's own base. Adding takes the server's answer, and only falls back to
+ * counting the catalog in the browser when the deploy has no /products/next-sku yet (serverBase null).
+ */
+export function resolveSkuBase({ product, serverBase, existingSkus = [] } = {}) {
+  if (product?.sku) {
+    const own = String(product.sku);
+    // "SKU-0003-0101" loses its variant suffix; a bare base "SKU-0003" must keep its digits, or the
+    // rows would be numbered "SKU-0101" and collide with the next product.
+    const trimmed = own.replace(/-\d{2,4}$/, "");
+    return /^[A-Za-z]+-\d+$/.test(trimmed) ? trimmed : own;
+  }
+  return serverBase || nextSkuBase(existingSkus);
+}
+
 /** The server's duplicate answers are English identifiers: say it in the shop's own words. */
 function readable(e) {
   const m = String(e?.message ?? e ?? "");
@@ -112,6 +128,8 @@ function optionValues(v) {
 }
 
 export const catalogApi = {
+  /** The next SKU base the server hands out (SKU-0007). The screen no longer counts the catalog. */
+  nextSku: () => api("/products/next-sku"),
   warehouses: () => api("/warehouses"),
   ensureDefaultWarehouse: () => post("/warehouses/ensure-default", {}),
   shopOptions: () => api("/apparel/options"),

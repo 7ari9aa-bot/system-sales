@@ -27,11 +27,33 @@ export function useCreateProduct() {
   });
 }
 
+/**
+ * The next SKU base, straight from the server (one aggregate query).
+ * `null` means this deploy has no /products/next-sku yet, so the screen falls back to counting
+ * the catalog it already loads — see useExistingSkus below, kept for exactly that case.
+ */
+export function useNextSkuBase() {
+  return useQuery({
+    queryKey: [...CATALOG_KEY, "next-sku"],
+    staleTime: 0,
+    queryFn: async () => {
+      try {
+        const res = await catalogApi.nextSku();
+        return res?.base ?? null;
+      } catch (e) {
+        if (e?.status !== 404) throw e;
+        return null;
+      }
+    },
+  });
+}
+
 /** Every SKU that exists in the backend now (used to pick a free SKU base). Includes archived products. */
-export function useExistingSkus() {
+export function useExistingSkus(enabled = true) {
   return useQuery({
     queryKey: [...CATALOG_KEY, "skus"],
     staleTime: 0,
+    enabled,
     queryFn: async () => {
       const res = await posApi.products();
       const list = Array.isArray(res) ? res : (res?.items ?? []);

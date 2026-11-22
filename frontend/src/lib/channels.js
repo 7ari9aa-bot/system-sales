@@ -1,13 +1,16 @@
 // Static channel presentation metadata only. Connection status and all
 // conversations/messages are loaded from the authenticated backend API.
 
+// Messenger draws an outgoing bubble as a two-stop gradient (top-start → bottom-end) and uses the
+// flat accent only for controls: the send button, the theme swatches and focus rings. Colours are
+// read from Messenger's own web chat theme picker.
 export const MESSENGER_CHAT_THEMES = [
-  { id: "blue", name: { ar: "أزرق", en: "Blue" }, accent: "#0084FF" },
-  { id: "purple", name: { ar: "بنفسجي", en: "Purple" }, accent: "#8B5CF6" },
-  { id: "pink", name: { ar: "وردي", en: "Pink" }, accent: "#E64980" },
-  { id: "teal", name: { ar: "تركواز", en: "Teal" }, accent: "#0F9D8A" },
-  { id: "orange", name: { ar: "برتقالي", en: "Orange" }, accent: "#F47B20" },
-  { id: "indigo", name: { ar: "نيلي", en: "Indigo" }, accent: "#5B65D8" },
+  { id: "blue", name: { ar: "أزرق", en: "Blue" }, accent: "#0084FF", gradient: ["#00B2FF", "#006AFF"] },
+  { id: "purple", name: { ar: "بنفسجي", en: "Purple" }, accent: "#8B5CF6", gradient: ["#A033FF", "#5E5CE6"] },
+  { id: "pink", name: { ar: "وردي", en: "Pink" }, accent: "#E64980", gradient: ["#FF7AB2", "#E64980"] },
+  { id: "teal", name: { ar: "تركواز", en: "Teal" }, accent: "#0F9D8A", gradient: ["#2BD9C2", "#0F9D8A"] },
+  { id: "orange", name: { ar: "برتقالي", en: "Orange" }, accent: "#F47B20", gradient: ["#FFB13D", "#F47B20"] },
+  { id: "indigo", name: { ar: "نيلي", en: "Indigo" }, accent: "#5B65D8", gradient: ["#8C93FF", "#5B65D8"] },
 ];
 
 export const CHANNELS = [
@@ -79,7 +82,9 @@ export const CHANNELS = [
       inputBorder: "#E4E6EB",
       divider: "#E4E6EB",
       secondaryText: "#65676B",
-      checkmarks: true,
+      // Messenger prints no delivery ticks: a sent message carries its time only, and the reader's
+      // avatar on the last read bubble is the one receipt it draws.
+      checkmarks: false,
       tail: false,
     },
   },
