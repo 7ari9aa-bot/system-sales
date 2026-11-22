@@ -1,4 +1,5 @@
-import { History, Inbox } from "lucide-react";
+import { History, Inbox, Pencil } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/cashier/components/ui/table";
@@ -10,11 +11,21 @@ import ReorderLevelCell from "@/cashier/components/inventory/ReorderLevelCell";
 import { fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 
 // تفاصيل منتج مفتوح من بطاقة: بياناته الأساسية مع كل تركيبات اللون والمقاس وأرصدتها.
+/** Where this product is edited, or null when it has no id (nothing to open). */
+export function editProductPath(product) {
+  return product?.id ? `/cashier/products/${encodeURIComponent(product.id)}/edit` : null;
+}
+
+// Orange like "بدء جرد": the way to correct a product must be seen, not hunted for.
+const EDIT_BTN =
+  "h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2 text-[13px] font-semibold !text-white shadow-sm transition-all duration-200 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
+
 export default function ProductDetailsDialog({ product, open, onOpenChange, onMovements }) {
   if (!product) return null;
 
   const threshold = product.threshold; // the reorder level comes from the backend; none set = no "low" state
   const variants = product.variants ?? [];
+  const editTo = editProductPath(product);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -24,6 +35,14 @@ export default function ProductDetailsDialog({ product, open, onOpenChange, onMo
           <DialogDescription className="num text-[12px] text-[#7A766C]">
             {[product.sku, product.category, product.brand].filter(Boolean).join(" • ")}
           </DialogDescription>
+          {editTo && (
+            <Button asChild variant="ghost" className={EDIT_BTN}>
+              <Link to={editTo}>
+                <Pencil className="h-4 w-4 shrink-0 !text-white" />
+                <span className="!text-white">تعديل المنتج</span>
+              </Link>
+            </Button>
+          )}
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-2 rounded-2xl border border-[#E3DED4] bg-[#F4F1EC] p-3">
