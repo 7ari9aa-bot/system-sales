@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
 from app.modules.billing.service import EntitlementService
-from app.modules.customers import schemas
+from app.modules.customers import meta_unsubscribe, schemas
 from app.modules.customers.meta_scopes import missing_facebook_scopes, missing_instagram_scopes
 from app.modules.customers.schemas import IntegrationBody
 from app.modules.identity.models import Invitation, Role
@@ -165,6 +165,7 @@ def _integration_output(integration: Integration) -> dict:
         "webhook_status": _webhook_status(integration),
         "last_webhook_at": _last_webhook_at(integration),
         "webhook_url": webhook_url,
+        "meta_cleanup": _meta_cleanup_state(integration),
         "public_key": public_key if integration.provider == "webchat" else None,
         # The permissions this connection lacks. Facebook: posting, comments, insights. Instagram:
         # messages, comments, publishing. A connection made before they were asked for lacks all
@@ -177,6 +178,13 @@ def _integration_output(integration: Integration) -> dict:
             else []
         ),
     }
+
+
+def _meta_cleanup_state(integration: Integration) -> dict | None:
+    """What Meta last said when this channel's subscription was removed (no secrets in it)."""
+    config = integration.config if isinstance(integration.config, dict) else {}
+    cleanup = config.get("_meta_cleanup")
+    return cleanup if isinstance(cleanup, dict) else None
 
 
 def _activate_verified_channel(integration: Integration) -> None:
@@ -515,6 +523,83 @@ async def verify_integration(
     }
 
 
+def _page_id_of(integration: Integration, credentials: dict) -> str:
+    """The Facebook Page a Page-based channel is subscribed on.
+
+    Facebook stores it in its config; Messenger's account id IS the Page id; Instagram's account id
+    is the Instagram account, so its Page id is in the encrypted connection record.
+    """
+    config = integration.config if isinstance(integration.config, dict) else {}
+    meta = credentials.get("_meta") if isinstance(credentials.get("_meta"), dict) else {}
+    return str(
+        meta.get("page_id")
+        or config.get("page_id")
+        or (config.get("account_id") if integration.provider == "messenger" else "")
+        or ""
+    )
+
+
+async def _remove_meta_subscription(ctx: TenantContext, integration: Integration) -> dict | None:
+    """Take this channel's webhook subscription off Meta and return what happened.
+
+    ``None`` for a channel that has no Meta subscription (telegram, webchat). Never raises for a
+    Meta failure: the local disconnect must not depend on Meta being reachable.
+    """
+    import httpx
+
+    provider = integration.provider
+    if provider not in (*meta_unsubscribe.PAGE_PROVIDERS, "whatsapp"):
+        return None
+    credentials = await IntegrationCredentialsService.decrypt(ctx.session, integration)
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        if provider == "whatsapp":
+            config = integration.config if isinstance(integration.config, dict) else {}
+            waba_id = str(config.get("waba_id") or "")
+            token = str(credentials.get("access_token") or "")
+            if not waba_id or not token:
+                return meta_unsubscribe._record(meta_unsubscribe.NOT_NEEDED, reason="no_waba")
+            return await meta_unsubscribe.unsubscribe_waba(http, waba_id=waba_id, token=token)
+
+        page_id = _page_id_of(integration, credentials)
+        token = str(credentials.get("api_key") or credentials.get("page_access_token") or "")
+        if not page_id or not token:
+            return meta_unsubscribe._record(meta_unsubscribe.NOT_NEEDED, reason="no_page")
+        # Siblings: the OTHER Page channels of this workspace that are still connected on the
+        # same Page. They share the one subscription, so it may not be removed under them.
+        siblings: list[str] = []
+        rows = (
+            (
+                await ctx.session.execute(
+                    select(Integration).where(
+                        Integration.tenant_id == ctx.tenant_id,
+                        Integration.kind == "channel",
+                        Integration.provider.in_(meta_unsubscribe.PAGE_PROVIDERS),
+                        Integration.id != integration.id,
+                        Integration.status.in_(("active", "connected", "restricted")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for other in rows:
+            other_credentials = await IntegrationCredentialsService.decrypt(ctx.session, other)
+            if _page_id_of(other, other_credentials) == page_id:
+                siblings.append(other.provider)
+        return await meta_unsubscribe.unsubscribe_page(
+            http, page_id=page_id, page_token=token, sibling_providers=siblings
+        )
+
+
+def _store_cleanup(integration: Integration, outcome: dict | None) -> None:
+    """Keep what Meta answered on the row, so it is shown and can be retried."""
+    if outcome is None:
+        return
+    config = dict(integration.config) if isinstance(integration.config, dict) else {}
+    config["_meta_cleanup"] = outcome
+    integration.config = config
+
+
 @platform_router.post(
     "/integrations/{integration_id}/disconnect",
     response_model=schemas.IntegrationOut,
@@ -576,6 +661,10 @@ async def disconnect_integration(
         )
     Integration.validate_transition(current, "disconnected")
     integration.status = "disconnected"
+    # The other half of a disconnect: stop Meta delivering this channel's events. The outcome is
+    # kept (never the token), and a Meta failure does not undo or block the local disconnect.
+    outcome = await _remove_meta_subscription(ctx, integration)
+    _store_cleanup(integration, outcome)
     await ctx.session.flush()
     await AuditService.write(
         ctx.session,
@@ -585,7 +674,54 @@ async def disconnect_integration(
         "integration",
         str(integration.id),
         before={"status": current},
-        after={"status": "disconnected"},
+        after={
+            "status": "disconnected",
+            "meta_subscription": (outcome or {}).get("state"),
+        },
+    )
+    return _integration_output(integration)
+
+
+@platform_router.post(
+    "/integrations/{integration_id}/retry-meta-cleanup",
+    response_model=schemas.IntegrationOut,
+)
+async def retry_meta_cleanup(
+    integration_id: UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Try again to remove a disconnected channel's subscription from Meta.
+
+    Only for a channel that is already disconnected and whose last removal did not complete. A
+    channel that is connected is refused: removing its subscription would stop its messages.
+    """
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.status != "disconnected":
+        raise ValidationError("Only a disconnected channel can have its Meta subscription removed.")
+    if not meta_unsubscribe.needs_cleanup(integration.config):
+        return _integration_output(integration)
+    outcome = await _remove_meta_subscription(ctx, integration)
+    _store_cleanup(integration, outcome)
+    await ctx.session.flush()
+    await AuditService.write(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "integration.meta_cleanup_retried",
+        "integration",
+        str(integration.id),
+        before={},
+        after={"meta_subscription": (outcome or {}).get("state")},
     )
     return _integration_output(integration)
 

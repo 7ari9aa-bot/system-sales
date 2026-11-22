@@ -377,8 +377,13 @@ class IntegrationOut(BaseModel):
     # The webchat/Telegram routing identifiers are public by design. Provider
     # credentials and all other configuration stay server-side.
     public_key: str | None = None
-    # Facebook only: Page permissions this connection lacks; non-empty means "connect again".
+    # Page permissions this connection lacks (Facebook and Instagram); non-empty means "connect
+    # again".
     missing_scopes: list[str] = []
+    # What Meta last answered when this channel's webhook subscription was removed on disconnect:
+    # {"state": done|kept|pending|not_needed, "at": ..., "reason"?: ..., "meta"?: {code, ...}}.
+    # "pending" means Meta still delivers events and the removal can be retried.
+    meta_cleanup: dict | None = None
 
 
 class IntegrationUpserted(BaseModel):
