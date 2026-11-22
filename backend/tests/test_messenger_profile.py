@@ -10,7 +10,6 @@ from __future__ import annotations
 import uuid
 
 import httpx
-import pytest
 
 from app.modules.conversations.gateway.base import ProviderCredentials
 from app.modules.conversations.gateway.messenger import messenger_adapter
@@ -49,9 +48,12 @@ async def test_an_empty_answer_is_none():
 
 
 async def test_no_token_means_no_call():
-    assert await messenger_adapter.get_user_profile(
-        ProviderCredentials(config={}), "PSID-1", _client({"name": "x"})
-    ) is None
+    assert (
+        await messenger_adapter.get_user_profile(
+            ProviderCredentials(config={}), "PSID-1", _client({"name": "x"})
+        )
+        is None
+    )
 
 
 async def test_the_service_names_the_customer_and_keeps_a_manual_name():
@@ -84,12 +86,17 @@ async def test_the_service_names_the_customer_and_keeps_a_manual_name():
     messenger_adapter.get_user_profile = _profile
     try:
         numbered = _Customer("1471701105025616")
-        assert await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), numbered, {}) is True
+        assert (
+            await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), numbered, {})
+            is True
+        )
         assert numbered.name == "Hamed Adel"
 
         identity.extra = {}  # a week has not passed; the second customer is a fresh read
         named = _Customer("عميل المحل")
-        assert await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), named, {}) is True
+        assert (
+            await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), named, {}) is True
+        )
         assert named.name == "عميل المحل"  # a typed name is never overwritten
     finally:
         messenger_adapter.get_user_profile = original
@@ -122,7 +129,10 @@ async def test_a_refusal_is_recorded_so_it_is_not_retried_on_every_message():
     original = messenger_adapter.get_user_profile
     messenger_adapter.get_user_profile = _none
     try:
-        assert await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), _Customer(), {}) is False
+        assert (
+            await cp.CustomerProfileService.enrich_messenger(None, uuid.uuid4(), _Customer(), {})
+            is False
+        )
         assert identity.extra["profile_ok"] is False
         assert identity.extra["profile_at"]
     finally:
