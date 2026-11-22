@@ -72,3 +72,19 @@ export function planProductEdit(before, after) {
   const empty = !Object.keys(product).length && !variantPatches.length && !newVariants.length && !newBarcodes.length;
   return { product, variantPatches, newVariants, newBarcodes, empty };
 }
+
+/**
+ * What a failed product load means. Only a 404 says the product is gone: a 503 right after a deploy, a
+ * dropped connection or a 500 must never read as "the product was deleted" to the owner.
+ */
+export function editLoadProblem(error) {
+  const status = error?.status;
+  if (status === 404) return "missing";
+  if (status === 401 || status === 403) return "forbidden";
+  return "temporary";
+}
+
+/** Retry only a temporary failure, and only a few times: a missing product or a refusal will not change. */
+export function shouldRetryEditLoad(failureCount, error) {
+  return editLoadProblem(error) === "temporary" && failureCount < 3;
+}

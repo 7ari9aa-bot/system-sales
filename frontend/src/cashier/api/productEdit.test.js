@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planProductEdit, productToForm } from "./productEdit";
+import { editLoadProblem, planProductEdit, productToForm, shouldRetryEditLoad } from "./productEdit";
 
 const backend = {
   id: "p1", title: "فستان", description: "وصف", category_id: "c1", brand_id: null,
@@ -149,5 +149,31 @@ describe("material: read into the form and sent only when it changed", () => {
       season: "AW26",
       material: "كتان",
     });
+  });
+});
+
+describe("what a failed product load means for the owner", () => {
+  it("says the product is missing only when the server says it does not exist", () => {
+    expect(editLoadProblem({ status: 404 })).toBe("missing");
+  });
+  it("calls a server or network failure a temporary problem, never a missing product", () => {
+    expect(editLoadProblem({ status: 503 })).toBe("temporary");
+    expect(editLoadProblem({ status: 500 })).toBe("temporary");
+    expect(editLoadProblem({ status: 0 })).toBe("temporary");
+    expect(editLoadProblem(new Error("boom"))).toBe("temporary");
+    expect(editLoadProblem(undefined)).toBe("temporary");
+  });
+  it("calls a refused request a problem with the link, not a missing product", () => {
+    expect(editLoadProblem({ status: 403 })).toBe("forbidden");
+    expect(editLoadProblem({ status: 401 })).toBe("forbidden");
+  });
+  it("retries a temporary failure a few times and then stops", () => {
+    expect(shouldRetryEditLoad(0, { status: 503 })).toBe(true);
+    expect(shouldRetryEditLoad(2, { status: 503 })).toBe(true);
+    expect(shouldRetryEditLoad(3, { status: 503 })).toBe(false);
+  });
+  it("never retries a missing product or a refusal", () => {
+    expect(shouldRetryEditLoad(0, { status: 404 })).toBe(false);
+    expect(shouldRetryEditLoad(0, { status: 403 })).toBe(false);
   });
 });

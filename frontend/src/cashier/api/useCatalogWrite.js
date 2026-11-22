@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { posApi } from "./posApi";
 import { catalogApi } from "./catalogApi";
 import { CATALOG_KEY } from "./usePosSale";
-import { planProductEdit, productToForm } from "./productEdit";
+import { planProductEdit, productToForm, shouldRetryEditLoad } from "./productEdit";
 
 /** The default warehouse id, created on first use (a brand-new shop has none). */
 export async function defaultWarehouseId() {
@@ -78,14 +78,19 @@ export async function readProductForEdit(productId) {
   return productToForm(product, barcodes, barcodeIds);
 }
 
-/** One product from the backend, shaped for the editor form. An error means it does not exist. */
-export function useProductForEdit(productId) {
-  return useQuery({
+/** One product from the backend, shaped for the editor form. A temporary failure is retried, a 404 is not. */
+export function productEditQueryOptions(productId) {
+  return {
     queryKey: [...CATALOG_KEY, "edit", productId],
     staleTime: 0,
-    retry: false,
+    retry: shouldRetryEditLoad,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 6000),
     queryFn: () => readProductForEdit(productId),
-  });
+  };
+}
+
+export function useProductForEdit(productId) {
+  return useQuery(productEditQueryOptions(productId));
 }
 
 /** Save an edit: only what changed is sent; the POS catalog is refreshed so a new price sells at once. */
