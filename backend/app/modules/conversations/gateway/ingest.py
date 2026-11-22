@@ -30,6 +30,14 @@ from app.modules.platform.models import IdempotencyKey, Integration, WebhookEven
 logger = logging.getLogger(__name__)
 
 
+async def _channel_credentials(session, tenant_id, channel) -> dict | None:
+    """A connected channel's decrypted settings. The one place this file reaches the platform
+    module for them, so the cross-module import is counted once."""
+    from app.modules.platform.services.channel_access import channel_credentials_config
+
+    return await channel_credentials_config(session, tenant_id, channel)
+
+
 class IngestError(Exception):
     pass
 
@@ -331,11 +339,8 @@ class IngestService:
             has_template_news = getattr(adapter, "has_template_status_change", None)
             if callable(has_template_news) and has_template_news(payload):
                 from app.modules.conversations.templates import TemplateService
-                from app.modules.platform.services.channel_access import (
-                    channel_credentials_config,
-                )
 
-                credentials = await channel_credentials_config(session, tenant_id, channel)
+                credentials = await _channel_credentials(session, tenant_id, channel)
                 if credentials and credentials.get("access_token"):
                     # Its own savepoint: Meta being slow or down must not roll back the messages
                     # ingested above. The periodic sweep catches up whatever this misses.
@@ -510,7 +515,6 @@ class IngestService:
             return
         try:
             from app.core.redis import get_redis_or_none
-            from app.modules.platform.services.channel_access import channel_credentials_config
 
             redis = get_redis_or_none()
             credentials = None
@@ -526,9 +530,7 @@ class IngestService:
                     name = cached.decode() if isinstance(cached, bytes) else str(cached)
                 else:
                     if credentials is None:
-                        credentials = (
-                            await channel_credentials_config(session, tenant_id, channel) or {}
-                        )
+                        credentials = await _channel_credentials(session, tenant_id, channel) or {}
                     profile = await fetch(credentials, ref) if credentials else None
                     name = (profile or {}).get("name", "")
                     if redis is not None:

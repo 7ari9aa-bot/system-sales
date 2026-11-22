@@ -25,7 +25,7 @@ from app.modules.platform.integration_verifier import (
     telegram_webhook_secret_configured,
     verify_channel_credentials,
 )
-from app.modules.platform.models import Integration
+from app.modules.platform.models import Integration, WebhookEvent
 from app.modules.platform.service import AuditService, IntegrationCredentialsService
 
 from ._deps import SettingsReadCtx, TenantContext, require_permission
@@ -697,7 +697,6 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
 
     from app.core.config import get_settings
     from app.modules.customers import meta_channel_diagnostics as diag
-    from app.modules.platform.models import WebhookEvent
 
     integration = (
         await ctx.session.execute(
