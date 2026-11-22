@@ -84,3 +84,67 @@
 6. ما لم يُتحقَّق منه من الكود أو من docs.meta (وسم `unverified` أعلاه): دعم `react`/`unreact` الحالي،
    وأي حدود رقمية لم أذكرها صراحة (عدد أزرار quick replies، 2000 حرف، حدود القوالب) مصدرها صفحات
    Send API في developers.facebook.com ولم تُقرأ سطرًا بسطر في هذا القسم.
+
+## Webhook fields
+
+نطاق هذا القسم: حقول الـ webhook الخاصة بـ Messenger وصفحة فيسبوك. عمود «مشترك على الصفحة الحيّة»
+يعكس قائمة الحقول المفروضة على صفحة **Fidsas** (`1504830666036731`) بتاريخ 2026-11-22، وعمود
+«مقروء في الكود» يعني أن `MessengerAdapter` في
+`backend/app/modules/conversations/gateway/messenger.py` (أو دالة يستدعيها) تقرأ محتوى هذا الحقل
+فعليًا. الفرق بين العمودين هو بيت القصيد: حقل مشترك وغير مقروء يعني حجم أحداث ندفعه بلا مقابل.
+
+ما يطلبه الكود عند الربط — `subscribed_fields(provider)` في
+`backend/app/modules/customers/meta_oauth.py:83` والثوابت في `:74-80`:
+
+| القناة (provider) | الحقول المكتوبة عند الربط |
+|---|---|
+| `messenger` (الافتراضي) | `messages,messaging_postbacks,messaging_referrals,message_deliveries` |
+| `facebook` | ما سبق + `feed` |
+| `instagram` | ما سبق + `comments,message_reactions,messaging_seen` |
+
+حقلان على الصفحة الحيّة — `message_echoes` و`message_reads` — لا يظهران في أي من القوائم الثلاث،
+أي أن الاشتراك الحيّ أوسع مما يكتبه هذا الكود: إمّا عُدّل يدويًا من App Dashboard أو كتبته نسخة
+أقدم. إعادة الربط عبر مسار OAuth لا تحذفهما لأن `meta_oauth.py:265-271` يجمع المطلوب مع الموجود
+في الصفحة بدل استبداله، فيبقيان مشتركين سواء قرأهما أحد أم لا.
+
+### كل حقول webhook في Messenger
+
+| الحقل | مشترك على الصفحة الحيّة | مقروء في الكود (file:line) | ماذا يعطي الواجهة |
+|---|---|---|---|
+| `messages` | نعم | **نعم** — `gateway/messenger.py:131` (`parse_inbound`) ثم `:145` (`_parse_message_event`)؛ نص + أول مرفق فقط (`image` / `audio`→voice / `video` / `file`، وأي نوع آخر يصبح `unsupported`) | المحادثة نفسها: فقاعات النص والوسائط الواردة في الـ inbox، وإنشاء صف العميل، وعدّاد غير المقروء. |
+| `messaging_postbacks` | نعم | **لا** — لا يوجد فرع `postback` في `messenger.py` (الموجود لإنستجرام فقط: `gateway/instagram.py:220` و`:349`) | لا شيء. العميل الذي يضغط زرًّا أو قائمة أو Get-Started لا يحصل على أي رد ولا يُنشأ له أي أثر: الحدث يُترجَم إلى صفر رسائل. |
+| `message_deliveries` | نعم | **لا** — `messenger.py:121` الدالة `parse_status_updates` ترجع `[]` عن قصد («inbound-only for now») | لا شيء. لا علامة ✓✓ على فقاعات Messenger الصادرة؛ رسالة لم تصل للعميل تبدو مطابقة لرسالة قُرئت. |
+| `message_reads` | نعم | **لا** — نفس الدالة الفارغة، `messenger.py:121-124` | لا شيء. لا إشعار قراءة، فحالة «شوهد» وخدمة إشارة القراءة تظلان عمياء لقناة Messenger. |
+| `message_reactions` | لا | **لا** — لا فرع `reaction` في `messenger.py` (لإنستجرام فرع في `gateway/instagram.py:225`) | لا شيء. تفاعلات العميل على رسائل المتجر لا تظهر، ولا يستطيع الموظف التفاعل من الـ inbox. |
+| `message_echoes` | نعم | **لا** — لا شيء يقرأ `is_echo` لقناة Messenger (الفحص الوحيد في الشجرة عند `gateway/instagram.py:233`) | المقصود ألّا يعطي شيئًا، لكن انظر ملاحظة الخطر: echo يصل على حقل `messages` يُحتسب رسالة عميل واردة. |
+| `messaging_referrals` | نعم | **لا** — لا معالجة لـ `referral` في أي ملف تحت `modules/conversations` | لا شيء. مصدر وصول العميل (إعلان أو رابط `m.me` وحمولة `ref`) يُفقد، فلا إسناد للإعلانات ولا سؤال «أي حملة بدأت هذه المحادثة» له جواب في الواجهة. |
+| `messaging_optins` | لا | **لا** | لا شيء. لا حالة موافقة تسويقية؛ الموافقة يجب جمعها بطريق آخر. |
+| `messaging_handovers` | لا | **لا** | لا شيء. انتقال التحكم في المحادثة من/إلى تطبيق آخر غير مرئي — فيظل الـ inbox يتصرّف في محادثة لم يعد يملكها. |
+| `messaging_policy_enforcement` | لا | **لا** | لا شيء. صفحة محظورة أو مقيّدة بسياسة Meta لا تظهر للمالك كتحذير. |
+| `messaging_feedback` | لا | **لا** | لا شيء. استبيانات تقييم العميل التي ترسلها Meta تُهمل. |
+| `standby` | لا | **لا** | لا شيء. الرسائل التي لا يراها التطبيق إلا في وضع standby (تطبيق آخر يملك المحادثة) لا تصل للـ inbox. |
+| `inbox_labels` | لا | **لا** | لا شيء. لا مزامنة وسوم؛ الوسوم المعروضة في الـ inbox محلية فقط وتنحرف عن وسوم Meta. |
+| `feed` | نعم | **نعم** — `gateway/messenger.py:126` (`parse_comments`) ثم `gateway/base.py:117` (`parse_meta_comment_changes`، الفلترة عند `base.py:114` و`:137`) | تعليقات المنشورات العامة (إضافة/تعديل/حذف، الكاتب، الرابط الدائم، عدد الإعجابات) في شاشة التعليقات الاجتماعية — بيانات تفاعل، ولا تُمرَّر إلى الذكاء الاصطناعي ولا إلى المحادثة عن قصد. |
+
+### غير مشترك وغير مقروء
+
+`messaging_optins`, `messaging_handovers`, `messaging_policy_enforcement`, `messaging_feedback`,
+`standby`, `inbox_labels`, `message_reactions` — الكود لا يطلبها ولا يوجد لها أي محلّل، فلا سلوك
+جزئي يُشرح: القدرة غائبة من الطرفين.
+
+### مشترك وغير مقروء
+
+`message_deliveries`, `message_reads`, `message_echoes`, `messaging_postbacks`,
+`messaging_referrals`. خمسة من سبعة حقول حيّة تُدفع كحجم أحداث ثم تُهمل. مرتّبة بما يلاحظه المالك:
+
+1. `message_deliveries` / `message_reads` — لا حالة تسليم ولا قراءة على رسائل Messenger الصادرة،
+   وسؤال «هل وصلت رسالتي للعميل؟» بلا جواب.
+2. `messaging_postbacks` — ضغطة زر هي فعل من العميل لا يحصل على أي رد إطلاقًا.
+3. `messaging_referrals` — مصدر click-to-Messenger لا يمكن استرجاعه لاحقًا؛ الحمولة الخام لا
+   تُحفظ أصلًا، فلا يمكن تعبئتها بأثر رجعي.
+4. `message_echoes` — لا يوجد محلّل echo، و`MessengerAdapter.parse_inbound` (`messenger.py:131`)
+   لا يفحص `is_echo`: أي echo يصل على حقل `messages` يتحوّل إلى رسالة **واردة** من معرّف الصفحة
+   نفسها، أي أن رد المتجر على عميله قد يظهر في المحادثة كرسالة عميل. هذا البند الوحيد هنا خطأ
+   صحّة لا ميزة ناقصة، ويجب إصلاحه قبل توصيل الحقل.
+
+الحقلان الوحيدان من الحقول الحيّة اللذان تصل حمولتهما إلى قاعدة البيانات هما `feed` و`messages`.
