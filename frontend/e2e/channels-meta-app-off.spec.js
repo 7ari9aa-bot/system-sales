@@ -25,6 +25,7 @@ async function openAndConnect(page) {
 test("a Facebook window that closes without a code names the likely cause: the Meta app is switched off", async ({ page }) => {
   const alert = await openAndConnect(page);
   await expect(alert).toBeVisible({ timeout: 8000 });
-  await expect(alert).toContainText(/no authorization code/i);
-  await expect(alert).toContainText(/reactivate it in the Meta developer console/i);
+  // The wording moved when the WhatsApp connect started explaining Meta-side refusals (12b58b82).
+  await expect(alert).toContainText(/window closed before the connect finished/i);
+  await expect(alert).toContainText(/the app is switched off/i);
 });

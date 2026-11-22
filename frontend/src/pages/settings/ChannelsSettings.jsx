@@ -207,11 +207,6 @@ export function friendlyMetaError(raw, isAr) {
 }
 
 /** Open a centered popup window. */
-/** What FB.login's answer means for the WhatsApp connect.
- *  Facebook calls back as soon as its window is closed or refused, with no code. That is final, so
- *  the button must be freed now, like Facebook/Messenger/Instagram do when their window closes, and
- *  not after the 10 minute signup timeout. A window that stopped on a message from Meta itself
- *  ("can't onboard customers right now") ends here too, so the reason names the Meta app. */
 /**
  * What to tell the owner when Meta's signup window reports CANCEL or ERROR.
  *
@@ -244,6 +239,11 @@ export function whatsappSignupInterruption(payload, isAr) {
   return new Error(isAr ? "أُغلقت نافذة الربط قبل اكتمالها." : "The signup window was closed before it finished.");
 }
 
+/** What FB.login's answer means for the WhatsApp connect.
+ *  Facebook calls back as soon as its window is closed or refused, with no code. That is final, so
+ *  the button must be freed now, like Facebook/Messenger/Instagram do when their window closes, and
+ *  not after the 10 minute signup timeout. A window that stopped on a message from Meta itself
+ *  ("can't onboard customers right now") ends here too, so the reason names the Meta app. */
 export function whatsappLoginOutcome(response, isAr) {
   const code = response?.authResponse?.code;
   if (code) return { code };
