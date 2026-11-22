@@ -49,7 +49,7 @@ export const READONLY =
 // الألوان والمقاسات.
 export const CHIPS = "flex flex-wrap gap-2.5";
 export const CHIP = `${FIELD_SKIN} flex h-[46px] min-w-[46px] flex-row items-center justify-center gap-2 px-2.5 text-[13px] font-semibold text-[#3a342d] transition-[border-color,background-color,box-shadow] duration-200 hover:border-[#f97316] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f97316] hover:bg-[#faf9f7]`;
-export const CHIP_ON = "border-[#f97316] bg-[#fff1e6] hover:bg-[#fff1e6]";
+export const CHIP_ON = "border-[#f97316] bg-[#ffd9b8] ring-2 ring-[#f97316] hover:bg-[#ffd9b8]";
 export const SWATCH_DOT =
   "h-[34px] w-[34px] shrink-0 rounded-full border-2 border-white shadow-[0_0_0_1px_#ddd7cf] transition-[box-shadow] duration-200 group-hover:shadow-[0_0_0_2px_#f97316]";
 export const PRIMARY_BTN =

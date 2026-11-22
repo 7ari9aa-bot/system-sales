@@ -20,6 +20,7 @@ export default function ProductVariantsPicker({ colors, onToggleColor, sizes, on
             <button
               key={c.name}
               type="button"
+              aria-pressed={colors.includes(c.name)}
               onClick={() => onToggleColor(c.name)}
               className={cn(CHIP, "group", colors.includes(c.name) && CHIP_ON)}
             >
@@ -33,7 +34,7 @@ export default function ProductVariantsPicker({ colors, onToggleColor, sizes, on
       <FormField label="المقاسات">
         <div className={CHIPS}>
           {presetSizes.map((s) => (
-            <button key={s} type="button" onClick={() => onToggleSize(s)} className={cn(CHIP, sizes.includes(s) && CHIP_ON)}>
+            <button key={s} type="button" aria-pressed={sizes.includes(s)} onClick={() => onToggleSize(s)} className={cn(CHIP, sizes.includes(s) && CHIP_ON)}>
               {s}
             </button>
           ))}
