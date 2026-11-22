@@ -314,6 +314,43 @@ def _page_choice_key(ticket: str) -> str:
     return f"meta_oauth:page_choice:{ticket}"
 
 
+async def _business_portfolio_pages(http, user_token: str) -> list[dict]:
+    """Pages owned by (or shared with) the operator's Business Portfolios, WITH page tokens.
+
+    /me/accounts omits Pages that live inside a Business Portfolio. Meta lists them under
+    /me/businesses → /{business}/owned_pages and /client_pages, and each entry can carry its own
+    page access_token when the operator has a task on it. Best effort: any failure returns [].
+    """
+    found: dict[str, dict] = {}
+    try:
+        biz = _graph_json(
+            await http.get(
+                f"{_GRAPH}/me/businesses",
+                params={"fields": "id,name", "limit": 50, "access_token": user_token},
+            ),
+            step="business listing",
+        )
+        for business in biz.get("data", []) if isinstance(biz, dict) else []:
+            for edge in ("owned_pages", "client_pages"):
+                listing = _graph_json(
+                    await http.get(
+                        f"{_GRAPH}/{business['id']}/{edge}",
+                        params={
+                            "fields": _PAGE_FIELDS,
+                            "limit": 100,
+                            "access_token": user_token,
+                        },
+                    ),
+                    step=f"business {edge}",
+                )
+                for page in listing.get("data", []) if isinstance(listing, dict) else []:
+                    if page.get("id") and page.get("access_token"):
+                        found[str(page["id"])] = page
+    except Exception as exc:  # noqa: BLE001 - diagnostic fallback must never break the connect
+        _logger.warning("meta_oauth.business_pages_failed %s", str(exc)[:200])
+    return list(found.values())
+
+
 def _messaging_pages(all_pages: list[dict]) -> list[dict]:
     """The Pages this operator can run messaging on (all of them when Meta lists no tasks)."""
     pages = [
@@ -518,6 +555,10 @@ async def _meta_exchange_and_connect(
             raise ValidationError(failure[:200])
 
         all_pages = accounts.get("data", [])
+        if not all_pages:
+            # A Page owned by a Business Portfolio is NOT listed by /me/accounts even when the
+            # operator manages it and granted every scope. Look it up through the portfolios.
+            all_pages = await _business_portfolio_pages(http, user_token)
         if not all_pages:
             await _flag("link.no_pages", provider, tenant_id, {"granted": sorted(granted)})
             raise ValidationError(
