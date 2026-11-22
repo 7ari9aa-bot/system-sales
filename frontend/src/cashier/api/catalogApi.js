@@ -181,10 +181,104 @@ export const catalogApi = {
   },
 
   /**
+   * Create a complete, SELLABLE product.
+   *
+   * ONE request when the API has POST /products/intake: the product, every variant, the typed
+   * codes, the shop's own generated codes, the opening stock, the category/brand/season/fabric
+   * and the activation all land inside that single transaction. A deploy that predates the
+   * endpoint answers 404, and only then does the older step-by-step chain run (kept intact below,
+   * so a rollback of the backend can never break the form).
+   */
+  async createProduct(input, { warehouseId, slugToken } = {}) {
+    const errors = validateProduct(input);
+    if (errors.length) throw new RangeError(errors.join(" • "));
+    // Caught here rather than by the server: an opening balance needs a warehouse to land in.
+    if (input.variants.some((v) => Number(v.stock ?? 0) > 0) && !warehouseId) {
+      throw new Error("لا يوجد مخزن افتراضي لاستلام الكمية الافتتاحية");
+    }
+
+    try {
+      return await createProductInOneRequest(input, { warehouseId, slugToken });
+    } catch (e) {
+      if (!isMissingIntakeEndpoint(e)) throw e;
+      return createProductStepByStep(input, { warehouseId, slugToken });
+    }
+  },
+
+  updateProduct: (id, fields) => patch(`/products/${seg(id)}`, fields),
+  setVariantPrice: (variantId, price) => patch(`/variants/${seg(variantId)}`, { price: toWire(price) }),
+  setVariantActive: (variantId, isActive) => patch(`/variants/${seg(variantId)}`, { is_active: !!isActive }),
+  archiveProduct: (id) => post(`/products/${seg(id)}/archive`, {}),
+  resolveBarcode: (value) => api(`/identifiers/barcode/${seg(value)}`),
+
+  /** Stock IN/OUT/ADJUST as a ledger row. quantity is a positive integer; "adjust" SETS the balance to it. */
+  moveStock: ({ variantId, warehouseId, direction, quantity, reason }) => {
+    if (!["in", "out", "adjust"].includes(direction)) throw new RangeError(`catalogApi: bad direction "${direction}"`);
+    // The backend rejects quantity <= 0 for EVERY direction (422), "adjust" included. "adjust" means
+    // "set the balance TO this number" (probed: adjust 7 -> on_hand 7), so a counted ZERO cannot be
+    // recorded with it: use an "out" for the whole remaining quantity instead (see countToMovement).
+    if (!Number.isInteger(quantity) || quantity < 1) throw new RangeError("catalogApi: quantity must be a whole number >= 1");
+    return post("/inventory/movements", { variant_id: variantId, warehouse_id: warehouseId, direction, quantity, reason });
+  },
+  movements: () => api("/inventory/movements?limit=500"),
+};
+
+/**
+ * Turn a physical count into the one ledger row that makes the system match it.
+ * Probed rules: "adjust" sets the balance to quantity, but quantity must be >= 1, so a counted 0
+ * becomes an "out" of everything on hand. Returns null when nothing differs (no row, no noise).
+ */
+export function countToMovement({ variantId, warehouseId, onHand, counted, reason = "adjustment" }) {
+  if (!Number.isInteger(counted) || counted < 0) throw new RangeError("countToMovement: counted must be a whole number >= 0");
+  if (!Number.isInteger(onHand) || onHand < 0) throw new RangeError("countToMovement: onHand must be a whole number >= 0");
+  if (counted === onHand) return null;
+  if (counted === 0) return { variantId, warehouseId, direction: "out", quantity: onHand, reason };
+  return { variantId, warehouseId, direction: "adjust", quantity: counted, reason };
+}
+
+
+/** True only for "this deploy has no /products/intake yet"; a real refusal must never fall back. */
+function isMissingIntakeEndpoint(e) {
+  const status = e?.status ?? e?.cause?.status ?? 0;
+  return status === 404;
+}
+
+/** The whole product in ONE request: one transaction on the server, nothing half saved. */
+async function createProductInOneRequest(input, { warehouseId, slugToken }) {
+  const season = String(input.season ?? "").trim();
+  const fabric = materialText(input.material);
+  const body = {
+    title: String(input.name).trim(),
+    slug: makeSlug(input.name, slugToken),
+    description: input.description || null,
+    category_id: input.categoryId || null,
+    brand_id: input.brandId || null,
+    season: season || null,
+    material: fabric || null,
+    status: "active",
+    warehouse_id: warehouseId || null,
+    variants: input.variants.map((v) => ({
+      sku: String(v.sku).trim(),
+      price: toWire(v.sellPrice),
+      option_values: optionValues(v),
+      barcode: String(v.barcode ?? "").trim() || null,
+      stock: Number(v.stock ?? 0) || 0,
+      auto_barcode: !!v.autoBarcode,
+    })),
+  };
+  const saved = await post("/products/intake", body);
+  return {
+    product: { ...saved, status: saved?.status ?? "active" },
+    variants: saved?.variants ?? [],
+    barcodesAssigned: saved?.barcodes_assigned ?? 0,
+  };
+}
+
+  /**
    * Create a complete, SELLABLE product. Steps run in order; if one fails the error says which
    * step and what already exists, so nothing is silently half-saved.
    */
-  async createProduct(input, { warehouseId, slugToken } = {}) {
+async function createProductStepByStep(input, { warehouseId, slugToken }) {
     const errors = validateProduct(input);
     if (errors.length) throw new RangeError(errors.join(" • "));
 
@@ -253,35 +347,4 @@ export const catalogApi = {
     if (materialText(input.material)) classify.material = materialText(input.material);
     await step("تفعيل المنتج", () => patch(`/products/${seg(product.id)}`, { ...classify, status: "active" }));
     return { product: { ...product, status: "active" }, variants: out };
-  },
-
-  updateProduct: (id, fields) => patch(`/products/${seg(id)}`, fields),
-  setVariantPrice: (variantId, price) => patch(`/variants/${seg(variantId)}`, { price: toWire(price) }),
-  setVariantActive: (variantId, isActive) => patch(`/variants/${seg(variantId)}`, { is_active: !!isActive }),
-  archiveProduct: (id) => post(`/products/${seg(id)}/archive`, {}),
-  resolveBarcode: (value) => api(`/identifiers/barcode/${seg(value)}`),
-
-  /** Stock IN/OUT/ADJUST as a ledger row. quantity is a positive integer; "adjust" SETS the balance to it. */
-  moveStock: ({ variantId, warehouseId, direction, quantity, reason }) => {
-    if (!["in", "out", "adjust"].includes(direction)) throw new RangeError(`catalogApi: bad direction "${direction}"`);
-    // The backend rejects quantity <= 0 for EVERY direction (422), "adjust" included. "adjust" means
-    // "set the balance TO this number" (probed: adjust 7 -> on_hand 7), so a counted ZERO cannot be
-    // recorded with it: use an "out" for the whole remaining quantity instead (see countToMovement).
-    if (!Number.isInteger(quantity) || quantity < 1) throw new RangeError("catalogApi: quantity must be a whole number >= 1");
-    return post("/inventory/movements", { variant_id: variantId, warehouse_id: warehouseId, direction, quantity, reason });
-  },
-  movements: () => api("/inventory/movements?limit=500"),
-};
-
-/**
- * Turn a physical count into the one ledger row that makes the system match it.
- * Probed rules: "adjust" sets the balance to quantity, but quantity must be >= 1, so a counted 0
- * becomes an "out" of everything on hand. Returns null when nothing differs (no row, no noise).
- */
-export function countToMovement({ variantId, warehouseId, onHand, counted, reason = "adjustment" }) {
-  if (!Number.isInteger(counted) || counted < 0) throw new RangeError("countToMovement: counted must be a whole number >= 0");
-  if (!Number.isInteger(onHand) || onHand < 0) throw new RangeError("countToMovement: onHand must be a whole number >= 0");
-  if (counted === onHand) return null;
-  if (counted === 0) return { variantId, warehouseId, direction: "out", quantity: onHand, reason };
-  return { variantId, warehouseId, direction: "adjust", quantity: counted, reason };
 }
