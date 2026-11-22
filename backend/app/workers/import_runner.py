@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextvars import ContextVar
 from decimal import Decimal
 
 from sqlalchemy import select, text, update
@@ -45,6 +46,52 @@ def _refused(exc: Exception) -> ApplyError:
     return ApplyError(type(exc).__name__.removesuffix("Error").lower() or "refused", str(exc))
 
 
+#: The shop's own taxonomy, read ONCE per batch run instead of once per row.
+#:
+#: Every row used to ask the database for the whole category list and the whole brand list to
+#: match a name, so a 10,000-row file made 20,000 list queries. Worse, the list is capped at 200:
+#: a shop with more categories than that could not match one of its own names and the import
+#: created a second copy of it. Both maps are now built once for the run (paging past the cap)
+#: and reused for every row in it, and a name created mid-run joins the map so the next row that
+#: says the same thing reuses it.
+_TAXONOMY_MAPS: ContextVar[dict[str, dict[str, uuid.UUID]] | None] = ContextVar(
+    "import_taxonomy_maps", default=None
+)
+_TAXONOMY_PAGE = 1000
+
+
+def _name_key(name: object) -> str:
+    """Case- and space-insensitive: "بناطيل " and "بناطيل" are the same shelf."""
+    return str(name or "").strip().casefold()
+
+
+async def _load_taxonomy(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> dict[str, dict[str, uuid.UUID]]:
+    """Every category and brand the shop already has, keyed by normalised name.
+
+    Paged to the end: the 200-row default is a page size for a picker, not the truth about how
+    many categories a shop owns, and matching against a truncated list is what forked them.
+    """
+    from app.modules.catalog.service import CatalogService
+
+    maps: dict[str, dict[str, uuid.UUID]] = {"category": {}, "brand": {}}
+    listers = (
+        ("category", CatalogService.list_categories),
+        ("brand", CatalogService.list_brands),
+    )
+    for kind, lister in listers:
+        offset = 0
+        while True:
+            page = await lister(session, tenant_id, limit=_TAXONOMY_PAGE, offset=offset)
+            for row in page:
+                maps[kind].setdefault(_name_key(row.name), row.id)
+            if len(page) < _TAXONOMY_PAGE:
+                break
+            offset += _TAXONOMY_PAGE
+    return maps
+
+
 async def _taxonomy_id(
     session: AsyncSession, tenant_id: uuid.UUID, *, catalog, kind: str, name: object
 ) -> uuid.UUID | None:
@@ -52,23 +99,34 @@ async def _taxonomy_id(
 
     A merchant's spreadsheet says "بناطيل", not a uuid. Matching is case- and space-insensitive
     (the same rule the shop's own pickers use) so an import never forks "بناطيل" and " بناطيل ".
+    Inside a run this reads the prefetched map; called on its own (a test, a one-off) it falls
+    back to listing the shop's taxonomy the way it used to.
     """
     wanted = str(name or "").strip()
     if not wanted:
         return None
-    rows = (
-        await catalog.list_brands(session, tenant_id)
-        if kind == "brand"
-        else await catalog.list_categories(session, tenant_id)
-    )
-    for row in rows:
-        if (row.name or "").strip().casefold() == wanted.casefold():
-            return row.id
+    maps = _TAXONOMY_MAPS.get()
+    table = maps.setdefault(kind, {}) if maps is not None else None
+    if table is not None:
+        found = table.get(_name_key(wanted))
+        if found is not None:
+            return found
+    else:
+        rows = (
+            await catalog.list_brands(session, tenant_id)
+            if kind == "brand"
+            else await catalog.list_categories(session, tenant_id)
+        )
+        for row in rows:
+            if _name_key(row.name) == _name_key(wanted):
+                return row.id
     made = (
         await catalog.create_brand(session, tenant_id, name=wanted)
         if kind == "brand"
         else await catalog.create_category(session, tenant_id, name=wanted)
     )
+    if table is not None:
+        table[_name_key(wanted)] = made.id
     return made.id
 
 
@@ -387,9 +445,14 @@ async def run_batch(session: AsyncSession, job: Job, *, limit: int = BATCH_LIMIT
     if imp.status != "running":
         imp.status = "running"
 
-    batch = await apply_batch(
-        session, job.tenant_id, session_id, PORTS, values_of=values_of, limit=limit
-    )
+    # Read the shop's categories and brands once for the whole batch (see _TAXONOMY_MAPS).
+    token = _TAXONOMY_MAPS.set(await _load_taxonomy(session, job.tenant_id))
+    try:
+        batch = await apply_batch(
+            session, job.tenant_id, session_id, PORTS, values_of=values_of, limit=limit
+        )
+    finally:
+        _TAXONOMY_MAPS.reset(token)
 
     totals = dict(imp.stats or {})
     for key in ("applied", "skipped", "failed"):
