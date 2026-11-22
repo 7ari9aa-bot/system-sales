@@ -52,12 +52,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build Android Release APK
-        run: flutter build apk --release
+      - name: Build Android Release APK & AppBundle
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
 
-      - name: Upload Android Release Artifact
+      - name: Upload Android Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fihrist-mobile-release-apk
-          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          name: fihrist-mobile-release-artifacts
+          path: |
+            mobile/build/app/outputs/flutter-apk/app-release.apk
+            mobile/build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: warn
