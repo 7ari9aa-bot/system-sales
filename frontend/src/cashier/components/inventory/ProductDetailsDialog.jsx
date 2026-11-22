@@ -1,5 +1,9 @@
-import { History, Inbox, Pencil } from "lucide-react";
+import { useState } from "react";
+import { Archive, History, Inbox, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { catalogApi } from "@/cashier/api/catalogApi";
+import { CATALOG_KEY } from "@/cashier/api/usePosSale";
 import { Button } from "@/cashier/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/cashier/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/cashier/components/ui/table";
@@ -20,8 +24,36 @@ export function editProductPath(product) {
 const EDIT_BTN =
   "h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2 text-[13px] font-semibold !text-white shadow-sm transition-all duration-200 hover:border-[#D1650F] hover:!bg-[#D1650F] hover:!text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8761A]";
 
+const ARCHIVE_BTN =
+  "h-auto gap-2 rounded-[10px] border border-[#C6432F] bg-white px-3 py-2 text-[13px] font-semibold text-[#C6432F] transition-colors duration-200 hover:bg-[#C6432F] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C6432F]";
+
+const CONFIRM_BTN =
+  "h-auto rounded-[10px] border border-[#C6432F] !bg-[#C6432F] px-3 py-2 text-[13px] font-semibold !text-white transition-colors duration-200 hover:!bg-[#A93726] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C6432F]";
+
 export default function ProductDetailsDialog({ product, open, onOpenChange, onMovements }) {
+  // Hooks first: the early return below must not sit between them and the render.
+  const queryClient = useQueryClient();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
   if (!product) return null;
+
+  // الأرشفة كانت في الخادم بس ومفيش طريق ليها من الشاشة: المنتج الغلط يفضل يوسّخ الكتالوج للأبد.
+  async function archive() {
+    setBusy(true);
+    setError("");
+    try {
+      await catalogApi.archiveProduct(product.id);
+      await queryClient.invalidateQueries({ queryKey: CATALOG_KEY });
+      setAsking(false);
+      onOpenChange(false);
+    } catch (e) {
+      setError(e?.message || "تعذّرت أرشفة المنتج. جرّب تاني");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const threshold = product.threshold; // the reorder level comes from the backend; none set = no "low" state
   const variants = product.variants ?? [];
@@ -35,13 +67,42 @@ export default function ProductDetailsDialog({ product, open, onOpenChange, onMo
           <DialogDescription className="num text-[12px] text-[#7A766C]">
             {[product.sku, product.category, product.brand].filter(Boolean).join(" • ")}
           </DialogDescription>
-          {editTo && (
-            <Button asChild variant="ghost" className={EDIT_BTN}>
-              <Link to={editTo}>
-                <Pencil className="h-4 w-4 shrink-0 !text-white" />
-                <span className="!text-white">تعديل المنتج</span>
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {editTo && (
+              <Button asChild variant="ghost" className={EDIT_BTN}>
+                <Link to={editTo}>
+                  <Pencil className="h-4 w-4 shrink-0 !text-white" />
+                  <span className="!text-white">تعديل المنتج</span>
+                </Link>
+              </Button>
+            )}
+            {editTo && !asking && (
+              <Button type="button" variant="ghost" className={ARCHIVE_BTN} onClick={() => setAsking(true)}>
+                <Archive className="h-4 w-4 shrink-0" />
+                <span>أرشفة المنتج</span>
+              </Button>
+            )}
+          </div>
+          {asking && (
+            <div className="mt-2 rounded-xl border border-[#E3B4A6] bg-[#FDF3EF] p-3 text-[12px] text-[#7A3B2A]">
+              <p className="m-0">
+                أرشفة «{product.name}»؟ هيختفي من البيع والكتالوج، وتاريخه ومبيعاته تفضل محفوظة.
+              </p>
+              {error && <p className="m-0 mt-1 font-semibold">{error}</p>}
+              <div className="mt-2 flex gap-2">
+                <Button
+                  type="button"
+                  className={CONFIRM_BTN}
+                  disabled={busy}
+                  onClick={archive}
+                >
+                  {busy ? "جارٍ الأرشفة…" : "أيّوه، أرشفة"}
+                </Button>
+                <Button type="button" variant="ghost" disabled={busy} onClick={() => setAsking(false)}>
+                  إلغاء
+                </Button>
+              </div>
+            </div>
           )}
         </DialogHeader>
 
