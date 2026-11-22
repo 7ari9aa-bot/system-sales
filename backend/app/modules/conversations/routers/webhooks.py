@@ -14,6 +14,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import NotFoundError, PermissionDeniedError
 from app.modules.conversations.gateway.ingest import IngestService
+from app.modules.conversations.gateway.meta_page_events import (
+    MESSENGER,
+    check_page_signature,
+    route_page_payload,
+    verify_page_request,
+)
 from app.modules.conversations.gateway.registry import get_adapter as default_get_adapter
 from app.modules.conversations.routers._deps import DbSession
 from app.modules.platform.models import Integration, WebhookEvent
@@ -111,6 +117,83 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
         for part in parts
     ]
     return {"ok": True, "queued": any(r.get("queued") for r in results), "accounts": len(parts)}
+
+
+@webhook_router.get("/webhooks/meta/page")
+async def verify_meta_page(request: Request):
+    """Meta's "Verify and save" for the single ``page`` callback.
+
+    A Meta app has ONE callback URL per object type, but the platform keeps TWO channel records for
+    a Page: ``messenger`` (private chat) and ``facebook`` (the Page's feed/mentions). Registering
+    the callback under either channel's own URL silently dropped the other kind of news, so the
+    Page object is verified HERE, against the Messenger verify token operators already have.
+    """
+    challenge = verify_page_request(dict(request.query_params))
+    if challenge is None:
+        # A wrong verify token is otherwise invisible: Meta only shows "couldn't verify".
+        await _flag_untenanted("webhook.verify_failed", MESSENGER, {"object": "page"})
+        raise PermissionDeniedError("verification failed")
+    return Response(content=challenge, media_type="text/plain")
+
+
+@webhook_router.post("/webhooks/meta/page")
+async def meta_page_webhook(request: Request, session: DbSession):
+    """The Page object's one callback: chat → Messenger, Page news → Facebook.
+
+    The signature is checked ONCE, over the whole raw body (the delivery is signed as a unit).
+    Then ``route_page_payload`` splits it into one envelope per capability per Page — an entry
+    carrying both kinds of news contributes a messaging-only copy to Messenger and a changes-only
+    copy to Facebook — and each envelope goes through the SAME ``_ingest_one`` the per-channel
+    routes use. Tenant resolution, the replay guard and the durable ingress row therefore behave
+    exactly as they did when one capability owned the callback.
+    """
+    raw = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if not check_page_signature(headers, raw):
+        await _flag_untenanted(
+            "webhook.bad_signature",
+            MESSENGER,
+            {
+                "object": "page",
+                "has_signature_header": "x-hub-signature-256" in headers,
+                "bytes": len(raw),
+            },
+        )
+        raise PermissionDeniedError("invalid signature")
+    try:
+        payload = json.loads(raw or b"{}")
+    except json.JSONDecodeError as exc:
+        await _flag_untenanted(
+            "webhook.unparsable", MESSENGER, {"object": "page", "bytes": len(raw)}
+        )
+        raise HTTPException(status_code=422, detail="unparsable payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="payload must be a JSON object")
+    payload["_query"] = dict(request.query_params)
+
+    routed = route_page_payload(payload)
+    capabilities: list[str] = []
+    results: list[dict] = []
+    for capability, envelopes in routed.items():
+        if not envelopes:
+            continue
+        adapter = _get_adapter(capability)
+        if adapter is None:
+            # Not registered in this deployment: ACK the part we cannot serve instead of 500ing
+            # the whole delivery — the other capability's events in it are real.
+            logger.warning("webhook.meta_page.no_adapter capability=%s", capability)
+            continue
+        capabilities.append(capability)
+        for envelope in envelopes:
+            body = json.dumps(envelope, sort_keys=True).encode()
+            results.append(await _ingest_one(session, capability, adapter, envelope, body))
+
+    return {
+        "ok": True,
+        "queued": any(result.get("queued") for result in results),
+        "capabilities": capabilities,
+        "deliveries": len(results),
+    }
 
 
 async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes) -> dict:
