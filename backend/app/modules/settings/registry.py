@@ -193,6 +193,7 @@ _DEFINITIONS: list[SettingDef] = []
 # not listed.
 ENFORCED_KEYS: frozenset[str] = frozenset(
     {
+        "imports.legacy_csv_endpoint",  # catalog/routers/imports.py::import_products_csv
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
         "pos.allow_hold_cart",  # pos/service.py::hold_cart
@@ -932,6 +933,31 @@ _reg(
         description_en=(
             "When on, a drawer whose count differs from the expected cash cannot close without a "
             "written reason. Applies only where the till takes payments and counts its drawer."
+        ),
+    )
+)
+# الباب القديم للاستيراد (/imports/products، CSV صف واحد = منتج + تركيبة واحدة) اتقفل نهائيًا
+# للتاجر: مركز الاستيراد هو المسار الوحيد. المفتاح هنا بدل حذف الكود — تشغيله يرجّع الباب
+# للعمل، بس حتى وهو مفتوح بيدخل على نفس مسار مركز الاستيراد مش على قواعده القديمة.
+_reg(
+    SettingDef(
+        key="imports.legacy_csv_endpoint",
+        domain="imports",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        label_ar="فتح مسار الاستيراد القديم (CSV مباشر)",
+        label_en="Re-open the legacy CSV import endpoint",
+        description_ar=(
+            "مقفول افتراضيًا: التاجر بيستورد من مركز الاستيراد بس، عشان كل ملف يمشي على نفس "
+            "الحقول والقواعد. تشغيله يرجّع /imports/products للعمل، ولو رجع بيمشي على نفس مسار "
+            "مركز الاستيراد: الملف بيتحول جلسة استيراد عادية بدل ما يتحفظ بقواعد تانية."
+        ),
+        description_en=(
+            "Off by default: the Import Center is the one way in, so every file follows the same "
+            "fields and rules. Turning it on re-opens /imports/products, and even then the file "
+            "becomes an ordinary import session instead of being applied under the old rules."
         ),
     )
 )
