@@ -36,7 +36,51 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
         </div>
       </div>
 
-      <div className="overflow-x-auto scroll-slim rounded-xl border border-border">
+      <ul className="space-y-2 lg:hidden">
+        {rows.map((row) => (
+          <li key={row.id} data-variant-card className="space-y-2 rounded-xl border border-border bg-card p-3">
+            <div className="flex items-center justify-between gap-2">
+              <ColorSwatch color={row.color} hex={colorHex(row.color)} />
+              <span className="num rounded-md bg-muted px-2 py-0.5 text-sm font-bold">{row.size}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="col-span-2 space-y-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">SKU</span>
+                <Input value={row.sku} onChange={(e) => onChange(row.id, { sku: e.target.value })} className="num h-8 w-full text-xs" />
+              </label>
+              <label className="col-span-2 space-y-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">الباركود</span>
+                <Input
+                  value={row.barcode}
+                  placeholder="اضغط «توليد الباركودات»"
+                  onChange={(e) => onChange(row.id, { barcode: e.target.value })}
+                  className="num h-8 w-full text-xs"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">سعر البيع</span>
+                <Input type="number" value={row.sellPrice} onChange={(e) => onChange(row.id, { sellPrice: Number(e.target.value) })} className="num h-8 w-full" />
+              </label>
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">رصيد افتتاحي</span>
+                {isSaved(row) ? (
+                  <p className="flex h-8 items-center text-xs text-muted-foreground" title="الرصيد يتغيّر من الجرد أو حركات المخزون">من الجرد</p>
+                ) : (
+                  <Input
+                    type="number"
+                    min={0}
+                    value={row.stock}
+                    onChange={(e) => onChange(row.id, { stock: Number(e.target.value) })}
+                    className="num h-8 w-full text-center"
+                  />
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="scroll-slim hidden overflow-x-auto rounded-xl border border-border lg:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs text-muted-foreground">
