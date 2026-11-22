@@ -61,7 +61,7 @@ export function fmtInt(value) {
 export function fmtDateTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  const date = d.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const date = d.toLocaleDateString("ar-EG-u-nu-latn", { day: "2-digit", month: "2-digit", year: "numeric" });
   const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   return `${date} - ${time}`;
 }
@@ -69,7 +69,7 @@ export function fmtDateTime(iso) {
 export function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleDateString("ar-EG", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return d.toLocaleDateString("ar-EG-u-nu-latn", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 /** The calendar day (YYYY-MM-DD) of an instant in the viewer's local time, for the date filters. */

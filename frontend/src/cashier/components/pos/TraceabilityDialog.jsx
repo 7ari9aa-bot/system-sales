@@ -185,7 +185,7 @@ export function TraceabilityDialogBody({
           <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
             {(traceInfo?.lots || []).map((lot, idx) => {
               const isSelected = selectedLotId === lot.id;
-              const expDate = lot.expires_at ? new Date(lot.expires_at).toLocaleDateString("ar-EG") : null;
+              const expDate = lot.expires_at ? new Date(lot.expires_at).toLocaleDateString("ar-EG-u-nu-latn") : null;
               return (
                 <div
                   key={lot.id}

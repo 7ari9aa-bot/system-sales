@@ -84,7 +84,7 @@ export function ReceiptPaper({ receipt, accountName = "" }) {
       </div>
       <div className="flex justify-between">
         <span>التاريخ</span>
-        <span className="num">{new Date(receipt.date).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" })}</span>
+        <span className="num">{new Date(receipt.date).toLocaleString("ar-EG-u-nu-latn", { dateStyle: "short", timeStyle: "short" })}</span>
       </div>
       <div className="flex justify-between">
         <span>الكاشير</span>

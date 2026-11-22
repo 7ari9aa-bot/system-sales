@@ -39,7 +39,7 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
           <thead className="sticky top-0 z-10">
             <tr className="font-bold">
               <th className={cn(HCELL, "text-center")}>م</th>
-              <th className={cn(HCELL, "text-center")}>الباركود</th>
+              <th className={cn(HCELL, "text-center")}>كود الصنف</th>
               <th className={cn(HCELL, "text-start")}>اسم المنتج</th>
               <th className={cn(HCELL, "text-center")}>المقاس</th>
               <th className={cn(HCELL, "text-center")}>اللون</th>
