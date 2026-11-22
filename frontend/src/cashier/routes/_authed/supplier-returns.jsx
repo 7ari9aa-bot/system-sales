@@ -171,7 +171,9 @@ export default function SupplierReturnsPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle={returns.isLoading ? "جارٍ التحميل…" : records.length === 0 ? "لسه مفيش مرتجعات للموردين" : "لا توجد مرتجعات مطابقة"}
+        loading={returns.isLoading}
+        loadingLabel="جارٍ تحميل مرتجعات الموردين…"
+        emptyTitle={records.length === 0 ? "لسه مفيش مرتجعات للموردين" : "لا توجد مرتجعات مطابقة"}
         emptyDescription="سجّل مرتجعًا جديدًا، أو غيّر الفلاتر."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

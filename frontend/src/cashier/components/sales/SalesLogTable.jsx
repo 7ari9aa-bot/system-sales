@@ -19,6 +19,8 @@ export default function SalesLogTable({
   emptyTitle = "لا توجد نتائج مطابقة",
   emptyDescription = "",
   emptyAction = null,
+  loading = false,
+  loadingLabel = "جارٍ تحميل الفواتير…",
 }) {
   const [sort, setSort] = useState(null);
   const [page, setPage] = useState(1);
@@ -51,7 +53,41 @@ export default function SalesLogTable({
   return (
     <div className="overflow-hidden rounded-b-[14px] border-[1.5px] border-t border-[#F97316] bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,.3)]">
       {rows.length === 0 ? (
-        <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} action={emptyAction} />
+        loading ? (
+          <div role="status" aria-busy="true" aria-live="polite" data-testid="sales-log-loading">
+            <span className="sr-only">{loadingLabel}</span>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col.key} className={TH}>
+                      {col.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: Math.min(pageSize, 6) }).map((_, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {columns.map((col, colIndex) => (
+                      <td key={col.key} className={TD}>
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "block h-3 animate-pulse rounded bg-[#efe7da]",
+                            (rowIndex + colIndex) % 3 === 0 ? "w-1/2" : (rowIndex + colIndex) % 3 === 1 ? "w-3/4" : "w-2/3",
+                          )}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} action={emptyAction} />
+        )
       ) : (
         <>
           <div className="overflow-x-auto scroll-slim">

@@ -131,7 +131,9 @@ export default function ShiftsPage() {
         columns={columns}
         rows={filtered}
         pageSize={8}
-        emptyTitle={isLoading ? "جارٍ التحميل…" : "لا توجد ورديات مطابقة"}
+        loading={isLoading}
+        loadingLabel="جارٍ تحميل الورديات…"
+        emptyTitle="لا توجد ورديات مطابقة"
         emptyDescription="جرّب تغيير الموظف أو حالة الوردية."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

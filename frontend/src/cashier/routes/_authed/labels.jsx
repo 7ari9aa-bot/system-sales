@@ -149,7 +149,9 @@ export default function LabelsPage() {
           columns={columns}
           rows={filtered}
           pageSize={8}
-          emptyTitle={stock.isPending ? "جاري التحميل…" : "لا توجد منتجات مطابقة"}
+          loading={stock.isPending}
+          loadingLabel="جارٍ تحميل المنتجات…"
+          emptyTitle="لا توجد منتجات مطابقة"
           emptyDescription={stock.isPending ? "" : "جرّب تغيير التصنيف أو كلمة البحث."}
           toolbar={
             <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

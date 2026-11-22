@@ -84,7 +84,9 @@ export default function ExchangesLogPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle={isLoading ? "جارٍ التحميل…" : isError ? "تعذّر تحميل سجل الاستبدال" : "لا توجد عمليات استبدال مطابقة"}
+        loading={isLoading}
+        loadingLabel="جارٍ تحميل سجل الاستبدال…"
+        emptyTitle={isError ? "تعذّر تحميل سجل الاستبدال" : "لا توجد عمليات استبدال مطابقة"}
         emptyDescription={isError ? "أعد المحاولة بعد لحظة." : "جرّب تغيير الفلتر أو البحث برقم آخر."}
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

@@ -117,7 +117,9 @@ export default function ActivityLogPage() {
         columns={columns}
         rows={rows}
         pageSize={10}
-        emptyTitle={feed.isLoading ? "جارٍ تحميل العمليات…" : "لا توجد عمليات مطابقة"}
+        loading={feed.isLoading}
+        loadingLabel="جارٍ تحميل العمليات…"
+        emptyTitle="لا توجد عمليات مطابقة"
         emptyDescription={feed.isLoading ? "لحظات ويظهر السجل." : "جرّب تغيير نوع العملية أو الموظف أو التاريخ أو كلمة البحث."}
         emptyAction={
           feed.isLoading ? null : (

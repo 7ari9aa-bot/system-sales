@@ -166,7 +166,6 @@ export default function SalesLogPage() {
           ))}
         </select>
         {salesQuery.isError ? <span role="alert" className="font-semibold text-rose-600">تعذّر تحميل فواتير هذه الوردية</span> : null}
-        {salesQuery.isLoading || shiftsQuery.isLoading ? <span role="status" className="text-[#7a6f61]">جارٍ التحميل…</span> : null}
       </div>
 
       <SalesLogFilters
@@ -180,6 +179,8 @@ export default function SalesLogPage() {
         columns={columns}
         rows={rows}
         pageSize={10}
+        loading={salesQuery.isLoading || shiftsQuery.isLoading}
+        loadingLabel="جارٍ تحميل فواتير الوردية…"
         onRowClick={openInvoice}
         emptyTitle="لا توجد فواتير مطابقة للفلاتر"
         emptyDescription="عدّل الفترة أو امسح الفلاتر لعرض كل الفواتير."

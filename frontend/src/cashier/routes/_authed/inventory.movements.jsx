@@ -117,7 +117,9 @@ export default function MovementsPage() {
         columns={columns}
         rows={rows}
         pageSize={10}
-        emptyTitle={isPending ? "جاري التحميل…" : "لا توجد حركات مطابقة"}
+        loading={isPending}
+        loadingLabel="جارٍ تحميل الحركات…"
+        emptyTitle="لا توجد حركات مطابقة"
         emptyDescription={isPending ? "" : "جرّب تغيير نوع الحركة أو نطاق التاريخ."}
         emptyAction={
           <Button variant="outline" size="sm" onClick={() => setType("")}>

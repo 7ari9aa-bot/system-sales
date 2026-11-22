@@ -137,7 +137,9 @@ export default function ExpensesPage() {
         columns={columns}
         rows={filtered}
         pageSize={8}
-        emptyTitle={isLoading ? "جارٍ التحميل…" : "لا توجد مصروفات مطابقة"}
+        loading={isLoading}
+        loadingLabel="جارٍ تحميل المصروفات…"
+        emptyTitle="لا توجد مصروفات مطابقة"
         emptyDescription="جرّب تغيير التصنيف أو طريقة الدفع أو كلمة البحث."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

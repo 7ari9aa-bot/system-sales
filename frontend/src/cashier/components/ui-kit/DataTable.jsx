@@ -16,6 +16,8 @@ export default function DataTable({
   emptyTitle = "لا توجد نتائج مطابقة",
   emptyDescription = "جرّب تغيير الفلاتر أو البحث بكلمة أخرى.",
   emptyAction = null,
+  loading = false,
+  loadingLabel = "جارٍ تحميل البيانات…",
   onRowClick,
   rowClassName,
   toolbar = null,
@@ -60,7 +62,11 @@ export default function DataTable({
       {toolbar && <div className={cn("border-b border-border px-3 py-2", toolbarClassName)}>{toolbar}</div>}
 
       {rows.length === 0 ? (
-        <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} action={emptyAction} />
+        loading ? (
+          <LoadingRows columns={columns} count={Math.min(pageSize, 6)} label={loadingLabel} />
+        ) : (
+          <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} action={emptyAction} />
+        )
       ) : (
         <>
           <div className="overflow-x-auto scroll-slim">
@@ -150,6 +156,45 @@ export default function DataTable({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// شكل هيكلي أثناء التحميل: رأس الجدول الحقيقي وصفوف وامضة، بدل سطر "جارٍ التحميل" العاري.
+function LoadingRows({ columns, count, label }) {
+  return (
+    <div role="status" aria-busy="true" aria-live="polite" data-testid="data-table-loading">
+      <span className="sr-only">{label}</span>
+      <div className="overflow-x-auto scroll-slim">
+        <Table className="min-w-full">
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              {columns.map((col) => (
+                <TableHead key={col.key} className="h-8 whitespace-nowrap px-2.5 text-[11px] font-semibold text-muted-foreground">
+                  {col.header}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: count }).map((_, rowIndex) => (
+              <TableRow key={rowIndex} className="border-border/70 hover:bg-transparent">
+                {columns.map((col, colIndex) => (
+                  <TableCell key={col.key} className="whitespace-nowrap px-2.5 py-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "block h-3 animate-pulse rounded bg-muted",
+                        (rowIndex + colIndex) % 3 === 0 ? "w-1/2" : (rowIndex + colIndex) % 3 === 1 ? "w-3/4" : "w-2/3",
+                      )}
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

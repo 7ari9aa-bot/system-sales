@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import StockFilters from "@/cashier/components/inventory/StockFilters";
 import InventoryProductGrid from "@/cashier/components/inventory/InventoryProductGrid";
+import InventoryGridSkeleton from "@/cashier/components/inventory/InventoryGridSkeleton";
 import ProductDetailsDialog from "@/cashier/components/inventory/ProductDetailsDialog";
 import VariantMovementsDialog from "@/cashier/components/inventory/VariantMovementsDialog";
 import SeasonMarkdownDialog from "@/cashier/components/inventory/SeasonMarkdownDialog";
@@ -152,7 +153,7 @@ export default function InventoryPage() {
           </Button>
         </div>
       ) : stock.isPending ? (
-        <p className="py-10 text-center text-[13px] text-[#7A766C]">جاري تحميل المخزون…</p>
+        <InventoryGridSkeleton />
       ) : (
         <InventoryProductGrid rows={rows} onOpen={setDetailsOf} onShowLow={() => setFilters((f) => ({ ...f, status: "low" }))} />
       )}

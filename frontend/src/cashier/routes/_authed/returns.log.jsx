@@ -81,7 +81,9 @@ export default function ReturnsLogPage() {
         columns={columns}
         rows={rows}
         pageSize={8}
-        emptyTitle={isLoading ? "جارٍ التحميل…" : isError ? "تعذّر تحميل المرتجعات" : "لا توجد عمليات مرتجع مطابقة"}
+        loading={isLoading}
+        loadingLabel="جارٍ تحميل المرتجعات…"
+        emptyTitle={isError ? "تعذّر تحميل المرتجعات" : "لا توجد عمليات مرتجع مطابقة"}
         emptyDescription="جرّب تغيير الفلتر أو البحث برقم آخر."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
