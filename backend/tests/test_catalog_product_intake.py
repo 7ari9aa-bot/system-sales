@@ -85,9 +85,7 @@ async def test_one_request_brings_back_a_sellable_product_with_its_variants(db, 
     assert all(c and len(c) == 13 and c.isdigit() for c in codes), codes
     assert len(set(codes)) == 2
 
-    product = await CatalogService.get_product(
-        db, tenant_ctx.tenant_id, uuid.UUID(out["id"])
-    )
+    product = await CatalogService.get_product(db, tenant_ctx.tenant_id, uuid.UUID(out["id"]))
     assert product.status == "active"
     variants = await CatalogService.list_variants(db, tenant_ctx.tenant_id, product.id)
     assert len(variants) == 2
@@ -193,9 +191,7 @@ async def test_the_category_brand_season_and_fabric_land_in_the_same_request(db,
     )
     assert r.status_code == 201, r.text
 
-    product = await CatalogService.get_product(
-        db, tenant_ctx.tenant_id, uuid.UUID(r.json()["id"])
-    )
+    product = await CatalogService.get_product(db, tenant_ctx.tenant_id, uuid.UUID(r.json()["id"]))
     assert str(product.category_id) == cat["id"]
     assert str(product.brand_id) == brand["id"]  # noqa: E501
     assert product.season == "SS26"
