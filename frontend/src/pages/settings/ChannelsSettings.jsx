@@ -1,6 +1,7 @@
 import React from "react";
 import { Copy, Loader2, LinkIcon, ShieldCheck, Unplug } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
+import ChannelDiagnostics from "@/pages/settings/ChannelDiagnostics";
 import FacebookRelinkNotice, { facebookNeedsRelink } from "@/pages/settings/FacebookRelinkNotice";
 import MetaPageChoiceDialog from "@/pages/settings/MetaPageChoiceDialog";
 import { api } from "@/lib/api";
@@ -211,6 +212,38 @@ export function friendlyMetaError(raw, isAr) {
  *  the button must be freed now, like Facebook/Messenger/Instagram do when their window closes, and
  *  not after the 10 minute signup timeout. A window that stopped on a message from Meta itself
  *  ("can't onboard customers right now") ends here too, so the reason names the Meta app. */
+/**
+ * What to tell the owner when Meta's signup window reports CANCEL or ERROR.
+ *
+ * Both used to read "cancelled", so a refusal by Meta looked like the owner closing the window and
+ * the reason (and the id support needs) was thrown away. A CANCEL names the step the owner left on;
+ * an ERROR carries Meta's own message and ids, shown as they are.
+ */
+export function whatsappSignupInterruption(payload, isAr) {
+  const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
+  const text = (value) => (typeof value === "string" || typeof value === "number" ? String(value).trim() : "");
+  if (payload?.event === "ERROR") {
+    const message = text(data.error_message);
+    const code = text(data.error_id) || text(data.error_code);
+    const session = text(data.session_id);
+    const reference = [code && `${isAr ? "رمز" : "code"} ${code}`, session && `${isAr ? "جلسة" : "session"} ${session}`]
+      .filter(Boolean)
+      .join(" · ");
+    const head = isAr ? "رفضت Meta إكمال ربط واتساب." : "Meta could not complete the WhatsApp signup.";
+    const body = message || (isAr ? "لم تذكر Meta السبب." : "Meta gave no reason.");
+    return new Error(`${head} ${body}${reference ? ` (${reference})` : ""}`);
+  }
+  const step = text(data.current_step);
+  if (step) {
+    return new Error(
+      isAr
+        ? `أُغلقت نافذة الربط عند الخطوة "${step}" قبل اكتمالها.`
+        : `The signup window was closed at the "${step}" step, before it finished.`
+    );
+  }
+  return new Error(isAr ? "أُغلقت نافذة الربط قبل اكتمالها." : "The signup window was closed before it finished.");
+}
+
 export function whatsappLoginOutcome(response, isAr) {
   const code = response?.authResponse?.code;
   if (code) return { code };
@@ -501,7 +534,7 @@ export default function ChannelsSettings() {
           if (payload?.type !== WA_SIGNUP_EVENT) return;
           if (payload.event === "CANCEL" || payload.event === "ERROR") {
             cleanupSignup();
-            reject(new Error(isAr ? "أُلغيت عملية الربط قبل اكتمالها." : "The signup was cancelled before it completed."));
+            reject(whatsappSignupInterruption(payload, isAr));
             return;
           }
           if (payload.event === "FINISH") {
@@ -868,6 +901,7 @@ export default function ChannelsSettings() {
                       <div className="text-[12px] text-muted-foreground">{status}</div>
                       {displayName && displayName !== localizedChannelName && <div className="text-[11px] text-muted-foreground">{displayName}</div>}
                       <FacebookRelinkNotice channel={channel} isAr={isAr} />
+                      <ChannelDiagnostics channel={channel} isAr={isAr} />
                       {channel.integrationId && (
                         <div className="mt-1 text-[11px] text-muted-foreground">
                           {webhookStatusFor(channel)}
