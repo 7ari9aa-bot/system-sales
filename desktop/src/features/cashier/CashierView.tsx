@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FC } from 'react'
+import { useCallback, useEffect, useRef, useState, type FC } from 'react'
 import type { Platform } from '@/platform'
 import { formatSar } from '@/shared/money'
 
@@ -45,6 +45,7 @@ const DEMO_PRODUCTS: PosProduct[] = [
 ]
 
 export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) => {
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
@@ -149,7 +150,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
     return `${sign}${formatSar(`${intPart}.${fracPart}`)}`
   }
 
-  const handleCheckout = async (method: string): Promise<void> => {
+  const handleCheckout = useCallback(async (method: string): Promise<void> => {
     try {
       await platform.printer.openCashDrawer()
 
@@ -182,10 +183,10 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
       setCart([])
       setIsPaymentOpen(false)
     }
-  }
+  }, [platform.printer, shift.number, shift.cashierName, totalCents, vatCents])
 
   // Hold current cart
-  const handleHoldCart = (): void => {
+  const handleHoldCart = useCallback((): void => {
     if (cart.length === 0) return
     const newHeld: HeldCart = {
       id: `held_${Date.now()}`,
@@ -198,7 +199,111 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
     setCart([])
     setHoldNoteInput('')
     setPaymentSuccess('تم تعليق الفاتورة بنجاح وحفظها في قائمة الانتظار')
-  }
+  }, [cart, holdNoteInput, heldCarts.length, totalCents])
+
+  // POS Keyboard Shortcuts (F1: Pay, F2: Hold/Queue, F3: Return, F4: Search, F9: Shift, Esc: Close modals)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      // Escape closes open modals
+      if (e.key === 'Escape') {
+        if (isPaymentOpen) {
+          setIsPaymentOpen(false)
+          e.preventDefault()
+          return
+        }
+        if (isShiftModalOpen) {
+          setIsShiftModalOpen(false)
+          e.preventDefault()
+          return
+        }
+        if (isHeldCartsModalOpen) {
+          setIsHeldCartsModalOpen(false)
+          e.preventDefault()
+          return
+        }
+        if (isReturnsModalOpen) {
+          setIsReturnsModalOpen(false)
+          setReturnFound(false)
+          setReturnReceiptInput('')
+          e.preventDefault()
+          return
+        }
+      }
+
+      // F1: Checkout / Payment
+      if (e.key === 'F1') {
+        e.preventDefault()
+        if (shift.isOpen && cart.length > 0) {
+          setIsPaymentOpen(true)
+        }
+        return
+      }
+
+      // F2: Hold cart / View held carts
+      if (e.key === 'F2') {
+        e.preventDefault()
+        if (cart.length > 0) {
+          handleHoldCart()
+        } else {
+          setIsHeldCartsModalOpen((prev) => !prev)
+        }
+        return
+      }
+
+      // F3: Returns & Refunds
+      if (e.key === 'F3') {
+        e.preventDefault()
+        setIsReturnsModalOpen(true)
+        return
+      }
+
+      // F4: Search input focus
+      if (e.key === 'F4') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+
+      // F9: Shifts management
+      if (e.key === 'F9') {
+        e.preventDefault()
+        setIsShiftModalOpen(true)
+        return
+      }
+
+      // Payment modal number shortcuts: 1=Cash, 2=Card, 3=Apple Pay, 4=Split
+      if (isPaymentOpen) {
+        if (e.key === '1') {
+          e.preventDefault()
+          void handleCheckout('نقدي (Cash)')
+        } else if (e.key === '2') {
+          e.preventDefault()
+          void handleCheckout('مدى / شبكة (Mada/Card)')
+        } else if (e.key === '3') {
+          e.preventDefault()
+          void handleCheckout('Apple Pay')
+        } else if (e.key === '4') {
+          e.preventDefault()
+          void handleCheckout('تقسيم دفع (Split)')
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [
+    cart.length,
+    shift.isOpen,
+    isPaymentOpen,
+    isShiftModalOpen,
+    isHeldCartsModalOpen,
+    isReturnsModalOpen,
+    handleHoldCart,
+    handleCheckout,
+  ])
 
   // Restore held cart
   const handleResumeCart = (held: HeldCart): void => {
@@ -296,9 +401,10 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
       <div className="pos-catalog">
         <div className="pos-search-bar" style={{ gap: '0.5rem' }}>
           <input
+            ref={searchInputRef}
             type="text"
             className="pos-search-input"
-            placeholder="امسح الباركود أو ابحث بالاسم، الكود، SKU..."
+            placeholder="امسح الباركود أو ابحث بالاسم، الكود، SKU... [F4]"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
@@ -320,8 +426,9 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
             className="boot__button"
             style={{ background: shift.isOpen ? '#0f766e' : '#b91c1c', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
             onClick={() => setIsShiftModalOpen(true)}
+            title="إدارة الوردية ومطابقة النقدية (F9)"
           >
-            {shift.isOpen ? `الوردية #${shift.number} (مفتوحة)` : 'فتح وردية جديدة'}
+            {shift.isOpen ? `الوردية #${shift.number} [F9]` : 'فتح وردية جديدة [F9]'}
           </button>
 
           <button
@@ -329,8 +436,9 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
             className="boot__button"
             style={{ background: '#475569', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
             onClick={() => setIsHeldCartsModalOpen(true)}
+            title="الفواتير المعلقة في الانتظار (F2)"
           >
-            📋 المعلقة ({heldCarts.length})
+            📋 المعلقة ({heldCarts.length}) [F2]
           </button>
 
           <button
@@ -338,8 +446,9 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
             className="boot__button"
             style={{ background: '#b45309', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
             onClick={() => setIsReturnsModalOpen(true)}
+            title="استرجاع واستبدال فاتورة (F3)"
           >
-            ↩ مرتجع
+            ↩ مرتجع [F3]
           </button>
 
           <button
@@ -469,8 +578,9 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
             disabled={cart.length === 0 || !shift.isOpen}
             style={{ opacity: cart.length === 0 || !shift.isOpen ? 0.5 : 1 }}
             onClick={() => setIsPaymentOpen(true)}
+            title="إتمام الدفع واختيار الطريقة (F1)"
           >
-            {shift.isOpen ? `دفع (${formatCents(totalCents)} ر.س)` : 'الوردية مغلقة - افتح الوردية أولاً'}
+            {shift.isOpen ? `دفع [F1] (${formatCents(totalCents)} ر.س)` : 'الوردية مغلقة - افتح الوردية أولاً'}
           </button>
         </div>
       </div>
@@ -504,7 +614,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
                   style={{ width: '100%', height: '60px', fontSize: '1.05rem', justifyContent: 'center' }}
                   onClick={() => void handleCheckout('نقدي (Cash)')}
                 >
-                  💵 نقدي
+                  💵 نقدي [1]
                 </button>
                 <button
                   type="button"
@@ -512,7 +622,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
                   style={{ width: '100%', height: '60px', fontSize: '1.05rem', justifyContent: 'center', background: '#0284c7' }}
                   onClick={() => void handleCheckout('مدى / شبكة (Mada/Card)')}
                 >
-                  💳 مدى / بطاقة
+                  💳 مدى / بطاقة [2]
                 </button>
                 <button
                   type="button"
@@ -520,7 +630,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
                   style={{ width: '100%', height: '60px', fontSize: '1.05rem', justifyContent: 'center', background: '#000000' }}
                   onClick={() => void handleCheckout('Apple Pay')}
                 >
-                   Apple Pay
+                   Apple Pay [3]
                 </button>
                 <button
                   type="button"
@@ -528,7 +638,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
                   style={{ width: '100%', height: '60px', fontSize: '1.05rem', justifyContent: 'center', background: '#7c3aed' }}
                   onClick={() => void handleCheckout('تقسيم دفع (Split)')}
                 >
-                  ➗ دفع مجزأ
+                  ➗ دفع مجزأ [4]
                 </button>
               </div>
             </div>
