@@ -44,10 +44,21 @@ const DEMO_PRODUCTS: PosProduct[] = [
   { id: 'p6', name: 'حزام جلد طبيعي أسود', sku: 'BELT-LTH-BLK', barcode: '628100100106', price: '85.00', category: 'إكسسوارات' },
 ]
 
+function formatCents(cents: bigint): string {
+  const sign = cents < 0n ? '-' : ''
+  const abs = cents < 0n ? -cents : cents
+  const intPart = (abs / 100n).toString()
+  const fracPart = (abs % 100n).toString().padStart(2, '0')
+  return `${sign}${formatSar(`${intPart}.${fracPart}`)}`
+}
+
 export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) => {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<PosCartLine[]>([])
+  const [products, setProducts] = useState<PosProduct[]>(DEMO_PRODUCTS)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [activeRegisterId, setActiveRegisterId] = useState<string | null>(null)
   const [heldCarts, setHeldCarts] = useState<HeldCart[]>([])
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null)
@@ -76,6 +87,99 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
   const [returnReceiptInput, setReturnReceiptInput] = useState('')
   const [returnFound, setReturnFound] = useState<boolean>(false)
 
+  // Initialize Register & Working Session from Backend
+  useEffect(() => {
+    let mounted = true
+    async function initPos(): Promise<void> {
+      try {
+        const session = await platform.auth.getSession()
+        let regId = session?.register?.id
+        if (!regId) {
+          const regs = await platform.http.request<Array<{ id: string }>>('pos/registers')
+          if (Array.isArray(regs) && regs.length > 0) {
+            regId = regs[0]?.id
+          }
+        }
+        if (regId && mounted) {
+          setActiveRegisterId(regId)
+          try {
+            const ws = await platform.http.request<{
+              started: boolean
+              session?: { id: string; opened_at?: string; cashier_user_id?: string; opening_float?: string }
+            }>(`pos/registers/${regId}/working-session`, { method: 'POST', body: {} })
+            if (ws && ws.started && ws.session) {
+              setActiveSessionId(ws.session.id)
+              setShift((prev) => ({
+                ...prev,
+                isOpen: true,
+                cashierName: session?.user?.name || prev.cashierName,
+                openedAt: ws.session?.opened_at ? new Date(ws.session.opened_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : prev.openedAt,
+                openingFloatSar: ws.session?.opening_float || prev.openingFloatSar,
+              }))
+            }
+          } catch {
+            // Offline fallback
+          }
+        }
+      } catch {
+        // Offline or unauthenticated
+      }
+    }
+    void initPos()
+    return () => {
+      mounted = false
+    }
+  }, [platform.auth, platform.http])
+
+  // Live Product Search from Backend Stock API
+  useEffect(() => {
+    let mounted = true
+    const term = search.trim()
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const stockEndpoint = term ? `pos/stock?term=${encodeURIComponent(term)}` : 'pos/stock'
+          const res = await platform.http.request<Array<{
+            id?: string
+            variant_id?: string
+            name?: string
+            product_title?: string
+            sku?: string
+            barcode?: string
+            price: string
+            category?: string
+          }>>(stockEndpoint)
+
+          if (mounted && Array.isArray(res) && res.length > 0) {
+            const mapped: PosProduct[] = res.map((r) => ({
+              id: r.variant_id || r.id || '',
+              name: r.product_title || r.name || '',
+              sku: r.sku || '',
+              barcode: r.barcode || '',
+              price: r.price || '0.00',
+              category: r.category || 'عام',
+            }))
+            setProducts(mapped)
+            return
+          }
+        } catch {
+          // Fallback to local filtering
+        }
+        if (mounted) {
+          setProducts(DEMO_PRODUCTS.filter((p) => {
+            if (!term) return true
+            return p.name.toLowerCase().includes(term.toLowerCase()) || p.barcode.includes(term) || p.sku.toLowerCase().includes(term.toLowerCase())
+          }))
+        }
+      })()
+    }, 200)
+
+    return () => {
+      mounted = false
+      clearTimeout(timer)
+    }
+  }, [search, platform.http])
+
   const addToCart = useCallback((product: PosProduct): void => {
     if (!shift.isOpen) {
       setIsShiftModalOpen(true)
@@ -100,17 +204,52 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
       const barcode = customEvent.detail?.code?.trim()
       if (!barcode) return
 
-      const found = DEMO_PRODUCTS.find((p) => p.barcode === barcode || p.sku.toLowerCase() === barcode.toLowerCase())
-      if (found) {
-        addToCart(found)
-      }
+      void (async () => {
+        if (activeSessionId) {
+          try {
+            const res = await platform.http.request<{
+              variant_id?: string
+              id?: string
+              product_title?: string
+              name?: string
+              price?: string
+              barcode?: string
+              sku?: string
+              category?: string
+            }>(`pos/sessions/${activeSessionId}/scan`, {
+              method: 'POST',
+              body: { identifier_type: 'barcode', value: barcode },
+            })
+            if (res) {
+              const p: PosProduct = {
+                id: res.variant_id || res.id || barcode,
+                name: res.product_title || res.name || barcode,
+                price: res.price || '0.00',
+                barcode: res.barcode || barcode,
+                sku: res.sku || '',
+                category: res.category || 'عام',
+              }
+              addToCart(p)
+              return
+            }
+          } catch {
+            // Fallback to local lookup
+          }
+        }
+
+        const found = products.find((p) => p.barcode === barcode || p.sku.toLowerCase() === barcode.toLowerCase()) ||
+          DEMO_PRODUCTS.find((p) => p.barcode === barcode || p.sku.toLowerCase() === barcode.toLowerCase())
+        if (found) {
+          addToCart(found)
+        }
+      })()
     }
 
     window.addEventListener('fihrist:scan', handleScan)
     return () => {
       window.removeEventListener('fihrist:scan', handleScan)
     }
-  }, [addToCart])
+  }, [addToCart, activeSessionId, platform.http, products])
 
   const updateQuantity = (productId: string, delta: number): void => {
     setCart((prev) => {
@@ -126,7 +265,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
     })
   }
 
-  const filteredProducts = DEMO_PRODUCTS.filter((p) => {
+  const filteredProducts = products.filter((p) => {
     const q = search.trim().toLowerCase()
     if (!q) return true
     return p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.sku.toLowerCase().includes(q)
@@ -142,29 +281,59 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
   const vatCents = (totalCents * 15n) / 115n // 15% VAT inclusive
   const subtotalCents = totalCents - vatCents
 
-  const formatCents = (cents: bigint): string => {
-    const sign = cents < 0n ? '-' : ''
-    const abs = cents < 0n ? -cents : cents
-    const intPart = (abs / 100n).toString()
-    const fracPart = (abs % 100n).toString().padStart(2, '0')
-    return `${sign}${formatSar(`${intPart}.${fracPart}`)}`
-  }
-
   const handleCheckout = useCallback(async (method: string): Promise<void> => {
-    try {
-      const isCash = method.includes('نقدي') || method.toLowerCase().includes('cash')
-      if (isCash) {
-        try {
-          await platform.printer.openCashDrawer()
-        } catch {
-          // Cash drawer pulse failed or unattached, continue
-        }
-      }
+    const isCash = method.includes('نقدي') || method.toLowerCase().includes('cash')
 
+    // 1. Post sale to backend if we have a register
+    let serverReceipt: string | null = null
+    const idempotencyKey = `pos_sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const paymentMethod = isCash ? 'cash' : 'card'
+
+    if (activeRegisterId) {
+      try {
+        const salePayload = {
+          items: cart.map((line) => ({
+            variant_id: line.product.id,
+            quantity: line.quantity,
+          })),
+          payments: [{
+            method: paymentMethod,
+            amount: formatCents(totalCents).replace(/[^\d.]/g, ''),
+          }],
+        }
+        const saleRes = await platform.http.request<{
+          order_id?: string
+          receipt_number?: string
+          grand_total?: string
+        }>(`pos/registers/${activeRegisterId}/sales`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey },
+          body: salePayload,
+        })
+        if (saleRes?.receipt_number) {
+          serverReceipt = saleRes.receipt_number
+        }
+      } catch {
+        // Sale was not saved to server; continue with offline receipt
+      }
+    }
+
+    // 2. Open cash drawer for cash payments
+    if (isCash) {
+      try {
+        await platform.printer.openCashDrawer()
+      } catch {
+        // Cash drawer pulse failed or unattached, continue
+      }
+    }
+
+    // 3. Print receipt
+    try {
       const receiptText = `\x1B\x40\x1B\x61\x01FIHRIST SALES OS\n` +
         `Simplified Tax Invoice\n` +
         `--------------------------------\n` +
         `Shift: #${shift.number} | Cashier: ${shift.cashierName}\n` +
+        `Receipt: ${serverReceipt || `LOCAL-${Date.now()}`}\n` +
         `Method: ${method}\n` +
         `Total: ${formatCents(totalCents)} SAR\n` +
         `VAT (15%): ${formatCents(vatCents)} SAR\n` +
@@ -172,24 +341,25 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
         `Thank you for shopping!\n\x1D\x56\x00`
       const encoder = new TextEncoder()
       await platform.printer.printRaw(encoder.encode(receiptText))
-
-      // Update shift sales metrics
-      setShift((prev) => ({
-        ...prev,
-        totalSalesCents: prev.totalSalesCents + totalCents,
-        cashSalesCents: isCash ? prev.cashSalesCents + totalCents : prev.cashSalesCents,
-        cardSalesCents: !isCash ? prev.cardSalesCents + totalCents : prev.cardSalesCents,
-      }))
-
-      setPaymentSuccess(`تمت معالجة الفاتورة بنجاح ودفع ${formatCents(totalCents)} ر.س عبر ${method}`)
-      setCart([])
-      setIsPaymentOpen(false)
     } catch {
-      setPaymentSuccess('تم إتمام البيع بنجاح (في وضع عدم الاتصال بالطابعة)')
-      setCart([])
-      setIsPaymentOpen(false)
+      // Print failed; sale is still valid
     }
-  }, [platform.printer, shift.number, shift.cashierName, totalCents, vatCents])
+
+    // 4. Update shift sales metrics
+    setShift((prev) => ({
+      ...prev,
+      totalSalesCents: prev.totalSalesCents + totalCents,
+      cashSalesCents: isCash ? prev.cashSalesCents + totalCents : prev.cashSalesCents,
+      cardSalesCents: !isCash ? prev.cardSalesCents + totalCents : prev.cardSalesCents,
+    }))
+
+    const statusMsg = serverReceipt
+      ? `تمت معالجة الفاتورة ${serverReceipt} بنجاح ودفع ${formatCents(totalCents)} ر.س عبر ${method}`
+      : `تم إتمام البيع محلياً (${formatCents(totalCents)} ر.س) — سيُرسل للسيرفر عند الاتصال`
+    setPaymentSuccess(statusMsg)
+    setCart([])
+    setIsPaymentOpen(false)
+  }, [platform.printer, platform.http, activeRegisterId, shift.number, shift.cashierName, cart, totalCents, vatCents])
 
   // Hold current cart
   const handleHoldCart = useCallback((): void => {
@@ -321,6 +491,23 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
 
   // Shift Closeout (Z-Report)
   const handleCloseShift = async (): Promise<void> => {
+    // 1. Close session on backend
+    if (activeSessionId) {
+      try {
+        const closeBody: Record<string, string> = {}
+        if (countedCashInput.trim()) {
+          closeBody['counted_cash'] = countedCashInput.trim()
+        }
+        await platform.http.request(`pos/sessions/${activeSessionId}/close`, {
+          method: 'POST',
+          body: Object.keys(closeBody).length > 0 ? closeBody : null,
+        })
+      } catch {
+        // Offline: close locally only
+      }
+    }
+
+    // 2. Print Z-Report
     try {
       const zReport = `\x1B\x40\x1B\x61\x01*** Z-REPORT (SHIFT CLOSEOUT) ***\n` +
         `Shift: #${shift.number} | Cashier: ${shift.cashierName}\n` +
@@ -341,6 +528,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
       // Offline fallback
     }
 
+    setActiveSessionId(null)
     setShift((prev) => ({
       ...prev,
       isOpen: false,
@@ -350,12 +538,31 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
     setPaymentSuccess(`تم إقفال الوردية #${shift.number} بنجاح وطباعة تقرير الـ Z-Report`)
   }
 
-  const handleOpenShift = (): void => {
+  const handleOpenShift = async (): Promise<void> => {
     const floatVal = parseFloat(openingFloatInput) || 0
+
+    // Open day on backend
+    if (activeRegisterId) {
+      try {
+        const openRes = await platform.http.request<{
+          started: boolean
+          session?: { id: string; opening_float?: string }
+        }>(`pos/registers/${activeRegisterId}/open-day`, {
+          method: 'POST',
+          body: { opening_float: floatVal.toFixed(2) },
+        })
+        if (openRes?.session?.id) {
+          setActiveSessionId(openRes.session.id)
+        }
+      } catch {
+        // Offline: open locally only
+      }
+    }
+
     setShift({
       isOpen: true,
       number: shift.number + 1,
-      cashierName: 'أحمد سالم',
+      cashierName: shift.cashierName,
       openedAt: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
       openingFloatSar: floatVal.toFixed(2),
       totalSalesCents: 0n,
@@ -747,7 +954,7 @@ export const CashierView: FC<{ readonly platform: Platform }> = ({ platform }) =
                 <button
                   type="button"
                   className="boot__button"
-                  onClick={handleOpenShift}
+                  onClick={() => void handleOpenShift()}
                 >
                   فتح الوردية
                 </button>

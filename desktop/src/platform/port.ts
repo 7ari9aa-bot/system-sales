@@ -70,6 +70,7 @@ export interface AuthTenant {
   readonly id: string
   readonly name: string
   readonly subdomain: string
+  readonly currency?: string
 }
 
 export interface AuthBranch {
@@ -84,6 +85,7 @@ export interface AuthRegister {
 
 export interface AuthSession {
   readonly token: string
+  readonly refreshToken?: string
   readonly user: AuthUser
   readonly tenant: AuthTenant
   readonly branch?: AuthBranch

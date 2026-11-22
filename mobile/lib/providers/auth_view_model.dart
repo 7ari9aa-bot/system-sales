@@ -64,7 +64,15 @@ class AuthViewModel extends ChangeNotifier {
   Branch get activeBranch => _activeBranch;
 
   bool _isTerminalLocked = false;
+  String _terminalPin = '1234';
   bool get isTerminalLocked => _isTerminalLocked;
+
+  void setTerminalPin(String pin) {
+    if (pin.trim().length >= 4) {
+      _terminalPin = pin.trim();
+      _tokenStore.savePin(_terminalPin);
+    }
+  }
 
   void lockTerminal() {
     _isTerminalLocked = true;
@@ -72,7 +80,7 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   bool unlockTerminal(String pin) {
-    if (pin.trim().length >= 4) {
+    if (pin.trim() == _terminalPin) {
       _isTerminalLocked = false;
       notifyListeners();
       return true;
@@ -104,6 +112,10 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final savedPin = await _tokenStore.getPin();
+      if (savedPin != null && savedPin.isNotEmpty) {
+        _terminalPin = savedPin;
+      }
       _currentUser = await _authRepository.getCurrentUser();
       await checkBiometricStatus();
     } catch (_) {
@@ -173,21 +185,7 @@ class AuthViewModel extends ChangeNotifier {
         _currentUser = user;
         return true;
       }
-
-      // If token expired but saved credentials exist, construct user session
-      final email = await _tokenStore.getUserEmail();
-      final tenantId = await _tokenStore.getTenantId();
-      if (email != null && tenantId != null) {
-        _currentUser = AuthUser(
-          id: 'usr-${tenantId.hashCode}',
-          email: email,
-          name: await _tokenStore.getUserName() ?? 'مسؤول المبيعات',
-          role: 'owner',
-          tenantId: tenantId,
-          tenantName: await _tokenStore.getTenantSubdomain() ?? 'متجر فهرست',
-        );
-        return true;
-      }
+      _errorMessage = 'انتهت صلاحية الجلسة، يرجى إعادة تسجيل الدخول بكلمة المرور';
       return false;
     } catch (e) {
       _errorMessage = 'فشل تسجيل الدخول بالبصمة: $e';

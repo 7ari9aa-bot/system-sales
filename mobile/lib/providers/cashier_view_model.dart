@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import '../core/api/api_client.dart';
 import '../core/offline/offline_queue_service.dart';
 import '../core/utils/money_formatter.dart';
 import '../data/models/product.dart';
@@ -203,8 +204,17 @@ class CashierViewModel extends ChangeNotifier {
           result['order_number']?.toString() ??
           'REC-${DateTime.now().millisecondsSinceEpoch}';
 
+      if (result['offline_queued'] == true) {
+        _isLastSaleOffline = true;
+        await refreshOfflineCount();
+      }
+
       _cartItems.clear();
       return true;
+    } on ApiException catch (e) {
+      // Validation, authorization, or business logic rejection: show error to cashier
+      _errorMessage = e.message;
+      return false;
     } catch (_) {
       // Offline fallback: enqueue locally
       await _offlineQueue.enqueueSale(
