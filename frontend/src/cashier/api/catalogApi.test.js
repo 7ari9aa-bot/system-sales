@@ -12,7 +12,7 @@ vi.mock("@/lib/api", () => ({
   }),
 }));
 
-import { catalogApi, countToMovement, makeSlug, nextSkuBase, validateProduct } from "./catalogApi";
+import { catalogApi, countToMovement, isValidEan13, makeSlug, nextSkuBase, validateProduct } from "./catalogApi";
 
 const good = {
   name: "تيشيرت قطن",
@@ -239,5 +239,27 @@ describe("a failed FIRST variant leaves no orphan product behind", () => {
     const err = await catalogApi.createProduct(good, { warehouseId: "w1", slugToken: "t" }).catch((e) => e);
     expect(err.partial.length).toBeGreaterThan(1);
     expect(calls.some((c) => /archive$/.test(c.path))).toBe(false);
+  });
+});
+
+describe("a shop's own barcode with a wrong check digit is stopped before saving", () => {
+  const withBarcode = (barcode) => ({ name: "بنطلون", variants: [{ sku: "A", sellPrice: 650, barcode }] });
+  it("knows a valid and an invalid EAN-13", () => {
+    expect(isValidEan13("2000000000015")).toBe(true);
+    expect(isValidEan13("2991000102947")).toBe(false);
+    expect(isValidEan13("200000000001")).toBe(false);
+    expect(isValidEan13("abcdefghijklm")).toBe(false);
+  });
+  it("refuses an in-store code (starts with 2) whose check digit is wrong", () => {
+    const e = validateProduct(withBarcode("2991000102947"));
+    expect(e).toHaveLength(1);
+    expect(e[0]).toContain("غير صحيح");
+    expect(e[0]).toContain("2991000102947");
+  });
+  it("accepts a valid in-store code", () => expect(validateProduct(withBarcode("2000000000015"))).toEqual([]));
+  it("leaves a manufacturer or older shop code alone, valid or not", () => {
+    expect(validateProduct(withBarcode("6221234567890"))).toEqual([]);
+    expect(validateProduct(withBarcode("12345"))).toEqual([]);
+    expect(validateProduct(withBarcode("SHOP-77"))).toEqual([]);
   });
 });

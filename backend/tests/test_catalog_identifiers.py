@@ -20,7 +20,7 @@ from app.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
 
 
-async def _variant_with_ean(db, tenant_ctx, value: str = "1234567890123"):
+async def _variant_with_ean(db, tenant_ctx, value: str = "1234567890128"):
     product = await CatalogService.create_product(
         db,
         tenant_ctx.tenant_id,
@@ -37,7 +37,7 @@ async def _variant_with_ean(db, tenant_ctx, value: str = "1234567890123"):
 async def test_add_then_resolve_roundtrip(db, tenant_ctx):
     variant = await _variant_with_ean(db, tenant_ctx)
     resolved = await CatalogService.resolve_identifier(
-        db, tenant_ctx.tenant_id, "ean", "1234567890123"
+        db, tenant_ctx.tenant_id, "ean", "1234567890128"
     )
     assert resolved is not None
     assert resolved.id == variant.id
@@ -59,9 +59,9 @@ async def test_duplicate_identifier_conflicts_after_value_normalization(db, tena
 
 
 async def test_same_value_across_types_is_two_rows(db, tenant_ctx):
-    variant = await _variant_with_ean(db, tenant_ctx, "3333333333333")
+    variant = await _variant_with_ean(db, tenant_ctx, "3333333333338")
     await CatalogService.add_identifier(
-        db, tenant_ctx.tenant_id, variant.id, "barcode", "3333333333333"
+        db, tenant_ctx.tenant_id, variant.id, "barcode", "3333333333338"
     )
     rows = await CatalogService.list_identifiers(db, tenant_ctx.tenant_id, variant.id)
     assert {r.type for r in rows} == {"ean", "barcode"}

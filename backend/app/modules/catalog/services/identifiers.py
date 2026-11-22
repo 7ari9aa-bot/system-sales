@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.apparel.barcode import is_valid_ean13
 from app.modules.catalog.models import ProductIdentifier, ProductVariant
 from app.modules.catalog.services._common import IDENTIFIER_TYPES
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
@@ -43,6 +44,18 @@ class IdentifierServiceMixin:
         from app.modules.catalog.services import CatalogService
 
         cleaned = CatalogService._clean_identifier(identifier_type, value)
+        # A 13-digit code filed as an EAN/GTIN must carry the right check digit: a wrong one
+        # is a typo that scans nowhere and cannot be printed as a label. Other types (the
+        # shop's own free-form ``barcode``, SKUs, QR tokens) are left alone on purpose.
+        if (
+            identifier_type in {"ean", "gtin"}
+            and len(cleaned) == 13
+            and cleaned.isdigit()
+            and not is_valid_ean13(cleaned)
+        ):
+            raise ValidationError(
+                f"رقم الباركود {cleaned} غير صحيح: رقم التحقق الأخير لا يطابق الأرقام السابقة"
+            )
         variant = await CatalogService.get_variant(session, tenant_id, variant_id)
         row = ProductIdentifier(
             tenant_id=tenant_id,

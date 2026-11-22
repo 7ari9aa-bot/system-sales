@@ -56,6 +56,19 @@ function readable(e) {
   return m;
 }
 
+/**
+ * EAN-13 check digit (weights 1,3 from the left over the first twelve digits).
+ * A shop's own barcodes start with 2 and are always valid, so a 13-digit code starting with 2
+ * that fails this is a typing slip: it would scan nowhere and could not be printed as a label.
+ */
+export function isValidEan13(code) {
+  const t = String(code ?? "").trim();
+  if (!/^\d{13}$/.test(t)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i += 1) sum += Number(t[i]) * (i % 2 ? 3 : 1);
+  return (10 - (sum % 10)) % 10 === Number(t[12]);
+}
+
 /** Validate the editor payload locally so an obviously wrong form never reaches the server. */
 export function validateProduct(input) {
   const errors = [];
@@ -74,6 +87,9 @@ export function validateProduct(input) {
     if (bc) {
       if (seenBarcode.has(bc)) errors.push(`التركيبة ${n}: الباركود مكرر داخل نفس المنتج`);
       seenBarcode.add(bc);
+      if (/^2\d{12}$/.test(bc) && !isValidEan13(bc)) {
+        errors.push(`التركيبة ${n}: الباركود ${bc} غير صحيح (رقم التحقق الأخير لا يطابق). راجع الرقم أو امسحه ليتولّد تلقائياً`);
+      }
     }
     try {
       toWire(v.sellPrice);
