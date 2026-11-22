@@ -318,3 +318,38 @@ describe("correcting a wrong barcode end to end (read, edit the form, plan, appl
     expect(calls.find((c) => c.method === "POST").body).toEqual({ identifier_type: "barcode", value: "2991000102949" });
   });
 });
+
+describe("which stored code the edit screen shows for a variant", () => {
+  async function readWith(identifiers) {
+    const { api } = await import("@/lib/api");
+    api.mockImplementation(async (path) => {
+      if (path === "/products/p1") {
+        return { id: "p1", title: "تيشيرت", variants: [{ id: "v1", sku: "S1", price: "300.00", option_values: {} }] };
+      }
+      if (path === "/variants/v1/identifiers") return identifiers;
+      return { ok: true };
+    });
+    return catalogApi.productForEdit("p1");
+  }
+
+  it("prefers the shop's own barcode when the variant has several scannable codes", async () => {
+    const r = await readWith([
+      { id: "i-ean", identifier_type: "ean", value: "6221234567891" },
+      { id: "i-bc", identifier_type: "barcode", value: "2991000102949" },
+    ]);
+    expect(r.barcodes.v1).toBe("2991000102949");
+    expect(r.barcodeIds.v1).toBe("i-bc");
+  });
+
+  it.each(["ean", "gtin", "upc"])("shows a %s code when the variant has no barcode-type code", async (type) => {
+    const r = await readWith([{ id: "i-1", identifier_type: type, value: "6221234567891" }]);
+    expect(r.barcodes.v1).toBe("6221234567891");
+    expect(r.barcodeIds.v1).toBe("i-1");
+  });
+
+  it.each(["external", "qr_token", "egs", "gs1"])("ignores a %s code, which no till scans", async (type) => {
+    const r = await readWith([{ id: "i-1", identifier_type: type, value: "ABC-1" }]);
+    expect(r.barcodes.v1).toBe("");
+    expect(r.barcodeIds.v1).toBe("");
+  });
+});

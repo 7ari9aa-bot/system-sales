@@ -17,6 +17,8 @@ import { toWire } from "./money";
 import { materialText } from "@/cashier/lib/material";
 
 const seg = (v) => encodeURIComponent(String(v));
+// The kinds of stored code a till can scan (the same four the backend resolves a scan against).
+const SCANNABLE_CODE_TYPES = ["ean", "gtin", "upc", "barcode"];
 const text = (v) => String(v ?? "").trim();
 const post = (path, body) => api(path, { method: "POST", body });
 const patch = (path, body) => api(path, { method: "PATCH", body });
@@ -126,14 +128,18 @@ export const catalogApi = {
   createCategory: (name) => post("/categories", { name }),
   createBrand: (name) => post("/brands", { name }),
 
-  /** One product with its variants, plus each variant's barcode (the first "barcode" identifier). */
+  /** One product with its variants, plus each variant's scannable code and that code's id. */
   async productForEdit(productId) {
     const product = await api(`/products/${seg(productId)}`);
     const pairs = await Promise.all(
       (product.variants ?? []).map(async (v) => {
         const ids = (await api(`/variants/${seg(v.id)}/identifiers`).catch(() => [])) ?? [];
         const list = Array.isArray(ids) ? ids : (ids.items ?? []);
-        const code = list.find((i) => i.identifier_type === "barcode");
+        // The shop's own "barcode" first; otherwise any other code a till scans (ean, gtin, upc),
+        // so a variant filed with only an EAN still shows its code here instead of looking empty.
+        const code =
+          list.find((i) => i.identifier_type === "barcode") ??
+          list.find((i) => SCANNABLE_CODE_TYPES.includes(i.identifier_type));
         return [v.id, code?.value ?? "", code?.id ?? ""];
       }),
     );
