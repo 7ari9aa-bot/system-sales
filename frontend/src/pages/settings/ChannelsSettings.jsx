@@ -43,6 +43,18 @@ const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
 /** Meta OAuth popup result event type (sent by our callback page). */
 const META_OAUTH_RESULT = "META_OAUTH_RESULT";
 
+/**
+ * The Facebook SDK script address, in the owner's language.
+ *
+ * The locale used to be fixed to en_US, so an Arabic-speaking owner pressed a Connect button in
+ * Arabic and then met Meta's login and permission dialogs in English, in the one window where they
+ * decide what to grant. The SDK takes the dialog language from the script it was loaded from, so a
+ * language switched after the SDK has loaded applies from the next page load.
+ */
+export function facebookSdkUrl(isAr) {
+  return `https://connect.facebook.net/${isAr ? "ar_AR" : "en_US"}/sdk.js`;
+}
+
 export function loadFacebookSdk(appId, version, isAr) {
   return new Promise((resolve, reject) => {
     const configKey = `${appId}:${version}`;
@@ -89,7 +101,7 @@ export function loadFacebookSdk(appId, version, isAr) {
       )
     };
     if (!script.src) {
-      script.src = "https://connect.facebook.net/en_US/sdk.js";
+      script.src = facebookSdkUrl(isAr);
       script.async = true;
       script.defer = true;
       script.crossOrigin = "anonymous";
@@ -207,6 +219,29 @@ export function friendlyMetaError(raw, isAr) {
 }
 
 /** Open a centered popup window. */
+/**
+ * How long the one-time code may wait for the signup window to report the new number.
+ *
+ * Meta's authorization code lives about five minutes, and the connect only goes to the server when
+ * the code AND the window's own report have both arrived. The report used to be allowed ten minutes,
+ * so an owner who lingered in the window held a code that had already died: the server then said
+ * "Meta rejected the authorization code" about a number that was in fact created. Give up a little
+ * inside the code's life and say what happened instead.
+ */
+export const SIGNUP_REPORT_WAIT_MS = 4 * 60 * 1000;
+
+/** The whole signup window, from opening it to the report. Longer than the code's wait on purpose. */
+export const SIGNUP_WINDOW_MS = 10 * 60 * 1000;
+
+/** What the owner is told when the code outlived the wait for the signup report. */
+export function signupCodeExpiredError(isAr) {
+  return new Error(
+    isAr
+      ? "انتهت صلاحية رمز التفويض قبل أن تكتمل الخطوات في نافذة فيسبوك. أعد المحاولة وأكملها خلال دقائق قليلة."
+      : "The authorization expired before the steps in the Facebook window were finished. Try again and finish them within a few minutes."
+  );
+}
+
 /**
  * What to tell the owner when Meta's signup window reports CANCEL or ERROR.
  *
@@ -509,6 +544,9 @@ export default function ChannelsSettings() {
 
       let resolveCode;
       let rejectCode;
+      let rejectSession = () => {};
+      let staleCodeTimer = null;
+      let signupReported = false;
       let cleanupSignup = () => {};
       const codePromise = new Promise((resolve, reject) => {
         resolveCode = resolve;
@@ -518,10 +556,11 @@ export default function ChannelsSettings() {
         };
       });
       const sessionPromise = new Promise((resolve, reject) => {
+        rejectSession = reject;
         const timer = window.setTimeout(() => {
           cleanupSignup();
           reject(new Error(isAr ? "انتهت مدة الربط. أعد المحاولة." : "The signup timed out. Try again."));
-        }, 10 * 60 * 1000);
+        }, SIGNUP_WINDOW_MS);
 
         function onMessage(event) {
           if (!isMetaSdkOrigin(event.origin)) return;
@@ -538,6 +577,7 @@ export default function ChannelsSettings() {
             return;
           }
           if (payload.event === "FINISH") {
+            signupReported = true;
             cleanupSignup();
             resolve(payload.data || {});
           } else if (payload.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
@@ -552,14 +592,26 @@ export default function ChannelsSettings() {
 
         cleanupSignup = () => {
           window.clearTimeout(timer);
+          if (staleCodeTimer) window.clearTimeout(staleCodeTimer);
           window.removeEventListener("message", onMessage);
         };
         window.addEventListener("message", onMessage);
         fb.login(
           (response) => {
             const outcome = whatsappLoginOutcome(response, isAr);
-            if (outcome.code) resolveCode(outcome.code);
-            else rejectCode(outcome.error);
+            if (outcome.code) {
+              resolveCode(outcome.code);
+              // The code is alive for about five minutes; from now the report has until then.
+              // When the report came first there is nothing left to wait for, so no timer starts.
+              if (!signupReported) {
+                staleCodeTimer = window.setTimeout(() => {
+                  cleanupSignup();
+                  rejectSession(signupCodeExpiredError(isAr));
+                }, SIGNUP_REPORT_WAIT_MS);
+              }
+            } else {
+              rejectCode(outcome.error);
+            }
           },
           {
             config_id: configId,
@@ -837,11 +889,6 @@ export default function ChannelsSettings() {
       server_setup_required: isAr ? "إعداد Webhook على الخادم مطلوب" : "Server webhook setup required",
     };
     return statuses[channel.webhookStatus] || "";
-  }
-
-  /** Whether the channel needs a manual credential form (Telegram, Webchat manual entry). */
-  function needsManualForm(channel) {
-    return channel.id === "telegram" || channel.id === "webchat";
   }
 
   /** Whether the channel can be connected via a single-click flow (Meta popup or WA SDK). */

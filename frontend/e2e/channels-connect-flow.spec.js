@@ -59,6 +59,55 @@ for (const order of ["finish-first", "code-first"]) {
   });
 }
 
+test("a code that outlives the wait for the signup report is not sent, and the owner is told why", async ({ page }) => {
+  // The code arrives but Meta's window never reports the new number. Meta's code lives about five
+  // minutes; the connect used to wait ten and then send a dead one, so the owner heard "Meta
+  // rejected the authorization code" about a number that had in fact been created.
+  await page.clock.install();
+  const calls = await open(page, {
+    sdk: () => {
+      window.FB = {
+        init() {},
+        login(cb) {
+          cb({ authResponse: { code: "AUTHCODE12345" } });
+        },
+      };
+    },
+  });
+  await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
+  await page.clock.fastForward(4 * 60 * 1000 + 5000);
+  await expect(page.getByText(/authorization expired before the steps|انتهت صلاحية رمز التفويض/)).toBeVisible({ timeout: 8000 });
+  expect(calls).toEqual([]);
+});
+
+test("a report that arrives within the wait still connects, however late", async ({ page }) => {
+  await page.clock.install();
+  const calls = await open(page, {
+    sdk: () => {
+      window.FB = {
+        init() {},
+        login(cb) {
+          cb({ authResponse: { code: "AUTHCODE12345" } });
+          setTimeout(
+            () =>
+              window.dispatchEvent(
+                new MessageEvent("message", {
+                  origin: "https://www.facebook.com",
+                  data: JSON.stringify({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: { waba_id: "WB1", phone_number_id: "PN1" } }),
+                }),
+              ),
+            3 * 60 * 1000,
+          );
+        },
+      };
+    },
+  });
+  await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
+  await page.clock.fastForward(3 * 60 * 1000 + 1000);
+  await expect.poll(() => calls.length, { timeout: 8000 }).toBe(1);
+  expect(calls[0]).toEqual({ code: "AUTHCODE12345", waba_id: "WB1", phone_number_id: "PN1" });
+});
+
 test("a cancelled WhatsApp popup is reported and nothing is sent", async ({ page }) => {
   const calls = await open(page, {
     sdk: () => {
