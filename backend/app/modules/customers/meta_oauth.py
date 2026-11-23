@@ -83,7 +83,14 @@ _BASE_SUBSCRIBED_FIELDS = (
 # field. It is a Page field for Messenger and Facebook connections only: on Instagram the same
 # name belongs to the `instagram` object, so it stays out of `_BASE_SUBSCRIBED_FIELDS` (a Page
 # subscription naming it for an Instagram link is ignored or rejected).
-_MESSENGER_SUBSCRIBED_FIELDS = _BASE_SUBSCRIBED_FIELDS + ",message_reactions"
+# A human answering from Meta's own inbox (Business Suite) echoes back as `message_echoes`,
+# thread control between apps as `messaging_handovers`, an edited message as `message_edits`.
+# All three are Page fields. Without them the events never reach us at all, so a staff reply
+# typed outside FIHRIST could not appear in the thread no matter what the parser did.
+_HUMAN_INBOX_SUBSCRIBED_FIELDS = "message_echoes,messaging_handovers,message_edits"
+_MESSENGER_SUBSCRIBED_FIELDS = (
+    _BASE_SUBSCRIBED_FIELDS + ",message_reactions," + _HUMAN_INBOX_SUBSCRIBED_FIELDS
+)
 _SUBSCRIBED_FIELDS = {
     "messenger": _MESSENGER_SUBSCRIBED_FIELDS,
     "instagram": _BASE_SUBSCRIBED_FIELDS,

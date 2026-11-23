@@ -54,8 +54,23 @@ DASHBOARD_FIELDS = {
         "message_reads",
         "message_reactions",
         "feed",
+        # A reply typed in Meta's own inbox, thread control between apps, and an edited
+        # message. Subscribed, so the dashboard has to say they are needed.
+        "message_echoes",
+        "messaging_handovers",
+        "message_edits",
     ),
-    "instagram": ("messages", "messaging_postbacks", "comments"),
+    # Instagram's own fields live on the `instagram` object in the App Dashboard, not on the
+    # Page subscription. Naming them here is what the setup screen tells the owner to tick.
+    "instagram": (
+        "messages",
+        "messaging_postbacks",
+        "comments",
+        "mentions",
+        "live_comments",
+        "story_insights",
+        "messaging_handovers",
+    ),
     "whatsapp_business_account": ("messages",),
 }
 

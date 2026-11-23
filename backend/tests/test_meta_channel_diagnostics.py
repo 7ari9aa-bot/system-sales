@@ -110,7 +110,12 @@ def test_a_facebook_channel_missing_only_a_posting_permission_is_a_warning() -> 
 def test_instagram_names_its_own_scopes() -> None:
     report = _report("instagram", recorded_scopes=["pages_messaging", "instagram_manage_messages"])
     missing = _by_key(report)["permissions"]["detail"]["missing"]
-    assert missing == ["instagram_manage_comments", "instagram_content_publish"]
+    # instagram_manage_insights joined the required set: the post view calls /{media_id}/insights.
+    assert missing == [
+        "instagram_manage_comments",
+        "instagram_content_publish",
+        "instagram_manage_insights",
+    ]
 
 
 def test_unreadable_permissions_are_unknown_not_an_error() -> None:
