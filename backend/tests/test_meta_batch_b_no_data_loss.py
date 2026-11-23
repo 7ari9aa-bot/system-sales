@@ -23,6 +23,7 @@ from app.modules.platform.models import Integration
 from app.workers import meta_token_refresh as refresh
 from tests.test_meta_oauth import (
     ALL_FACEBOOK_PERMISSIONS,
+    APP_ID,
     PAGE_ID,
     PAGE_TOKEN,
     _app,
@@ -37,16 +38,17 @@ pytestmark = pytest.mark.asyncio
 # --------------------------------------------------------------------------- A5 ---------
 
 
-def _subscription_graph(*, already: str, posted: list[dict]):
+def _subscription_graph(*, already: str, posted: list[dict], app_id: str = APP_ID):
     """A Meta whose Page is ALREADY subscribed to ``already`` and which, like the real one,
-    replaces the list on every POST."""
+    replaces the list on every POST. ``app_id`` is the app that owns that subscription: the edge
+    lists every app on the Page, and only OUR row (``META_APP_ID``) is ever merged."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         params = dict(request.url.params)
         if "/subscribed_apps" in url:
             if request.method == "GET":
-                data = [{"id": "app", "subscribed_fields": already.split(",")}] if already else []
+                data = [{"id": app_id, "subscribed_fields": already.split(",")}] if already else []
                 return httpx.Response(200, json={"data": data})
             posted.append(params)
             return httpx.Response(200, json={"success": True})
@@ -121,11 +123,41 @@ async def test_a_first_link_subscribes_exactly_the_channels_own_fields(
     )
 
 
-async def test_an_unreadable_existing_subscription_never_blocks_the_link(
+async def test_another_apps_subscription_on_the_page_is_never_merged_into_ours(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ):
-    """Reading what is already there is a courtesy. If that read fails the link still has to
-    work, and it falls back to the channel's own fields."""
+    """The edge lists every app subscribed to the Page. A lead-ads tool's `leadgen` is not ours to
+    write back, and our own `feed` is only kept when it sits on OUR row."""
+    _config_patch(monkeypatch)
+    posted: list[dict] = []
+    _patch_graph(
+        monkeypatch,
+        _subscription_graph(already="leadgen,feed", posted=posted, app_id="someone-elses-app"),
+    )
+    state = create_oauth_state_token(
+        str(tenant_ctx.user.id),
+        {"tenant_id": str(tenant_ctx.tenant_id), "provider": "messenger"},
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db, tenant_ctx)), base_url="http://test"
+    ) as c:
+        response = await c.get(
+            "/api/v1/integrations/meta/oauth/callback",
+            params={"code": "auth-code-1", "state": state},
+            follow_redirects=False,
+        )
+    assert "connected" in _popup_result(response)
+    sent = set(posted[-1]["subscribed_fields"].split(","))
+    assert "leadgen" not in sent and "feed" not in sent
+    assert sent == set(meta_oauth.subscribed_fields("messenger").split(","))
+
+
+async def test_an_unreadable_existing_subscription_stops_the_link_before_anything_is_written(
+    db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
+):
+    """Meta REPLACES the list on a POST. When the current list cannot be read, writing the
+    channel's own fields could silently drop a sibling channel's `feed`, so nothing is written and
+    the owner is asked to try again, instead of a link that quietly breaks Facebook's comments."""
     _config_patch(monkeypatch)
     posted: list[dict] = []
     base = _subscription_graph(already="", posted=posted)
@@ -148,8 +180,8 @@ async def test_an_unreadable_existing_subscription_never_blocks_the_link(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert "connected" in _popup_result(response)
-    assert posted, "the subscription must still be written"
+    assert "connected" not in _popup_result(response)
+    assert posted == [], "a failed read must never be followed by a write"
 
 
 # --------------------------------------------------------------------------- A2 ---------
