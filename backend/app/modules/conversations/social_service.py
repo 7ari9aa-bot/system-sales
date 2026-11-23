@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 MAX_PICTURE_BYTES = 8 * 1024 * 1024  # Instagram's own limit for a picture
 PICTURE_LINK_SECONDS = 15 * 60  # Instagram fetches each picture once, right away
 _JPEG_START = b"\xff\xd8\xff"
+#: A Reel is a video file Instagram has to accept. MP4/MOV both carry an `ftyp` box right after
+#: the 4-byte size, which is the only thing we can check without decoding the video.
+MAX_VIDEO_BYTES = 100 * 1024 * 1024
+_FTYP_AT = 4
 
 
 def _parse_time(value: Any) -> datetime:
@@ -128,6 +132,136 @@ class SocialService:
         except Exception:  # noqa: BLE001
             logger.warning("social.publish.sync_failed")
         return media_id
+
+    @staticmethod
+    def check_video(video: bytes) -> None:
+        """Refuse a file Instagram would refuse, before storing a byte of it."""
+        if not video:
+            raise ValidationError("add a video")
+        if len(video) > MAX_VIDEO_BYTES:
+            raise ValidationError("the video is larger than 100 MB")
+        if video[_FTYP_AT : _FTYP_AT + 4] != b"ftyp":
+            raise ValidationError("the video is not an MP4/MOV file; Instagram accepts those only")
+
+    @staticmethod
+    async def _publish_media(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        credentials: dict,
+        data: bytes,
+        content_type: str,
+        call,
+    ) -> str:
+        """Store one file just long enough for Instagram to fetch it, then publish.
+
+        The link is short-lived and the object is removed whatever happens: a leftover temp file
+        must never outlive the request.
+        """
+        storage = get_storage()
+        if not storage.configured:
+            raise ConflictError("file storage is not set up, so a post cannot be published yet")
+        stored = await storage.store(
+            FetchedMedia(data=data, content_type=content_type, checksum=""),
+            prefix=f"social-outbox/{tenant_id}",
+        )
+        if not stored.storage_key:
+            raise ConflictError("the file could not be stored for publishing")
+        try:
+            link = storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+            media_id = await call(link)
+        except ValueError as exc:  # the adapter's own early refusals
+            raise ValidationError(str(exc)) from exc
+        finally:
+            try:
+                await storage.delete_objects([stored.storage_key])
+            except Exception:  # noqa: BLE001 - a leftover temp file must not hide the result
+                logger.warning("social.publish.cleanup_failed", extra={"count": 1})
+        try:
+            await SocialService.sync_posts(session, tenant_id, credentials, limit=5)
+        except Exception:  # noqa: BLE001
+            logger.warning("social.publish.sync_failed")
+        return media_id
+
+    @staticmethod
+    async def publish_reel(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        credentials: dict,
+        video: bytes,
+        caption: str | None,
+        *,
+        share_to_feed: bool = True,
+        cover: bytes | None = None,
+    ) -> str:
+        """Publish a Reel. Returns the media id Instagram assigned."""
+        SocialService.check_video(video)
+        caption = (caption or "").strip() or None
+        if caption and len(caption) > 2200:
+            raise ValidationError("a caption is at most 2,200 characters")
+        cover_url: str | None = None
+        storage = get_storage()
+        if cover is not None:
+            SocialService.check_pictures([cover])
+            if not storage.configured:
+                raise ConflictError("file storage is not set up, so a post cannot be published yet")
+            stored = await storage.store(
+                FetchedMedia(data=cover, content_type="image/jpeg", checksum=""),
+                prefix=f"social-outbox/{tenant_id}",
+            )
+            if not stored.storage_key:
+                raise ConflictError("the cover could not be stored for publishing")
+            cover_url = storage.signed_url(stored.storage_key, expires_in=PICTURE_LINK_SECONDS)
+            try:
+                return await SocialService._publish_media(
+                    session,
+                    tenant_id,
+                    credentials,
+                    video,
+                    "video/mp4",
+                    lambda link: instagram_adapter.publish_reel(
+                        credentials, link, caption, share_to_feed=share_to_feed, cover_url=cover_url
+                    ),
+                )
+            finally:
+                try:
+                    await storage.delete_objects([stored.storage_key])
+                except Exception:  # noqa: BLE001
+                    logger.warning("social.publish.cleanup_failed", extra={"count": 1})
+        return await SocialService._publish_media(
+            session,
+            tenant_id,
+            credentials,
+            video,
+            "video/mp4",
+            lambda link: instagram_adapter.publish_reel(
+                credentials, link, caption, share_to_feed=share_to_feed
+            ),
+        )
+
+    @staticmethod
+    async def publish_story(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        credentials: dict,
+        media: bytes,
+        *,
+        is_video: bool,
+    ) -> str:
+        """Publish one story (picture or video). A story carries no caption on Instagram."""
+        if is_video:
+            SocialService.check_video(media)
+            content_type = "video/mp4"
+        else:
+            SocialService.check_pictures([media])
+            content_type = "image/jpeg"
+        return await SocialService._publish_media(
+            session,
+            tenant_id,
+            credentials,
+            media,
+            content_type,
+            lambda link: instagram_adapter.publish_story(credentials, link, is_video=is_video),
+        )
 
     # ---------- reading ----------
 

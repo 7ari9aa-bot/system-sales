@@ -879,7 +879,7 @@ class InstagramAdapter(ChannelAdapter):
             _client=_client,
         )
 
-    # ---- publishing (photo / carousel; Reels are deliberately not here yet) ----
+    # ---- publishing (photo / carousel / Reels / Stories) ----
     # Instagram builds a post in steps: a "container" per picture, a parent container for a
     # carousel, wait until Instagram has fetched the pictures, then publish. A container
     # that is never published expires on its own after 24 hours.
@@ -961,6 +961,84 @@ class InstagramAdapter(ChannelAdapter):
                 "POST", f"{account_id}/media", credentials, params=params, _client=_client
             )
             container = str(made["id"])
+        await self._wait_until_ready(credentials, container, _client)
+        done = await self._graph(
+            "POST",
+            f"{account_id}/media_publish",
+            credentials,
+            params={"creation_id": container},
+            _client=_client,
+        )
+        return str(done["id"])
+
+    async def publish_reel(
+        self,
+        credentials: ProviderCredentials,
+        video_url: str,
+        caption: str | None = None,
+        *,
+        share_to_feed: bool = True,
+        cover_url: str | None = None,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """Publish one Reel. Returns its media id.
+
+        Instagram fetches the video itself, so the address must be a public https link. A Reel
+        container reports ``status_code`` like a photo container and is published the same way;
+        ``share_to_feed`` decides whether it also shows on the grid, which is the merchant's
+        choice and not ours to assume.
+        """
+        if not isinstance(video_url, str) or not video_url.startswith("https://"):
+            raise ValueError("the video must be a public https link")
+        if caption is not None and len(caption) > 2200:
+            raise ValueError("a caption is at most 2,200 characters")
+        _, account_id = self._creds(credentials)
+        params: dict[str, Any] = {
+            "media_type": "REELS",
+            "video_url": video_url,
+            "share_to_feed": "true" if share_to_feed else "false",
+        }
+        if caption:
+            params["caption"] = caption
+        if cover_url:
+            params["cover_url"] = cover_url
+        made = await self._graph(
+            "POST", f"{account_id}/media", credentials, params=params, _client=_client
+        )
+        container = str(made["id"])
+        await self._wait_until_ready(credentials, container, _client)
+        done = await self._graph(
+            "POST",
+            f"{account_id}/media_publish",
+            credentials,
+            params={"creation_id": container},
+            _client=_client,
+        )
+        return str(done["id"])
+
+    async def publish_story(
+        self,
+        credentials: ProviderCredentials,
+        media_url: str,
+        *,
+        is_video: bool = False,
+        _client: httpx.AsyncClient | None = None,
+    ) -> str:
+        """Publish one story (a picture or a video). Returns its media id.
+
+        A story takes no caption: Instagram has no field for one, so nothing is invented here.
+        """
+        if not isinstance(media_url, str) or not media_url.startswith("https://"):
+            raise ValueError("the story media must be a public https link")
+        _, account_id = self._creds(credentials)
+        params: dict[str, Any] = {
+            "media_type": "STORIES",
+            "video_url" if is_video else "image_url": media_url,
+        }
+        made = await self._graph(
+            "POST", f"{account_id}/media", credentials, params=params, _client=_client
+        )
+        container = str(made["id"])
         await self._wait_until_ready(credentials, container, _client)
         done = await self._graph(
             "POST",

@@ -35,6 +35,7 @@ from app.modules.conversations.routers.inbox import (
 )
 from app.modules.conversations.social_service import (
     MAX_PICTURE_BYTES,
+    MAX_VIDEO_BYTES,
     MAX_REPLY_CHARS,
     SocialService,
 )
@@ -73,6 +74,34 @@ def _decode_picture(value: str, number: int) -> bytes:
         return base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValidationError(f"picture {number} is not valid base64") from exc
+
+
+class PublishReelRequest(BaseModel):
+    """One base64 MP4/MOV video, its caption, and whether it also shows on the grid."""
+
+    video: str
+    caption: str | None = Field(default=None, max_length=2200)
+    share_to_feed: bool = True
+    cover: str | None = None
+
+
+class PublishStoryRequest(BaseModel):
+    """One base64 JPEG or MP4 story. Instagram has no caption field for a story."""
+
+    media: str
+    is_video: bool = False
+
+
+def _decode_upload(value: str, label: str, max_bytes: int) -> bytes:
+    """Decode a base64 upload, refusing an oversized one before spending memory on it."""
+    if len(value) > (max_bytes * 4) // 3 + 8:
+        raise ValidationError(f"{label} is larger than {max_bytes // (1024 * 1024)} MB")
+    if value.startswith("data:"):  # a browser data URL: keep only the payload
+        value = value.partition(",")[2]
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValidationError(f"{label} is not valid base64") from exc
 
 
 def _post_out(p: SocialPost) -> dict:
@@ -283,5 +312,45 @@ async def publish_post(
     pictures = [_decode_picture(v, i) for i, v in enumerate(body.pictures, start=1)]
     media_id = await SocialService.publish_post(
         ctx.session, ctx.tenant_id, creds, pictures, body.caption
+    )
+    return {"post_id": media_id}
+
+
+@router.post("/social/reels", status_code=201)
+async def publish_reel(
+    body: PublishReelRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Publish a Reel (one MP4/MOV video).
+
+    Instagram fetches the video from a short-lived link, reports a container status while it
+    processes, and only then publishes. A refusal from Instagram is shown as it came.
+    """
+    creds = await _credentials(ctx, send=True)
+    video = _decode_upload(body.video, "the video", MAX_VIDEO_BYTES)
+    cover = _decode_upload(body.cover, "the cover", MAX_PICTURE_BYTES) if body.cover else None
+    media_id = await SocialService.publish_reel(
+        ctx.session,
+        ctx.tenant_id,
+        creds,
+        video,
+        body.caption,
+        share_to_feed=body.share_to_feed,
+        cover=cover,
+    )
+    return {"post_id": media_id}
+
+
+@router.post("/social/stories", status_code=201)
+async def publish_story(
+    body: PublishStoryRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Publish one story: a JPEG picture or an MP4 video. A story carries no caption."""
+    creds = await _credentials(ctx, send=True)
+    limit = MAX_VIDEO_BYTES if body.is_video else MAX_PICTURE_BYTES
+    media = _decode_upload(body.media, "the story media", limit)
+    media_id = await SocialService.publish_story(
+        ctx.session, ctx.tenant_id, creds, media, is_video=body.is_video
     )
     return {"post_id": media_id}
