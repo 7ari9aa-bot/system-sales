@@ -93,6 +93,26 @@ def test_our_own_echo_is_not_an_inbound_message() -> None:
     assert echo["app_id"] == 123
 
 
+def test_an_echo_carrying_only_a_photo_keeps_the_attachment() -> None:
+    """Meta echoes a photo sent from its own inbox with no text at all."""
+    payload = _envelope(
+        {
+            "sender": {"id": PAGE},
+            "recipient": {"id": USER},
+            "message": {
+                "mid": "m.echo.media",
+                "is_echo": True,
+                "app_id": 123,
+                "attachments": [{"type": "image", "payload": {"url": "https://cdn/echo.jpg"}}],
+            },
+        }
+    )
+    [echo] = messenger_adapter.parse_echoes(payload)
+    assert echo["text"] is None
+    assert echo["media_url"] == "https://cdn/echo.jpg"
+    assert echo["media_type"] == "image"
+
+
 def test_a_plain_text_message_still_parses() -> None:
     [msg] = messenger_adapter.parse_inbound(_envelope(_evt(message={"mid": "m1", "text": "hello"})))
     assert (msg.body, msg.channel_message_id, msg.content_type) == ("hello", "m1", "text")

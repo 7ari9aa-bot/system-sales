@@ -465,21 +465,41 @@ class MessengerAdapter(ChannelAdapter):
 
         ``customer_ref`` is the recipient (the customer) and ``app_id`` says which app sent it, so
         a reply typed in Meta's own inbox can be told apart from one this system sent.
+
+        An echo can carry an attachment and no text at all: a photo sent from Meta's inbox. The
+        first attachment's URL and kind are kept so that reply is stored instead of dropped.
         """
         out: list[dict] = []
         for event in self._messaging_events(payload):
             message = event.get("message")
             if isinstance(message, dict) and message.get("is_echo"):
+                media_url, media_type = self._echo_media(message)
                 out.append(
                     {
                         "customer_ref": str((event.get("recipient") or {}).get("id", "")),
                         "mid": message.get("mid"),
                         "app_id": message.get("app_id"),
                         "text": message.get("text"),
+                        "media_url": media_url,
+                        "media_type": media_type,
                         "timestamp": event.get("timestamp"),
                     }
                 )
         return out
+
+    #: Meta attachment type -> the media kind the inbox renders, for an echoed reply.
+    _ECHO_MEDIA_TYPES = {"image": "image", "audio": "voice", "video": "video", "file": "file"}
+
+    @classmethod
+    def _echo_media(cls, message: dict) -> tuple[str | None, str | None]:
+        """The first usable attachment of an echoed message, if any."""
+        for att in message.get("attachments") or []:
+            if not isinstance(att, dict):
+                continue
+            url = (att.get("payload") or {}).get("url")
+            if url:
+                return str(url), cls._ECHO_MEDIA_TYPES.get(att.get("type", ""), "file")
+        return None, None
 
     async def fetch_profile(
         self, credentials: dict, psid: str, *, _client: httpx.AsyncClient | None = None

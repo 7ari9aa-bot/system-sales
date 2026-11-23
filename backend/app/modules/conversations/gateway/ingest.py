@@ -356,6 +356,10 @@ class IngestService:
         it. Anything else becomes a real outbound message on the thread, so the merchant
         sees it in FIHRIST and the agent does not answer the customer twice.
 
+        A reply that carries only an attachment (a photo sent from Meta's inbox) has no text,
+        so the attachment is what makes it storable: dropping it would leave the merchant blind
+        to a reply the customer already received.
+
         An echo for a customer we have never seen, or with no live conversation, is
         dropped: a courtesy record must never fail the batch that carries real messages.
         """
@@ -364,8 +368,10 @@ class IngestService:
             mid = str(echo.get("mid") or "")
             app_id = str(echo.get("app_id") or "")
             body = echo.get("text")
+            media_url = echo.get("media_url")
+            media_type = echo.get("media_type")
             customer_ref = str(echo.get("customer_ref") or "")
-            if not mid or not body or not customer_ref:
+            if not mid or not (body or media_url) or not customer_ref:
                 continue
             if own_app_id and app_id and app_id == str(own_app_id):
                 continue
@@ -398,6 +404,9 @@ class IngestService:
                 direction="outbound",
                 sender_type="agent",
                 body=body,
+                media_url=media_url,
+                media_type=media_type,
+                content_type=media_type or "text",
                 channel_message_id=mid,
                 payload={"source": "meta_echo", "app_id": app_id or None},
             )
