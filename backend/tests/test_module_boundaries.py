@@ -313,7 +313,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # which main already carried 292 (the ceiling was stale before this branch). The branch adds 4,
 # all in the Meta channel layer (conversations/customers reading each other's services through
 # function-scope imports: page connection, capability states, read signal, handover).
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 296
+# 296 -> 305 on 2026-11-24 (owner-approved raise, "ارفع الـbaseline"): measured 305 on
+# fix/meta-review-2 after merging main. origin/main itself measures 307 against the 296 ceiling, so
+# this branch is 2 BELOW main; none of the nine are Meta edges. They come from the cashier and stock
+# work already on main (pos <-> expenses numbering and cash movements, the stock view, stocktakes),
+# all function-scope service imports. The Meta layer adds no cross-module import in this change.
+# Paying it down means moving NumberingService out of `expenses` (see BASELINE_CYCLIC_SCCS).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 305
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
@@ -481,6 +487,12 @@ BASELINE_CYCLIC_SCCS: frozenset[frozenset[str]] = frozenset(
             }
         ),
         frozenset({"billing", "identity", "platform"}),
+        # 2026-11-24 (owner-approved): `expenses` and `pos` reach each other on main. A cash expense
+        # reads the till (`expenses.service` -> `pos.models` PosSession / PosCashMovement, function
+        # scope) while the till numbers its documents with `expenses.service.NumberingService`
+        # (`pos.service`, function scope). Two modules, no third, so the commerce component did not
+        # grow. The fix that removes it is moving NumberingService to a shared module.
+        frozenset({"expenses", "pos"}),
     ]
 )
 
