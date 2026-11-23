@@ -29,19 +29,38 @@ def _scopes(scope_string: str) -> set[str]:
     return {part.strip() for part in scope_string.split(",") if part.strip()}
 
 
-def test_the_facebook_channel_keeps_the_inbox_grant_because_it_really_chats():
-    """The audit called this "linking Page management forces Messenger permissions".
+def test_managing_a_page_never_asks_for_the_inbox():
+    """Page management and Messenger are two functions with two permission sets.
 
-    Measured against the code: `FacebookPageAdapter` is Messenger's protocol under the Page's name
-    (gateway/facebook.py, channel = "facebook"), so this connection receives and answers the
-    Page's DMs. Removing `pages_messaging` would leave it unable to reply to anyone, so the grant
-    stays and the reason is now written next to it in meta_scopes.py.
+    Meta delivers both over one Page object, but chat always lands on the Messenger capability
+    (gateway/meta_page_events.py sends every `messaging` entry there), so the Page dialog must not
+    make a store that only posts and moderates hand over its customers' messages.
     """
     facebook = _scopes(FACEBOOK_SCOPES)
 
-    assert "pages_messaging" in facebook
+    assert "pages_messaging" not in facebook
     assert set(FACEBOOK_PAGE_SCOPES) <= facebook
     assert _scopes(PAGES_BASE_SCOPES) <= facebook
+
+
+def test_the_private_reply_is_the_one_facebook_feature_that_needs_the_inbox_grant():
+    """A private reply is a Messenger message, so it is declared as its own capability.
+
+    It is reported as `needs_permission` until the Messenger connection on the same Page grants
+    `pages_messaging`, instead of being smuggled into the Page dialog.
+    """
+    from app.modules.customers.capability_states import _CAPABILITIES
+    from app.modules.customers.meta_scopes import (
+        FACEBOOK_PRIVATE_REPLY_SCOPES,
+        missing_private_reply_scopes,
+    )
+
+    assert FACEBOOK_PRIVATE_REPLY_SCOPES == ("pages_messaging",)
+    assert missing_private_reply_scopes(["pages_manage_posts"]) == ["pages_messaging"]
+    assert missing_private_reply_scopes(["pages_messaging"]) == []
+
+    declared = {c["key"]: c for c in _CAPABILITIES["facebook"]}
+    assert declared["private_reply"]["scopes"] == ("pages_messaging",)
 
 
 def test_messenger_still_asks_for_the_inbox_and_nothing_more():
@@ -49,7 +68,9 @@ def test_messenger_still_asks_for_the_inbox_and_nothing_more():
 
     assert "pages_messaging" in messenger
     assert _scopes(PAGES_BASE_SCOPES) <= messenger
-    assert not set(FACEBOOK_PAGE_SCOPES) & messenger, "chat must not ask to publish or read insights"
+    assert not set(FACEBOOK_PAGE_SCOPES) & messenger, (
+        "chat must not ask to publish or read insights"
+    )
 
 
 def test_a_page_the_operator_has_no_task_on_is_never_offered():
@@ -60,8 +81,11 @@ def test_a_page_the_operator_has_no_task_on_is_never_offered():
         {"id": "4", "tasks": ["ADVERTISE"]},
     ]
 
-    for provider in ("facebook", "messenger", "instagram"):
+    # Chat needs MESSAGING (or MANAGE, which implies it); page management needs MANAGE. Neither
+    # offers a Page whose only task is advertising, and neither is judged by the other's rule.
+    for provider in ("messenger", "instagram"):
         assert [p["id"] for p in meta_oauth._messaging_pages(pages, provider)] == ["1", "2", "3"]
+    assert [p["id"] for p in meta_oauth._messaging_pages(pages, "facebook")] == ["2", "3"]
 
 
 class _Result:
@@ -191,6 +215,4 @@ async def test_a_failed_first_save_takes_the_subscription_back(monkeypatch):
 
 
 async def _verified(provider, credentials, config, client=None):
-    return SimpleNamespace(
-        display_name="صفحة", identity_config={"page_id": "page-1"}
-    )
+    return SimpleNamespace(display_name="صفحة", identity_config={"page_id": "page-1"})

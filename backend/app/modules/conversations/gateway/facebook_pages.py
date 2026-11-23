@@ -44,9 +44,17 @@ COMMENT_FIELDS = (
 )
 
 # Replacements for the removed metrics (Meta, "Deprecated Page Insights Metrics").
-PAGE_METRICS = ("page_follows", "page_media_view", "page_post_engagements")
+PAGE_METRICS = (
+    "page_follows",
+    "page_media_view",
+    "page_post_engagements",
+    # Still served by the current Graph version, and still plain counters.
+    "page_daily_follows_unique",
+    "page_video_views",
+)
 POST_METRICS = (
     "post_media_view",
+    "post_clicks",
     "post_reactions_like_total",
     "post_reactions_love_total",
     "post_reactions_wow_total",
@@ -62,6 +70,58 @@ REMOVED_METRICS = frozenset(
         "post_impressions_organic", "page_posts_impressions",
     }
 )  # fmt: skip
+
+#: Why a metric is not offered, so a screen says whose limit it is instead of drawing an empty card.
+#: Meta retired the impression family (reach/impressions on Pages and posts); the Page rating and
+#: the verification badge have no API surface at all. Nothing here is a bug to fix later.
+METRIC_STATES: dict[str, dict[str, str]] = {
+    "page_impressions": {
+        "state": "removed",
+        "evidence": "Meta retired the Page impressions family; page_media_view replaced it",
+    },
+    "page_impressions_unique": {
+        "state": "removed",
+        "evidence": "Meta retired the Page impressions family",
+    },
+    "page_engaged_users": {
+        "state": "removed",
+        "evidence": "Meta retired page_engaged_users; page_post_engagements replaced it",
+    },
+    "page_fans": {
+        "state": "removed",
+        "evidence": "Meta retired the fan metrics; page_follows replaced them",
+    },
+    "post_impressions": {
+        "state": "removed",
+        "evidence": "Meta retired post impressions; post_media_view replaced them",
+    },
+    "page_rating": {
+        "state": "not_supported",
+        "evidence": "Page ratings have no API surface (Business Suite only)",
+    },
+    "verification_status": {
+        "state": "not_supported",
+        "evidence": "Page verification is shown in Business Suite and not exposed by the API",
+    },
+}
+
+
+def insight_catalog() -> list[dict[str, str]]:
+    """Every insight this client knows about, with an honest state for each.
+
+    A screen reads this instead of asking Meta and showing an error: a live metric is live, and a
+    retired one says so with the evidence.
+    """
+    catalog = [{"metric": metric, "state": "live"} for metric in PAGE_METRICS + POST_METRICS]
+    catalog += [
+        {"metric": metric, "state": "removed", "evidence": "Meta retired this metric"}
+        for metric in sorted(REMOVED_METRICS - set(METRIC_STATES))
+    ]
+    catalog += [
+        {"metric": metric, "state": spec["state"], "evidence": spec["evidence"]}
+        for metric, spec in METRIC_STATES.items()
+    ]
+    return catalog
 
 
 def check_schedule(when: datetime | int, *, now: float | None = None) -> int:
@@ -565,6 +625,48 @@ class FacebookPagesClient:
             await sleep(PROCESSING_POLL_SECONDS)
             waited += PROCESSING_POLL_SECONDS
 
+    async def publish_feed_video(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        video_url: str,
+        description: str | None = None,
+        title: str | None = None,
+        schedule_at: datetime | int | None = None,
+        _client=None,
+        _sleep=None,
+    ) -> str:
+        """Publish an ordinary video post on the Page's feed (not a Reel, not a Story).
+
+        Meta pulls the file from `video_url` and answers with the video's id straight away, then
+        processes it. A scheduled one is stored unpublished with Meta's own publish time, so the
+        Page publishes it even if this process is gone by then.
+        """
+        description = (description or "").strip() or None
+        if description and len(description) > MAX_POST_CHARS:
+            raise ValueError(f"a video's text is at most {MAX_POST_CHARS:,} characters")
+        if not str(video_url or "").strip():
+            raise ValueError("a video needs a link Meta can fetch")
+        data: dict[str, Any] = {"file_url": video_url}
+        if description:
+            data["description"] = description
+        if title and title.strip():
+            data["title"] = title.strip()[:255]
+        if schedule_at is not None:
+            data["published"] = "false"
+            data["scheduled_publish_time"] = str(check_schedule(schedule_at))
+        _, page_id = self._creds(credentials)
+        body = await self._graph(
+            "POST", f"{page_id}/videos", credentials, data=data, _client=_client
+        )
+        video_id = str(body.get("id") or "").strip()
+        if not video_id:
+            raise ExternalProviderError("facebook video upload returned no video id")
+        # A scheduled video is not published yet, so Meta has no processing state to wait on.
+        if schedule_at is None:
+            await self._wait_until_processed(credentials, video_id, _client=_client, _sleep=_sleep)
+        return video_id
+
     async def publish_reel(
         self,
         credentials: ProviderCredentials,
@@ -706,7 +808,9 @@ class FacebookPagesClient:
             raise ValueError("no fields to update")
         unknown = sorted(k for k in values if k not in EDITABLE_PAGE_FIELDS)
         if unknown:
-            raise ValueError(f"these Page fields are not editable through the API: {', '.join(unknown)}")
+            raise ValueError(
+                f"these Page fields are not editable through the API: {', '.join(unknown)}"
+            )
         _, page_id = self._creds(credentials)
         return await self._graph("POST", page_id, credentials, data=values, _client=_client)
 
@@ -757,6 +861,56 @@ class FacebookPagesClient:
             "GET", f"{page_id}/insights", credentials, params=params, _client=_client
         )
         return body.get("data") or []
+
+    async def insights_report(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        kind: str = "page",
+        post_id: str | None = None,
+        since: int | None = None,
+        until: int | None = None,
+        _client=None,
+    ) -> dict[str, Any]:
+        """Insights plus the metrics Meta refused, so a screen never loses the whole card.
+
+        Meta rejects the WHOLE request when one metric in `metric` is not available to this app or
+        this Page (a permission the store did not grant, a metric retired after our release). The
+        old behaviour was one error and no numbers at all. Here the first attempt asks for
+        everything, and if Meta refuses, the metric it names is dropped and the rest is asked for
+        once more; what was dropped comes back in `unavailable` so the screen can say whose limit it
+        is. A refusal that names no metric falls back to the core set.
+        """
+        metrics = list(PAGE_METRICS if kind == "page" else POST_METRICS)
+        _, page_id = self._creds(credentials)
+        path = f"{page_id}/insights" if kind == "page" else f"{post_id}/insights"
+
+        def params_for(names: list[str]) -> dict[str, Any]:
+            out: dict[str, Any] = {"metric": ",".join(check_metrics(names)), "period": "day"}
+            if since:
+                out["since"] = since
+            if until:
+                out["until"] = until
+            return out
+
+        try:
+            body = await self._graph(
+                "GET", path, credentials, params=params_for(metrics), _client=_client
+            )
+            return {"data": body.get("data") or [], "unavailable": []}
+        except ExternalProviderError as exc:
+            text = str(exc)
+            refused = [m for m in metrics if m in text]
+            remaining = [m for m in metrics if m not in refused] if refused else metrics[:3]
+            if not remaining or len(remaining) == len(metrics):
+                raise
+            body = await self._graph(
+                "GET", path, credentials, params=params_for(remaining), _client=_client
+            )
+            return {
+                "data": body.get("data") or [],
+                "unavailable": [m for m in metrics if m not in remaining],
+            }
 
     async def get_post_insights(
         self, credentials: ProviderCredentials, post_id: str, _client=None

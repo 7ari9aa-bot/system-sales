@@ -71,6 +71,7 @@ DASHBOARD_FIELDS = {
         "live_comments",
         "story_insights",
         "messaging_handovers",
+        "message_edit",
     ),
     "whatsapp_business_account": (
         "messages",

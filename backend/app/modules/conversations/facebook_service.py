@@ -402,6 +402,42 @@ class FacebookService:
         return await FacebookService._with_stored_file(tenant_id, video, "video/mp4", _go)
 
     @staticmethod
+    async def publish_video(
+        session,
+        tenant_id,
+        credentials: dict,
+        *,
+        video: bytes,
+        description: str | None = None,
+        title: str | None = None,
+        schedule_at=None,
+    ) -> str:
+        """An ordinary video post on the Page's feed — the third kind next to Reels and Stories."""
+        try:
+            facebook_video.check_feed_video(video)
+        except facebook_video.FacebookVideoError as exc:
+            raise ValidationError(str(exc), details={"reason": exc.code}) from exc
+
+        async def _go(link: str) -> str:
+            try:
+                return await facebook_pages.publish_feed_video(
+                    credentials,
+                    video_url=link,
+                    description=description,
+                    title=title,
+                    schedule_at=schedule_at,
+                )
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+        return await FacebookService._with_stored_file(tenant_id, video, "video/mp4", _go)
+
+    @staticmethod
+    async def video_status(session, tenant_id, credentials: dict, video_id: str) -> dict:
+        """Meta's own processing state for a video: uploading, processing, or the error it names."""
+        return await facebook_pages.video_status(credentials, video_id)
+
+    @staticmethod
     async def publish_story(
         session,
         tenant_id,

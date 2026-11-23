@@ -435,3 +435,21 @@ export function facebookPublishFailure(error, lang = "ar") {
   }
   return error?.message || (ar ? "تعذّر النشر" : "Could not publish");
 }
+
+/**
+ * What happened on the Page, as the server recorded it from the webhook.
+ *
+ * The notifications screen used to rebuild this from the post list with its read mark in
+ * `localStorage`, so a new/edited/deleted post, a reaction or a video never showed up and one
+ * person reading a notification left it unread on every other device.
+ */
+export async function fetchPageActivity({ onlyUnread = false, limit = 50 } = {}) {
+  const q = new URLSearchParams({ limit: String(limit) });
+  if (onlyUnread) q.set("only_unread", "true");
+  return await api(`/facebook/activity?${q}`);
+}
+
+/** Mark the Page's activity read for the whole tenant. Returns how many rows changed. */
+export async function markPageActivityRead() {
+  return await api("/facebook/activity/read", { method: "POST" });
+}

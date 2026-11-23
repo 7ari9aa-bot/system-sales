@@ -84,7 +84,9 @@ def _walk(messages: list[dict], *, unread: int = 2) -> BackfillResult:
     return result
 
 
-def _message(mid: str, *, body: str = "أهلاً", sender: str = PSID, at: str = "2026-11-19T10:00:00+0000"):
+def _message(
+    mid: str, *, body: str = "أهلاً", sender: str = PSID, at: str = "2026-11-19T10:00:00+0000"
+):
     return {"id": mid, "message": body, "from": {"id": sender}, "created_time": at}
 
 
@@ -152,7 +154,10 @@ async def test_an_older_message_never_moves_the_window_backwards(monkeypatch):
     session, _, conversation = _wire(monkeypatch, anchor=recent)
 
     await MessengerBackfillService.persist(
-        session, TENANT, page_id=PAGE, result=_walk([_message("m_1", at="2026-11-19T10:00:00+0000")])
+        session,
+        TENANT,
+        page_id=PAGE,
+        result=_walk([_message("m_1", at="2026-11-19T10:00:00+0000")]),
     )
 
     assert conversation.last_customer_message_at == recent
@@ -164,9 +169,7 @@ async def test_a_thread_without_an_identifiable_person_is_skipped(monkeypatch):
     result = _walk([_message("m_1")])
     result.conversations[0]["participants"] = {"data": [{"id": PAGE}]}
 
-    summary = await MessengerBackfillService.persist(
-        session, TENANT, page_id=PAGE, result=result
-    )
+    summary = await MessengerBackfillService.persist(session, TENANT, page_id=PAGE, result=result)
 
     assert summary["skipped"] == 1 and sent == []
 
@@ -198,6 +201,7 @@ async def test_the_per_thread_cap_is_respected(monkeypatch):
 
 
 # ---------------------------------------------------------------- the sweep --
+
 
 def _integration(**meta) -> SimpleNamespace:
     return SimpleNamespace(config={"_meta": meta} if meta else {})

@@ -22,7 +22,10 @@ TENANT = uuid.uuid4()
 
 
 def _change(field: str, value: dict) -> dict:
-    return {"object": "instagram", "entry": [{"id": "ig-1", "changes": [{"field": field, "value": value}]}]}
+    return {
+        "object": "instagram",
+        "entry": [{"id": "ig-1", "changes": [{"field": field, "value": value}]}],
+    }
 
 
 # ---------------------------------------------------------------- live comments
@@ -31,8 +34,12 @@ def _change(field: str, value: dict) -> dict:
 def test_a_live_comment_is_stored_as_a_comment_on_its_broadcast():
     payload = _change(
         "live_comments",
-        {"id": "lc-1", "text": "بكام؟", "from": {"id": "u-9", "username": "hhamd.d"},
-         "media_id": "m-1"},
+        {
+            "id": "lc-1",
+            "text": "بكام؟",
+            "from": {"id": "u-9", "username": "hhamd.d"},
+            "media_id": "m-1",
+        },
     )
 
     comments = InstagramAdapter().parse_live_comments(payload)
@@ -71,8 +78,11 @@ def test_story_metrics_are_read_with_their_media_id():
     deliveries = InstagramAdapter().parse_story_insights(payload)
 
     assert deliveries == [
-        {"media_id": "m-1", "metrics": {"impressions": 120, "reach": 90},
-         "raw": {"media_id": "m-1", "impressions": 120, "reach": 90}}
+        {
+            "media_id": "m-1",
+            "metrics": {"impressions": 120, "reach": 90},
+            "raw": {"media_id": "m-1", "impressions": 120, "reach": 90},
+        }
     ]
 
 
@@ -119,7 +129,9 @@ async def test_the_metrics_are_stored_on_the_story():
     post = SimpleNamespace(post_id="m-1", insights=None)
 
     outcome = await StoryInsightsService.apply(
-        _Session(post), TENANT, "instagram",
+        _Session(post),
+        TENANT,
+        "instagram",
         [{"media_id": "m-1", "metrics": {"impressions": 120, "reach": 90}}],
     )
 

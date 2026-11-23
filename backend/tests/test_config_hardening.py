@@ -210,7 +210,7 @@ def test_debug_outside_development_warns_but_does_not_block_startup(
 
     assert settings.debug is True
     assert any(
-        "debug_enabled_in_secure_environment" in record.message for record in caplog.records
+        "debug_enabled_in_secure_environment" in record.getMessage() for record in caplog.records
     ), "debug outside development must be reported"
 
 
@@ -220,7 +220,10 @@ def test_debug_off_outside_development_is_silent(
     with caplog.at_level(logging.WARNING, logger="app.core.config"):
         _build("staging", debug=False)
 
-    assert not [r for r in caplog.records if "debug_enabled_in_secure_environment" in r.message]
+    reported = [
+        r for r in caplog.records if "debug_enabled_in_secure_environment" in r.getMessage()
+    ]
+    assert not reported
 
 
 # ------------------------- JWT pinning, rotation secret, proxy hop count ----
@@ -415,7 +418,7 @@ def test_an_unconfigured_media_scanner_boots_but_logs_loudly(
     with caplog.at_level(logging.WARNING, logger="app.core.config"):
         settings = _build("production")
     assert settings.media_scanner_configured is False
-    assert any("media_scanner_not_configured" in record.message for record in caplog.records)
+    assert any("media_scanner_not_configured" in record.getMessage() for record in caplog.records)
 
 
 def test_a_configured_media_scanner_is_not_logged_as_missing(
@@ -426,7 +429,7 @@ def test_a_configured_media_scanner_is_not_logged_as_missing(
             "production", media_scanner_host="clamd.internal", media_scanner_port=3310
         )
     assert settings.media_scanner_configured is True
-    assert not [r for r in caplog.records if "media_scanner_not_configured" in r.message]
+    assert not [r for r in caplog.records if "media_scanner_not_configured" in r.getMessage()]
 
 
 def test_a_portless_media_scanner_host_is_not_configured() -> None:

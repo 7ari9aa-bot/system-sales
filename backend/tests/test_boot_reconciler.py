@@ -160,4 +160,4 @@ async def test_run_boot_reconciler_warns_on_role_bypass_outside_secure_environme
         violations = await run_boot_reconciler(engine, fail_closed=False)
 
     assert violations == [], "a dev-environment role violation must not fail the boot"
-    assert any("app_role_bypassrls" in r.message for r in caplog.records)
+    assert any("app_role_bypassrls" in r.getMessage() for r in caplog.records)

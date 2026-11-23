@@ -64,7 +64,7 @@ def _payload(edits, sender="psid-1") -> dict:
                     }
                 ],
             }
-        ]
+        ],
     }
 
 

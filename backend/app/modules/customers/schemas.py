@@ -405,6 +405,44 @@ class ChannelDiagnosticsOut(BaseModel):
     checks: list[ChannelDiagnosticCheck]
 
 
+class MessengerReconcileOut(BaseModel):
+    """POST /integrations/{id}/messenger-reconcile: what Meta lists that we never stored."""
+
+    supported: bool
+    reason: str | None = None
+    missing_locally: list[str] = []
+    stale_locally: list[str] = []
+    error: str | None = None
+    # The walk reports its own bounds and whether it could prove absence; extra keys are kept.
+    model_config = {"extra": "allow"}
+
+
+class ReconnectCapabilityOut(BaseModel):
+    capability: str
+    plan: dict
+
+
+class ReconnectPlanOut(BaseModel):
+    """GET /integrations/{id}/reconnect-plan: one Page connection and what to ask Meta for."""
+
+    page_id: str | None = None
+    connected: bool
+    has_token: bool
+    granted_scopes: list[str]
+    page_tasks: list[str]
+    subscribed_fields: list[str] | None = None
+    capabilities: list[ReconnectCapabilityOut]
+    states: dict
+
+
+class WhatsAppRoadmapOut(BaseModel):
+    """GET /integrations/{id}/whatsapp-roadmap: the features Meta gates, each with its state."""
+
+    connected: bool
+    onboarding_mode: str
+    features: list[dict]
+
+
 class IntegrationUpserted(BaseModel):
     id: UUID
     status: str

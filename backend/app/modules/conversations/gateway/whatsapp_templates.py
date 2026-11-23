@@ -99,9 +99,7 @@ def _media_header(spec: dict) -> dict:
     """A media header: the asset is uploaded first, and only its handle travels here."""
     fmt = str(spec.get("format") or "").upper()
     if fmt not in HEADER_MEDIA_FORMATS:
-        raise ValidationError(
-            "a media header format is IMAGE, VIDEO, GIF or DOCUMENT"
-        )
+        raise ValidationError("a media header format is IMAGE, VIDEO, GIF or DOCUMENT")
     handle = str(spec.get("handle") or "").strip()
     if not handle:
         raise ValidationError("a media header needs an uploaded asset handle")
@@ -133,7 +131,9 @@ def _carousel(cards: list[dict], *, category: str | None) -> dict:
         if body:
             with_body += 1
             if len(body) > BODY_MAX:
-                raise ValidationError(f"carousel card {index} body is at most {BODY_MAX} characters")
+                raise ValidationError(
+                    f"carousel card {index} body is at most {BODY_MAX} characters"
+                )
             count = check_positional(body, where=f"carousel card {index} body")
             item: dict[str, Any] = {"type": "BODY", "text": body}
             if count:
@@ -153,9 +153,7 @@ def _carousel(cards: list[dict], *, category: str | None) -> dict:
             components.append({"type": "BUTTONS", "buttons": _check_buttons(buttons)})
         out.append({"components": components})
     if with_body and with_body != len(out):
-        raise ValidationError(
-            "if one carousel card has a body text, every card must have one"
-        )
+        raise ValidationError("if one carousel card has a body text, every card must have one")
     return {"type": "CAROUSEL", "cards": out}
 
 
@@ -199,7 +197,10 @@ def _authentication(spec: dict, *, category: str | None) -> tuple[dict, dict | N
     otp_type = str(spec.get("otp_type") or "COPY_CODE").upper()
     if otp_type not in OTP_TYPES:
         raise ValidationError("otp_type is COPY_CODE, ONE_TAP or ZERO_TAP")
-    buttons: dict[str, Any] = {"type": "BUTTONS", "buttons": [{"type": "OTP", "otp_type": otp_type}]}
+    buttons: dict[str, Any] = {
+        "type": "BUTTONS",
+        "buttons": [{"type": "OTP", "otp_type": otp_type}],
+    }
     return body, footer, buttons
 
 
@@ -233,7 +234,9 @@ def build_components(
         )
     if not (body or "").strip() and authentication is None and not carousel:
         raise ValidationError("template body is required")
-    headers = sum(1 for present in (bool(header_text), bool(header_media), bool(header_location)) if present)
+    headers = sum(
+        1 for present in (bool(header_text), bool(header_media), bool(header_location)) if present
+    )
     if headers > 1:
         raise ValidationError("a template carries one header: text, media or location")
 
@@ -302,7 +305,9 @@ def build_components(
         components.append({"type": "FOOTER", "text": footer})
 
     if buttons:
-        components.append({"type": "BUTTONS", "buttons": _check_buttons(buttons, category=category)})
+        components.append(
+            {"type": "BUTTONS", "buttons": _check_buttons(buttons, category=category)}
+        )
     return components
 
 
@@ -311,7 +316,14 @@ def _check_buttons(buttons: list[dict], *, category: str | None = None) -> list[
     if len(buttons) > MAX_BUTTONS:
         raise ValidationError(f"a template has at most {MAX_BUTTONS} buttons")
     out: list[dict] = []
-    kinds = {"QUICK_REPLY": 0, "URL": 0, "PHONE_NUMBER": 0, "COPY_CODE": 0, "VOICE_CALL": 0, "CATALOG": 0}
+    kinds = {
+        "QUICK_REPLY": 0,
+        "URL": 0,
+        "PHONE_NUMBER": 0,
+        "COPY_CODE": 0,
+        "VOICE_CALL": 0,
+        "CATALOG": 0,
+    }
     for button in buttons:
         kind = str(button.get("type") or "").upper()
         if kind not in kinds:

@@ -64,7 +64,7 @@ def is_due(integration: Integration, now: datetime | None = None) -> bool:
 
 
 def _record(integration: Integration, summary: dict) -> None:
-    """Write the outcome on the integration, so the next sweep knows when it ran and why it stopped."""
+    """Write the outcome on the integration: when it last ran, and why it stopped."""
     config = dict(integration.config or {})
     metadata = dict(config.get("_meta") or {})
     metadata["backfill"] = {

@@ -509,14 +509,23 @@ async def test_customer_import_route_conflict_is_not_a_green_lie(
 
 
 async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -> None:
+    """The old CSV door is closed by default and, once the shop's data key opens it, no longer
+    applies the file itself: it becomes an import session checked like any Import Center upload
+    (tests/test_imports_legacy_csv_door.py pins the closed door and the validation)."""
+    from app.modules.settings.service import SettingsService
+
     tenant_id = tenant_ctx.tenant_id
+    await SettingsService(db, tenant_id).set(
+        "imports.legacy_csv_endpoint", True, user_id=tenant_ctx.user.id
+    )
+    await db.flush()
     app = _app(db, tenant_id, tenant_ctx.user.id)
 
     response = await _post_import(app, "/api/v1/imports/products", _PRODUCTS_CSV)
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["imported"] == 1 and body["success"] is True
+    assert body["session_id"] and body["import_center"] == "/inventory/import"
 
 
 async def test_import_route_requires_write_permission(db: AsyncSession, tenant_ctx) -> None:

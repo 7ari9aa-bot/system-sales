@@ -33,7 +33,9 @@ def _conversation(channel: str) -> SimpleNamespace:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("channel", ["messenger", "instagram"])
-async def test_the_identity_is_read_for_the_conversations_own_channel(monkeypatch, channel: str) -> None:
+async def test_the_identity_is_read_for_the_conversations_own_channel(
+    monkeypatch, channel: str
+) -> None:
     identities = _Identities("scoped-1")
     monkeypatch.setattr(customer_profile, "customers", lambda: identities)
     tenant_id = uuid.uuid4()
@@ -49,4 +51,7 @@ async def test_the_identity_is_read_for_the_conversations_own_channel(monkeypatc
 async def test_a_missing_identity_is_no_customer_rather_than_an_error(monkeypatch) -> None:
     monkeypatch.setattr(customer_profile, "customers", lambda: _Identities(None))
 
-    assert await ReadSignalService._customer_ref(None, uuid.uuid4(), _conversation("messenger")) is None
+    assert (
+        await ReadSignalService._customer_ref(None, uuid.uuid4(), _conversation("messenger"))
+        is None
+    )

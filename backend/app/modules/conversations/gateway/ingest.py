@@ -182,10 +182,16 @@ class IngestService:
             if message.reply_to_message_id
             else None
         )
-        if cls._came_from_ad(message):
+        referral = cls._referral_details(message)
+        if referral:
             # Meta extends the messaging window to 7 days for a conversation that began from a
-            # Click-to-Messenger / Click-to-Direct ad. add_message turns this into the marker.
-            provider_metadata = {**(provider_metadata or {}), "from_ad": True}
+            # Click-to-Messenger / Click-to-Direct ad (add_message turns `from_ad` into the
+            # marker), and the ad itself is context the agent needs: which campaign brought this
+            # person in. Only the fields Meta sent, checked, so a hostile payload cannot put
+            # anything else on the screen.
+            provider_metadata = {**(provider_metadata or {}), "referral": referral}
+            if str(referral.get("source") or "").upper() == "ADS" or referral.get("ad_id"):
+                provider_metadata["from_ad"] = True
 
         created = await ConversationService.add_message(
             session,
@@ -314,7 +320,6 @@ class IngestService:
             asyncio.create_task(_run())
         except RuntimeError:  # no running loop (a sync test, a CLI replay): skip the courtesy
             logger.warning("ingest.profile_enrich_no_loop tenant=%s channel=%s", tenant_id, channel)
-
 
     @staticmethod
     async def _open_conversation(
@@ -581,12 +586,25 @@ class IngestService:
 
                 changes = parse_feed(payload)
                 if changes:
-                    outcome = await PageEventProcessor.apply(
-                        session, tenant_id, channel, changes
-                    )
+                    outcome = await PageEventProcessor.apply(session, tenant_id, channel, changes)
                     logger.info(
                         "facebook.feed_applied",
                         extra={"tenant_id": str(tenant_id), "channel": channel, **outcome},
+                    )
+                    # The same events are the notifications screen's food. They are recorded even
+                    # when `apply` could not find the object (unknown_post): a post published
+                    # before the Page was connected is still news the merchant should see, and
+                    # the row is what makes the read mark shared instead of per browser.
+                    from app.modules.conversations.page_activity_service import (
+                        PageActivityService,
+                    )
+
+                    noted = await PageActivityService.record_changes(
+                        session, tenant_id, channel, changes
+                    )
+                    logger.info(
+                        "facebook.feed_activity",
+                        extra={"tenant_id": str(tenant_id), "channel": channel, **noted},
                     )
             # An edited message: Meta sends the mid and the new text. The old body is kept in
             # provider_metadata so the thread can show that it changed.
@@ -626,6 +644,14 @@ class IngestService:
                         )
                     else:
                         await _record_template_resync(session, tenant_id, channel, error=None)
+            # Meta warning, then blocking, the Page's messaging: `messaging_policy_enforcement`.
+            # Nothing read this field before, so a Page Meta had already blocked kept looking
+            # healthy and the agent kept writing replies that could not be delivered.
+            parse_policy = getattr(adapter, "parse_policy_events", None)
+            if callable(parse_policy):
+                policy_events = parse_policy(payload)
+                if policy_events:
+                    await _apply_policy_events(session, tenant_id, channel, policy_events)
             # Meta saying the ACCOUNT is limited or banned, or that its sending limit moved. The
             # events are signed, and the only thing done with them is to tighten the channel's
             # status or note a number: nothing here lets an event loosen anything.
@@ -842,6 +868,36 @@ class IngestService:
         except Exception:  # noqa: BLE001 - a name is never worth losing a received message
             logger.warning("ingest.customer_name_lookup_failed channel=%s", channel, exc_info=True)
 
+    #: The referral fields worth showing, and the longest each may be. Meta's own keys; anything
+    #: else in the object is dropped rather than passed through.
+    _REFERRAL_FIELDS = ("source", "type", "ref", "ad_id", "ref_source", "headline", "ctwa_clid")
+
+    @classmethod
+    def _referral_details(cls, message) -> dict | None:
+        """The Click-to-Messenger / Click-to-Direct referral, as a small checked dict.
+
+        The adapters keep it under ``raw["_messenger"]`` (Messenger) or ``raw["_ig"]`` (Instagram).
+        Before this, the only thing kept was a bare ``from_ad`` flag, so the agent could tell the
+        conversation started from an ad but not which one — the campaign, the ad id and the
+        headline Meta sent were thrown away.
+        """
+        raw = message.raw if isinstance(message.raw, dict) else {}
+        for key in ("_messenger", "_ig"):
+            extra = raw.get(key)
+            if not isinstance(extra, dict):
+                continue
+            referral = extra.get("referral")
+            if not isinstance(referral, dict):
+                continue
+            kept = {}
+            for name in cls._REFERRAL_FIELDS:
+                value = referral.get(name)
+                if isinstance(value, str) and value.strip():
+                    kept[name] = value.strip()[:255]
+            if kept:
+                return kept
+        return None
+
     @staticmethod
     def _came_from_ad(message) -> bool:
         """True when this inbound message carries a Click-to-Messenger / Click-to-Direct referral.
@@ -973,6 +1029,87 @@ async def _apply_account_signals(
         logger.warning(
             "ingest.account_signal_failed tenant=%s channel=%s", tenant_id, channel, exc_info=True
         )
+
+
+async def _apply_policy_events(
+    session, tenant_id: uuid.UUID, channel: str, events: list[dict]
+) -> None:
+    """Record Meta's messaging-policy news as operational state and as a notification.
+
+    A BLOCK is not a guess: Meta said the Page may not message, so the channel is moved to
+    ``restricted`` (a lifecycle state that already exists) and every surface that reads
+    ``check_integrations`` shows it. A WARN is recorded and nothing else: it is a warning, and
+    restricting a working channel over one would cost the owner the channel for nothing. Neither
+    ever moves a channel BACK to active — only reconnecting does that, because a quiet period
+    proves nothing.
+
+    The notification row is written through the same Page activity feed the rest of the Page's
+    news uses, with the event's own timestamp in the dedup key, so a delivery Meta retries updates
+    the row instead of nagging the owner twice.
+    """
+    from app.modules.conversations.page_activity_service import PageActivityService
+
+    try:
+        integration = (
+            await session.execute(
+                select(Integration)
+                .where(
+                    Integration.tenant_id == tenant_id,
+                    Integration.provider == channel,
+                    Integration.kind == "channel",
+                )
+                .order_by(
+                    case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                    Integration.id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        health = dict((integration.webhook_health if integration else None) or {})
+        now = datetime.now(UTC)
+        for event in events:
+            action = str(event.get("action") or "").upper()
+            at = _epoch_or_now(event.get("at"), now)
+            health["messaging_policy"] = {
+                "action": action,
+                "reason": event.get("reason") or "",
+                "expires_at": event.get("expires_at"),
+                "at": at.isoformat(),
+            }
+            if integration is not None and action == "BLOCK":
+                if integration.status in ("active", "connected"):
+                    integration.status = "restricted"
+            await PageActivityService.record(
+                session,
+                tenant_id,
+                channel=channel,
+                kind="policy",
+                object_id=str(event.get("page_id") or channel),
+                occurred_at=at,
+                summary=(
+                    f"ميتا أوقفت مراسلة الصفحة: {event.get('reason') or action}"
+                    if action == "BLOCK"
+                    else f"تحذير من ميتا على مراسلة الصفحة: {event.get('reason') or action}"
+                ),
+            )
+        if integration is not None:
+            integration.webhook_health = health
+            await session.flush()
+    except Exception:  # noqa: BLE001 - the delivery is accepted; the mark is best-effort
+        logger.warning(
+            "ingest.policy_event_failed tenant=%s channel=%s", tenant_id, channel, exc_info=True
+        )
+
+
+def _epoch_or_now(value: object, fallback: datetime) -> datetime:
+    """Meta's epoch seconds, or the current time when the event carries no usable stamp."""
+    try:
+        seconds = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return fallback
+    if seconds <= 0:
+        return fallback
+    return datetime.fromtimestamp(seconds, tz=UTC)
 
 
 async def _record_template_resync(

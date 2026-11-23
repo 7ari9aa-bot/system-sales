@@ -485,7 +485,13 @@ def test_a_product_list_groups_items_into_sections():
             "body": "اختار من اللي عندنا",
             "catalog_id": "CAT-1",
             "sections": [
-                {"title": "أحذية", "product_items": [{"product_retailer_id": "A"}, {"product_retailer_id": "B"}]},
+                {
+                    "title": "أحذية",
+                    "product_items": [
+                        {"product_retailer_id": "A"},
+                        {"product_retailer_id": "B"},
+                    ],
+                },
                 {"product_items": [{"product_retailer_id": "C"}]},
             ],
         }

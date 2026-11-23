@@ -26,12 +26,21 @@ FACEBOOK_PAGE_SCOPES = (
     "pages_read_user_content",
     "read_insights",
 )
-#: The Facebook channel IS the Page: `FacebookPageAdapter` speaks Messenger's protocol under the
-#: Page's name (gateway/facebook.py), so this connection really does receive and send the Page's
-#: DMs. Dropping `pages_messaging` here — as an audit once suggested — would leave the channel
-#: unable to answer a single customer. Messenger keeps its own narrower list for a store that
-#: only chats, and neither list is asked to approve what it does not use.
-FACEBOOK_SCOPES = MESSENGER_SCOPES + "," + ",".join(FACEBOOK_PAGE_SCOPES)
+#: What managing the Page's own content needs — and ONLY that. A Page connection and a Messenger
+#: connection are two FIHRIST functions with two permission sets, even though Meta delivers both
+#: over one Page object: chat always lands on the Messenger capability
+#: (gateway/meta_page_events.py routes every `messaging` entry there), so this list never asks a
+#: store that only manages posts for permission to read its customers' messages.
+FACEBOOK_MANAGEMENT_SCOPES = PAGES_BASE_SCOPES + "," + ",".join(FACEBOOK_PAGE_SCOPES)
+
+#: The one Facebook feature that is really a Messenger message: the private reply to a commenter.
+#: It needs `pages_messaging`, which this connection does not request — the Messenger connection on
+#: the same Page does. The capability is reported as `needs_permission` until that grant exists
+#: instead of being bundled into the Page dialog (docs/channels/facebook-scopes.md).
+FACEBOOK_PRIVATE_REPLY_SCOPES = ("pages_messaging",)
+
+#: What the Facebook dialog asks for: page management, nothing of Messenger's.
+FACEBOOK_SCOPES = FACEBOOK_MANAGEMENT_SCOPES
 
 
 def missing_facebook_scopes(granted: object) -> list[str]:
@@ -44,6 +53,16 @@ def missing_facebook_scopes(granted: object) -> list[str]:
     """
     have = {str(x) for x in granted} if isinstance(granted, (list, tuple, set)) else set()
     return [scope for scope in FACEBOOK_PAGE_SCOPES if scope not in have]
+
+
+def missing_private_reply_scopes(granted: object) -> list[str]:
+    """`pages_messaging`, when the Page connection does not hold it.
+
+    A private reply is a Messenger message, so it needs the Messenger permission. A store that
+    manages posts but never linked Messenger gets an explanation instead of a Meta refusal.
+    """
+    have = {str(x) for x in granted} if isinstance(granted, (list, tuple, set)) else set()
+    return [scope for scope in FACEBOOK_PRIVATE_REPLY_SCOPES if scope not in have]
 
 
 #: What an Instagram connection needs beyond chat: DMs, comments, publishing and insights.

@@ -35,8 +35,8 @@ from app.modules.conversations.routers.inbox import (
 )
 from app.modules.conversations.social_service import (
     MAX_PICTURE_BYTES,
-    MAX_VIDEO_BYTES,
     MAX_REPLY_CHARS,
+    MAX_VIDEO_BYTES,
     SocialService,
 )
 
@@ -162,6 +162,40 @@ async def get_account(
     """The connected Instagram account as its profile page shows it (name, bio, counts)."""
     creds = await _credentials(ctx, send=False)
     return await instagram_adapter.get_account(creds)
+
+
+@router.get("/social/account/insights")
+async def account_insights(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """The account's own numbers (reach, profile views, website clicks, followers).
+
+    A metric Instagram has no data for yet is null, never 0: "no data" and "zero" are different
+    things, and a card that shows 0 for a quiet week is a lie.
+    """
+    creds = await _credentials(ctx, send=False)
+    return {"metrics": await instagram_adapter.get_account_insights(creds)}
+
+
+@router.get("/social/account/fields")
+async def profile_fields(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """What can be read, and what Meta will not let us write.
+
+    Instagram's API reads a professional account's profile; editing the name, username, biography
+    or links happens in the Instagram app. The screen reads this so it shows the profile without
+    offering an edit box that cannot save.
+    """
+    return {"fields": instagram_adapter.profile_fields()}
+
+
+@router.get("/social/insights/catalog")
+async def insight_catalog(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """Every Instagram insight we know about, with an honest state: live or retired by Meta."""
+    return {"metrics": instagram_adapter.insight_catalog()}
 
 
 @router.get("/social/posts")

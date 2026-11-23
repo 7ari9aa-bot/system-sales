@@ -143,7 +143,8 @@ def test_a_limited_time_offer_carries_its_text_and_expiration_flag():
     )
     offer = _by_type(components, "LIMITED_TIME_OFFER")
     assert offer["limited_time_offer"] == {"text": "العرض ينتهي قريبًا", "has_expiration": True}
-    assert _by_type(components, "BUTTONS")["buttons"] == [{"type": "COPY_CODE", "example": "SAVE20"}]
+    buttons = _by_type(components, "BUTTONS")["buttons"]
+    assert buttons == [{"type": "COPY_CODE", "example": "SAVE20"}]
 
 
 def test_a_limited_time_offer_is_marketing_only_and_has_no_footer():
@@ -162,9 +163,7 @@ def test_a_limited_time_offer_is_marketing_only_and_has_no_footer():
 
 def test_a_limited_time_offer_must_say_whether_it_expires():
     with pytest.raises(ValidationError, match="has_expiration"):
-        wa.build_components(
-            body="x", category="MARKETING", limited_time_offer={"text": "t"}
-        )
+        wa.build_components(body="x", category="MARKETING", limited_time_offer={"text": "t"})
 
 
 # --- authentication / OTP ------------------------------------------------------------

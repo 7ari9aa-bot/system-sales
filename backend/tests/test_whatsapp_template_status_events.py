@@ -107,7 +107,9 @@ async def test_a_template_event_is_queued_under_the_store_that_owns_the_account(
     monkeypatch.setattr(adapter, "check_signature", lambda _h, _b: True)
 
     payload = _payload(("WABA-9", [_template_change()]))
-    out = await hooks._ingest_one(db, "whatsapp", adapter, payload, b'{"entry":1}')
+    out = await hooks._ingest_one(
+        db, "whatsapp", adapter, payload, hooks._delivery_digest(b'{"entry":1}')
+    )
 
     assert out == {"ok": True, "queued": True}
     assert seen["waba"] == "WABA-9"
@@ -135,7 +137,11 @@ async def test_a_template_event_for_an_unknown_or_ambiguous_account_is_acked_and
     monkeypatch.setattr(IngestService, "resolve_account_tenant", staticmethod(_nobody))
 
     out = await hooks._ingest_one(
-        db, "whatsapp", adapter, _payload(("WABA-?", [_template_change()])), b"{}"
+        db,
+        "whatsapp",
+        adapter,
+        _payload(("WABA-?", [_template_change()])),
+        hooks._delivery_digest(b"{}"),
     )
 
     assert out.get("ok") is True
@@ -158,7 +164,11 @@ async def test_a_message_delivery_never_asks_for_an_account_lookup(db, tenant_ct
     monkeypatch.setattr(IngestService, "resolve_account_tenant", staticmethod(_boom))
 
     out = await hooks._ingest_one(
-        db, "whatsapp", adapter, _payload(("WABA-1", [_message_change("P1")])), b'{"m":1}'
+        db,
+        "whatsapp",
+        adapter,
+        _payload(("WABA-1", [_message_change("P1")])),
+        hooks._delivery_digest(b'{"m":1}'),
     )
     assert out == {"ok": True, "queued": True}
 

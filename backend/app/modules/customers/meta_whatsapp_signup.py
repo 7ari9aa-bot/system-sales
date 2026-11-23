@@ -55,11 +55,18 @@ class WhatsAppSignupStartOut(BaseModel):
 
 
 class WhatsAppSignupCompleteBody(BaseModel):
-    """What the JS SDK popup hands back, plus the two ids from its session."""
+    """What the JS SDK popup hands back, plus the two ids from its session.
+
+    ``onboarding_mode`` records which way the customer connected. Meta's coexistence flow ends with
+    the FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING step, and a customer who picks it is choosing to
+    keep using the WhatsApp Business app on the same number — not failing to connect. Refusing that
+    step, or folding it into "cloud_api", would hide the difference from every screen afterwards.
+    """
 
     code: str = Field(min_length=8, max_length=4096)
     waba_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
     phone_number_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
+    onboarding_mode: str = Field(default="cloud_api", pattern=r"^(cloud_api|coexistence)$")
 
 
 class WhatsAppSignupCompleteOut(BaseModel):
@@ -71,6 +78,7 @@ class WhatsAppSignupCompleteOut(BaseModel):
     display_name: str | None = None
     phone_number_id: str
     waba_id: str
+    onboarding_mode: str = "cloud_api"
 
 
 def _whatsapp_config() -> tuple[str, str, str]:
@@ -559,6 +567,10 @@ async def whatsapp_signup_complete(
         # The WABA id is not used for tenant resolution (phone_number_id is),
         # but it is what future template/quality calls address.
         "waba_id": body.waba_id,
+        # Which way the customer connected. Kept because coexistence means the WhatsApp Business
+        # app keeps working on this number alongside the API, which changes what a screen should
+        # say about replies typed there.
+        "onboarding_mode": body.onboarding_mode,
         "_connection": _verification_metadata(
             verified_at=verified_at, display_name=display_name or verified.display_name
         ),
@@ -627,6 +639,7 @@ async def whatsapp_signup_complete(
         "display_name": display_name or verified.display_name,
         "phone_number_id": body.phone_number_id,
         "waba_id": body.waba_id,
+        "onboarding_mode": body.onboarding_mode,
     }
 
 

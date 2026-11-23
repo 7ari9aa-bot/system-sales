@@ -53,92 +53,233 @@ STATES = (
 #: States that mean the capability genuinely works today.
 WORKING = (AVAILABLE,)
 
+
 #: A capability and what it needs. ``scopes`` are checked against what Meta says the token holds;
 #: ``fields`` against the asset subscription; ``live_fields`` are the webhook fields that must have
 #: delivered at least once before the feature can be called verified. ``blocked`` is a constant
 #: statement about Meta or about us, so a dead button is explained instead of hidden.
+def _roadmap_state(key: str) -> str:
+    """The declared state of a Meta-gated WhatsApp feature (see whatsapp_roadmap)."""
+    from app.modules.customers.whatsapp_roadmap import ROADMAP
+
+    return str(ROADMAP[key]["state"])
+
+
+def _roadmap_reason(key: str) -> str:
+    """Why that state, in Meta's terms, so a badge carries its evidence."""
+    from app.modules.customers.whatsapp_roadmap import ROADMAP
+
+    spec = ROADMAP[key]
+    return f"{spec['eligibility']} — {spec['evidence']}"
+
+
 _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
     "messenger": (
-        {"key": "inbox", "scopes": ("pages_messaging",), "fields": ("messages",),
-         "live_fields": ("messages",)},
-        {"key": "staff_reply_sync", "scopes": ("pages_messaging",),
-         "fields": ("message_echoes",), "live_fields": ("message_echoes",)},
-        {"key": "handover", "scopes": ("pages_messaging",),
-         "fields": ("messaging_handovers",), "live_fields": ("messaging_handovers",)},
-        {"key": "message_edit", "scopes": ("pages_messaging",),
-         "fields": ("message_edits",), "live_fields": ("message_edits",)},
-        {"key": "reactions", "scopes": ("pages_messaging",),
-         "fields": ("message_reactions",), "live_fields": ()},
+        {
+            "key": "inbox",
+            "scopes": ("pages_messaging",),
+            "fields": ("messages",),
+            "live_fields": ("messages",),
+        },
+        {
+            "key": "staff_reply_sync",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_echoes",),
+            "live_fields": ("message_echoes",),
+        },
+        {
+            "key": "handover",
+            "scopes": ("pages_messaging",),
+            "fields": ("messaging_handovers",),
+            "live_fields": ("messaging_handovers",),
+        },
+        {
+            "key": "message_edit",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_edits",),
+            "live_fields": ("message_edits",),
+        },
+        {
+            "key": "reactions",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_reactions",),
+            "live_fields": (),
+        },
         # Platform settings (greeting, Get Started, persistent menu, ice breakers) and inbox
         # labels are WRITE calls, so they need no webhook field to be verified.
-        {"key": "profile_settings", "scopes": ("pages_messaging",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "profile_settings",
+            "scopes": ("pages_messaging",),
+            "fields": (),
+            "live_fields": (),
+        },
         {"key": "inbox_labels", "scopes": ("pages_messaging",), "fields": (), "live_fields": ()},
-        {"key": "conversation_history", "scopes": ("pages_messaging",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "conversation_history",
+            "scopes": ("pages_messaging",),
+            "fields": (),
+            "live_fields": (),
+        },
         # Measured on Meta's own page: Marketing Messages (Recurring Notifications) is deprecated
         # on 10 Feb 2026 and its successor API is closed to new integrations. Building an opt-in
         # flow now would ship a button Meta refuses, so the state says whose limit this is.
-        {"key": "marketing_optin", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": UNSUPPORTED_BY_API,
-         "blocked_reason": (
-             "Meta deprecated Marketing Messages (Recurring Notifications) on 2026-02-10 and the "
-             "replacement Marketing Messages API is limited to existing partners; no new opt-in "
-             "flow can be created"
-         )},
+        {
+            "key": "marketing_optin",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": UNSUPPORTED_BY_API,
+            "blocked_reason": (
+                "Meta deprecated Marketing Messages (Recurring Notifications) on 2026-02-10, "
+                "and the replacement Marketing Messages API is limited to existing partners; "
+                "no new opt-in flow can be created"
+            ),
+        },
     ),
     "facebook": (
-        {"key": "posts", "scopes": ("pages_manage_posts",), "fields": ("feed",),
-         "live_fields": ()},
-        {"key": "comments", "scopes": ("pages_manage_engagement",), "fields": ("feed",),
-         "live_fields": ("feed",)},
-        {"key": "mentions", "scopes": ("pages_read_engagement",), "fields": ("mention",),
-         "live_fields": ()},
+        {"key": "posts", "scopes": ("pages_manage_posts",), "fields": ("feed",), "live_fields": ()},
+        {
+            "key": "comments",
+            "scopes": ("pages_manage_engagement",),
+            "fields": ("feed",),
+            "live_fields": ("feed",),
+        },
+        {
+            "key": "mentions",
+            "scopes": ("pages_read_engagement",),
+            "fields": ("mention",),
+            "live_fields": (),
+        },
         {"key": "insights", "scopes": ("read_insights",), "fields": (), "live_fields": ()},
+        # The private reply to a commenter is a Messenger message sent by the Page. The Page
+        # connection does not ask for `pages_messaging` (Messenger is its own function with its
+        # own permission set), so this is reported as a permission the store can grant by linking
+        # Messenger, not as a broken button.
+        {"key": "private_reply", "scopes": ("pages_messaging",), "fields": (), "live_fields": ()},
     ),
     "instagram": (
-        {"key": "direct", "scopes": ("instagram_business_manage_messages",),
-         "fields": ("messages",), "live_fields": ("messages",)},
-        {"key": "comments", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("comments",), "live_fields": ("comments",)},
-        {"key": "mentions", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("mentions",), "live_fields": ()},
-        {"key": "handover", "scopes": ("instagram_business_manage_messages",),
-         "fields": ("messaging_handovers",), "live_fields": ("messaging_handovers",)},
+        {
+            "key": "direct",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("messages",),
+            "live_fields": ("messages",),
+        },
+        {
+            "key": "comments",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("comments",),
+            "live_fields": ("comments",),
+        },
+        {
+            "key": "mentions",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("mentions",),
+            "live_fields": (),
+        },
+        {
+            "key": "handover",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("messaging_handovers",),
+            "live_fields": ("messaging_handovers",),
+        },
+        {
+            "key": "message_edit",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("message_edit",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
         # Meta only sends these while a broadcast is live / after a story ends, so a shop that
         # never goes live must not be told something is broken.
-        {"key": "live_comments", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("live_comments",), "live_fields": (), "quiet_when_idle": True},
-        {"key": "story_insights", "scopes": ("instagram_manage_insights",),
-         "fields": ("story_insights",), "live_fields": (), "quiet_when_idle": True},
-        {"key": "publishing", "scopes": ("instagram_business_content_publish",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "live_comments",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("live_comments",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
+        {
+            "key": "story_insights",
+            "scopes": ("instagram_manage_insights",),
+            "fields": ("story_insights",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
+        {
+            "key": "publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
         # Both are built (container + status poll + publish), so they are judged like any other
         # capability instead of being pinned to a stale "not built yet".
-        {"key": "reels_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": ()},
-        {"key": "stories_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": ()},
+        {
+            "key": "reels_publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
+        {
+            "key": "stories_publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
     ),
     "whatsapp": (
-        {"key": "messages", "scopes": (), "fields": ("messages",),
-         "live_fields": ("messages",)},
-        {"key": "templates", "scopes": (), "fields": ("message_template_status_update",),
-         "live_fields": ()},
-        {"key": "account_alerts", "scopes": (), "fields": ("account_update",),
-         "live_fields": ()},
-        {"key": "number_quality", "scopes": (), "fields": ("phone_number_quality_update",),
-         "live_fields": ()},
-        # Declared gaps, not API limits: the platform has not built these yet.
+        {"key": "messages", "scopes": (), "fields": ("messages",), "live_fields": ("messages",)},
+        {
+            "key": "templates",
+            "scopes": (),
+            "fields": ("message_template_status_update",),
+            "live_fields": (),
+        },
+        {"key": "account_alerts", "scopes": (), "fields": ("account_update",), "live_fields": ()},
+        {
+            "key": "number_quality",
+            "scopes": (),
+            "fields": ("phone_number_quality_update",),
+            "live_fields": (),
+        },
         # Built: the Flow lifecycle on Meta's side and the nfm_reply the customer sends back.
         {"key": "flows", "scopes": (), "fields": (), "live_fields": ()},
-        # Built: single product, multi-product and whole-catalog messages in the interactive builder.
+        # Built: single product, multi-product and whole-catalog messages in the builder.
         {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
-        # Built as an opt-in at signup. Meta decides per number whether coexistence is allowed, so
-        # the state says "we can ask", and Meta's own refusal is what the owner sees if it says no.
-        {"key": "coexistence", "scopes": (), "fields": (), "live_fields": ()},
-        {"key": "calls", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": REGION_RESTRICTED},
+        # The four features Meta gates, declared from whatsapp_roadmap so the badge a screen shows
+        # and the reason it shows are the same fact. `coexistence` used to be declared plain
+        # AVAILABLE, which was a false green: nothing in signup handled the coexistence step at all.
+        {
+            "key": "coexistence",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("coexistence"),
+            "blocked_reason": _roadmap_reason("coexistence"),
+        },
+        {
+            "key": "calls",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("calls"),
+            "blocked_reason": _roadmap_reason("calls"),
+        },
+        {
+            "key": "groups",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("groups"),
+            "blocked_reason": _roadmap_reason("groups"),
+        },
+        {
+            "key": "marketing_messages",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("marketing_messages"),
+            "blocked_reason": _roadmap_reason("marketing_messages"),
+        },
     ),
 }
 
@@ -194,7 +335,9 @@ def _state_for(
     if not connected:
         return NEEDS_CONNECTION, None
 
-    missing = [s for s in spec.get("scopes", ()) if granted_scopes is not None and s not in granted_scopes]
+    missing = [
+        s for s in spec.get("scopes", ()) if granted_scopes is not None and s not in granted_scopes
+    ]
     if missing:
         return NEEDS_PERMISSION, f"missing scopes: {', '.join(missing)}"
 

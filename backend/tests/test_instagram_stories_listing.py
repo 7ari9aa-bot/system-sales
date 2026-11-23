@@ -30,9 +30,19 @@ async def test_live_stories_are_read_with_the_story_fields_only():
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(dict(request.url.params))
-        return httpx.Response(200, json={"data": [{"id": "s-1", "media_type": "IMAGE",
-                                                   "media_url": "https://x/1.jpg",
-                                                   "timestamp": "2026-11-23T05:00:00+0000"}]})
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "s-1",
+                        "media_type": "IMAGE",
+                        "media_url": "https://x/1.jpg",
+                        "timestamp": "2026-11-23T05:00:00+0000",
+                    }
+                ]
+            },
+        )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         items = await InstagramAdapter().list_stories(CREDS, _client=client)
@@ -52,7 +62,9 @@ async def test_no_live_story_is_an_empty_list_not_an_error():
 @pytest.mark.asyncio
 async def test_the_service_passes_stories_through_and_drops_one_without_an_id():
     async with httpx.AsyncClient(
-        transport=_transport({"data": [{"id": "s-1", "media_type": "VIDEO"}, {"media_type": "IMAGE"}]})
+        transport=_transport(
+            {"data": [{"id": "s-1", "media_type": "VIDEO"}, {"media_type": "IMAGE"}]}
+        )
     ) as client:
         InstagramAdapter.list_stories.__globals__  # noqa: B018 - keeps the import honest
         import app.modules.conversations.social_service as svc

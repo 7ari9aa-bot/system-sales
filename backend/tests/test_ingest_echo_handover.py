@@ -14,7 +14,6 @@ from types import SimpleNamespace
 import pytest
 
 from app.modules.ai import handover as handover_mod
-from app.modules.conversations.gateway import ingest as ingest_mod
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
@@ -111,7 +110,10 @@ async def test_an_echo_from_an_unknown_customer_is_dropped(monkeypatch) -> None:
     session, sent = _wire(monkeypatch)
 
     stored = await IngestService.apply_echoes(
-        session, TENANT, "messenger", [{**_echo(app_id="9"), "customer_ref": "nobody"}],
+        session,
+        TENANT,
+        "messenger",
+        [{**_echo(app_id="9"), "customer_ref": "nobody"}],
         own_app_id=OWN_APP,
     )
 

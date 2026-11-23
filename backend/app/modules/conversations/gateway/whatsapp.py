@@ -23,11 +23,11 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_provider_body,
 )
-from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
 from app.modules.conversations.gateway.whatsapp_flows import (
     flow_reply_text,
     parse_flow_reply,
 )
+from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
 from app.modules.conversations.gateway.whatsapp_order import order_summary, parse_order
 from app.modules.conversations.gateway.whatsapp_templates import build_send_components
 from app.modules.conversations.policy import template_language

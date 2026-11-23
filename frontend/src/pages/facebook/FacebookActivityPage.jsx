@@ -1,10 +1,30 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import FbAvatar from "@/components/facebook/FbAvatar";
 import { FB } from "@/components/facebook/fbTheme";
 import { cn } from "@/lib/utils";
+import { fetchPageActivity, markPageActivityRead } from "@/lib/facebookApi";
 import { needsAnswer, useFacebookData } from "./useFacebookData";
-import { groupNotifications, headerMenuItems, loadReadMark, saveReadMark } from "./notificationGroups";
+import { groupNotifications, headerMenuItems } from "./notificationGroups";
+
+/**
+ * The Page's own events, as the server recorded them from the webhook: a new post, an edited post,
+ * a deleted post, a reaction, a video and a mention. These used to produce nothing at all, because
+ * the screen was rebuilt from the post list.
+ *
+ * Comments stay where they are (they come from the post list with the author and the text), so the
+ * server's comment rows are left out here instead of showing every comment twice.
+ */
+const FROM_POSTS = new Set(["comment"]);
+
+function usePageActivity() {
+  return useQuery({
+    queryKey: ["facebook", "activity"],
+    queryFn: () => fetchPageActivity({ limit: 100 }),
+    staleTime: 60_000,
+  });
+}
 
 /** The small round badge Facebook puts on a notification's avatar: here, a comment bubble. */
 function CommentBadge() {
@@ -23,20 +43,50 @@ export default function FacebookActivityPage() {
   const [showAll, setShowAll] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const store = typeof window === "undefined" ? null : window.localStorage;
-  const [readUpTo, setReadUpTo] = useState(() => loadReadMark(store, "page"));
+  const activity = usePageActivity();
+  const queryClient = useQueryClient();
+  // The read mark is the server's, so one person reading a notification clears it for everyone.
+  const markRead = useMutation({
+    mutationFn: markPageActivityRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["facebook", "activity"] }),
+  });
+  const [readUpTo] = useState(0);
   const items = useMemo(() => {
     const out = [];
     for (const post of posts) {
       const walk = (list) => list.forEach((c) => { if (!c.isPage) out.push({ comment: c, post, waiting: needsAnswer(c) }); walk(c.replies || []); });
       walk(post.comments || []);
     }
+    for (const event of activity.data?.items || []) {
+      if (FROM_POSTS.has(event.kind)) continue;
+      out.push({ event, waiting: false });
+    }
     return out;
-  }, [posts]);
+  }, [posts, activity.data]);
   const { fresh, earlier, hiddenCount } = useMemo(() => groupNotifications(items, { onlyUnread, showAll, readUpTo }), [items, onlyUnread, showAll, readUpTo]);
   const empty = fresh.length === 0 && earlier.length === 0;
 
-  const row = ({ comment, post, waiting }) => {
+  const eventRow = (event) => {
+    const line = event.summary || (ar ? "حدث جديد على الصفحة" : "New activity on the Page");
+    const at = event.occurred_at ? new Date(event.occurred_at) : null;
+    const when = at && !Number.isNaN(at.getTime()) ? at.toLocaleString(ar ? "ar-EG" : "en-GB") : "";
+    const href = event.parent_id ? `/facebook/posts/${encodeURIComponent(event.parent_id)}` : "/facebook/activity";
+    return (
+      <li key={event.id}>
+        <Link to={href} className="flex items-center gap-3 rounded-lg p-2 hover:bg-[#f2f2f2]">
+          <span className="relative shrink-0"><FbAvatar src="" name={event.actor_name || ""} size="h-14 w-14" /><CommentBadge /></span>
+          <span className="min-w-0 flex-1 text-[15px] leading-5" style={{ color: event.read ? FB.text2 : FB.text }}>
+            <span dir="auto">{line}</span>
+            {event.actor_name && <span dir="auto"> — <b>{event.actor_name}</b></span>}
+            <span className="mt-0.5 block text-[13px]" style={{ color: FB.text2 }}>{when}</span>
+          </span>
+          {!event.read && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: FB.blue }} role="img" aria-label={ar ? "غير مقروء" : "Unread"} />}
+        </Link>
+      </li>
+    );
+  };
+  const row = ({ comment, post, waiting, event }) => {
+    if (event) return eventRow(event);
     // A mention arrives from Meta as ids only (no author name, no text), so it must not render as
     // an empty "commented:" line — same rule the Instagram activity row already follows.
     const mention = !comment.text && !comment.author;
@@ -71,7 +121,7 @@ export default function FacebookActivityPage() {
                 <li key={m.id} role="none">
                   <button type="button" role="menuitem" className="w-full rounded-md px-3 py-2 text-start text-[15px] font-semibold hover:bg-[#f2f2f2]" onClick={() => {
                     setMenuOpen(false);
-                    if (m.id === "markAllRead") { const at = Date.now(); saveReadMark(store, "page", at); setReadUpTo(at); } else navigate(m.to);
+                    if (m.id === "markAllRead") markRead.mutate(); else navigate(m.to);
                   }}>{m.label}</button>
                 </li>
               ))}
@@ -82,6 +132,11 @@ export default function FacebookActivityPage() {
           <button type="button" role="tab" aria-selected={!onlyUnread} className={tab(!onlyUnread)} onClick={() => setOnlyUnread(false)}>{ar ? "الكل" : "All"}</button>
           <button type="button" role="tab" aria-selected={onlyUnread} className={tab(onlyUnread)} onClick={() => setOnlyUnread(true)}>{ar ? "غير مقروءة" : "Unread"}</button>
         </div>
+        {activity.isError && !postsError && (
+          <p role="alert" className="mb-2 text-[14px]" style={{ color: FB.red }}>
+            {ar ? "تعذّر تحميل إشعارات الصفحة." : "Could not load the Page notifications."}
+          </p>
+        )}
         {postsError && <p role="alert" className="mb-2 text-[14px]" style={{ color: FB.red }}>{postsError}</p>}
         {postsLoading && empty && <p role="status" style={{ color: FB.text2 }}>{ar ? "جارٍ التحميل..." : "Loading..."}</p>}
         {!postsLoading && !postsError && empty && (

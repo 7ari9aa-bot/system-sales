@@ -15,6 +15,7 @@ from app.modules.customers.meta_scopes import (
     FACEBOOK_PAGE_SCOPES,
     FACEBOOK_SCOPES,
     MESSENGER_SCOPES,
+    PAGES_BASE_SCOPES,
     granted_scopes_from_permissions,
     missing_facebook_scopes,
 )
@@ -38,8 +39,17 @@ def test_the_facebook_dialog_asks_for_posting_comments_and_insights():
     assert NEEDED <= _scopes("facebook")
 
 
-def test_the_facebook_dialog_still_asks_for_page_messaging():
-    assert set(MESSENGER_SCOPES.split(",")) <= _scopes("facebook")
+def test_the_facebook_dialog_does_not_ask_for_the_inbox():
+    """Messenger is its own function: the Page dialog asks for management, not messages.
+
+    A store that only posts and moderates must not be forced to hand over its customers' inbox.
+    The private reply, the one Page feature that really sends a message, is reported as a
+    capability needing the Messenger grant (tests/test_meta_capability_scopes.py).
+    """
+    facebook = _scopes("facebook")
+    assert "pages_messaging" not in facebook
+    assert set(NEEDED) <= facebook
+    assert set(MESSENGER_SCOPES.split(",")) & facebook == set(PAGES_BASE_SCOPES.split(","))
 
 
 def test_messenger_is_not_asked_to_let_us_post():
@@ -89,7 +99,7 @@ def test_a_business_login_config_replaces_the_scope_list_for_instagram_only():
 
 
 def test_a_connection_with_everything_granted_lacks_nothing():
-    assert missing_facebook_scopes(sorted(NEEDED | {"pages_messaging"})) == []
+    assert missing_facebook_scopes(sorted(NEEDED)) == []
 
 
 @pytest.mark.parametrize("granted", [None, [], "pages_manage_posts", {"a": 1}, 7])

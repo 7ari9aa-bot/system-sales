@@ -790,6 +790,201 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
     )
 
 
+def reconcile_page_id(provider: str, config: dict) -> str | None:
+    """The Page id a reconciliation walks, or None.
+
+    A Messenger channel keeps its Page id in `account_id` (the OAuth callback writes only that);
+    an Instagram channel's `account_id` is the Instagram account, never a Page, so Instagram needs
+    an explicit `page_id`.
+    """
+    explicit = str(config.get("page_id") or "")
+    if explicit:
+        return explicit
+    if provider == "messenger":
+        return str(config.get("account_id") or "") or None
+    return None
+
+
+@platform_router.post(
+    "/integrations/{integration_id}/messenger-reconcile",
+    response_model=schemas.MessengerReconcileOut,
+)
+async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
+    """Compare FIHRIST's threads for a Page to what Meta still lists, within the provider's bounds.
+
+    The answer names what Meta has that we never stored, so a missed webhook becomes a list to
+    import instead of a silent gap. A capped or failed walk reports that it could not prove
+    absence, and a rate limit or outage comes back as an error with its reason.
+    """
+    import httpx
+
+    from app.modules.conversations.messenger_reconcile import reconcile_page
+    from app.modules.customers.models import CustomerIdentity
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in ("messenger", "instagram"):
+        raise ValidationError("Reconciliation exists for Messenger and Instagram only.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    page_id = reconcile_page_id(integration.provider, config)
+    if not page_id:
+        raise ValidationError("This channel has no Page id to reconcile against.")
+
+    credentials = await IntegrationCredentialsService.decrypt(ctx.session, integration)
+    token = str(credentials.get("page_access_token") or credentials.get("api_key") or "")
+    if not token:
+        raise ValidationError("This channel has no usable token to reconcile with.")
+
+    # Meta's own thread id for a person is the PSID/IGSID, which is exactly what a customer
+    # identity stores for the channel. Comparing those two sets is the comparison that matters:
+    # a person Meta can message and FIHRIST has never seen.
+    rows = (
+        await ctx.session.execute(
+            select(CustomerIdentity.external_id).where(
+                CustomerIdentity.tenant_id == ctx.tenant_id,
+                CustomerIdentity.channel == integration.provider,
+            )
+        )
+    ).scalars()
+    local = {str(value) for value in rows if value}
+
+    async with httpx.AsyncClient(timeout=20.0) as http:
+        return await reconcile_page(
+            http,
+            page_id=page_id,
+            token=token,
+            local_thread_ids=local,
+            provider=integration.provider,
+        )
+
+
+@platform_router.get(
+    "/integrations/{integration_id}/reconnect-plan",
+    response_model=schemas.ReconnectPlanOut,
+)
+async def reconnect_plan_route(
+    integration_id: UUID,
+    ctx: SettingsReadCtx,
+    capability: str | None = None,
+):
+    """One Page connection, its capability states, and what to ask Meta for.
+
+    Four problems look identical on a channel screen ("it does not work"): a dead token, a missing
+    scope, an unsubscribed webhook field, and a feature Meta has not approved. Each needs a
+    different action, so this route says which one it is instead of sending the owner to reconnect
+    everything. `capability` narrows it to one function; without it every capability is answered.
+    """
+    from app.modules.customers import meta_linking
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in diag_webhook_objects():
+        raise ValidationError("The linking layer exists for the Meta channels only.")
+
+    connection = meta_linking.MetaPageConnection.from_integration(integration)
+    wanted = [capability] if capability else list(meta_linking.CAPABILITIES)
+    unknown = [name for name in wanted if name not in meta_linking.CAPABILITIES]
+    if unknown:
+        raise ValidationError("unknown capability: " + ", ".join(unknown))
+
+    return {
+        "page_id": connection.page_id,
+        "connected": connection.connected,
+        "has_token": connection.has_token,
+        "granted_scopes": sorted(connection.granted_scopes or ()),
+        "page_tasks": sorted(connection.page_tasks or ()),
+        "subscribed_fields": (
+            sorted(connection.subscribed_fields)
+            if connection.subscribed_fields is not None
+            else None
+        ),
+        "capabilities": [
+            {
+                "capability": name,
+                "plan": meta_linking.reconnect_plan(connection, name),
+            }
+            for name in wanted
+        ],
+        "states": connection.capability_states(),
+    }
+
+
+def diag_webhook_objects() -> tuple[str, ...]:
+    """The providers the shared linking layer covers (the Meta channels)."""
+    from app.modules.customers import meta_channel_diagnostics as diag
+
+    return tuple(diag.WEBHOOK_OBJECT)
+
+
+@platform_router.get(
+    "/integrations/{integration_id}/whatsapp-roadmap",
+    response_model=schemas.WhatsAppRoadmapOut,
+)
+async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
+    """The WhatsApp features Meta gates, each with its state and what the owner can do.
+
+    Calls, Groups and Marketing Messages are not switches FIHRIST owns: Meta decides per number,
+    per business account and per approval. They are listed here with that state and the evidence,
+    so the channel screen shows a reason instead of a button that cannot work. Coexistence is the
+    one of the four FIHRIST can ask for at signup, and its measured state comes from what the
+    connection actually recorded.
+    """
+    from app.modules.customers import whatsapp_roadmap as roadmap_mod
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider != "whatsapp":
+        raise ValidationError("The WhatsApp roadmap exists for the WhatsApp channel only.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    mode = str(config.get("onboarding_mode") or "cloud_api")
+    rows = []
+    for row in roadmap_mod.roadmap():
+        if row["key"] == "coexistence":
+            row = dict(row)
+            row["onboarding_mode"] = mode
+            row["measured"] = True
+            # Connected through coexistence means Meta already allowed it for this number; a
+            # cloud_api connection simply has not asked, which is not a refusal.
+            row["state"] = (
+                roadmap_mod.AVAILABLE if mode == "coexistence" else roadmap_mod.ACCOUNT_INELIGIBLE
+            )
+        rows.append(row)
+    return {
+        "connected": integration.status in ("active", "connected", "restricted"),
+        "onboarding_mode": mode,
+        "features": rows,
+    }
+
+
 @platform_router.post(
     "/integrations/{integration_id}/retry-meta-cleanup",
     response_model=schemas.IntegrationOut,

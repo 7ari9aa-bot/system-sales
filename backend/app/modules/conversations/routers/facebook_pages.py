@@ -18,6 +18,7 @@ from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError,
 from app.modules.conversations.facebook_service import MAX_PICTURE_BYTES, FacebookService
 from app.modules.conversations.gateway import facebook_video
 from app.modules.conversations.gateway.facebook_pages import facebook_pages, page_token_and_id
+from app.modules.conversations.page_activity_service import PageActivityService
 from app.modules.conversations.routers._deps import TenantContext, require_permission
 from app.modules.conversations.routers.inbox import (
     _allowed_channels,
@@ -243,6 +244,44 @@ async def publish_reel(
     return {"id": video_id, "scheduled": schedule_at is not None}
 
 
+@router.post("/facebook/videos", status_code=201)
+async def publish_video(
+    request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))
+):
+    """Publish an ordinary video post. The raw mp4 is the body; text and time travel in headers.
+
+    `X-Description`, `X-Title` (percent-encoded) and `X-Schedule-At` (ISO time, 10 minutes to 30
+    days away) are optional. A Reel and a Story have their own routes; this is the plain feed post.
+    """
+    creds = await _credentials(ctx, send=True)
+    video = await _read_body(request, facebook_video.MAX_VIDEO_BYTES, "video")
+    schedule_at = None
+    if raw := request.headers.get("x-schedule-at"):
+        try:
+            schedule_at = datetime.fromisoformat(raw)
+        except ValueError as exc:
+            raise ValidationError("the schedule time is not a valid date") from exc
+    video_id = await FacebookService.publish_video(
+        ctx.session,
+        ctx.tenant_id,
+        creds,
+        video=video,
+        description=_header_text(request, "x-description"),
+        title=_header_text(request, "x-title"),
+        schedule_at=schedule_at,
+    )
+    return {"id": video_id, "scheduled": schedule_at is not None}
+
+
+@router.get("/facebook/videos/{video_id}")
+async def get_video_status(
+    video_id: str, ctx: TenantContext = Depends(require_permission("conversations:read"))
+):
+    """Whether Meta finished processing the video, and the reason it gives when it did not."""
+    creds = await _credentials(ctx, send=False)
+    return await FacebookService.video_status(ctx.session, ctx.tenant_id, creds, video_id)
+
+
 @router.post("/facebook/stories", status_code=201)
 async def publish_story(
     request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))
@@ -348,8 +387,7 @@ async def page_field_matrix(
     """Which Page fields are editable, which need a permission, and which Meta does not expose."""
     return {
         "fields": [
-            {"name": name, **spec}
-            for name, spec in facebook_pages.PAGE_FIELD_MATRIX.items()
+            {"name": name, **spec} for name, spec in facebook_pages.PAGE_FIELD_MATRIX.items()
         ]
     }
 
@@ -472,12 +510,36 @@ async def private_reply(
     body: TextRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    """One private Messenger message to the commenter, within 7 days of the comment."""
+    """One private Messenger message to the commenter, within 7 days of the comment.
+
+    Sending it needs `pages_messaging` — the Messenger permission. This connection is the Page's
+    management grant and deliberately does not ask for it, so a store that never linked Messenger
+    is told which function to connect instead of meeting Meta's refusal.
+    """
+    from app.modules.customers.meta_scopes import missing_private_reply_scopes
+
     creds = await _credentials(ctx, send=True)
+    connection = creds.get("_connection") if isinstance(creds.get("_connection"), dict) else {}
+    if missing_private_reply_scopes(connection.get("granted_scopes")):
+        raise ConflictError(
+            "a private reply is a Messenger message: connect Messenger for this Page first"
+        )
     mid = await FacebookService.private_reply(
         ctx.session, ctx.tenant_id, creds, comment_id, body.text, user_id=ctx.user.id
     )
     return {"message_id": mid}
+
+
+@router.get("/facebook/insights/catalog")
+async def insight_catalog(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """Every insight we know about and its honest state: live, retired by Meta, or not exposed.
+
+    A screen reads this so a retired metric is a labelled card, not an error: Meta removed the
+    impressions family, and Page ratings and verification have no API surface at all.
+    """
+    return {"metrics": facebook_pages.insight_catalog()}
 
 
 @router.get("/facebook/insights")
@@ -487,7 +549,8 @@ async def page_insights(
     ctx: TenantContext = Depends(require_permission("conversations:read")),
 ):
     creds = await _credentials(ctx, send=False)
-    return {"metrics": await facebook_pages.get_page_insights(creds, since=since, until=until)}
+    report = await facebook_pages.insights_report(creds, kind="page", since=since, until=until)
+    return {"metrics": report["data"], "unavailable": report["unavailable"]}
 
 
 @router.get("/facebook/posts/{post_id}/insights")
@@ -497,7 +560,56 @@ async def post_insights(
     creds = await _credentials(ctx, send=False)
     if await FacebookService.get_post(ctx.session, ctx.tenant_id, post_id) is None:
         raise NotFoundError("post not found")
-    return {"post_id": post_id, "metrics": await facebook_pages.get_post_insights(creds, post_id)}
+    report = await facebook_pages.insights_report(creds, kind="post", post_id=post_id)
+    return {
+        "post_id": post_id,
+        "metrics": report["data"],
+        "unavailable": report["unavailable"],
+    }
+
+
+@router.get("/facebook/activity")
+async def page_activity(
+    only_unread: bool = False,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """What happened on the Page, newest first, read from our own table.
+
+    The screen used to derive this from the post list and keep its read mark in `localStorage`, so
+    a new/edited/deleted post, a reaction or a video never showed up and one person reading a
+    notification left it unread on every other device. These rows come from the webhook.
+    """
+    await _credentials(ctx, send=False)
+    rows = await PageActivityService.list_activity(
+        ctx.session, ctx.tenant_id, channel=_PROVIDER, only_unread=only_unread, limit=limit
+    )
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "object_id": row.object_id,
+                "parent_id": row.parent_id,
+                "actor_name": row.actor_name,
+                "summary": row.summary,
+                "occurred_at": row.occurred_at.isoformat(),
+                "read": row.read_at is not None,
+            }
+            for row in rows
+        ],
+        "unread": sum(1 for row in rows if row.read_at is None),
+    }
+
+
+@router.post("/facebook/activity/read")
+async def mark_page_activity_read(
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Mark the Page's activity read for the whole tenant — every device, one write."""
+    await _credentials(ctx, send=True)
+    marked = await PageActivityService.mark_read(ctx.session, ctx.tenant_id, channel=_PROVIDER)
+    return {"marked": marked}
 
 
 __all__ = ["router", "ValidationError"]
