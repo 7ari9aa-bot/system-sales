@@ -1,20 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { catalogApi } from "./catalogApi";
 import { posApi } from "./posApi";
-import { materialChoices, seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
+import { fetchStockRows, materialChoices, seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
 
 export const STOCK_KEY = ["cashier", "stock"];
 
 /**
- * The stock grid. Search and the status filter are applied ON THE SERVER (so a filter reaches variants
- * beyond what is loaded and the status can never disagree with the backend rule). Category is filtered
- * by id for the same reason.
+ * The stock grid: EVERY variant matching the filters, not one capped page.
+ *
+ * Search and the status filter are applied ON THE SERVER (so a filter reaches variants beyond what
+ * is loaded and the status can never disagree with the backend rule); the paging is the client's,
+ * because the endpoint caps a page at 1,000 and this list is also what the CSV export, the labels
+ * and the stocktake sheet read.
  */
 export function useStock(filters) {
   const query = stockQuery(filters);
   return useQuery({
     queryKey: [...STOCK_KEY, "rows", query],
-    queryFn: async () => (await posApi.stock(query)).map(stockRowFromApi),
+    queryFn: async () => (await fetchStockRows(filters, (qs) => posApi.stock(qs))).map(stockRowFromApi),
     placeholderData: (previous) => previous, // keep the old rows on screen while a filter loads
   });
 }

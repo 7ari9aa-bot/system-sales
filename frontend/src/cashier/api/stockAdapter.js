@@ -9,6 +9,7 @@
  *    look like 100%. It stays null all the way to the cell, which prints "غير معروفة".
  */
 import { materialText } from "@/cashier/lib/material";
+import { fetchAllStock } from "./sessionCatalog";
 
 /** The page size the screen asks for. One shop first: 1000 is the server's ceiling. */
 export const STOCK_LIMIT = 1000;
@@ -83,6 +84,19 @@ export function stockQuery({ term = "", categoryId = "", brandId = "", season = 
   p.set("limit", String(limit));
   if (offset) p.set("offset", String(offset));
   return p.toString();
+}
+
+/**
+ * EVERY row matching the filters, page by page.
+ *
+ * `GET /pos/stock` caps a page at 1,000 (default 500), and the grid, the CSV export, the labels and
+ * the stocktake sheet all read this one list. Asking for a single page meant a shop past that count
+ * silently lost the tail of its stock: pieces missing from the grid, labels that could never be
+ * printed, and a stocktake sheet that could not count what it never saw. The last page is the first
+ * one shorter than a page, because the endpoint returns no total.
+ */
+export async function fetchStockRows(filters, fetchPage) {
+  return fetchAllStock((offset, limit) => fetchPage(stockQuery({ ...(filters ?? {}), offset, limit })));
 }
 
 /** A cell for a cost that may be unknown. */
