@@ -6,8 +6,13 @@ listing and the tests all need these, and the connect flow and the listing impor
 
 from __future__ import annotations
 
-#: What a store that only chats on Messenger is asked for.
-MESSENGER_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
+#: What ANY Page connection needs first: the Page list to choose from, its engagement data, and
+#: `pages_manage_metadata` — the permission that lets the app subscribe itself to the Page's
+#: webhook fields at all. Neither chat nor posts work without these three.
+PAGES_BASE_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata"
+
+#: What a store that only chats on Messenger is asked for: the base grant plus the inbox.
+MESSENGER_SCOPES = PAGES_BASE_SCOPES + ",pages_messaging"
 
 #: The Facebook channel is the Page's chat PLUS its own posts, comments and numbers, so it asks for
 #: what Meta's Pages API demands for each (developers.facebook.com/docs/pages-api): publish a post
@@ -21,6 +26,11 @@ FACEBOOK_PAGE_SCOPES = (
     "pages_read_user_content",
     "read_insights",
 )
+#: The Facebook channel IS the Page: `FacebookPageAdapter` speaks Messenger's protocol under the
+#: Page's name (gateway/facebook.py), so this connection really does receive and send the Page's
+#: DMs. Dropping `pages_messaging` here — as an audit once suggested — would leave the channel
+#: unable to answer a single customer. Messenger keeps its own narrower list for a store that
+#: only chats, and neither list is asked to approve what it does not use.
 FACEBOOK_SCOPES = MESSENGER_SCOPES + "," + ",".join(FACEBOOK_PAGE_SCOPES)
 
 

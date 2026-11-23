@@ -476,13 +476,36 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
     return list(found.values())
 
 
-def _messaging_pages(all_pages: list[dict]) -> list[dict]:
-    """The Pages this operator can run messaging on.
+async def _unsubscribe_page_from_app(
+    http: httpx.AsyncClient, *, page_id: str, page_token: str
+) -> bool:
+    """Remove OUR app from a Page's webhook subscriptions (``DELETE /{page_id}/subscribed_apps``).
+
+    Used only to undo a subscription this flow just made, when the local save then failed: Meta
+    would otherwise keep sending that Page's events to an app with no channel to store them in.
+    Best effort by design — a cleanup that fails must never hide the original error.
+    """
+    try:
+        response = await http.delete(
+            f"{_GRAPH}/{page_id}/subscribed_apps", params={"access_token": page_token}
+        )
+    except Exception:  # noqa: BLE001 - cleanup must not mask the real failure
+        return False
+    return response.is_success
+
+
+def _messaging_pages(all_pages: list[dict], provider: str = "messenger") -> list[dict]:
+    """The Pages this operator can run the channel on.
 
     A Page whose `tasks` list is missing or empty is kept (older Graph answers omit it). A Page
-    whose list is present but names neither MESSAGING nor MANAGE is NOT one the operator can run
+    whose list is present but names neither MESSAGING nor MANAGE is not one the operator can run
     chat on, so it is never offered, not even as a fallback when nothing else qualifies: the old
     fallback returned every Page and let the owner connect one Meta would then refuse.
+
+    `provider` is accepted and currently changes nothing ON PURPOSE: the Facebook channel speaks
+    Messenger's protocol under the Page's name (gateway/facebook.py), so a Page where the operator
+    holds MESSAGING alone is a valid Facebook connection — it can chat, and any permission it
+    lacks is reported by the connection instead of hiding the Page here.
     """
     return [
         page
@@ -491,6 +514,7 @@ def _messaging_pages(all_pages: list[dict]) -> list[dict]:
         or "MESSAGING" in (page.get("tasks") or [])
         or "MANAGE" in (page.get("tasks") or [])
     ]
+
 
 
 def _page_choices(pages: list[dict]) -> list[dict]:
@@ -743,7 +767,7 @@ async def _meta_exchange_and_connect(
                 for p in all_pages
             ],
         )
-        pages = _messaging_pages(all_pages)
+        pages = _messaging_pages(all_pages, provider)
         if len(pages) > 1:
             # One channel holds one Page and the owner ticked several: ask which, instead of
             # silently taking the first. Nothing is stored yet — the choice finishes the connect.
@@ -758,6 +782,13 @@ async def _meta_exchange_and_connect(
                 page_ids=[str(p["id"]) for p in pages],
             )
             raise PageChoiceRequired(ticket, _page_choices(pages))
+        if not pages:
+            # Nothing the operator can run this channel on. Indexing here raised IndexError, which
+            # the popup showed as an unknown failure instead of telling them why.
+            raise ValidationError(
+                "مفيش صفحة عندك صلاحية إدارتها لهذه القناة. اطلب من مالك الصفحة صلاحية "
+                "MANAGE أو MESSAGING ثم جرّب تاني."
+            )
         return await _connect_page(
             session,
             http,
@@ -791,7 +822,25 @@ async def _connect_page(
     )
 
     _config_id = config_id
-    # 4) Credentials + routing identity per gateway contract:
+    # 4) Local refusals FIRST. A disabled channel and a plan that has no room for another
+    #    channel must be refused before anything is written at Meta: subscribing the Page and
+    #    then rejecting the connect leaves a webhook pointed at an app that will never store
+    #    what it receives, and the owner sees a failed connect that changed Meta anyway.
+    existing = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == provider,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "disabled":
+        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
+    if existing is None:
+        await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
+
+    # 5) Credentials + routing identity per gateway contract:
     #    - the webhook routes inbound by config.account_id;
     #    - the Instagram gateway SENDS against the IG business account
     #      (/{ig-id}/messages with the PAGE token), so that id must ride
@@ -832,7 +881,8 @@ async def _connect_page(
             page_id=str(page["id"]),
             page_token=page_token,
             provider=provider,
-            app_id=app_id,
+            # The app id is resolved from settings inside: _connect_page never held one, and a
+            # name that does not exist here crashed the connect before Meta was even called.
         )
     except ExternalProviderError as exc:
         # Without this subscription nothing the customer sends would ever arrive.
@@ -855,20 +905,6 @@ async def _connect_page(
         "refreshable": bool(provider == "instagram" and _config_id and expires_in),
     }
 
-    existing = (
-        await session.execute(
-            select(Integration).where(
-                Integration.tenant_id == tenant_id,
-                Integration.provider == provider,
-                Integration.kind == "channel",
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None and existing.status == "disabled":
-        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
-    if existing is None:
-        await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
-
     verified_at = datetime.now(UTC).isoformat()
     connection_meta = _verification_metadata(
         verified_at=verified_at, display_name=verified.display_name
@@ -879,24 +915,34 @@ async def _connect_page(
         "_connection": connection_meta,
     }
     encrypted = encrypt_credentials_dict(credentials)
-    if existing is None:
-        integration = Integration(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            provider=provider,
-            kind="channel",
-            config=integration_config,
-            credentials=encrypted,
-            status="pending",
-        )
-        _activate_verified_channel(integration)
-        session.add(integration)
-    else:
-        _activate_verified_channel(existing)
-        existing.config = integration_config
-        existing.credentials = encrypted
-        integration = existing
-    await session.flush()
+    try:
+        if existing is None:
+            integration = Integration(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                provider=provider,
+                kind="channel",
+                config=integration_config,
+                credentials=encrypted,
+                status="pending",
+            )
+            _activate_verified_channel(integration)
+            session.add(integration)
+        else:
+            _activate_verified_channel(existing)
+            existing.config = integration_config
+            existing.credentials = encrypted
+            integration = existing
+        await session.flush()
+    except Exception:
+        # The Page is already subscribed by this point. For a brand-new connect nothing local
+        # exists, so the subscription is taken back rather than left pointing at a channel this
+        # workspace does not have. A reconnect keeps it: the previous channel is still live.
+        if existing is None:
+            await _unsubscribe_page_from_app(
+                http, page_id=str(page["id"]), page_token=page_token
+            )
+        raise
 
     display_name = verified.display_name or str(page.get("name") or page["id"])
     return provider, display_name
