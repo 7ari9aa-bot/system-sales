@@ -206,7 +206,9 @@ test("the channel strip takes you from Instagram to another channel", async ({ p
   ]) }));
   await page.goto("/instagram/profile", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.locator("aside nav").last().getByRole("button", { name: /whatsapp/i }).click();
-  await expect(page).toHaveURL(/\/inbox$/);
+  // Messenger and WhatsApp are their own channels now, so the strip lands on that channel's
+  // inbox rather than the bare /inbox: the channel travels as a query parameter.
+  await expect(page).toHaveURL(/\/inbox\?channel=whatsapp$/);
 });
 
 // Pin, mute, archive and "mark unread" are real store-wide flags saved through /list-state. Each button must

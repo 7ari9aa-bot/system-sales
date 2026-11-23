@@ -116,7 +116,9 @@ test("Messenger's attachment menu offers only what it can send: no camera, conta
   });
   await page.goto("/inbox", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.getByText("Omar Ali").first().click();
-  await page.getByTitle(/Attach media|إرفاق ملف أو صورة/).click();
+  // Messenger has its own composer (ChannelChat's isMessenger branch): the paperclip is titled
+  // "إرفاق ملف" / "Attach a file", which is what this thread really renders.
+  await page.getByTestId("messenger-composer").getByRole("button", { name: /إرفاق ملف|Attach a file/ }).click();
   const menu = page.getByRole("menu");
   await expect(menu.getByText("Document")).toBeVisible({ timeout: 10_000 });
   await expect(menu.getByText("Photos & videos")).toBeVisible();

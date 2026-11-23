@@ -43,3 +43,23 @@ npx playwright test --workers=1
    الاختبار (أو الواجهة لو التعليقات فعلًا اختفت من التغذية).
 ٢. `icon-buttons-named.spec.js`: عدّاد «+٩٩».
 ٣. بعد كده أعيد التشغيل الكامل بـ`--workers=2` (زي runner صغير) وأشوف الأرقام الحقيقية.
+
+## Full-suite run, measured (final)
+
+`npx playwright test --workers=2` against a fresh `npm run build` + `npm run preview`:
+**448 passed, 3 failed, 23 skipped in 10.3m** (474 collected). Earlier numbers of 97/354
+were worker and `test-results` contention, not broken pages; two workers and no other
+Playwright process alive is the only configuration that gives a trustworthy result.
+
+The three failures, each diagnosed and handled:
+
+1. `cashier-smoke.spec.js` — STILL FAILING, and outside the channels layer. `/cashier/sales`
+   renders «جارٍ التحميل…» under the spec's mock, which answers every endpoint it does not
+   know with `[]`; that screen reads its data through `useShifts` / `useShiftSales` and never
+   leaves the loading state with an empty array. The fix belongs in the spec's mock (answer
+   the shift endpoints with the shape those hooks read), not in the screen.
+2. `inbox-instagram-attachments.spec.js` — FIXED. The test looked for a button titled
+   "Attach media" / «إرفاق ملف أو صورة», but Messenger draws its own composer whose paperclip
+   is «إرفاق ملف» / "Attach a file". Now scoped to `messenger-composer`. 7/7 in the file.
+3. `instagram-pages.spec.js` — FIXED. The channel strip now lands on the channel's own inbox,
+   so the URL is `/inbox?channel=whatsapp`, not the bare `/inbox`; the assertion was stale.

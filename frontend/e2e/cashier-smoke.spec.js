@@ -43,7 +43,9 @@ test("every cashier screen renders without runtime errors", async ({ page }) => 
 
   for (const route of SCREENS) {
     const before = failures.length;
-    await page.goto(route, { waitUntil: "networkidle" });
+    // "networkidle" never settles while the cashier's own polling runs, so it ate the whole 30s
+    // test budget on the first slow screen. The shell assertion below is the real readiness gate.
+    await page.goto(route, { waitUntil: "domcontentloaded", timeout: 30_000 });
     // ننتظر ظهور الهيكل الخاص بالكاشير، وإلا فالصفحة لم تُركَّب أصلاً
     await expect(page.locator(".cashier-root"), `${route} must mount the cashier shell`).toBeVisible({ timeout: 8000 });
     // المحتوى الرئيسي (بدون القائمة الجانبية) لازم يكون فيه نص حقيقي، وإلا فالصفحة فاضية أو رسمت دالة مساعدة بالغلط
