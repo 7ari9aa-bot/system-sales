@@ -13,7 +13,6 @@ owned by the webhook router.
 from __future__ import annotations
 
 import asyncio
-
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -276,9 +275,7 @@ class IngestService:
     # ------------------------------------------------- who the customer is --
 
     @staticmethod
-    def _enrich_profile_soon(
-        tenant_id: uuid.UUID, customer_id: uuid.UUID, channel: str
-    ) -> None:
+    def _enrich_profile_soon(tenant_id: uuid.UUID, customer_id: uuid.UUID, channel: str) -> None:
         """Learn a Meta customer's name and photo without making the webhook wait for Meta.
 
         Fire-and-forget by design: the caller is the ingest path, which owes Meta a fast 200.

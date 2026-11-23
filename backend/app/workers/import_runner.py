@@ -233,9 +233,7 @@ async def _upsert_variant(
         if level is not None:
             from app.modules.inventory.stock_view import StockLevelService
 
-            await StockLevelService.set_reorder_level(
-                session, tenant_id, variant.id, int(level)
-            )
+            await StockLevelService.set_reorder_level(session, tenant_id, variant.id, int(level))
         barcode = values.get("barcode")
         if barcode:
             held = await CatalogService.list_identifiers(session, tenant_id, variant.id)

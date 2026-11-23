@@ -126,9 +126,7 @@ async def test_the_pasted_session_is_checked_by_the_same_validation(db, tenant_c
     created = await _post(owner, "/api/v1/imports/sessions/paste", {"text": PASTE})
     session_id = created.json()["id"]
 
-    async with AsyncClient(
-        transport=ASGITransport(app=_app(owner)), base_url="http://t"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=_app(owner)), base_url="http://t") as c:
         checked = await c.post(f"/api/v1/imports/sessions/{session_id}/validate")
 
     assert checked.status_code == 200, checked.text
