@@ -491,6 +491,44 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
     return list(found.values())
 
 
+async def _page_has_other_active_function(
+    session: AsyncSession, *, tenant_id: uuid.UUID, provider: str, page_id: str
+) -> bool:
+    """Whether this workspace already runs ANOTHER function (Facebook / Messenger / Instagram) on
+    the Page, so its webhook subscription is still in use and must not be removed.
+
+    Facebook and Messenger share the Page's one subscription; taking the app off the Page after a
+    failed second link would silently cut the first one's webhooks. When this cannot be answered
+    the safe answer is "yes, it is in use": a leftover subscription is harmless, a removed one is
+    an outage.
+    """
+    try:
+        rows = (
+            (
+                await session.execute(
+                    select(Integration).where(
+                        Integration.tenant_id == tenant_id,
+                        Integration.kind == "channel",
+                        Integration.provider.in_(("messenger", "facebook", "instagram")),
+                        Integration.provider != provider,
+                        Integration.status.in_(("active", "connected", "restricted")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    except Exception:  # noqa: BLE001 - unknown means "keep the subscription"
+        return True
+    for row in rows:
+        # The credentials are encrypted at rest; the Page id every row needs for routing is in its
+        # config (`page_id` for Facebook, `account_id` for Messenger).
+        config = row.config if isinstance(row.config, dict) else {}
+        if page_id in {str(config.get("page_id") or ""), str(config.get("account_id") or "")}:
+            return True
+    return False
+
+
 async def _unsubscribe_page_from_app(
     http: httpx.AsyncClient, *, page_id: str, page_token: str
 ) -> bool:
@@ -960,7 +998,11 @@ async def _connect_page(
         # The Page is already subscribed by this point. For a brand-new connect nothing local
         # exists, so the subscription is taken back rather than left pointing at a channel this
         # workspace does not have. A reconnect keeps it: the previous channel is still live.
-        if existing is None:
+        # And so does a Page another function of this workspace already runs: Facebook failing to
+        # save must never take Messenger's webhooks off the Page (they share the one subscription).
+        if existing is None and not await _page_has_other_active_function(
+            session, tenant_id=tenant_id, provider=provider, page_id=str(page["id"])
+        ):
             await _unsubscribe_page_from_app(http, page_id=str(page["id"]), page_token=page_token)
         raise
 

@@ -836,3 +836,84 @@ async def test_a_facebook_only_link_asks_for_no_messenger_fields() -> None:
             http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
         )
     assert set(sent["subscribed_fields"].split(",")) == {"feed", "mention"}
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, rows=None, fail=False):
+        self._rows, self._fail = rows or [], fail
+
+    async def execute(self, _stmt):
+        if self._fail:
+            raise RuntimeError("db down")
+        return _Rows(self._rows)
+
+
+def _row(provider: str, **config):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(provider=provider, config=config)
+
+
+async def test_a_page_another_function_still_uses_keeps_its_subscription() -> None:
+    """Messenger runs on Page 100; Facebook failing to save must not take the app off that Page."""
+    import uuid
+
+    session = _FakeSession([_row("messenger", account_id="100")])
+    assert await meta_oauth._page_has_other_active_function(
+        session, tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_a_page_nothing_else_uses_may_be_unsubscribed() -> None:
+    import uuid
+
+    session = _FakeSession([_row("messenger", account_id="999")])
+    assert not await meta_oauth._page_has_other_active_function(
+        session, tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+    assert not await meta_oauth._page_has_other_active_function(
+        _FakeSession([]), tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_when_it_cannot_tell_the_subscription_is_kept() -> None:
+    """A leftover subscription is harmless; a removed one is an outage."""
+    import uuid
+
+    assert await meta_oauth._page_has_other_active_function(
+        _FakeSession(fail=True), tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_the_page_lock_is_skipped_off_postgres_and_taken_on_it() -> None:
+    from types import SimpleNamespace
+
+    from app.modules.customers.meta_linking import lock_page_subscription
+
+    calls: list[str] = []
+
+    class Session:
+        def __init__(self, dialect):
+            self._dialect = dialect
+
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name=self._dialect))
+
+        async def execute(self, stmt, params=None):
+            calls.append(str(stmt))
+
+    await lock_page_subscription(Session("sqlite"), "100")
+    assert calls == []
+    await lock_page_subscription(Session("postgresql"), "100")
+    assert len(calls) == 1 and "pg_advisory_xact_lock" in calls[0]
