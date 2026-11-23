@@ -55,7 +55,6 @@ export default function InstagramProfilePage({ tab = "posts" }) {
           <section className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
               <h1 dir="ltr" className="flex items-center gap-1.5 text-[20px] font-normal">{username || "Instagram"}{account?.is_verified && <IgVerified size={18} label={isArabic ? "موثّق" : "Verified"} />}</h1>
-              {account?.username && <a href={`https://www.instagram.com/${encodeURIComponent(account.username)}/`} target="_blank" rel="noreferrer" className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdfe4]" style={{ background: IG.button }}>{isArabic ? "فتح على إنستغرام" : "View on Instagram"}</a>}
               {actions.refresh && <button type="button" onClick={() => actions.refresh()} className="rounded-lg px-4 py-[7px] text-[14px] font-semibold hover:bg-[#dbdfe4]" style={{ background: IG.button }}>{isArabic ? "تحديث" : "Refresh"}</button>}
             </div>
             <ul className="mt-5 hidden gap-10 md:flex">
