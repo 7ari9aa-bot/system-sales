@@ -39,43 +39,6 @@ class FacebookPageAdapter(MessengerAdapter):
         """
         return [*super().parse_comments(payload), *self.parse_mentions(payload)]
 
-    @staticmethod
-    def parse_mentions(payload: dict) -> list[InboundComment]:
-        """Someone @-mentioned the Page (field ``mention``, also seen written ``mentions``).
-
-        The tag is stored as a comment row with verb ``mention`` so the merchant sees it in
-        Activity, keyed by the comment id (or the post id for a caption tag) so a redelivery is
-        one row. Meta sends the message text only sometimes; the row is kept either way.
-        """
-        out: list[InboundComment] = []
-        for entry in payload.get("entry", []) or []:
-            for change in entry.get("changes", []) or []:
-                if change.get("field") not in ("mention", "mentions"):
-                    continue
-                value = change.get("value") or {}
-                post_id = str(value.get("post_id") or "").strip() or None
-                comment_id = str(value.get("comment_id") or "").strip()
-                key = comment_id or post_id
-                if not key:
-                    continue
-                sender = str(value.get("sender_id") or value.get("from_id") or "").strip()
-                message = value.get("message")
-                body = message.strip() if isinstance(message, str) and message.strip() else None
-                out.append(
-                    InboundComment(
-                        platform_comment_id=f"mention:{key}",
-                        post_id=post_id,
-                        parent_comment_id=None,
-                        author_ref=sender or None,
-                        author_name=None,
-                        body=body,
-                        verb="mention",
-                        raw=value,
-                    )
-                )
-        return out
-
-
     #: The Page's `mention` field arrives singular (unlike Instagram's `mentions`). Both are
     #: accepted: Meta has used each spelling on this object, and a tag must not vanish because of
     #: a plural.
