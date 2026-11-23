@@ -1,6 +1,6 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { IgHeart } from "@/components/instagram/igIcons";
+import { IgHeart, IgReply } from "@/components/instagram/igIcons";
 import { instagramKind } from "./messageKind";
 import { AudioBody, CardBody, DeletedBody, FileBody, HeartBody, ImageBody, StickerBody, UnsupportedBody, VideoBody } from "./InstagramBodies";
 
@@ -9,7 +9,7 @@ const SEEN = { en: "Seen", ar: "تمت المشاهدة" };
 const HEART = "\u2764\ufe0f";
 
 // Instagram draws an outgoing "Seen" once, under the newest message we sent, never a tick on each.
-export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage, onReact }) {
+export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage, onReact, onReply }) {
   const out = m.side === "out";
   const kind = instagramKind(m);
   const bare = kind === "heart" || kind === "sticker"; // these float with no bubble around them
@@ -34,6 +34,9 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
   const reactions = Array.isArray(m.reactions) ? m.reactions.filter(Boolean) : [];
   const liked = m.myReaction === HEART;
   const canHeart = Boolean(onReact) && !out && !bare && kind !== "deleted" && kind !== "unsupported";
+  // Instagram lets you quote any message, yours or theirs (Send API `reply_to`), so the
+  // affordance sits on both sides and on every kind except the bare heart/sticker.
+  const canReply = Boolean(onReply) && !bare && kind !== "deleted";
   return (
     <div className={cn("flex flex-col", out ? "items-end" : "items-start")}>
       {m.replyTo && (
@@ -50,6 +53,13 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
           {body}
           {caption && <div dir="auto" className="mt-1.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{caption}</div>}
         </div>
+        {canReply && (
+          <button type="button" data-testid="ig-reply" aria-label={lang === "ar" ? "الرد على الرسالة" : "Reply to message"}
+            onClick={() => onReply(m)}
+            className="shrink-0 rounded-full p-1 text-[#6a717a] opacity-0 hover:bg-[#f3f5f7] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0095f6] group-hover:opacity-100">
+            <IgReply size={16} />
+          </button>
+        )}
         {canHeart && (
           <button type="button" data-testid="ig-react-heart" aria-pressed={liked} aria-label={liked ? (lang === "ar" ? "إزالة القلب" : "Remove heart") : (lang === "ar" ? "أرسل قلبًا" : "React with a heart")}
             onClick={() => onReact(liked ? "" : HEART)}
