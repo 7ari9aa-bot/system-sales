@@ -90,3 +90,34 @@ def test_a_connection_that_recorded_no_scopes_lacks_all_of_them():
         "instagram_manage_comments",
         "instagram_content_publish",
     ]
+
+
+def _documented_fields(prefix: str) -> set[str]:
+    """The backticked names on the guide's English `Fields:` line that starts with `prefix`."""
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "docs" / "META_SETUP.md").read_text()
+    [line] = [ln for ln in text.splitlines() if ln.startswith(f"Fields: `{prefix}")]
+    return set(re.findall(r"`([a-z_]+)`", line))
+
+
+def test_the_health_check_asks_for_the_dashboard_fields_the_guide_lists():
+    """The check tells the owner which boxes to tick in the App Dashboard. When it named seven
+    Page fields and the guide ten, an owner who followed the check never ticked echoes, handovers
+    or mentions, and Meta never sent them."""
+    from app.modules.customers.meta_channel_diagnostics import DASHBOARD_FIELDS
+
+    assert set(DASHBOARD_FIELDS["page"]) == _documented_fields(
+        "messages`, `messaging_postbacks`, `messaging_referrals"
+    )
+    assert set(DASHBOARD_FIELDS["instagram"]) == _documented_fields(
+        "messages`, `messaging_postbacks`, `message_reactions"
+    )
+
+
+def test_the_dashboard_page_fields_cover_every_channels_page_subscription():
+    from app.modules.customers.meta_channel_diagnostics import DASHBOARD_FIELDS
+
+    for provider in ("messenger", "facebook", "instagram"):
+        assert set(subscribed_fields(provider).split(",")) <= set(DASHBOARD_FIELDS["page"])

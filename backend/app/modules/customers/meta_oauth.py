@@ -108,6 +108,20 @@ _SUBSCRIBED_FIELDS = {
 }
 
 
+#: What is ticked for the `instagram` object in the App Dashboard. These are NOT Page fields (the
+#: Page subscription above never carries them); Meta only delivers them when the app subscribes the
+#: object, which is why the health check names them and docs/META_SETUP.md lists the same ones.
+INSTAGRAM_DASHBOARD_FIELDS = (
+    "messages",
+    "messaging_postbacks",
+    "message_reactions",
+    "messaging_seen",
+    "comments",
+    "mentions",
+    "live_comments",
+)
+
+
 def all_page_subscribed_fields() -> list[str]:
     """Every Page field any channel may ask for, in one stable order (for docs and checks)."""
     return list(dict.fromkeys([*_CHAT_FIELDS, *_MESSENGER_ONLY_FIELDS, *_FACEBOOK_PAGE_FIELDS]))

@@ -22,7 +22,12 @@ from typing import Any
 
 import httpx
 
-from app.modules.customers.meta_oauth import _GRAPH, subscribed_fields
+from app.modules.customers.meta_oauth import (
+    _GRAPH,
+    INSTAGRAM_DASHBOARD_FIELDS,
+    all_page_subscribed_fields,
+    subscribed_fields,
+)
 from app.modules.customers.meta_scopes import (
     FACEBOOK_BASE_SCOPES,
     FACEBOOK_PAGE_SCOPES,
@@ -47,16 +52,10 @@ WEBHOOK_OBJECT = {
 #: What the app-level (dashboard) subscription must tick, per object. Meta delivers a field only
 #: when it is subscribed at BOTH levels: on the app for the object, and on the asset.
 DASHBOARD_FIELDS = {
-    "page": (
-        "messages",
-        "messaging_postbacks",
-        "messaging_referrals",
-        "message_deliveries",
-        "message_reads",
-        "message_reactions",
-        "feed",
-    ),
-    "instagram": ("messages", "messaging_postbacks", "comments"),
+    # Derived, never retyped: the Page object carries every field any Page channel asks for, so a
+    # field added to the connect flow (echoes, handovers, mentions) is checked here the same day.
+    "page": tuple(all_page_subscribed_fields()),
+    "instagram": INSTAGRAM_DASHBOARD_FIELDS,
     "whatsapp_business_account": ("messages",),
 }
 
