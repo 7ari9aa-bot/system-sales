@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 616,
-    "sha256": "540307a0ed6bc658947f419f488e3e28d04f655db96d92f198cee6957dcb7138",
-    "typed_operations": 350
+    "operations": 638,
+    "sha256": "10601e48220edab52fb72661189bc7b05baefaee3d019d310b04be8699df0b8a",
+    "typed_operations": 352
   },
   "spec": {
     "components": {
@@ -3940,6 +3940,112 @@
             "global_available"
           ],
           "title": "ChannelAvailabilityOut",
+          "type": "object"
+        },
+        "ChannelDiagnosticCheck": {
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "status",
+            "summary"
+          ],
+          "title": "ChannelDiagnosticCheck",
+          "type": "object"
+        },
+        "ChannelDiagnosticsOut": {
+          "description": "GET /integrations/{id}/diagnostics: one channel's health, as an ordered list of checks.",
+          "properties": {
+            "callback_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Callback Url"
+            },
+            "checks": {
+              "items": {
+                "$ref": "#/components/schemas/ChannelDiagnosticCheck"
+              },
+              "title": "Checks",
+              "type": "array"
+            },
+            "last_webhook_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Webhook At"
+            },
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "webhook_object": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Webhook Object"
+            }
+          },
+          "required": [
+            "provider",
+            "state",
+            "checks"
+          ],
+          "title": "ChannelDiagnosticsOut",
           "type": "object"
         },
         "ChosenRetentionPolicyOut": {
@@ -10375,6 +10481,94 @@
           "title": "InspectionResultRequest",
           "type": "object"
         },
+        "IntakeVariant": {
+          "properties": {
+            "auto_barcode": {
+              "default": false,
+              "title": "Auto Barcode",
+              "type": "boolean"
+            },
+            "barcode": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Barcode"
+            },
+            "option_values": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Option Values",
+              "type": "object"
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Price"
+            },
+            "reorder_level": {
+              "anyOf": [
+                {
+                  "maximum": 1000000.0,
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reorder Level"
+            },
+            "sku": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Sku",
+              "type": "string"
+            },
+            "stock": {
+              "default": 0,
+              "minimum": 0.0,
+              "title": "Stock",
+              "type": "integer"
+            },
+            "unit_cost": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit Cost"
+            }
+          },
+          "required": [
+            "sku",
+            "price"
+          ],
+          "title": "IntakeVariant",
+          "type": "object"
+        },
         "IntegrationBody": {
           "properties": {
             "config": {
@@ -10518,6 +10712,18 @@
                 }
               ],
               "title": "Last Webhook At"
+            },
+            "meta_cleanup": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Meta Cleanup"
             },
             "missing_scopes": {
               "default": [],
@@ -14578,6 +14784,21 @@
           "title": "OwnerVisitorSummaryOut",
           "type": "object"
         },
+        "PageFieldsRequest": {
+          "description": "The Page fields to write. Anything not in EDITABLE_PAGE_FIELDS is refused before Meta.",
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "title": "Values",
+              "type": "object"
+            }
+          },
+          "required": [
+            "values"
+          ],
+          "title": "PageFieldsRequest",
+          "type": "object"
+        },
         "PasswordResetConfirmRequest": {
           "properties": {
             "password": {
@@ -14624,6 +14845,21 @@
             "email"
           ],
           "title": "PasswordResetRequest",
+          "type": "object"
+        },
+        "PasteRequest": {
+          "properties": {
+            "text": {
+              "maxLength": 2000000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "PasteRequest",
           "type": "object"
         },
         "PaymentCreateRequest": {
@@ -15541,6 +15777,19 @@
           "title": "PostCommentsToggleRequest",
           "type": "object"
         },
+        "PostControlRequest": {
+          "properties": {
+            "on": {
+              "title": "On",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "on"
+          ],
+          "title": "PostControlRequest",
+          "type": "object"
+        },
         "PrescriptionRef": {
           "additionalProperties": false,
           "description": "The prescription a medicine was sold against: its number and who it is for.",
@@ -15563,6 +15812,114 @@
             "name"
           ],
           "title": "PrescriptionRef",
+          "type": "object"
+        },
+        "ProductIntakeRequest": {
+          "properties": {
+            "brand_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            },
+            "category_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "material": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Material"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            },
+            "slug": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Slug",
+              "type": "string"
+            },
+            "status": {
+              "default": "active",
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "variants": {
+              "items": {
+                "$ref": "#/components/schemas/IntakeVariant"
+              },
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Variants",
+              "type": "array"
+            },
+            "warehouse_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          "required": [
+            "title",
+            "slug",
+            "variants"
+          ],
+          "title": "ProductIntakeRequest",
           "type": "object"
         },
         "ProfileOut": {
@@ -16219,6 +16576,48 @@
           "title": "PublishPostRequest",
           "type": "object"
         },
+        "PublishReelRequest": {
+          "description": "One base64 MP4/MOV video, its caption, and whether it also shows on the grid.",
+          "properties": {
+            "caption": {
+              "anyOf": [
+                {
+                  "maxLength": 2200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Caption"
+            },
+            "cover": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cover"
+            },
+            "share_to_feed": {
+              "default": true,
+              "title": "Share To Feed",
+              "type": "boolean"
+            },
+            "video": {
+              "title": "Video",
+              "type": "string"
+            }
+          },
+          "required": [
+            "video"
+          ],
+          "title": "PublishReelRequest",
+          "type": "object"
+        },
         "PublishRequest": {
           "description": "Text, a link, or pictures; `schedule_at` schedules it.\n\nThe picture is either a file (`picture`, base64, up to 4 MB: what the screen sends) or a public\nhttps link someone else hosts (`photo_url`). Never both, and a picture never rides with a link.",
           "properties": {
@@ -16295,6 +16694,25 @@
             }
           },
           "title": "PublishRequest",
+          "type": "object"
+        },
+        "PublishStoryRequest": {
+          "description": "One base64 JPEG or MP4 story. Instagram has no caption field for a story.",
+          "properties": {
+            "is_video": {
+              "default": false,
+              "title": "Is Video",
+              "type": "boolean"
+            },
+            "media": {
+              "title": "Media",
+              "type": "string"
+            }
+          },
+          "required": [
+            "media"
+          ],
+          "title": "PublishStoryRequest",
           "type": "object"
         },
         "PutawayRequest": {
@@ -17012,6 +17430,26 @@
             "timestamp"
           ],
           "title": "RemediationResultOut",
+          "type": "object"
+        },
+        "ReorderImagesRequest": {
+          "description": "ترتيب المعرض: كل صور المنتج مرة واحدة بالترتيب المطلوب.",
+          "properties": {
+            "image_ids": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "Image Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "image_ids"
+          ],
+          "title": "ReorderImagesRequest",
           "type": "object"
         },
         "ReorderLevelRequest": {
@@ -21263,6 +21701,18 @@
         },
         "TemplateUpsertRequest": {
           "properties": {
+            "authentication": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authentication"
+            },
             "body_examples": {
               "items": {
                 "type": "string"
@@ -21272,8 +21722,8 @@
               "type": "array"
             },
             "body_text": {
+              "default": "",
               "maxLength": 4096,
-              "minLength": 1,
               "title": "Body Text",
               "type": "string"
             },
@@ -21284,6 +21734,15 @@
               },
               "maxItems": 10,
               "title": "Buttons",
+              "type": "array"
+            },
+            "carousel": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "maxItems": 10,
+              "title": "Carousel",
               "type": "array"
             },
             "category": {
@@ -21318,6 +21777,23 @@
               "title": "Header Examples",
               "type": "array"
             },
+            "header_location": {
+              "default": false,
+              "title": "Header Location",
+              "type": "boolean"
+            },
+            "header_media": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Header Media"
+            },
             "header_text": {
               "anyOf": [
                 {
@@ -21335,6 +21811,18 @@
               "maxLength": 15,
               "title": "Language",
               "type": "string"
+            },
+            "limited_time_offer": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limited Time Offer"
             },
             "name": {
               "maxLength": 127,
@@ -21357,8 +21845,7 @@
             }
           },
           "required": [
-            "name",
-            "body_text"
+            "name"
           ],
           "title": "TemplateUpsertRequest",
           "type": "object"
@@ -23564,6 +24051,42 @@
             "count"
           ],
           "title": "UnreadCount",
+          "type": "object"
+        },
+        "UpdateImageRequest": {
+          "description": "ربط الصورة بلون/تركيبة، أو رجوعها لمعرض المنتج، مع نص بديل.",
+          "properties": {
+            "alt": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Alt"
+            },
+            "unbind_variant": {
+              "default": false,
+              "title": "Unbind Variant",
+              "type": "boolean"
+            },
+            "variant_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
+            }
+          },
+          "title": "UpdateImageRequest",
           "type": "object"
         },
         "UpdateProductRequest": {
@@ -39368,7 +39891,7 @@
       },
       "/api/v1/conversations/{conversation_id}/refresh-profile": {
         "post": {
-          "description": "Learn who an Instagram customer is (name, @handle, photo) when the chat does not show it yet.\n\nMeant to be called in the background when a chat row is a bare number or has no photo. It is\nrate-limited by what is already known (a week after a success, six hours after a refusal),\nnever raises for a refusal, and does not touch the webhook or the message pipeline.",
+          "description": "Learn who an Instagram or Messenger customer is (name, photo) when the chat shows a number.\n\nMeant to be called in the background when a chat row is a bare number or has no photo. It is\nrate-limited by what is already known (a week after a success, six hours after a refusal),\nnever raises for a refusal, and does not touch the webhook or the message pipeline.",
           "operationId": "refresh_customer_profile_api_v1_conversations__conversation_id__refresh_profile_post",
           "parameters": [
             {
@@ -46567,6 +47090,206 @@
           "tags": [
             "facebook"
           ]
+        },
+        "patch": {
+          "description": "Edit the Page's description, contact details, website, category or hours.",
+          "operationId": "update_page_fields_api_v1_facebook_page_patch",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageFieldsRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Page Fields",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/page/fields": {
+        "get": {
+          "description": "Which Page fields are editable, which need a permission, and which Meta does not expose.",
+          "operationId": "page_field_matrix_api_v1_facebook_page_fields_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Page Field Matrix",
+          "tags": [
+            "facebook"
+          ]
         }
       },
       "/api/v1/facebook/posts": {
@@ -47132,6 +47855,120 @@
           ]
         }
       },
+      "/api/v1/facebook/posts/{post_id}/hide": {
+        "post": {
+          "operationId": "hide_post_api_v1_facebook_posts__post_id__hide_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "post_id",
+              "required": true,
+              "schema": {
+                "title": "Post Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostControlRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Hide Post",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
       "/api/v1/facebook/posts/{post_id}/insights": {
         "get": {
           "operationId": "post_insights_api_v1_facebook_posts__post_id__insights_get",
@@ -47231,6 +48068,120 @@
             }
           },
           "summary": "Post Insights",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/posts/{post_id}/pin": {
+        "post": {
+          "operationId": "pin_post_api_v1_facebook_posts__post_id__pin_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "post_id",
+              "required": true,
+              "schema": {
+                "title": "Post Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostControlRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Pin Post",
           "tags": [
             "facebook"
           ]
@@ -47733,6 +48684,207 @@
             }
           },
           "summary": "Publish Story",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/videos": {
+        "post": {
+          "description": "Publish an ordinary video post. The raw mp4 is the body; text and time travel in headers.\n\n`X-Description`, `X-Title` (percent-encoded) and `X-Schedule-At` (ISO time, 10 minutes to 30\ndays away) are optional. A Reel and a Story have their own routes; this is the plain feed post.",
+          "operationId": "publish_video_api_v1_facebook_videos_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Publish Video",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/videos/{video_id}": {
+        "get": {
+          "description": "Whether Meta finished processing the video, and the reason it gives when it did not.",
+          "operationId": "get_video_status_api_v1_facebook_videos__video_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "video_id",
+              "required": true,
+              "schema": {
+                "title": "Video Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Video Status",
           "tags": [
             "facebook"
           ]
@@ -50363,9 +51515,115 @@
           ]
         }
       },
+      "/api/v1/imports/images/zip": {
+        "post": {
+          "description": "صور في ملف مضغوط: اسم الملف هو الـSKU، والصورة بتتربط بالصنف وتتحفظ عندنا.\n\nاللي مش لاقي صنفه أو مش صورة حقيقية بيرجع في التقرير باسمه — التاجر يشوف اللي ماوصلش\nبدل ما يفضل يدوّر. الصور بتتحفظ بنفس مسار رفع الصورة باليد، فالحدود والقواعد واحدة.",
+          "operationId": "upload_image_zip_api_v1_imports_images_zip_post",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "filename",
+              "required": false,
+              "schema": {
+                "default": "images.zip",
+                "title": "Filename",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Upload Image Zip",
+          "tags": [
+            "imports"
+          ]
+        }
+      },
       "/api/v1/imports/products": {
         "post": {
-          "description": "§161: import products from a CSV through the catalog's external upsert.",
+          "description": "The old single-sheet CSV door: closed unless the shop's data key opens it.\n\nClosed, it answers 404 like a route that no longer exists and points at the Import Center.\nOpen, the file is NOT applied here: it becomes an ordinary import session and goes through\n``validate_session`` exactly like a workbook dropped in the Import Center, so a row that\nwould be refused there is refused here too.",
           "operationId": "import_products_csv_api_v1_imports_products_post",
           "parameters": [
             {
@@ -50676,6 +51934,112 @@
             }
           },
           "summary": "Upload",
+          "tags": [
+            "imports"
+          ]
+        }
+      },
+      "/api/v1/imports/sessions/paste": {
+        "post": {
+          "description": "صفوف ملصوقة من Excel بتبقى جلسة استيراد عادية، بنفس المراجعة والتحقق والتنفيذ.",
+          "operationId": "paste_session_api_v1_imports_sessions_paste_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasteRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Paste Session",
           "tags": [
             "imports"
           ]
@@ -52481,6 +53845,114 @@
           ]
         }
       },
+      "/api/v1/integrations/{integration_id}/diagnostics": {
+        "get": {
+          "description": "Why a Meta channel is, or is not, receiving: one named check per thing that can go wrong.\n\nReads our own records, then asks Meta live (subscription and permissions) with the channel's\nown token. A Meta outage is reported as an unknown check, never as a failed request, and no\ntoken or secret is ever returned.",
+          "operationId": "channel_diagnostics_api_v1_integrations__integration_id__diagnostics_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChannelDiagnosticsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Channel Diagnostics",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
       "/api/v1/integrations/{integration_id}/disconnect": {
         "post": {
           "description": "Disconnect a channel (§145 lifecycle: active|restricted → disconnected).\n\nDELIBERATE confirmation gate: the body must carry ``confirm=true``. A\nstray click or a replayed request must not cut a live provider webhook —\ndisconnecting stops inbound message flow for the whole tenant, so the\nrequest is destructive enough to require an explicit assertion.\n\nFail-closed on the state machine: only ``active`` and ``restricted`` rows\nmay disconnect (those are the states that receive provider traffic);\n``pending``/``connecting``/``reauth_required`` have no provider traffic to\nstop and are refused with the legal sources listed. ``disabled`` is\nterminal and reconnecting is refused by design (connect enforces it too).\nIdempotent: an already-disconnected row returns as-is without a second\naudit entry. Reversal is the verified connect path — ``POST\n/integrations/connect`` — so a reconnection always re-proves credentials\nwith the provider before going live. The decision is audited (§66) with\nthe before/after status.",
@@ -52594,6 +54066,114 @@
             }
           },
           "summary": "Disconnect Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/retry-meta-cleanup": {
+        "post": {
+          "description": "Try again to remove a disconnected channel's subscription from Meta.\n\nOnly for a channel that is already disconnected and whose last removal did not complete. A\nchannel that is connected is refused: removing its subscription would stop its messages.",
+          "operationId": "retry_meta_cleanup_api_v1_integrations__integration_id__retry_meta_cleanup_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IntegrationOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Retry Meta Cleanup",
           "tags": [
             "platform"
           ]
@@ -77863,6 +79443,432 @@
           ]
         }
       },
+      "/api/v1/products/intake": {
+        "post": {
+          "description": "Create a sellable product with all its variants in ONE transaction.",
+          "operationId": "intake_product_api_v1_products_intake_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductIntakeRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Intake Product",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/next-sku": {
+        "get": {
+          "description": "The SKU base the add-product screen *shows* (SKU-0007), so the browser counts nothing.\n\nThis is a read: showing a number must not burn it, or a merchant who opens the screen five\ntimes loses five numbers. The number is reserved at save time: ``POST /products/intake`` asks\nthe shop's counter for a fresh base when the one the screen showed is already taken.",
+          "operationId": "next_sku_api_v1_products_next_sku_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Next Sku",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/page": {
+        "get": {
+          "description": "صفحة من كتالوج المحل، مفلترة ومعدودة على السيرفر.\n\nشاشة المنتجات كانت بتجيب ``?limit=500`` مرة واحدة وتدوّر وتفلتر في المتصفح، فمحل عنده\n3000 منتج مايشوفش غير أول 500. الرد هنا بيحمل الصفحة + الإجمالي، فالشاشة تقدر تقول\n«1–50 من 3000» وتكمل لباقي الكتالوج.",
+          "operationId": "products_page_api_v1_products_page_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "q",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Q"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "category_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "brand_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
+              }
+            },
+            {
+              "in": "query",
+              "name": "sort",
+              "required": false,
+              "schema": {
+                "default": "newest",
+                "title": "Sort",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Products Page",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
       "/api/v1/products/{product_id}": {
         "get": {
           "operationId": "get_product_api_v1_products__product_id__get",
@@ -78522,6 +80528,122 @@
           ]
         }
       },
+      "/api/v1/products/{product_id}/images/order": {
+        "post": {
+          "description": "ترتيب صور المنتج زي ما التاجر عايزها تظهر في الكاشير.",
+          "operationId": "reorder_product_images_api_v1_products__product_id__images_order_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderImagesRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reorder Product Images",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
       "/api/v1/products/{product_id}/images/upload": {
         "post": {
           "operationId": "upload_product_image_api_v1_products__product_id__images_upload_post",
@@ -78622,6 +80744,241 @@
             }
           },
           "summary": "Upload Product Image",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
+      "/api/v1/products/{product_id}/images/{image_id}": {
+        "delete": {
+          "description": "حذف صورة من المعرض، ومعاها الملف المخزّن لو كان على التخزين بتاعنا.",
+          "operationId": "delete_product_image_api_v1_products__product_id__images__image_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "image_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Image Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Delete Product Image",
+          "tags": [
+            "catalog"
+          ]
+        },
+        "patch": {
+          "description": "ربط الصورة بلون أو تركيبة، أو رجوعها لمعرض المنتج — بدون رفع الصورة تاني.",
+          "operationId": "update_product_image_api_v1_products__product_id__images__image_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "image_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Image Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateImageRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update Product Image",
           "tags": [
             "catalog"
           ]
@@ -86019,6 +88376,312 @@
           ]
         }
       },
+      "/api/v1/social/reels": {
+        "post": {
+          "description": "Publish a Reel (one MP4/MOV video).\n\nInstagram fetches the video from a short-lived link, reports a container status while it\nprocesses, and only then publishes. A refusal from Instagram is shown as it came.",
+          "operationId": "publish_reel_api_v1_social_reels_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishReelRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Publish Reel",
+          "tags": [
+            "social"
+          ]
+        }
+      },
+      "/api/v1/social/stories": {
+        "get": {
+          "description": "The stories running right now, as Instagram sees them.",
+          "operationId": "list_stories_api_v1_social_stories_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Stories",
+          "tags": [
+            "social"
+          ]
+        },
+        "post": {
+          "description": "Publish one story: a JPEG picture or an MP4 video. A story carries no caption.",
+          "operationId": "publish_story_api_v1_social_stories_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishStoryRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Publish Story",
+          "tags": [
+            "social"
+          ]
+        }
+      },
       "/api/v1/supplier-payments": {
         "get": {
           "operationId": "list_supplier_payments_api_v1_supplier_payments_get",
@@ -90613,6 +93276,117 @@
           ]
         }
       },
+      "/api/v1/variants/{variant_id}/identifiers/{identifier_id}": {
+        "delete": {
+          "description": "Correct a wrongly filed scan code: delete it, then file the right one.\n\nThe id must belong to the variant in the URL. Sales and invoices point at the variant, not at\nthe code, so nothing already sold is touched.",
+          "operationId": "remove_variant_identifier_api_v1_variants__variant_id__identifiers__identifier_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "variant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Variant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "identifier_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Identifier Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Remove Variant Identifier",
+          "tags": [
+            "catalog"
+          ]
+        }
+      },
       "/api/v1/variants/{variant_id}/options": {
         "post": {
           "description": "§179/P2: replace-all option graph for one variant.\n\nMissing option/value rows are created; the JSONB read model and the\nrelational graph are written by the same service call in the same\ntransaction, so the storefront dict and the queryable graph agree.",
@@ -91690,6 +94464,44 @@
           "summary": "Meta Data Deletion Status",
           "tags": [
             "privacy"
+          ]
+        }
+      },
+      "/api/v1/webhooks/meta/page": {
+        "get": {
+          "description": "Meta's \"Verify and save\" for the single ``page`` callback.\n\nA Meta app has ONE callback URL per object type, but the platform keeps TWO channel records for\na Page: ``messenger`` (private chat) and ``facebook`` (the Page's feed/mentions). Registering\nthe callback under either channel's own URL silently dropped the other kind of news, so the\nPage object is verified HERE, against the Messenger verify token operators already have.",
+          "operationId": "verify_meta_page_api_v1_webhooks_meta_page_get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Verify Meta Page",
+          "tags": [
+            "channels"
+          ]
+        },
+        "post": {
+          "description": "The Page object's one callback: chat → Messenger, Page news → Facebook.\n\nThe signature is checked ONCE, over the whole raw body (the delivery is signed as a unit).\nThen ``route_page_payload`` splits it into one envelope per capability per Page — an entry\ncarrying both kinds of news contributes a messaging-only copy to Messenger and a changes-only\ncopy to Facebook — and each envelope goes through the SAME ``_ingest_one`` the per-channel\nroutes use. Tenant resolution, the replay guard and the durable ingress row therefore behave\nexactly as they did when one capability owned the callback.",
+          "operationId": "meta_page_webhook_api_v1_webhooks_meta_page_post",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Meta Page Webhook",
+          "tags": [
+            "channels"
           ]
         }
       },

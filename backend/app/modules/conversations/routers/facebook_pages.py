@@ -243,6 +243,44 @@ async def publish_reel(
     return {"id": video_id, "scheduled": schedule_at is not None}
 
 
+@router.post("/facebook/videos", status_code=201)
+async def publish_video(
+    request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))
+):
+    """Publish an ordinary video post. The raw mp4 is the body; text and time travel in headers.
+
+    `X-Description`, `X-Title` (percent-encoded) and `X-Schedule-At` (ISO time, 10 minutes to 30
+    days away) are optional. A Reel and a Story have their own routes; this is the plain feed post.
+    """
+    creds = await _credentials(ctx, send=True)
+    video = await _read_body(request, facebook_video.MAX_VIDEO_BYTES, "video")
+    schedule_at = None
+    if raw := request.headers.get("x-schedule-at"):
+        try:
+            schedule_at = datetime.fromisoformat(raw)
+        except ValueError as exc:
+            raise ValidationError("the schedule time is not a valid date") from exc
+    video_id = await FacebookService.publish_video(
+        ctx.session,
+        ctx.tenant_id,
+        creds,
+        video=video,
+        description=_header_text(request, "x-description"),
+        title=_header_text(request, "x-title"),
+        schedule_at=schedule_at,
+    )
+    return {"id": video_id, "scheduled": schedule_at is not None}
+
+
+@router.get("/facebook/videos/{video_id}")
+async def get_video_status(
+    video_id: str, ctx: TenantContext = Depends(require_permission("conversations:read"))
+):
+    """Whether Meta finished processing the video, and the reason it gives when it did not."""
+    creds = await _credentials(ctx, send=False)
+    return await FacebookService.video_status(ctx.session, ctx.tenant_id, creds, video_id)
+
+
 @router.post("/facebook/stories", status_code=201)
 async def publish_story(
     request: Request, ctx: TenantContext = Depends(require_permission("conversations:write"))

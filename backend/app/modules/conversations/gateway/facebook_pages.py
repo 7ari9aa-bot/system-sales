@@ -565,6 +565,48 @@ class FacebookPagesClient:
             await sleep(PROCESSING_POLL_SECONDS)
             waited += PROCESSING_POLL_SECONDS
 
+    async def publish_feed_video(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        video_url: str,
+        description: str | None = None,
+        title: str | None = None,
+        schedule_at: datetime | int | None = None,
+        _client=None,
+        _sleep=None,
+    ) -> str:
+        """Publish an ordinary video post on the Page's feed (not a Reel, not a Story).
+
+        Meta pulls the file from `video_url` and answers with the video's id straight away, then
+        processes it. A scheduled one is stored unpublished with Meta's own publish time, so the
+        Page publishes it even if this process is gone by then.
+        """
+        description = (description or "").strip() or None
+        if description and len(description) > MAX_POST_CHARS:
+            raise ValueError(f"a video's text is at most {MAX_POST_CHARS:,} characters")
+        if not str(video_url or "").strip():
+            raise ValueError("a video needs a link Meta can fetch")
+        data: dict[str, Any] = {"file_url": video_url}
+        if description:
+            data["description"] = description
+        if title and title.strip():
+            data["title"] = title.strip()[:255]
+        if schedule_at is not None:
+            data["published"] = "false"
+            data["scheduled_publish_time"] = str(check_schedule(schedule_at))
+        _, page_id = self._creds(credentials)
+        body = await self._graph(
+            "POST", f"{page_id}/videos", credentials, data=data, _client=_client
+        )
+        video_id = str(body.get("id") or "").strip()
+        if not video_id:
+            raise ExternalProviderError("facebook video upload returned no video id")
+        # A scheduled video is not published yet, so Meta has no processing state to wait on.
+        if schedule_at is None:
+            await self._wait_until_processed(credentials, video_id, _client=_client, _sleep=_sleep)
+        return video_id
+
     async def publish_reel(
         self,
         credentials: ProviderCredentials,

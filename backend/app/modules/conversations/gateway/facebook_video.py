@@ -22,6 +22,8 @@ MB = 1024 * 1024
 REEL_MIN_SECONDS = 3
 REEL_MAX_SECONDS = 90
 STORY_MAX_SECONDS = 60
+#: A feed video is a normal post, and Meta allows up to 240 minutes for one.
+FEED_MAX_SECONDS = 240 * 60
 MIN_WIDTH, MIN_HEIGHT = 540, 960
 #: 9:16 with a little room for the rounding a phone's encoder does (1080x1920 is exact).
 RATIO = 9 / 16
@@ -198,6 +200,30 @@ def check_reel(data: bytes) -> VideoInfo:
 
 def check_video_story(data: bytes) -> VideoInfo:
     return _check_video(data, max_seconds=STORY_MAX_SECONDS, what="Story")
+
+
+def check_feed_video(data: bytes) -> VideoInfo:
+    """A normal video post: Meta's own limit is 240 minutes, and none of the Reel shape rules.
+
+    A feed video may be landscape, small and long — Meta's Posts API has no 9:16 rule and no
+    540x960 floor for it. Applying the Reel checks here would refuse content Meta accepts, so
+    this check only refuses what Meta itself refuses: an empty file, one over our size budget,
+    a file that is not a readable mp4, and one longer than 240 minutes.
+    """
+    if not data:
+        raise FacebookVideoError("video_empty", "the video is empty")
+    if len(data) > MAX_VIDEO_BYTES:
+        raise FacebookVideoError(
+            "video_size", f"the video is larger than {MAX_VIDEO_BYTES // MB} MB"
+        )
+    info = read_mp4(data)
+    if info.seconds > FEED_MAX_SECONDS:
+        raise FacebookVideoError(
+            "video_long",
+            f"a video post is at most {FEED_MAX_SECONDS // 60} minutes; this one is "
+            f"{info.seconds / 60:.0f}",
+        )
+    return info
 
 
 # A photo Story. Meta lists jpeg, bmp, png, gif and tiff.
