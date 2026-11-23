@@ -16,6 +16,18 @@ export default function ProductPricingSection({ form, onPatch }) {
           <Input type="number" value={form.sellPrice} min={0} step="0.01" placeholder="مثال: 450" onChange={(e) => onPatch({ sellPrice: e.target.value })} className={`${INPUT} num`} />
         </FormField>
 
+        <FormField label="تكلفة الوحدة (للرصيد الافتتاحي)">
+          <Input
+            type="number"
+            value={form.unitCost ?? ""}
+            min={0}
+            step="0.01"
+            placeholder="تسيبها فاضية = تكلفة مجهولة"
+            onChange={(e) => onPatch({ unitCost: e.target.value })}
+            className={`${INPUT} num`}
+          />
+        </FormField>
+
         <FormField label="حد التنبيه عند انخفاض المخزون">
           <Input type="number" value={form.threshold} min={0} step="1" onChange={(e) => onPatch({ threshold: e.target.value })} className={`${INPUT} num`} />
         </FormField>

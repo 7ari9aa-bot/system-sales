@@ -177,3 +177,46 @@ describe("what a failed product load means for the owner", () => {
     expect(shouldRetryEditLoad(0, { status: 403 })).toBe(false);
   });
 });
+
+describe("planProductEdit: the variant's own identity and lifecycle", () => {
+  const before = {
+    variants: [
+      { id: "v1", sku: "TEE-BK-L", color: "أسود", size: "L", sellPrice: "150", barcode: "", reorderLevel: "5", isActive: true },
+      { id: "v2", sku: "TEE-BK-M", color: "أسود", size: "M", sellPrice: "150", barcode: "", reorderLevel: "0", isActive: true },
+    ],
+  };
+
+  it("a changed colour lands in option_values and the size is kept", () => {
+    const after = structuredClone(before);
+    after.variants[0].color = "كحلي";
+    const plan = planProductEdit(before, after);
+    expect(plan.variantPatches).toEqual([{ id: "v1", patch: { option_values: { color: "كحلي", size: "L" } } }]);
+  });
+
+  it("a changed size lands in option_values and the colour is kept", () => {
+    const after = structuredClone(before);
+    after.variants[1].size = "XL";
+    const plan = planProductEdit(before, after);
+    expect(plan.variantPatches).toEqual([{ id: "v2", patch: { option_values: { color: "أسود", size: "XL" } } }]);
+  });
+
+  it("a variant dropped from the matrix is deactivated, not deleted", () => {
+    const after = structuredClone(before);
+    after.variants = after.variants.filter((v) => v.id !== "v2");
+    const plan = planProductEdit(before, after);
+    expect(plan.deactivations).toEqual(["v2"]);
+    expect(plan.empty).toBe(false);
+  });
+
+  it("an unchanged threshold sends no reorder call", () => {
+    expect(planProductEdit(before, structuredClone(before)).reorderChanges).toEqual([]);
+  });
+
+  it("a changed threshold is sent for that variant only", () => {
+    const after = structuredClone(before);
+    after.variants[0].reorderLevel = "8";
+    const plan = planProductEdit(before, after);
+    expect(plan.reorderChanges).toEqual([{ id: "v1", level: 8 }]);
+    expect(plan.variantPatches).toEqual([]);
+  });
+});

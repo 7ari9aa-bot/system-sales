@@ -27,12 +27,11 @@ describe("variants list fits a narrow card without sideways scrolling", () => {
     expect(h).toContain("SKU-0002-0202");
   });
 
-  it("stacks cards by default and only becomes a table on a wide screen", () => {
+  it("renders ONE version of the rows, never both at once", () => {
+    // كان بيترسم كروت + جدول لكل صف والـCSS بيخفي واحدة: منتج بـ500 تركيبة = 1,000 صف في الـDOM.
     const h = html();
     expect(h).toMatch(/data-variant-card/);
-    expect(h).toMatch(/@container/);
-    expect(h).toMatch(/@\[860px\]:hidden/);
-    expect(h).toMatch(/hidden[^"]*@\[860px\]:block/);
+    expect(h).not.toMatch(/<table/);
   });
 
   it("switches on the width of its own card, not the screen (the card is far narrower than the screen)", () => {

@@ -1,6 +1,12 @@
 class ApiEndpoints {
+  // إدخال منتج كامل في طلب واحد: منتج + تركيبات + باركود + رصيد (نفس مسار الويب).
+  static const String productsIntake = '/api/v1/products/intake';
+  static const String warehouses = '/api/v1/warehouses';
+  static const String warehousesEnsureDefault = '/api/v1/warehouses/ensure-default';
+
   // Base default URL for local/production
-  static const String defaultBaseUrl = 'https://api.fihrist.world';
+  // النطاق الفرعي api.fihrist.world مابقاش له سجل DNS؛ الموقع والـAPI على نفس الأصل.
+  static const String defaultBaseUrl = 'https://fihrist.world';
   static const String localBaseUrl = 'http://10.0.2.2:8000'; // Android emulator to host
 
   // Auth

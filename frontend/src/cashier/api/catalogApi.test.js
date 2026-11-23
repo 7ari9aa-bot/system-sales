@@ -422,8 +422,8 @@ describe("createProduct saves the whole product in ONE request", () => {
     expect(body.status).toBe("active");
     expect(body.warehouse_id).toBe("w1");
     expect(body.variants).toEqual([
-      { sku: "TEE-BK-L", price: "150.00", option_values: { color: "أسود", size: "L" }, barcode: null, stock: 7, auto_barcode: true, reorder_level: null },
-      { sku: "TEE-BK-M", price: "150.00", option_values: { color: "أسود", size: "M" }, barcode: "6221234567891", stock: 0, auto_barcode: false, reorder_level: null },
+      { sku: "TEE-BK-L", price: "150.00", option_values: { color: "أسود", size: "L" }, barcode: null, stock: 7, auto_barcode: true, reorder_level: null, unit_cost: null },
+      { sku: "TEE-BK-M", price: "150.00", option_values: { color: "أسود", size: "M" }, barcode: "6221234567891", stock: 0, auto_barcode: false, reorder_level: null, unit_cost: null },
     ]);
   });
 
@@ -515,5 +515,115 @@ describe("the SKU base comes from the server", () => {
   it("editing keeps the product's own base, whoever asks", () => {
     expect(resolveSkuBase({ product: { sku: "SKU-0042-0101" }, serverBase: "SKU-0203" })).toBe("SKU-0042");
     expect(resolveSkuBase({ product: { sku: "SKU-0042" }, serverBase: null, existingSkus: ["SKU-0099-0101"] })).toBe("SKU-0042");
+  });
+});
+
+describe("applyProductEdit: variants that change identity or leave the matrix", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    failOn = null;
+  });
+
+  it("saves the colour/size in option_values through the variant patch", async () => {
+    await catalogApi.applyProductEdit("p1", {
+      product: {},
+      variantPatches: [{ id: "v1", patch: { option_values: { color: "كحلي", size: "L" } } }],
+      newVariants: [],
+      newBarcodes: [],
+      deactivations: [],
+      reorderChanges: [],
+    });
+    const call = calls.find((c) => c.path === "/variants/v1");
+    expect(call.method).toBe("PATCH");
+    expect(call.body).toEqual({ option_values: { color: "كحلي", size: "L" } });
+  });
+
+  it("a variant removed from the matrix is deactivated, never deleted", async () => {
+    await catalogApi.applyProductEdit("p1", {
+      product: {},
+      variantPatches: [],
+      newVariants: [],
+      newBarcodes: [],
+      deactivations: ["v2"],
+      reorderChanges: [],
+    });
+    const call = calls.find((c) => c.path === "/variants/v2");
+    expect(call.method).toBe("PATCH");
+    expect(call.body).toEqual({ is_active: false });
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("saves a reorder threshold on the stock screen's own route", async () => {
+    await catalogApi.applyProductEdit("p1", {
+      product: {},
+      variantPatches: [],
+      newVariants: [],
+      newBarcodes: [],
+      deactivations: [],
+      reorderChanges: [{ id: "v1", level: 8 }],
+    });
+    const call = calls.find((c) => c.path === "/pos/stock/v1/reorder-level");
+    expect(call.method).toBe("PUT");
+    expect(call.body).toEqual({ reorder_level: 8 });
+  });
+
+  it("an opening balance on a new variant becomes a real stock movement", async () => {
+    await catalogApi.applyProductEdit(
+      "p1",
+      {
+        product: {},
+        variantPatches: [],
+        newVariants: [{ id: "row-1", sku: "TEE-NV-L", color: "أحمر", size: "L", sellPrice: "150", stock: 4 }],
+        newBarcodes: [],
+        deactivations: [],
+        reorderChanges: [],
+      },
+      { warehouseId: "w1" },
+    );
+    const movement = calls.find((c) => c.path === "/inventory/movements");
+    expect(movement.body).toMatchObject({ warehouse_id: "w1", direction: "in", quantity: 4 });
+    expect(movement.body.variant_id).toBeTruthy();
+  });
+
+  it("a new variant with no stock records no movement", async () => {
+    await catalogApi.applyProductEdit(
+      "p1",
+      {
+        product: {},
+        variantPatches: [],
+        newVariants: [{ id: "row-1", sku: "TEE-NV-M", color: "أحمر", size: "M", sellPrice: "150", stock: 0 }],
+        newBarcodes: [],
+        deactivations: [],
+        reorderChanges: [],
+      },
+      { warehouseId: "w1" },
+    );
+    expect(calls.some((c) => c.path === "/inventory/movements")).toBe(false);
+  });
+});
+
+describe("opening balance cost", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    failOn = null;
+    intakeMissing = false;
+  });
+
+  const withCost = (unitCost) => ({
+    name: "تيشيرت",
+    variants: [{ id: "row-1", color: "أسود", size: "M", sku: "C-1", sellPrice: 300, stock: 5 }],
+    unitCost,
+  });
+
+  it("sends the cost the merchant typed with the opening balance", async () => {
+    await catalogApi.createProduct(withCost("120.5"), { warehouseId: "w1" });
+    const body = calls.find((c) => c.path === "/products/intake").body;
+    expect(body.variants[0].unit_cost).toBe("120.5000");
+  });
+
+  it("sends null when no cost was typed, so the movement stays unknown instead of zero", async () => {
+    await catalogApi.createProduct(withCost(""), { warehouseId: "w1" });
+    const body = calls.find((c) => c.path === "/products/intake").body;
+    expect(body.variants[0].unit_cost).toBe(null);
   });
 });

@@ -256,6 +256,26 @@ class InventoryRepository {
     );
   }
 
+  /// أول مخزن نشط في المحل (وبينشئ «الرئيسي» لو مفيش) — الرصيد الافتتاحي لازم مخزن.
+  Future<String?> _defaultWarehouseId() async {
+    try {
+      final rows = await _apiClient.get(ApiEndpoints.warehouses);
+      if (rows is List && rows.isNotEmpty) {
+        final active = rows.firstWhere(
+          (w) => w is Map && w['is_active'] != false,
+          orElse: () => rows.first,
+        );
+        final id = (active as Map)['id'];
+        if (id != null) return id.toString();
+      }
+      final made = await _apiClient.post(ApiEndpoints.warehousesEnsureDefault);
+      if (made is Map && made['id'] != null) return made['id'].toString();
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   /// Create a new product (online or queued durable offline)
   Future<Product> createProduct({
     required String name,
@@ -296,22 +316,31 @@ class InventoryRepository {
         .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
 
+    // عقد POST /products/intake: منتج + تركيبات + باركود + رصيد في معاملة واحدة.
+    // المسار القديم (POST /products) كان بينشئ منتج draft ويضيّع barcode وinitial_stock وcost_price،
+    // فالمنتج كان يظهر على الموبايل وبياناته على السيرفر ناقصة.
+    final warehouseId = initialStock > 0 ? await _defaultWarehouseId() : null;
     final payload = {
-      'id': pId,
       'title': product.name,
-      'name': product.name,
       'slug': slug.isNotEmpty ? slug : 'prod-${DateTime.now().millisecondsSinceEpoch}',
-      'price': product.price,
-      'barcode': product.barcode,
-      'sku': product.sku,
-      'category': product.category,
-      'initial_stock': initialStock,
-      'cost_price': product.costPrice,
+      'status': 'active',
+      if (warehouseId != null) 'warehouse_id': warehouseId,
+      'variants': [
+        {
+          'sku': product.sku,
+          'price': product.price,
+          'option_values': <String, String>{},
+          'barcode': product.barcode,
+          'stock': initialStock,
+          // تكلفة الوحدة للرصيد الافتتاحي: فاضية = مجهولة (NULL) مش صفر.
+          if (product.costPrice != null) 'unit_cost': product.costPrice,
+        },
+      ],
     };
 
     try {
       final response = await _apiClient.post(
-        ApiEndpoints.products,
+        ApiEndpoints.productsIntake,
         body: payload,
       );
       if (response != null) {

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import VariantsMatrix from "./VariantsMatrix";
+import { VariantsMatrixBody as VariantsMatrix } from "./VariantsMatrix";
 import { readFileSync } from "node:fs";
 
 const wrap = (node) => renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}>{node}</QueryClientProvider>);
@@ -27,11 +27,12 @@ function barcodeHandlers(rowValue) {
 }
 
 describe("typing a barcode switches the automatic one off", () => {
-  it("both the card input and the wide-table input clear the mark when the user types", () => {
+  it("the barcode input clears the automatic mark when the user types", () => {
+    // نسخة واحدة من الصف بترسم دلوقتي (مش كارت + جدول مع بعض)، فحقل واحد لكل صف.
     const { found, calls } = barcodeHandlers(row({ autoBarcode: true }));
-    expect(found.length).toBe(2);
+    expect(found.length).toBe(1);
     for (const onChange of found) onChange({ target: { value: "2000000000017" } });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     for (const c of calls) expect(c.fields).toEqual({ barcode: "2000000000017", autoBarcode: false });
   });
 });

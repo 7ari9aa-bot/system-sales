@@ -12,6 +12,7 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
@@ -279,3 +280,55 @@ async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refus
     with pytest.raises(ValueError) as exc:
         _clean_material(too_long)
     assert str(MATERIAL_MAX_LENGTH) in str(exc.value)
+
+
+async def test_the_opening_balance_carries_its_unit_cost(db, tenant_ctx):
+    """الإدخال اليدوي كان بيسجل الحركة بلا cost_value، فتقييم المخزون والربح يقرأوا صفر.
+
+    التكلفة اللي التاجر بيدخلها بقت مع الحركة، واللي ميدخلهاش تفضل NULL (مجهولة) مش صفر.
+    """
+    from decimal import Decimal
+
+    from app.modules.inventory.models import InventoryMovement
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    wh = await _warehouse(db, tenant_ctx)
+    body = _body(warehouse_id=str(wh.id))
+    body["variants"][0]["unit_cost"] = "120.50"
+    body["variants"][1].pop("stock")  # بلا رصيد: مفيش حركة خالص
+
+    r = await _call(owner, "POST", "/api/v1/products/intake", body)
+    assert r.status_code == 201, r.text
+    variant_id = uuid.UUID(r.json()["variants"][0]["id"])
+
+    rows = (
+        await db.execute(
+            select(InventoryMovement).where(
+                InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                InventoryMovement.variant_id == variant_id,
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].direction == "in"
+    assert rows[0].cost_value == Decimal("120.50")
+
+
+async def test_an_opening_balance_without_a_cost_stays_unknown_not_zero(db, tenant_ctx):
+    from app.modules.inventory.models import InventoryMovement
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    wh = await _warehouse(db, tenant_ctx)
+    r = await _call(owner, "POST", "/api/v1/products/intake", _body(warehouse_id=str(wh.id)))
+    assert r.status_code == 201, r.text
+    variant_id = uuid.UUID(r.json()["variants"][0]["id"])
+
+    rows = (
+        await db.execute(
+            select(InventoryMovement).where(
+                InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                InventoryMovement.variant_id == variant_id,
+            )
+        )
+    ).scalars().all()
+    assert rows and all(m.cost_value is None for m in rows)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import ProductEditorHero from "@/cashier/components/products/ProductEditorHero";
 import ProductBasicsSection from "@/cashier/components/products/ProductBasicsSection";
@@ -7,6 +7,8 @@ import ProductVariantsPicker from "@/cashier/components/products/ProductVariants
 import ProductSummarySection from "@/cashier/components/products/ProductSummarySection";
 import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
+import { variantLimitProblem } from "@/cashier/lib/productLimits";
+import { useWarehouses } from "@/cashier/api/useCatalogWrite";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
 import { useShopOptions } from "@/cashier/api/useShopOptions";
 import { useStockMaterials } from "@/cashier/api/useStock";
@@ -32,11 +34,31 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
   // صور المنتج: المحفوظة في الباك (للعرض) + ملفات جديدة اختارها المستخدم (تُرفع بعد حفظ المنتج).
   const [picked, setPicked] = useState([]);
   const saved = imagesOf(product);
+  // سبب منع التوليد، بيتعرض فوق الجدول بدل ما الصفوف تتولّد وتتوقف في السيرفر.
+  const [matrixError, setMatrixError] = useState("");
   const [rows, setRows] = useState(
     product
-      ? product.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, sku: v.sku, barcode: v.barcode, sellPrice: v.sellPrice, stock: 0 }))
+      ? product.variants.map((v) => ({
+          id: v.id,
+          color: v.color,
+          size: v.size,
+          sku: v.sku,
+          barcode: v.barcode,
+          sellPrice: v.sellPrice,
+          // حد التنبيه المحفوظ بيفتح في الشاشة؛ لو اتسقط هنا الشاشة بتحفظ صفر على كل تركيبة.
+          reorderLevel: v.reorderLevel ?? "0",
+          stock: 0,
+        }))
       : [],
   );
+
+  // المخزن اللي هيستلم الرصيد الافتتاحي: المحل اللي عنده فرع ومخزن مش هيقبل «أول مخزن نشط» كاختيار إجباري.
+  const { data: warehouses = [] } = useWarehouses();
+  const activeWarehouses = warehouses.filter((w) => w.is_active !== false);
+  useEffect(() => {
+    if (form.warehouseId || activeWarehouses.length === 0) return;
+    patch({ warehouseId: activeWarehouses[0].id });
+  }, [form.warehouseId, activeWarehouses]);
 
   const { options: shopOptions } = useShopOptions();
   // اقتراحات الخامة هي خامات المحل نفسه (زي ما المواسم بتيجي من مواسم المحل): قائمة مقترحة،
@@ -78,6 +100,13 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
   }
 
   function generateRows() {
+    // العدد بيتحسب قبل التوليد: 200 لون × 60 مقاس = 12,000 صف كان بيتولّد كامل ثم يرفضه الباك إند.
+    const problem = variantLimitProblem(colors, sizes);
+    if (problem) {
+      setMatrixError(problem);
+      return;
+    }
+    setMatrixError("");
     // أساس SKU فريد من الأكواد الموجودة فعلاً في النظام (العشوائي كان يتكرر ويرفضه الباك بـ 409).
     // في التعديل نشيل لاحقة التركيبة من sku المنتج؛ في الإضافة الأساس جاهز (SKU-0203) ولا نقصّه.
     const skuBase = resolveSkuBase({ product, serverBase: serverSkuBase, existingSkus });
@@ -151,7 +180,29 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
               <h2 className={SECTION_TITLE}>جدول التركيبات</h2>
               <span className={SECTION_HINT}>SKU وباركود ورصيد افتتاحي لكل تركيبة لون × مقاس</span>
             </div>
-            <div className="mt-[18px]">
+            <div className="mt-[18px] space-y-3">
+              {activeWarehouses.length > 0 && (
+                <label className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2">
+                  <span className="text-xs font-semibold text-muted-foreground">المخزن اللي هيستلم الرصيد الافتتاحي</span>
+                  <select
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs font-semibold"
+                    value={form.warehouseId ?? ""}
+                    onChange={(e) => patch({ warehouseId: e.target.value })}
+                  >
+                    {activeWarehouses.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                  {activeWarehouses.length === 1 && (
+                    <span className="text-[11px] text-muted-foreground">(المحل عنده مخزن واحد — يتضاف غيره من إعدادات المخازن)</span>
+                  )}
+                </label>
+              )}
+              {matrixError && (
+                <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
+                  {matrixError}
+                </p>
+              )}
               <VariantsMatrix
                 rows={rows}
                 onChange={updateRow}

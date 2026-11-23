@@ -22,6 +22,7 @@ const SCANNABLE_CODE_TYPES = ["ean", "gtin", "upc", "barcode"];
 const text = (v) => String(v ?? "").trim();
 const post = (path, body) => api(path, { method: "POST", body });
 const patch = (path, body) => api(path, { method: "PATCH", body });
+const put = (path, body) => api(path, { method: "PUT", body });
 
 /** URL-safe, unique slug. Arabic titles have no ASCII letters, so we fall back to a token. */
 export function makeSlug(title, token = Date.now().toString(36)) {
@@ -141,6 +142,14 @@ export function productsPageQuery({ term, status, categoryId, brandId, season, s
   return params.toString();
 }
 
+/** The shop's default warehouse id (first-use setup creates one). Needed before any opening balance. */
+async function ensureWarehouseId() {
+  const w = await catalogApi.ensureDefaultWarehouse();
+  const id = w?.id ?? w?.warehouse?.id;
+  if (!id) throw new Error("لا يوجد مخزن لاستلام الرصيد الافتتاحي");
+  return id;
+}
+
 export const catalogApi = {
   /** The next SKU base the server hands out (SKU-0007). The screen no longer counts the catalog. */
   nextSku: () => api("/products/next-sku"),
@@ -185,7 +194,7 @@ export const catalogApi = {
   },
 
   /** Apply a plan from planProductEdit. Each step names itself in its error, and nothing runs twice. */
-  async applyProductEdit(productId, plan) {
+  async applyProductEdit(productId, plan, { warehouseId } = {}) {
     const done = [];
     const step = async (name, fn) => {
       try {
@@ -205,6 +214,21 @@ export const catalogApi = {
         post(`/products/${seg(productId)}/variants`, { sku: text(v.sku), price: toWire(v.sellPrice), option_values: optionValues(v) }),
       );
       if (text(v.barcode)) await step(`حفظ باركود ${v.sku}`, () => post(`/variants/${seg(made.id)}/identifiers`, { identifier_type: "barcode", value: text(v.barcode) }));
+      // رصيد افتتاحي لتركيبة جديدة: حركة مخزون حقيقية على المخزن، مش رقم في النموذج.
+      const opening = Number(v.stock ?? 0);
+      if (Number.isInteger(opening) && opening > 0) {
+        const store = warehouseId || (await ensureWarehouseId());
+        await step(`تسجيل رصيد ${v.sku}`, () =>
+          catalogApi.moveStock({ variantId: made.id, warehouseId: store, direction: "in", quantity: opening, reason: "adjustment" }),
+        );
+      }
+    }
+    // التركيبات اللي اتشالت من المصفوفة بتتعطّل بعد إنشاء الجداد: مش قابلة للبيع، وتاريخها باقي.
+    for (const variantId of plan.deactivations ?? []) {
+      await step("تعطيل تركيبة", () => patch(`/variants/${seg(variantId)}`, { is_active: false }));
+    }
+    for (const { id, level } of plan.reorderChanges ?? []) {
+      await step("حفظ حد التنبيه", () => put(`/pos/stock/${seg(id)}/reorder-level`, { reorder_level: level }));
     }
     for (const b of plan.newBarcodes) {
       await step("حفظ باركود", () => post(`/variants/${seg(b.variantId)}/identifiers`, { identifier_type: "barcode", value: b.value }));
@@ -287,6 +311,15 @@ function isMissingIntakeEndpoint(e) {
 }
 
 /** The whole product in ONE request: one transaction on the server, nothing half saved. */
+/** تكلفة الوحدة من النموذج: فاضي أو مش رقم = null (مجهولة)، ورقم = نص عشري للسيرفر. */
+function unitCost(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n.toFixed(4);
+}
+
 async function createProductInOneRequest(input, { warehouseId, slugToken }) {
   const season = String(input.season ?? "").trim();
   const fabric = materialText(input.material);
@@ -309,6 +342,8 @@ async function createProductInOneRequest(input, { warehouseId, slugToken }) {
       auto_barcode: !!v.autoBarcode,
       // حد التنبيه اللي التاجر كتبه في النموذج — كان بيتبعت في السلسلة القديمة ومبيتبعتش هنا.
       reorder_level: reorderLevel(input.threshold),
+      // تكلفة الوحدة: فاضية = مجهولة (NULL)، مش صفر — تقرير الربح بيعتبرها «بلا تكلفة».
+      unit_cost: unitCost(input.unitCost),
     })),
   };
   const saved = await post("/products/intake", body);

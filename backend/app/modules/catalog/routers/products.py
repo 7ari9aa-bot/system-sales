@@ -131,6 +131,9 @@ class IntakeVariant(BaseModel):
     # حد التنبيه: النموذج كان بيجمعه ويرميه، فالعميل كان بيظبطه ومبيتحفظش. None = مفيش حد،
     # و0 معناها "بلا تنبيه" زي ما خدمة المخزون بتقراها.
     reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
+    # تكلفة الوحدة للرصيد الافتتاحي: الإدخال اليدوي كان بيسجل الحركة بلا cost_value
+    # (تقييم المخزون وتقرير الربح بيقروا صفر)، بينما استيراد Excel بيسجلها.
+    unit_cost: Decimal | None = Field(default=None, ge=0)
 
 
 class ProductIntakeRequest(BaseModel):
@@ -247,6 +250,9 @@ async def intake_product(body: ProductIntakeRequest, ctx: WriteCtx):
                 quantity=v.stock,
                 reason="adjustment",
                 actor_user_id=ctx.user.id,
+                # التكلفة بتتسجل مع الحركة لما التاجر يدخلها؛ لو مدخلهاش تفضل NULL
+                # (مجهولة) مش صفر — تقرير الربح بيعتبرها «بلا تكلفة» بدل هامش كاذب.
+                cost_value=v.unit_cost,
             )
         made.append((variant, code))
 

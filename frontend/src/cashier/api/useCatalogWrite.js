@@ -4,6 +4,18 @@ import { catalogApi } from "./catalogApi";
 import { CATALOG_KEY } from "./usePosSale";
 import { planProductEdit, productToForm, shouldRetryEditLoad } from "./productEdit";
 
+/** كل مخازن المحل النشطة: الاختيار في نموذج المنتج بيتبني عليها، والأول النشط هو الافتراضي. */
+export function useWarehouses() {
+  return useQuery({
+    queryKey: ["cashier", "warehouses"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const list = await catalogApi.warehouses().catch(() => []);
+      return Array.isArray(list) ? list : (list?.items ?? []);
+    },
+  });
+}
+
 /** The default warehouse id, created on first use (a brand-new shop has none). */
 export async function defaultWarehouseId() {
   const list = await catalogApi.warehouses();
@@ -20,7 +32,8 @@ export function useCreateProduct() {
   return useMutation({
     mutationFn: async (input) => {
       const needsStock = (input.variants ?? []).some((v) => Number(v.stock) > 0);
-      const warehouseId = needsStock ? await defaultWarehouseId() : undefined;
+      // المخزن اللي اختاره التاجر بيفوز؛ لو مفيش اختيار (أو مفيش رصيد) بنرجع للمخزن الافتراضي.
+      const warehouseId = needsStock ? input.warehouseId || (await defaultWarehouseId()) : undefined;
       return catalogApi.createProduct(input, { warehouseId });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: CATALOG_KEY }),
@@ -94,10 +107,24 @@ export function useCreateBrand() {
   });
 }
 
-/** The read the edit screen runs: a product with each variant's stored barcode AND that barcode's id. */
+/**
+ * The read the edit screen runs: a product with each variant's stored barcode, that barcode's id,
+ * and each variant's reorder level (so the form opens on the saved threshold instead of zero).
+ */
 export async function readProductForEdit(productId) {
   const { product, barcodes, barcodeIds } = await catalogApi.productForEdit(productId);
-  return productToForm(product, barcodes, barcodeIds);
+  const ids = (product.variants ?? []).map((v) => v.id);
+  let reorder = {};
+  if (ids.length) {
+    // The stock screen's rows are the only read that carries reorder_level.
+    const rows = await posApi.stock("?limit=500").catch(() => []);
+    const wanted = new Set(ids);
+    const list = Array.isArray(rows) ? rows : [];
+    reorder = Object.fromEntries(
+      list.filter((r) => wanted.has(r.variant_id)).map((r) => [r.variant_id, r.reorder_level ?? 0]),
+    );
+  }
+  return productToForm(product, barcodes, barcodeIds, reorder);
 }
 
 /** One product from the backend, shaped for the editor form. A temporary failure is retried, a 404 is not. */
@@ -119,10 +146,10 @@ export function useProductForEdit(productId) {
 export function useUpdateProduct(productId) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ before, after }) => {
+    mutationFn: async ({ before, after, warehouseId }) => {
       const plan = planProductEdit(before, after);
       if (plan.empty) return { changed: false };
-      await catalogApi.applyProductEdit(productId, plan);
+      await catalogApi.applyProductEdit(productId, plan, { warehouseId });
       return { changed: true };
     },
     onSettled: () => qc.invalidateQueries({ queryKey: CATALOG_KEY }),

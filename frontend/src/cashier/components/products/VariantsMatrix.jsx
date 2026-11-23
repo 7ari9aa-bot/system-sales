@@ -4,6 +4,7 @@ import { Input } from "@/cashier/components/ui/input";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import { colorHex } from "@/cashier/lib/uiConstants";
+import { useContainerWide } from "@/cashier/hooks/use-is-wide";
 
 const AUTO_HINT = "يتولّد تلقائيًا عند الحفظ";
 
@@ -11,7 +12,14 @@ const AUTO_HINT = "يتولّد تلقائيًا عند الحفظ";
 const isSaved = (row) => !String(row.id).startsWith("row-");
 
 // جدول تركيبات اللون × المقاس مع SKU والباركود والرصيد الافتتاحي.
-export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateBarcodes, defaultSell }) {
+export default function VariantsMatrix(props) {
+  // نسخة واحدة بس في الـDOM: الجدول على الكارت العريض، والكروت على الموبايل.
+  const [wrapRef, wide] = useContainerWide(860);
+  return <VariantsMatrixBody {...props} wide={wide} wrapRef={wrapRef} />;
+}
+
+/** الجسم نفسه دالة نقية من الـprops، عشان يتحسب من غير هوكس (وبيتقاس بالـhook فوق). */
+export function VariantsMatrixBody({ rows, onChange, onGenerate, onGenerateBarcodes, defaultSell, wide = false, wrapRef }) {
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -23,7 +31,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
   }
 
   return (
-    <div className="@container space-y-3">
+    <div ref={wrapRef} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="num text-xs text-muted-foreground">{rows.length} تركيبة (لون × مقاس)</p>
         <div className="flex gap-2">
@@ -38,7 +46,8 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
         </div>
       </div>
 
-      <ul className="space-y-2 @[860px]:hidden">
+      {!wide && (
+      <ul className="space-y-2">
         {rows.map((row) => (
           <li key={row.id} data-variant-card className="space-y-2 rounded-xl border border-border bg-card p-3">
             <div className="flex items-center justify-between gap-2">
@@ -81,8 +90,10 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
           </li>
         ))}
       </ul>
+      )}
 
-      <div className="scroll-slim hidden overflow-x-auto rounded-xl border border-border @[860px]:block">
+      {wide && (
+      <div className="scroll-slim overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs text-muted-foreground">
@@ -92,6 +103,7 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
               <th className="px-3 py-2 text-start font-semibold">الباركود</th>
               <th className="px-3 py-2 text-start font-semibold">سعر البيع</th>
               <th className="px-3 py-2 text-center font-semibold">رصيد افتتاحي</th>
+              <th className="px-3 py-2 text-center font-semibold">حد التنبيه</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -133,11 +145,22 @@ export default function VariantsMatrix({ rows, onChange, onGenerate, onGenerateB
                     />
                   )}
                 </td>
+                <td className="px-3 py-2 text-center">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={row.reorderLevel ?? 0}
+                    onChange={(e) => onChange(row.id, { reorderLevel: e.target.value })}
+                    className="num mx-auto h-8 w-20 text-center"
+                    title="لما الرصيد يوصل للرقم ده تظهر تنبيه نقص؛ صفر يعني بلا تنبيه"
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
 
       <p className="text-[11px] text-muted-foreground">
         سعر البيع الافتراضي: {defaultSell || "—"} ج.م — يمكن تعديل أي تركيبة على حدة عند الحاجة فقط.
