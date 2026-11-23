@@ -1,9 +1,12 @@
 import { fmtMoney } from "@/cashier/lib/format";
+import { conditionSplit } from "@/cashier/api/returnPlan";
 import ReturnReasonSelect from "@/cashier/components/returns/ReturnReasonSelect";
 
-// ملخص أسفل جدول المرتجع. الخادم يرد المبلغ على طريقة الدفع الأصلية للفاتورة (لا نختارها هنا)،
-// والقيمة المعروضة تقدير بنفس معادلة الخادم، والنهائي يأتي منه بعد الاعتماد.
-export default function ReturnSettlementBar({ value, restock, onRestockChange, reasons, reason, onReasonChange }) {
+// ملخص أسفل جدول المرتجع. الخادم هو اللي بيرد المبلغ على وسائل الدفع الأصلية للفاتورة،
+// والقيمة المعروضة تقدير بنفس معادلة الخادم؛ النتيجة النهائية (المردود فعليًا واللي ما اتحصّلش)
+// بتيجي منه بعد الاعتماد وتظهر في رسالة التأكيد والإيصال.
+export default function ReturnSettlementBar({ value, restock, onRestockChange, reasons, reason, onReasonChange, lines = [], takePayments = null }) {
+  const split = conditionSplit(lines);
   return (
     <div className="flex min-h-[68px] shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-1 rounded-lg border border-border bg-card px-3 py-1.5">
       <div className="text-center">
@@ -18,7 +21,20 @@ export default function ReturnSettlementBar({ value, restock, onRestockChange, r
 
       <ReturnReasonSelect reasons={reasons} value={reason} onChange={onReasonChange} />
 
-      <p className="max-w-[230px] text-center text-[11px] text-muted-foreground">قيمة المرتجع تُسجَّل على الفاتورة فقط ولا يُرد أي مبلغ من هنا</p>
+      {split.length ? (
+        <div className="text-center" data-testid="condition-split">
+          <p className="text-[11px] font-semibold text-foreground/70">حالة القطع الراجعة</p>
+          <p className="text-[11px] text-muted-foreground">
+            {split.map((c) => `${c.units} ${c.label}`).join(" · ")}
+          </p>
+        </div>
+      ) : null}
+
+      <p className="max-w-[250px] text-center text-[11px] text-muted-foreground">
+        {takePayments === false
+          ? "الكاشير مش بيسجّل مدفوعات: المبلغ يتسجّل على الفاتورة فقط"
+          : "الخادم يرد المبلغ على وسائل الدفع الأصلية: النقدي يخرج من درج الوردية، والبطاقة أو المحفظة تتعكس على الماكينة ويُسجَّل رقم المرجع"}
+      </p>
 
       <div className="rounded-lg bg-muted/50 px-4 py-1 text-center">
         <p className="text-[12px] font-semibold text-foreground/70">قيمة المرتجع</p>

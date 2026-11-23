@@ -10,24 +10,26 @@ import { toMinor } from "@/cashier/api/money";
 
 const METHODS = ["cash", "card", "wallet", "bank_transfer"];
 
-// تسجيل دفعة لمورد: على فاتورة بعينها (لو اتحدد order) أو على الحساب. النقدي بيتسجّل حتى من غير وردية.
-export default function SupplierPaymentDialog({ open, onOpenChange, supplier, order, onSubmit, pending, error }) {
+// تسجيل دفعة لمورد: على فاتورة بعينها (لو اتحدد order) أو على الحساب.
+// النقدي من الدرج بيسجّل حركة خروج على درج الوردية المفتوحة؛ غير كده بيتسجّل في الدفاتر من غير وردية.
+export default function SupplierPaymentDialog({ open, onOpenChange, supplier, order, onSubmit, pending, error, sessionId = null }) {
   const owed = order ? order.balance : null;
-  const [form, setForm] = useState({ amount: "", method: "bank_transfer", note: "" });
+  const [form, setForm] = useState({ amount: "", method: "bank_transfer", note: "", fromDrawer: false });
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm({ amount: owed && toMinor(owed) > 0 ? owed : "", method: "cash", note: "" });
+    // A shop with an open drawer most likely pays its suppliers' petty cash from it.
+    setForm({ amount: owed && toMinor(owed) > 0 ? owed : "", method: "cash", note: "", fromDrawer: Boolean(sessionId) });
     setLocalError("");
-  }, [open, owed]);
+  }, [open, owed, sessionId]);
 
   if (!supplier) return null;
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const amount = parsePayment(form.amount);
 
   function submit() {
-    const built = buildPayment({ supplierId: supplier.id, orderId: order?.id, ...form }, { owed });
+    const built = buildPayment({ supplierId: supplier.id, orderId: order?.id, ...form }, { owed, sessionId });
     if (!built.ok) {
       setLocalError(built.error);
       return;
@@ -51,6 +53,24 @@ export default function SupplierPaymentDialog({ open, onOpenChange, supplier, or
             <Label className="mb-1.5 block text-xs text-muted-foreground">المبلغ</Label>
             <Input inputMode="decimal" className="num" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0.00" autoFocus />
           </div>
+          {form.method === "cash" ? (
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px]">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[#F97316]"
+                checked={Boolean(form.fromDrawer) && Boolean(sessionId)}
+                disabled={!sessionId}
+                onChange={(e) => set("fromDrawer", e.target.checked)}
+              />
+              <span>
+                <span className="font-semibold">الدفع من درج الوردية المفتوحة</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {sessionId ? "هيتسجّل خروج نقدي من الدرج ويظهر في حساب الإقفال." : "مفيش وردية مفتوحة: الدفعة هتتسجّل من خارج الدرج."}
+                </span>
+              </span>
+            </label>
+          ) : null}
+
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">طريقة الدفع</Label>
             <Select value={form.method} onValueChange={(v) => set("method", v)}>

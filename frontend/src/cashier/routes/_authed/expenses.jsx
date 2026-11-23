@@ -17,6 +17,7 @@ import { exportCsv } from "@/cashier/lib/exportCsv";
 import { useAuth } from "@/lib/AuthContext";
 import { EXPENSE_METHODS, expenseErrorMessage, filterExpenses, summarize } from "@/cashier/api/expensesAdapter";
 import { useExpenseCategories, useExpenses, usePostExpense, useVoidExpense } from "@/cashier/api/useExpenses";
+import { useWorkingSession } from "@/cashier/api/useShifts";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/2115fad41_generated_image.png";
@@ -41,6 +42,10 @@ export default function ExpensesPage() {
   const categories = categoriesQ.data ?? [];
   const { data: rows = [], isLoading, error: loadError, refetch } = useExpenses({ categories, users });
   const post = usePostExpense();
+  // The OPEN till, so a cash expense can leave its drawer instead of being a record nobody reconciles.
+  const { data: working } = useWorkingSession();
+  const sessionId = working?.status === "open" ? (working.session?.id ?? null) : null;
+  const expectedCash = working?.status === "open" ? (working.session?.expected_cash ?? null) : null;
   const voidMut = useVoidExpense();
 
   const [term, setTerm] = useState("");
@@ -155,7 +160,7 @@ export default function ExpensesPage() {
         stats={[
           { label: "إجمالي المصروفات", value: fmtMoney(summary.total), hint: `${fmtInt(summary.count)} مصروفًا${summary.voidedCount ? ` • ${fmtInt(summary.voidedCount)} ملغي` : ""}`, accent: true },
           { label: "مصروفات اليوم", value: fmtMoney(summary.today), hint: "مسجلة في تاريخ اليوم" },
-          { label: "مدفوع نقدًا", value: fmtMoney(summary.cash), hint: "مسجّل فقط، لا يؤثر على درج الكاشير" },
+          { label: "مدفوع نقدًا", value: fmtMoney(summary.cash), hint: sessionId ? "منها ما خرج من درج الوردية المفتوحة" : "مسجّل فقط: مفيش وردية مفتوحة" },
           { label: "أكبر تصنيف", value: summary.top, hint: `${fmtMoney(summary.topAmount)} من إجمالي المصروفات` },
         ]}
       />
@@ -166,6 +171,8 @@ export default function ExpensesPage() {
         categories={categories}
         methods={EXPENSE_METHODS}
         onSubmit={saveExpense}
+        sessionId={sessionId}
+        expectedCash={expectedCash}
         pending={post.isPending}
         error={post.error ? expenseErrorMessage(post.error) : null}
       />

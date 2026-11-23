@@ -1874,7 +1874,8 @@ class PosService(PosReceiptReads):
             {**({"cash": counted} if counted is not None else {}), **method_counts}.items()
         ):
             expected_amount = (
-                expected if method == CASH and expected is not None
+                expected
+                if method == CASH and expected is not None
                 else to_money(by_method.get(method, 0), method)
             )
             session.add(
@@ -2085,9 +2086,7 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
-        return await PosService._order_service().collected_by_method(
-            session, tenant_id, order_ids
-        )
+        return await PosService._order_service().collected_by_method(session, tenant_id, order_ids)
 
     @staticmethod
     async def _record_close(
@@ -2147,6 +2146,10 @@ class PosService(PosReceiptReads):
                     PosReceipt.tenant_id == tenant_id,
                     PosReceipt.session_id == pos_session.id,
                     PosReceipt.kind == "sale",
+                    # A VOIDED sale is not a sale: its receipt still exists (the audit trail needs
+                    # it) but it must not inflate the shift's count or total, or the Z report would
+                    # disagree with the day's takings the moment a cashier voids an invoice.
+                    Order.status != "cancelled",
                 )
             )
         ).one()
@@ -2225,6 +2228,9 @@ class PosService(PosReceiptReads):
                     PosReceipt.tenant_id == tenant_id,
                     PosReceipt.session_id == pos_session.id,
                     PosReceipt.kind == "sale",
+                    # A voided sale is not a sale: it was reversed the same day, and counting it
+                    # here would show revenue the shop never kept.
+                    Order.status != "cancelled",
                 )
             )
         ).one()
@@ -2316,8 +2322,21 @@ class PosService(PosReceiptReads):
         }
         returns_out: list[dict] = []
         exchanges_out: list[dict] = []
+        voids_out: list[dict] = []
         for r in receipts:
-            if r.kind == "return":
+            if r.kind == "void":
+                # A void is not a return: it says the sale never happened, so it is reported on its
+                # own line with the invoice it reverses.
+                voids_out.append(
+                    {
+                        "receipt_id": str(r.id),
+                        "receipt_number": r.number,
+                        "issued_at": r.issued_at.isoformat(),
+                        "original_order_id": str(r.order_id),
+                        "total": str(sale_total.get(r.id, Decimal("0"))),
+                    }
+                )
+            elif r.kind == "return":
                 units, total = returned.get(r.id, (0, Decimal("0")))
                 row = {
                     "receipt_id": str(r.id),
@@ -2340,7 +2359,7 @@ class PosService(PosReceiptReads):
                 else:
                     returns_out.append(row)
         _ = by_id
-        return {"returns": returns_out, "exchanges": exchanges_out}
+        return {"returns": returns_out, "exchanges": exchanges_out, "voids": voids_out}
 
     # ------------------------------------------------------- close preview ----
 
@@ -2349,14 +2368,29 @@ class PosService(PosReceiptReads):
         """What the close will record: the day's figures and the closing balance. Read-only."""
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         totals = await PosService._day_totals(session, tenant_id, pos_session)
+        drawer_on = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        # What each method should hold, so the screen can ask for the terminal counts too and show a
+        # gap per method instead of one cash figure. A record-only till reads its sales' payments.
+        by_method = (
+            (await PosService.drawer_summary(session, tenant_id, session_id))["by_method"]
+            if drawer_on
+            else await PosService._day_by_method(session, tenant_id, pos_session)
+        )
         return {
             "session_id": pos_session.id,
             "status": pos_session.status,
             # Whether this close counts a drawer. The screen asks for the count only then, so it can
             # never disagree with ``close_session``, which refuses a close that lacks one.
-            "take_payments": bool(
-                await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+            "take_payments": drawer_on,
+            # Whether every non-cash method must be counted, and what each one should hold.
+            "settle_payment_methods": bool(
+                await PosService._setting(
+                    session, tenant_id, "pos.settle_payment_methods", pos_session
+                )
             ),
+            "by_method": {str(k): str(v) for k, v in by_method.items()},
             **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()},
         }
 
@@ -2495,6 +2529,10 @@ class PosService(PosReceiptReads):
                 "difference_total": str(to_money(exchange_diff, "exchange_difference")),
                 "documents": docs["exchanges"],
             },
+            "voids": {
+                "void_count": len(docs["voids"]),
+                "documents": docs["voids"],
+            },
             "net_sales": str(totals["net_sales"]),
             "closing_balance": str(totals["closing_balance"]),
         }
@@ -2558,6 +2596,9 @@ class PosService(PosReceiptReads):
                         PosReceipt.tenant_id == tenant_id,
                         PosReceipt.session_id.in_(session_ids),
                         PosReceipt.kind == "sale",
+                        # Voided invoices are history, not takings: the day's rollup is what the
+                        # owner compares against the bank, so it counts what was actually sold.
+                        Order.status != "cancelled",
                     )
                 )
             ).one()
@@ -3320,7 +3361,6 @@ class PosService(PosReceiptReads):
         """
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
 
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
@@ -3838,6 +3878,9 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
+        from app.modules.inventory.models import InventoryMovement
+        from app.modules.inventory.services.valuation import ValuationService
+
         for item in items:
             await InventoryService.move(
                 session,
@@ -3851,6 +3894,38 @@ class PosService(PosReceiptReads):
                 reference_id=order_id,
                 actor_user_id=actor_user_id,
             )
+            # The sale CONSUMED a cost layer for this piece; putting the quantity back without the
+            # cost would leave the shelf holding stock worth nothing, and the next sale would book
+            # a cost of zero. The sale's own movement carries what it cost, so the layer comes back
+            # at that unit cost (value-correct; a fresh layer dated now keeps FIFO order sane).
+            sold = (
+                await session.execute(
+                    select(InventoryMovement.cost_value).where(
+                        InventoryMovement.tenant_id == tenant_id,
+                        InventoryMovement.variant_id == item.variant_id,
+                        InventoryMovement.reference_type == "order",
+                        InventoryMovement.reference_id == order_id,
+                        InventoryMovement.direction == "out",
+                        InventoryMovement.reason == "sale",
+                    )
+                )
+            ).first()
+            sold_cost = Decimal(str(sold[0])) if sold is not None and sold[0] is not None else None
+            if sold_cost is not None and item.quantity:
+                await ValuationService.create_cost_layer(
+                    session,
+                    tenant_id,
+                    variant_id=item.variant_id,
+                    warehouse_id=register.warehouse_id,
+                    quantity=int(item.quantity),
+                    unit_cost=(sold_cost / Decimal(int(item.quantity))).quantize(Decimal("0.0001")),
+                    source_type="void",
+                    source_id=order_id,
+                )
+
+        # The order is no longer a sale: every report that reads order status must drop it, and a
+        # second void must find it already reversed.
+        order.status = "cancelled"
 
         # Give back exactly what the sale collected, on the tenders that collected it.
         tenders, _payments = await PosService._refundable_tenders(session, tenant_id, order_id)
@@ -4071,6 +4146,16 @@ class PosService(PosReceiptReads):
                 )
             )
         await session.flush()
+
+        # The money is back, so the two DERIVED facts have to follow it, exactly as the shared
+        # refund path (``OrderService.register_refund``) does. Skipping them left a POS-refunded
+        # sale still reading "captured" on the order and the customer still worth money the shop
+        # had already given back — so lifetime value, segments and the payment's own state
+        # disagreed with the refunds that caused them.
+        touched = {slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None}
+        if touched:
+            await PosService._apply_refunded_payment_states(session, tenant_id, order, touched)
+
         return {
             "mode": "tender",
             "refunded": plan.refunded,
@@ -4078,6 +4163,68 @@ class PosService(PosReceiptReads):
             "by_method": plan.by_method,
             "slices": list(plan.slices),
         }
+
+    @staticmethod
+    async def _apply_refunded_payment_states(
+        session: AsyncSession, tenant_id: UUID, order: object, payment_ids: set[UUID]
+    ) -> None:
+        """Mark the reversed payments ``partially_refunded``/``refunded`` and lower the customer.
+
+        Both writes are derived from the ``refunds`` rows just written, never from this call's
+        amount: a second refund on the same tender must land on the same status the shared path
+        would give it, and the customer's worth is recomputed from the ledger (see
+        ``OrderService._recompute_lifetime_value``) rather than nudged.
+
+        A VOIDED order is left alone: its status is already ``cancelled``, which is the stronger
+        statement, and a full refund must not overwrite it.
+        """
+        from app.modules.orders.models import OrderPayment, Refund
+        from app.modules.orders.service import OrderService
+
+        payments = (
+            (
+                await session.execute(
+                    select(OrderPayment).where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order.id,
+                        OrderPayment.id.in_(payment_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        fully_refunded = bool(payments)
+        for payment in payments:
+            refunded_total = Decimal(
+                str(
+                    (
+                        await session.execute(
+                            select(func.coalesce(func.sum(Refund.amount), 0))
+                            .select_from(Refund)
+                            .where(
+                                Refund.tenant_id == tenant_id,
+                                Refund.payment_id == payment.id,
+                                Refund.status != "rejected",
+                            )
+                        )
+                    ).scalar_one()
+                )
+            )
+            payment_total = to_money(payment.amount, "captured amount")
+            payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
+            if payment.status != "refunded":
+                fully_refunded = False
+        await session.flush()
+
+        # A fully refunded sale must not stay "completed": dashboards and analytics would keep
+        # counting refunded money as revenue. Same rule and same transition as the shared path.
+        if fully_refunded and getattr(order, "status", None) == "completed":
+            await OrderService._transition(
+                session, tenant_id, order, "refunded", note="fully refunded at the till"
+            )
+
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
 
     # ----------------------------------------------------------- exchanges ----
 
@@ -4117,7 +4264,6 @@ class PosService(PosReceiptReads):
         sale never collected is reported as ``uncollected``, never paid out of the drawer."""
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
         from app.modules.orders.service import OrderService
 
@@ -4523,7 +4669,9 @@ class PosService(PosReceiptReads):
             # The money: ``collected`` (the replacement cost more and the difference was taken),
             # ``refunded`` (it cost less and the difference went back), ``exchange_only`` (equal,
             # nothing moved) or ``record_only`` (a till that takes no payments).
-            "settlement": settlement["mode"] if settlement["direction"] == "none" else settlement["direction"],
+            "settlement": (
+                settlement["mode"] if settlement["direction"] == "none" else settlement["direction"]
+            ),
             "settled_amount": str(settlement["amount"]),
             "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "uncollected": str(settlement.get("uncollected", "0.00")),

@@ -12,14 +12,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
     InventoryBalance,
-    InventoryMovement,
     Stocktake,
     StocktakeAssignment,
     StocktakeLine,
@@ -464,7 +463,13 @@ class StocktakeService:
     ) -> dict:
         """The count with its lines, each next to today's balance so the screen can show drift.
 
-        A blind count hides expected_qty and current_qty when accessed by a counter.
+        Each counted line also carries ``counted_book_qty`` and ``counted_at``: the book figure the
+        piece was measured against WHEN IT WAS COUNTED, which is the one approval reconciles. The
+        screen that diffs against the count's START snapshot shows a different number than the one
+        the server will apply whenever stock moved during the count — so both figures travel.
+
+        A blind count hides expected_qty, current_qty and the counted book when accessed by a
+        counter.
         """
         stocktake = await StocktakeService._get(session, tenant_id, stocktake_id)
         rows = (
@@ -500,9 +505,16 @@ class StocktakeService:
 
         lines_out = []
         for line, current in rows:
+            # The basis approval uses: the book figure stored at the moment of the count, falling
+            # back to the start snapshot only for a line counted before that column existed.
+            book_at_count = (
+                int(line.counted_book_qty)
+                if line.counted_book_qty is not None
+                else line.expected_qty
+            )
             needs_recount = False
-            if line.counted_qty is not None and line.expected_qty > 0:
-                variance_pct = abs(line.counted_qty - line.expected_qty) / line.expected_qty * 100
+            if line.counted_qty is not None and book_at_count > 0:
+                variance_pct = abs(line.counted_qty - book_at_count) / book_at_count * 100
                 if variance_pct >= threshold:
                     needs_recount = True
 
@@ -517,6 +529,13 @@ class StocktakeService:
                     "applied_delta": line.applied_delta,
                     "recount_count": line.recount_count or 0,
                     "needs_recount": needs_recount,
+                    # What the server will actually compare the figure against, and when it was
+                    # taken: the screen must never diff against a different number than approval.
+                    # A line nobody counted has no basis at all (an empty box is not a count).
+                    "counted_book_qty": (
+                        None if (hide_book or line.counted_qty is None) else book_at_count
+                    ),
+                    "counted_at": line.counted_at.isoformat() if line.counted_at else None,
                 }
             )
 

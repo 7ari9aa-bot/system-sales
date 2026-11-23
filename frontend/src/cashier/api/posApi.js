@@ -108,10 +108,25 @@ export const posApi = {
       compact({ reason, amount: toWire(amount), notes: notes ? String(notes).trim() : undefined }),
       needIntent(intent),
     ),
-  handoverSession: async (id, newCashierId, intent) =>
+  /* Reverse a CONFIRMED sale. Not a return: the sale never happened, so stock, money and the
+     reports all go back. Needs a reason, and the server checks pos:override for another's shift. */
+  voidSale: async (id, { orderId, reason }, intent) =>
+    post(
+      `/pos/sessions/${seg(id)}/voids`,
+      { order_id: String(orderId), reason: String(reason ?? "").trim() },
+      needIntent(intent),
+    ),
+  handoverSession: async (id, { newCashierId, countedCash, varianceReason } = {}, intent) =>
     post(
       `/pos/sessions/${seg(id)}/handover`,
-      { new_cashier_id: String(newCashierId) },
+      compact({
+        new_cashier_id: String(newCashierId),
+        // A drawer that takes payments is COUNTED before it changes hands.
+        counted_cash: countedCash === undefined || countedCash === null || countedCash === ""
+          ? undefined
+          : toWire(countedCash),
+        variance_reason: varianceReason ? String(varianceReason).trim() : undefined,
+      }),
       needIntent(intent),
     ),
 
@@ -242,7 +257,7 @@ export const posApi = {
       compact({ order_id: orderId, lines: lines(l, "return line"), restock }),
       needIntent(intent),
     ),
-  exchange: async (id, { orderId, returnLines, newLines, restock }, intent) =>
+  exchange: async (id, { orderId, returnLines, newLines, restock, payments, refund, refundMethod }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/exchanges`,
       compact({
@@ -250,6 +265,11 @@ export const posApi = {
         return_lines: lines(returnLines, "return line"),
         new_lines: lines(newLines, "new line"),
         restock,
+        // The money half: what the customer pays for a dearer replacement, or how a cheaper one
+        // gives the difference back. The server refuses a dearer replacement without payments.
+        payments: payments?.length ? payments : undefined,
+        refund: refund?.length ? refund : undefined,
+        refund_method: refundMethod ?? undefined,
       }),
       needIntent(intent),
     ),

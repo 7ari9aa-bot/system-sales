@@ -4,28 +4,31 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/cashier/components/ui/input";
 import { Label } from "@/cashier/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/cashier/components/ui/select";
-import { buildExpense, normalizeAmountInput } from "@/cashier/api/expensesAdapter";
+import { EXPENSE_SOURCES, buildExpense, normalizeAmountInput } from "@/cashier/api/expensesAdapter";
 import { PAYMENT_METHODS, fmtMoney } from "@/cashier/lib/format";
 import { shopToday } from "@/cashier/lib/period";
 
 const today = () => shopToday();
-const blank = () => ({ categoryId: "", description: "", amount: "", payment: "cash", date: today() });
+const blank = () => ({ categoryId: "", description: "", amount: "", payment: "cash", date: today(), source: "external" });
 
 // تسجيل مصروف جديد. المصروف المسجَّل ما بيتعدّلش: التصحيح بإلغائه وتسجيل مصروف صحيح.
-// النقدي مسجَّل بدون وردية. لو فيه وردية مفتوحة بيتحسب على درجها، وإلا بيتسجَّل فقط.
-export default function ExpenseDialog({ open, onOpenChange, categories, methods, onSubmit, pending, error }) {
+// المصدر هو اللي بيحدد هل الفلوس خرجت من الدرج فعلًا: «درج الوردية المفتوحة» بيسجّل حركة خروج
+// على درج الوردية (فتظهر في حساب الإقفال)، و«حساب خارج الدرج» بيتسجّل في الدفاتر من غير وردية.
+export default function ExpenseDialog({ open, onOpenChange, categories, methods, onSubmit, pending, error, sessionId = null, expectedCash = null }) {
   const [form, setForm] = useState(blank);
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm({ ...blank(), payment: "cash" });
+    // A shop with an open drawer most likely pays its petty cash from it, so that is the default.
+    setForm({ ...blank(), payment: "cash", source: sessionId ? "drawer" : "external" });
     setLocalError("");
-  }, [open]);
+  }, [open, sessionId]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const amount = normalizeAmountInput(form.amount);
-  const built = buildExpense(form);
+  const built = buildExpense(form, { sessionId });
+  const fromDrawer = form.source === "drawer";
 
   function submit() {
     if (!built.ok) {
@@ -44,7 +47,7 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
         <DialogHeader>
           <DialogTitle className="font-heading text-base">تسجيل مصروف جديد</DialogTitle>
           <DialogDescription>
-            المصروف النقدي بيتسجّل حتى من غير وردية. وبعد التسجيل ما بيتعدّلش: لو غلطت، ألغيه وسجّله صح.
+            اختار منين الفلوس خرجت. المصروف المسجَّل ما بيتعدّلش: لو غلطت، ألغيه وسجّله صح.
           </DialogDescription>
         </DialogHeader>
 
@@ -77,9 +80,34 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
             <Label className="mb-1.5 block text-xs text-muted-foreground">تاريخ المصروف</Label>
             <Input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
           </div>
+          <div className="sm:col-span-2">
+            <Label className="mb-1.5 block text-xs text-muted-foreground">مصدر الدفع</Label>
+            <Select value={form.source} onValueChange={(v) => set("source", v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXPENSE_SOURCES.map((source) => (
+                  <SelectItem key={source.value} value={source.value} disabled={source.value === "drawer" && (!sessionId || form.payment !== "cash")}>
+                    {source.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {!sessionId
+                ? "مفيش وردية مفتوحة الآن: المصروف بيتسجّل على حساب خارج الدرج."
+                : form.payment !== "cash"
+                  ? "الدرج للنقدي فقط: المصروف ده بيتسجّل على حساب خارج الدرج."
+                  : fromDrawer
+                    ? `هيتسجّل خروج نقدي من درج الوردية المفتوحة${expectedCash ? ` (المتوقع في الدرج ${fmtMoney(expectedCash)})` : ""}.`
+                    : "بيتسجّل في الدفاتر من غير ما يلمس درج الوردية."}
+            </p>
+          </div>
+
           <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">طريقة الدفع</Label>
-            <Select value={form.payment} onValueChange={(v) => set("payment", v)}>
+            <Select value={form.payment} onValueChange={(v) => setForm((prev) => ({ ...prev, payment: v, source: v === "cash" ? prev.source : "external" }))}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

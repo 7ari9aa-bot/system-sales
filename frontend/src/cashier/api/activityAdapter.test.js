@@ -8,6 +8,7 @@ import {
   movementDetail,
   shiftDetail,
   supplierReturnDetail,
+  voidDetail,
 } from "./activityAdapter";
 
 const ev = (o = {}) => ({ occurred_at: "2026-10-21T00:02:10Z", kind: "sale", ref_id: "r1", doc: "POS-1", amount: "40.00", actor_id: "u1", actor_name: "منى", detail: "x", ...o });
@@ -36,6 +37,25 @@ describe("machine values become Arabic", () => {
     expect(supplierReturnDetail("مورد · rejected")).toBe("مورد • مرفوض");
     expect(supplierReturnDetail("مورد · pending")).toBe("مورد • قيد المراجعة");
     expect(supplierReturnDetail("بدون حالة")).toBe("بدون حالة");
+  });
+});
+
+describe("a void reads as a reversal, never as a return", () => {
+  it("names the original receipt and keeps the reason", () => {
+    expect(voidDetail("void · POS-2026-1 · المقاس غلط")).toBe(
+      "إلغاء فاتورة • أصلها POS-2026-1 • المقاس غلط",
+    );
+  });
+  it("still says it was a void when the reason is missing", () => {
+    expect(voidDetail("void · POS-2026-1 · ")).toBe("إلغاء فاتورة • أصلها POS-2026-1");
+    expect(voidDetail("void")).toBe("إلغاء فاتورة");
+  });
+  it("the row keeps its own kind and the money that was reversed", () => {
+    const row = activityFromApi(ev({ kind: "void", doc: "POS-VOID-2026-1", detail: "void · POS-2026-1 · غلط" }));
+    expect(row.type).toBe("void");
+    expect(row.doc).toBe("POS-VOID-2026-1");
+    expect(row.amount).toBe("40.00");
+    expect(row.details).toBe("إلغاء فاتورة • أصلها POS-2026-1 • غلط");
   });
 });
 

@@ -166,6 +166,7 @@ export const SHIFT_STATUS = {
 
 export const ACTIVITY_TYPES = {
   sale: { label: "فاتورة بيع", tone: "success" },
+  void: { label: "إلغاء فاتورة", tone: "warning" },
   return: { label: "مرتجع عميل", tone: "danger" },
   purchase: { label: "توريد", tone: "info" },
   supplier_return: { label: "مرتجع مورد", tone: "primary" },

@@ -9,9 +9,12 @@ import LogBadge from "@/cashier/components/sales/LogBadge";
 import InvoiceRowActions from "@/cashier/components/sales/InvoiceRowActions";
 import OperationsLogDialog from "@/cashier/components/sales/OperationsLogDialog";
 import ReceiptDialog from "@/cashier/components/pos/ReceiptDialog";
+import VoidInvoiceDialog from "@/cashier/components/sales/VoidInvoiceDialog";
 import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useShiftSales } from "@/cashier/api/usePosSale";
+import { useWorkingSession } from "@/cashier/api/useShifts";
+import { posApi, newIntent } from "@/cashier/api/posApi";
 import { filterRows, totalsOf } from "@/cashier/api/salesLog";
 import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
@@ -30,6 +33,9 @@ export default function SalesLogPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [logInvoice, setLogInvoice] = useState(null);
   const [receipt, setReceipt] = useState(null);
+  const [voidInvoice, setVoidInvoice] = useState(null);
+  const [voidError, setVoidError] = useState(null);
+  const [voidPending, setVoidPending] = useState(false);
 
   const { user } = useAuth();
   const shiftsQuery = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
@@ -43,6 +49,29 @@ export default function SalesLogPage() {
   const totals = totalsOf(rows);
 
   const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}?shift=${encodeURIComponent(shiftId)}`);
+
+  // الإلغاء بيرد الفلوس من درج الوردية المفتوحة، فلازم نعرف الوردية المفتوحة الحالية.
+  const working = useWorkingSession();
+  async function confirmVoid({ orderId, reason }) {
+    if (voidPending) return;
+    const sessionId = working.data?.session?.id ?? working.data?.id ?? shiftId;
+    if (!sessionId) {
+      setVoidError("مفيش وردية مفتوحة ترد منها الفلوس. افتح اليوم الأول.");
+      return;
+    }
+    setVoidPending(true);
+    setVoidError(null);
+    try {
+      const res = await posApi.voidSale(sessionId, { orderId, reason }, newIntent());
+      toast.success(`اتلغت الفاتورة ${voidInvoice?.number ?? ""} — مستند الإلغاء ${res?.void_receipt_number ?? ""}`.trim());
+      setVoidInvoice(null);
+      await salesQuery.refetch();
+    } catch (e) {
+      setVoidError(e?.message || "الخادم رفض الإلغاء");
+    } finally {
+      setVoidPending(false);
+    }
+  }
   const shift = shifts.find((x) => x.id === shiftId);
 
   const columns = [
@@ -90,6 +119,7 @@ export default function SalesLogPage() {
             }}
             onReturn={() => navigate(`/cashier/returns?invoice=${encodeURIComponent(inv.number)}`)}
             onLog={() => setLogInvoice(inv)}
+            onVoid={(row) => { setVoidError(null); setVoidInvoice(row); }}
           />
         </div>
       ),
@@ -193,6 +223,14 @@ export default function SalesLogPage() {
 
       <OperationsLogDialog open={!!logInvoice} onOpenChange={(o) => !o && setLogInvoice(null)} invoice={logInvoice} />
       <ReceiptDialog open={!!receipt} onOpenChange={(o) => !o && setReceipt(null)} receipt={receipt} />
+      <VoidInvoiceDialog
+        open={!!voidInvoice}
+        onOpenChange={(o) => { if (!o) { setVoidInvoice(null); setVoidError(null); } }}
+        invoice={voidInvoice}
+        pending={voidPending}
+        error={voidError}
+        onConfirm={confirmVoid}
+      />
     </div>
   );
 }

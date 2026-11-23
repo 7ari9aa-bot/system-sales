@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import QtyStepper from "@/cashier/components/exchanges/QtyStepper";
+import { CONDITIONS, conditionEffect } from "@/cashier/api/returnPlan";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
@@ -10,7 +11,7 @@ const CELL = "border border-border px-2 py-0.5";
 const MIN_ROWS = 3;
 
 // جدول أصناف المرتجع: القطع المنقولة من الفاتورة الأصلية مع تعديل الكمية أو حذف البند.
-export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRemove, minRows = MIN_ROWS }) {
+export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRemove, onCondition, minRows = MIN_ROWS }) {
   const rows = Array.from({ length: Math.max(minRows, lines.length) }, (_, index) => lines[index] ?? null);
 
   return (
@@ -33,6 +34,7 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
             <col className="w-[14%]" />
             <col className="w-[9%]" />
             <col className="w-[112px]" />
+            <col className="w-[116px]" />
             <col className="w-[15%]" />
           </colgroup>
 
@@ -45,6 +47,7 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
               <th className={cn(HCELL, "text-center")}>اللون</th>
               <th className={cn(HCELL, "text-center")}>الكمية</th>
               <th className={cn(HCELL, "text-center")}>السعر</th>
+              <th className={cn(HCELL, "text-center")}>حالة القطعة</th>
               <th className={cn(HCELL, "text-center")}>الإجمالي</th>
               <th className={cn(HCELL, "text-center")}>حذف</th>
             </tr>
@@ -56,7 +59,7 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
                 return (
                   <tr key={`empty-${index}`} className={cn("h-8", index % 2 === 1 ? "bg-muted/20" : "bg-card")}>
                     <td className={cn(CELL, "num text-center text-xs text-muted-foreground/70")}>{index + 1}</td>
-                    {Array.from({ length: 8 }, (_, blank) => (
+                    {Array.from({ length: 9 }, (_, blank) => (
                       <td key={`blank-${blank}`} className={CELL} />
                     ))}
                   </tr>
@@ -84,6 +87,23 @@ export default function ReturnItemsTable({ lines, totals, onQty, onQtyStep, onRe
                     />
                   </td>
                   <td className={cn(CELL, "num text-center")}>{fmtMoney(line.unitNet)}</td>
+                  <td className={CELL}>
+                    {line.returnQty > 0 ? (
+                      <select
+                        className="h-7 w-full rounded-md border border-border bg-card px-1 text-[11px]"
+                        value={line.condition ?? "sellable"}
+                        title={conditionEffect(line.condition)}
+                        aria-label={`حالة القطعة ${line.name}`}
+                        onChange={(e) => onCondition?.(line.key, e.target.value)}
+                      >
+                        {CONDITIONS.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-center text-[11px] text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className={cn(CELL, "num text-center font-bold text-rose-600")}>{fmtMoney(line.unitNet * line.returnQty)}</td>
                   <td className={cn(CELL, "text-center")}>
                     <Button

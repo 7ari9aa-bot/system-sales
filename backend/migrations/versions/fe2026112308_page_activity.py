@@ -5,8 +5,8 @@ The Facebook notifications screen rebuilt itself from the post list and kept its
 stayed invisible, and one staff member reading a notification left it unread on every other
 device. This table is the durable feed the webhook writes and the screen reads.
 
-Revision ID: fe2026112304
-Revises: fe2026112303
+Revision ID: fe2026112308
+Revises: fe2026112307
 Create Date: 2026-11-23 18:55:00.000000
 """
 
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "fe2026112304"
-down_revision: str | None = "fe2026112303"
+revision: str = "fe2026112308"
+down_revision: str | None = "fe2026112307"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

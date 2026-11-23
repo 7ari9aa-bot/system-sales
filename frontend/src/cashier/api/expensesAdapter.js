@@ -63,7 +63,13 @@ export function normalizeAmountInput(raw) {
 /**
  * Validate a new expense. Returns { ok:true, payload } or { ok:false, error }.
  */
-export function buildExpense(form) {
+/** Where the money came from: the open shift's drawer, or an account outside the till. */
+export const EXPENSE_SOURCES = [
+  { value: "drawer", label: "درج الوردية المفتوحة" },
+  { value: "external", label: "حساب خارج الدرج (بنك/محفظة)" },
+];
+
+export function buildExpense(form, { sessionId = null } = {}) {
   if (!form.categoryId) return { ok: false, error: "اختر التصنيف" };
   const description = String(form.description ?? "").trim();
   if (!description) return { ok: false, error: "اكتب بيان المصروف" };
@@ -72,6 +78,14 @@ export function buildExpense(form) {
   if (!amount) return { ok: false, error: "المبلغ لازم يكون رقمًا أكبر من صفر وبحد أقصى خانتين عشريتين" };
   if (!EXPENSE_METHODS.includes(form.payment)) return { ok: false, error: "اختر طريقة الدفع" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(form.date ?? ""))) return { ok: false, error: "اختر تاريخ المصروف" };
+  // The source decides whether the cash actually leaves a drawer. Only cash can come out of one
+  // (the backend refuses a card expense against a shift), and a drawer expense needs the OPEN
+  // shift — a closed or missing one would post a movement nobody can reconcile.
+  const fromDrawer = (form.source ?? "external") === "drawer";
+  if (fromDrawer) {
+    if (form.payment !== "cash") return { ok: false, error: "الدرج للنقدي فقط: سجّل المصروف ده كحساب خارج الدرج" };
+    if (!sessionId) return { ok: false, error: "مفيش وردية مفتوحة تتحسب عليها: افتح الوردية أو اختار حساب خارج الدرج" };
+  }
   return {
     ok: true,
     payload: {
@@ -80,7 +94,9 @@ export function buildExpense(form) {
       amount,
       payment_method: form.payment,
       expense_date: form.date,
-      // An expense is a record, never a drawer movement: it carries no shift, open or not.
+      // Sent ONLY when the cash really leaves this drawer: an expense outside the till carries no
+      // shift, which is what keeps the close arithmetic honest.
+      ...(fromDrawer ? { session_id: sessionId } : {}),
     },
   };
 }

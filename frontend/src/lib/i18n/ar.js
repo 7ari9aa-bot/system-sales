@@ -1222,6 +1222,10 @@ export default {
   "pos.handover.submit": "تأكيد التسليم",
   "pos.handover.success": "تم تسليم الوردية بنجاح.",
   "pos.handover.requiresOverride": "تسليم وردية كاشير آخر يتطلب صلاحية المدير.",
+  "pos.handover.counted": "الكاش المعدود في الدرج",
+  "pos.handover.expected": "المتوقع في الدرج",
+  "pos.handover.reason": "سبب الفرق",
+  "pos.handover.countFirst": "عُدّ الدرج الأول: التسليم بيسجّل عهدة كل كاشير.",
 
   // العمل دون اتصال (Offline Mode & Sync Queue)
   "pos.offline.status": "غير متصل بالإنترنت (وضع العمل دون اتصال)",

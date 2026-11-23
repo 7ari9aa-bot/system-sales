@@ -178,3 +178,45 @@ describe("expenseFromApi", () => {
     expect(() => expenseFromApi({ id: 1, number: "n", amount: "1.00", payment_method: "cash", expense_date: "2026-01-01" })).not.toThrow();
   });
 });
+
+describe("the expense's source decides whether the drawer moves", () => {
+  const form = (over = {}) => ({
+    categoryId: "c1",
+    description: "فاتورة الكهرباء",
+    amount: "250.00",
+    payment: "cash",
+    date: "2026-11-20",
+    source: "external",
+    ...over,
+  });
+
+  it("a drawer expense carries the open shift, so the cash leaves that drawer", () => {
+    const built = buildExpense(form({ source: "drawer" }), { sessionId: "s1" });
+    expect(built.ok).toBe(true);
+    expect(built.payload.session_id).toBe("s1");
+  });
+
+  it("an expense outside the till carries no shift at all", () => {
+    const built = buildExpense(form({ source: "external" }), { sessionId: "s1" });
+    expect(built.ok).toBe(true);
+    expect("session_id" in built.payload).toBe(false);
+  });
+
+  it("refuses a drawer expense with no open shift instead of posting it nowhere", () => {
+    const built = buildExpense(form({ source: "drawer" }), { sessionId: null });
+    expect(built.ok).toBe(false);
+    expect(built.error).toContain("وردية مفتوحة");
+  });
+
+  it("refuses a card expense against a drawer: only cash comes out of a till", () => {
+    const built = buildExpense(form({ source: "drawer", payment: "card" }), { sessionId: "s1" });
+    expect(built.ok).toBe(false);
+    expect(built.error).toContain("للنقدي فقط");
+  });
+
+  it("still defaults to a plain record when the caller names no source", () => {
+    const built = buildExpense(form({ source: undefined }), { sessionId: "s1" });
+    expect(built.ok).toBe(true);
+    expect("session_id" in built.payload).toBe(false);
+  });
+});

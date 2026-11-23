@@ -386,10 +386,16 @@ class OrderService:
     async def collected_by_method(
         session: AsyncSession, tenant_id: UUID, order_ids: list[UUID]
     ) -> dict[str, Decimal]:
-        """What each payment method captured across the given orders (captured rows only).
+        """What each payment method captured across the given orders.
 
         The cashier's day-end figure: the card total to compare with the terminal slip, the
         transfers with the account. Refunds are not netted; they are their own rows.
+
+        Every COLLECTED status counts, not just ``captured``: once a refund flips a payment to
+        ``partially_refunded``/``refunded`` the money was still taken on that tender, and the
+        terminal slip the cashier compares against is the day's takings. Filtering on ``captured``
+        alone made a refunded sale vanish from the drawer expectation and from the per-method
+        reconciliation, which is the exact disagreement this figure exists to catch.
         """
         if not order_ids:
             return {}
@@ -399,7 +405,7 @@ class OrderService:
                 .where(
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id.in_(order_ids),
-                    OrderPayment.status == "captured",
+                    OrderPayment.status.in_(COLLECTED_PAYMENT_STATUSES),
                 )
                 .group_by(OrderPayment.method)
             )

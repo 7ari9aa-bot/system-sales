@@ -26,6 +26,7 @@ from app.modules.inventory.models import (
     InventoryPolicy,
     InventoryTransfer,
     InventoryTransferLine,
+    VariantStockSetting,
 )
 
 
@@ -240,9 +241,18 @@ class InventoryReportingService:
             {"variant_id": str(r.variant_id), "units_sold": int(r.units_sold)} for r in sales_rows
         ]
 
+        # The shop's OWN definition of "running low". A hardcoded 5 meant a shop that sells eight
+        # sizes of one dress was told nothing until the shelf was nearly empty, and a shop whose
+        # level is 20 was told nothing until it was already too late. Level 0 means "no alert
+        # configured" (the same rule as the stock grid), and such a piece is never reported as low:
+        # the response says how many of the top sellers nobody has set a level for, so the screen
+        # can ask for one instead of inventing a shortage.
+        levels = await _reorder_levels(session, tenant_id, [r.variant_id for r in sales_rows])
+
         # 2. High-demand / low-stock variants (stockout risk)
         top_var_ids = [r.variant_id for r in sales_rows]
         stockout_risks = []
+        unconfigured = 0
         if top_var_ids:
             q_bal = select(
                 InventoryBalance.variant_id,
@@ -259,13 +269,19 @@ class InventoryReportingService:
 
             for b in (await session.execute(q_bal)).all():
                 avail = max(0, b.on_hand - b.quarantined - b.reserved)
-                if avail <= 5:
+                level = levels.get(b.variant_id, 0)
+                if level <= 0:
+                    unconfigured += 1
+                    continue
+                if avail <= level:
                     stockout_risks.append(
                         {
                             "variant_id": str(b.variant_id),
                             "warehouse_id": str(b.warehouse_id),
                             "available": avail,
                             "on_hand": b.on_hand,
+                            "reorder_level": level,
+                            "shortfall": level - avail,
                         }
                     )
 
@@ -283,17 +299,27 @@ class InventoryReportingService:
         for b in all_bals:
             bals_by_var.setdefault(b.variant_id, []).append(b)
 
+        # The same stored level decides who is short and who can spare: a branch is short when it
+        # is at or below ITS level, and a branch can give only what it holds ABOVE its own level -
+        # so a transfer never empties the branch it came from. The quantity tops the short branch
+        # up to its level, capped by what the source can spare.
+        rebalance_levels = await _reorder_levels(session, tenant_id, list(bals_by_var))
         rebalance_ops = []
         for var_id, var_bals in bals_by_var.items():
             if len(var_bals) < 2:
                 continue
-            starved = [b for b in var_bals if (b.on_hand - b.quarantined - b.reserved) <= 2]
-            surplus = [b for b in var_bals if (b.on_hand - b.quarantined - b.reserved) >= 10]
-            for s_wh in starved:
-                for src_wh in surplus:
+            level = rebalance_levels.get(var_id, 0)
+            if level <= 0:
+                continue  # nobody said what "low" is for this piece
+            short = [b for b in var_bals if (b.on_hand - b.quarantined - b.reserved) <= level]
+            spare = [b for b in var_bals if (b.on_hand - b.quarantined - b.reserved) > level]
+            for s_wh in short:
+                for src_wh in spare:
                     avail_src = src_wh.on_hand - src_wh.quarantined - src_wh.reserved
                     avail_tgt = s_wh.on_hand - s_wh.quarantined - s_wh.reserved
-                    sugg_qty = max(1, (avail_src - 5) // 2)
+                    sugg_qty = min(level - avail_tgt, avail_src - level)
+                    if sugg_qty <= 0:
+                        continue
                     rebalance_ops.append(
                         {
                             "variant_id": str(var_id),
@@ -301,6 +327,7 @@ class InventoryReportingService:
                             "to_warehouse_id": str(s_wh.warehouse_id),
                             "source_available": avail_src,
                             "target_available": avail_tgt,
+                            "reorder_level": level,
                             "suggested_transfer_quantity": sugg_qty,
                         }
                     )
@@ -308,5 +335,25 @@ class InventoryReportingService:
         return {
             "top_selling_variants": top_selling,
             "stockout_risk_variants": stockout_risks,
+            # How many of the top sellers have no level configured: the panel asks for one instead
+            # of inventing a shortage threshold.
+            "stockout_risk_unconfigured": unconfigured,
             "branch_rebalance_opportunities": rebalance_ops,
         }
+
+
+async def _reorder_levels(
+    session: AsyncSession, tenant_id: UUID, variant_ids: list[UUID]
+) -> dict[UUID, int]:
+    """The stored reorder level per variant (absent = 0 = "no alert configured")."""
+    if not variant_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(VariantStockSetting.variant_id, VariantStockSetting.reorder_level).where(
+                VariantStockSetting.tenant_id == tenant_id,
+                VariantStockSetting.variant_id.in_(variant_ids),
+            )
+        )
+    ).all()
+    return {row.variant_id: int(row.reorder_level) for row in rows}

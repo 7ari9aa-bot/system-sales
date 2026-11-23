@@ -75,7 +75,15 @@ export default function ShiftsPage() {
   function submitClose(count) {
     const shift = closing;
     closeShift.mutate(
-      { sessionId: shift.id, body: count ? closeBody({ rules: { take_payments: true }, ...count }) : undefined },
+      {
+        sessionId: shift.id,
+        body: count
+          ? closeBody({
+              rules: { take_payments: true },
+              ...count,
+            })
+          : undefined,
+      },
       {
         onSuccess: (closed) => {
           setClosing(null);

@@ -85,5 +85,5 @@ export const useReceivePurchaseOrder = () => useIntentMutation(({ id }, intent) 
 export const usePaySupplier = () => useIntentMutation(({ payload }, intent) => posApi.createSupplierPayment(payload, intent));
 export const useCreateSupplierReturn = () => useIntentMutation(({ payload }, intent) => posApi.createSupplierReturn(payload, intent));
 export const useAcceptSupplierReturn = () =>
-  useIntentMutation(({ id }, intent) => posApi.acceptSupplierReturn(id, {}, intent));
+  useIntentMutation(({ id, payload = {} }, intent) => posApi.acceptSupplierReturn(id, payload, intent));
 export const useRejectSupplierReturn = () => useIntentMutation(({ id }, intent) => posApi.rejectSupplierReturn(id, intent));

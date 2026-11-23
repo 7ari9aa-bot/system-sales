@@ -102,7 +102,7 @@ export function buildPurchaseOrder(form) {
 }
 
 /** Validate a payment to a supplier. `owed` is the order's remaining balance (wire text) or null. */
-export function buildPayment(form, { owed = null } = {}) {
+export function buildPayment(form, { owed = null, sessionId = null } = {}) {
   if (!form.supplierId) return { ok: false, error: "اختر المورد" };
   const amount = parsePayment(form.amount);
   if (!amount) return { ok: false, error: "المبلغ لازم يكون رقمًا أكبر من صفر وبحد أقصى خانتين عشريتين" };
@@ -111,6 +111,14 @@ export function buildPayment(form, { owed = null } = {}) {
     return { ok: false, error: `المبلغ أكبر من المتبقي على الفاتورة (${owed})` };
   }
   const note = String(form.note ?? "").trim();
+  // Cash handed to a supplier out of the till must leave the drawer ledger in the same
+  // transaction, or the close reports a shortage equal to the payment. Only CASH touches a
+  // drawer (the backend refuses a card or transfer against a shift), and a drawer payment needs
+  // the OPEN shift.
+  const fromDrawer = Boolean(form.fromDrawer) && form.method === "cash";
+  if (fromDrawer && !sessionId) {
+    return { ok: false, error: "مفيش وردية مفتوحة تتحسب عليها: افتح الوردية أو سجّل الدفعة من خارج الدرج" };
+  }
   return {
     ok: true,
     payload: {
@@ -118,14 +126,15 @@ export function buildPayment(form, { owed = null } = {}) {
       amount,
       method: form.method,
       ...(form.orderId ? { purchase_order_id: form.orderId } : {}),
-      // A supplier payment is a record, never a drawer movement: it carries no shift.
+      // Sent ONLY for cash out of this drawer; anything else is a record with no shift.
+      ...(fromDrawer ? { session_id: sessionId } : {}),
       ...(note ? { note } : {}),
     },
   };
 }
 
 /** Validate a supplier return. Without an order the price must be typed; with one the order's price is used. */
-export function buildReturn(form) {
+export function buildReturn(form, { sessionId = null } = {}) {
   if (!form.supplierId) return { ok: false, error: "اختر المورد" };
   if (!RETURN_SETTLEMENTS.includes(form.settlement)) return { ok: false, error: "اختر طريقة التسوية" };
   if (!form.lines?.length) return { ok: false, error: "أضف بندًا واحدًا على الأقل" };
@@ -142,6 +151,8 @@ export function buildReturn(form) {
     lines.push(line);
   }
   const note = String(form.note ?? "").trim();
+  // A cash settlement is money coming BACK over the counter. It cannot be known at creation time
+  // (the supplier decides), so the shift rides on the ACCEPT below; this only carries the wish.
   return {
     ok: true,
     payload: {
@@ -152,6 +163,19 @@ export function buildReturn(form) {
       ...(note ? { note } : {}),
     },
   };
+}
+
+/**
+ * The body of "the supplier agreed": a CASH settlement received over the counter puts the money
+ * into the open drawer, so the shift goes with the acceptance. A credit or replacement settlement
+ * moves no money and names no shift (the backend refuses one).
+ */
+export function buildReturnAcceptance(supplierReturn, { sessionId = null } = {}) {
+  const cash = String(supplierReturn?.settlement ?? "") === "cash";
+  if (cash && !sessionId) {
+    return { ok: false, error: "تسوية نقدية بترجع في الدرج: افتح وردية الأول أو اقبل التسوية الآجلة" };
+  }
+  return { ok: true, payload: cash ? { session_id: sessionId } : {} };
 }
 
 /* ------------------------------------------------------------- mapping */

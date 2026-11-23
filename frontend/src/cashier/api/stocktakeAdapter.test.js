@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { changedCounts, countsToSave, diffOf, parseCount, sheetFromApi, sheetTotals, stocktakeErrorMessage } from "./stocktakeAdapter";
+import {
+  changedCounts,
+  countsToSave,
+  diffOf,
+  parseCount,
+  sheetFromApi,
+  sheetTotals,
+  stocktakeErrorMessage,
+  commitDecision,
+} from "./stocktakeAdapter";
 
 const stock = [
   { id: "a", productName: "قميص", sku: "S-A", color: "أسود", size: "L" },
@@ -124,5 +133,57 @@ describe("countsToSave", () => {
 
   it("saves nothing when there is nothing to save", () => {
     expect(countsToSave([], {})).toEqual([]);
+  });
+});
+
+describe("the difference is computed on the basis the server approves", () => {
+  const detail = (line) => ({ id: "st1", status: "OPEN", lines: [{ variant_id: "v1", ...line }] });
+  const row = (line) => sheetFromApi(detail(line), [{ id: "v1", productName: "قميص" }]).rows[0];
+
+  it("uses the book at count time, not the count's start snapshot", () => {
+    // Counted 8 against a book of 10 at the moment of counting; a sale had already taken the
+    // snapshot down to 9 since the count started.
+    const r = row({ expected_qty: 9, counted_qty: 8, counted_book_qty: 10, current_qty: 9 });
+    expect(r.stock).toBe(10);
+    expect(diffOf(r)).toBe(-2);
+    expect(r.startBook).toBe(9);
+  });
+
+  it("shows the drift from the same basis, so it never contradicts the difference", () => {
+    const r = row({ expected_qty: 9, counted_qty: 8, counted_book_qty: 10, current_qty: 7 });
+    expect(r.drift).toBe(-3);
+  });
+
+  it("falls back to the start snapshot for a line counted before the column existed", () => {
+    const r = row({ expected_qty: 9, counted_qty: 8, counted_book_qty: null, current_qty: 9 });
+    expect(r.stock).toBe(9);
+    expect(diffOf(r)).toBe(-1);
+  });
+
+  it("carries the moment the piece was counted", () => {
+    const r = row({ expected_qty: 5, counted_qty: 5, counted_book_qty: 5, counted_at: "2026-11-20T09:15:00+00:00" });
+    expect(r.countedAt).toBe("2026-11-20T09:15:00+00:00");
+  });
+});
+
+describe("a line is committed when the piece is counted, not when the sheet is saved", () => {
+  it("a new figure is sent", () => {
+    expect(commitDecision("7", null)).toEqual({ send: true, qty: 7 });
+  });
+
+  it("the figure the server already holds is not sent again", () => {
+    expect(commitDecision("7", 7)).toEqual({ send: false, reason: "unchanged" });
+  });
+
+  it("a cleared box is a real un-count when the server holds a figure", () => {
+    expect(commitDecision("", 7)).toEqual({ send: true, qty: null });
+  });
+
+  it("clearing an untouched box sends nothing", () => {
+    expect(commitDecision("", null)).toEqual({ send: false, reason: "unchanged" });
+  });
+
+  it("half-typed junk waits for the red cell instead of saving", () => {
+    expect(commitDecision("1.5", null)).toEqual({ send: false, reason: "invalid" });
   });
 });

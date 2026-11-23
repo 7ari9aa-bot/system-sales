@@ -4,11 +4,14 @@
  *
  * Rules that live HERE because the screen would otherwise get them wrong:
  *  - "not counted" is `null`, NOT 0. A shelf nobody counted must never turn into "0 in stock".
- *  - The difference is `counted - expected`, where `expected` is the book quantity when counting
- *    STARTED (the server's snapshot). It is NOT compared with the live balance, so a sale made
- *    while counting does not show up as a missing item.
- *  - `drift` is how far the live balance moved since the snapshot (sales/receipts during the count).
- *    It is shown, never folded into the difference.
+ *  - The difference is `counted - book`, where `book` is the quantity the SERVER will compare
+ *    against: ``counted_book_qty``, the figure stored at the moment that piece was counted. It is
+ *    NOT the live balance, so a sale made while counting does not show up as a missing item; and
+ *    it is not the count's start snapshot either, because stock that moved between the start and
+ *    the count would then be shown as a difference the server never applies. A line counted before
+ *    that column existed falls back to the start snapshot, exactly like the server does.
+ *  - `drift` is how far the live balance moved since the piece was counted. Shown, never folded
+ *    into the difference.
  */
 
 export const MAX_COUNT = 1_000_000;
@@ -21,6 +24,25 @@ export function parseCount(text) {
   const n = Number(s);
   if (n > MAX_COUNT) throw new RangeError(`الكمية لا تزيد عن ${MAX_COUNT}`);
   return n;
+}
+
+/**
+ * What a finished line should save, decided from the box and what the server already holds.
+ *
+ * The server stamps ``counted_at`` when the count arrives, so a count that waits for the sheet's
+ * Save button is recorded as taken at the END of the count. Each line is committed when the piece
+ * is done, and this decides whether there is anything to send: junk is left to the red cell, a
+ * value the server already holds needs no request, and a cleared box is a real un-count.
+ */
+export function commitDecision(raw, actual) {
+  let qty;
+  try {
+    qty = parseCount(raw);
+  } catch {
+    return { send: false, reason: "invalid" };
+  }
+  if (qty === (actual ?? null)) return { send: false, reason: "unchanged" };
+  return { send: true, qty };
 }
 
 /** Join the server's lines with the stock rows (which carry the product name, colour and size). */
@@ -37,10 +59,14 @@ export function sheetFromApi(detail, stockRows) {
       barcode: meta?.barcode ?? "",
       color: meta?.color ?? "",
       size: meta?.size ?? "",
-      stock: line.expected_qty, // the book quantity when counting started
+      // The book the server reconciles against for THIS line: at count time when it was counted,
+      // else the start snapshot (the same fallback the server applies).
+      stock: line.counted_book_qty ?? line.expected_qty,
+      startBook: line.expected_qty, // the count's opening snapshot, kept only to explain drift
+      countedAt: line.counted_at ?? null,
       actual: counted, // null = not counted yet
       current: line.current_qty, // the live balance now
-      drift: line.current_qty - line.expected_qty,
+      drift: line.current_qty - (line.counted_book_qty ?? line.expected_qty),
       applied: line.applied_delta ?? null,
     };
   });

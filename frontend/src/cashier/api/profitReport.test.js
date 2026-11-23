@@ -197,6 +197,9 @@ describe("profitTotals", () => {
       margin: -26.67,
       unitsWithoutCost: 1,
       costIsComplete: false,
+      unitsReturned: 0,
+      unitsReturnedToShelf: 0,
+      returnedByCondition: {},
     });
   });
   it("negative revenue totals stay negative", () => {
@@ -223,6 +226,9 @@ describe("profitTotals", () => {
       margin: null,
       unitsWithoutCost: 0,
       costIsComplete: false,
+      unitsReturned: 0,
+      unitsReturnedToShelf: 0,
+      returnedByCondition: {},
     });
     expect(profitTotals(null)).toMatchObject({ revenue: 0, profit: 0, margin: null });
     expect(profitTotals({})).toMatchObject({ revenue: 0, profit: 0, margin: null });
@@ -482,6 +488,9 @@ describe("profitTotals: missing data, zero margins and the completeness flag", (
       margin: null,
       unitsWithoutCost: 0,
       costIsComplete: false,
+      unitsReturned: 0,
+      unitsReturnedToShelf: 0,
+      returnedByCondition: {},
     };
     expect(profitTotals()).toEqual(zeros);
     expect(profitTotals(null)).toEqual(zeros);

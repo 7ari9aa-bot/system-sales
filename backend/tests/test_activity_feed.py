@@ -289,3 +289,49 @@ async def test_a_backwards_range_is_still_refused(db, tenant_ctx) -> None:
     with pytest.raises(HTTPException) as err:
         await window_for(db, tenant_ctx.tenant_id, date(2026, 1, 10), date(2026, 1, 9))
     assert err.value.status_code == 422
+
+
+async def test_a_void_is_its_own_row_with_the_reason_and_the_manager_who_approved_it(
+    db, tenant_ctx
+) -> None:
+    """A void is not a return and must not hide: the timeline shows the reversing document, the
+    original receipt it reverses, the reason typed, and the person who held the override."""
+    from app.modules.settings.service import SettingsService
+    from tests.test_pos_returns import _customer, _register, _sellable_variant
+
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", True)
+    register = await _register(db, tenant_ctx)
+    shift = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
+    variant = await _sellable_variant(db, tenant_ctx)
+    customer = await _customer(db, tenant_ctx)
+    sold = await PosService.record_sale(
+        db,
+        tenant_ctx.tenant_id,
+        register.id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        customer_id=customer.id,
+        payments=[{"method": "cash", "amount": "25.00"}],
+    )
+
+    voided = await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        reason="المقاس غلط",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+
+    rows, _ = await ActivityService.feed(db, tenant_ctx.tenant_id, kinds=("void",))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["doc"] == voided["void_receipt_number"]
+    # the value reversed is the sale, not a partial refund
+    assert row["amount"] == Decimal(sold["grand_total"])
+    assert row["actor_id"] == str(tenant_ctx.user.id)
+    assert voided["original_receipt_number"] in row["detail"]
+    assert "المقاس غلط" in row["detail"]
+    # and the sale itself is still in the feed: nothing is deleted
+    sale_rows, _ = await ActivityService.feed(db, tenant_ctx.tenant_id, kinds=("sale",))
+    assert [r["doc"] for r in sale_rows] == [sold["receipt_number"]]

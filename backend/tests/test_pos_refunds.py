@@ -17,7 +17,6 @@ import pytest
 import sqlalchemy as sa
 
 from app.modules.pos.refund import Tender, allocate, allocate_by_method, plan_for
-from tests._pos_helpers import start_day
 
 RETURNS_PATH = "/api/v1/pos/sessions/{session_id}/returns"
 EXCHANGES_PATH = "/api/v1/pos/sessions/{session_id}/exchanges"
@@ -142,9 +141,7 @@ async def _refund_rows(db, tenant_ctx):
     from app.modules.orders.models import Refund
 
     return list(
-        (
-            await db.execute(sa.select(Refund).where(Refund.tenant_id == tenant_ctx.tenant_id))
-        )
+        (await db.execute(sa.select(Refund).where(Refund.tenant_id == tenant_ctx.tenant_id)))
         .scalars()
         .all()
     )
@@ -173,7 +170,13 @@ async def test_cash_sale_then_cash_return_refunds_and_lowers_the_drawer(db, tena
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
-        db, tenant_ctx, shift, variant, customer, quantity=5, payments=[{"method": "cash", "amount": "500.00"}]
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=5,
+        payments=[{"method": "cash", "amount": "500.00"}],
     )
     before = await PosService.drawer_summary(db, tenant_ctx.tenant_id, shift.id)
     assert Decimal(before["expected_cash"]) == Decimal("500.00")
@@ -226,7 +229,10 @@ async def test_split_tender_return_is_split_across_the_original_methods(db, tena
         tenant_ctx.tenant_id,
         shift.id,
         order_id=sold["order_id"],
-        lines=[{"variant_id": str(variant.id), "quantity": 1}, {"variant_id": str(variant.id), "quantity": 1}],
+        lines=[
+            {"variant_id": str(variant.id), "quantity": 1},
+            {"variant_id": str(variant.id), "quantity": 1},
+        ],
         refund=None,
     )
     # 2 pieces back = 200.00, all of it cash-first.
@@ -423,6 +429,62 @@ async def test_close_settles_every_method_the_day_collected(db, tenant_ctx):
     assert Decimal(str(rows["cash"].variance)) == Decimal("0.00")
 
 
+async def test_the_close_route_carries_the_method_counts(db, tenant_ctx):
+    """The report's §2.3: the service settled every method, but the route could not receive them."""
+    import sqlalchemy as sa
+
+    from app.modules.pos.models import PosSessionReconciliation
+    from app.modules.pos.router import CloseSessionRequest, close_session
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "100.00", "reference": "AUTH-7"},
+        ],
+    )
+
+    class Ctx:
+        session = db
+        tenant_id = tenant_ctx.tenant_id
+
+        class user:
+            id = tenant_ctx.user.id
+
+    class Override:
+        active = True
+
+    closed = await close_session(
+        shift.id,
+        Ctx(),
+        Override(),
+        CloseSessionRequest(counted_cash="100.00", counted_methods={"card": "95.00"}),
+    )
+    rows = {
+        row.method: row
+        for row in (
+            (
+                await db.execute(
+                    sa.select(PosSessionReconciliation).where(
+                        PosSessionReconciliation.session_id == shift.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    }
+    assert closed["status"] == "CLOSED"
+    assert Decimal(str(rows["card"].counted_amount)) == Decimal("95.00")
+    assert Decimal(str(rows["card"].variance)) == Decimal("-5.00")
+
+
 async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it(db, tenant_ctx):
     from app.modules.errors import ValidationError
     from app.modules.pos.service import PosService
@@ -443,9 +505,7 @@ async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it
     )
 
     with pytest.raises(ValidationError):
-        await PosService.close_session(
-            db, tenant_ctx.tenant_id, shift.id, counted_cash="50.00"
-        )
+        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="50.00")
 
 
 async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
@@ -469,7 +529,11 @@ async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
     )
 
     row = (
-        (await db.execute(sa.select(PosSessionHandover).where(PosSessionHandover.session_id == handed.id)))
+        (
+            await db.execute(
+                sa.select(PosSessionHandover).where(PosSessionHandover.session_id == handed.id)
+            )
+        )
         .scalars()
         .one()
     )
@@ -530,7 +594,6 @@ async def test_an_apparel_shop_that_skipped_setup_cannot_sell_without_collecting
 
 
 async def test_record_only_selling_is_allowed_once_the_owner_says_so(db, tenant_ctx):
-    from app.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     await _apparel_shop_that_skipped_setup(db, tenant_ctx)
@@ -599,11 +662,7 @@ async def test_a_confirmed_sale_can_be_voided_and_nothing_is_deleted(db, tenant_
 
     # The sale receipt and its cash-in row are still there; the void added its own rows.
     receipts = list(
-        (
-            await db.execute(
-                sa.select(PosReceipt).where(PosReceipt.order_id == sold["order_id"])
-            )
-        )
+        (await db.execute(sa.select(PosReceipt).where(PosReceipt.order_id == sold["order_id"])))
         .scalars()
         .all()
     )
@@ -616,6 +675,59 @@ async def test_a_confirmed_sale_can_be_voided_and_nothing_is_deleted(db, tenant_
         ("out", "cash_refund"),
     ]
     assert PosCashMovement is not None
+
+
+async def test_a_voided_sale_is_not_counted_in_the_shift_or_the_day(db, tenant_ctx):
+    """The shift's own total and the day's rollup must agree with what was actually sold.
+
+    The receipt of a voided sale is kept for the audit trail, so counting "every kind='sale'
+    receipt" made the Z report and the daily row still include a sale the shop had just voided -
+    the owner's takings would be higher than the drawer and the bank.
+    """
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, opening="0.00")
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        reason="المقاس غلط",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    closed = await PosService.close_session(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        closed_by=tenant_ctx.user.id,
+        counted_cash="0.00",
+    )
+    await db.flush()
+
+    # The day's projection is rebuilt from the ledgers; the voided sale must not be in it.
+    from app.modules.analytics.timekit import merchant_day
+    from app.modules.pos.models import PosDailySales
+
+    day = merchant_day(closed.closed_at, await PosService._shop_timezone(db, tenant_ctx.tenant_id))
+    assert (
+        await PosService.upsert_daily_projection(db, tenant_ctx.tenant_id, business_date=day) == 1
+    )
+    row = (
+        await db.execute(
+            sa.select(PosDailySales).where(PosDailySales.tenant_id == tenant_ctx.tenant_id)
+        )
+    ).scalar_one()
+    assert row.invoice_count == 0
+    assert Decimal(str(row.sales_total)) == Decimal("0.00")
 
 
 async def test_a_void_needs_a_manager_override(db, tenant_ctx):
@@ -852,3 +964,305 @@ async def test_an_unknown_condition_is_refused(db, tenant_ctx):
             order_id=sold["order_id"],
             lines=[{"variant_id": str(variant.id), "quantity": 1, "condition": "melted"}],
         )
+
+
+# ---------------------------------------------------------------- void: the books ---
+
+
+@pytest.mark.asyncio
+async def test_a_void_gives_the_cost_layer_back_so_the_shelf_is_worth_something(db, tenant_ctx):
+    """The sale consumed a FIFO layer. A void that only adds quantity leaves stock worth zero,
+    and the next sale books a cost of nothing - so the layer comes back at the sold unit cost."""
+    from app.modules.inventory.services.valuation import ValuationService
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    # Stock that arrived at 40.00 a piece: the layer the sale will consume.
+    warehouse_id = await _warehouse_of(db, tenant_ctx, shift)
+    await ValuationService.create_cost_layer(
+        db,
+        tenant_ctx.tenant_id,
+        variant_id=variant.id,
+        warehouse_id=warehouse_id,
+        quantity=50,
+        unit_cost="40.00",
+        source_type="opening",
+    )
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "cash", "amount": "200.00"}],
+    )
+
+    before = await ValuationService.calculate_valuation(
+        db, tenant_ctx.tenant_id, variant_id=variant.id
+    )
+    await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sale["order_id"] if isinstance(sale, dict) else sale.order_id,
+        reason="اتسجلت مرتين",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    after = await ValuationService.calculate_valuation(
+        db, tenant_ctx.tenant_id, variant_id=variant.id
+    )
+
+    # Two pieces came back at the cost they left with: the shelf's value is restored, not zero.
+    assert Decimal(str(after["total_valuation"])) > Decimal(str(before["total_valuation"]))
+    layers = await ValuationService.get_active_layers(
+        db,
+        tenant_ctx.tenant_id,
+        variant_id=variant.id,
+        warehouse_id=await _warehouse_of(db, tenant_ctx, shift),
+    )
+    assert any(layer.source_type == "void" for layer in layers)
+
+
+async def _warehouse_of(db, tenant_ctx, shift):
+    from app.modules.pos.models import PosRegister
+
+    register = (
+        await db.execute(sa.select(PosRegister).where(PosRegister.id == shift.register_id))
+    ).scalar_one()
+    return register.warehouse_id
+
+
+@pytest.mark.asyncio
+async def test_a_voided_sale_leaves_the_days_sales_and_the_shift_report(db, tenant_ctx):
+    """Revenue the shop never kept must not appear as revenue, and the void is its own document."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    order_id = sale["order_id"] if isinstance(sale, dict) else sale.order_id
+
+    before = await PosService.session_report(db, tenant_ctx.tenant_id, shift.id)
+    assert before["sales"]["invoice_count"] == 1
+
+    voided = await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=order_id,
+        reason="المقاس غلط",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    after = await PosService.session_report(db, tenant_ctx.tenant_id, shift.id)
+
+    assert after["sales"]["invoice_count"] == 0
+    assert Decimal(after["sales"]["total"]) == Decimal("0.00")
+    assert after["voids"]["void_count"] == 1
+    assert after["voids"]["documents"][0]["receipt_number"] == voided["void_receipt_number"]
+    # The void is NOT a return: the return report stays empty.
+    assert after["returns"]["return_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
+    """Profit is revenue minus cost. A reversed sale contributes neither."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    order_id = sale["order_id"] if isinstance(sale, dict) else sale.order_id
+    await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=order_id,
+        reason="غلط في الصنف",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+
+    from app.modules.orders.models import Order
+
+    status = (await db.execute(sa.select(Order.status).where(Order.id == order_id))).scalar_one()
+    # The profit report excludes cancelled orders, so the reversal reaches it through the status.
+    assert status == "cancelled"
+
+
+# ----------------------------------- the refund's derived writes (P1) ----
+# A POS refund wrote the Refund rows and the drawer movement but left the reversed PAYMENT saying
+# "captured" and the customer still worth the money the shop had given back. These assert the two
+# derived facts the shared refund path has always written.
+
+
+async def _payment_rows(db, tenant_ctx, order_id):
+    from app.modules.orders.models import OrderPayment
+
+    return list(
+        (
+            await db.execute(
+                sa.select(OrderPayment).where(
+                    OrderPayment.tenant_id == tenant_ctx.tenant_id,
+                    OrderPayment.order_id == order_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _customer_worth(db, tenant_ctx, customer_id):
+    from app.modules.customers.models import Customer
+
+    await db.flush()
+    return Decimal(
+        str(
+            (
+                await db.execute(
+                    sa.select(Customer.lifetime_value).where(
+                        Customer.tenant_id == tenant_ctx.tenant_id,
+                        Customer.id == customer_id,
+                    )
+                )
+            ).scalar_one()
+        )
+    )
+
+
+async def _order_status(db, tenant_ctx, order_id):
+    from app.modules.orders.models import Order
+
+    await db.flush()
+    return (
+        await db.execute(
+            sa.select(Order.status).where(
+                Order.tenant_id == tenant_ctx.tenant_id, Order.id == order_id
+            )
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_partial_return_marks_the_payment_partially_refunded_and_lowers_the_customer(
+    db, tenant_ctx
+):
+    """2 pieces sold for 200 cash, 1 came back: the payment is partially refunded, worth 100."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "cash", "amount": "200.00"}],
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("200.00")
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["partially_refunded"]
+    # The customer is worth what is left of the money, not what was once collected.
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("100.00")
+    # A partial return is not a refunded sale, and the sale keeps its status.
+    assert await _order_status(db, tenant_ctx, sold["order_id"]) == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_returning_the_whole_sale_refunds_the_payment_and_the_order(db, tenant_ctx):
+    """The whole 200 came back: the payment reads refunded and the sale is no longer "completed"."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "cash", "amount": "200.00"}],
+    )
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 2}],
+    )
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["refunded"]
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("0.00")
+    # The SALE keeps its own status: a till sale never enters the completed lifecycle, and its
+    # revenue is offset by the return document itself (which is what the day totals and the
+    # shift report read). A status rewrite here would double-count the reversal.
+    assert await _order_status(db, tenant_ctx, sold["order_id"]) == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_a_cheaper_exchange_refunds_its_difference_on_the_customer_too(db, tenant_ctx):
+    """A cheaper replacement gives back the difference: the payment and the worth follow it."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    cheap = await _sellable_variant_of(db, tenant_ctx, price="60.00", stock=20)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "cash", "amount": "200.00"}],
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("200.00")
+
+    result = await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        return_lines=[{"variant_id": str(variant.id), "quantity": 2}],
+        new_lines=[{"variant_id": str(cheap.id), "quantity": 2}],
+        actor_user_id=tenant_ctx.user.id,
+    )
+    assert result["settlement"] == "refunded"
+    assert Decimal(result["settled_amount"]) == Decimal("80.00")
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["partially_refunded"]
+    # 200 collected - 80 given back = 120 kept.
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("120.00")
+
+
+async def _sellable_variant_of(db, tenant_ctx, *, price, stock):
+    from tests.test_pos_returns import _sellable_variant
+
+    return await _sellable_variant(db, tenant_ctx, price=price, stock=stock)

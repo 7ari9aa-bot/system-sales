@@ -80,12 +80,63 @@ export function closeProblems({ rules, counted, expected, reason, reasonRequired
 }
 
 /** The body of the close request: nothing for a till with no drawer, otherwise the count and the reason (if any gap). */
-export function closeBody({ rules, counted, expected, reason }) {
+/**
+ * The payment methods that must be counted at close: every non-cash method the shift collected
+ * something on. A record-only till has no drawer, so only the methods it actually sold on.
+ */
+export function methodsToCount(byMethod) {
+  return Object.entries(byMethod ?? {})
+    .filter(([method, amount]) => method !== "cash" && (Number(amount) || 0) !== 0)
+    .map(([method]) => method);
+}
+
+/** One method's gap (counted - expected) in cents, or null when the count cannot be read. */
+export function methodGapMinor(countedText, expected) {
+  const counted = readCountedCash(countedText);
+  if (counted === null) return null;
+  return toMinor(counted) - toMinor(String(expected ?? "0"));
+}
+
+/**
+ * What still stops a per-method close, in words the closer can act on: a required method with no
+ * count, or a count that cannot be read. Empty when nothing is missing.
+ */
+export function methodProblems({ byMethod, countedMethods = {}, settle = false }) {
+  const problems = [];
+  const required = settle ? methodsToCount(byMethod) : [];
+  for (const method of required) {
+    const raw = countedMethods[method];
+    if (raw === undefined || String(raw).trim() === "") {
+      problems.push(`عُدّ ${METHOD_LABEL[method] ?? method}: المتوقع ${fromMinor(toMinor(String(byMethod[method] ?? "0")))}`);
+      continue;
+    }
+    if (readCountedCash(raw) === null) problems.push(`مبلغ ${METHOD_LABEL[method] ?? method} غير صالح`);
+  }
+  for (const [method, raw] of Object.entries(countedMethods ?? {})) {
+    if (String(raw ?? "").trim() !== "" && readCountedCash(raw) === null) {
+      problems.push(`مبلغ ${METHOD_LABEL[method] ?? method} غير صالح`);
+    }
+  }
+  return [...new Set(problems)];
+}
+
+const METHOD_LABEL = { cash: "النقدية", card: "البطاقة", wallet: "المحفظة", transfer: "التحويل" };
+
+/** The wire body of a close, per-method counts included. Only what was actually counted is sent. */
+export function closeBody({ rules, counted, expected, reason, countedMethods = {}, settle = false }) {
   if (!countsDrawer(rules)) return undefined;
   const body = { counted_cash: toWire(readCountedCash(counted) ?? String(counted)) };
   const gap = gapMinor(counted, expected);
   const text = String(reason ?? "").trim();
   if (gap !== 0 && text) body.variance_reason = text;
+  const wire = {};
+  for (const [method, raw] of Object.entries(countedMethods ?? {})) {
+    if (String(raw ?? "").trim() === "") continue;
+    const value = readCountedCash(raw);
+    if (value === null) continue;
+    wire[method] = toWire(value);
+  }
+  if (settle || Object.keys(wire).length) body.counted_methods = wire;
   return body;
 }
 

@@ -645,12 +645,19 @@ async def record_sale(
 
 
 class CloseSessionRequest(BaseModel):
-    """The close. ``counted_cash`` is required when the till takes payments and refused when not."""
+    """The close. ``counted_cash`` is required when the till takes payments and refused when not.
+
+    A shop that takes card, wallet or transfer counts those too: ``counted_methods`` carries what
+    was actually in each terminal, and the close stores one reconciliation row per method. The
+    server refuses a missing method when the shop asked to settle methods at close.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     counted_cash: str | None = Field(default=None, pattern=_MONEY)
     variance_reason: str | None = Field(default=None, max_length=500)
+    # {method: amount} as the closer typed it; a method outside the till's vocabulary is refused.
+    counted_methods: dict[str, str] | None = None
 
 
 @router.post("/sessions/{session_id}/close")
@@ -668,6 +675,7 @@ async def close_session(
         shift_override=override.active,
         counted_cash=body.counted_cash if body is not None else None,
         variance_reason=body.variance_reason if body is not None else None,
+        counted_methods=body.counted_methods if body is not None else None,
     )
     return _session_out(pos_session)
 
@@ -697,9 +705,17 @@ class CashMovementOut(BaseModel):
 
 
 class HandoverRequest(BaseModel):
+    """The hand-off. A drawer that takes payments is COUNTED before it changes hands.
+
+    Without the count the day's shortage can never be pinned on the shift it happened in: the
+    session keeps running and every later figure belongs to whoever holds it last.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     new_cashier_id: UUID
+    counted_cash: str | None = Field(default=None, pattern=_MONEY)
+    variance_reason: str | None = Field(default=None, max_length=500)
 
 
 @router.post(
@@ -764,6 +780,8 @@ async def handover_session(
         new_cashier_id=body.new_cashier_id,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
+        counted_cash=body.counted_cash,
+        variance_reason=body.variance_reason,
     )
     return _session_out(pos_session)
 
@@ -1249,7 +1267,11 @@ async def set_product_reorder_level(
     variants = await StockViewService.set_reorder_level_for_product(
         ctx.session, ctx.tenant_id, product_id, body.reorder_level
     )
-    return {"product_id": str(product_id), "reorder_level": body.reorder_level, "variants": variants}
+    return {
+        "product_id": str(product_id),
+        "reorder_level": body.reorder_level,
+        "variants": variants,
+    }
 
 
 class OpenStocktakeRequest(BaseModel):

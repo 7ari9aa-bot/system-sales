@@ -28,6 +28,7 @@ from app.core.sql import like_pattern
 
 KINDS = (
     "sale",
+    "void",
     "return",
     "purchase",
     "supplier_return",
@@ -49,6 +50,25 @@ _SOURCES: dict[str, str] = {
           JOIN orders o ON o.id = r.order_id AND o.tenant_id = r.tenant_id
           LEFT JOIN pos_sessions s ON s.id = r.session_id AND s.tenant_id = r.tenant_id
          WHERE r.tenant_id = :tenant AND r.kind = 'sale'
+    """,
+    # A void is NOT a return: it says "this sale should never have existed". It is its own
+    # document (POS-VOID-) against the original receipt, and it carries the reason the manager
+    # typed. The money shown is the sale that was reversed, not a refund of part of it.
+    "void": """
+        SELECT r.issued_at, 'void', r.id, r.number, o.grand_total, r.sold_by_user_id,
+               'void · ' || orig.number || ' · ' || COALESCE((
+                   SELECT min(replace(rf.reason, 'void: ', ''))
+                     FROM refunds rf
+                     JOIN order_payments op
+                       ON op.id = rf.payment_id AND op.tenant_id = rf.tenant_id
+                    WHERE op.tenant_id = r.tenant_id AND op.order_id = r.order_id
+                      AND rf.reason LIKE 'void:%'
+               ), '')
+          FROM pos_receipts r
+          JOIN orders o ON o.id = r.order_id AND o.tenant_id = r.tenant_id
+          JOIN pos_receipts orig
+            ON orig.order_id = r.order_id AND orig.tenant_id = r.tenant_id AND orig.kind = 'sale'
+         WHERE r.tenant_id = :tenant AND r.kind = 'void'
     """,
     "return": """
         SELECT r.issued_at, 'return', r.id, r.number,

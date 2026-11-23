@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { costLabel, materialChoices, seasonChoices, stockQuery, stockRowFromApi, stockSummaryFromApi } from "./stockAdapter";
+import {
+  costLabel,
+  materialChoices,
+  seasonChoices,
+  stockQuery,
+  stockRowFromApi,
+  stockSummaryFromApi,
+  fetchStockRows,
+} from "./stockAdapter";
 
 const raw = (over = {}) => ({
   variant_id: "v1",
@@ -202,5 +210,41 @@ describe("costLabel", () => {
     expect(costLabel(undefined, fmt)).toBe("غير معروفة");
     expect(costLabel(0, fmt)).toBe("0 ج");
     expect(costLabel(120.25, fmt)).toBe("120.25 ج");
+  });
+});
+
+describe("the stock list reads every matching variant, not one capped page", () => {
+  const page = (rows) => ({ items: rows });
+
+  it("walks page after page and keeps the filters on every request", async () => {
+    const asked = [];
+    const rows = await fetchStockRows({ term: "قميص", status: "low", categoryId: "c1" }, (qs) => {
+      asked.push(qs);
+      const params = new URLSearchParams(qs);
+      const offset = Number(params.get("offset"));
+      // 1000 in the first window, 250 in the second (a short page ends the walk).
+      return Promise.resolve(page(Array.from({ length: offset === 0 ? 1000 : 250 }, (_, i) => ({ id: `${offset}-${i}` }))));
+    });
+
+    expect(rows).toHaveLength(1250);
+    expect(asked).toHaveLength(2);
+    for (const qs of asked) {
+      const params = new URLSearchParams(qs);
+      expect(params.get("term")).toBe("قميص");
+      expect(params.get("status")).toBe("low");
+      expect(params.get("category_id")).toBe("c1");
+      expect(params.get("limit")).toBe("1000");
+    }
+    expect(new URLSearchParams(asked[1]).get("offset")).toBe("1000");
+  });
+
+  it("stops on a single short page", async () => {
+    const asked = [];
+    const rows = await fetchStockRows({}, (qs) => {
+      asked.push(qs);
+      return Promise.resolve(page([{ id: "a" }, { id: "b" }]));
+    });
+    expect(rows).toHaveLength(2);
+    expect(asked).toHaveLength(1);
   });
 });

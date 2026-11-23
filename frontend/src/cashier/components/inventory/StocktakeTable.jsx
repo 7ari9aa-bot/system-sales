@@ -25,9 +25,10 @@ export default function StocktakeTable({ sheet, known = [] }) {
   const [scanMsg, setScanMsg] = useState("");
   const scanRef = useRef(null);
   // Scans are saved on their own so an hour of counting is never lost with the tab. They are
-  // gathered for a couple of seconds first: one request per scan would fight the scanner.
-  const queued = useRef({});
-  const flushTimer = useRef(null);
+  // gathered for a couple of seconds first: one request per scan would fight the scanner. The
+  // queue owns its timer, and a manual save or an approve DRAINS it (see stocktakeQueue), so the
+  // same line can never be saved twice.
+  const queue = useRef(null);
   const save = useSaveCounts(sheet.id);
   const approve = useApproveStocktake(sheet.id);
   const cancel = useCancelStocktake(sheet.id);
@@ -52,14 +53,34 @@ export default function StocktakeTable({ sheet, known = [] }) {
   const visible = diffOnly ? rows.filter((r) => (diffOf(r) ?? 0) !== 0) : rows;
   const busy = save.isPending || approve.isPending || cancel.isPending;
 
+  // the latest typed rows, so a scan-triggered save never leaves them behind
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+
+  // The queue is built once and reads the latest typed rows through the ref, so a scan-triggered
+  // save never leaves them behind.
+  if (!queue.current) {
+    queue.current = createCountQueue({
+      merge: (queuedCounts) => countsToSave(pendingRef.current, queuedCounts),
+      onSave: (counts) => save.mutateAsync(counts),
+      onError: (e) => toast.error(stocktakeErrorMessage(e)),
+    });
+  }
+
+  /** Take everything the scanner queued, so nothing can fire after a manual save or an approve. */
+  const drainQueue = () => queue.current.drain();
+
   const saveNow = () =>
     new Promise((resolve) => {
       if (bad.size) {
         toast.error("صحّح الكميات المحددة بالأحمر أولًا");
         return resolve(false);
       }
-      if (pending.length === 0) return resolve(true);
-      save.mutate(pending, {
+      // Take the pending scans FIRST: after this point no timer can fire, so the same line cannot
+      // be sent twice.
+      const counts = drainQueue();
+      if (counts.length === 0) return resolve(true);
+      save.mutate(counts, {
         onSuccess: () => resolve(true),
         onError: (e) => {
           toast.error(stocktakeErrorMessage(e));
@@ -68,25 +89,27 @@ export default function StocktakeTable({ sheet, known = [] }) {
       });
     });
 
-  // the latest typed rows, so a scan-triggered save never leaves them behind
-  const pendingRef = useRef(pending);
-  pendingRef.current = pending;
-
   function queueSave(variantId, qty) {
-    queued.current[variantId] = qty;
-    clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(function flush() {
-      // one save at a time: a second one would land on the sheet the first is about to replace
-      if (save.isPending) {
-        flushTimer.current = setTimeout(flush, 1000);
-        return;
-      }
-      const counts = countsToSave(pendingRef.current, queued.current);
-      queued.current = {};
-      if (counts.length === 0) return;
-      save.mutate(counts, { onError: (e) => toast.error(stocktakeErrorMessage(e)) });
-    }, 2000);
+    if (!open) return; // an approved or cancelled sheet takes no counts
+    queue.current.push(variantId, qty);
   }
+
+  /**
+   * A typed count is saved when the piece is FINISHED, not when the sheet is: the server stamps
+   * ``counted_at`` on the save, so holding an hour of typing until "Save" recorded an hour of
+   * counts as if they were all taken at the end. Blur (or Enter, which blurs) commits the line.
+   */
+  function commitTyped(variantId, raw) {
+    if (!open) return;
+    const line = sheet.rows.find((r) => r.id === variantId);
+    const decision = commitDecision(raw, line?.actual ?? null);
+    if (!decision.send) return; // still being typed, or the server already holds this figure
+    queueSave(variantId, decision.qty);
+  }
+
+  // Leaving the screen must not leave a timer behind that fires into a component that no longer
+  // shows the sheet.
+  useEffect(() => () => queue.current?.dispose(), []);
 
   // A scanner types the code and presses Enter: the line is found by barcode, SKU, or a unique
   // partial match, and its count goes up by one from whatever is already there.
@@ -255,6 +278,10 @@ export default function StocktakeTable({ sheet, known = [] }) {
                         placeholder="لم يُعدّ"
                         aria-invalid={invalid}
                         onChange={(e) => setTyped((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                        onBlur={(e) => commitTyped(row.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
                         className={cn("num mx-auto h-8 w-24 text-center", invalid && "border-rose-500")}
                       />
                     </td>

@@ -110,7 +110,35 @@ export function costWarning(totals, rows = []) {
 export function returnCostNotice(totals) {
   const pieces = Number(totals?.unitsReturned) || 0;
   if (pieces <= 0) return null;
-  return `تكلفة المرتجعات مقدّرة: ${fmtInt(pieces)} قطعة رجعت، وتكلفتها محسوبة بمتوسط تكلفة البيع، لأن المخزن مابيسجّلش تكلفة على المرتجع.`;
+  const shelved = Number(totals?.unitsReturnedToShelf) || 0;
+  const gone = Math.max(0, pieces - shelved);
+  const byState = CONDITION_WORDS(totals?.returnedByCondition);
+  const base =
+    `تكلفة المرتجعات مقدّرة: ${fmtInt(pieces)} قطعة رجعت، وتكلفتها محسوبة بمتوسط تكلفة البيع، ` +
+    "لأن المخزن مابيسجّلش تكلفة على المرتجع.";
+  // Which pieces gave cost back is not the same question as how many came back: a damaged or
+  // written-off piece is gone, so its cost stays a cost.
+  const split =
+    gone > 0
+      ? ` منها ${fmtInt(shelved)} رجعت للمخزن (رجّعت تكلفتها) و${fmtInt(gone)} اتشالت (تكلفتها فضلت على المحل).`
+      : "";
+  return base + split + (byState ? ` الحالات: ${byState}.` : "");
+}
+
+/** "sellable 2، damaged 1" in the shop's words, for the note under the table. */
+function CONDITION_WORDS(byCondition) {
+  const words = {
+    sellable: "سليمة",
+    quarantine: "تحت الفحص",
+    damaged: "تالفة",
+    writeoff: "شطب",
+    supplier: "للمورد",
+    unstated: "من غير حالة",
+  };
+  return Object.entries(byCondition ?? {})
+    .filter(([, units]) => Number(units) > 0)
+    .map(([state, units]) => `${words[state] ?? state} ${fmtInt(units)}`)
+    .join("، ");
 }
 
 /**

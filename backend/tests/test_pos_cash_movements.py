@@ -191,6 +191,94 @@ async def test_shift_handover(db, tenant_ctx) -> None:
     assert updated.status == "OPEN"
 
 
+async def _second_cashier(db, tenant_ctx):
+    """A second person on the same tenant, so a hand-over has somebody to hand to."""
+    from sqlalchemy import select
+
+    new_user = User(
+        email=f"cashier_{uuid.uuid4().hex[:6]}@example.com",
+        full_name="Second Cashier",
+        password_hash="x",
+        is_active=True,
+    )
+    db.add(new_user)
+    role = (await db.execute(select(Role).where(Role.code == "owner"))).scalar_one()
+    db.add(TenantUser(tenant_id=tenant_ctx.tenant_id, user_id=new_user.id, role_id=role.id))
+    await db.flush()
+    return new_user
+
+
+@pytest.mark.asyncio
+async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> None:
+    """The report's §2.2: the route dropped counted_cash, so a counted hand-over could not be sent.
+
+    A drawer that takes payments is counted before it changes hands; without the route carrying the
+    count the hand-over is refused for a missing figure the cashier did have.
+    """
+    from sqlalchemy import select
+
+    from app.modules.pos.models import PosSessionHandover
+    from app.modules.pos.router import HandoverRequest, handover_session
+    from app.modules.settings.service import SettingsService
+
+    shift, _, _ = await till(db, tenant_ctx)
+    # A till that takes payments has a drawer, and a drawer changes hands counted.
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", True)
+    new_user = await _second_cashier(db, tenant_ctx)
+
+    class Ctx:
+        session = db
+        tenant_id = tenant_ctx.tenant_id
+
+        class user:
+            id = tenant_ctx.user.id
+
+    class Override:
+        active = True
+
+    await handover_session(
+        shift.id,
+        HandoverRequest(
+            new_cashier_id=new_user.id, counted_cash="0.00", variance_reason="درج فاضي"
+        ),
+        Ctx(),
+        Override(),
+    )
+    row = (
+        await db.execute(
+            select(PosSessionHandover).where(PosSessionHandover.session_id == shift.id)
+        )
+    ).scalar_one()
+    assert row.counted_cash == Decimal("0.00")
+    assert row.to_user_id == new_user.id
+
+
+@pytest.mark.asyncio
+async def test_the_handover_route_refuses_an_uncounted_drawer(db, tenant_ctx) -> None:
+    from app.modules.pos.router import HandoverRequest, handover_session
+    from app.modules.settings.service import SettingsService
+
+    shift, _, _ = await till(db, tenant_ctx)
+    # A till that takes payments has a drawer, and a drawer changes hands counted.
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", True)
+    new_user = await _second_cashier(db, tenant_ctx)
+
+    class Ctx:
+        session = db
+        tenant_id = tenant_ctx.tenant_id
+
+        class user:
+            id = tenant_ctx.user.id
+
+    class Override:
+        active = True
+
+    with pytest.raises(ValidationError, match="count the drawer"):
+        await handover_session(
+            shift.id, HandoverRequest(new_cashier_id=new_user.id), Ctx(), Override()
+        )
+
+
 @pytest.mark.asyncio
 async def test_handover_closed_session_refused(db, tenant_ctx) -> None:
     shift, _, _ = await till(db, tenant_ctx)
