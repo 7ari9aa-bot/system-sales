@@ -186,4 +186,4 @@ async def test_inbound_message_survives_an_open_storage_breaker(
     attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
     assert attachment.scan_status == "failed"
     assert attachment.provider_url == MEDIA_URL
-    assert any("media.ingest_failed" in r.message for r in caplog.records)
+    assert any("media.ingest_failed" in r.getMessage() for r in caplog.records)

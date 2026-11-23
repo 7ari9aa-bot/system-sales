@@ -538,7 +538,7 @@ async def test_provider_fetch_failure_is_recorded_not_swallowed(db, tenant_ctx, 
     attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
     assert attachment.scan_status == "failed"
     assert attachment.provider_url == MEDIA_URL
-    assert any("media.ingest_failed" in r.message for r in caplog.records)
+    assert any("media.ingest_failed" in r.getMessage() for r in caplog.records)
 
 
 async def test_storage_write_failure_does_not_cost_the_message(db, tenant_ctx, caplog):
@@ -565,7 +565,7 @@ async def test_storage_write_failure_does_not_cost_the_message(db, tenant_ctx, c
     assert attachment.scan_status == "failed"
     assert attachment.processing_status == "failed"
     assert attachment.provider_url == MEDIA_URL
-    assert any("media.ingest_failed" in r.message for r in caplog.records)
+    assert any("media.ingest_failed" in r.getMessage() for r in caplog.records)
 
 
 async def test_an_unexpected_error_class_is_also_contained(db, tenant_ctx, caplog):
@@ -580,7 +580,7 @@ async def test_an_unexpected_error_class_is_also_contained(db, tenant_ctx, caplo
     assert message is not None
     attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
     assert attachment.scan_status == "failed"
-    assert any("media.ingest_failed" in r.message for r in caplog.records)
+    assert any("media.ingest_failed" in r.getMessage() for r in caplog.records)
 
 
 async def test_undurable_passthrough_is_recorded_as_failed(db, tenant_ctx, caplog):
@@ -595,7 +595,7 @@ async def test_undurable_passthrough_is_recorded_as_failed(db, tenant_ctx, caplo
     attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
     assert attachment.scan_status == "failed"
     assert attachment.storage_key is None
-    assert any("media.not_durable" in r.message for r in caplog.records)
+    assert any("media.not_durable" in r.getMessage() for r in caplog.records)
 
 
 async def test_a_failed_attachment_is_retried_on_redelivery(db, tenant_ctx, monkeypatch):
@@ -711,7 +711,7 @@ async def test_an_infected_image_is_quarantined_and_never_scanned(
     assert attachment.scan_status == "quarantined"
     # The message still survived — quarantine refuses the IMAGE, not the chat.
     assert message is not None
-    assert any("media.quarantined" in r.message for r in caplog.records)
+    assert any("media.quarantined" in r.getMessage() for r in caplog.records)
     assert any("Eicar-Test-Signature" in r.getMessage() for r in caplog.records)
 
 
@@ -734,7 +734,7 @@ async def test_a_scanner_outage_leaves_the_image_pending_and_the_message_alive(
     attachment = (await MediaService.list_for_message(db, tenant_id, message.id))[0]
     assert attachment.scan_status == "pending"
     assert attachment.storage_key == "media/abc.jpg"  # the bytes ARE durable
-    assert any("media.scan_unavailable" in r.message for r in caplog.records)
+    assert any("media.scan_unavailable" in r.getMessage() for r in caplog.records)
 
 
 async def test_a_pending_scan_is_retried_once_a_scanner_is_configured(db, tenant_ctx, monkeypatch):

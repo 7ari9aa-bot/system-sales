@@ -56,7 +56,7 @@ async def test_no_token_means_no_call():
     )
 
 
-async def test_the_service_names_the_customer_and_keeps_a_manual_name():
+async def test_the_service_names_the_customer_and_keeps_a_manual_name(monkeypatch):
     from app.modules.conversations import customer_profile as cp
 
     class _Customer:
@@ -77,7 +77,7 @@ async def test_the_service_names_the_customer_and_keeps_a_manual_name():
             return self.identity
 
     identity = _Identity()
-    cp.customers = lambda: _Customers(identity)
+    monkeypatch.setattr(cp, "customers", lambda: _Customers(identity))
 
     async def _profile(_creds, _psid):
         return {"name": "Hamed Adel", "profile_pic": None}
@@ -102,7 +102,7 @@ async def test_the_service_names_the_customer_and_keeps_a_manual_name():
         messenger_adapter.get_user_profile = original
 
 
-async def test_a_refusal_is_recorded_so_it_is_not_retried_on_every_message():
+async def test_a_refusal_is_recorded_so_it_is_not_retried_on_every_message(monkeypatch):
     from app.modules.conversations import customer_profile as cp
 
     class _Customer:
@@ -121,7 +121,7 @@ async def test_a_refusal_is_recorded_so_it_is_not_retried_on_every_message():
         async def channel_identity(self, *_a, **_k):
             return identity
 
-    cp.customers = lambda: _Customers()
+    monkeypatch.setattr(cp, "customers", lambda: _Customers())
 
     async def _none(_creds, _psid):
         return None

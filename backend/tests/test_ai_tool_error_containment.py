@@ -165,8 +165,16 @@ async def test_unexpected_tool_error_leaks_nothing_to_the_model(
     # failure.
     assert result.content == "تمام"
 
-    # The full detail went to the LOGS, not the model.
-    assert secret in caplog.text
+    # The full detail went to the LOGS, not the model. It is read off the record's own exception,
+    # not off `caplog.text`: once the app's JSON formatter is installed that text is JSON-escaped
+    # (backslashes doubled, quotes and newlines escaped), so a Windows path or a stack trace would
+    # never match even though the detail was logged intact.
+    logged = [
+        str(record.exc_info[1])
+        for record in caplog.records
+        if record.exc_info and record.exc_info[1] is not None
+    ]
+    assert secret in logged or secret in caplog.text
 
 
 async def test_designed_domain_error_passes_through_as_data(db, tenant_ctx, monkeypatch):
