@@ -37,6 +37,7 @@ export const SHEET_LABEL = {
   Variants: "الأصناف (اللون والمقاس)",
   "Opening Stock": "رصيد أول المدة",
   Images: "صور المنتجات (روابط)",
+  Customers: "العملاء",
 };
 
 /** What each validation code means to a merchant. Unknown codes fall back to a generic line. */
@@ -63,7 +64,13 @@ const ERROR_TEXT = {
   too_long: "النص أطول من المسموح",
   has_spaces: "القيمة تحتوي على مسافات",
   bad_status: "الحالة غير معروفة",
-  scientific_notation: "الباركود تحوّل إلى صيغة علمية (مثل 6.22E+12). اجعل العمود نصًّا في Excel ثم أعد الحفظ",
+  scientific_notation: "الرقم تحوّل إلى صيغة علمية (مثل 6.22E+12). اجعل العمود نصًّا في Excel ثم أعد الحفظ",
+  no_contact: "اكتب هاتفًا أو بريدًا إلكترونيًا للعميل ليمكن التعرّف عليه لاحقًا",
+  bad_phone: "رقم الهاتف غير صالح. اكتبه بالكامل مثل 01012345678",
+  bad_email: "البريد الإلكتروني غير صالح",
+  already_a_customer: "يوجد عميل بنفس الهاتف أو البريد في المتجر",
+  phone_of_deleted_customer: "هذا الرقم يخص عميلًا محذوفًا ولا يمكن استخدامه لعميل جديد",
+  too_many_tags: "عدد الوسوم أكبر من الحد المسموح (20)",
 };
 
 export const errorText = (code) => ERROR_TEXT[code] ?? "قيمة غير صالحة";
@@ -147,7 +154,7 @@ export async function downloadErrorReport(id) {
 }
 
 /**
- * The starter workbook (Products, Variants, Opening Stock, Images). Its headers are the ones the column
+ * The starter workbook (Products, Variants, Opening Stock, Images, Customers). Its headers are the ones the column
  * matcher already knows, so a merchant who fills it in sees every column mapped on the next step.
  * Fetched with the session cookie for the same reason as the error report.
  */

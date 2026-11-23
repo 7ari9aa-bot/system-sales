@@ -26,6 +26,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
     SHEET_IMAGES,
     SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
@@ -44,7 +45,15 @@ IMAGE_BATCH_LIMIT = 25
 # Products before variants before stock: a variant needs its product, stock needs its variant.
 # Pictures go last: they are the slowest rows (each one is a download) and the least critical, so
 # a shop that runs out of time still has every product, price and quantity in place.
-SHEET_ORDER = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_ITEM_CODES, SHEET_STOCK, SHEET_IMAGES)
+# Customers depend on nothing in the file, so they go first.
+SHEET_ORDER = (
+    SHEET_CUSTOMERS,
+    SHEET_PRODUCTS,
+    SHEET_VARIANTS,
+    SHEET_ITEM_CODES,
+    SHEET_STOCK,
+    SHEET_IMAGES,
+)
 OPENING_STOCK_REASON = "opening_stock"
 REFERENCE_TYPE = "import_session"
 
@@ -72,6 +81,11 @@ class Ports:
     ]
     # (sku, link) -> image id. Fetches the link, stores the bytes, attaches the picture.
     attach_image: Callable[[AsyncSession, uuid.UUID, str, str], Awaitable[uuid.UUID]]
+    # (name, phone, email, source, tags) -> customer id. The customers service's own intake.
+    create_customer: Callable[
+        [AsyncSession, uuid.UUID, str, str | None, str | None, str, list[str]],
+        Awaitable[uuid.UUID],
+    ]
     # (sku, EGS|GS1, code) -> identifier id. Registers the tax item code on the variant.
     attach_item_code: Callable[[AsyncSession, uuid.UUID, str, str, str], Awaitable[uuid.UUID]]
     # Optional: called once with the batch's rows so the ports can look up every product and SKU
@@ -221,6 +235,17 @@ async def _write(
             session, tenant_id, str(values["sku"]), str(values["warehouse"]), quantity, session_id
         )
         return {"variant_id": str(variant_id), "action": "created"}
+    if row.sheet == SHEET_CUSTOMERS:
+        customer_id = await ports.create_customer(
+            session,
+            tenant_id,
+            str(values["name"]),
+            values.get("phone") or None,
+            values.get("email") or None,
+            str(values.get("source") or "import"),
+            list(values.get("tags") or []),
+        )
+        return {"customer_id": str(customer_id), "action": "created"}
     if row.sheet == SHEET_IMAGES:
         image_id = await ports.attach_image(
             session, tenant_id, str(values["sku"]), str(values["url"])

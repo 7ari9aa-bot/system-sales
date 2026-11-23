@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 import { InstagramBubble } from "./InstagramBubble";
-import { instagramKind, safeHttps } from "./messageKind";
+import { instagramKind, instagramQuoteText, safeHttps } from "./messageKind";
 
 const th = { out: "#4A5DF9", outText: "#ffffff", in: "#F3F5F7", inText: "#000000", bubbleRadius: 18 };
 const msg = (over = {}) => ({ id: "1", side: "in", text: "", contentType: "text", mediaUrl: null, mediaType: null, card: null, reactions: [], ...over });
@@ -94,5 +94,24 @@ describe("InstagramBubble", () => {
     expect(html({ contentType: "video", mediaUrl: "https://c/a.mp4" })).toContain("<video");
     expect(html({ contentType: "voice", mediaUrl: "https://c/a.m4a" })).toContain("<audio");
     expect(html({ contentType: "file", mediaUrl: "javascript:1", fileName: "a.pdf" })).not.toContain("<a ");
+  });
+});
+
+describe("reply-to (Send API reply_to)", () => {
+  test("a reply affordance appears on both sides and is absent without a handler", () => {
+    expect(html({ text: "hi" }, { onReply: () => {} })).toContain('data-testid="ig-reply"');
+    expect(html({ side: "out", text: "hi" }, { onReply: () => {} })).toContain('data-testid="ig-reply"');
+    expect(html({ text: "hi" })).not.toContain('data-testid="ig-reply"');
+  });
+
+  test("a bare heart or a deleted message is never quoted", () => {
+    expect(html({ contentType: "sticker", text: "\u2764\ufe0f" }, { onReply: () => {} })).not.toContain('data-testid="ig-reply"');
+    expect(html({ contentType: "deleted" }, { onReply: () => {} })).not.toContain('data-testid="ig-reply"');
+  });
+
+  test("the quote bar names media instead of printing a blank", () => {
+    expect(instagramQuoteText(msg({ contentType: "image" }), "ar")).toBe("صورة");
+    expect(instagramQuoteText(msg({ contentType: "voice" }), "en")).toBe("Voice message");
+    expect(instagramQuoteText(msg({ text: "سلام" }), "ar")).toBe("سلام");
   });
 });
