@@ -155,6 +155,36 @@ def _meta_config() -> tuple[str, str, str, str]:
     return app_id, app_secret, redirect_uri, config_id
 
 
+def _instagram_login_config() -> tuple[str, str, str]:
+    """(app_id, app_secret, redirect_uri) for Instagram Login, from ONE source of truth.
+
+    The authorize URL and the code exchange are two halves of one grant: a code issued to app A
+    cannot be redeemed with app B's id and secret. They used to read different settings (the start
+    used META_APP_ID, the callback INSTAGRAM_APP_ID or META_APP_ID with INSTAGRAM_APP_SECRET), so a
+    deployment with a separate Instagram app began the login with one app and ended it with another.
+
+    The pair is chosen as a PAIR: the Instagram app when it is configured (id AND secret), otherwise
+    the Meta app (id AND secret). Never an id from one and a secret from the other.
+    """
+    from app.core.config import get_settings
+
+    s = get_settings()
+    redirect_uri = s.meta_oauth_redirect_uri_effective
+    ig_id, ig_secret = s.instagram_app_id.strip(), s.instagram_app_secret.strip()
+    meta_id, meta_secret = s.meta_app_id.strip(), s.meta_app_secret.strip()
+    if ig_id and ig_secret:
+        app_id, app_secret = ig_id, ig_secret
+    else:
+        app_id, app_secret = meta_id, meta_secret
+    if not (app_id and app_secret and redirect_uri):
+        raise ValidationError(
+            "Instagram Login is not configured on this server — set INSTAGRAM_APP_ID and "
+            "INSTAGRAM_APP_SECRET (or META_APP_ID and META_APP_SECRET) and either "
+            "META_OAUTH_REDIRECT_URI or API_PUBLIC_BASE_URL (see docs/META_SETUP.md)."
+        )
+    return app_id, app_secret, redirect_uri
+
+
 def _build_authorize_url(
     *, app_id: str, redirect_uri: str, state: str, provider: str, config_id: str
 ) -> str:
@@ -207,7 +237,11 @@ async def meta_oauth_start(
     """
     if provider not in _OAUTH_PROVIDERS:
         raise ValidationError(f"Meta OAuth covers {' and '.join(_OAUTH_PROVIDERS)} only.")
-    app_id, _secret, redirect_uri, config_id = _meta_config()
+    if provider == _INSTAGRAM_LOGIN_PROVIDER:
+        app_id, _secret, redirect_uri = _instagram_login_config()
+        config_id = ""
+    else:
+        app_id, _secret, redirect_uri, config_id = _meta_config()
     state = create_oauth_state_token(
         str(ctx.user.id),
         {"tenant_id": str(ctx.tenant_id), "provider": provider},
@@ -1294,15 +1328,12 @@ async def _instagram_login_callback(*, session, code, payload, frontend, back, f
     """The standalone Instagram Login callback: no Page, no page token, its own Graph host."""
     import uuid as _uuid
 
-    from app.core.config import get_settings
     from app.core.db import bind_tenant
     from app.modules.customers import instagram_login
 
-    settings = get_settings()
-    app_id = (settings.instagram_app_id or settings.meta_app_id).strip()
-    app_secret = settings.instagram_app_secret.strip()
-    redirect_uri = settings.meta_oauth_redirect_uri_effective
-    if not (app_id and app_secret and redirect_uri):
+    try:
+        app_id, app_secret, redirect_uri = _instagram_login_config()
+    except ValidationError:
         await flag("link.not_configured", "instagram_login", None, {"missing": "app_id/secret"})
         return back("error", "instagram_login_not_configured")
 

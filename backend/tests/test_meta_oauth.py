@@ -917,3 +917,82 @@ async def test_the_page_lock_is_skipped_off_postgres_and_taken_on_it() -> None:
     assert calls == []
     await lock_page_subscription(Session("postgresql"), "100")
     assert len(calls) == 1 and "pg_advisory_xact_lock" in calls[0]
+
+
+def _ig_settings(monkeypatch, **values):
+    from types import SimpleNamespace
+
+    base = {
+        "meta_app_id": "",
+        "meta_app_secret": "",
+        "instagram_app_id": "",
+        "instagram_app_secret": "",
+        "meta_oauth_redirect_uri_effective": "https://api.example.com/cb",
+    }
+    fake = SimpleNamespace(**{**base, **values})
+    monkeypatch.setattr("app.core.config.get_settings", lambda: fake)
+
+
+def test_instagram_login_uses_the_separate_instagram_app_as_a_pair(monkeypatch) -> None:
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="ig-secret",
+    )
+    assert meta_oauth._instagram_login_config() == (
+        "ig-id",
+        "ig-secret",
+        "https://api.example.com/cb",
+    )
+
+
+def test_instagram_login_never_mixes_an_id_from_one_app_with_a_secret_from_another(
+    monkeypatch,
+) -> None:
+    # An Instagram id with no Instagram secret must not borrow the Meta secret: a code issued to
+    # one app cannot be redeemed with the other's credentials.
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="",
+    )
+    assert meta_oauth._instagram_login_config()[:2] == ("meta-id", "meta-secret")
+
+
+def test_instagram_login_falls_back_to_the_meta_app(monkeypatch) -> None:
+    _ig_settings(monkeypatch, meta_app_id="meta-id", meta_app_secret="meta-secret")
+    assert meta_oauth._instagram_login_config()[:2] == ("meta-id", "meta-secret")
+
+
+def test_instagram_login_unconfigured_fails_loudly_at_the_start(monkeypatch) -> None:
+    _ig_settings(monkeypatch)
+    with pytest.raises(meta_oauth.ValidationError, match="Instagram Login is not configured"):
+        meta_oauth._instagram_login_config()
+
+
+async def test_the_start_url_and_the_callback_use_the_same_app(monkeypatch) -> None:
+    """The authorize URL's client_id is the very id the code will be exchanged with."""
+    from urllib.parse import parse_qs, urlparse
+
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="ig-secret",
+    )
+    app_id, _secret, redirect_uri = meta_oauth._instagram_login_config()
+    url = meta_oauth._build_authorize_url(
+        app_id=app_id,
+        redirect_uri=redirect_uri,
+        state="s",
+        provider="instagram_login",
+        config_id="",
+    )
+    assert parse_qs(urlparse(url).query)["client_id"] == ["ig-id"]
+    # ...and the callback resolves the identical pair.
+    assert meta_oauth._instagram_login_config()[0] == "ig-id"
