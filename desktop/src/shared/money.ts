@@ -86,3 +86,8 @@ function toLocaleDigits(fraction: string, formatter: Intl.NumberFormat): string 
 export function formatSar(value: string): string {
   return formatMoney(value, { locale: 'ar-SA', currency: 'SAR' })
 }
+
+/** عملة المحل في مصر (جنيه) — شاشة المخزون بتعرض أرقام المحل مش أرقام تجريبية. */
+export function formatEgp(value: string): string {
+  return formatMoney(value, { locale: 'ar-EG', currency: 'EGP' })
+}

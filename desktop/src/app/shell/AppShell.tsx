@@ -174,7 +174,7 @@ export const AppShell: FC<{
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {activeTab === 'cashier' && <CashierView platform={platform} />}
           {activeTab === 'dashboard' && <DashboardView />}
-          {activeTab === 'inventory' && <InventoryView />}
+          {activeTab === 'inventory' && <InventoryView platform={platform} />}
           {activeTab === 'purchasing' && <PurchasingView />}
           {activeTab === 'reports' && <ReportsView />}
           {activeTab === 'team' && <TeamView />}
