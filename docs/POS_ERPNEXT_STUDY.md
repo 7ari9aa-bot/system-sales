@@ -15,7 +15,7 @@ no Chart of Accounts). Every rule below cites the ERPNext file it was read from.
 | ERPNext doctype | Role in the design | FIHRIST equivalent (existing or planned) |
 |---|---|---|
 | `POS Profile` | Terminal configuration: warehouse, price list, allowed payment methods, capability flags, cashier grants, catalog scoping | `PosProfile` + `PosProfileUser` (done, fe2026101501) — add item-group scoping later |
-| `POS Opening Entry` | Shift open: who opened, when, opening float **per payment method**; status derived (Open = submitted, no closing entry linked) | `PosSession` (+ `cashier_user_id`, done) — needs float-per-method, not cash-only |
+| `POS Opening Entry` | Shift open: who opened, when, opening float **per payment method**; status derived (Open = submitted, no closing entry linked) | `PosSession` (+ `cashier_user_id`, done) + `pos_session_floats` (one row per method, done) |
 | `POS Closing Entry` | Shift close: expected vs counted per method, taxes roll-up, invoice lists, triggers consolidation | `PosSessionReconciliation` (done per-method) — plus session-scoped invoice list |
 | `POS Invoice` | The sale document; a Sales Invoice subtype forced into POS shape by the profile | Our POS sell already routes through `OrderService` (commerce core) — keep this, it matches §189 |
 | `Sales Invoice Payment` (child) | Split tender: one row per method, `mode_of_payment`, `amount`, `type`, resolved `account` | Our `tenders` list on sell (phase 1) |
@@ -138,7 +138,8 @@ reconciliation at close, discount ceiling (stricter than ERPNext's write-off lim
 
 To port from this study (candidates for next POS phases, in dependency order):
 
-1. **Per-method opening float** on the session (today our float is cash-only).
+1. ~~**Per-method opening float** on the session~~ — done: `pos_session_floats` holds one float row
+   per method (`pos/models.py:206`), and the cash leg stays on `PosSession.opening_float`.
 2. **One-open-per-profile and one-open-per-user** session validation (ERPNext
    rule 1-2) and **open shift required, dated today** on sell (rule 6).
 3. **Unconsolidated-POS-reservation in availability** (rule 12) — our scan/quote

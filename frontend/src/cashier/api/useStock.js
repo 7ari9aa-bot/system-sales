@@ -36,6 +36,15 @@ export function useSetReorderLevel() {
   });
 }
 
+/** One reorder level for every active size of a model (a clothing size run). */
+export function useSetProductReorderLevel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, level }) => posApi.setProductReorderLevel(productId, level),
+    onSuccess: () => qc.invalidateQueries({ queryKey: STOCK_KEY }),
+  });
+}
+
 /** Real categories for the filter (id + name): the grid filters by id on the server. */
 export function useStockCategories() {
   return useQuery({

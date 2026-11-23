@@ -13,7 +13,7 @@ const Notice = ({ children, role }) => (
 export default function StocktakePage() {
   const openId = useOpenStocktakeId();
   const start = useOpenStocktake();
-  const { sheet, isLoading, error } = useStocktakeSheet(openId.data);
+  const { sheet, known, isLoading, error } = useStocktakeSheet(openId.data);
 
   let body;
   if (openId.isLoading || (openId.data && isLoading)) {
@@ -42,7 +42,7 @@ export default function StocktakePage() {
       </Notice>
     );
   } else {
-    body = <StocktakeTable key={sheet.id} sheet={sheet} />;
+    body = <StocktakeTable key={sheet.id} sheet={sheet} known={known} />;
   }
 
   return (

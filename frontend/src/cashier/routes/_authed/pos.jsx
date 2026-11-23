@@ -18,6 +18,7 @@ import TraceabilityDialog from "@/cashier/components/pos/TraceabilityDialog";
 import CashMovementDialog from "@/cashier/components/pos/CashMovementDialog";
 import ShiftHandoverDialog from "@/cashier/components/pos/ShiftHandoverDialog";
 import PrinterSetupDialog from "@/cashier/components/pos/PrinterSetupDialog";
+import VariantPickerDialog from "@/cashier/components/pos/VariantPickerDialog";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { Button } from "@/cashier/components/ui/button";
 import { CATALOG_KEY, HELD_KEY, SESSION_CATALOG_KEY, fetchSessionCatalog, useCustomerSearch, useHeldCarts, usePosSale, useSessionCatalog, useShiftProfile } from "@/cashier/api/usePosSale";
@@ -35,11 +36,14 @@ import { enqueueOfflineSale } from "@/cashier/lib/offlineQueue";
 import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
 import { printableReceipt, receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
+import { drawerFailureNotice, printFailureNotice } from "@/cashier/lib/printFailure";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
 
 // مُعرّف ثابت لرسالة الحذف: كل حذف جديد يستبدل الرسالة السابقة، فيكون التراجع لأحدث حذف.
 const UNDO_TOAST_ID = "pos-undo-remove";
+// رسالة فشل الطباعة: واحدة أحدث تستبدل السابقة.
+const PRINT_FAILED_TOAST_ID = "pos-print-failed";
 
 export default function PosPage() {
   const { user } = useAuth?.() ?? {};
@@ -94,6 +98,7 @@ function PosScreen({ user, session }) {
   const [handoverPending, setHandoverPending] = useState(false);
   const [handoverError, setHandoverError] = useState(null);
   const [printerOpen, setPrinterOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const offlineSync = useOfflineSync({
     onSaleSynced: (result) => {
       toast.success(`تمت مزامنة فاتورة غير متصلة: ${result?.number || "OK"}`);
@@ -379,14 +384,28 @@ function PosScreen({ user, session }) {
         }
       }
 
+      // The sale is already saved, so a printer failure never blocks it - but it is never silent
+      // either: the cashier is told the paper is missing and offered the reprint.
       if (isPrinterConnected()) {
         try {
           const bytes = receiptBytes(printableReceipt(r, { fallbackName: session?.profile?.name || "فهرست" }));
-          // The owner decides how many copies a till prints.
-          for (let n = 0; n < (r?.shop?.copies ?? 1); n += 1) printRaw(bytes).catch(() => {});
-          kickCashDrawer().catch(() => {});
+          // The owner decides how many copies a till prints. Awaited, so a dead printer is noticed here.
+          for (let n = 0; n < (r?.shop?.copies ?? 1); n += 1) await printRaw(bytes);
+        } catch (err) {
+          const notice = printFailureNotice(err, { receiptNumber: r?.number });
+          if (notice) {
+            toast.warning(notice.message, {
+              id: PRINT_FAILED_TOAST_ID,
+              duration: 15000,
+              action: { label: notice.actionLabel, onClick: () => setReceipt(r) },
+            });
+          }
+        }
+        // The drawer is a second device: it can fail while the paper printed fine.
+        try {
+          await kickCashDrawer();
         } catch {
-          /* printer errors are non-fatal to the sale */
+          toast.warning(drawerFailureNotice().message, { id: PRINT_FAILED_TOAST_ID, duration: 12000 });
         }
       }
 
@@ -499,6 +518,7 @@ function PosScreen({ user, session }) {
           setHandoverOpen(true);
         }}
         onPrinterSetup={() => setPrinterOpen(true)}
+        onPickVariant={() => setPickerOpen(true)}
         isOnline={offlineSync.isOnline}
         offlineCount={offlineSync.pendingCount}
         onSyncOffline={offlineSync.syncPending}
@@ -667,6 +687,15 @@ function PosScreen({ user, session }) {
       <PrinterSetupDialog
         open={printerOpen}
         onOpenChange={setPrinterOpen}
+      />
+
+      <VariantPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        catalog={catalog}
+        onPick={async (variant) => {
+          if (await addVariant(variant)) toast.success(`تمت إضافة ${variant.productName}`);
+        }}
       />
     </div>
   );

@@ -25,7 +25,13 @@ export function useStocktakeSheet(id) {
     enabled: Boolean(id),
   });
   const sheet = detail.data ? sheetFromApi(detail.data, stock.data ?? []) : null;
-  return { sheet, isLoading: detail.isLoading || stock.isLoading, error: detail.error ?? stock.error };
+  // `known` lets the screen tell "not in this count" apart from "no such item" when a code is scanned.
+  return {
+    sheet,
+    known: stock.data ?? [],
+    isLoading: detail.isLoading || stock.isLoading,
+    error: detail.error ?? stock.error,
+  };
 }
 
 function useRefresh() {

@@ -73,6 +73,15 @@ class StockViewService:
         await StockLevelService.set_reorder_level(session, tenant_id, variant_id, level)
         return await StockLevelService.get_reorder_level(session, tenant_id, variant_id)
 
+    @staticmethod
+    async def set_reorder_level_for_product(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, level: int
+    ) -> int:
+        """One reorder level for a whole model (a clothing size run), answering how many sizes took it."""
+        return await StockLevelService.set_reorder_level_for_product(
+            session, tenant_id, product_id, level
+        )
+
     # ---- physical stocktake: pos reaches inventory through THIS file only ---------------------
 
     @staticmethod

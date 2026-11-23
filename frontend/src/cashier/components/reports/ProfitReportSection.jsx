@@ -2,6 +2,7 @@ import ReportTable from "@/cashier/components/reports/ReportTable";
 import {
   costWarning,
   profitColumns,
+  returnCostNotice,
   profitFootnote,
   profitTotalsRow,
 } from "@/cashier/components/reports/profitView";
@@ -42,6 +43,7 @@ export default function ProfitReportSection({ rows = [], totals = null }) {
   }));
 
   const warning = costWarning(totals, list);
+  const estimated = returnCostNotice(totals);
 
   return (
     <div>
@@ -51,6 +53,11 @@ export default function ProfitReportSection({ rows = [], totals = null }) {
           role="alert"
         >
           {warning}
+        </p>
+      )}
+      {estimated && (
+        <p className="mt-2 border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-[11.5px] font-medium text-slate-700">
+          {estimated}
         </p>
       )}
       {list.length === 0 ? (

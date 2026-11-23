@@ -33,6 +33,8 @@ export function sheetFromApi(detail, stockRows) {
       id: line.variant_id,
       productName: meta?.productName ?? "صنف غير معروف",
       sku: meta?.sku ?? "",
+      // The scanner at the shelf reads a barcode, not a SKU: the sheet needs the code to match it.
+      barcode: meta?.barcode ?? "",
       color: meta?.color ?? "",
       size: meta?.size ?? "",
       stock: line.expected_qty, // the book quantity when counting started

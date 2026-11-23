@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BadgeCheck, FileSpreadsheet, Save, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
@@ -8,6 +8,7 @@ import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { colorHex } from "@/cashier/lib/uiConstants";
 import { changedCounts, diffOf, parseCount, sheetTotals, stocktakeErrorMessage } from "@/cashier/api/stocktakeAdapter";
+import { scanRefusal, scanToCount } from "@/cashier/lib/stocktakeScan";
 import { useApproveStocktake, useCancelStocktake, useSaveCounts } from "@/cashier/api/useStocktake";
 import { fmtInt } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
@@ -16,10 +17,17 @@ import { cn } from "@/cashier/lib/utils";
 const SIGNED = (n) => (n > 0 ? `+${fmtInt(n)}` : fmtInt(n));
 
 // جدول الجرد: يقارن الكمية وقت بدء الجرد بما عدّه الموظف. الخلية الفارغة = لم تُعدّ بعد (وليست صفرًا).
-export default function StocktakeTable({ sheet }) {
+export default function StocktakeTable({ sheet, known = [] }) {
   // typed text per variant; undefined = untouched, "" = cleared (not counted)
   const [typed, setTyped] = useState({});
   const [diffOnly, setDiffOnly] = useState(false);
+  const [scan, setScan] = useState("");
+  const [scanMsg, setScanMsg] = useState("");
+  const scanRef = useRef(null);
+  // Scans are saved on their own so an hour of counting is never lost with the tab. They are
+  // gathered for a couple of seconds first: one request per scan would fight the scanner.
+  const queued = useRef({});
+  const flushTimer = useRef(null);
   const save = useSaveCounts(sheet.id);
   const approve = useApproveStocktake(sheet.id);
   const cancel = useCancelStocktake(sheet.id);
@@ -59,6 +67,33 @@ export default function StocktakeTable({ sheet }) {
         },
       });
     });
+
+  function queueSave(variantId, qty) {
+    queued.current[variantId] = qty;
+    clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(() => {
+      const counts = Object.entries(queued.current).map(([variant_id, counted_qty]) => ({ variant_id, counted_qty }));
+      queued.current = {};
+      if (counts.length === 0) return;
+      save.mutate(counts, { onError: (e) => toast.error(stocktakeErrorMessage(e)) });
+    }, 2000);
+  }
+
+  // A scanner types the code and presses Enter: the line is found by barcode, SKU, or a unique
+  // partial match, and its count goes up by one from whatever is already there.
+  function onScan() {
+    if (!open) return;
+    const out = scanToCount(rows, scan, { known });
+    if (out.kind === "hit") {
+      setTyped((prev) => ({ ...prev, [out.row.id]: String(out.qty) }));
+      queueSave(out.row.id, out.qty);
+      setScanMsg(`تم عدّ ${out.row.productName}${out.row.size ? ` مقاس ${out.row.size}` : ""}: ${out.qty}`);
+      setScan("");
+      scanRef.current?.focus();
+      return;
+    }
+    setScanMsg(scanRefusal(out.kind, scan) ?? "");
+  }
 
   async function onSave() {
     if (pending.length === 0) return toast.info("لا توجد تغييرات للحفظ");
@@ -137,6 +172,39 @@ export default function StocktakeTable({ sheet }) {
           </div>
         }
       >
+        {open && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+            <label htmlFor="stocktake-scan" className="text-xs font-semibold">عدّ بالباركود</label>
+            <input
+              id="stocktake-scan"
+              ref={scanRef}
+              value={scan}
+              onChange={(e) => setScan(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onScan();
+                }
+              }}
+              placeholder="امسح الباركود أو اكتب الكود"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              className="num h-8 w-56 rounded-md border border-input bg-background px-2 text-center text-[13px] font-semibold outline-none focus:ring-1 focus:ring-ring"
+              aria-label="باركود العدّ"
+            />
+            <Button type="button" size="sm" className="h-8" onClick={onScan} disabled={!scan.trim()}>
+              عدّ
+            </Button>
+            {scanMsg ? (
+              <p role="status" className="text-[11px] font-semibold text-muted-foreground">{scanMsg}</p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">كل مسحة تزوّد الكمية واحد، والعدّ بيتحفظ تلقائيًا.</p>
+            )}
+          </div>
+        )}
+
         <div className="overflow-x-auto scroll-slim">
           <table className="w-full min-w-[820px] text-sm">
             <thead>

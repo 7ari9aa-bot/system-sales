@@ -1235,6 +1235,23 @@ async def set_reorder_level(
     return ReorderLevelRequest(reorder_level=level)
 
 
+@router.put("/stock/products/{product_id}/reorder-level")
+async def set_product_reorder_level(
+    product_id: UUID,
+    body: ReorderLevelRequest,
+    ctx: TenantContext = Depends(require_permission("inventory:write")),
+):
+    """Set ONE reorder level for every active size of a model.
+
+    A clothing shop restocks a size run, not a size. Setting eight sizes one by one is how a model
+    ends up with no low-stock alert at all.
+    """
+    variants = await StockViewService.set_reorder_level_for_product(
+        ctx.session, ctx.tenant_id, product_id, body.reorder_level
+    )
+    return {"product_id": str(product_id), "reorder_level": body.reorder_level, "variants": variants}
+
+
 class OpenStocktakeRequest(BaseModel):
     note: str | None = Field(default=None, max_length=255)
 
