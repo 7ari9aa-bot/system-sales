@@ -897,12 +897,15 @@ export default function ChannelChat({
               <button type="button" data-testid="messenger-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
             </div>
           )}
-          <div dir="ltr" data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
+          <div dir={lang === "ar" ? "rtl" : "ltr"} data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
             <button
               type="button"
               onClick={() => setAttachmentMenuOpen((v) => !v)}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
               title={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+              aria-label={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+              aria-haspopup="menu"
+              aria-expanded={attachmentMenuOpen}
             >
               <Paperclip className="h-4 w-4" />
             </button>
@@ -911,6 +914,7 @@ export default function ChannelChat({
               onClick={() => setEmojiPickerOpen((v) => !v)}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
               title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
             >
               <Smile className="h-4 w-4" />
             </button>
