@@ -96,3 +96,52 @@ export function messengerPresence(lastCustomerMessageAt, now = Date.now(), windo
   if (!at) return null;
   return now - at <= windowMs ? "activeNow" : null;
 }
+
+// Messenger draws a lone emoji (a thumbs-up above all) large and with no bubble around it.
+// Up to five emoji and nothing else; any letter, digit or longer run is an ordinary bubble.
+const EMOJI_RUN = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*){1,5}$/u;
+
+export function messengerIsBigEmoji(text) {
+  const value = String(text ?? "").replace(/\s+/g, "");
+  return value.length > 0 && EMOJI_RUN.test(value);
+}
+
+const QUOTE_KINDS = {
+  image: ["صورة", "Photo"],
+  photo: ["صورة", "Photo"],
+  video: ["فيديو", "Video"],
+  audio: ["رسالة صوتية", "Voice message"],
+  voice: ["رسالة صوتية", "Voice message"],
+  file: ["ملف", "File"],
+  document: ["ملف", "File"],
+  sticker: ["ملصق", "Sticker"],
+};
+
+/**
+ * The line shown in the grey quote above a reply. It is the quoted message's own words; a media
+ * message is named by its kind, and a message the provider no longer has shows an ellipsis
+ * rather than text we do not have.
+ */
+export function messengerQuoteText(quote, lang = "ar") {
+  if (!quote || typeof quote !== "object") return "";
+  if (quote.available === false) return "…";
+  const words = String(quote.body || quote.text || "").trim();
+  if (words) return words;
+  const kind = QUOTE_KINDS[String(quote.content_type || quote.contentType || "").toLowerCase()];
+  if (kind) return lang === "ar" ? kind[0] : kind[1];
+  return "…";
+}
+
+// Messenger prints a centred time only after a pause, never inside a bubble.
+export const MESSENGER_TIME_GAP_MS = 15 * 60 * 1000;
+
+/** True when a centred time stamp belongs above the message at `index`. */
+export function messengerTimeDivider(messages, index, gapMs = MESSENGER_TIME_GAP_MS) {
+  const list = Array.isArray(messages) ? messages : [];
+  if (index <= 0) return true;
+  const now = new Date(list[index]?.createdAt || 0).getTime();
+  const before = new Date(list[index - 1]?.createdAt || 0).getTime();
+  // A time we cannot read is never treated as "close": hiding a real gap is the worse error.
+  if (!now || !before) return true;
+  return now - before >= gapMs;
+}

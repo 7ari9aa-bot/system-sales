@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerSeenMessageId } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerIsBigEmoji, messengerPresence, messengerQuoteText, messengerSeenMessageId, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -529,7 +529,15 @@ export default function ChannelChat({
           const messengerRow = isMessenger ? messengerGroup(visibleMessages, index) : null;
           return (
             <React.Fragment key={m.id}>
-              {dayKey && dayKey !== previousDayKey && (
+              {isMessenger ? (
+                messengerTimeDivider(visibleMessages, index) && (
+                  <div data-testid="messenger-time-divider" className="flex justify-center py-3">
+                    <span dir="auto" className="text-[12px] font-medium text-[#65676b]">
+                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${m.time}` : m.time}
+                    </span>
+                  </div>
+                )
+              ) : dayKey && dayKey !== previousDayKey && (
                 <div className={cn("flex justify-center", isInstagram ? "py-3" : "py-1.5")} aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
                   {/* Instagram prints the day as plain grey text, no pill and no shadow. */}
                   <span className={cn(isInstagram ? "text-[12px] text-[#6a717a]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
@@ -863,7 +871,7 @@ export default function ChannelChat({
           </div>
           </>
         ) : isMessenger ? (
-          <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
+          <div dir="ltr" data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
             <button
               type="button"
               onClick={() => setAttachmentMenuOpen((v) => !v)}
@@ -885,10 +893,10 @@ export default function ChannelChat({
               onChange={(event) => setText(event.target.value)}
               dir="auto"
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
-              placeholder={t("inbox.typeMessage")}
+              placeholder="Aa"
               aria-label={t("inbox.typeMessage")}
               disabled={sending}
-              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
+              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[15px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
             />
             {text.trim() ? (
               <button
@@ -1111,30 +1119,40 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   // group meet, the time alone (no ticks), and the reader's avatar under the last bubble they read.
   if (isMessenger) {
     const group = messengerRow || { first: true, last: true, alone: true, size: 1 };
+    const quote = m.replyTo ? messengerQuoteText(m.replyTo, _lang) : "";
+    // A lone emoji has no bubble in Messenger, so it is printed large on the page itself.
+    const bigEmoji = !isAudio && !m.mediaUrl && messengerIsBigEmoji(m.text);
     return (
       <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
-        <div
-          className={cn(
-            "max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
-            messengerBubbleCorners({ out, first: group.first, last: group.last })
-          )}
-          style={{
-            background: messengerBubbleBackground(messengerTheme, out),
-            color: out ? "#FFFFFF" : th?.inText || "#050505",
-          }}
-        >
-          {isAudio ? (
-            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
-          ) : (
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-              {m.text}{" "}
-              <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[11px]", out ? "text-white/80" : "text-[#65676B]")}>
-                {m.time}
-                {m.ai && <Sparkles className="h-3 w-3 text-amber-300" />}
-              </span>
-            </div>
-          )}
-        </div>
+        {quote && (
+          <div data-testid="messenger-quote" dir="auto" className="mb-0.5 max-w-[76%] truncate rounded-[18px] bg-[#f0f0f0] px-3 py-1.5 text-[13px] text-[#65676b]">
+            {quote}
+          </div>
+        )}
+        {bigEmoji ? (
+          <div data-testid="messenger-big-emoji" title={m.time} className="text-[44px] leading-[1.1]" dir="auto">{String(m.text).trim()}</div>
+        ) : (
+          <div
+            title={m.time}
+            className={cn(
+              "max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
+              messengerBubbleCorners({ out, first: group.first, last: group.last })
+            )}
+            style={{
+              background: messengerBubbleBackground(messengerTheme, out),
+              color: out ? "#FFFFFF" : th?.inText || "#050505",
+            }}
+          >
+            {isAudio ? (
+              <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
+            ) : (
+              <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+                {m.text}
+                {m.ai && <Sparkles className="ms-1 inline h-3 w-3 align-baseline text-amber-300" />}
+              </div>
+            )}
+          </div>
+        )}
         {showSeenAvatar && (
           <span data-testid="messenger-seen-avatar" className="mt-1 inline-flex">
             <ConversationAvatar conversation={_conversation} className="h-4 w-4 text-[8px]" />

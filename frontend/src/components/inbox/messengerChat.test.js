@@ -106,3 +106,65 @@ describe("messengerPresence", () => {
     expect(messengerPresence(null, now)).toBeNull();
   });
 });
+
+import {
+  messengerIsBigEmoji,
+  messengerQuoteText,
+  messengerTimeDivider,
+} from "./messengerChat";
+
+describe("messengerIsBigEmoji", () => {
+  it("is true for a lone thumbs-up or a short run of emoji, which Messenger draws without a bubble", () => {
+    expect(messengerIsBigEmoji("👍")).toBe(true);
+    expect(messengerIsBigEmoji(" 👍 ")).toBe(true);
+    expect(messengerIsBigEmoji("😂😂😂")).toBe(true);
+  });
+
+  it("is false for text, mixed text and emoji, empty values and long runs", () => {
+    expect(messengerIsBigEmoji("ok 👍")).toBe(false);
+    expect(messengerIsBigEmoji("")).toBe(false);
+    expect(messengerIsBigEmoji(null)).toBe(false);
+    expect(messengerIsBigEmoji("😂😂😂😂😂😂")).toBe(false);
+    expect(messengerIsBigEmoji("123")).toBe(false);
+  });
+});
+
+describe("messengerQuoteText", () => {
+  it("uses the quoted body, then its text", () => {
+    expect(messengerQuoteText({ body: "hello" })).toBe("hello");
+    expect(messengerQuoteText({ text: "hi" })).toBe("hi");
+  });
+
+  it("names a media quote by its kind instead of printing nothing", () => {
+    expect(messengerQuoteText({ content_type: "image" }, "ar")).toBe("صورة");
+    expect(messengerQuoteText({ content_type: "image" }, "en")).toBe("Photo");
+    expect(messengerQuoteText({ content_type: "voice" }, "en")).toBe("Voice message");
+  });
+
+  it("says nothing about a message the provider no longer has", () => {
+    expect(messengerQuoteText({ available: false })).toBe("…");
+    expect(messengerQuoteText(null)).toBe("");
+  });
+});
+
+describe("messengerTimeDivider", () => {
+  const msg = (iso) => ({ createdAt: iso });
+
+  it("shows a divider before the first message", () => {
+    expect(messengerTimeDivider([msg("2026-11-22T10:00:00Z")], 0)).toBe(true);
+  });
+
+  it("shows none while messages are less than 15 minutes apart", () => {
+    const list = [msg("2026-11-22T10:00:00Z"), msg("2026-11-22T10:10:00Z")];
+    expect(messengerTimeDivider(list, 1)).toBe(false);
+  });
+
+  it("shows one after a longer pause, as Messenger does", () => {
+    const list = [msg("2026-11-22T10:00:00Z"), msg("2026-11-22T10:20:00Z")];
+    expect(messengerTimeDivider(list, 1)).toBe(true);
+  });
+
+  it("shows one when the clock is unreadable, never hides a gap it cannot measure", () => {
+    expect(messengerTimeDivider([msg("2026-11-22T10:00:00Z"), {}], 1)).toBe(true);
+  });
+});
