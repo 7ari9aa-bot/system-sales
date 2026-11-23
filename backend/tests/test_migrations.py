@@ -30,6 +30,9 @@ TELEGRAM_LEGACY_PAUSE_MIGRATION = (
 CHANNEL_TENANT_ROUTING_MIGRATION = (
     VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
 )
+FACEBOOK_PAGE_IDENTITY_MIGRATION = (
+    VERSIONS_DIR / "fe2026112302_facebook_page_identity.py"
+)
 
 
 class _RecordingOp:
@@ -792,4 +795,44 @@ def test_the_timezone_guard_can_actually_fail() -> None:
     )
     assert any(tz for tz in declared.values()), (
         "the parser found no timezone-aware DateTime columns at all"
+    )
+
+
+def test_facebook_page_identity_migration_keys_the_page_not_just_the_provider() -> None:
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(FACEBOOK_PAGE_IDENTITY_MIGRATION)
+    module.upgrade()
+
+    assert len(captured) == 4
+    for sql in captured:
+        pglast.parser.parse_sql(sql)
+
+    preflight = captured[0]
+    # Both duplicates are reported before anything is dropped: a Facebook Page twice, and the
+    # same Page split across Facebook and Messenger.
+    assert "HAVING count(*) > 1" in preflight
+    assert "duplicate active Facebook Page identities" in preflight
+    assert "across Facebook and Messenger" in preflight
+
+    identity = captured[2]
+    assert "WHEN provider = 'facebook' THEN config->>'page_id'" in identity
+    assert "provider = 'facebook' AND config->>'page_id' IS NOT NULL" in identity
+
+    page_index = captured[3]
+    assert "CREATE UNIQUE INDEX uq_integrations_active_page_identity" in page_index
+    assert "provider IN ('messenger', 'facebook')" in page_index
+    assert "COALESCE(config->>'page_id', config->>'account_id')" in page_index
+
+
+def test_the_model_carries_both_identity_indexes() -> None:
+    from app.modules.platform.models import Integration
+
+    by_name = {index.name: index for index in Integration.__table__.indexes}
+    identity = str(by_name["uq_integrations_active_channel_identity"].expressions[1])
+    assert "WHEN provider = 'facebook' THEN config->>'page_id'" in identity
+
+    page = by_name["uq_integrations_active_page_identity"]
+    assert "provider IN ('messenger', 'facebook')" in str(page.expressions[0])
+    assert "COALESCE(config->>'page_id', config->>'account_id')" in str(
+        page.dialect_options["postgresql"]["where"]
     )

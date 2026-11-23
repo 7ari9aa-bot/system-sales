@@ -174,6 +174,7 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
                 "CASE "
                 "WHEN provider = 'whatsapp' THEN config->>'phone_number_id' "
                 "WHEN provider IN ('messenger', 'instagram') THEN config->>'account_id' "
+                "WHEN provider = 'facebook' THEN config->>'page_id' "
                 "WHEN provider = 'telegram' THEN config->>'bot_id' "
                 "WHEN provider = 'webchat' THEN config->>'public_key' "
                 "END"
@@ -183,8 +184,26 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
                 "kind = 'channel' AND status IN ('active', 'connected') AND ("
                 "(provider = 'whatsapp' AND config->>'phone_number_id' IS NOT NULL) OR "
                 "(provider IN ('messenger', 'instagram') AND config->>'account_id' IS NOT NULL) OR "
+                "(provider = 'facebook' AND config->>'page_id' IS NOT NULL) OR "
                 "(provider = 'telegram' AND config->>'bot_id' IS NOT NULL) OR "
                 "(provider = 'webchat' AND config->>'public_key' IS NOT NULL))"
+            ),
+        ),
+        # Facebook and Messenger are two capabilities of ONE Page object: the Messenger row keeps
+        # the Page id in `account_id`, the Facebook row in `page_id`. Keyed by provider they could
+        # both be connected, in different workspaces, and one Page would answer for two tenants.
+        # This index keys the PAGE alone, across both providers.
+        Index(
+            "uq_integrations_active_page_identity",
+            text(
+                "CASE WHEN provider IN ('messenger', 'facebook') "
+                "THEN COALESCE(config->>'page_id', config->>'account_id') END"
+            ),
+            unique=True,
+            postgresql_where=text(
+                "kind = 'channel' AND status IN ('active', 'connected') "
+                "AND provider IN ('messenger', 'facebook') "
+                "AND COALESCE(config->>'page_id', config->>'account_id') IS NOT NULL"
             ),
         ),
     )
