@@ -102,6 +102,10 @@ backend/scripts/_login_body.json
 
 # Local CI / release build downloads
 build_release_artifacts/
+desktop_release_artifacts/
 *.apk
 *.aab
-!frontend/public/downloads/*.apk
+*.exe
+*.msi
+*.dmg
+!frontend/public/downloads/*
