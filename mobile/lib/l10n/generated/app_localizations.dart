@@ -98,7 +98,7 @@ abstract class AppLocalizations {
   /// عنوان التطبيق
   ///
   /// In ar, this message translates to:
-  /// **'فهرست'**
+  /// **'فهرس'**
   String get appTitle;
 
   /// No description provided for @navDashboard.

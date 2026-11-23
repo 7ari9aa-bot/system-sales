@@ -567,9 +567,21 @@ export default function MobileApp({ locale }) {
               </h4>
               <ol style={{ paddingInlineStart: '20px', margin: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem', lineHeight: 1.5 }}>
                 <li>{tx(c('حمّل ملف fihrist-setup.exe (أو fihrist.msi للشركات).', 'Download fihrist-setup.exe (or fihrist.msi for enterprise).'), locale)}</li>
-                <li>{tx(c('انقر مرتين على الملف واضغط "تثبيت" (Install).', 'Double-click the installer and follow the setup wizard.'), locale)}</li>
-                <li>{tx(c('افتح التطبيق وسجّل الدخول بحساب كاشير متجرك للبدء في البيع الفوري.', 'Open the app, sign in with your cashier credentials, and start selling.'), locale)}</li>
+                <li>{tx(c('إذا ظهرت نافذة الحماية الزرقاء (SmartScreen)، اضغط "المزيد من المعلومات" (More info) ثم "تشغيل على أي حال" (Run anyway).', 'If the blue SmartScreen prompt appears, click "More info" then "Run anyway".'), locale)}</li>
+                <li>{tx(c('اتبع معالج التثبيت، ثم سجّل الدخول بحساب كاشير متجرك للبدء في البيع فوراً.', 'Follow the wizard, sign in with your cashier credentials, and start selling.'), locale)}</li>
               </ol>
+              <div style={{ marginTop: '16px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                <strong style={{ color: '#3b82f6', display: 'block', marginBottom: '4px' }}>
+                  {tx(c('ملاحظة أمان SmartScreen:', 'SmartScreen Notice:'), locale)}
+                </strong>
+                {tx(
+                  c(
+                    'تظهر رسالة SmartScreen لأن البرنامج إصدار حديث ومباشر من بيئة البناء ولم يحصل بعد على تراخيص مايكروسوفت المدفوعة المسبقة. الملف آمن وخالٍ تماماً من الفيروسات.',
+                    'SmartScreen alerts appear on newly compiled releases before building commercial Microsoft reputation. The package is safe, verified, and clean.'
+                  ),
+                  locale
+                )}
+              </div>
             </div>
 
             {/* macOS Steps */}

@@ -28,12 +28,47 @@ class ApiClient {
   final http.Client _http;
   final AuthTokenStore _tokenStore;
 
+  Future<String> getBaseUrl() => _getBaseUrl();
+  Future<void> setBaseUrl(String url) => _tokenStore.setBaseUrl(url);
+
   Future<String> _getBaseUrl() async {
     final customUrl = await _tokenStore.getBaseUrl();
     if (customUrl != null && customUrl.isNotEmpty) {
       return customUrl;
     }
     return ApiEndpoints.defaultBaseUrl;
+  }
+
+  Future<http.Response> _safeSend(
+    Future<http.Response> Function() request,
+    String baseUrl,
+  ) async {
+    try {
+      return await request();
+    } on http.ClientException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('failed host lookup') || msg.contains('no address associated')) {
+        throw ApiException(
+          statusCode: 0,
+          message: 'تعذر الاتصال بالخادم ($baseUrl). يرجى التأكد من اتصال الإنترنت أو تعديل عنوان الخادم في الإعدادات.',
+        );
+      } else if (msg.contains('connection refused')) {
+        throw ApiException(
+          statusCode: 0,
+          message: 'تم رفض الاتصال بالخادم ($baseUrl). تأكد من أن الخادم يعمل.',
+        );
+      }
+      throw ApiException(
+        statusCode: 0,
+        message: 'خطأ في الاتصال بالشبكة: ${e.message}',
+      );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(
+        statusCode: 0,
+        message: 'تعذر إتمام الاتصال بالخادم: $e',
+      );
+    }
   }
 
   Future<Map<String, String>> _buildHeaders({
@@ -79,7 +114,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
-    final response = await _http.get(uri, headers: headers);
+    final response = await _safeSend(() => _http.get(uri, headers: headers), baseUrl);
     return _handleResponse(response);
   }
 
@@ -93,10 +128,13 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
-    final response = await _http.post(
-      uri,
-      headers: headers,
-      body: body != null ? jsonEncode(body) : null,
+    final response = await _safeSend(
+      () => _http.post(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+      baseUrl,
     );
     return _handleResponse(response);
   }
@@ -111,10 +149,13 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
-    final response = await _http.put(
-      uri,
-      headers: headers,
-      body: body != null ? jsonEncode(body) : null,
+    final response = await _safeSend(
+      () => _http.put(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+      baseUrl,
     );
     return _handleResponse(response);
   }
@@ -129,10 +170,13 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
-    final response = await _http.patch(
-      uri,
-      headers: headers,
-      body: body != null ? jsonEncode(body) : null,
+    final response = await _safeSend(
+      () => _http.patch(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+      baseUrl,
     );
     return _handleResponse(response);
   }
@@ -146,7 +190,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl$endpoint');
     final headers = await _buildHeaders(includeAuth: includeAuth, extraHeaders: extraHeaders);
 
-    final response = await _http.delete(uri, headers: headers);
+    final response = await _safeSend(() => _http.delete(uri, headers: headers), baseUrl);
     return _handleResponse(response);
   }
 

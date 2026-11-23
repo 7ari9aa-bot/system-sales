@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // Brand Colors
-  static const Color primary = Color(0xFF0F766E); // Teal 700
-  static const Color primaryDark = Color(0xFF115E59); // Teal 800
-  static const Color primaryLight = Color(0xFF14B8A6); // Teal 500
+  static const Color primary = Color(0xFF0E6B63); // Official Fihrist Emerald
+  static const Color primaryDark = Color(0xFF084B45); // Deep Emerald
+  static const Color primaryLight = Color(0xFF10B981); // Emerald 500
   static const Color secondary = Color(0xFF4F46E5); // Indigo 600
+  static const Color brandCoral = Color(0xFFD9785B); // Fihrist Accent Coral
+  static const Color brandCream = Color(0xFFF7F4EE); // Fihrist Warm White
 
   // Neutral Light
   static const Color backgroundLight = Color(0xFFF8FAFC);
