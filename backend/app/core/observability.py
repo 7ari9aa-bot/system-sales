@@ -72,18 +72,59 @@ def get_tracer():
     return _tracer
 
 
+def _add_request_id(_logger, _method, event_dict: dict) -> dict:
+    """The id of the request being served, on every line, whichever logger wrote it.
+
+    The edge middleware publishes it in a contextvar. Lines written through structlog already
+    carried it by hand; the standard-library lines (the great majority) carried nothing, so a
+    channel failure could not be followed from the request that caused it.
+    """
+    if "request_id" not in event_dict:
+        current = request_id_contextvar.get()
+        if current:
+            event_dict["request_id"] = current
+    return event_dict
+
+
+def _shared_processors() -> list:
+    """What every line gets, from structlog or from the standard library alike.
+
+    The logger NAME is not here: `structlog.stdlib.add_logger_name` needs a standard-library
+    logger, and the native structlog chain writes through a PrintLogger that has none. Each chain
+    adds its own (see `configure_logging`).
+    """
+    return [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        _add_request_id,
+    ]
+
+
 def configure_logging() -> None:
     from app.core.config import get_settings
     from app.core.log_redaction import install_secret_redaction
 
     level = logging.DEBUG if get_settings().debug else logging.INFO
     logging.basicConfig(level=level, format="%(message)s")
+    # The standard-library lines used to go out as bare text: no level, no time, no request id,
+    # and not parseable as JSON next to the structlog lines around them. Give the same handler a
+    # JSON formatter. Redaction is a FILTER on that handler and runs before any formatter, so the
+    # text this renders is already scrubbed.
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=[structlog.stdlib.add_logger_name, *_shared_processors()],
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ],
+    )
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(formatter)
     install_secret_redaction()
     structlog.configure(
         processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            *_shared_processors(),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
@@ -98,6 +139,21 @@ def configure_logging() -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     return structlog.get_logger(name)
+
+
+async def _count_failed_request() -> None:
+    """Count a request that ended in an unhandled exception.
+
+    `request_failed` was only a log line, so nothing could alert on a rising rate of them. The
+    counter carries no label on purpose: a path holds ids, and the exposure rule allows aggregates
+    only. A metrics outage must never make a failed request worse, so this never raises.
+    """
+    try:
+        from app.core.metrics import increment
+
+        await increment("http_requests_failed_total", strict=False)
+    except Exception:  # noqa: BLE001 - counting is never worth a second failure
+        logger.debug("metrics.http_failed_count_failed", exc_info=True)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -139,6 +195,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 duration_ms=duration_ms,
                 request_id=request_id,
             )
+            await _count_failed_request()
             if span_cm is not None:
                 _span = tracer  # type: ignore[assignment]
                 from opentelemetry import trace as otel_trace
