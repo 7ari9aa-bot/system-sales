@@ -8,15 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.services._common import (
     _PRODUCT_STATUSES,
     _positive_decimal,
 )
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-
-SEASON_MAX_LENGTH = 40
-MATERIAL_MAX_LENGTH = 60
 
 
 def _clean_season(raw: str | None) -> str | None:

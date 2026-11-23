@@ -23,7 +23,7 @@ from decimal import Decimal
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import DomainError
+from app.core.errors import DomainError, ValidationError
 from app.modules.imports.apply import BATCH_LIMIT, REFERENCE_TYPE, ApplyError, Ports, apply_batch
 from app.modules.imports.fields import SHEET_VARIANTS
 from app.modules.imports.models import ImportSession
@@ -382,6 +382,10 @@ async def _attach_image(
             alt=None,
             variant_id=variant_id,
         )
+    except ValidationError as exc:
+        # الصنف وصل حد الصور: صف بيتفشل بكلام مفهوم، مش الدفعة كلها تقع.
+        await storage.delete_objects([stored.storage_key])
+        raise ApplyError("image_limit", str(exc)) from exc
     except Exception:
         # the row rolls back, so the object we just wrote would be orphaned
         await storage.delete_objects([stored.storage_key])

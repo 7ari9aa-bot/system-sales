@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.core.errors import ValidationError
+from app.core.errors import ConflictError, ValidationError
+from app.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
 from app.modules.catalog.service import CatalogService
 
 from ._deps import (
@@ -80,17 +82,41 @@ class ProductIntakeRequest(BaseModel):
     description: str | None = None
     category_id: UUID | None = None
     brand_id: UUID | None = None
-    season: str | None = Field(default=None, max_length=40)
-    material: str | None = Field(default=None, max_length=80)
+    season: str | None = Field(default=None, max_length=SEASON_MAX_LENGTH)
+    material: str | None = Field(default=None, max_length=MATERIAL_MAX_LENGTH)
     # الحالة الافتراضية "active": المنتج اللي اتسجل لازم يظهر في الكاشير فورًا
     status: str = "active"
     warehouse_id: UUID | None = None
     variants: list[IntakeVariant] = Field(min_length=1, max_length=500)
 
 
+# سلسلة أرقام المحل: SKU-0007 (أساس) و SKU-0007-0101 (تركيبة).
+_SHOP_SKU_SERIES = re.compile(r"^SKU-\d+")
+
+
+def _rebased_sku(sku: str | None, base: str) -> str | None:
+    """The same variant code on a fresh base, or None when the code is not the shop's series.
+
+    ``SKU-0007-0101`` on base ``SKU-0008`` becomes ``SKU-0008-0101``: the colour/size suffix the
+    screen built stays, only the number the shop hands out moves. A vendor code (``TEE-BK-M``) is
+    not rebased — a duplicate there is a real mistake the merchant must see.
+    """
+    if not sku:
+        return None
+    match = _SHOP_SKU_SERIES.match(sku)
+    if match is None:
+        return None
+    return base + sku[match.end():]
+
+
 @router.get("/products/next-sku")
 async def next_sku(ctx: TenantCtxDep):
-    """The next SKU base for the add-product screen (SKU-0007), so the browser counts nothing."""
+    """The SKU base the add-product screen *shows* (SKU-0007), so the browser counts nothing.
+
+    This is a read: showing a number must not burn it, or a merchant who opens the screen five
+    times loses five numbers. The number is reserved at save time: ``POST /products/intake`` asks
+    the shop's counter for a fresh base when the one the screen showed is already taken.
+    """
     return {"base": await CatalogService.next_sku_base(ctx.session, ctx.tenant_id)}
 
 
@@ -118,15 +144,33 @@ async def intake_product(body: ProductIntakeRequest, ctx: WriteCtx):
 
     made = []
     for v in body.variants:
-        variant = await CatalogService.add_variant(
-            ctx.session,
-            ctx.tenant_id,
-            product.id,
-            sku=v.sku,
-            title=body.title,
-            option_values=v.option_values or None,
-            price=v.price,
-        )
+        try:
+            variant = await CatalogService.add_variant(
+                ctx.session,
+                ctx.tenant_id,
+                product.id,
+                sku=v.sku,
+                title=body.title,
+                option_values=v.option_values or None,
+                price=v.price,
+            )
+        except ConflictError:
+            # الرقم اللي الشاشة عرضته اتحجز قبل كده (موظف تاني بيحفظ في نفس اللحظة): المحل بيدّي
+            # رقم جديد من العدّاد الذري بدل ما الحفظ يفشل. كود المورد اللي بيتكرر مش من سلسلة
+            # المحل، فبيفضل خطأ حقيقي بيقول للتاجر إن الكود مستخدم.
+            base = await CatalogService.allocate_sku_base(ctx.session, ctx.tenant_id)
+            fresh = _rebased_sku(v.sku, base)
+            if fresh is None:
+                raise
+            variant = await CatalogService.add_variant(
+                ctx.session,
+                ctx.tenant_id,
+                product.id,
+                sku=fresh,
+                title=body.title,
+                option_values=v.option_values or None,
+                price=v.price,
+            )
         code = (v.barcode or "").strip()
         if code:
             await CatalogService.add_identifier(

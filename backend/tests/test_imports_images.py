@@ -160,14 +160,15 @@ class FakeStorage:
 
 
 async def _shop_with_sku(db, tenant_id, sku="TEE-1"):
-    product = await CatalogService.create_product(db, tenant_id, title="Tee", slug="tee")
+    slug = f"tee-{sku.lower()}"
+    product = await CatalogService.create_product(db, tenant_id, title="Tee", slug=slug)
     variant = await CatalogService.add_variant(db, tenant_id, product.id, sku=sku, price=10)
     return product, variant
 
 
-def _images(session, urls, start=2):
+def _images(session, urls, start=2, sku="TEE-1"):
     return [
-        _row(session, SHEET_IMAGES, start + i, "create", {"sku": "TEE-1", "url": u})
+        _row(session, SHEET_IMAGES, start + i, "create", {"sku": sku, "url": u})
         for i, u in enumerate(urls)
     ]
 
@@ -268,12 +269,21 @@ async def test_a_batch_of_pictures_is_small_and_the_rest_wait_for_the_next_job(
     db, tenant_ctx, monkeypatch
 ):
     t = tenant_ctx.tenant_id
-    await _shop_with_sku(db, t)
+    # أربع أصناف: الدفعة (25) أكبر من حد صور الصنف (10)، فالصور بتتوزع عليها كلها.
+    skus = ["TEE-1", "TEE-2", "TEE-3", "TEE-4"]
+    for sku in skus:
+        await _shop_with_sku(db, t, sku=sku)
     urls = [f"https://x.io/{i}.png" for i in range(IMAGE_BATCH_LIMIT + 5)]
     storage = FakeStorage({u: (PNG, "image/png") for u in urls})
     monkeypatch.setattr("app.core.storage.get_storage", lambda: storage)
     s = await _session(db, t)
-    db.add_all(_images(s, urls))
+    per_sku = [[] for _ in skus]
+    for i, url in enumerate(urls):
+        per_sku[i % len(skus)].append(url)
+    position = 2
+    for sku, chunk in zip(skus, per_sku, strict=True):
+        db.add_all(_images(s, chunk, start=position, sku=sku))
+        position += len(chunk)
     await db.flush()
 
     first = await run_batch(db, await _job(db, t, s))

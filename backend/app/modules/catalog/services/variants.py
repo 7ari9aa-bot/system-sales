@@ -334,6 +334,41 @@ class VariantServiceMixin:
     SKU_BASE_RE = r"^SKU-(\d+)"
 
     @staticmethod
+    async def allocate_sku_base(session: AsyncSession, tenant_id: UUID) -> str:
+        """Hand out the next SKU base for this shop, atomically.
+
+        ``next_sku_base`` only *reads* the highest number, so two employees who open the
+        add-product screen at the same moment are both shown SKU-0007 and the second save hits the
+        unique constraint. This reserves the number in the database with one statement
+        (``INSERT ... ON CONFLICT DO UPDATE ... RETURNING``): whichever request arrives second sees
+        the bumped row and gets the number after it. A number handed out is never handed out again.
+        """
+        from sqlalchemy import text as sql_text
+
+        series = VariantServiceMixin.SKU_BASE_RE
+        used = await session.scalar(
+            select(func.max(func.cast(func.substring(ProductVariant.sku, series), Integer))).where(
+                ProductVariant.tenant_id == tenant_id,
+                ProductVariant.sku.op("~")(series),
+            )
+        )
+        seed = (used or 0) + 1
+        taken = await session.scalar(
+            sql_text(
+                """
+                INSERT INTO sku_counters (id, tenant_id, last_number, created_at, updated_at)
+                VALUES (gen_random_uuid(), :tenant_id, :seed, now(), now())
+                ON CONFLICT ON CONSTRAINT uq_sku_counters_tenant DO UPDATE
+                    SET last_number = GREATEST(sku_counters.last_number, :seed) + 1,
+                        updated_at = now()
+                RETURNING last_number
+                """
+            ),
+            {"tenant_id": tenant_id, "seed": seed},
+        )
+        return f"SKU-{int(taken or seed):04d}"
+
+    @staticmethod
     async def next_sku_base(session: AsyncSession, tenant_id: UUID) -> str:
         """The next free "SKU-0001" base, from the highest SKU this shop already uses.
 

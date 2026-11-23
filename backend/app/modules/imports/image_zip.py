@@ -14,8 +14,11 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# الحد اللي بيحكم عدد صور الصنف: نفس رقم ورقة الصور في مركز الاستيراد.
-MAX_IMAGES_PER_SKU = 10
+from app.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
+
+# الحد اللي بيحكم عدد صور الصنف: نفس رقم ورقة الصور في مركز الاستيراد والرفع اليدوي
+# (المصدر الوحيد في catalog/limits.py).
+MAX_IMAGES_PER_SKU = CATALOG_MAX_IMAGES_PER_SKU
 MAX_ENTRIES = 5_000
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
 

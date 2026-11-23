@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.limits import MAX_IMAGES_PER_SKU
 from app.modules.catalog.models import Brand, Category, ProductImage
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
@@ -96,6 +97,26 @@ class TaxonomyServiceMixin:
             )
             if bound_variant.product_id != product_id:
                 raise ValidationError("variant does not belong to this product")
+        # نفس حد الصور في كل المسارات: الصنف (التركيبة) لو الصورة مربوطة بصنف، وإلا معرض المنتج.
+        # الرفع اليدوي والـZIP وورقة الصور بيقروا الرقم من catalog/limits.py.
+        scope = (
+            ProductImage.variant_id == bound_variant.id
+            if bound_variant is not None
+            else ProductImage.variant_id.is_(None)
+        )
+        existing = (
+            await session.execute(
+                select(func.count(ProductImage.id)).where(
+                    ProductImage.tenant_id == tenant_id,
+                    ProductImage.product_id == product_id,
+                    scope,
+                )
+            )
+        ).scalar()
+        if (existing or 0) >= MAX_IMAGES_PER_SKU:
+            raise ValidationError(
+                f"الصنف ده وصل للحد الأقصى ({MAX_IMAGES_PER_SKU} صور). امسح صورة قبل ما تضيف غيرها"
+            )
         highest = (
             await session.execute(
                 select(func.max(ProductImage.position)).where(

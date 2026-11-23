@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.middleware import MAX_BODY_BYTES
 from app.core.storage import get_storage
+from app.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.identity.deps import (
     TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for the routers
@@ -72,8 +73,8 @@ class CreateProductRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    season: str | None = Field(default=None, max_length=40)
-    material: str | None = Field(default=None, max_length=60)
+    season: str | None = Field(default=None, max_length=SEASON_MAX_LENGTH)
+    material: str | None = Field(default=None, max_length=MATERIAL_MAX_LENGTH)
     price: Decimal | None = None  # convenience: creates the default variant
     sku: str | None = None
 
@@ -84,8 +85,8 @@ class UpdateProductRequest(BaseModel):
     description: str | None = None
     brand_id: UUID | None = None
     category_id: UUID | None = None
-    season: str | None = Field(default=None, max_length=40)
-    material: str | None = Field(default=None, max_length=60)
+    season: str | None = Field(default=None, max_length=SEASON_MAX_LENGTH)
+    material: str | None = Field(default=None, max_length=MATERIAL_MAX_LENGTH)
     attributes: dict | None = None
     status: str | None = Field(default=None, pattern="^(draft|active|archived)$")
 

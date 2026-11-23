@@ -138,6 +138,22 @@ class ProductVariant(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, 
     )
 
 
+class SkuCounter(TenantMixin, TimestampMixin, IdMixin, Base):
+    """The shop's SKU number line, one row per shop.
+
+    ``GET /products/next-sku`` used to answer ``max(SKU-nnnn) + 1`` with nothing reserved, so two
+    employees who opened the add-product screen together were handed the same number and the second
+    save hit a conflict. The counter is bumped with one atomic
+    ``INSERT ... ON CONFLICT DO UPDATE ... RETURNING``, so a number is never handed out twice.
+    """
+
+    __tablename__ = "sku_counters"
+
+    last_number: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_sku_counters_tenant"),)
+
+
 class ProductImage(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, IdMixin, Base):
     """Append-only image gallery entries."""
 

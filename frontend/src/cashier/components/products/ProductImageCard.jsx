@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { saveButtonState } from "@/cashier/lib/saveOnce";
 import { Download, ImageOff, Plus, X } from "lucide-react";
+import { MAX_IMAGES_PER_SKU } from "@/cashier/lib/productImageRules";
 import {
   CARD,
   CARD_PAD,
@@ -19,7 +20,7 @@ import {
 export default function ProductImageCard({
   saved = [],
   picked = [],
-  maxImages = 4,
+  maxImages = MAX_IMAGES_PER_SKU,
   onPickImages,
   onRemovePicked,
   canSave,

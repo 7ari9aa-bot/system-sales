@@ -235,3 +235,47 @@ async def test_a_negative_alert_level_is_refused_before_anything_is_saved(db, te
             {"t": tenant_ctx.tenant_id},
         )
     ).scalar_one() == 0
+
+
+async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refused(db, tenant_ctx):
+    """الخامة كانت 80 في الطلب و60 في الخدمة، فاللي بينهم كان بيعدي الشاشة ويفشل عند الحفظ.
+
+    الحد بقى واحد من catalog/limits.py، فالـAPI بيرفض قبل ما يبدأ أي كتابة، والرسالة واحدة.
+    """
+    from app.modules.catalog.limits import MATERIAL_MAX_LENGTH
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    wh = await _warehouse(db, tenant_ctx)
+    longest = "ق" * MATERIAL_MAX_LENGTH
+    ok = await _call(
+        owner, "POST", "/api/v1/products/intake", _body(material=longest, warehouse_id=str(wh.id))
+    )
+    assert ok.status_code == 201, ok.text
+    saved = await CatalogService.get_product(db, tenant_ctx.tenant_id, uuid.UUID(ok.json()["id"]))
+    assert saved.material == longest
+
+    too_long = "ق" * (MATERIAL_MAX_LENGTH + 1)
+    refused = await _call(
+        owner, "POST", "/api/v1/products/intake", _body(material=too_long, warehouse_id=str(wh.id))
+    )
+    assert refused.status_code == 422, refused.text
+    # ومفيش منتج اتحفظ بالخامة اللي كانت في الطلب المرفوض
+    from sqlalchemy import select
+
+    from app.modules.catalog.models import Product
+
+    rows = (
+        await db.execute(
+            select(Product).where(
+            Product.tenant_id == tenant_ctx.tenant_id, Product.material == too_long
+        )
+        )
+    ).all()
+    assert rows == []
+
+    # والخدمة بترفض نفس الطول بنفس الرقم
+    from app.modules.catalog.services.products import _clean_material
+
+    with pytest.raises(ValueError) as exc:
+        _clean_material(too_long)
+    assert str(MATERIAL_MAX_LENGTH) in str(exc.value)
