@@ -404,9 +404,30 @@ class MessengerAdapter(ChannelAdapter):
                         "mid": message.get("mid"),
                         "app_id": message.get("app_id"),
                         "text": message.get("text"),
+                        "attachments": self._echo_attachments(message),
                         "timestamp": event.get("timestamp"),
                     }
                 )
+        return out
+
+    @staticmethod
+    def _echo_attachments(message: dict) -> list[dict]:
+        """What a reply typed in the Page inbox carried besides (or instead of) words.
+
+        A photo, a voice note or a file sent from Meta Business Suite arrives with NO ``text``, so
+        reading only the text lost the whole reply. Each attachment keeps Meta's own ``type`` and,
+        when it has one, its ``url``; a type we do not know is kept as ``unsupported`` rather than
+        dropped, so the conversation still shows that something was sent.
+        """
+        type_map = {"image": "image", "audio": "voice", "video": "video", "file": "file"}
+        out: list[dict] = []
+        for att in message.get("attachments") or []:
+            if not isinstance(att, dict):
+                continue
+            kind = str(att.get("type") or "")
+            content_type = "location" if kind == "location" else type_map.get(kind, "unsupported")
+            url = (att.get("payload") or {}).get("url")
+            out.append({"content_type": content_type, "url": url if isinstance(url, str) else None})
         return out
 
     async def fetch_profile(

@@ -75,6 +75,34 @@ async def _conversation_for(
     ).scalar_one_or_none()
 
 
+def _echo_parts(echo: dict, mid: str, body: str) -> list[dict]:
+    """The messages one echo stands for: its words, and one per attachment.
+
+    A reply with only a photo has no words, and used to be dropped as if nothing was sent. Like an
+    inbound album, each attachment is its own message: the first keeps Meta's id and the caption,
+    the rest get a stable suffixed id so a redelivery is still one row each. A plain text reply is
+    one part, exactly as before.
+    """
+    attachments = [a for a in (echo.get("attachments") or []) if isinstance(a, dict)]
+    if not attachments:
+        if not body:
+            return []
+        return [{"mid": mid, "body": body, "content_type": "text", "media_url": None}]
+    parts: list[dict] = []
+    for index, att in enumerate(attachments):
+        content_type = str(att.get("content_type") or "unsupported")
+        url = att.get("url") if isinstance(att.get("url"), str) else None
+        parts.append(
+            {
+                "mid": mid if index == 0 else f"{mid}#{index}",
+                "body": body if index == 0 and body else None,
+                "content_type": content_type if url else "unsupported",
+                "media_url": url,
+            }
+        )
+    return parts
+
+
 async def record_echoes(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -95,7 +123,8 @@ async def record_echoes(
         # Our own send, echoed back: already stored under its provider id.
         if own_app_id and str(echo.get("app_id") or "") == own_app_id:
             continue
-        if not mid or not body:
+        parts = _echo_parts(echo, mid, body) if mid else []
+        if not parts:
             continue
         conversation = await _conversation_for(
             session, tenant_id, channel, str(echo.get("customer_ref") or "")
@@ -104,33 +133,39 @@ async def record_echoes(
             # An echo for a person who never wrote to us: no thread to put it in, and one must
             # not be invented from a reply alone.
             continue
-        already = (
-            await session.execute(
-                select(Message.id).where(
-                    Message.tenant_id == tenant_id, Message.channel_message_id == mid
+        stored_here = 0
+        for part in parts:
+            already = (
+                await session.execute(
+                    select(Message.id).where(
+                        Message.tenant_id == tenant_id, Message.channel_message_id == part["mid"]
+                    )
+                )
+            ).first()
+            if already is not None:
+                continue
+            session.add(
+                Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation.id,
+                    direction="outbound",
+                    sender_type="agent",
+                    channel=conversation.channel,
+                    channel_message_id=part["mid"],
+                    body=part["body"],
+                    media_url=part["media_url"],
+                    media_type=part["content_type"] if part["media_url"] else None,
+                    content_type=part["content_type"],
+                    status="sent",
+                    provider_metadata={"source": "page_inbox_echo", "app_id": echo.get("app_id")},
+                    payload={},
                 )
             )
-        ).first()
-        if already is not None:
+            stored_here += 1
+        if not stored_here:
             continue
-        now = datetime.now(UTC)
-        session.add(
-            Message(
-                tenant_id=tenant_id,
-                conversation_id=conversation.id,
-                direction="outbound",
-                sender_type="agent",
-                channel=conversation.channel,
-                channel_message_id=mid,
-                body=body,
-                content_type="text",
-                status="sent",
-                provider_metadata={"source": "page_inbox_echo", "app_id": echo.get("app_id")},
-                payload={},
-            )
-        )
-        conversation.last_message_at = now
-        written += 1
+        conversation.last_message_at = datetime.now(UTC)
+        written += stored_here
         # A person answered: the first-response clock is met and the thread is a human's now.
         from app.modules.operations.sla import SlaService
 

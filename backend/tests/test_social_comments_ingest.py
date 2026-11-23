@@ -396,3 +396,83 @@ async def test_same_comment_on_two_platforms_is_two_rows(db, tenant_ctx) -> None
         .all()
     )
     assert {row.platform for row in rows} == {"instagram", "facebook"}
+
+
+FB_MENTION = {
+    "object": "page",
+    "entry": [
+        {
+            "id": "page-1",
+            "time": 1700000100,
+            "changes": [
+                {
+                    "field": "mention",
+                    "value": {
+                        "item": "comment",
+                        "verb": "add",
+                        "post_id": "p-300",
+                        "comment_id": "c-300",
+                        "sender_id": "user-9",
+                        "sender_name": "منى",
+                        "message": "@المتجر هل المنتج متوفر؟",
+                        "created_time": 1700000000,
+                    },
+                }
+            ],
+        }
+    ],
+}
+
+
+async def test_a_facebook_page_mention_is_saved_once_and_opens_no_conversation(
+    db, tenant_ctx
+) -> None:
+    """The Page was tagged in someone's comment. It reached the router but was never stored, so
+    the merchant never saw it. It is an interaction record (like a comment), not a chat: it must
+    not open a conversation or run the AI, and a redelivery must not add a second row."""
+    from app.modules.conversations.gateway.ingest import IngestService
+    from app.modules.conversations.models import Conversation
+    from app.modules.platform.models import WebhookEvent
+
+    tenant_id = tenant_ctx.tenant_id
+    for _delivery in range(2):  # Meta retries: the second delivery must change nothing
+        event = WebhookEvent(
+            provider="facebook",
+            external_event_id=uuid.uuid4().hex,
+            tenant_id=tenant_id,
+            signature_valid=True,
+            payload=FB_MENTION,
+            processing_status="pending",
+        )
+        db.add(event)
+        await db.flush()
+        await IngestService.process_webhook_event(
+            db,
+            adapter=facebook_adapter,
+            channel="facebook",
+            tenant_id=tenant_id,
+            event_id=event.id,
+            payload=FB_MENTION,
+        )
+
+    (row,) = (
+        (
+            await db.execute(
+                select(SocialComment).where(
+                    SocialComment.tenant_id == tenant_id,
+                    SocialComment.platform == "facebook",
+                    SocialComment.comment_id == "mention:c-300",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert row.body == "@المتجر هل المنتج متوفر؟"
+    assert row.author_name == "منى" and row.post_id == "p-300"
+    conversations = (
+        (await db.execute(select(Conversation).where(Conversation.tenant_id == tenant_id)))
+        .scalars()
+        .all()
+    )
+    assert conversations == []

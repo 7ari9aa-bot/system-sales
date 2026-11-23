@@ -86,3 +86,88 @@ def test_a_malformed_delivery_yields_nothing_instead_of_failing() -> None:
     assert facebook_adapter.parse_comments({}) == []
     no_id = {"entry": [{"changes": [{"field": "feed", "value": {"item": "comment"}}]}]}
     assert facebook_adapter.parse_comments(no_id) == []
+
+
+# ---------------------------------------------------------------- @mentions of the Page
+
+
+def _mention(value: dict) -> dict:
+    return {
+        "object": "page",
+        "entry": [{"id": "111", "time": 1, "changes": [{"field": "mention", "value": value}]}],
+    }
+
+
+MENTION_IN_COMMENT = {
+    "item": "comment",
+    "verb": "add",
+    "post_id": "999_1",
+    "comment_id": "999_2",
+    "sender_id": "42",
+    "sender_name": "Mona Ali",
+    "message": "@Shop هل متوفر؟",
+    "created_time": 1700000000,
+}
+
+
+def test_a_page_mention_in_a_comment_is_kept_as_a_comment_row() -> None:
+    [row] = facebook_adapter.parse_comments(_mention(MENTION_IN_COMMENT))
+    assert row.verb == "mention"
+    assert row.platform_comment_id == "mention:999_2"
+    assert (row.post_id, row.author_ref, row.author_name) == ("999_1", "42", "Mona Ali")
+    assert row.body == "@Shop هل متوفر؟"
+    assert row.commented_at is not None
+
+
+def test_a_page_mention_in_a_post_is_keyed_by_the_post() -> None:
+    value = {"item": "post", "verb": "add", "post_id": "999_1", "message": "love @Shop"}
+    [row] = facebook_adapter.parse_comments(_mention(value))
+    assert row.platform_comment_id == "mention:999_1" and row.verb == "mention"
+
+
+def test_a_mention_never_collides_with_the_comment_that_carries_it() -> None:
+    """The same comment id arrives as a `feed` comment and as a `mention`: two different rows."""
+    both = {
+        "object": "page",
+        "entry": [
+            {
+                "id": "111",
+                "changes": [
+                    {"field": "feed", "value": {**COMMENT, "comment_id": "999_2"}},
+                    {"field": "mention", "value": MENTION_IN_COMMENT},
+                ],
+            }
+        ],
+    }
+    ids = [c.platform_comment_id for c in facebook_adapter.parse_comments(both)]
+    assert sorted(ids) == ["999_2", "mention:999_2"]
+
+
+def test_a_redelivered_mention_has_the_same_key() -> None:
+    first = facebook_adapter.parse_comments(_mention(MENTION_IN_COMMENT))
+    again = facebook_adapter.parse_comments(_mention(MENTION_IN_COMMENT))
+    assert [c.platform_comment_id for c in first] == [c.platform_comment_id for c in again]
+
+
+def test_an_older_mention_shape_with_a_from_object_is_read() -> None:
+    value = {
+        "item": "comment",
+        "post_id": "999_1",
+        "comment_id": "999_2",
+        "from": {"id": "7", "name": "Old Shape"},
+        "message": "hi",
+    }
+    [row] = facebook_adapter.parse_comments(_mention(value))
+    assert (row.author_ref, row.author_name) == ("7", "Old Shape")
+
+
+def test_a_removed_or_unidentifiable_mention_yields_nothing() -> None:
+    assert facebook_adapter.parse_comments(_mention({**MENTION_IN_COMMENT, "verb": "remove"})) == []
+    assert facebook_adapter.parse_comments(_mention({"item": "comment", "verb": "add"})) == []
+    assert facebook_adapter.parse_comments(_mention("not a dict")) == []  # type: ignore[arg-type]
+
+
+def test_messenger_does_not_read_mentions_so_a_shared_page_is_not_saved_twice() -> None:
+    from app.modules.conversations.gateway.messenger import messenger_adapter
+
+    assert messenger_adapter.parse_comments(_mention(MENTION_IN_COMMENT)) == []

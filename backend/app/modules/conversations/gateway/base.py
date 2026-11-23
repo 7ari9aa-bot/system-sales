@@ -169,6 +169,56 @@ def parse_meta_comment_changes(payload: dict) -> list[InboundComment]:
     return out
 
 
+def parse_facebook_mentions(payload: dict) -> list[InboundComment]:
+    """A Facebook Page was @-mentioned in someone's post or comment (Page field ``mention``).
+
+    Meta's ``value`` carries ``item`` (``post`` | ``comment``), ``verb`` (``add``), the ids
+    (``post_id``, plus ``comment_id`` for a comment), the tagger as ``sender_id`` / ``sender_name``
+    (older deliveries use ``from``), the text as ``message`` and ``created_time`` (epoch seconds).
+
+    The row is keyed ``mention:<comment_id or post_id>``, so a redelivery is ONE row and a mention
+    can never collide with (or overwrite) the ordinary comment that has the same id. A mention
+    with neither id yields nothing, and so does one that is not an ``add``. Like every other
+    comment parser here it never raises: a malformed delivery must not fail a webhook that may
+    also carry real messages.
+    """
+    out: list[InboundComment] = []
+    for entry in payload.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            if not isinstance(change, dict) or change.get("field") != "mention":
+                continue
+            value = change.get("value") or {}
+            if not isinstance(value, dict):
+                continue
+            verb = str(value.get("verb") or "add").lower()
+            if verb != "add":
+                continue
+            comment_id = str(value.get("comment_id") or "").strip()
+            post_id = str(value.get("post_id") or "").strip()
+            key = comment_id or post_id
+            if not key:
+                continue
+            author = value.get("from") if isinstance(value.get("from"), dict) else {}
+            author_ref = str(value.get("sender_id") or author.get("id") or "").strip() or None
+            author_name = value.get("sender_name") or author.get("name")
+            body = value.get("message")
+            out.append(
+                InboundComment(
+                    platform_comment_id=f"mention:{key}",
+                    post_id=post_id or None,
+                    parent_comment_id=None,
+                    author_ref=author_ref,
+                    author_name=str(author_name).strip() or None if author_name else None,
+                    body=(str(body).strip() or None) if body is not None else None,
+                    permalink=value.get("permalink_url") or value.get("permalink"),
+                    commented_at=_meta_timestamp(value.get("created_time")),
+                    verb="mention",
+                    raw=value,
+                )
+            )
+    return out
+
+
 def _meta_timestamp(raw: Any) -> datetime | None:
     """Meta's two timestamp shapes: epoch seconds (page) and ISO (Instagram)."""
     if raw is None:

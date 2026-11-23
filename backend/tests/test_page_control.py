@@ -31,6 +31,18 @@ def _echo(mid="m.echo", text="we are open till 9", app_id=None):
     return {"sender": {"id": PAGE}, "recipient": {"id": USER}, "timestamp": 1, "message": message}
 
 
+def _media_echo(mid, attachments, text=None):
+    """A reply typed in the Page inbox that carries a photo, a voice note or a file."""
+    message = {"mid": mid, "is_echo": True, "attachments": attachments}
+    if text is not None:
+        message["text"] = text
+    return {"sender": {"id": PAGE}, "recipient": {"id": USER}, "timestamp": 1, "message": message}
+
+
+def _att(kind, url="https://cdn.example/x"):
+    return {"type": kind, "payload": {"url": url}}
+
+
 def _handover(kind, new_owner, previous=""):
     return {
         "sender": {"id": USER},
@@ -97,6 +109,85 @@ def _sla(monkeypatch):
 
 
 # ------------------------------------------------------------------ echoes
+
+
+async def test_a_reply_with_only_a_photo_is_stored_not_dropped():
+    """A photo sent from Meta Business Suite has no text. It used to vanish, leaving the
+    customer's last message looking unanswered and the AI free to answer it again."""
+    conv = _conversation()
+    session = _Session(conv)
+    echoes = messenger_adapter.parse_echoes(_envelope(_media_echo("m.photo", [_att("image")])))
+    assert (
+        await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS) == 1
+    )
+    [row] = session.added
+    assert (row.direction, row.sender_type, row.status) == ("outbound", "agent", "sent")
+    assert row.channel_message_id == "m.photo" and row.body is None
+    assert (row.content_type, row.media_type) == ("image", "image")
+    assert row.media_url == "https://cdn.example/x"
+    assert conv.status == "waiting_human"  # a person answered, so the AI stands down
+
+
+async def test_a_photo_with_a_caption_keeps_both():
+    session = _Session(_conversation())
+    echoes = messenger_adapter.parse_echoes(
+        _envelope(_media_echo("m.cap", [_att("image")], text="the blue one"))
+    )
+    await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS)
+    [row] = session.added
+    assert row.body == "the blue one" and row.content_type == "image"
+
+
+async def test_an_album_becomes_one_message_per_attachment_and_only_the_first_has_the_caption():
+    session = _Session(_conversation())
+    atts = [_att("image", "https://cdn/1"), _att("video", "https://cdn/2"), _att("file", "u3")]
+    echoes = messenger_adapter.parse_echoes(_envelope(_media_echo("m.album", atts, text="menu")))
+    assert (
+        await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS) == 3
+    )
+    assert [r.channel_message_id for r in session.added] == ["m.album", "m.album#1", "m.album#2"]
+    assert [r.content_type for r in session.added] == ["image", "video", "file"]
+    assert [r.body for r in session.added] == ["menu", None, None]
+
+
+async def test_a_redelivered_album_adds_only_what_is_missing():
+    session = _Session(_conversation(), known_mids={"m.album"})
+    atts = [_att("image", "https://cdn/1"), _att("image", "https://cdn/2")]
+    echoes = messenger_adapter.parse_echoes(_envelope(_media_echo("m.album", atts)))
+    assert (
+        await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS) == 1
+    )
+    assert [r.channel_message_id for r in session.added] == ["m.album#1"]
+
+
+async def test_a_voice_note_is_a_voice_message():
+    session = _Session(_conversation())
+    echoes = messenger_adapter.parse_echoes(_envelope(_media_echo("m.v", [_att("audio")])))
+    await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS)
+    assert session.added[0].content_type == "voice"
+
+
+async def test_an_attachment_without_a_link_is_still_recorded_as_unsupported():
+    """Meta can omit the url (a sticker, a template). The reply still happened, so the thread
+    shows that something was sent instead of pretending nothing was."""
+    session = _Session(_conversation())
+    echoes = messenger_adapter.parse_echoes(
+        _envelope(_media_echo("m.s", [{"type": "template", "payload": {}}]))
+    )
+    assert (
+        await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS) == 1
+    )
+    [row] = session.added
+    assert row.content_type == "unsupported" and row.media_url is None and row.media_type is None
+
+
+async def test_an_echo_with_neither_words_nor_attachments_is_still_skipped():
+    session = _Session(_conversation())
+    echoes = messenger_adapter.parse_echoes(_envelope(_media_echo("m.empty", [])))
+    assert (
+        await page_control.record_echoes(session, TENANT, "messenger", echoes, own_app_id=OURS) == 0
+    )
+    assert session.added == []
 
 
 async def test_a_reply_typed_in_the_page_inbox_is_stored_as_a_sent_agent_message(_sla):

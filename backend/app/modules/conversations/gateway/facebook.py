@@ -14,6 +14,7 @@ changes only the registry key, so:
 * sending goes through the same `provider.messenger` breaker (same endpoint).
 """
 
+from app.modules.conversations.gateway.base import InboundComment, parse_facebook_mentions
 from app.modules.conversations.gateway.messenger import MessengerAdapter
 
 
@@ -27,6 +28,11 @@ class FacebookPageAdapter(MessengerAdapter):
 
     name = "facebook"
     channel = "facebook"
+
+    def parse_comments(self, payload: dict) -> list[InboundComment]:
+        """The Page's post comments (field ``feed``) plus the times the Page was @-mentioned
+        (field ``mention``). Messenger has no such field, so only this adapter reads it."""
+        return [*super().parse_comments(payload), *parse_facebook_mentions(payload)]
 
 
 facebook_adapter = FacebookPageAdapter()
