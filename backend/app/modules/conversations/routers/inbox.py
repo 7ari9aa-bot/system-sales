@@ -303,6 +303,10 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "interactive": None if m.deleted else _present_interactive(m),
                 # A cart the customer sent from the catalog (WhatsApp): products and quantities.
                 "order": None if m.deleted else _present_order(m),
+                # The structured half of a WhatsApp message: a place with coordinates, a contact
+                # card, or the id of the option the customer tapped. The body keeps the one-line
+                # text the list needs; this is what a map, a card or a bot routes on.
+                "structured": None if m.deleted else _present_structured(m),
             }
         )
     return items
@@ -341,6 +345,21 @@ def _present_order(m) -> dict | None:
     from app.modules.conversations.gateway.whatsapp_order import parse_order
 
     return parse_order(payload.get("raw"))
+
+
+def _present_structured(m) -> dict | None:
+    """The checked structured payload of a WhatsApp message, or None.
+
+    Rebuilt from the stored webhook body at read time, so a row written before this existed still
+    shows its map pin or its contact card, and a row whose payload no longer passes (a shape Meta
+    changed) falls back to its plain text instead of failing the thread.
+    """
+    if m.direction != "inbound":
+        return None
+    payload = m.payload if isinstance(m.payload, dict) else {}
+    from app.modules.conversations.gateway.whatsapp_structured import structured_payload
+
+    return structured_payload(str(m.content_type or ""), payload.get("raw"))
 
 
 def _quick_replies(m) -> list[str]:
