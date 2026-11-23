@@ -1249,7 +1249,11 @@ async def set_product_reorder_level(
     variants = await StockViewService.set_reorder_level_for_product(
         ctx.session, ctx.tenant_id, product_id, body.reorder_level
     )
-    return {"product_id": str(product_id), "reorder_level": body.reorder_level, "variants": variants}
+    return {
+        "product_id": str(product_id),
+        "reorder_level": body.reorder_level,
+        "variants": variants,
+    }
 
 
 class OpenStocktakeRequest(BaseModel):

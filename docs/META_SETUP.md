@@ -208,7 +208,7 @@ Meta gives an app **one callback URL per object type**, not one per channel. So 
 
 URL: `https://<api-host>/api/v1/webhooks/meta/page`
 
-Fields: `messages`, `messaging_postbacks`, `messaging_referrals`, `message_deliveries`, `message_reads`, `message_reactions`, `message_echoes`, `messaging_handovers`, `feed`, `mention`.
+Fields: `messages`, `messaging_postbacks`, `messaging_referrals`, `message_deliveries`, `message_reads`, `message_reactions`, `message_echoes`, `messaging_handovers`, `message_edits`, `feed`, `mention`.
 
 The server sorts each delivery itself: whatever sits under `messaging` (private chat) goes to Messenger, whatever sits under `changes` (posts, comments, mentions) goes to Facebook. It does not matter which of the two channels is connected; one URL covers both and a second URL is never registered on the same object.
 
