@@ -93,8 +93,11 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain('data-testid="messenger-hover-copy"');
   });
 
-  test("it offers no reaction button, because Messenger's Send API cannot react as a Page", () => {
-    expect(render([msg("m1", { text: "hi" })])).not.toContain("messenger-hover-react");
+  // The Send API reacts as a Page (sender_action "react" / "unreact"), so Messenger gets the hover
+  // reaction button the real app has.
+  test("it offers the hover reaction button on a message", () => {
+    const html = render([msg("m1", { text: "hi" })]);
+    expect(html).toContain("messenger-hover-react");
   });
 
   test("no reply bar until a reply is started", () => {

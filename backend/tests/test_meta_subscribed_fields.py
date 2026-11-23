@@ -24,9 +24,11 @@ def test_every_channel_asks_for_read_receipts():
 
 def test_messenger_gets_chat_fields_and_facebook_adds_feed_and_mention():
     base = "messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads"
-    assert subscribed_fields("messenger") == base
+    # A customer's reaction is the Page field `message_reactions`; Instagram's is not a Page field.
+    messenger = base + ",message_reactions"
+    assert subscribed_fields("messenger") == messenger
     # A Facebook Page's comments arrive on `feed`, a tag of the Page on `mention`.
-    assert subscribed_fields("facebook") == base + ",feed,mention"
+    assert subscribed_fields("facebook") == messenger + ",feed,mention"
 
 
 def test_instagram_asks_for_comment_and_publish_permissions():

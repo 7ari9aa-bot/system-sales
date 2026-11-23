@@ -25,6 +25,10 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
+
+// The six emoji Messenger's reaction picker offers, in its order. The Send API refuses any other,
+// so the picker offers exactly these.
+const MESSENGER_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
@@ -1116,7 +1120,10 @@ export default function ChannelChat({
 // One Messenger message. Its look follows messengerMessageShape: a photo, video or sticker stands
 // on the page with no bubble, a file is a card, a removed message is a grey line, a system line is
 // centred grey text, and text and audio sit in the blue or grey bubble.
-function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, messengerTheme, th, lang, conversation, onReply, onOpenImage }) {
+function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, messengerTheme, th, lang, conversation, onReply, onOpenImage, onReact }) {
+  // Messenger's hover row offers react, reply and copy. The reaction picker is the same six emoji
+  // Messenger itself offers, because the Send API refuses any other.
+  const [reactOpen, setReactOpen] = useState(false);
   const out = m.side === "out";
   const group = messengerRow || { first: true, last: true, alone: true, size: 1 };
   const shape = messengerMessageShape(m);
@@ -1233,7 +1240,24 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
           <span data-testid="messenger-failed" title={ar ? "لم يتم الإرسال" : "Not sent"} className="grid h-5 w-5 shrink-0 place-items-center self-center rounded-full bg-[#e41e3f] text-[12px] font-bold leading-none text-white" role="img" aria-label={ar ? "لم يتم الإرسال" : "Not sent"}>!</span>
         )}
         {canAct && (
-          <div className="flex shrink-0 items-center self-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+          <div className="relative flex shrink-0 items-center self-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+            {onReact && (
+              <>
+                <button type="button" data-testid="messenger-hover-react" className={hoverButton} onClick={() => setReactOpen((v) => !v)} title={ar ? "تفاعل" : "React"} aria-label={ar ? "تفاعل" : "React"} aria-haspopup="menu" aria-expanded={reactOpen}>
+                  <Smile className="h-4 w-4" />
+                </button>
+                {reactOpen && (
+                  // Messenger's own six reactions, in its order, in a white rounded card.
+                  <div role="menu" data-testid="messenger-react-picker" dir="ltr" className="absolute bottom-8 z-30 flex items-center gap-0.5 rounded-full border border-[#e4e6eb] bg-white px-1.5 py-1 shadow-[0_2px_12px_rgba(0,0,0,0.15)]">
+                    {MESSENGER_REACTIONS.map((emoji) => (
+                      <button key={emoji} type="button" role="menuitem" data-testid={`messenger-react-${emoji}`} aria-label={emoji} className={cn("grid h-8 w-8 place-items-center rounded-full text-[19px] leading-none hover:scale-125 hover:bg-[#f0f2f5] focus-visible:bg-[#f0f2f5] focus-visible:outline-none", m.myReaction === emoji && "bg-[#e7f3ff]")} onClick={() => { setReactOpen(false); onReact(m.myReaction === emoji ? "" : emoji); }}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
             {onReply && (
               <button type="button" data-testid="messenger-hover-reply" className={hoverButton} onClick={() => onReply(m)} title={ar ? "رد" : "Reply"} aria-label={ar ? "رد" : "Reply"}>
                 <Reply className="h-4 w-4" />
@@ -1364,7 +1388,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   // Messenger: a gradient bubble, 18px corners that square to 4px where two bubbles of the same
   // group meet, the time alone (no ticks), and the reader's avatar under the last bubble they read.
   if (isMessenger) {
-    return <MessengerBubble m={m} messengerRow={messengerRow} showSeenAvatar={showSeenAvatar} showIncomingAvatar={_showIncomingAvatar} messengerTheme={messengerTheme} th={th} lang={_lang} conversation={_conversation} onReply={onReply} onOpenImage={onOpenImage} />;
+    return <MessengerBubble m={m} messengerRow={messengerRow} showSeenAvatar={showSeenAvatar} showIncomingAvatar={_showIncomingAvatar} messengerTheme={messengerTheme} th={th} lang={_lang} conversation={_conversation} onReply={onReply} onOpenImage={onOpenImage} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
 

@@ -27,6 +27,7 @@ from app.modules.conversations.gateway.base import (
     parse_provider_body,
 )
 from app.modules.conversations.gateway.messenger_media import (
+    SENDABLE_REACTIONS,
     MessengerLimitError,
     attachment_type,
     check_attachment,
@@ -37,7 +38,6 @@ logger = logging.getLogger(__name__)
 # A reaction is not a message: Messenger takes it as a sender action naming the message and one
 # emoji. The six below are the ones the Messenger picker offers, so they are the ones a Page can
 # use; Meta refuses any other. The removal marker matches the one Instagram and WhatsApp store.
-SENDABLE_REACTIONS = frozenset({"👍", "❤️", "😂", "😮", "😢", "😡"})
 REACTION_REMOVED = "∅"
 
 # Meta's Quick Replies: at most 13 buttons under a text message, each title at most 20 characters.
@@ -653,7 +653,9 @@ class MessengerAdapter(ChannelAdapter):
                     {
                         "content_type": "text",
                         "title": str((q or {}).get("title", "")).strip(),
-                        "payload": str((q or {}).get("payload") or (q or {}).get("title", "")).strip(),
+                        "payload": str(
+                            (q or {}).get("payload") or (q or {}).get("title", "")
+                        ).strip(),
                     }
                     for q in quick
                 ]

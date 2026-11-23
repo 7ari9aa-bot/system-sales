@@ -78,17 +78,23 @@ _INSTAGRAM_SCOPES = (
 _BASE_SUBSCRIBED_FIELDS = (
     "messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads"
 )
+# A customer's emoji reaction to a Messenger message arrives on the Page's `message_reactions`
+# field. It is a Page field for Messenger and Facebook connections only: on Instagram the same
+# name belongs to the `instagram` object, so it stays out of `_BASE_SUBSCRIBED_FIELDS` (a Page
+# subscription naming it for an Instagram link is ignored or rejected).
+_MESSENGER_SUBSCRIBED_FIELDS = _BASE_SUBSCRIBED_FIELDS + ",message_reactions"
 _SUBSCRIBED_FIELDS = {
+    "messenger": _MESSENGER_SUBSCRIBED_FIELDS,
     "instagram": _BASE_SUBSCRIBED_FIELDS,
     # Facebook Page comments are delivered on the Page's `feed` field; without it a
     # connected Page only ever gets its Messenger traffic. `mention` is the Page tagged
     # in someone else's post or comment.
-    "facebook": _BASE_SUBSCRIBED_FIELDS + ",feed,mention",
+    "facebook": _MESSENGER_SUBSCRIBED_FIELDS + ",feed,mention",
 }
 
 
 def subscribed_fields(provider: str) -> str:
-    return _SUBSCRIBED_FIELDS.get(provider, _BASE_SUBSCRIBED_FIELDS)
+    return _SUBSCRIBED_FIELDS.get(provider, _MESSENGER_SUBSCRIBED_FIELDS)
 
 
 # A Facebook connection is the same page-messaging grant as Messenger — the
