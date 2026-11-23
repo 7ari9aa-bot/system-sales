@@ -219,7 +219,6 @@ async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> 
 
     from app.modules.pos.models import PosSessionHandover
     from app.modules.pos.router import HandoverRequest, handover_session
-
     from app.modules.settings.service import SettingsService
 
     shift, _, _ = await till(db, tenant_ctx)
@@ -239,7 +238,9 @@ async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> 
 
     await handover_session(
         shift.id,
-        HandoverRequest(new_cashier_id=new_user.id, counted_cash="0.00", variance_reason="درج فاضي"),
+        HandoverRequest(
+            new_cashier_id=new_user.id, counted_cash="0.00", variance_reason="درج فاضي"
+        ),
         Ctx(),
         Override(),
     )
@@ -255,7 +256,6 @@ async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> 
 @pytest.mark.asyncio
 async def test_the_handover_route_refuses_an_uncounted_drawer(db, tenant_ctx) -> None:
     from app.modules.pos.router import HandoverRequest, handover_session
-
     from app.modules.settings.service import SettingsService
 
     shift, _, _ = await till(db, tenant_ctx)

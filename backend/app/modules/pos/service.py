@@ -2224,6 +2224,9 @@ class PosService(PosReceiptReads):
                     PosReceipt.tenant_id == tenant_id,
                     PosReceipt.session_id == pos_session.id,
                     PosReceipt.kind == "sale",
+                    # A voided sale is not a sale: it was reversed the same day, and counting it
+                    # here would show revenue the shop never kept.
+                    Order.status != "cancelled",
                 )
             )
         ).one()
@@ -2315,8 +2318,21 @@ class PosService(PosReceiptReads):
         }
         returns_out: list[dict] = []
         exchanges_out: list[dict] = []
+        voids_out: list[dict] = []
         for r in receipts:
-            if r.kind == "return":
+            if r.kind == "void":
+                # A void is not a return: it says the sale never happened, so it is reported on its
+                # own line with the invoice it reverses.
+                voids_out.append(
+                    {
+                        "receipt_id": str(r.id),
+                        "receipt_number": r.number,
+                        "issued_at": r.issued_at.isoformat(),
+                        "original_order_id": str(r.order_id),
+                        "total": str(sale_total.get(r.id, Decimal("0"))),
+                    }
+                )
+            elif r.kind == "return":
                 units, total = returned.get(r.id, (0, Decimal("0")))
                 row = {
                     "receipt_id": str(r.id),
@@ -2339,7 +2355,7 @@ class PosService(PosReceiptReads):
                 else:
                     returns_out.append(row)
         _ = by_id
-        return {"returns": returns_out, "exchanges": exchanges_out}
+        return {"returns": returns_out, "exchanges": exchanges_out, "voids": voids_out}
 
     # ------------------------------------------------------- close preview ----
 
@@ -2508,6 +2524,10 @@ class PosService(PosReceiptReads):
                 "exchange_count": len(docs["exchanges"]),
                 "difference_total": str(to_money(exchange_diff, "exchange_difference")),
                 "documents": docs["exchanges"],
+            },
+            "voids": {
+                "void_count": len(docs["voids"]),
+                "documents": docs["voids"],
             },
             "net_sales": str(totals["net_sales"]),
             "closing_balance": str(totals["closing_balance"]),
@@ -3851,6 +3871,9 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
+        from app.modules.inventory.models import InventoryMovement
+        from app.modules.inventory.services.valuation import ValuationService
+
         for item in items:
             await InventoryService.move(
                 session,
@@ -3864,6 +3887,40 @@ class PosService(PosReceiptReads):
                 reference_id=order_id,
                 actor_user_id=actor_user_id,
             )
+            # The sale CONSUMED a cost layer for this piece; putting the quantity back without the
+            # cost would leave the shelf holding stock worth nothing, and the next sale would book
+            # a cost of zero. The sale's own movement carries what it cost, so the layer comes back
+            # at that unit cost (value-correct; a fresh layer dated now keeps FIFO order sane).
+            sold = (
+                await session.execute(
+                    select(InventoryMovement.cost_value).where(
+                        InventoryMovement.tenant_id == tenant_id,
+                        InventoryMovement.variant_id == item.variant_id,
+                        InventoryMovement.reference_type == "order",
+                        InventoryMovement.reference_id == order_id,
+                        InventoryMovement.direction == "out",
+                        InventoryMovement.reason == "sale",
+                    )
+                )
+            ).first()
+            sold_cost = Decimal(str(sold[0])) if sold is not None and sold[0] is not None else None
+            if sold_cost is not None and item.quantity:
+                await ValuationService.create_cost_layer(
+                    session,
+                    tenant_id,
+                    variant_id=item.variant_id,
+                    warehouse_id=register.warehouse_id,
+                    quantity=int(item.quantity),
+                    unit_cost=(sold_cost / Decimal(int(item.quantity))).quantize(
+                        Decimal("0.0001")
+                    ),
+                    source_type="void",
+                    source_id=order_id,
+                )
+
+        # The order is no longer a sale: every report that reads order status must drop it, and a
+        # second void must find it already reversed.
+        order.status = "cancelled"
 
         # Give back exactly what the sale collected, on the tenders that collected it.
         tenders, _payments = await PosService._refundable_tenders(session, tenant_id, order_id)

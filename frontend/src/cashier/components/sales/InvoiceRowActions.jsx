@@ -1,4 +1,4 @@
-import { Eye, History, MoreHorizontal, Printer, Repeat2 } from "lucide-react";
+import { Ban, Eye, History, MoreHorizontal, Printer, Repeat2 } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
 } from "@/cashier/components/ui/dropdown-menu";
 
 // قائمة إجراءات لكل صف في سجل المبيعات.
-export default function InvoiceRowActions({ invoice, onView, onPrint, onReturn, onLog }) {
+export default function InvoiceRowActions({ invoice, onView, onPrint, onReturn, onLog, onVoid }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -42,6 +42,20 @@ export default function InvoiceRowActions({ invoice, onView, onPrint, onReturn, 
           <History className="h-4 w-4" />
           سجل العمليات
         </DropdownMenuItem>
+        {onVoid ? (
+          <>
+            <DropdownMenuSeparator />
+            {/* إلغاء فاتورة معتمدة: مستند عكسي، مش مرتجع. ممنوع لو الفاتورة ملغية أو رجع منها حاجة. */}
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              disabled={invoice.status === "cancelled" || Number(invoice.returnedQty ?? 0) > 0}
+              onSelect={() => onVoid(invoice)}
+            >
+              <Ban className="h-4 w-4" />
+              إلغاء الفاتورة (Void)
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

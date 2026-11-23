@@ -108,6 +108,14 @@ export const posApi = {
       compact({ reason, amount: toWire(amount), notes: notes ? String(notes).trim() : undefined }),
       needIntent(intent),
     ),
+  /* Reverse a CONFIRMED sale. Not a return: the sale never happened, so stock, money and the
+     reports all go back. Needs a reason, and the server checks pos:override for another's shift. */
+  voidSale: async (id, { orderId, reason }, intent) =>
+    post(
+      `/pos/sessions/${seg(id)}/voids`,
+      { order_id: String(orderId), reason: String(reason ?? "").trim() },
+      needIntent(intent),
+    ),
   handoverSession: async (id, { newCashierId, countedCash, varianceReason } = {}, intent) =>
     post(
       `/pos/sessions/${seg(id)}/handover`,

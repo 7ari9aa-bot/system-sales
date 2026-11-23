@@ -17,6 +17,8 @@ export function rowFromDetail(detail, extra = {}) {
   const r = receiptFromApi(detail, extra);
   return {
     id: r.id,
+    // The ORDER is what a void reverses (the receipt is its document), so the row carries it.
+    orderId: r.orderId,
     number: r.number,
     date: r.date,
     pieces: r.pieces,
@@ -24,6 +26,8 @@ export function rowFromDetail(detail, extra = {}) {
     payment: r.payments.length > 1 ? "mixed" : (r.payments[0]?.method ?? null), // a new sale carries no payment: never invent "cash"
     paymentLabel: r.paymentLabel,
     status: r.status,
+    // A void is refused once anything came back: the dialog says so before the server does.
+    returnedQty: r.items.reduce((n, i) => n + Number(i.returnedQty ?? 0), 0),
     items: r.items,
     receipt: r,
   };

@@ -911,3 +911,145 @@ async def test_an_unknown_condition_is_refused(db, tenant_ctx):
             order_id=sold["order_id"],
             lines=[{"variant_id": str(variant.id), "quantity": 1, "condition": "melted"}],
         )
+
+# ---------------------------------------------------------------- void: the books ---
+
+
+@pytest.mark.asyncio
+async def test_a_void_gives_the_cost_layer_back_so_the_shelf_is_worth_something(db, tenant_ctx):
+    """The sale consumed a FIFO layer. A void that only adds quantity leaves stock worth zero,
+    and the next sale books a cost of nothing - so the layer comes back at the sold unit cost."""
+    from app.modules.inventory.services.valuation import ValuationService
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    # Stock that arrived at 40.00 a piece: the layer the sale will consume.
+    warehouse_id = await _warehouse_of(db, tenant_ctx, shift)
+    await ValuationService.create_cost_layer(
+        db,
+        tenant_ctx.tenant_id,
+        variant_id=variant.id,
+        warehouse_id=warehouse_id,
+        quantity=50,
+        unit_cost="40.00",
+        source_type="opening",
+    )
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "cash", "amount": "200.00"}],
+    )
+
+    before = await ValuationService.calculate_valuation(
+        db, tenant_ctx.tenant_id, variant_id=variant.id
+    )
+    await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sale["order_id"] if isinstance(sale, dict) else sale.order_id,
+        reason="اتسجلت مرتين",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    after = await ValuationService.calculate_valuation(
+        db, tenant_ctx.tenant_id, variant_id=variant.id
+    )
+
+    # Two pieces came back at the cost they left with: the shelf's value is restored, not zero.
+    assert Decimal(str(after["total_valuation"])) > Decimal(str(before["total_valuation"]))
+    layers = await ValuationService.get_active_layers(
+        db,
+        tenant_ctx.tenant_id,
+        variant_id=variant.id,
+        warehouse_id=await _warehouse_of(db, tenant_ctx, shift),
+    )
+    assert any(layer.source_type == "void" for layer in layers)
+
+
+async def _warehouse_of(db, tenant_ctx, shift):
+    from app.modules.pos.models import PosRegister
+
+    register = (
+        await db.execute(
+            sa.select(PosRegister).where(PosRegister.id == shift.register_id)
+        )
+    ).scalar_one()
+    return register.warehouse_id
+
+
+@pytest.mark.asyncio
+async def test_a_voided_sale_leaves_the_days_sales_and_the_shift_report(db, tenant_ctx):
+    """Revenue the shop never kept must not appear as revenue, and the void is its own document."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    order_id = sale["order_id"] if isinstance(sale, dict) else sale.order_id
+
+    before = await PosService.session_report(db, tenant_ctx.tenant_id, shift.id)
+    assert before["sales"]["invoice_count"] == 1
+
+    voided = await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=order_id,
+        reason="المقاس غلط",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    after = await PosService.session_report(db, tenant_ctx.tenant_id, shift.id)
+
+    assert after["sales"]["invoice_count"] == 0
+    assert Decimal(after["sales"]["total"]) == Decimal("0.00")
+    assert after["voids"]["void_count"] == 1
+    assert after["voids"]["documents"][0]["receipt_number"] == voided["void_receipt_number"]
+    # The void is NOT a return: the return report stays empty.
+    assert after["returns"]["return_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
+    """Profit is revenue minus cost. A reversed sale contributes neither."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sale = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "cash", "amount": "100.00"}],
+    )
+    order_id = sale["order_id"] if isinstance(sale, dict) else sale.order_id
+    await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=order_id,
+        reason="غلط في الصنف",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+
+    from app.modules.orders.models import Order
+
+    status = (
+        await db.execute(sa.select(Order.status).where(Order.id == order_id))
+    ).scalar_one()
+    # The profit report excludes cancelled orders, so the reversal reaches it through the status.
+    assert status == "cancelled"
+
