@@ -67,6 +67,7 @@ from app.modules.conversations.routers.webhooks import (
     verify_webhook,
     webhook_router,
 )
+from app.modules.conversations.routers.whatsapp_flows import router as _whatsapp_flows_router
 
 # Combine inbox and stream routes into the canonical conversations `router`
 router = APIRouter(tags=["inbox"])
@@ -75,6 +76,7 @@ router.routes.extend(_stream_router.routes)
 router.routes.extend(_social_router.routes)
 router.routes.extend(_facebook_pages_router.routes)
 router.routes.extend(_messenger_profile_router.routes)
+router.routes.extend(_whatsapp_flows_router.routes)
 
 __all__ = [
     "AssignRequest",
