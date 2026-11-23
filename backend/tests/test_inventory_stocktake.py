@@ -289,7 +289,7 @@ async def test_the_count_keeps_the_book_it_was_measured_against(db, tenant_ctx):
 
 
 async def test_the_recount_flag_uses_the_counted_book(db, tenant_ctx):
-    """A real shortage still flags a recount, measured against the counted book, not the snapshot."""
+    """A real shortage still flags a recount, against the counted book, not the snapshot."""
     _, variant, wh = await _variant(db, tenant_ctx, stock=20)
     st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
     await InventoryService.move(

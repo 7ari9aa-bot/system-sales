@@ -2146,6 +2146,10 @@ class PosService(PosReceiptReads):
                     PosReceipt.tenant_id == tenant_id,
                     PosReceipt.session_id == pos_session.id,
                     PosReceipt.kind == "sale",
+                    # A VOIDED sale is not a sale: its receipt still exists (the audit trail needs
+                    # it) but it must not inflate the shift's count or total, or the Z report would
+                    # disagree with the day's takings the moment a cashier voids an invoice.
+                    Order.status != "cancelled",
                 )
             )
         ).one()
@@ -2592,6 +2596,9 @@ class PosService(PosReceiptReads):
                         PosReceipt.tenant_id == tenant_id,
                         PosReceipt.session_id.in_(session_ids),
                         PosReceipt.kind == "sale",
+                        # Voided invoices are history, not takings: the day's rollup is what the
+                        # owner compares against the bank, so it counts what was actually sold.
+                        Order.status != "cancelled",
                     )
                 )
             ).one()
@@ -3911,9 +3918,7 @@ class PosService(PosReceiptReads):
                     variant_id=item.variant_id,
                     warehouse_id=register.warehouse_id,
                     quantity=int(item.quantity),
-                    unit_cost=(sold_cost / Decimal(int(item.quantity))).quantize(
-                        Decimal("0.0001")
-                    ),
+                    unit_cost=(sold_cost / Decimal(int(item.quantity))).quantize(Decimal("0.0001")),
                     source_type="void",
                     source_id=order_id,
                 )
@@ -4149,9 +4154,7 @@ class PosService(PosReceiptReads):
         # disagreed with the refunds that caused them.
         touched = {slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None}
         if touched:
-            await PosService._apply_refunded_payment_states(
-                session, tenant_id, order, touched
-            )
+            await PosService._apply_refunded_payment_states(session, tenant_id, order, touched)
 
         return {
             "mode": "tender",
@@ -4209,9 +4212,7 @@ class PosService(PosReceiptReads):
                 )
             )
             payment_total = to_money(payment.amount, "captured amount")
-            payment.status = (
-                "refunded" if refunded_total >= payment_total else "partially_refunded"
-            )
+            payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
             if payment.status != "refunded":
                 fully_refunded = False
         await session.flush()
