@@ -16,7 +16,7 @@ import { fmtMoney } from "@/cashier/lib/format";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales } from "@/cashier/api/usePosSale";
-import { estimateRefund, returnErrorMessage, returnRequest, returnableLines, sendReturn, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
+import { estimateRefund, returnErrorMessage, returnRequest, returnSettlementSummary, returnableLines, sendReturn, setLineCondition, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
 
 const asInvoice = (d) => ({
   id: d.receipt.id,
@@ -121,6 +121,7 @@ function ReturnScreen({ session }) {
   const start = (k) => setLines((p) => setQty(p, k, 1));
   const cancelLine = (k) => setLines((p) => setQty(p, k, 0));
   const setPieceRestock = (k, v) => setLines((p) => setLineRestock(p, k, v));
+  const setLineCondition_ = (key, condition) => setLines((p) => setLineCondition(p, key, condition));
   const setLineQty = (k, v) => setLines((p) => setQty(p, k, Math.max(1, Number(v) || 1)));
   const step = (k, d) => setLines((p) => setQty(p, k, Math.max(1, (p.find((l) => l.variantId === k)?.returnQty ?? 1) + d)));
 
@@ -131,7 +132,7 @@ function ReturnScreen({ session }) {
       const req = returnRequest(invoice.detail, lines, { restock: restockChoice ?? undefined, reason });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.returnSale(session.id, req, intentRef.current));
-      toast.success(`تم تسجيل المرتجع ${res.receipt_number}. قيمة المرتجع ${fmtMoney(Number(res.refunded_total))}`);
+      toast.success(`تم تسجيل المرتجع ${res.receipt_number}. ${returnSettlementSummary(res)}`, { duration: 12000 });
       intentRef.current = null;
       await Promise.all([qc.invalidateQueries({ queryKey: ["cashier"] })]);
       resetDraft();
@@ -187,8 +188,8 @@ function ReturnScreen({ session }) {
           <ReturnTotalsBar totals={totals} />
         </div>
         <div className="flex min-h-0 flex-col gap-1.5">
-          <ReturnItemsTable lines={pickedLines} totals={totals} onQty={setLineQty} onQtyStep={step} onRemove={(l) => cancelLine(l.key)} minRows={fillRows} />
-          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={(v) => { setRestock(v); setLines((p) => p.map((l) => ({ ...l, restock: null }))); }} reasons={policy?.reasons} reason={reason} onReasonChange={setReason} />
+          <ReturnItemsTable lines={pickedLines} totals={totals} onQty={setLineQty} onQtyStep={step} onRemove={(l) => cancelLine(l.key)} onCondition={setLineCondition_} minRows={fillRows} />
+          <ReturnSettlementBar value={totals.value} restock={restock} onRestockChange={(v) => { setRestock(v); setLines((p) => p.map((l) => ({ ...l, restock: null }))); }} reasons={policy?.reasons} reason={reason} onReasonChange={setReason} lines={lines} takePayments={session?.tender?.take_payments ?? null} />
         </div>
       </div>
       <div ref={actionsRef}>

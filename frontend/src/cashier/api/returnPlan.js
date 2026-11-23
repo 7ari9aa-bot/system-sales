@@ -25,6 +25,8 @@ export function returnableLines(saleDetail) {
       maxQty: Math.max(0, sold - returned),
       returnQty: 0,
       restock: null, // null = follow the whole return's choice; true/false = this piece's own
+      // What state the piece comes back in. The server decides what each one does to stock.
+      condition: "sellable",
     };
   });
 }
@@ -73,6 +75,40 @@ export function estimateRefundMinor(saleDetail, lines) {
 
 export const estimateRefund = (saleDetail, lines) => fromMinor(estimateRefundMinor(saleDetail, lines));
 
+/**
+ * The five conditions a returned piece can come back in, and what each does to stock. The server
+ * owns the effect (``PosService._restock_returned``); these labels only tell the cashier the truth
+ * before the piece is accepted, so a torn shirt is never silently put back on the rail.
+ */
+export const CONDITIONS = [
+  { value: "sellable", label: "صالحة للبيع", effect: "ترجع للرف وتتاح للبيع" },
+  { value: "quarantine", label: "تحت الفحص", effect: "تتحسب في المخزن لكن مش متاحة للبيع" },
+  { value: "damaged", label: "تالفة", effect: "تتحسب في المخزن ومعزولة، مش متاحة للبيع" },
+  { value: "writeoff", label: "شطب", effect: "مش ترجع للمخزون خالص" },
+  { value: "supplier", label: "ترجع للمورد", effect: "مش ترجع للمخزون" },
+];
+
+export const conditionLabel = (value) => CONDITIONS.find((c) => c.value === value)?.label ?? value;
+
+/** A condition's effect in one line of Arabic, or "" for an unknown value. */
+export const conditionEffect = (value) => CONDITIONS.find((c) => c.value === value)?.effect ?? "";
+
+/** Whether a condition puts the piece back on the shelf as sellable stock. */
+export const isSellable = (value) => (value ?? "sellable") === "sellable";
+
+/** This piece's own condition (a jacket sellable, a torn shirt damaged). Unknown values are kept as given. */
+export function setLineCondition(lines, variantId, condition) {
+  return lines.map((l) => (l.variantId === variantId ? { ...l, condition: String(condition) } : l));
+}
+
+/** How the picked pieces split across conditions, in the order of CONDITIONS, for the summary line. */
+export function conditionSplit(lines) {
+  return CONDITIONS.map((c) => ({
+    ...c,
+    units: lines.filter((l) => l.returnQty > 0 && (l.condition ?? "sellable") === c.value).reduce((n, l) => n + l.returnQty, 0),
+  })).filter((c) => c.units > 0);
+}
+
 /** This piece's own shelf decision (a jacket back on the rail, a torn shirt not). null clears it. */
 export function setLineRestock(lines, variantId, restock) {
   return lines.map((l) => (l.variantId === variantId ? { ...l, restock: restock === null ? null : Boolean(restock) } : l));
@@ -88,6 +124,9 @@ export function wireLine(l, reason) {
     quantity: l.returnQty,
     ...(reason ? { reason } : {}),
     ...(l.restock === null || l.restock === undefined ? {} : { restock: Boolean(l.restock) }),
+    // Always sent: the backend defaults to sellable, and a torn piece must never fall into that
+    // default because the screen forgot to say what it was.
+    condition: l.condition ?? "sellable",
   };
 }
 
@@ -106,6 +145,34 @@ export function returnRequest(saleDetail, lines, { restock, reason } = {}) {
     // Only sent once the cashier has a value; otherwise the shop's own default applies on the server.
     ...(restock === undefined || restock === null ? {} : { restock: Boolean(restock) }),
   };
+}
+
+const METHOD_LABEL = { cash: "نقدي", card: "بطاقة", transfer: "تحويل", wallet: "محفظة" };
+
+/**
+ * What the server says it did with the money on a return, in the shop's words. The screen prints
+ * THIS, never the estimate it computed itself: only the server knows which tenders the original
+ * sale collected, how much of each was already refunded, and what it could not give back.
+ */
+export function returnSettlementSummary(result) {
+  const refunded = Number(result?.refunded ?? 0);
+  const uncollected = Number(result?.refund_uncollected ?? 0);
+  const byMethod = result?.refund_by_method ?? {};
+  const parts = [];
+  if (result?.refund_mode === "record_only") {
+    parts.push("الكاشير مش بيسجّل مدفوعات، فالمبلغ مسجّل على الفاتورة فقط");
+  } else if (result?.refund_mode === "nothing_collected") {
+    parts.push("الفاتورة الأصلية ما حصّلتش المبلغ ده، فمفيش مبلغ يترد");
+  } else {
+    parts.push(`اترد ${refunded.toFixed(2)} ج.م`);
+  }
+  const methods = Object.entries(byMethod)
+    .map(([method, value]) => `${METHOD_LABEL[method] ?? method} ${value}`)
+    .join(" · ");
+  if (methods) parts.push(methods);
+  if (uncollected > 0) parts.push(`منها ${uncollected.toFixed(2)} ج.م لم تُحصَّل أصلًا فلم تُرَد`);
+  if (byMethod.cash) parts.push("النقدي خرج من درج الوردية");
+  return parts.join(" — ");
 }
 
 /** A plain-language reason for the backend's refusals; anything unknown is passed through, never hidden. */

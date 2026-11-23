@@ -42,6 +42,18 @@ export function shiftDetail(raw) {
     : `تم إغلاق الوردية • زيادة ${fromMinor(minor)}`;
 }
 
+/**
+ * "void · POS-2026-1 · المقاس غلط" -> "إلغاء فاتورة • أصلها POS-2026-1 • المقاس غلط".
+ * A void is not a return: the row says the sale was reversed and repeats the manager's reason.
+ */
+export function voidDetail(raw) {
+  const parts = String(raw ?? "").split(" · ");
+  const [, original = "", ...reason] = parts;
+  return ["إلغاء فاتورة", original ? `أصلها ${original}` : "", reason.join(" · ").trim()]
+    .filter(Boolean)
+    .join(" • ");
+}
+
 /** "مورد س · accepted" -> "مورد س • مقبول". */
 export function supplierReturnDetail(raw) {
   const text = String(raw ?? "");
@@ -57,6 +69,8 @@ function detailFor(e) {
       return movementDetail(e.detail);
     case "shift":
       return shiftDetail(e.detail);
+    case "void":
+      return voidDetail(e.detail);
     case "supplier_return":
       return supplierReturnDetail(e.detail);
     default:

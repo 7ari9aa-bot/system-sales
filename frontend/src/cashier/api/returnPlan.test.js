@@ -3,7 +3,7 @@ import { newIntent, posApi } from "./posApi";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
 import { api } from "@/lib/api";
-import { sendReturn, tableLine, estimateRefund, estimateRefundMinor, returnErrorMessage, returnRequest, returnableLines, setQty, setLineRestock, lineRestock } from "./returnPlan";
+import { sendReturn, tableLine, estimateRefund, estimateRefundMinor, returnErrorMessage, returnRequest, returnableLines, setQty, setLineRestock, setLineCondition, conditionSplit, lineRestock, returnSettlementSummary } from "./returnPlan";
 
 const sale = (over = {}) => ({
   order: { id: "o1", grand_total: "340.00", discount_total: "20.00" },
@@ -65,7 +65,7 @@ describe("returnRequest", () => {
   it("sends only picked lines and the restock choice", () => {
     const s = sale();
     const req = returnRequest(s, setQty(returnableLines(s), "v1", 2), { restock: true });
-    expect(req).toEqual({ orderId: "o1", lines: [{ variant_id: "v1", quantity: 2 }], restock: true });
+    expect(req).toEqual({ orderId: "o1", lines: [{ variant_id: "v1", quantity: 2, condition: "sellable" }], restock: true });
   });
   it("leaves restock out until the cashier chooses, so the shop's own default applies", () => {
     const s = sale();
@@ -138,7 +138,7 @@ describe("a planned return is accepted by the real posApi.returnSale (contract)"
     await posApi.returnSale("sess-1", req, newIntent());
     const [path, opts] = api.mock.calls.at(-1);
     expect(path).toBe("/pos/sessions/sess-1/returns");
-    expect(opts.body).toEqual({ order_id: "o1", lines: [{ variant_id: "v1", quantity: 2 }], restock: false });
+    expect(opts.body).toEqual({ order_id: "o1", lines: [{ variant_id: "v1", quantity: 2, condition: "sellable" }], restock: false });
     expect(opts.headers["Idempotency-Key"]).toMatch(/^pos-/);
   });
 });
@@ -212,4 +212,51 @@ describe("lineRestock", () => {
     expect(lineRestock({ restock: true }, false)).toBe(true);
   });
 
+});
+
+describe("the piece's condition", () => {
+  it("defaults to sellable so a returned piece is never silently quarantined", () => {
+    const s = sale();
+    const lines = setQty(returnableLines(s), "v1", 2);
+    expect(lines[0].condition).toBe("sellable");
+    expect(returnRequest(s, lines, {}).lines[0].condition).toBe("sellable");
+  });
+
+  it("sends the condition the cashier picked, per line", () => {
+    const s = sale();
+    const lines = setLineCondition(setQty(returnableLines(s), "v1", 1), "v1", "damaged");
+    expect(returnRequest(s, lines, {}).lines[0]).toEqual({ variant_id: "v1", quantity: 1, condition: "damaged" });
+  });
+
+  it("splits the picked units by condition for the summary", () => {
+    const s = sale({ lines: [
+      { variant_id: "v1", title: "قميص", quantity: 2, unit_price: "100.00", returned_qty: 0 },
+      { variant_id: "v2", title: "بنطلون", quantity: 1, unit_price: "200.00", returned_qty: 0 },
+    ] });
+    let lines = setQty(returnableLines(s), "v1", 2);
+    lines = setQty(lines, "v2", 1);
+    lines = setLineCondition(lines, "v2", "writeoff");
+    expect(conditionSplit(lines)).toEqual([
+      expect.objectContaining({ value: "sellable", units: 2 }),
+      expect.objectContaining({ value: "writeoff", units: 1 }),
+    ]);
+  });
+});
+
+describe("what the server did with the money", () => {
+  it("says the amount was refunded and where it came from", () => {
+    const text = returnSettlementSummary({ refund_mode: "tender", refunded: "150.00", refund_by_method: { cash: "50.00", card: "100.00" }, refund_uncollected: "0.00" });
+    expect(text).toContain("اترد 150.00");
+    expect(text).toContain("نقدي 50.00");
+    expect(text).toContain("النقدي خرج من درج الوردية");
+  });
+  it("says what the sale never collected instead of pretending it was refunded", () => {
+    const text = returnSettlementSummary({ refund_mode: "nothing_collected", refunded: "0.00", refund_by_method: {}, refund_uncollected: "80.00" });
+    expect(text).toContain("ما حصّلتش");
+    expect(text).toContain("لم تُحصَّل أصلًا");
+  });
+  it("a record-only till says the money was only recorded", () => {
+    expect(returnSettlementSummary({ refund_mode: "record_only", refunded: "0.00", refund_by_method: {}, refund_uncollected: "40.00" }))
+      .toContain("مش بيسجّل مدفوعات");
+  });
 });

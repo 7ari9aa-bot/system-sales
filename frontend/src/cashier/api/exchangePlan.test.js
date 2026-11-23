@@ -36,7 +36,7 @@ describe("exchangeRequest", () => {
     expect(path).toBe("/pos/sessions/sess-1/exchanges");
     expect(opts.body).toEqual({
       order_id: "o1",
-      return_lines: [{ variant_id: "v1", quantity: 1 }],
+      return_lines: [{ variant_id: "v1", quantity: 1, condition: "sellable" }],
       new_lines: [{ variant_id: "n1", quantity: 2 }],
       restock: false,
     });

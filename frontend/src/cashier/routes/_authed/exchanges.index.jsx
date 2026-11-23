@@ -17,7 +17,7 @@ import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
-import { estimateRefund, returnableLines, sendReturn, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
+import { estimateRefund, returnableLines, sendReturn, setLineCondition, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
 import { differenceMinor, exchangeErrorMessage, exchangeRequest, settlementSummary } from "@/cashier/api/exchangePlan";
 import { buildTender, defaultTender } from "@/cashier/api/tenderPlan";
@@ -277,6 +277,8 @@ function ExchangeScreen({ session }) {
             minRows={fillRows}
           />
           <ExchangeSettlementBar
+            lines={lines}
+            onCondition={(variantId, condition) => setLines((p) => setLineCondition(p, variantId, condition))}
             exchangedValue={backTotals.value}
             newValue={shownNew}
             difference={Number(fromMinor(diffMinor))}

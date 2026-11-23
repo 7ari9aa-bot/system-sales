@@ -2,6 +2,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { fmtMoney } from "@/cashier/lib/format";
 import { cn } from "@/cashier/lib/utils";
 import ExchangeTender from "@/cashier/components/exchanges/ExchangeTender";
+import { CONDITIONS, conditionEffect } from "@/cashier/api/returnPlan";
 import { settlementPrompt } from "@/cashier/api/exchangePlan";
 
 const REFUND_METHODS = [
@@ -15,6 +16,8 @@ const REFUND_METHODS = [
 // ملخص الحساب: قيمة المرتجع (تقدير بنفس معادلة الخادم)، إجمالي البدائل (من الخادم)، ثم الفرق.
 // الفرق فلوس بتتحرك فعلًا: البديل الأغلى بيتحصّل فرقه، والأرخص بيترد فرقه على وسيلة الدفع الأصلية.
 export default function ExchangeSettlementBar({
+  lines = [],
+  onCondition = null,
   exchangedValue,
   newValue,
   difference,
@@ -31,6 +34,7 @@ export default function ExchangeSettlementBar({
   refundMethod = "",
   onRefundMethodChange,
 }) {
+  const back = lines.filter((l) => l.returnQty > 0);
   const customerPays = difference > 0;
   const even = difference === 0;
   const recording = Boolean(rules?.take_payments);
@@ -56,6 +60,30 @@ export default function ExchangeSettlementBar({
         <input type="checkbox" checked={restock} onChange={(e) => onRestockChange(e.target.checked)} className="h-4 w-4 accent-[#F97316]" />
         إرجاع القطع للرف (المخزون)
       </label>
+
+      {back.length ? (
+        <div className="w-full border-t border-border/60 pt-1" data-testid="exchange-conditions">
+          <p className="text-center text-[11px] font-semibold text-foreground/70">حالة القطع الراجعة (بتحدد أثرها على المخزون)</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            {back.map((l) => (
+              <label key={l.variantId} className="flex items-center gap-1 text-[11px]">
+                <span className="max-w-[110px] truncate" title={l.name}>{l.name}</span>
+                <select
+                  className="h-7 rounded-md border border-border bg-card px-1 text-[11px]"
+                  value={l.condition ?? "sellable"}
+                  title={conditionEffect(l.condition)}
+                  aria-label={`حالة القطعة ${l.name}`}
+                  onChange={(e) => onCondition?.(l.variantId, e.target.value)}
+                >
+                  {CONDITIONS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-lg bg-muted/50 px-4 py-1 text-center">
         <p className="text-[12px] font-semibold text-foreground/70">{even ? "لا فرق في القيمة" : customerPays ? "المطلوب تحصيله من العميل" : "المطلوب ردّه للعميل"}</p>
