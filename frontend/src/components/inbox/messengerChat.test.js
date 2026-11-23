@@ -244,3 +244,22 @@ describe("messengerStatusLine", () => {
     expect(messengerStatusLine([], "ar", now)).toBeNull();
   });
 });
+
+import { messengerRowPreview } from "./messengerChat";
+
+describe("messengerRowPreview", () => {
+  it("puts 'You:' before a message we sent, as the Messenger list does", () => {
+    expect(messengerRowPreview({ preview: "تمام", lastDirection: "outbound" }, "ar")).toBe("أنت: تمام");
+    expect(messengerRowPreview({ preview: "ok", lastDirection: "outbound" }, "en")).toBe("You: ok");
+  });
+
+  it("leaves a customer's message as it is", () => {
+    expect(messengerRowPreview({ preview: "السلام", lastDirection: "inbound" }, "ar")).toBe("السلام");
+    expect(messengerRowPreview({ preview: "hi" }, "en")).toBe("hi");
+  });
+
+  it("is empty when there is no preview, never just 'You:'", () => {
+    expect(messengerRowPreview({ preview: "", lastDirection: "outbound" }, "ar")).toBe("");
+    expect(messengerRowPreview(null, "ar")).toBe("");
+  });
+});

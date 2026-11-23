@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import ChannelSwitcher from "@/components/inbox/ChannelSwitcher";
 import ChannelChat from "@/components/inbox/ChannelChat";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
+import MessengerRowText from "@/components/inbox/MessengerRowText";
 import ChatList from "@/components/inbox/whatsapp/ChatList";
 import { cn } from "@/lib/utils";
 import { CHAT_LIST_MIN_WIDTH, CHAT_LIST_MAX_WIDTH, useInbox } from "./InboxProvider";
@@ -256,6 +257,7 @@ export default function InboxWorkspace({ embedded = false }) {
                     </div>
                   )}
                 </div>
+                {isMessenger ? <MessengerRowText conversation={conversation} lang={lang} /> : (
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span dir={isWhatsApp || isTelegram || isMessenger ? "auto" : undefined} className={cn("truncate", isWhatsApp ? "text-[14px] font-medium text-[#111b21]" : isTelegram ? "text-[14px] font-medium" : "text-[13px] font-medium")}>{conversation.customer}</span>
@@ -280,6 +282,7 @@ export default function InboxWorkspace({ embedded = false }) {
                     )}
                   </div>}
                 </div>
+                )}
               </button>
             ))}
             {(loadingMoreInbox || inboxMoreError || inboxCursor) && (

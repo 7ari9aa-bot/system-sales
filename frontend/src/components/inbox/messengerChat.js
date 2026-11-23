@@ -211,3 +211,10 @@ export function messengerStatusLine(messages, lang = "ar", now = Date.now()) {
   const when = ago(Math.max(0, now - at), lang);
   return lang === "ar" ? `${words.ar} ${when}` : `${words.en} ${when}`;
 }
+
+/** The grey line under a name in the Messenger list: "You: …" when the newest message is ours. */
+export function messengerRowPreview(conversation, lang = "ar") {
+  const text = String(conversation?.preview || "").trim();
+  if (!text) return "";
+  return conversation?.lastDirection === "outbound" ? `${lang === "ar" ? "أنت" : "You"}: ${text}` : text;
+}
