@@ -16,7 +16,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import column, func, select, table
+from sqlalchemy import and_, case, column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sql import arabic_regex
@@ -100,8 +100,7 @@ class StockViewService:
         await StocktakeGateway.cancel(session, tenant_id, stocktake_id, user_id=user_id)
 
     @staticmethod
-    async def list_stock(
-        session: AsyncSession,
+    def _stock_query(
         tenant_id: UUID,
         *,
         term: str | None = None,
@@ -110,16 +109,18 @@ class StockViewService:
         season: str | None = None,
         material: str | None = None,
         status: str | None = None,
-        limit: int = 500,
-        offset: int = 0,
-    ) -> list[dict]:
+    ):
+        """The filtered stock view, UNBOUNDED.
+
+        One builder feeds the page, the count and the summary, so a filter typed on screen narrows
+        the export and the totals exactly as it narrows the grid. The old summary called the page
+        reader with ``limit=1000``: a shop with 2,500 variants read totals for the first 1,000 and
+        exported the same 1,000, with nothing on screen saying the rest existed.
+        """
         if status is not None and status not in {"in", "low", "out"}:
             raise ValidationError("status must be one of in, low, out")
         wanted_season = (season or "").strip()
         wanted_material = (material or "").strip()
-
-        limit = max(1, min(int(limit), 1000))
-        offset = max(0, int(offset))
 
         held = (
             select(
@@ -202,9 +203,102 @@ class StockViewService:
             query = query.where(on_hand > 0, on_hand <= level)
         elif status == "in":
             query = query.where(on_hand > 0, on_hand > level)
+        return query
+
+    @staticmethod
+    async def list_stock(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        term: str | None = None,
+        category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
+        material: str | None = None,
+        status: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[dict]:
+        limit = max(1, min(int(limit), 1000))
+        offset = max(0, int(offset))
+        query = StockViewService._stock_query(
+            tenant_id,
+            term=term,
+            category_id=category_id,
+            brand_id=brand_id,
+            season=season,
+            material=material,
+            status=status,
+        )
         rows = (await session.execute(query.limit(limit).offset(offset))).all()
         barcodes = await StockViewService._barcodes(session, tenant_id, [r[0].id for r in rows])
         return [StockViewService._row(r, barcodes.get(r[0].id)) for r in rows]
+
+    @staticmethod
+    async def count_stock(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        term: str | None = None,
+        category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
+        material: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        """How many rows the SAME filters match, without reading them."""
+        query = StockViewService._stock_query(
+            tenant_id,
+            term=term,
+            category_id=category_id,
+            brand_id=brand_id,
+            season=season,
+            material=material,
+            status=status,
+        )
+        stmt = select(func.count()).select_from(query.order_by(None).subquery())
+        return int((await session.execute(stmt)).scalar_one())
+
+    @staticmethod
+    async def list_stock_page(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        term: str | None = None,
+        category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
+        material: str | None = None,
+        status: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> dict:
+        """One window of the view PLUS the total, so a screen (or an export) can say what it left out.
+
+        ``has_more`` is computed from the total, not guessed from the page being full: the last
+        full page of a 2,000-row shop must not promise a page that does not exist.
+        """
+        limit = max(1, min(int(limit), 1000))
+        offset = max(0, int(offset))
+        filters = {
+            "term": term,
+            "category_id": category_id,
+            "brand_id": brand_id,
+            "season": season,
+            "material": material,
+            "status": status,
+        }
+        total = await StockViewService.count_stock(session, tenant_id, **filters)
+        items = await StockViewService.list_stock(
+            session, tenant_id, limit=limit, offset=offset, **filters
+        )
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(items) < total,
+        }
 
     @staticmethod
     async def names_for(
@@ -294,27 +388,82 @@ class StockViewService:
 
     @staticmethod
     async def summary(session: AsyncSession, tenant_id: UUID) -> dict:
-        """Totals over EVERY active variant, not over the page the screen happens to show."""
-        rows = await StockViewService.list_stock(session, tenant_id, limit=1000)
-        out = low = pieces = unknown = 0
-        cost_value = Decimal("0")
-        retail_value = Decimal("0")
-        for row in rows:
-            pieces += row["on_hand"]
-            out += row["status"] == "out"
-            low += row["status"] == "low"
-            retail_value += Decimal(row["stock_retail_value"])
-            if row["stock_cost_value"] is None:
-                unknown += 1
-            else:
-                cost_value += Decimal(row["stock_cost_value"])
+        """Totals over EVERY active variant, in ONE aggregate.
+
+        This used to sum ``list_stock(limit=1000)``: the docstring said "every variant" but the
+        number was the first 1,000, so a 2,500-variant shop read shelf values and alert counts for
+        40% of its stock with no hint that the rest was missing. The aggregate runs over the same
+        joins with no page, and the status rule is the same CASE as ``stock_status``.
+        """
+        held = (
+            select(
+                InventoryBalance.c.variant_id.label("variant_id"),
+                func.coalesce(func.sum(InventoryBalance.c.on_hand), 0).label("on_hand"),
+                func.coalesce(func.sum(InventoryBalance.c.quarantined), 0).label("quarantined"),
+            )
+            .where(InventoryBalance.c.tenant_id == tenant_id)
+            .group_by(InventoryBalance.c.variant_id)
+            .subquery()
+        )
+        on_hand = func.coalesce(held.c.on_hand, 0)
+        quarantined = func.coalesce(held.c.quarantined, 0)
+        sellable = func.greatest(0, on_hand - quarantined)
+        level = func.coalesce(VariantStockSetting.c.reorder_level, 0)
+        base = (
+            select(
+                ProductVariant.id.label("variant_id"),
+                on_hand.label("on_hand"),
+                sellable.label("sellable"),
+                level.label("reorder_level"),
+                VariantCost.c.avg_cost.label("avg_cost"),
+                ProductVariant.price.label("price"),
+            )
+            .join(Product, Product.id == ProductVariant.product_id)
+            .outerjoin(held, held.c.variant_id == ProductVariant.id)
+            .outerjoin(
+                VariantStockSetting,
+                (VariantStockSetting.c.variant_id == ProductVariant.id)
+                & (VariantStockSetting.c.tenant_id == tenant_id),
+            )
+            .outerjoin(
+                VariantCost,
+                (VariantCost.c.variant_id == ProductVariant.id)
+                & (VariantCost.c.tenant_id == tenant_id),
+            )
+            .where(
+                ProductVariant.tenant_id == tenant_id,
+                ProductVariant.is_active.is_(True),
+                func.coalesce(Product.status, "draft") != "archived",
+            )
+            .subquery()
+        )
+        b = base.c
+        out = b.sellable <= 0
+        low = and_(b.sellable > 0, b.sellable <= b.reorder_level)
+        row = (
+            await session.execute(
+                select(
+                    func.count().label("variants"),
+                    func.coalesce(func.sum(b.on_hand), 0).label("pieces"),
+                    func.coalesce(func.sum(case((out, 1), else_=0)), 0).label("out"),
+                    func.coalesce(func.sum(case((low, 1), else_=0)), 0).label("low"),
+                    func.coalesce(func.sum(case((b.avg_cost.is_(None), 1), else_=0)), 0).label(
+                        "unknown"
+                    ),
+                    func.coalesce(func.sum(b.avg_cost * b.on_hand), 0).label("cost_value"),
+                    func.coalesce(func.sum(b.price * b.on_hand), 0).label("retail_value"),
+                ).select_from(base)
+            )
+        ).one()
+        out_count, low_count = int(row.out), int(row.low)
         return {
-            "variants": len(rows),
-            "pieces": pieces,
-            "out": out,
-            "low": low,
-            "alerts": out + low,
-            "cost_value": str(to_money(cost_value)),
-            "retail_value": str(to_money(retail_value)),
-            "unknown_cost_variants": unknown,
+            "variants": int(row.variants),
+            "pieces": int(row.pieces),
+            "out": out_count,
+            "low": low_count,
+            "alerts": out_count + low_count,
+            "cost_value": str(to_money(Decimal(row.cost_value or 0))),
+            "retail_value": str(to_money(Decimal(row.retail_value or 0))),
+            "unknown_cost_variants": int(row.unknown),
         }
+

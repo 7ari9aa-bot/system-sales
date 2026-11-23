@@ -41,10 +41,14 @@ from app.modules.pos.models import (
     PosReturnLine,
     PosSession,
     PosSessionFloat,
+    PosSessionHandover,
+    PosSessionReconciliation,
 )
-from app.modules.pos.profiles import PosProfileService
+from app.modules.pos.profiles import PAYMENT_METHODS, PosProfileService
 from app.modules.pos.receipt_reads import PosReceiptReads
+from app.modules.pos.refund import Tender, plan_for
 from app.modules.pos.tender import (
+    CASH,
     check_close_variance,
     expected_drawer_cash,
     parse_lines,
@@ -370,6 +374,36 @@ class PosService(PosReceiptReads):
             "outflow": outflow,
             "expected_now": expected_now,
             "floats": list(floats),
+            # What the cashier is about to do: record the money, or only the sale. The header says
+            # it out loud, so nobody discovers after the customer has gone that no payment was
+            # taken. ``reason`` explains a record-only till the shop did not choose.
+            "payments_mode": await PosService.payments_mode(session, tenant_id, pos_session),
+        }
+
+    @staticmethod
+    async def payments_mode(
+        session: AsyncSession, tenant_id: UUID, pos_session: PosSession
+    ) -> dict:
+        """``record`` (the till takes payments) or ``record_only`` (it does not), and why."""
+        takes = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        if takes:
+            return {"mode": "record", "reason": None, "apparel_setup_incomplete": False}
+        from app.core.activity_setup import NOT_STARTED, SKIPPED, read_state
+        from app.modules.settings.service import SettingsService
+
+        setup_state = await read_state(session, tenant_id)
+        vertical = str(await SettingsService(session, tenant_id).value("business.vertical") or "")
+        incomplete = vertical == "apparel" and setup_state in {NOT_STARTED, SKIPPED}
+        return {
+            "mode": "record_only",
+            "reason": (
+                "the apparel setup was skipped, so no payment method is recorded"
+                if incomplete
+                else "pos.take_payments is off"
+            ),
+            "apparel_setup_incomplete": incomplete,
         }
 
     # -------------------------------------------------------------- cash ----
@@ -1464,6 +1498,12 @@ class PosService(PosReceiptReads):
             raise ValidationError(
                 "this till does not record payments: turn on pos.take_payments or send no payments"
             )
+        else:
+            # A sale with no payment recorded. For an apparel shop whose setup was skipped this is
+            # exactly how money goes missing: the screen completes a normal sale, the stock leaves,
+            # and no till ever recorded a pound. It is refused unless the owner has deliberately
+            # turned on record-only selling.
+            await PosService._ensure_record_only_is_deliberate(session, tenant_id, pos_session)
 
         order = await OrderService.create_order(
             session,
@@ -1712,6 +1752,7 @@ class PosService(PosReceiptReads):
         shift_override: bool = False,
         counted_cash: object = None,
         variance_reason: object = None,
+        counted_methods: object = None,
     ) -> PosSession:
         """OPEN → CLOSED. The day is RECORDED; it is counted only where the shop counts.
 
@@ -1722,6 +1763,14 @@ class PosService(PosReceiptReads):
         A till whose ``pos.take_payments`` is on also has a drawer. Its close then needs the cash
         the cashier counted, and records the expected cash (from the drawer ledger) and the
         variance. A till with the setting off refuses a counted figure rather than ignoring it.
+
+        A shop that takes card, wallet or transfer counts those too: ``counted_methods`` is
+        ``{method: amount}`` as the terminal slip or the account statement shows it, and one
+        ``PosSessionReconciliation`` row per method records expected vs counted vs the difference.
+        With ``pos.settle_payment_methods`` on, every non-cash method the day collected must be
+        counted — the close refuses to guess, because an unchecked card total is exactly the gap a
+        real shop loses money in. With it off, only the methods the closer actually counted get a
+        row, and the rest stay visibly uncounted rather than silently assumed correct.
         """
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, closed_by, override=shift_override)
@@ -1744,6 +1793,40 @@ class PosService(PosReceiptReads):
             raise ValidationError(
                 "this till does not count a drawer: turn on pos.take_payments or send no count"
             )
+        # ---- per-method settlement (card / wallet / transfer alongside the cash) ----
+        method_counts = PosService._counted_methods(counted_methods)
+        settle_methods = bool(
+            await PosService._setting(session, tenant_id, "pos.settle_payment_methods", pos_session)
+        )
+        by_method: dict[str, Decimal] = {}
+        if drawer_on:
+            by_method = {
+                str(method): Decimal(str(amount))
+                for method, amount in (
+                    await PosService.drawer_summary(session, tenant_id, session_id)
+                )["by_method"].items()
+            }
+        else:
+            # Even a record-only till can be asked to count the terminal, but it has no drawer
+            # arithmetic to compare against; the sales' own payments are the expected figure.
+            by_method = await PosService._day_by_method(session, tenant_id, pos_session)
+        if not drawer_on and (counted_methods is not None or method_counts):
+            raise ValidationError(
+                "this till does not record payments: turn on pos.take_payments "
+                "or send no counted methods"
+            )
+        non_cash_expected = {
+            method: amount
+            for method, amount in by_method.items()
+            if method != CASH and to_money(amount, method) > 0
+        }
+        missing = sorted(set(non_cash_expected) - set(method_counts))
+        if settle_methods and missing:
+            raise ValidationError(
+                "count every payment method before closing: "
+                + ", ".join(f"{method} ({non_cash_expected[method]})" for method in missing)
+            )
+
         expected: Decimal | None = None
         reason_to_store: str | None = None
         approved = False
@@ -1784,6 +1867,27 @@ class PosService(PosReceiptReads):
             if approved:
                 pos_session.variance_approved_by_user_id = closed_by
                 pos_session.variance_approved_at = datetime.now(UTC)
+            await session.flush()
+        # One row per method the closer counted. Cash always, because the drawer is the method the
+        # till physically holds; the others when they were counted (or when the shop requires it).
+        for method, counted_amount in sorted(
+            {**({"cash": counted} if counted is not None else {}), **method_counts}.items()
+        ):
+            expected_amount = (
+                expected if method == CASH and expected is not None
+                else to_money(by_method.get(method, 0), method)
+            )
+            session.add(
+                PosSessionReconciliation(
+                    tenant_id=tenant_id,
+                    session_id=pos_session.id,
+                    method=method,
+                    expected_amount=expected_amount,
+                    counted_amount=counted_amount,
+                    variance=variance(counted=counted_amount, expected=expected_amount),
+                )
+            )
+        if counted is not None or method_counts:
             await session.flush()
         return pos_session
 
@@ -1865,8 +1969,20 @@ class PosService(PosReceiptReads):
         new_cashier_id: UUID,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
+        counted_cash: object = None,
+        variance_reason: object = None,
     ) -> PosSession:
-        """Transfer the drawer to another cashier without closing the day."""
+        """Transfer the drawer to another cashier without closing the day.
+
+        The hand-off is COUNTED, not just reassigned: ``counted_cash`` is what the new cashier
+        finds in the drawer, the session's own arithmetic says what should be there, and the
+        difference is stored on a ``PosSessionHandover`` row naming both people. Without that row
+        the day's shortage could never be pinned on the shift it happened in — the session keeps
+        running and every later figure would be attributed to whoever holds it last.
+
+        A till that does not take payments has no drawer to count and records the hand-over with
+        the arithmetic at zero.
+        """
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
         PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
         if pos_session.status != "OPEN":
@@ -1874,9 +1990,104 @@ class PosService(PosReceiptReads):
         await PosService._ensure_may_operate(
             session, tenant_id, pos_session, new_cashier_id, override=shift_override
         )
+        drawer_on = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        expected = Decimal("0.00")
+        counted = Decimal("0.00")
+        if drawer_on:
+            expected = Decimal(
+                (await PosService.drawer_summary(session, tenant_id, session_id))["expected_cash"]
+            )
+            if counted_cash is None:
+                raise ValidationError("count the drawer: counted_cash is required to hand it over")
+            counted = to_money(counted_cash, "counted_cash")
+            if counted < 0:
+                raise ValidationError("counted_cash cannot be negative")
+            short = variance(counted=counted, expected=expected)
+            reason_to_store, _approved = check_close_variance(
+                variance_amount=short,
+                reason=variance_reason,
+                reason_required=bool(
+                    await PosService._setting(
+                        session, tenant_id, "pos.variance_reason_required", pos_session
+                    )
+                ),
+                approval_threshold=Decimal(
+                    str(
+                        await PosService._setting(
+                            session, tenant_id, "pos.variance_approval_threshold", pos_session
+                        )
+                        or 0
+                    )
+                ),
+                may_approve=shift_override,
+            )
+        else:
+            reason_to_store = str(variance_reason).strip()[:255] if variance_reason else None
+        session.add(
+            PosSessionHandover(
+                tenant_id=tenant_id,
+                session_id=pos_session.id,
+                from_user_id=pos_session.cashier_user_id or actor_user_id,
+                to_user_id=new_cashier_id,
+                expected_cash=expected,
+                counted_cash=counted,
+                variance=variance(counted=counted, expected=expected),
+                note=reason_to_store,
+            )
+        )
         pos_session.cashier_user_id = new_cashier_id
         await session.flush()
         return pos_session
+
+    # ------------------------------------------------- close-time settlement ----
+
+    @staticmethod
+    def _counted_methods(raw: object) -> dict[str, Decimal]:
+        """Validate ``{method: amount}`` as the closer typed it.
+
+        A method outside the till's vocabulary is a 422, never a silent no-op: a typo in a method
+        name would otherwise drop a whole terminal's count on the floor.
+        """
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise ValidationError("counted_methods must be an object of {method: amount}")
+        counts: dict[str, Decimal] = {}
+        for method, amount in raw.items():
+            name = str(method).strip()
+            if name not in PAYMENT_METHODS:
+                raise ValidationError(
+                    f"unknown payment method {name!r}; allowed {list(PAYMENT_METHODS)}"
+                )
+            value = to_money(amount, f"counted {name}")
+            if value < 0:
+                raise ValidationError(f"counted {name} cannot be negative")
+            counts[name] = value
+        return counts
+
+    @staticmethod
+    async def _day_by_method(
+        session: AsyncSession, tenant_id: UUID, pos_session: PosSession
+    ) -> dict[str, Decimal]:
+        """What each method collected on the day's sales, from the payments themselves."""
+        order_ids = list(
+            (
+                await session.execute(
+                    select(PosReceipt.order_id).where(
+                        PosReceipt.tenant_id == tenant_id,
+                        PosReceipt.session_id == pos_session.id,
+                        PosReceipt.kind == "sale",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return await PosService._order_service().collected_by_method(
+            session, tenant_id, order_ids
+        )
 
     @staticmethod
     async def _record_close(
@@ -3076,18 +3287,36 @@ class PosService(PosReceiptReads):
         order_id: UUID,
         lines: list[dict],
         restock: bool | None = None,
+        refund: object = None,
+        refund_method: str | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
-        """Record the goods coming back, line by line. No money moves.
+        """Record the goods coming back AND give the money back.
 
-        The return is a document against the original sale: each line is
-        capped at sold-minus-already-returned and valued at the ORIGINAL line's
-        unit price minus its discount share. The value is recorded on the
-        return receipt; nothing is refunded or paid out. ``restock`` also puts the returned
-        quantities back on the register's shelf. A return receipt (``POS-RET-``) is issued and the
-        returned lines are recorded on it, which is what every later return
-        caps against.
+        Two documents, one transaction:
+
+        1. the **goods** — each line capped at sold-minus-already-returned and valued at the
+           ORIGINAL line's unit price minus its discount share, on a return receipt (``POS-RET-``)
+           that every later return caps against. ``restock`` puts the returned quantities back on
+           the register's shelf.
+        2. the **money** — the return value is refunded across the tenders the sale actually
+           collected, per ``app.modules.pos.refund``: cash first, then the rest in the order they
+           were taken, each tender never giving back more than it holds. Every slice writes a
+           ``Refund`` row against that payment, and the cash part writes an ``out`` row on the
+           drawer ledger (``cash_refund``), so the close arithmetic sees it.
+
+        A till with ``pos.take_payments`` off moves no money at all: it records the return and
+        reports the value as ``uncollected``, which is exactly what its sales did too.
+
+        ``refund`` overrides the policy with explicit ``[{method, amount}]`` pairs (give the notes
+        back even though the card was charged, when the terminal is down). Each pair must be
+        satisfiable from that method's own remaining room, so the refund still points at a real
+        payment. ``refund_method`` names a single method instead — a shortcut for one pair.
+
+        A retry of the same request must carry the same ``Idempotency-Key`` header: the platform
+        refuses a second execution of a key it already completed, so a dropped connection cannot
+        refund twice.
         """
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
@@ -3130,6 +3359,7 @@ class PosService(PosReceiptReads):
         restock = await PosService._resolve_restock(session, tenant_id, pos_session, restock)
         shelf = PosService._line_restock(lines, restock)
         reasons = await PosService._clean_return_reasons(session, tenant_id, pos_session, lines)
+        conditions = PosService._return_conditions(lines)
         # The sale may have been rung on an EARLIER shift, even one whose day is already closed: the
         # customer comes back tomorrow. Quantities and prices are checked against the ORIGINAL sale
         # (below); the return itself is recorded on the day that is open NOW. Booking it on the old
@@ -3279,6 +3509,7 @@ class PosService(PosReceiptReads):
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
                 "reason": reasons.get(variant_id),
+                "condition": conditions.get(variant_id, "sellable"),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -3286,9 +3517,19 @@ class PosService(PosReceiptReads):
             sum((entry["refund_total"] for entry in refund_lines), Decimal("0")),
             "refund_total",
         )
-        # The cashier layer does not move money: a return records the goods and the invoice value
-        # only. Old sales that took payments keep them untouched (history is kept), but a return
-        # never creates a Refund, an OrderPayment or a drawer movement.
+        # The money half. ``settlement`` says what was actually given back, on which tender, and
+        # what part of the return value the sale never collected (on account, or a deposit).
+        settlement = await PosService._settle_refund(
+            session,
+            tenant_id,
+            pos_session,
+            order,
+            refund_total,
+            requested=PosService._refund_request(refund),
+            single_method=refund_method,
+            reason=PosService._refund_reason(refund_lines),
+            actor_user_id=actor_user_id,
+        )
 
         restocked = False
         if shelved:
@@ -3296,18 +3537,18 @@ class PosService(PosReceiptReads):
             for entry in refund_lines:
                 if not shelf.get(entry["variant_id"]):
                     continue
-                await InventoryService.move(
+                # The CONDITION decides the destination, not the fact that a return happened. A
+                # torn dress must not go back on the sellable shelf, and goods on their way to the
+                # supplier are not stock at all.
+                if await PosService._restock_returned(
                     session,
                     tenant_id,
-                    entry["variant_id"],
+                    entry,
                     register.warehouse_id,
-                    direction="in",
-                    quantity=entry["quantity"],
-                    reason="return",
-                    reference_type="order",
-                    reference_id=order_id,
+                    order_id=order_id,
                     actor_user_id=actor_user_id,
-                )
+                ):
+                    restocked = True
             restocked = True
 
         return_receipt = await PosService._issue_receipt(
@@ -3330,6 +3571,7 @@ class PosService(PosReceiptReads):
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
                     reason=entry["reason"],
+                    condition=entry["condition"],
                 )
             )
         await session.flush()
@@ -3348,6 +3590,10 @@ class PosService(PosReceiptReads):
                 "receipt_id": str(return_receipt.id),
                 "refunded_total": str(refund_total),
                 "restocked": restocked,
+                "refund_mode": settlement["mode"],
+                "refunded": str(settlement["refunded"]),
+                "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
+                "refund_uncollected": str(settlement["uncollected"]),
                 "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
             producer="pos",
@@ -3356,6 +3602,21 @@ class PosService(PosReceiptReads):
             "receipt_id": return_receipt.id,
             "receipt_number": return_receipt.number,
             "refunded_total": str(refund_total),
+            # The money that actually moved, and how. ``refund_mode`` is ``tender`` (refunded
+            # across the original tenders), ``record_only`` (a till that takes no payments), or
+            # ``nothing_collected`` (the sale never collected this value).
+            "refund_mode": settlement["mode"],
+            "refunded": str(settlement["refunded"]),
+            "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
+            "refund_uncollected": str(settlement["uncollected"]),
+            "refunds": [
+                {
+                    "payment_id": str(slice_.payment_id) if slice_.payment_id else None,
+                    "method": slice_.method,
+                    "amount": str(slice_.amount),
+                }
+                for slice_ in settlement["slices"]
+            ],
             "lines": [
                 {
                     "variant_id": str(entry["variant_id"]),
@@ -3367,6 +3628,455 @@ class PosService(PosReceiptReads):
             ],
             # True when at least one piece went back on the shelf; each line says its own.
             "restocked": restocked,
+        }
+
+    @staticmethod
+    async def _ensure_record_only_is_deliberate(
+        session: AsyncSession, tenant_id: UUID, pos_session: PosSession
+    ) -> None:
+        """Refuse a silent record-only sale in a shop that never chose it.
+
+        ``pos.take_payments`` defaults to off, and an apparel shop that skipped its setup keeps
+        that default. Selling in that state looks completely normal and records no money at all, so
+        the shop only finds out when the drawer and the books disagree. The owner can still run
+        this way on purpose: ``pos.allow_record_only_sales`` is the explicit yes.
+        """
+        mode = await PosService.payments_mode(session, tenant_id, pos_session)
+        if not mode["apparel_setup_incomplete"]:
+            return
+        if bool(
+            await PosService._setting(
+                session, tenant_id, "pos.allow_record_only_sales", pos_session
+            )
+        ):
+            return
+        raise ValidationError(
+            "this apparel till records sales but no payments: finish the shop setup so the till "
+            "takes payments, or turn on pos.allow_record_only_sales to sell without collecting "
+            "on purpose"
+        )
+
+    #: The states a returned garment can come back in. The condition, not the return itself,
+    #: decides whether the unit is stock again and whether it can be sold.
+    RETURN_CONDITIONS = ("sellable", "quarantine", "damaged", "writeoff", "supplier")
+    #: Conditions where the goods are physically in the shop but NOT sellable: they are counted in
+    #: `on_hand` and in `quarantined`, so availability (on_hand - quarantined - reserved) never
+    #: offers them to a customer.
+    _UNSELLABLE_CONDITIONS = frozenset({"quarantine", "damaged"})
+
+    @staticmethod
+    def _return_conditions(lines: list[dict]) -> dict[UUID, str]:
+        """The condition per variant, from the return lines. Defaults to ``sellable``."""
+        conditions: dict[UUID, str] = {}
+        for line in lines:
+            raw = line.get("condition")
+            if raw in (None, ""):
+                continue
+            value = str(raw).strip().lower()
+            if value not in PosService.RETURN_CONDITIONS:
+                raise ValidationError(
+                    f"condition must be one of {list(PosService.RETURN_CONDITIONS)}"
+                )
+            try:
+                conditions[UUID(str(line["variant_id"]))] = value
+            except (KeyError, ValueError):
+                continue
+        return conditions
+
+    @staticmethod
+    async def _restock_returned(
+        session: AsyncSession,
+        tenant_id: UUID,
+        entry: dict,
+        warehouse_id: UUID,
+        *,
+        order_id: UUID,
+        actor_user_id: UUID | None,
+    ) -> bool:
+        """Put a returned line where its CONDITION says it belongs. Returns whether stock moved.
+
+        * ``sellable``  — back on the shelf, available to sell again.
+        * ``quarantine``/``damaged`` — physically in the shop, counted in ``on_hand`` and in
+          ``quarantined``, so availability never offers it. It waits for inspection, a repair or a
+          supplier claim.
+        * ``writeoff`` — destroyed or lost. Nothing returns to stock: counting it would inflate the
+          shelf and hide the loss.
+        * ``supplier`` — going back to the supplier. Also not stock.
+        """
+        from app.modules.inventory.service import InventoryService
+        from app.modules.inventory.services.balances import BalanceServiceMixin
+
+        condition = entry.get("condition") or "sellable"
+        if condition in {"writeoff", "supplier"}:
+            return False
+        await InventoryService.move(
+            session,
+            tenant_id,
+            entry["variant_id"],
+            warehouse_id,
+            direction="in",
+            quantity=entry["quantity"],
+            reason="return",
+            reference_type="order",
+            reference_id=order_id,
+            actor_user_id=actor_user_id,
+        )
+        if condition in PosService._UNSELLABLE_CONDITIONS:
+            balance = await BalanceServiceMixin._locked_balance(
+                session, tenant_id, entry["variant_id"], warehouse_id
+            )
+            balance.quarantined = int(balance.quarantined or 0) + int(entry["quantity"])
+        return True
+
+    # ---------------------------------------------------------- void a sale ----
+
+    @staticmethod
+    async def void_sale(
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        order_id: UUID,
+        reason: object,
+        actor_user_id: UUID | None = None,
+        shift_override: bool = False,
+    ) -> dict:
+        """Reverse a CONFIRMED sale. Nothing is deleted: a reversing document is added.
+
+        A return and a void are different accounting facts and the till keeps them apart. A return
+        says "the customer brought goods back"; a void says "this sale should never have existed"
+        — the wrong size rung up, the wrong price, the wrong colour. Using a return for the second
+        pollutes the return report with sales that never happened.
+
+        So a void:
+
+        * needs a manager override (``shift_override``) and a reason;
+        * puts every unit back on the shelf as its own ``void`` movement;
+        * gives the money back across the tenders the sale collected, through the same
+          ``_settle_refund`` a return uses, so the drawer and the card reversals agree;
+        * issues a ``POS-VOID-`` receipt against the original order;
+        * announces ``pos.sale.voided`` with the original and the actor.
+
+        Refused when any of the sale has already come back: a half-returned, half-voided sale has
+        no single meaning. Finish it as a return instead.
+        """
+        from app.core.events.writer import add_outbox_event
+        from app.modules.inventory.service import InventoryService
+        from app.modules.orders.models import Order, OrderItem
+
+        reason_text = str(reason or "").strip()
+        if not reason_text:
+            raise ValidationError("a void needs a reason")
+        if len(reason_text) > 255:
+            raise ValidationError("the void reason must be at most 255 characters")
+
+        pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
+        PosService._ensure_holds_shift(pos_session, actor_user_id, override=shift_override)
+        await PosService._ensure_may_operate(
+            session, tenant_id, pos_session, actor_user_id, override=shift_override
+        )
+        if not shift_override:
+            raise PermissionDeniedError("voiding a confirmed sale needs a manager override")
+        if pos_session.status != "OPEN":
+            raise ConflictError("this session is closed; a void rides the open drawer")
+
+        order = (
+            await session.execute(
+                select(Order)
+                .where(Order.tenant_id == tenant_id, Order.id == order_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise NotFoundError(f"order {order_id} not found")
+
+        sale_receipt = (
+            await session.execute(
+                select(PosReceipt).where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.order_id == order_id,
+                    PosReceipt.kind == "sale",
+                )
+            )
+        ).scalar_one_or_none()
+        if sale_receipt is None:
+            raise NotFoundError(f"no POS sale receipt for order {order_id}")
+        already = (
+            await session.execute(
+                select(PosReceipt.id).where(
+                    PosReceipt.tenant_id == tenant_id,
+                    PosReceipt.order_id == order_id,
+                    PosReceipt.kind == "void",
+                )
+            )
+        ).scalar_one_or_none()
+        if already is not None:
+            raise ConflictError("this sale was already voided")
+        came_back = (
+            await session.execute(
+                select(func.coalesce(func.sum(PosReturnLine.quantity), 0)).where(
+                    PosReturnLine.tenant_id == tenant_id,
+                    PosReturnLine.order_id == order_id,
+                )
+            )
+        ).scalar_one()
+        if int(came_back or 0) > 0:
+            raise ConflictError(
+                "part of this sale already came back as a return; "
+                "finish it as a return instead of a void"
+            )
+
+        register = await PosService._get_register(session, tenant_id, pos_session.register_id)
+        items = list(
+            (
+                await session.execute(
+                    select(OrderItem).where(
+                        OrderItem.tenant_id == tenant_id, OrderItem.order_id == order_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for item in items:
+            await InventoryService.move(
+                session,
+                tenant_id,
+                item.variant_id,
+                register.warehouse_id,
+                direction="in",
+                quantity=item.quantity,
+                reason="void",
+                reference_type="order",
+                reference_id=order_id,
+                actor_user_id=actor_user_id,
+            )
+
+        # Give back exactly what the sale collected, on the tenders that collected it.
+        tenders, _payments = await PosService._refundable_tenders(session, tenant_id, order_id)
+        collected = to_money(sum((tender.room for tender in tenders), Decimal("0")), "collected")
+        settlement = await PosService._settle_refund(
+            session,
+            tenant_id,
+            pos_session,
+            order,
+            collected,
+            reason=f"void: {reason_text}",
+            actor_user_id=actor_user_id,
+        )
+
+        void_receipt = await PosService._issue_receipt(
+            session,
+            tenant_id,
+            pos_session,
+            order,
+            number_prefix="POS-VOID",
+            kind="void",
+            sold_by_user_id=actor_user_id,
+        )
+        await session.flush()
+        await add_outbox_event(
+            session,
+            aggregate_type="pos_session",
+            aggregate_id=pos_session.id,
+            event_type="pos.sale.voided",
+            tenant_id=tenant_id,
+            payload={
+                "pos.sale.voided": True,
+                "session_id": str(pos_session.id),
+                "order_id": str(order_id),
+                "original_receipt_id": str(sale_receipt.id),
+                "original_receipt_number": sale_receipt.number,
+                "void_receipt_id": str(void_receipt.id),
+                "reason": reason_text,
+                "refunded": str(settlement["refunded"]),
+                "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
+                "uncollected": str(settlement["uncollected"]),
+                "actor_user_id": str(actor_user_id) if actor_user_id else None,
+            },
+            producer="pos",
+        )
+        return {
+            "void_receipt_id": void_receipt.id,
+            "void_receipt_number": void_receipt.number,
+            "order_id": order_id,
+            "original_receipt_id": sale_receipt.id,
+            "original_receipt_number": sale_receipt.number,
+            "reason": reason_text,
+            "refunded": str(settlement["refunded"]),
+            "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
+            "uncollected": str(settlement["uncollected"]),
+            "restocked": True,
+        }
+
+    # ---------------------------------------------------- refund settlement ----
+
+    @staticmethod
+    def _refund_request(refund: object) -> list[tuple[str, object]] | None:
+        """Turn the request's explicit refund lines into ``(method, amount)`` pairs, or None.
+
+        ``None`` means "the shop's policy" — cash first, then the tenders in the order they were
+        taken (``app.modules.pos.refund``). An explicit list is the cashier overriding that: give
+        the notes back even though the card was charged, when the terminal is down.
+        """
+        if refund is None:
+            return None
+        if not isinstance(refund, (list, tuple)):
+            raise ValidationError("refund must be a list of {method, amount} lines")
+        pairs: list[tuple[str, object]] = []
+        for index, item in enumerate(refund):
+            if not isinstance(item, dict):
+                raise ValidationError(f"refund[{index}] must be an object")
+            method = str(item.get("method", "")).strip()
+            if not method:
+                raise ValidationError(f"refund[{index}].method is required")
+            pairs.append((method, item.get("amount")))
+        return pairs or None
+
+    @staticmethod
+    def _refund_reason(refund_lines: list[dict]) -> str:
+        """One human line for the Refund rows: the return reasons the cashier picked."""
+        picked = sorted({str(entry["reason"]) for entry in refund_lines if entry.get("reason")})
+        if not picked:
+            return "POS return"
+        return "POS return: " + ", ".join(picked)
+
+    @staticmethod
+    async def _refundable_tenders(
+        session: AsyncSession, tenant_id: UUID, order_id: UUID
+    ) -> tuple[list[Tender], list]:
+        """The sale's captured tenders and how much of each has already gone back.
+
+        Only ``captured`` rows count: a pending or failed payment never put money in the till, so
+        there is nothing to give back. Refunds already made are summed per payment, which is what
+        caps the next one — no separate counter to drift.
+        """
+        from app.modules.orders.models import OrderPayment, Refund
+
+        payments = list(
+            (
+                await session.execute(
+                    select(OrderPayment)
+                    .where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order_id,
+                        OrderPayment.status == "captured",
+                    )
+                    .order_by(OrderPayment.paid_at.asc().nullsfirst(), OrderPayment.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not payments:
+            return [], []
+        refunded = dict(
+            (
+                await session.execute(
+                    select(Refund.payment_id, func.coalesce(func.sum(Refund.amount), 0))
+                    .where(
+                        Refund.tenant_id == tenant_id,
+                        Refund.payment_id.in_([payment.id for payment in payments]),
+                        Refund.status.in_(("approved", "processed")),
+                    )
+                    .group_by(Refund.payment_id)
+                )
+            ).all()
+        )
+        tenders = [
+            Tender(
+                payment_id=payment.id,
+                method=str(payment.method),
+                amount=to_money(payment.amount, "payment"),
+                refunded=to_money(refunded.get(payment.id, 0), "refunded"),
+            )
+            for payment in payments
+        ]
+        return tenders, payments
+
+    @staticmethod
+    async def _settle_refund(
+        session: AsyncSession,
+        tenant_id: UUID,
+        pos_session: PosSession,
+        order: object,
+        amount: object,
+        *,
+        requested: list[tuple[str, object]] | None = None,
+        single_method: str | None = None,
+        reason: str | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """Give the money back, across the tenders the sale collected.
+
+        The ONE place a POS refund moves money, shared by a return, an exchange's cheaper
+        replacement and a voided sale — so the three can never disagree about which tender paid.
+
+        Writes, in the caller's transaction:
+        * one ``Refund`` row per tender slice (``processed``, naming the payment it reverses);
+        * one ``out`` row on the drawer ledger for the cash part (``cash_refund``), which is what
+          makes the close arithmetic show the money that left the drawer.
+
+        Nothing is written for a till with ``pos.take_payments`` off, nor for value the sale never
+        collected. Both cases are reported, never silently dropped: ``mode`` says which happened.
+        """
+        from app.modules.orders.models import Refund
+
+        value = to_money(amount, "refund_total")
+        record_only = {
+            "mode": "record_only",
+            "refunded": to_money(0, "refunded"),
+            "uncollected": value,
+            "by_method": {},
+            "slices": [],
+        }
+        if not bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        ):
+            return record_only
+        tenders, _payments = await PosService._refundable_tenders(session, tenant_id, order.id)
+        if not tenders:
+            # A sale that collected nothing has no tender to give back to. The value is reported as
+            # uncollected so the caller can tell the customer what actually happened.
+            return {**record_only, "mode": "nothing_collected"}
+        if single_method:
+            plan = plan_for(value, tenders, requested=[(single_method, value)])
+        else:
+            plan = plan_for(value, tenders, requested=requested)
+        now = datetime.now(UTC)
+        for slice_ in plan.slices:
+            session.add(
+                Refund(
+                    tenant_id=tenant_id,
+                    payment_id=slice_.payment_id,
+                    amount=slice_.amount,
+                    reason=reason,
+                    status="processed",
+                    processed_at=now,
+                    created_by_user_id=actor_user_id,
+                )
+            )
+        if plan.cash > 0:
+            session.add(
+                PosCashMovement(
+                    tenant_id=tenant_id,
+                    session_id=pos_session.id,
+                    direction="out",
+                    reason="cash_refund",
+                    amount=plan.cash,
+                    reference_type="order",
+                    reference_id=order.id,
+                    notes=(reason or "POS refund")[:255],
+                    created_by_user_id=actor_user_id,
+                )
+            )
+        await session.flush()
+        return {
+            "mode": "tender",
+            "refunded": plan.refunded,
+            "uncollected": plan.uncollected,
+            "by_method": plan.by_method,
+            "slices": list(plan.slices),
         }
 
     # ----------------------------------------------------------- exchanges ----
@@ -3381,16 +4091,30 @@ class PosService(PosReceiptReads):
         return_lines: list[dict],
         new_lines: list[dict],
         restock: bool | None = None,
+        payments: object = None,
+        refund: object = None,
+        refund_method: str | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
-        """The one-transaction exchange: record the returned goods and the replacement sale.
+        """The one-transaction exchange: returned goods, replacement sale, AND the difference.
 
-        Nothing is paid, refunded or put in a drawer. The return is a document against the
-        original sale (capped at sold-minus-already-returned, priced at the original line price),
-        the replacement is a new order priced off the CURRENT ladder, and the value difference is
-        only reported. Both commit together under two receipts, paired by the return receipt id.
-        The exchange keeps the original order's customer."""
+        The return is a document against the original sale (capped at sold-minus-already-returned,
+        priced at the original line price); the replacement is a new order priced off the CURRENT
+        ladder. Both commit together under two receipts, paired by the return receipt id, and the
+        exchange keeps the original order's customer.
+
+        The money then moves, on the net:
+
+        * **replacement costs more** — the difference is COLLECTED on the new order through the
+          till's tender rules (``payments``), and the cash part goes into the drawer.
+        * **replacement costs less** — the difference is REFUNDED across the tenders the original
+          sale collected (``app.modules.pos.refund``), and the cash part comes out of the drawer.
+        * **the same** — nothing moves, and the result says so (``settlement: exchange_only``)
+          instead of leaving the cashier to guess.
+
+        A till with ``pos.take_payments`` off moves no money and says ``record_only``. Whatever the
+        sale never collected is reported as ``uncollected``, never paid out of the drawer."""
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
         from app.modules.inventory.service import InventoryService
@@ -3438,6 +4162,7 @@ class PosService(PosReceiptReads):
         reasons = await PosService._clean_return_reasons(
             session, tenant_id, pos_session, return_lines
         )
+        conditions = PosService._return_conditions(return_lines)
         # As in return_sale: the original sale may be on an earlier, closed shift. The goods are
         # checked against that sale; the exchange is recorded on the day that is open now.
 
@@ -3577,6 +4302,7 @@ class PosService(PosReceiptReads):
                 "unit_price": sold[variant_id]["unit_price"],
                 "refund_total": total,
                 "reason": reasons.get(variant_id),
+                "condition": conditions.get(variant_id, "sellable"),
             }
             for variant_id, total in zip(requested, priced, strict=True)
         ]
@@ -3609,10 +4335,22 @@ class PosService(PosReceiptReads):
             raise ValidationError(str(exc)) from exc
         new_grand_total = to_money(totals["grand_total"], "new_grand_total")
 
-        # The cashier layer does not move money: an exchange records the goods and both invoice
-        # values; the difference is only reported, never refunded, charged or put in a drawer. Old
-        # sales that took payments keep them untouched (history is kept).
-        profile = await PosService.resolve_profile(session, tenant_id, pos_session)  # noqa: F841
+        profile = await PosService.resolve_profile(session, tenant_id, pos_session)
+        take_payments = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        net = to_money(new_grand_total - return_total, "net")
+        tender_lines = parse_lines(payments)
+        if not take_payments and (tender_lines or refund or refund_method):
+            raise ValidationError(
+                "this till does not record payments: turn on pos.take_payments "
+                "or send no payments and no refund"
+            )
+        if take_payments and net > 0 and not tender_lines:
+            raise ValidationError(
+                f"the replacement costs {net} more than the return: "
+                "collect the difference before completing the exchange"
+            )
 
         # ---------- commit: order, payments, receipts ------------------------
         register = await PosService._get_register(session, tenant_id, pos_session.register_id)
@@ -3628,20 +4366,90 @@ class PosService(PosReceiptReads):
             session, tenant_id, new_order.id, actor_user_id=actor_user_id
         )
 
+        # ---------- the money half: the net between the two invoice values ----------
+        settlement: dict = {
+            "mode": "exchange_only",
+            "direction": "none",
+            "amount": to_money(0, "amount"),
+            "by_method": {},
+            "slices": [],
+        }
+        if take_payments and net > 0:
+            allowed = set(profile.allowed_payment_methods or []) if profile is not None else set()
+            reference_required = [
+                str(m)
+                for m in (
+                    await PosService._setting(
+                        session, tenant_id, "pos.reference_required_methods", pos_session
+                    )
+                    or []
+                )
+            ]
+            tender = settle(
+                tender_lines,
+                total=net,
+                allowed_methods=allowed,
+                reference_required=reference_required,
+            )
+            for line in tender.lines:
+                await OrderService.add_payment(
+                    session,
+                    tenant_id,
+                    new_order.id,
+                    method=line.method,
+                    amount=line.amount,
+                    provider=line.reference,
+                    actor_user_id=actor_user_id,
+                )
+            if tender.cash_kept > 0:
+                session.add(
+                    PosCashMovement(
+                        tenant_id=tenant_id,
+                        session_id=pos_session.id,
+                        direction="in",
+                        reason="cash_sale",
+                        amount=tender.cash_kept,
+                        reference_type="order",
+                        reference_id=new_order.id,
+                        notes="exchange difference collected"[:255],
+                        created_by_user_id=actor_user_id,
+                    )
+                )
+                await session.flush()
+            settlement = {
+                "mode": "tender",
+                "direction": "collected",
+                "amount": tender.paid,
+                "by_method": dict(tender.by_method),
+                "slices": [],
+            }
+        elif take_payments and net < 0:
+            settlement = {
+                **await PosService._settle_refund(
+                    session,
+                    tenant_id,
+                    pos_session,
+                    order,
+                    -net,
+                    requested=PosService._refund_request(refund),
+                    single_method=refund_method,
+                    reason="POS exchange: cheaper replacement",
+                    actor_user_id=actor_user_id,
+                ),
+                "direction": "refunded",
+                "amount": to_money(-net, "amount"),
+            }
+
         if shelved:
             for entry in return_entries:
                 if not shelf.get(entry["variant_id"]):
                     continue
-                await InventoryService.move(
+                await PosService._restock_returned(
                     session,
                     tenant_id,
-                    entry["variant_id"],
+                    entry,
                     register.warehouse_id,
-                    direction="in",
-                    quantity=entry["quantity"],
-                    reason="return",
-                    reference_type="order",
-                    reference_id=order_id,
+                    order_id=order_id,
                     actor_user_id=actor_user_id,
                 )
 
@@ -3665,6 +4473,7 @@ class PosService(PosReceiptReads):
                     unit_price=entry["unit_price"],
                     refund_total=entry["refund_total"],
                     reason=entry["reason"],
+                    condition=entry["condition"],
                 )
             )
         new_receipt = await PosService._issue_receipt(
@@ -3679,7 +4488,6 @@ class PosService(PosReceiptReads):
         await PosService._issue_eta_receipt(session, tenant_id, pos_session, return_receipt)
         await PosService._issue_eta_receipt(session, tenant_id, pos_session, new_receipt)
 
-        net = to_money(new_grand_total - return_total, "net")
         await add_outbox_event(
             session,
             aggregate_type="pos_session",
@@ -3696,6 +4504,9 @@ class PosService(PosReceiptReads):
                 "return_total": str(return_total),
                 "new_total": str(new_grand_total),
                 "net": str(net),
+                "settlement": settlement["direction"],
+                "settled_amount": str(settlement["amount"]),
+                "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
                 "restocked": bool(shelved),
                 "actor_user_id": str(actor_user_id) if actor_user_id else None,
             },
@@ -3709,5 +4520,12 @@ class PosService(PosReceiptReads):
             "return_total": str(return_total),
             "new_total": str(new_grand_total),
             "net": str(net),
+            # The money: ``collected`` (the replacement cost more and the difference was taken),
+            # ``refunded`` (it cost less and the difference went back), ``exchange_only`` (equal,
+            # nothing moved) or ``record_only`` (a till that takes no payments).
+            "settlement": settlement["mode"] if settlement["direction"] == "none" else settlement["direction"],
+            "settled_amount": str(settlement["amount"]),
+            "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
+            "uncollected": str(settlement.get("uncollected", "0.00")),
             "restocked": bool(shelved),
         }

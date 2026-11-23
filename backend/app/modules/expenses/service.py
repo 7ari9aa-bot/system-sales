@@ -165,11 +165,20 @@ class ExpenseService:
         if not category.is_active:
             raise ConflictError("this expense category is inactive")
 
-        # An expense is a RECORD. It never touches the cash drawer: expected cash is the opening
-        # balance plus the day's sales, nothing else. A caller naming a shift is refused rather
-        # than silently ignored, so nobody believes the drawer was reduced.
+        # Money that physically left a cash drawer must leave the LEDGER too, in the same
+        # transaction: an expense paid in cash from the till is an `out` row on
+        # ``pos_cash_movements``, so the close arithmetic shows the drawer short by exactly what
+        # was spent instead of reporting a shortage nobody can explain. Only cash comes out of a
+        # drawer — a card or bank expense is a record with no shift, and naming one is refused
+        # rather than silently dropped.
+        drawer_session = None
         if session_id is not None:
-            raise ValidationError("an expense is a record only, not tied to a shift")
+            if payment_method != "cash":
+                raise ValidationError(
+                    "only a cash expense comes out of a cash drawer: "
+                    f"record this {payment_method} expense without a shift"
+                )
+            drawer_session = await ExpenseService._open_drawer(session, tenant_id, session_id)
 
         when = expense_date or datetime.now(UTC).date()
         expense = Expense(
@@ -180,12 +189,24 @@ class ExpenseService:
             amount=value,
             payment_method=payment_method,
             expense_date=when,
-            session_id=None,
+            session_id=drawer_session.id if drawer_session is not None else None,
             status="posted",
             created_by_user_id=created_by,
         )
         session.add(expense)
         await session.flush()
+        if drawer_session is not None:
+            await ExpenseService._drawer_row(
+                session,
+                tenant_id,
+                drawer_session.id,
+                direction="out",
+                amount=value,
+                expense=expense,
+                notes=f"{expense.number} {description}"[:255],
+                actor_user_id=created_by,
+            )
+            await session.flush()
 
         return expense
 
@@ -229,8 +250,68 @@ class ExpenseService:
         expense.status = "voided"
         expense.voided_at = datetime.now(UTC)
         expense.void_reason = reason
+        # Voiding does not delete history: the money goes back on the ledger as its own row, so a
+        # corrected expense leaves a trail instead of an edited one.
+        if expense.session_id is not None and expense.payment_method == "cash":
+            await ExpenseService._drawer_row(
+                session,
+                tenant_id,
+                expense.session_id,
+                direction="in",
+                amount=exact_money(expense.amount),
+                expense=expense,
+                notes=f"reversal of {expense.number}: {reason}"[:255],
+                actor_user_id=voided_by,
+            )
         await session.flush()
         return expense
+
+    @staticmethod
+    async def _open_drawer(session: AsyncSession, tenant_id: UUID, session_id: UUID):
+        """The OPEN till this expense is paid out of, or a refusal."""
+        from app.modules.pos.models import PosSession
+
+        pos_session = (
+            await session.execute(
+                select(PosSession)
+                .where(PosSession.tenant_id == tenant_id, PosSession.id == session_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if pos_session is None:
+            raise NotFoundError("pos session not found")
+        if pos_session.status != "OPEN":
+            raise ConflictError("this shift is closed; an expense cannot be paid out of it")
+        return pos_session
+
+    @staticmethod
+    async def _drawer_row(
+        session: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        direction: str,
+        amount,
+        expense: Expense,
+        notes: str,
+        actor_user_id: UUID | None,
+    ) -> None:
+        """One row on the drawer ledger, pointing at the expense it belongs to."""
+        from app.modules.pos.models import PosCashMovement
+
+        session.add(
+            PosCashMovement(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                direction=direction,
+                reason="pay_out" if direction == "out" else "pay_in",
+                amount=exact_money(amount),
+                reference_type="expense",
+                reference_id=expense.id,
+                notes=notes,
+                created_by_user_id=actor_user_id,
+            )
+        )
 
     @staticmethod
     async def list(

@@ -336,15 +336,38 @@ class ReturnLine(BaseModel):
     # This piece's own shelf decision (a jacket back on the rail, a torn one not). None = the
     # request's choice, else the shop's pos.return_restock_default.
     restock: bool | None = None
+    # The state the garment came back in, which decides where it goes: `sellable` (back on the
+    # rail), `quarantine` (there, waiting for inspection), `damaged` (there, never sellable),
+    # `writeoff` (destroyed, not stock), `supplier` (going back to the supplier, not stock).
+    # None = sellable.
+    condition: str | None = Field(default=None, max_length=15)
+
+
+class RefundLine(BaseModel):
+    """One tender to give money back on: the method and how much of the return it covers."""
+
+    method: str = Field(min_length=1, max_length=31)
+    amount: str | float | int
 
 
 class ReturnRequest(BaseModel):
-    """A line-level return of a POS sale (ERPNext's POS return document)."""
+    """A line-level return of a POS sale (ERPNext's POS return document) AND its refund.
+
+    The money goes back across the tenders the sale actually collected: cash first, then the rest
+    in the order they were taken. ``refund`` overrides that with explicit per-method amounts (give
+    the notes back even though the card was charged); ``refund_method`` refunds the whole return on
+    one method. Send neither to use the shop's policy.
+    """
 
     order_id: UUID
     lines: list[ReturnLine] = Field(min_length=1)
     # None = the shop's pos.return_restock_default (a line can still override it).
     restock: bool | None = None
+    # Explicit per-method refund lines. Each must be satisfiable from that method's own collected
+    # amount, so every refund still points at a real payment.
+    refund: list[RefundLine] | None = None
+    # Refund the whole return on this one method. Mutually exclusive with ``refund``.
+    refund_method: str | None = Field(default=None, max_length=31)
 
 
 class ExchangeLine(BaseModel):
@@ -355,13 +378,22 @@ class ExchangeLine(BaseModel):
 
 
 class ExchangeRequest(BaseModel):
-    """The one-transaction exchange: return lines and their replacement sale are recorded
-    together. No payment fields exist: the cashier layer does not move money."""
+    """The one-transaction exchange: return lines, their replacement sale, and the difference.
+
+    A replacement that costs more needs ``payments`` covering the difference; one that costs less
+    is refunded across the original tenders (or per ``refund`` / ``refund_method``); an equal swap
+    moves nothing and says so.
+    """
 
     order_id: UUID
     return_lines: list[ExchangeLine] = Field(min_length=1)
     new_lines: list[ExchangeLine] = Field(min_length=1)
     restock: bool | None = None
+    # How the customer pays the difference when the replacement costs more.
+    payments: list[dict] | None = None
+    # How the difference goes back when the replacement costs less.
+    refund: list[RefundLine] | None = None
+    refund_method: str | None = Field(default=None, max_length=31)
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
@@ -998,10 +1030,13 @@ async def return_sale(
                 "quantity": line.quantity,
                 "reason": line.reason,
                 "restock": line.restock,
+                "condition": line.condition,
             }
             for line in body.lines
         ],
         restock=body.restock,
+        refund=[line.model_dump() for line in body.refund] if body.refund else None,
+        refund_method=body.refund_method,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
     )
@@ -1015,8 +1050,9 @@ async def return_sale(
 async def exchange(
     session_id: UUID, body: ExchangeRequest, ctx: PosWriteCtx, override: OverrideDep
 ):
-    """One-transaction exchange: record the returned goods and the replacement sale. No money
-    moves; the value difference is only reported. Two receipts, one commit."""
+    """One-transaction exchange: the returned goods, the replacement sale, and the difference.
+    A dearer replacement collects it, a cheaper one refunds it, an even swap moves nothing.
+    Two receipts, one commit."""
     result = await PosService.exchange(
         ctx.session,
         ctx.tenant_id,
@@ -1028,6 +1064,7 @@ async def exchange(
                 "quantity": line.quantity,
                 "reason": line.reason,
                 "restock": line.restock,
+                "condition": line.condition,
             }
             for line in body.return_lines
         ],
@@ -1036,6 +1073,9 @@ async def exchange(
             for line in body.new_lines
         ],
         restock=body.restock,
+        payments=body.payments,
+        refund=[line.model_dump() for line in body.refund] if body.refund else None,
+        refund_method=body.refund_method,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
     )
@@ -1043,6 +1083,39 @@ async def exchange(
         **result,
         "return_receipt_id": str(result["return_receipt_id"]),
         "new_receipt_id": str(result["new_receipt_id"]),
+    }
+
+
+class VoidSaleRequest(BaseModel):
+    """Reverse a confirmed sale. The reason is required and the caller needs a manager override."""
+
+    order_id: UUID
+    reason: str = Field(min_length=1, max_length=255)
+
+
+@router.post("/sessions/{session_id}/voids", status_code=201)
+async def void_sale(
+    session_id: UUID, body: VoidSaleRequest, ctx: PosWriteCtx, override: OverrideDep
+):
+    """Reverse a confirmed POS sale: stock back, money back, a POS-VOID- document, an audit trail.
+
+    Nothing is deleted — the original receipt, its payments and its stock movements all stay, and
+    the void adds the reversing ones. Needs a manager override and a reason.
+    """
+    result = await PosService.void_sale(
+        ctx.session,
+        ctx.tenant_id,
+        session_id,
+        order_id=body.order_id,
+        reason=body.reason,
+        actor_user_id=ctx.user.id,
+        shift_override=override.active,
+    )
+    return {
+        **result,
+        "void_receipt_id": str(result["void_receipt_id"]),
+        "original_receipt_id": str(result["original_receipt_id"]),
+        "order_id": str(result["order_id"]),
     }
 
 
@@ -1082,6 +1155,35 @@ class StockSummary(BaseModel):
 class ReorderLevelRequest(BaseModel):
     # strict: a JSON `true` or "3" must not become a level (bool is an int in Python).
     reorder_level: int = Field(strict=True, ge=0, le=1_000_000)
+
+
+@router.get("/stock/count")
+async def count_stock(
+    ctx: PosStockReadCtx,
+    term: Annotated[str | None, Query(max_length=100)] = None,
+    category_id: UUID | None = None,
+    brand_id: UUID | None = None,
+    season: Annotated[str | None, Query(max_length=40)] = None,
+    material: Annotated[str | None, Query(max_length=60)] = None,
+    status: Annotated[str | None, Query(pattern="^(in|low|out)$")] = None,
+):
+    """How many variants match the same filters as GET /stock.
+
+    The grid shows "من N" from this, so a page that happens to be full is never mistaken for the
+    whole set — the reason a printed sheet or an export could come out short.
+    """
+    return {
+        "total": await StockViewService.count_stock(
+            ctx.session,
+            ctx.tenant_id,
+            term=term,
+            category_id=category_id,
+            brand_id=brand_id,
+            season=season,
+            material=material,
+            status=status,
+        )
+    }
 
 
 @router.get("/stock", response_model=list[StockRow])
