@@ -18,11 +18,13 @@ import {
   Play,
   Pause,
   ThumbsUp,
+  Reply,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerSeenMessageId } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -94,6 +96,7 @@ export default function ChannelChat({
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const messengerImageInput = useRef(null);
   const igFileInput = useRef(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
@@ -187,6 +190,7 @@ export default function ChannelChat({
   // Messenger's only receipt is the reader's avatar under the last bubble they opened, and its
   // header says "Active now" while the customer is writing. Both are derived, never guessed.
   const messengerSeenId = isMessenger ? messengerSeenMessageId(allMessages) : null;
+  const messengerStatus = isMessenger ? messengerStatusLine(allMessages, lang) : null;
   const messengerActiveNow = isMessenger ? messengerPresence(conversation?.lastCustomerMessageAt) : null;
 
   useLayoutEffect(() => {
@@ -513,7 +517,13 @@ export default function ChannelChat({
             </button>
           </div>
         )}
-        {!loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
+        {isMessenger && !loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
+          <div data-testid="messenger-empty" className="flex flex-col items-center gap-2 py-12">
+            <ConversationAvatar conversation={conversation} className="h-[60px] w-[60px] text-[20px]" />
+            <div dir="auto" className="text-[17px] font-bold text-[#050505]">{conversation.customer || conversation.name}</div>
+          </div>
+        )}
+        {!isMessenger && !loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
           <div className="py-10 text-center text-[12.5px] text-muted-foreground">
             {t("inbox.noMessages", "No messages are available for this conversation yet.")}
           </div>
@@ -529,7 +539,15 @@ export default function ChannelChat({
           const messengerRow = isMessenger ? messengerGroup(visibleMessages, index) : null;
           return (
             <React.Fragment key={m.id}>
-              {dayKey && dayKey !== previousDayKey && (
+              {isMessenger ? (
+                messengerTimeDivider(visibleMessages, index) && (
+                  <div data-testid="messenger-time-divider" className="flex justify-center py-3">
+                    <span dir="auto" className="text-[12px] font-medium text-[#65676b]">
+                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${m.time}` : m.time}
+                    </span>
+                  </div>
+                )
+              ) : dayKey && dayKey !== previousDayKey && (
                 <div className={cn("flex justify-center", isInstagram ? "py-3" : "py-1.5")} aria-label={formatWhatsAppDay(m.createdAt, lang, t)}>
                   {/* Instagram prints the day as plain grey text, no pill and no shadow. */}
                   <span className={cn(isInstagram ? "text-[12px] text-[#6a717a]" : "rounded-lg px-3 py-1.5 text-[12.5px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]", !isInstagram && (!isTelegram && !isMessenger && isWhatsApp ? "bg-[var(--wa-bg-panel)] text-[color:var(--wa-text-secondary)]" : "bg-white/90 font-medium"), !isInstagram && (isTelegram ? "text-[#527da3]" : isMessenger ? "text-[#65676b]" : !isWhatsApp && "text-[#54656f]"))}>
@@ -559,6 +577,10 @@ export default function ChannelChat({
             </React.Fragment>
           );
         })}
+
+        {messengerStatus && (
+          <div data-testid="messenger-status-line" className="mt-1 px-1 text-end text-[11px] text-[#65676b]" dir="auto">{messengerStatus}</div>
+        )}
 
         {approval && (
           <div
@@ -863,7 +885,17 @@ export default function ChannelChat({
           </div>
           </>
         ) : isMessenger ? (
-          <div dir="ltr" className="flex h-11 items-center gap-2 rounded-full border border-[#e4e6eb] bg-white px-3">
+          <>
+          {replyingTo && (
+            <div data-testid="messenger-reply-bar" dir={lang === "ar" ? "rtl" : "ltr"} className="mb-1 flex items-center gap-2 rounded-xl bg-[#f0f2f5] px-3 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-[#050505]">{lang === "ar" ? `الرد على ${replyingTo.side === "out" ? "نفسك" : conversation.customer}` : `Replying to ${replyingTo.side === "out" ? "yourself" : conversation.customer}`}</div>
+                <div className="truncate text-[12px] text-[#65676b]" dir="auto">{messengerQuoteText({ body: replyingTo.text, content_type: replyingTo.contentType }, lang)}</div>
+              </div>
+              <button type="button" data-testid="messenger-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
+            </div>
+          )}
+          <div dir="ltr" data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
             <button
               type="button"
               onClick={() => setAttachmentMenuOpen((v) => !v)}
@@ -880,15 +912,33 @@ export default function ChannelChat({
             >
               <Smile className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              data-testid="messenger-image-button"
+              onClick={() => messengerImageInput.current?.click()}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#e4e6eb]"
+              title={lang === "ar" ? "إرسال صورة" : "Send a photo"}
+              aria-label={lang === "ar" ? "إرسال صورة" : "Send a photo"}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </button>
+            <input
+              ref={messengerImageInput}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              hidden
+              data-testid="messenger-image-input"
+              onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) pickFile(file); }}
+            />
             <input
               value={text}
               onChange={(event) => setText(event.target.value)}
               dir="auto"
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
-              placeholder={t("inbox.typeMessage")}
+              placeholder="Aa"
               aria-label={t("inbox.typeMessage")}
               disabled={sending}
-              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[14px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
+              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[15px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
             />
             {text.trim() ? (
               <button
@@ -917,6 +967,7 @@ export default function ChannelChat({
               </button>
             )}
           </div>
+          </>
         ) : (
           <div
             className="flex items-center gap-2 rounded-full px-3 py-1.5"
@@ -977,6 +1028,8 @@ export default function ChannelChat({
         channel={channel}
         conversation={conversation}
         lang={lang}
+        onSearch={() => { setContactDrawerOpen(false); setSearchOpen(true); setSearchQuery(""); }}
+        onTheme={() => { setContactDrawerOpen(false); setThemePickerOpen(true); }}
         onListStateChange={isInstagram ? (row, body) => onListStateChange?.(row, body) : undefined}
         onOpenCustomerProfile={() => {
           setCustomer360Record({
@@ -1005,6 +1058,152 @@ export default function ChannelChat({
 }
 
 // Subcomponent: Message Bubble
+// One Messenger message. Its look follows messengerMessageShape: a photo, video or sticker stands
+// on the page with no bubble, a file is a card, a removed message is a grey line, a system line is
+// centred grey text, and text and audio sit in the blue or grey bubble.
+function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, messengerTheme, th, lang, conversation, onReply, onOpenImage }) {
+  const out = m.side === "out";
+  const group = messengerRow || { first: true, last: true, alone: true, size: 1 };
+  const shape = messengerMessageShape(m);
+  const ar = lang === "ar";
+
+  if (shape === "system") {
+    return (
+      <div data-testid="messenger-system" dir="auto" className="my-2 px-6 text-center text-[12px] leading-snug text-[#65676b]">{m.text}</div>
+    );
+  }
+
+  const quote = m.replyTo ? messengerQuoteText(m.replyTo, lang) : "";
+  const reactions = messengerReactionSummary(m.reactions);
+  const canAct = !m.unsaved && !m.deleted;
+  const hoverButton = "grid h-7 w-7 place-items-center rounded-full text-[#65676b] hover:bg-[#f0f2f5] focus-visible:bg-[#f0f2f5] focus-visible:outline-none";
+  const bare = shape === "photo" || shape === "video" || shape === "sticker" || shape === "bigEmoji";
+  const caption = m.mediaUrl && m.text && !String(m.text).startsWith("blob:") && shape !== "file" ? String(m.text) : "";
+  // A message that is only a web address gets Messenger's preview card under the bubble. The card
+  // shows the site and the address the sender wrote; no title or picture is invented for it.
+  const linkParts = shape === "text" ? messengerLinkParts(m.text) : [];
+  const linkOnly = linkParts.length === 1 && linkParts[0].type === "link" ? linkParts[0].value : "";
+
+  let body;
+  if (shape === "deleted") {
+    body = (
+      <div data-testid="messenger-deleted" dir="auto" className="rounded-[18px] border border-[#ced0d4] px-3 py-2 text-[14px] italic text-[#65676b]">
+        {ar ? "تم حذف هذه الرسالة" : "This message was removed"}
+      </div>
+    );
+  } else if (shape === "bigEmoji") {
+    body = <div data-testid="messenger-big-emoji" title={m.time} className="text-[44px] leading-[1.1]" dir="auto">{String(m.text).trim()}</div>;
+  } else if (shape === "photo" || shape === "sticker") {
+    const open = onOpenImage && shape === "photo" ? () => onOpenImage(m.id) : undefined;
+    body = (
+      <button type="button" data-testid={shape === "photo" ? "messenger-photo" : "messenger-sticker"} onClick={open} disabled={!open} aria-label={ar ? "فتح الصورة" : "Open photo"} className="block max-w-[260px] overflow-hidden rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0084ff]">
+        <img src={m.mediaUrl} alt="" loading="lazy" className={cn("block h-auto max-h-[320px] w-auto max-w-full object-cover", shape === "sticker" && "max-h-[150px] object-contain")} />
+      </button>
+    );
+  } else if (shape === "video") {
+    body = (
+      <video data-testid="messenger-video" src={m.mediaUrl} controls preload="metadata" className="block max-h-[320px] max-w-[260px] rounded-[18px] bg-black" />
+    );
+  } else if (shape === "file") {
+    body = (
+      <a data-testid="messenger-file" href={m.mediaUrl} target="_blank" rel="noreferrer" className="flex max-w-[260px] items-center gap-2 rounded-[18px] bg-[#f0f0f0] px-3 py-2 text-[#050505] hover:bg-[#e4e6eb]">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e4e6eb]"><Paperclip className="h-4 w-4 text-[#65676b]" /></span>
+        <span dir="auto" className="min-w-0 truncate text-[14px] font-medium">{m.fileName || (ar ? "ملف" : "File")}</span>
+      </a>
+    );
+  } else {
+    body = (
+      <div
+        title={m.time}
+        className={cn(
+          "relative max-w-full px-3 py-2 text-[15px] leading-[1.35] rounded-[18px]",
+          messengerBubbleCorners({ out, first: group.first, last: group.last }),
+          reactions && "mb-3"
+        )}
+        style={{ background: messengerBubbleBackground(messengerTheme, out), color: out ? "#FFFFFF" : th?.inText || "#050505" }}
+      >
+        {shape === "audio" ? (
+          <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
+        ) : (
+          <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+            {messengerLinkParts(m.text).map((part, i) =>
+              part.type === "link" ? (
+                <a key={i} data-testid="messenger-link" href={part.value} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="underline underline-offset-2">{part.value}</a>
+              ) : (
+                <React.Fragment key={i}>{part.value}</React.Fragment>
+              )
+            )}
+            {m.ai && <Sparkles className="ms-1 inline h-3 w-3 align-baseline text-amber-300" />}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const badge = reactions && (
+    <span data-testid="messenger-reactions" className={cn("absolute -bottom-3 flex items-center gap-0.5 rounded-full border-2 border-white bg-[#f0f2f5] px-1.5 text-[12px] leading-[18px] text-[#050505]", out ? "end-2" : "start-2")}>
+      {reactions.emojis.join("")}
+      {reactions.count > 1 && <span className="text-[11px] text-[#65676b]">{reactions.count}</span>}
+    </span>
+  );
+
+  return (
+    <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
+      {quote && (
+        <div data-testid="messenger-quote" dir="auto" className="mb-0.5 max-w-[76%] truncate rounded-[18px] bg-[#f0f0f0] px-3 py-1.5 text-[13px] text-[#65676b]">{quote}</div>
+      )}
+      <div className={cn("group/msg flex max-w-[82%] items-end gap-1 sm:max-w-[76%]", out ? "flex-row-reverse" : "flex-row")}>
+        {!out && (
+          <span className="w-6 shrink-0 self-end">
+            {showIncomingAvatar && <span data-testid="messenger-incoming-avatar" className="inline-flex"><ConversationAvatar conversation={conversation} className="h-6 w-6 text-[9px]" /></span>}
+          </span>
+        )}
+        <div className={cn("relative flex min-w-0 flex-col gap-0.5", out ? "items-end" : "items-start")}>
+          {body}
+          {caption && (shape === "photo" || shape === "video") && (
+            <div dir="auto" className="rounded-[18px] bg-[#f0f0f0] px-3 py-2 text-[15px] text-[#050505]">{caption}</div>
+          )}
+          {linkOnly && messengerLinkHost(linkOnly) && (
+            <a data-testid="messenger-link-preview" href={linkOnly} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="block w-[240px] max-w-full overflow-hidden rounded-[18px] border border-[#e4e6eb] bg-white hover:bg-[#f7f8fa]">
+              <div className="px-3 py-2">
+                <div className="text-[11px] uppercase tracking-wide text-[#65676b]" dir="ltr">{messengerLinkHost(linkOnly)}</div>
+                <div className="truncate text-[13.5px] text-[#050505]" dir="ltr">{linkOnly}</div>
+              </div>
+            </a>
+          )}
+          {badge && bare && <span className="mb-3" />}
+          {badge}
+        </div>
+        {out && m.status === "failed" && (
+          <span data-testid="messenger-failed" title={ar ? "لم يتم الإرسال" : "Not sent"} className="grid h-5 w-5 shrink-0 place-items-center self-center rounded-full bg-[#e41e3f] text-[12px] font-bold leading-none text-white" role="img" aria-label={ar ? "لم يتم الإرسال" : "Not sent"}>!</span>
+        )}
+        {canAct && (
+          <div className="flex shrink-0 items-center self-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+            {onReply && (
+              <button type="button" data-testid="messenger-hover-reply" className={hoverButton} onClick={() => onReply(m)} title={ar ? "رد" : "Reply"} aria-label={ar ? "رد" : "Reply"}>
+                <Reply className="h-4 w-4" />
+              </button>
+            )}
+            {m.text && shape !== "audio" && (
+              <button type="button" data-testid="messenger-hover-copy" className={hoverButton} onClick={() => { void navigator.clipboard?.writeText(String(m.text)); }} title={ar ? "نسخ" : "Copy"} aria-label={ar ? "نسخ" : "Copy"}>
+                <Copy className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {out && m.status === "failed" && (
+        <div className="mt-1 px-1 text-[11px] text-[#e41e3f]" dir="auto">{ar ? "لم يتم الإرسال" : "Not sent"}</div>
+      )}
+      {showSeenAvatar && (
+        <span data-testid="messenger-seen-avatar" className="mt-1 inline-flex">
+          <ConversationAvatar conversation={conversation} className="h-4 w-4 text-[8px]" />
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
@@ -1110,39 +1309,9 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   // Messenger: a gradient bubble, 18px corners that square to 4px where two bubbles of the same
   // group meet, the time alone (no ticks), and the reader's avatar under the last bubble they read.
   if (isMessenger) {
-    const group = messengerRow || { first: true, last: true, alone: true, size: 1 };
-    return (
-      <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
-        <div
-          className={cn(
-            "max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
-            messengerBubbleCorners({ out, first: group.first, last: group.last })
-          )}
-          style={{
-            background: messengerBubbleBackground(messengerTheme, out),
-            color: out ? "#FFFFFF" : th?.inText || "#050505",
-          }}
-        >
-          {isAudio ? (
-            <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
-          ) : (
-            <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-              {m.text}{" "}
-              <span dir="ltr" className={cn("inline-flex items-center gap-1 align-baseline text-[11px]", out ? "text-white/80" : "text-[#65676B]")}>
-                {m.time}
-                {m.ai && <Sparkles className="h-3 w-3 text-amber-300" />}
-              </span>
-            </div>
-          )}
-        </div>
-        {showSeenAvatar && (
-          <span data-testid="messenger-seen-avatar" className="mt-1 inline-flex">
-            <ConversationAvatar conversation={_conversation} className="h-4 w-4 text-[8px]" />
-          </span>
-        )}
-      </div>
-    );
+    return <MessengerBubble m={m} messengerRow={messengerRow} showSeenAvatar={showSeenAvatar} showIncomingAvatar={_showIncomingAvatar} messengerTheme={messengerTheme} th={th} lang={_lang} conversation={_conversation} onReply={onReply} onOpenImage={onOpenImage} />;
   }
+
 
   // Instagram
   return (

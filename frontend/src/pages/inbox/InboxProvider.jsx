@@ -101,6 +101,7 @@ function toConversation(row, channel, t) {
       : channel?.accent || "hsl(var(--primary))",
     channel: row.channel,
     preview: previewLine(row, t),
+    lastDirection: row.last_message_direction || null,
     status: viewStatus,
     backendStatus: status,
     assigneeUserId: row.assignee_user_id || null,

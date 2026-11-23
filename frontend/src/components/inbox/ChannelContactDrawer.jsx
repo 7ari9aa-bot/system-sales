@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { formatCurrency } from "@/lib/regional";
+import MessengerDetails from "@/components/inbox/MessengerDetails";
 
 export default function ChannelContactDrawer({
   isOpen,
@@ -23,6 +24,8 @@ export default function ChannelContactDrawer({
   lang = "ar",
   onOpenCustomerProfile,
   onListStateChange,
+  onSearch,
+  onTheme,
 }) {
   const [activeMediaTab, setActiveMediaTab] = useState("media"); // media | docs | links
   const [starred, setStarred] = useState(false);
@@ -317,44 +320,7 @@ export default function ChannelContactDrawer({
       )}
 
       {/* ==================== 3. MESSENGER STYLE ==================== */}
-      {isMessenger && (
-        <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-card text-[#050505] dark:text-foreground">
-          {/* Header */}
-          <div className="h-[60px] border-b border-[#e4e6eb] dark:border-border px-4 flex items-center justify-between shrink-0">
-            <h3 className="text-[15px] font-bold text-[#050505] dark:text-foreground">
-              {isAr ? "تفاصيل المحادثة" : "Chat details"}
-            </h3>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8 w-8 rounded-full grid place-items-center text-[#65676b] hover:bg-[#f0f2f5] dark:hover:bg-surface"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
-            <div className="text-center py-4 space-y-2">
-              <ConversationAvatar conversation={conversation} className="h-20 w-20 mx-auto text-[22px]" />
-              <h4 className="text-[17px] font-bold">{customerName}</h4>
-              <div className="text-[12px] text-[#65676b]">Messenger Contact</div>
-            </div>
-
-            {/* CRM Link */}
-            <div className="pt-3 border-t border-[#e4e6eb] dark:border-border">
-              <button
-                type="button"
-                onClick={() => { onClose(); onOpenCustomerProfile?.(conversation); }}
-                className="w-full h-9 rounded-xl bg-primary text-primary-foreground text-[12.5px] font-semibold flex items-center justify-center gap-2"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span>{isAr ? "بروفايل العميل وسجل الطلبات" : "Customer CRM Profile"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isMessenger && <MessengerDetails conversation={conversation} customerName={customerName} isAr={isAr} onClose={onClose} onOpenCustomerProfile={onOpenCustomerProfile} onSearch={onSearch} onTheme={onTheme} />}
 
       {/* ==================== 4. TELEGRAM STYLE ==================== */}
       {isTelegram && (
