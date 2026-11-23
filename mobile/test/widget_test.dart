@@ -26,8 +26,8 @@ void main() {
     // Initial pump
     await tester.pumpAndSettle();
 
-    // Verify Login Screen widgets exist
-    expect(find.byType(TextFormField), findsNWidgets(3)); // Subdomain, Email, Password
+    // Verify Login Screen widgets exist (Email, Password)
+    expect(find.byType(TextFormField), findsNWidgets(2)); // Email, Password
     expect(find.byType(ElevatedButton), findsOneWidget); // Submit button
   });
 }

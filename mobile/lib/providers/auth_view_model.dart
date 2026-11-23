@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/api/api_client.dart';
 import '../core/auth/auth_token_store.dart';
 import '../core/auth/biometric_service.dart';
 import '../data/models/branch.dart';
@@ -140,7 +141,7 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   Future<bool> login({
-    required String tenantSubdomain,
+    String tenantSubdomain = '',
     required String email,
     required String password,
   }) async {
@@ -157,7 +158,11 @@ class AuthViewModel extends ChangeNotifier {
       await checkBiometricStatus();
       return true;
     } catch (e) {
-      _errorMessage = e.toString().replaceFirst('ApiException: ', '');
+      if (e is ApiException) {
+        _errorMessage = e.message;
+      } else {
+        _errorMessage = e.toString().replaceFirst('Exception: ', '').replaceFirst('ApiException: ', '');
+      }
       return false;
     } finally {
       _isLoading = false;
