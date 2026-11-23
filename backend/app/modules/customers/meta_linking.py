@@ -100,10 +100,21 @@ class MetaPageConnection:
         )
         scopes = connection.get("granted_scopes")
         tasks = connection.get("page_tasks")
+        # The Page id lives in `page_id` for Facebook and in `account_id` for Messenger (the OAuth
+        # callback writes only that). An Instagram or WhatsApp `account_id` is NOT a Page.
+        provider = str(integration.provider)
+        page_id = str(
+            config.get("page_id") or (config.get("account_id") if provider == "messenger" else "")
+        )
+        # What actually arrived is recorded in `webhook_health["seen_fields"]` (a field -> time map
+        # written by the webhook handler), never in `config`.
+        health = getattr(integration, "webhook_health", None)
+        health = health if isinstance(health, dict) else {}
+        seen = health.get("seen_fields")
         return cls(
-            provider=str(integration.provider),
-            page_id=str(config.get("page_id") or "") or None,
-            asset_id=str(config.get("waba_id") or config.get("page_id") or "") or None,
+            provider=provider,
+            page_id=page_id or None,
+            asset_id=str(config.get("waba_id") or page_id or "") or None,
             status=str(integration.status),
             # Whether a token EXISTS is knowable here; its value never leaves the vault.
             has_token=bool(getattr(integration, "credentials", None)),
@@ -114,7 +125,9 @@ class MetaPageConnection:
                 if isinstance(config.get("subscribed_fields"), list | tuple)
                 else None
             ),
-            seen_fields=frozenset(config.get("seen_fields") or ()),
+            seen_fields=frozenset(str(k) for k in seen)
+            if isinstance(seen, dict | list)
+            else frozenset(),
             onboarding_mode=str(config.get("onboarding_mode") or "") or None,
         )
 

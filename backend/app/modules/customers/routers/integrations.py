@@ -757,12 +757,28 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
                     credentials.get("api_key") or credentials.get("page_access_token") or ""
                 )
                 asset = _page_id_of(integration, credentials)
+            # An Instagram Login token is honoured by graph.instagram.com only, and that grant has
+            # no debug_token / Page-permission list to measure, so it is probed on its own host.
+            ig_login = integration.provider == "instagram" and diag._is_instagram_login(config)
+            graph = diag.INSTAGRAM_LOGIN_GRAPH if ig_login else None
+            if ig_login:
+                # The account id is the asset; the Instagram app (not the Facebook one) owns it.
+                asset = str(config.get("account_id") or asset)
             if token and asset:
                 subscription = await diag.probe_subscription(
-                    http, asset_id=asset, token=token, app_id=settings.meta_app_id or None
+                    http,
+                    asset_id=asset,
+                    token=token,
+                    app_id=(
+                        (settings.instagram_app_id or settings.meta_app_id)
+                        if ig_login
+                        else settings.meta_app_id
+                    )
+                    or None,
+                    graph=graph,
                 )
             if token and integration.provider != "whatsapp":
-                permissions = await diag.probe_permissions(http, token=token)
+                permissions = await diag.probe_permissions(http, token=token, graph=graph)
 
     failed = (
         await ctx.session.execute(
