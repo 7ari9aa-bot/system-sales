@@ -405,6 +405,14 @@ class IngestService:
                         )
                     else:
                         await _record_template_resync(session, tenant_id, channel, error=None)
+            # Meta saying the ACCOUNT is limited or banned, or that its sending limit moved. The
+            # events are signed, and the only thing done with them is to tighten the channel's
+            # status or note a number: nothing here lets an event loosen anything.
+            parse_signals = getattr(adapter, "parse_account_signals", None)
+            if callable(parse_signals):
+                signals = parse_signals(payload)
+                if signals:
+                    await _apply_account_signals(session, tenant_id, channel, signals)
             await session.execute(
                 sa_update(WebhookEvent)
                 .where(WebhookEvent.id == event_id)
@@ -675,6 +683,65 @@ class IngestService:
                 )
                 .values(status="read")
             )
+
+
+async def _apply_account_signals(
+    session, tenant_id: uuid.UUID, channel: str, signals: list[dict]
+) -> None:
+    """Act on Meta's account-health news: a restriction restricts the channel, a limit is noted.
+
+    Until now nothing ever set ``restricted``, so a banned WhatsApp account looked healthy while
+    every send failed. A restricting event moves an active channel to ``restricted`` (the
+    lifecycle already allows it) and writes the reason into ``webhook_health`` where
+    ``check_integrations`` and the channel diagnostics read it. It never moves a channel the owner
+    already disconnected or Meta already logged out, and it never moves one BACK to active: only
+    reconnecting does that, because a quiet period proves nothing about the restriction ending.
+
+    A limit change is informational and stays out of the failure counters.
+
+    Best-effort by contract, like the template mark: the delivery is already accepted.
+    """
+    try:
+        integration = (
+            await session.execute(
+                select(Integration)
+                .where(
+                    Integration.tenant_id == tenant_id,
+                    Integration.provider == channel,
+                    Integration.kind == "channel",
+                )
+                .order_by(
+                    case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                    Integration.id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if integration is None:
+            return
+        health = dict(integration.webhook_health or {})
+        now = datetime.now(UTC).isoformat()
+        for signal in signals:
+            if signal.get("kind") == "restriction":
+                health["account_restriction"] = {
+                    "event": signal.get("event") or "",
+                    "detail": signal.get("detail") or "",
+                    "at": now,
+                }
+                if integration.status in ("active", "connected"):
+                    integration.status = "restricted"
+            elif signal.get("kind") == "limit":
+                health["messaging_limit"] = {
+                    "event": signal.get("event") or "",
+                    "limit": signal.get("limit") or "",
+                    "at": now,
+                }
+        integration.webhook_health = health
+        await session.flush()
+    except Exception:  # noqa: BLE001 - the delivery is accepted; the mark is best-effort
+        logger.warning(
+            "ingest.account_signal_failed tenant=%s channel=%s", tenant_id, channel, exc_info=True
+        )
 
 
 async def _record_template_resync(

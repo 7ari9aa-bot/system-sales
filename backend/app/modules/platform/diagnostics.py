@@ -72,6 +72,14 @@ def channel_problems(
             reasons.append(f"رسائل وصلت ولم تُعالَج: {lost}")
         # A resync that failed means the template copy on screen is not what Meta holds: an owner
         # approving a template has nothing else to look at, so it is reported until a resync works.
+        # Meta itself said the account is limited: say why, in the words Meta used, so the owner
+        # knows which restriction to go and resolve.
+        restriction = health.get("account_restriction")
+        if isinstance(restriction, dict) and status == "restricted":
+            why = " ".join(
+                str(restriction.get(k) or "") for k in ("event", "detail") if restriction.get(k)
+            )
+            reasons.append(f"قيّدتها Meta: {why[:80]}".rstrip(": "))
         if health.get("template_resync_error"):
             reasons.append(f"مزامنة القوالب فشلت: {str(health['template_resync_error'])[:60]}")
         if reasons:
