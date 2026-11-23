@@ -13,6 +13,7 @@ from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError,
 from app.core.pagination import decode_cursor, encode_cursor
 from app.modules.conversations.gateway.instagram_limits import InstagramLimitError, check_upload
 from app.modules.conversations.gateway.messenger_media import (
+    SENDABLE_REACTIONS,
     MessengerLimitError,
 )
 from app.modules.conversations.gateway.messenger_media import (
@@ -656,11 +657,15 @@ async def react_to_message(
     await _ensure_channel_send(ctx, conversation)
     if conversation.status == "closed":
         raise ConflictError("conversation is closed")
-    if conversation.channel not in ("whatsapp", "instagram"):
-        raise ValidationError("reactions are only supported on WhatsApp and Instagram")
+    if conversation.channel not in ("whatsapp", "instagram", "messenger"):
+        raise ValidationError("reactions are only supported on WhatsApp, Instagram and Messenger")
     emoji = body.emoji.strip()
     if any(ch.isspace() for ch in emoji) or any(ch.isalnum() and ch.isascii() for ch in emoji):
         raise ValidationError("reaction must be a single emoji")
+    if conversation.channel == "messenger" and emoji and emoji not in SENDABLE_REACTIONS:
+        # Messenger takes a reaction as a sender action naming one of its six emoji, and Meta
+        # refuses any other with an error. Refuse it here, with a message the agent can read.
+        raise ValidationError("Messenger only accepts its own six reaction emoji")
     if conversation.channel == "instagram" and emoji and emoji not in ("\u2764\ufe0f", "\u2764"):
         # Instagram's Send API lets a business react with the heart only.
         raise ValidationError("Instagram only lets a business react with a heart")

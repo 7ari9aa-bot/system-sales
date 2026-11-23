@@ -36,6 +36,14 @@ def test_a_facebook_page_subscribes_to_its_feed_and_messenger_does_not() -> None
     assert "feed" not in subscribed_fields("messenger").split(",")
 
 
+def test_messenger_and_facebook_pages_subscribe_to_reactions_but_instagram_does_not() -> None:
+    """A customer's reaction to a Messenger message is a `message_reactions` Page field. Without
+    it the adapter's reaction parser never sees an event."""
+    assert "message_reactions" in subscribed_fields("messenger").split(",")
+    assert "message_reactions" in subscribed_fields("facebook").split(",")
+    assert "message_reactions" not in subscribed_fields("instagram").split(",")
+
+
 def test_instagram_page_subscription_has_no_instagram_only_fields() -> None:
     """comments / mentions / message_reactions / messaging_seen are fields of the `instagram`
     object, configured in the App Dashboard. Meta ignores or rejects them on a Page subscription,
