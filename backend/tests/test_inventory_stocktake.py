@@ -256,3 +256,65 @@ async def test_the_ledger_total_matches_the_balance_after_a_count(db, tenant_ctx
         )
     ).scalar()
     assert int(net) == await _on_hand(db, tenant_ctx, variant, wh) == 13
+
+
+async def test_the_count_keeps_the_book_it_was_measured_against(db, tenant_ctx):
+    """A sale between the snapshot and the count must not become a difference nobody applied.
+
+    The screen used to diff against the count's START snapshot while approval compared against the
+    book at COUNT time, so the sheet showed a shortage the server never applied. Both figures now
+    travel, and the recount flag is computed on the same basis.
+    """
+    _, variant, wh = await _variant(db, tenant_ctx, stock=10)
+    st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
+
+    # The shop sells 2 while the count is open: the snapshot says 10, the shelf now holds 8.
+    await InventoryService.move(
+        db,
+        tenant_ctx.tenant_id,
+        variant.id,
+        wh.id,
+        direction="out",
+        quantity=2,
+        reason="sale",
+    )
+
+    await _count(db, tenant_ctx, st, variant, 8)
+    line = await _line(await StocktakeService.detail(db, tenant_ctx.tenant_id, st.id), variant)
+
+    assert line["expected_qty"] == 10  # the opening snapshot
+    assert line["counted_book_qty"] == 8  # what the counter actually saw
+    assert line["counted_at"] is not None
+    assert line["needs_recount"] is False  # 8 vs 8 is no variance, whatever the snapshot says
+
+
+async def test_the_recount_flag_uses_the_counted_book(db, tenant_ctx):
+    """A real shortage still flags a recount, measured against the counted book, not the snapshot."""
+    _, variant, wh = await _variant(db, tenant_ctx, stock=20)
+    st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
+    await InventoryService.move(
+        db,
+        tenant_ctx.tenant_id,
+        variant.id,
+        wh.id,
+        direction="out",
+        quantity=10,
+        reason="sale",
+    )
+    # Counted 4 against a book of 10 at that moment: a 60% shortage, well past the 10% threshold.
+    await _count(db, tenant_ctx, st, variant, 4)
+    line = await _line(await StocktakeService.detail(db, tenant_ctx.tenant_id, st.id), variant)
+    assert line["counted_book_qty"] == 10
+    assert line["needs_recount"] is True
+
+
+async def test_uncounting_clears_the_time_and_the_book(db, tenant_ctx):
+    """A cleared box is not a count: neither the moment nor the basis survives it."""
+    _, variant, wh = await _variant(db, tenant_ctx, stock=5)
+    st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
+    await _count(db, tenant_ctx, st, variant, 5)
+    await _count(db, tenant_ctx, st, variant, None)
+    line = await _line(await StocktakeService.detail(db, tenant_ctx.tenant_id, st.id), variant)
+    assert line["counted_qty"] is None
+    assert line["counted_at"] is None
+    assert line["counted_book_qty"] is None

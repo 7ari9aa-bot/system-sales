@@ -566,7 +566,10 @@ class StocktakeCreateRequest(BaseModel):
 
 class StocktakeCountLineIn(BaseModel):
     variant_id: uuid.UUID
-    counted_quantity: int = Field(ge=0)
+    # ``None`` is a real answer, not a missing one: it UN-COUNTS the line (the screen's cleared
+    # box), and the service clears ``counted_at``/``counted_book_qty`` with it. Refusing it made
+    # clearing a mistyped figure a 422 instead of a correction.
+    counted_quantity: int | None = Field(default=None, ge=0)
 
 
 class StocktakeCountRequest(BaseModel):
