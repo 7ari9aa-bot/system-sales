@@ -43,7 +43,12 @@ export default function ProductForm({
   // أساس الـSKU من السيرفر (استعلام واحد). العدّ في المتصفح بقى خطة رجوع بس لنشر قديم بلا الـendpoint.
   const { data: serverSkuBase } = useNextSkuBase();
   const { data: existingSkus = [] } = useExistingSkus(serverSkuBase === null);
-  const [form, setForm] = useState(() => initialProductForm(product, seed));
+  const [form, setForm] = useState(() => {
+    const base = initialProductForm(product, seed);
+    // حد التنبيه بيتحفظ لكل تركيبة؛ الشاشة بتعرض حد واحد، فلازم تفتح على المحفوظ مش على فاضي.
+    const savedLevel = product?.variants?.find((v) => v.reorderLevel != null)?.reorderLevel;
+    return base.threshold === "" && savedLevel != null ? { ...base, threshold: String(savedLevel) } : base;
+  });
   const [colors, setColors] = useState(product?.colors ?? []);
   const [sizePreset, setSizePreset] = useState("clothing");
   const [sizes, setSizes] = useState(product?.sizes ?? []);
@@ -75,6 +80,15 @@ export default function ProductForm({
     if (form.warehouseId || activeWarehouses.length === 0) return;
     patch({ warehouseId: activeWarehouses[0].id });
   }, [form.warehouseId, activeWarehouses]);
+
+  // «حد التنبيه» في الشاشة حد واحد للموديل: تعديله لازم يوصل لكل تركيبة،
+  // وإلا فرق الحفظ مابيشوفش حاجة ويطلع «لا توجد تعديلات لحفظها».
+  const patchWithThreshold = (next) => {
+    patch(next);
+    if (next.threshold === undefined) return;
+    const level = String(next.threshold ?? "").trim() === "" ? "0" : String(next.threshold);
+    setRows((prev) => prev.map((row) => ({ ...row, reorderLevel: level })));
+  };
 
   const queryClient = useQueryClient();
   // الصور المحفوظة بتتحكم من هنا (حذف/ترتيب/ربط بلون) وبتحفظ على السيرفر فورًا.
@@ -215,7 +229,7 @@ export default function ProductForm({
               onSizePresetChange={(v) => { setSizePreset(v); setSizes([]); }}
               materials={materials}
             />
-            <ProductPricingSection form={form} onPatch={patch} />
+            <ProductPricingSection form={form} onPatch={patchWithThreshold} />
             <ProductVariantsPicker
               colors={colors}
               onToggleColor={toggleColor}
