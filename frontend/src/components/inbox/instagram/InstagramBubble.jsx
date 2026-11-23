@@ -62,6 +62,9 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
   const reactions = Array.isArray(m.reactions) ? m.reactions.filter(Boolean) : [];
   const liked = m.myReaction === HEART;
   const canHeart = Boolean(onReact) && !out && !bare && kind !== "deleted" && kind !== "unsupported";
+  // Instagram reacts to a double click (double tap on a phone) with the heart, the one reaction its
+  // Send API can post. A second double click takes it back, the way a double tap toggles a like.
+  const onDoubleClick = canHeart ? () => onReact(liked ? "" : HEART) : undefined;
   // Instagram lets you quote any message, yours or theirs (Send API `reply_to`), so the
   // affordance sits on both sides and on every kind except the bare heart/sticker.
   const canReply = Boolean(onReply) && !bare && kind !== "deleted";
@@ -77,6 +80,7 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
           data-testid="ig-bubble"
           className={cn("text-[15px] leading-5", bare ? "" : "px-3 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
           title={m.time || undefined}
+          onDoubleClick={onDoubleClick}
           style={bare ? undefined : { background: out ? th?.out || "#4a5df9" : th?.in || "#f3f5f7", color: out ? th?.outText || "#fff" : th?.inText || "#0c1014", borderRadius: radius, ...(tail ? (out ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }) : {}) }}
         >
           {inlineQuote && quoteBlock}

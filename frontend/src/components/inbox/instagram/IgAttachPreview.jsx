@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { IgClose } from "@/components/instagram/igIcons";
 import { IG } from "@/components/instagram/igTheme";
 
@@ -6,11 +6,13 @@ const sizeLabel = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(by
 
 /**
  * What the agent is about to send, shown before anything reaches the customer. Nothing is uploaded
- * until Send is pressed, so cancelling costs nothing. Instagram has no caption on a file: the text
- * goes as its own message, so there is no caption field here.
+ * until Send is pressed, so cancelling costs nothing. Instagram's own preview carries a caption
+ * field; the Send API has no caption on an attachment, so the caption travels as its own message
+ * right after the file, which is exactly how Instagram draws it (a second bubble under the photo).
  */
 export default function IgAttachPreview({ file, kind, busy = false, error = "", lang = "ar", onSend, onCancel }) {
   const ar = lang === "ar";
+  const [caption, setCaption] = useState("");
   const url = useMemo(() => (file && (kind === "image" || kind === "video") ? URL.createObjectURL(file) : null), [file, kind]);
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
 
@@ -32,9 +34,22 @@ export default function IgAttachPreview({ file, kind, busy = false, error = "", 
           </div>
         )}
       </div>
+      <div className="shrink-0 border-t px-4 py-2" style={{ borderColor: IG.border }}>
+        <input
+          value={caption}
+          onChange={(event) => setCaption(event.target.value)}
+          disabled={busy}
+          dir={ar ? "rtl" : "ltr"}
+          data-testid="ig-attach-caption"
+          placeholder={ar ? "اكتب تعليقًا..." : "Write a caption..."}
+          aria-label={ar ? "تعليق على الملف" : "Caption"}
+          onKeyDown={(event) => { if (event.key === "Enter" && !busy) { event.preventDefault(); onSend?.(caption); } }}
+          className="h-10 w-full bg-transparent text-[14px] text-[#0c1014] outline-none placeholder:text-[#8e8e8e]"
+        />
+      </div>
       {error && <p role="alert" data-testid="ig-attach-error" className="mx-4 mb-2 text-[14px]" style={{ color: IG.error }}>{error}</p>}
       <div className="flex shrink-0 items-center justify-end gap-3 border-t px-4 py-3" style={{ borderColor: IG.border }}>
-        <button type="button" data-testid="ig-attach-send" disabled={busy} onClick={() => onSend?.()}
+        <button type="button" data-testid="ig-attach-send" disabled={busy} onClick={() => onSend?.(caption)}
           className="h-9 rounded-lg bg-[#4a5df9] px-5 text-[14px] font-semibold text-white hover:bg-[#3a4de0] disabled:opacity-40">
           {busy ? (ar ? "جارٍ الرفع..." : "Uploading...") : error ? (ar ? "إعادة المحاولة" : "Try again") : (ar ? "إرسال" : "Send")}
         </button>
