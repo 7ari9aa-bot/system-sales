@@ -109,9 +109,7 @@ async def test_the_file_name_is_the_sku_however_the_camera_named_it(db, tenant_c
 
 
 async def test_one_sku_collects_its_pictures_in_order(db, tenant_ctx):
-    plan = plan_images(
-        ["B.jpg", "a.png", "B-2.jpg", "A-3.jpg", "readme.pdf"], known={"A", "B"}
-    )
+    plan = plan_images(["B.jpg", "a.png", "B-2.jpg", "A-3.jpg", "readme.pdf"], known={"A", "B"})
 
     assert list(plan) == ["B", "A"]
     assert plan["B"] == ["B.jpg", "B-2.jpg"]
