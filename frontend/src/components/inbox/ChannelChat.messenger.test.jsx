@@ -220,4 +220,20 @@ describe("ChannelChat on Messenger", () => {
     for (const b of buttons) expect(b).toMatch(/aria-label="[^"]+"/);
     expect(composer).toContain('aria-haspopup="menu"');
   });
+
+  test("never claims the customer is active now: Meta gives a Page no presence data", () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const html = renderToStaticMarkup(
+      React.createElement(ChannelChat, {
+        channel: { id: "messenger", name: "Messenger", theme },
+        conversation: { id: "c1", name: "Ahmed Adel", channel: "messenger", lastCustomerMessageAt: recent, messages: [msg("m1", { text: "a", createdAt: recent })] },
+        lang: "ar",
+        t: (k, d) => d || k,
+        onSend() {},
+        onReact() {},
+      }),
+    );
+    expect(html).not.toContain("نشط الآن");
+    expect(html).not.toContain("Active now");
+  });
 });

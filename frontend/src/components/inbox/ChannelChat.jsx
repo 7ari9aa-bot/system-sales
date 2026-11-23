@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -191,7 +191,6 @@ export default function ChannelChat({
   // header says "Active now" while the customer is writing. Both are derived, never guessed.
   const messengerSeenId = isMessenger ? messengerSeenMessageId(allMessages) : null;
   const messengerStatus = isMessenger ? messengerStatusLine(allMessages, lang) : null;
-  const messengerActiveNow = isMessenger ? messengerPresence(conversation?.lastCustomerMessageAt) : null;
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -383,8 +382,8 @@ export default function ChannelChat({
             </div>
             {isMessenger ? (
               // Messenger prints "Active now" while the customer is writing, otherwise the page name.
-              <div data-testid="messenger-presence" className={cn("truncate text-[13px]", messengerActiveNow ? "text-[#0084FF]" : "text-[#65676B]")}>
-                {messengerActiveNow ? (lang === "ar" ? "نشط الآن" : "Active now") : channel.name}
+              <div data-testid="messenger-presence" className="truncate text-[13px] text-[#65676B]">
+                {channel.name}
               </div>
             ) : (
               <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>

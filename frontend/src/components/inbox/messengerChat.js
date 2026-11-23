@@ -86,17 +86,6 @@ export function messengerSeenMessageId(messages) {
   return null;
 }
 
-/**
- * Messenger prints "Active now" while the person is writing to us. We only know
- * the last message they sent, so that is the only thing we claim; outside the
- * window we say nothing rather than guess.
- */
-export function messengerPresence(lastCustomerMessageAt, now = Date.now(), windowMs = 5 * 60 * 1000) {
-  const at = new Date(lastCustomerMessageAt || 0).getTime();
-  if (!at) return null;
-  return now - at <= windowMs ? "activeNow" : null;
-}
-
 // Messenger draws a lone emoji (a thumbs-up above all) large and with no bubble around it.
 // Up to five emoji and nothing else; any letter, digit or longer run is an ordinary bubble.
 const EMOJI_RUN = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*){1,5}$/u;
@@ -232,8 +221,8 @@ export function messengerMessageShape(m) {
   if (m?.mediaType === "audio" || text.startsWith("🎤")) return "audio";
   if (url) {
     if (m.mediaType === "sticker") return "sticker";
-    if (m.mediaType === "video" || m.contentType === "video" || /\.(mp4|mov|webm|3gp)(\?|#|$)/i.test(url)) return "video";
-    if (m.mediaType === "image" || m.contentType === "image" || /\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i.test(url)) return "photo";
+    if (m.mediaType === "video" || /^video(\/|$)/i.test(String(m.contentType || "")) || /\.(mp4|mov|webm|3gp)(\?|#|$)/i.test(url)) return "video";
+    if (m.mediaType === "image" || /^image(\/|$)/i.test(String(m.contentType || "")) || /\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i.test(url)) return "photo";
     return "file";
   }
   return messengerIsBigEmoji(text) ? "bigEmoji" : "text";

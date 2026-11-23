@@ -5,7 +5,6 @@ import {
   messengerBubbleBackground,
   messengerBubbleCorners,
   messengerGroup,
-  messengerPresence,
   messengerSeen,
   messengerSeenMessageId,
 } from "./messengerChat";
@@ -97,15 +96,6 @@ describe("messengerSeen", () => {
   });
 });
 
-describe("messengerPresence", () => {
-  const now = Date.UTC(2026, 10, 22, 12, 0);
-
-  it("says active now only inside the window", () => {
-    expect(messengerPresence(new Date(now - 60_000).toISOString(), now)).toBe("activeNow");
-    expect(messengerPresence(new Date(now - 10 * 60_000).toISOString(), now)).toBeNull();
-    expect(messengerPresence(null, now)).toBeNull();
-  });
-});
 
 import {
   messengerIsBigEmoji,
@@ -267,6 +257,12 @@ describe("messengerRowPreview", () => {
 import { messengerMessageShape } from "./messengerChat";
 
 describe("messengerMessageShape", () => {
+  it("a MIME type such as image/jpeg or video/mp4 is media even when the address has no extension", () => {
+    expect(messengerMessageShape({ mediaUrl: "https://cdn.example/abc", contentType: "image/jpeg" })).toBe("photo");
+    expect(messengerMessageShape({ mediaUrl: "https://cdn.example/abc", contentType: "video/mp4" })).toBe("video");
+    expect(messengerMessageShape({ mediaUrl: "https://cdn.example/abc", contentType: "application/pdf" })).toBe("file");
+  });
+
   it("a system line is centred grey text, whatever else it carries", () => {
     expect(messengerMessageShape({ senderType: "system", text: "x" })).toBe("system");
   });
