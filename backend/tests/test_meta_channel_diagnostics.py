@@ -25,7 +25,15 @@ def _report(provider="messenger", **overrides):
         "provider": provider,
         "status": "active",
         "config": {},
-        "webhook_health": {"last_webhook_at": (NOW - timedelta(hours=1)).isoformat()},
+        # A delivery for every field the channel depends on: since the diagnostic stopped treating
+        # one `messages` event as proof for all of them, a healthy channel means each one arrived.
+        "webhook_health": {
+            "last_webhook_at": (NOW - timedelta(hours=1)).isoformat(),
+            "seen_fields": {
+                f: (NOW - timedelta(hours=1)).isoformat()
+                for f in d.REQUIRED_FIELDS[d.WEBHOOK_OBJECT[provider][0]]
+            },
+        },
         "recorded_scopes": ALL_MESSENGER + list(FACEBOOK_PAGE_SCOPES),
         "subscription": {"state": "ok", "fields": subscribed_fields(provider).split(",")},
         "permissions": None,
@@ -201,7 +209,24 @@ def test_a_channel_that_never_received_anything_is_told_what_to_set_in_the_dashb
     assert check["detail"]["object"] == "page"
 
 
-def test_one_delivery_proves_the_dashboard_webhook_works() -> None:
+def test_one_delivery_proves_only_its_own_field() -> None:
+    """The old rule: any webhook at all made the dashboard check green.
+
+    That hid a real fault — a staff reply typed in Meta's own inbox arrives as `message_echoes`,
+    which is a SEPARATE dashboard tick. A store with `messages` alone saw a healthy channel and
+    lost every reply its staff typed on Meta's side.
+    """
+    only_messages = _report(
+        webhook_health={
+            "last_webhook_at": (NOW - timedelta(hours=1)).isoformat(),
+            "seen_fields": {"messages": (NOW - timedelta(hours=1)).isoformat()},
+        }
+    )
+    check = _by_key(only_messages)["dashboard_webhook"]
+    assert check["status"] == d.WARNING
+    assert "message_echoes" in check["detail"]["unseen_fields"]
+    assert only_messages["state"] != d.OK
+
     assert _by_key(_report())["dashboard_webhook"]["status"] == d.OK
 
 

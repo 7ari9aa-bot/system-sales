@@ -203,7 +203,60 @@ async def meta_page_webhook(request: Request, session: DbSession):
     }
 
 
-async def _record_transport_health(session, tenant_id, channel: str) -> None:
+#: Which dashboard field a Messenger/Instagram messaging event proves is subscribed. The event
+#: type is the only evidence we have: Meta cannot be asked what the app-level subscription holds,
+#: so this map is what turns "a webhook arrived" into "THIS field is really delivered".
+_MESSAGING_EVENT_FIELDS = {
+    "message": "messages",
+    "postback": "messaging_postbacks",
+    "referral": "messaging_referrals",
+    "delivery": "message_deliveries",
+    "read": "message_reads",
+    "reaction": "message_reactions",
+    "message_edit": "message_edits",
+    "pass_thread_control": "messaging_handovers",
+    "take_thread_control": "messaging_handovers",
+    "request_thread_control": "messaging_handovers",
+}
+
+
+def webhook_fields(payload: dict) -> list[str]:
+    """The Meta dashboard fields a delivery actually proves are subscribed.
+
+    A single `messages` event used to make the whole channel look healthy, although it says
+    nothing about `message_echoes` (a human replying from Meta's own inbox) or
+    `messaging_handovers` (a human taking the thread). Recording the field per delivery is what
+    lets the diagnostic test each capability instead of guessing from the first event.
+    """
+    seen: list[str] = []
+    for entry in payload.get("entry", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes", []) or []:
+            field = change.get("field") if isinstance(change, dict) else None
+            if isinstance(field, str) and field:
+                seen.append(field)
+        for event in entry.get("messaging", []) or []:
+            if not isinstance(event, dict):
+                continue
+            if isinstance(event.get("message"), dict):
+                if event["message"].get("is_echo"):
+                    seen.append("message_echoes")
+                else:
+                    seen.append("messages")
+                if isinstance(event["message"].get("edit"), dict):
+                    seen.append("message_edits")
+                continue
+            for key, field in _MESSAGING_EVENT_FIELDS.items():
+                if isinstance(event.get(key), dict):
+                    seen.append(field)
+                    break
+    return sorted(set(seen))
+
+
+async def _record_transport_health(
+    session, tenant_id, channel: str, fields: list[str] | None = None
+) -> None:
     """Stamp the channel's `webhook_health` with "a delivery just arrived".
 
     This is transport health, not a claim that the event was processed: the durable
@@ -231,8 +284,19 @@ async def _record_transport_health(session, tenant_id, channel: str) -> None:
     if integration is None:
         return
     health = dict(integration.webhook_health or {})
-    health.update({"last_webhook_at": datetime.now(UTC).isoformat(), "consecutive_failures": 0})
+    now = datetime.now(UTC).isoformat()
+    health.update({"last_webhook_at": now, "consecutive_failures": 0})
     health.pop("last_error", None)
+    if fields:
+        # Which dashboard fields have actually DELIVERED, and when. This is the only evidence the
+        # diagnostic can use: the app-level subscription lives in Meta's dashboard and cannot be
+        # read with a Page token, so "one message arrived" must not stand in for "every field is
+        # ticked". Kept small and stable — a shop that has seen a field keeps that stamp.
+        seen = health.get("seen_fields")
+        seen = dict(seen) if isinstance(seen, dict) else {}
+        for field in fields:
+            seen[field] = now
+        health["seen_fields"] = seen
     integration.webhook_health = health
 
 
@@ -294,7 +358,7 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, digest: str
     # silently never materialized.)
     await bind_tenant(session, tenant_id)
 
-    await _record_transport_health(session, tenant_id, channel)
+    await _record_transport_health(session, tenant_id, channel, webhook_fields(payload))
 
     # S10: durable ingress record + replay rejection. Both providers sign a
     # STATIC HMAC over the raw body — neither contract carries a timestamp or

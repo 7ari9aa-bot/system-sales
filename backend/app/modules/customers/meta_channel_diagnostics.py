@@ -71,7 +71,27 @@ DASHBOARD_FIELDS = {
         "story_insights",
         "messaging_handovers",
     ),
-    "whatsapp_business_account": ("messages",),
+    "whatsapp_business_account": (
+        "messages",
+        # The account's own news: a restriction, the number's quality rating, and a template's
+        # review result. All three are handled by the adapter, so all three must be ticked — and
+        # the diagnostic used to name `messages` alone, so a store whose templates were being
+        # rejected saw a channel that looked perfectly healthy.
+        "account_update",
+        "phone_number_quality_update",
+        "message_template_status_update",
+    ),
+}
+
+#: The fields whose absence silently breaks a feature the platform advertises, per object. A field
+#: that has never delivered is reported: Meta cannot be asked what the dashboard subscription
+#: holds, so "one message arrived" is not evidence that the rest are ticked. Rare-but-harmless
+#: fields (story_insights, live_comments) stay out: a shop that never posts a story must not see a
+#: warning it can do nothing about.
+REQUIRED_FIELDS = {
+    "page": ("messages", "message_echoes", "messaging_handovers"),
+    "instagram": ("messages", "comments", "messaging_handovers"),
+    "whatsapp_business_account": ("messages", "message_template_status_update"),
 }
 
 #: Past this long without any webhook a connected channel is worth a second look. A quiet shop is
@@ -345,16 +365,39 @@ def build_report(
         )
 
     # 5. The app-level subscription lives in the Meta dashboard and cannot be read with a Page
-    #    token. We can only say what must be there, and infer it from traffic.
+    #    token. We can only say what must be there, and infer it from traffic — per FIELD, because
+    #    one `messages` delivery proves `messages` and nothing else.
     if obj:
         last_seen = _parse_time(health.get("last_webhook_at"))
-        if last_seen is not None:
+        seen_fields = health.get("seen_fields")
+        seen_fields = seen_fields if isinstance(seen_fields, dict) else {}
+        required = REQUIRED_FIELDS.get(obj, ())
+        unseen = [f for f in required if f not in seen_fields]
+        if last_seen is not None and not unseen:
             checks.append(
                 _check(
                     "dashboard_webhook",
                     OK,
-                    "Meta has delivered events to this server, so the dashboard webhook works.",
+                    "Meta has delivered every field this channel depends on, so the dashboard "
+                    "webhook is set up correctly.",
                     last_webhook_at=last_seen.isoformat(),
+                    verified_fields=sorted(f for f in required if f in seen_fields),
+                )
+            )
+        elif last_seen is not None:
+            # The false green: a message arrived, so the channel was declared healthy even though
+            # a staff reply typed in Meta's own inbox, or a human taking the thread, would have
+            # been dropped on the floor.
+            checks.append(
+                _check(
+                    "dashboard_webhook",
+                    WARNING,
+                    "Meta delivers some events, but not every field this channel depends on.",
+                    "In the Meta app dashboard, tick these fields on the "
+                    f"{obj} object, then try the feature again: {', '.join(unseen)}.",
+                    last_webhook_at=last_seen.isoformat(),
+                    unseen_fields=unseen,
+                    verified_fields=sorted(f for f in required if f in seen_fields),
                 )
             )
         elif connected:
