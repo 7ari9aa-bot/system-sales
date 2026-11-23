@@ -135,6 +135,11 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
             "live_fields": (),
         },
         {"key": "insights", "scopes": ("read_insights",), "fields": (), "live_fields": ()},
+        # The private reply to a commenter is a Messenger message sent by the Page. The Page
+        # connection does not ask for `pages_messaging` (Messenger is its own function with its
+        # own permission set), so this is reported as a permission the store can grant by linking
+        # Messenger, not as a broken button.
+        {"key": "private_reply", "scopes": ("pages_messaging",), "fields": (), "live_fields": ()},
     ),
     "instagram": (
         {

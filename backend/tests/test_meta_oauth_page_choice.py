@@ -20,7 +20,7 @@ TENANT = uuid.uuid4()
 USER = str(uuid.uuid4())
 USER_TOKEN = "fake-LONG-LIVED-USER-TOKEN-never-shown-to-the-browser"
 PAGES = [
-    {"id": "111", "name": "Shop One", "access_token": "PAGE-TOKEN-1", "tasks": ["MESSAGING"]},
+    {"id": "111", "name": "Shop One", "access_token": "PAGE-TOKEN-1", "tasks": ["MANAGE"]},
     {"id": "222", "name": "Shop Two", "access_token": "PAGE-TOKEN-2", "tasks": ["MANAGE"]},
     {"id": "333", "name": "Analytics only", "access_token": "PAGE-TOKEN-3", "tasks": ["ANALYZE"]},
 ]

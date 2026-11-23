@@ -503,24 +503,26 @@ async def _unsubscribe_page_from_app(
 
 
 def _messaging_pages(all_pages: list[dict], provider: str = "messenger") -> list[dict]:
-    """The Pages this operator can run the channel on.
+    """The Pages this operator can run the chosen channel on.
 
-    A Page whose `tasks` list is missing or empty is kept (older Graph answers omit it). A Page
-    whose list is present but names neither MESSAGING nor MANAGE is not one the operator can run
-    chat on, so it is never offered, not even as a fallback when nothing else qualifies: the old
-    fallback returned every Page and let the owner connect one Meta would then refuse.
+    A Page whose `tasks` list is missing or empty is kept (older Graph answers omit it). What the
+    list must name depends on the function being connected, because they are two different jobs:
 
-    `provider` is accepted and currently changes nothing ON PURPOSE: the Facebook channel speaks
-    Messenger's protocol under the Page's name (gateway/facebook.py), so a Page where the operator
-    holds MESSAGING alone is a valid Facebook connection — it can chat, and any permission it
-    lacks is reported by the connection instead of hiding the Page here.
+    * ``messenger`` needs MESSAGING (or MANAGE, which implies it) — a Page where the operator
+      cannot chat has no inbox to offer.
+    * ``facebook`` needs MANAGE — posting, moderating comments and reading insights are Page
+      management. Requiring MESSAGING here would hide a Page the owner can perfectly well manage,
+      and it is the exact bundling the report asked to stop: the two functions no longer share one
+      permission set, so they must not share one eligibility rule either.
+
+    A Page that qualifies for neither is never offered: the old fallback returned every Page and
+    let the owner connect one Meta would then refuse.
     """
+    wanted = ("MANAGE",) if provider == "facebook" else ("MESSAGING", "MANAGE")
     return [
         page
         for page in all_pages
-        if not page.get("tasks")
-        or "MESSAGING" in (page.get("tasks") or [])
-        or "MANAGE" in (page.get("tasks") or [])
+        if not page.get("tasks") or any(task in (page.get("tasks") or []) for task in wanted)
     ]
 
 
@@ -794,7 +796,8 @@ async def _meta_exchange_and_connect(
             # the popup showed as an unknown failure instead of telling them why.
             raise ValidationError(
                 "مفيش صفحة عندك صلاحية إدارتها لهذه القناة. اطلب من مالك الصفحة صلاحية "
-                "MANAGE أو MESSAGING ثم جرّب تاني."
+                + ("MANAGE" if provider == "facebook" else "MESSAGING أو MANAGE")
+                + " ثم جرّب تاني."
             )
         return await _connect_page(
             session,

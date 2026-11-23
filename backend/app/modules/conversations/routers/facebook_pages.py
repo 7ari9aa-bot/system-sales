@@ -25,6 +25,7 @@ from app.modules.conversations.routers.inbox import (
     _sendable_channels,
 )
 from app.modules.conversations.routers.social import _comment_out
+from app.modules.customers.meta_scopes import missing_private_reply_scopes
 
 router = APIRouter(tags=["facebook"])
 
@@ -509,8 +510,18 @@ async def private_reply(
     body: TextRequest,
     ctx: TenantContext = Depends(require_permission("conversations:write")),
 ):
-    """One private Messenger message to the commenter, within 7 days of the comment."""
+    """One private Messenger message to the commenter, within 7 days of the comment.
+
+    Sending it needs `pages_messaging` — the Messenger permission. This connection is the Page's
+    management grant and deliberately does not ask for it, so a store that never linked Messenger
+    is told which function to connect instead of meeting Meta's refusal.
+    """
     creds = await _credentials(ctx, send=True)
+    connection = creds.get("_connection") if isinstance(creds.get("_connection"), dict) else {}
+    if missing_private_reply_scopes(connection.get("granted_scopes")):
+        raise ConflictError(
+            "a private reply is a Messenger message: connect Messenger for this Page first"
+        )
     mid = await FacebookService.private_reply(
         ctx.session, ctx.tenant_id, creds, comment_id, body.text, user_id=ctx.user.id
     )
