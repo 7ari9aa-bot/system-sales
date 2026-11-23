@@ -167,6 +167,10 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     # §189: the one-transaction exchange — a return and its replacement sale
     # settle together, and the net difference rides this event for analytics.
     "pos.sale.exchanged",
+    # §5.1: a CONFIRMED sale reversed because it should never have existed. Not
+    # `pos.sale.returned`: a return says the customer brought goods back, a void says the sale
+    # was wrong. Analytics and the return report must not mix them.
+    "pos.sale.voided",
     # §189: "email me this receipt" is queued durably and sent by the pos
     # worker pool; the request path never sends mail inline.
     "pos.receipt.email_requested",

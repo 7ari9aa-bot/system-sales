@@ -101,6 +101,9 @@ PRESETS: dict[str, dict[str, object]] = {
         "pos.allow_sale_on_account": False,
         "pos.allow_hold_cart": True,
         "pos.variance_reason_required": True,
+        # a ground shop that takes card must count the terminal too, or the card total is the
+        # one figure nobody ever checks against the bank
+        "pos.settle_payment_methods": True,
         "pos.return_restock_default": True,
         # stock: one place, no batches or serials, no online holds, no shelf locations
         "inventory.auto_reserve": False,

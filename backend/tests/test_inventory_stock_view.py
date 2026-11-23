@@ -22,7 +22,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.core.errors import ValidationError
+from app.core.errors import NotFoundError, ValidationError
 from app.modules.catalog.service import CatalogService
 from app.modules.inventory.service import InventoryService
 from app.modules.inventory.stock_view import StockLevelService
@@ -292,6 +292,86 @@ def _gate_codes(path: str, method: str) -> set[str]:
 async def test_changing_a_level_is_wired_to_inventory_write_on_the_live_route():
     """Without this, deleting the Depends(...) on the PUT leaves every other test green."""
     assert _gate_codes("/pos/stock/{variant_id}/reorder-level", "PUT") == {"inventory:write"}
+
+
+async def test_one_level_for_the_whole_model_reaches_every_size(db, tenant_ctx):
+    """A clothing shop restocks a size run, not a size: one action must set every size of a model."""
+    warehouse = await _warehouse(db, tenant_ctx)
+    product = await CatalogService.create_product(
+        db, tenant_ctx.tenant_id, title="قميص كتان", slug=f"p-{uuid.uuid4().hex[:10]}"
+    )
+    sizes = []
+    for size in ("S", "M", "L"):
+        sizes.append(
+            await CatalogService.add_variant(
+                db,
+                tenant_ctx.tenant_id,
+                product.id,
+                sku=f"SH-{size}-{uuid.uuid4().hex[:6]}",
+                option_values={"color": "أبيض", "size": size},
+                price="100.00",
+            )
+        )
+    # One size has stock, the rest are empty: after the level is set, every one of them is judged
+    # against it, which is the point of a per-model level.
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, sizes[0].id, warehouse.id,
+        direction="in", quantity=2, reason="purchase",
+    )  # fmt: skip
+
+    written = await StockLevelService.set_reorder_level_for_product(
+        db, tenant_ctx.tenant_id, product.id, 3
+    )
+    assert written == 3
+
+    for variant in sizes:
+        assert await StockLevelService.get_reorder_level(db, tenant_ctx.tenant_id, variant.id) == 3
+    stocked = await _row(db, tenant_ctx, sizes[0])
+    assert stocked["reorder_level"] == 3
+    assert stocked["status"] == "low"  # 2 on hand against a level of 3
+    assert (await _row(db, tenant_ctx, sizes[1]))["status"] == "out"
+
+
+async def test_the_model_level_skips_sizes_that_are_not_on_the_rail(db, tenant_ctx):
+    product, kept, _w = await _variant(db, tenant_ctx, stock=1, options={"size": "M"})
+    archived = await CatalogService.add_variant(
+        db,
+        tenant_ctx.tenant_id,
+        product.id,
+        sku=f"OLD-{uuid.uuid4().hex[:6]}",
+        option_values={"size": "XL"},
+        price="100.00",
+    )
+    archived.is_active = False
+    await db.flush()
+
+    assert await StockLevelService.set_reorder_level_for_product(
+        db, tenant_ctx.tenant_id, product.id, 4
+    ) == 1
+    assert await StockLevelService.get_reorder_level(db, tenant_ctx.tenant_id, kept.id) == 4
+    assert await StockLevelService.get_reorder_level(db, tenant_ctx.tenant_id, archived.id) == 0
+
+
+async def test_a_model_level_never_lands_on_another_shops_product(db, tenant_ctx):
+    product, variant, _w = await _variant(db, tenant_ctx, stock=1)
+    with pytest.raises(NotFoundError):
+        await StockLevelService.set_reorder_level_for_product(
+            db, uuid.uuid4(), product.id, 3
+        )
+    assert await StockLevelService.get_reorder_level(db, tenant_ctx.tenant_id, variant.id) == 0
+
+
+@pytest.mark.parametrize("bad", [-1, 1_000_001, True, 2.5, "3", None])
+async def test_a_model_level_is_checked_like_a_single_one(db, tenant_ctx, bad):
+    product, _v, _w = await _variant(db, tenant_ctx, stock=1)
+    with pytest.raises(ValidationError):
+        await StockLevelService.set_reorder_level_for_product(
+            db, tenant_ctx.tenant_id, product.id, bad
+        )
+
+
+async def test_the_model_level_route_is_wired_to_inventory_write():
+    assert _gate_codes("/pos/stock/products/{product_id}/reorder-level", "PUT") == {"inventory:write"}
 
 
 async def test_the_read_routes_do_not_demand_the_write_permission():

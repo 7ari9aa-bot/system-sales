@@ -424,6 +424,14 @@ class StocktakeLine(TenantMixin, TimestampMixin, WorkspaceScopeMixin, IdMixin, B
     )
     # How many recounts this line has had (0 = counted once).
     recount_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    # WHEN this figure was true. The shop keeps selling while the sheet is filled, so approval
+    # rebuilds the book quantity at this moment instead of comparing against the snapshot taken
+    # when the count started — otherwise every sale during the count is subtracted twice.
+    counted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The book quantity the counter was looking at when the figure was taken. Approval compares
+    # the count against THIS, not against the snapshot from when the sheet was printed, so sales
+    # made during the count are not subtracted twice.
+    counted_book_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("stocktake_id", "variant_id", name="uq_stocktake_lines_variant"),

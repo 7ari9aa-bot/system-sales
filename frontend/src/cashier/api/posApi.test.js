@@ -128,6 +128,25 @@ describe("posApi stock", () => {
       expect(() => posApi.setReorderLevel("v1", bad)).toThrow(RangeError);
     }
   });
+
+  it("sets one level for the whole model on the product route", async () => {
+    await posApi.setProductReorderLevel("p1", 3);
+    expect(calls[0].path).toBe("/pos/stock/products/p1/reorder-level");
+    expect(calls[0].method).toBe("PUT");
+    expect(calls[0].body).toEqual({ reorder_level: 3 });
+  });
+
+  it("escapes a product id instead of letting it become part of the path", async () => {
+    await posApi.setProductReorderLevel("a/b?c", 1);
+    expect(calls[0].path).toBe("/pos/stock/products/a%2Fb%3Fc/reorder-level");
+  });
+
+  it("setProductReorderLevel refuses a bad level before any request", () => {
+    for (const bad of [-1, 2.5, "3", null, NaN, 1_000_001]) {
+      expect(() => posApi.setProductReorderLevel("p1", bad)).toThrow(RangeError);
+    }
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("receipt search", () => {

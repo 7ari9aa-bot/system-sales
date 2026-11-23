@@ -63,18 +63,37 @@ async def test_a_shortage_is_removed_and_a_surplus_is_added(db, tenant_ctx):
     assert await _on_hand(db, tenant_ctx, over, wh) == 6
 
 
-async def test_a_sale_made_during_the_count_is_not_erased(db, tenant_ctx):
-    """Snapshot 10, a sale takes 2 (balance 8), the shelf is counted at 9: the right answer is 9
-    minus the sale's effect, i.e. +1 relative to the snapshot is NOT what happened. The count says
-    the shelf held 9 when counted against a book of 10, so one unit was missing: 8 - 1 = 7."""
+async def test_a_sale_made_before_the_count_is_not_subtracted_twice(db, tenant_ctx):
+    """§4.1: the shop keeps selling while the sheet is filled.
+
+    Book 10 at the start, a dress is sold (book 8), the counter then counts the shelf at 9. The
+    count is TRUE at the moment it was taken, so the book becomes 9. Comparing against the START
+    snapshot of 10 made the difference -1 and landed on 7: the dress left once and was written off
+    as missing as well.
+    """
     _, variant, wh = await _variant(db, tenant_ctx, stock=10)
     st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
     await InventoryService.move(
         db, tenant_ctx.tenant_id, variant.id, wh.id, direction="out", quantity=2, reason="sale"
     )
-    await _count(db, tenant_ctx, st, variant, 9)  # one fewer than the snapshot of 10
+    await _count(db, tenant_ctx, st, variant, 9)
     await StocktakeService.approve(db, tenant_ctx.tenant_id, st.id)
-    assert await _on_hand(db, tenant_ctx, variant, wh) == 7  # an absolute overwrite would give 9
+    assert await _on_hand(db, tenant_ctx, variant, wh) == 9
+
+
+async def test_a_sale_made_after_the_count_moves_nothing_at_approval(db, tenant_ctx):
+    """The count was right when it was taken; a later sale already moved the book itself."""
+    _, variant, wh = await _variant(db, tenant_ctx, stock=10)
+    st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
+    await _count(db, tenant_ctx, st, variant, 10)
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, variant.id, wh.id, direction="out", quantity=2, reason="sale"
+    )
+    result = await StocktakeService.approve(db, tenant_ctx.tenant_id, st.id)
+    assert result["adjusted"] == 0
+    assert await _on_hand(db, tenant_ctx, variant, wh) == 8
+    line = await _line(await StocktakeService.detail(db, tenant_ctx.tenant_id, st.id), variant)
+    assert line["applied_delta"] == 0
 
 
 async def test_a_line_nobody_counted_is_left_alone(db, tenant_ctx):
@@ -106,18 +125,20 @@ async def test_approving_twice_moves_stock_once(db, tenant_ctx):
 
 
 async def test_a_removal_larger_than_what_is_left_is_clamped_and_recorded(db, tenant_ctx):
-    """Snapshot 5, sales take 4 (1 left), the count says 0 (5 missing): only 1 can still go."""
+    """A count of 0 when the book says 5, and a sale of the last 5 lands before approval: the
+    adjustment cannot go below zero, and the line records what really moved."""
     _, variant, wh = await _variant(db, tenant_ctx, stock=5)
     st = await StocktakeService.open(db, tenant_ctx.tenant_id, wh.id)
-    await InventoryService.move(
-        db, tenant_ctx.tenant_id, variant.id, wh.id, direction="out", quantity=4, reason="sale"
-    )
     await _count(db, tenant_ctx, st, variant, 0)
+    # Everything still on the shelf sells between the count and the approval.
+    await InventoryService.move(
+        db, tenant_ctx.tenant_id, variant.id, wh.id, direction="out", quantity=5, reason="sale"
+    )
     result = await StocktakeService.approve(db, tenant_ctx.tenant_id, st.id)
     assert result["clamped"] == 1
     assert await _on_hand(db, tenant_ctx, variant, wh) == 0  # never negative
     line = await _line(await StocktakeService.detail(db, tenant_ctx.tenant_id, st.id), variant)
-    assert line["applied_delta"] == -1  # what really moved, not the -5 the count wanted
+    assert line["applied_delta"] == 0  # what really moved, not the -5 the count wanted
 
 
 async def test_every_adjustment_is_a_ledger_row_pointing_at_the_stocktake(db, tenant_ctx):

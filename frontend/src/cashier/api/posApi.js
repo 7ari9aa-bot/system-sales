@@ -152,6 +152,17 @@ export const posApi = {
     return api(`/pos/stock/${seg(variantId)}/reorder-level`, { method: "PUT", body: { reorder_level: level } });
   },
 
+  /** One level for a whole model: every active size of the product takes it. */
+  setProductReorderLevel: (productId, level) => {
+    if (!Number.isInteger(level) || level < 0 || level > MAX_REORDER_LEVEL) {
+      throw new RangeError(`posApi: reorder level must be a whole number from 0 to ${MAX_REORDER_LEVEL}`);
+    }
+    return api(`/pos/stock/products/${seg(productId)}/reorder-level`, {
+      method: "PUT",
+      body: { reorder_level: level },
+    });
+  },
+
   /* ---- physical stocktake (backend/app/modules/inventory, via /pos/stocktakes) ----
    * Saving counts SETS values, so it is idempotent by nature. Approve and cancel change stock / close
    * the count: they carry an intent so a retried tap is replayed by the server, never applied twice. */

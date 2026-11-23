@@ -55,9 +55,18 @@ PHYSICAL_REASONS = {
     "supplier_return_reversal",
     # Written only by the data import: the starting position the day a shop moves to Fihrist.
     "opening_stock",
+    # Written only by the POS void: a CONFIRMED sale reversed because it should never have existed
+    # (wrong size, wrong price). Not `return` — the customer brought nothing back, and a return
+    # report that counted these would show returns for sales that never happened.
+    "void",
 }
 # ...and a person cannot type these into POST /inventory/movements: no document would back them.
-SERVICE_ONLY_REASONS = {"supplier_return", "supplier_return_reversal", "opening_stock"}
+SERVICE_ONLY_REASONS = {
+    "supplier_return",
+    "supplier_return_reversal",
+    "opening_stock",
+    "void",
+}
 AVAILABILITY_REASONS = {"reservation", "reservation_release"}
 
 

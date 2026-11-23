@@ -172,38 +172,96 @@ async def test_voiding_a_shiftless_cash_expense_moves_no_cash(db, tenant_ctx) ->
     assert moves == 0
 
 
-async def test_an_expense_cannot_be_tied_to_a_shift(db, tenant_ctx) -> None:
-    """Naming a shift is refused, never silently ignored."""
-    shift = await _open_shift(db, tenant_ctx)
-    cat = await _category(db, tenant_ctx)
-    for method in ("cash", "card"):
-        with pytest.raises(ValidationError, match="record only"):
-            await ExpenseService.create(
-                db,
-                tenant_ctx.tenant_id,
-                category_id=cat.id,
-                description="x",
-                amount="5",
-                payment_method=method,
-                session_id=shift.id,
-            )
-
-
-async def test_the_drawer_is_unchanged_after_a_refused_expense(db, tenant_ctx) -> None:
+async def test_a_cash_expense_leaves_the_drawer_it_was_paid_from(db, tenant_ctx) -> None:
+    """The report's §3.1: money out of the till must show on the drawer ledger, same transaction."""
     shift = await _open_shift(db, tenant_ctx)
     cat = await _category(db, tenant_ctx)
     before = await _drawer(db, tenant_ctx, shift.id)
-    with pytest.raises(ValidationError):
+    expense = await ExpenseService.create(
+        db,
+        tenant_ctx.tenant_id,
+        category_id=cat.id,
+        description="مواصلات",
+        amount="100",
+        payment_method="cash",
+        session_id=shift.id,
+    )
+    after = await _drawer(db, tenant_ctx, shift.id)
+    # (inflow, outflow): the drawer's book now shows the 100 that physically left it.
+    assert (before, after) == ((Decimal("0.00"), Decimal("0.00")), (Decimal("0.00"), Decimal("100.00")))
+    assert expense.session_id == shift.id
+
+    from app.modules.pos.models import PosCashMovement
+
+    rows = (
+        (
+            await db.execute(
+                select(PosCashMovement).where(
+                    PosCashMovement.reference_type == "expense",
+                    PosCashMovement.reference_id == expense.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(row.direction, row.reason, Decimal(str(row.amount))) for row in rows] == [
+        ("out", "pay_out", Decimal("100"))
+    ]
+
+
+async def test_a_non_cash_expense_is_a_record_and_names_no_shift(db, tenant_ctx) -> None:
+    """A card expense never came out of the drawer, so it may not claim a shift."""
+    shift = await _open_shift(db, tenant_ctx)
+    cat = await _category(db, tenant_ctx)
+    before = await _drawer(db, tenant_ctx, shift.id)
+    with pytest.raises(ValidationError, match="only a cash expense"):
         await ExpenseService.create(
             db,
             tenant_ctx.tenant_id,
             category_id=cat.id,
             description="x",
             amount="5",
-            payment_method="cash",
+            payment_method="card",
             session_id=shift.id,
         )
     assert await _drawer(db, tenant_ctx, shift.id) == before
+
+
+async def test_voiding_a_cash_expense_puts_the_money_back(db, tenant_ctx) -> None:
+    """A correction is a reversing row, never a deleted one."""
+    shift = await _open_shift(db, tenant_ctx)
+    cat = await _category(db, tenant_ctx)
+    before = await _drawer(db, tenant_ctx, shift.id)
+    expense = await ExpenseService.create(
+        db,
+        tenant_ctx.tenant_id,
+        category_id=cat.id,
+        description="كهربا",
+        amount="50",
+        payment_method="cash",
+        session_id=shift.id,
+    )
+    await ExpenseService.void(db, tenant_ctx.tenant_id, expense.id, reason="اتدفعت مرتين")
+    # The 50 goes back in, and the original payout row is still there: 50 in, 50 out.
+    assert await _drawer(db, tenant_ctx, shift.id) == (Decimal("50.00"), Decimal("50.00"))
+
+    from app.modules.pos.models import PosCashMovement
+
+    rows = (
+        (
+            await db.execute(
+                select(PosCashMovement).where(
+                    PosCashMovement.reference_type == "expense",
+                    PosCashMovement.reference_id == expense.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Both rows stay: the payout and its reversal.
+    assert sorted(row.direction for row in rows) == ["in", "out"]
 
 
 async def test_third_decimal_is_rejected_not_rounded(db, tenant_ctx) -> None:

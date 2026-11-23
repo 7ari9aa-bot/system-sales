@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api";
 import {
   costWarning,
   errorKind,
+  returnCostNotice,
   estimateMark,
   isLoss,
   moneyCell,
@@ -277,5 +278,25 @@ describe("the notice shown instead of the table", () => {
     expect(n.kind).toBe("failed");
     expect(n.message).not.toContain("الاتصال");
     expect(n.message).not.toContain("لصاحب المحل");
+  });
+});
+
+describe("the estimated cost of a return", () => {
+  it("says nothing when nothing came back", () => {
+    expect(returnCostNotice({ unitsReturned: 0 })).toBeNull();
+    expect(returnCostNotice({})).toBeNull();
+    expect(returnCostNotice(null)).toBeNull();
+  });
+
+  it("says how many pieces came back and that their cost is an estimate", () => {
+    const notice = returnCostNotice({ unitsReturned: 2 });
+    expect(notice).toContain("2");
+    expect(notice).toContain("مقدّرة");
+    expect(notice).toContain("متوسط تكلفة البيع");
+  });
+
+  it("does not claim a cost for a returned piece that never went back on the shelf", () => {
+    // The server counts only the units it gave a cost back for; the sentence never invents more.
+    expect(returnCostNotice({ unitsReturned: "1" })).toContain("1");
   });
 });

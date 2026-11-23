@@ -102,6 +102,18 @@ export function costWarning(totals, rows = []) {
 }
 
 /**
+ * What a return's cost really is. The ledger books no cost on a return, so the report gives back an
+ * ESTIMATE: the sale's average cost per unit times the pieces that came back. A figure that is an
+ * estimate must never look like a booked one, so the shopkeeper is told, next to the table.
+ * Null when nothing came back.
+ */
+export function returnCostNotice(totals) {
+  const pieces = Number(totals?.unitsReturned) || 0;
+  if (pieces <= 0) return null;
+  return `تكلفة المرتجعات مقدّرة: ${fmtInt(pieces)} قطعة رجعت، وتكلفتها محسوبة بمتوسط تكلفة البيع، لأن المخزن مابيسجّلش تكلفة على المرتجع.`;
+}
+
+/**
  * Why a request failed, as the screen needs to tell it. No permission is a different message from
  * a network failure: telling a till operator "try again" when they may not see cost and profit
  * would be advice that never works.
