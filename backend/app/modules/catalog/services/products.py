@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sql import LIKE_ESCAPE, like_pattern
 from app.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.services._common import (
@@ -379,16 +380,18 @@ class ProductServiceMixin:
         term = (q or "").strip()
         if term:
             # الاسم أو الـslug أو كود أي صنف داخل المنتج: التاجر بيدوّر باللي قدامه.
-            like = f"%{term.lower()}%"
+            like = like_pattern(term.lower())
             clauses.append(
                 or_(
-                    func.lower(Product.title).like(like),
-                    func.lower(Product.slug).like(like),
+                    func.lower(Product.title).like(like, escape=LIKE_ESCAPE),
+                    func.lower(Product.slug).like(like, escape=LIKE_ESCAPE),
                     select(ProductVariant.id)
                     .where(
                         ProductVariant.tenant_id == tenant_id,
                         ProductVariant.product_id == Product.id,
-                        func.lower(func.coalesce(ProductVariant.sku, "")).like(like),
+                        func.lower(func.coalesce(ProductVariant.sku, "")).like(
+                            like, escape=LIKE_ESCAPE
+                        ),
                     )
                     .exists(),
                 )
