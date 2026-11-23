@@ -48,14 +48,23 @@ class VariantServiceMixin:
         title: str | None = None,
         option_values: dict | None = None,
         price: object,
+        product_checked: bool = False,
+        sku_checked: bool = False,
     ) -> ProductVariant:
-        """Add a variant to a product; SKU (when given) is unique per tenant."""
+        """Add a variant to a product; SKU (when given) is unique per tenant.
+
+        ``product_checked`` / ``sku_checked`` say the caller already proved, inside this same
+        transaction, that the product exists and that the SKU is free — the import batch does that
+        once for the whole batch. The database's unique constraint still guards the write, and a
+        lost race still surfaces as ``ConflictError``.
+        """
         from app.modules.catalog.services import CatalogService
 
-        await CatalogService.get_product(session, tenant_id, product_id)
+        if not product_checked:
+            await CatalogService.get_product(session, tenant_id, product_id)
         unit_price = _positive_decimal(price, "price")
         sku = sku or None
-        if sku is not None:
+        if sku is not None and not sku_checked:
             duplicate = (
                 await session.execute(
                     select(ProductVariant.id).where(

@@ -39,6 +39,66 @@ _WAREHOUSE_BY_CODE = text(
 )
 _VARIANT_BY_SKU = text("SELECT id FROM product_variants WHERE tenant_id = :t AND sku = :sku")
 _PRODUCT_BY_SLUG = text("SELECT id FROM products WHERE tenant_id = :t AND slug = :slug")
+_PRODUCTS_BY_SLUGS = text(
+    "SELECT slug, id FROM products WHERE tenant_id = :t AND slug = ANY(:slugs)"
+)
+_VARIANTS_BY_SKUS = text(
+    "SELECT sku, id FROM product_variants WHERE tenant_id = :t AND sku = ANY(:skus)"
+)
+
+# خرائط الدفعة الحالية: المنتج بالـslug والصنف بالـSKU، متجمّعة مرة واحدة قبل ما الصفوف تتطبق.
+# كل صف كان بيعمل استعلامين لوحده (منتج + كود)، فدفعة 500 صف كانت بتعمل ألف استعلام زيادة.
+_BATCH_MAPS: ContextVar[dict | None] = ContextVar("import_batch_maps", default=None)
+
+
+def _batch_maps() -> dict:
+    maps = _BATCH_MAPS.get()
+    if maps is None:
+        maps = {"products": {}, "variants": {}}
+        _BATCH_MAPS.set(maps)
+    return maps
+
+
+async def _prepare_batch(session: AsyncSession, tenant_id: uuid.UUID, rows: list) -> None:
+    """Fetch every product and SKU this batch will touch, in two queries.
+
+    Only the rows in hand: a batch of 500 variants asks about 500 slugs and 500 codes once,
+    instead of one round trip per row. The per-row ports then read from these maps, and a miss
+    (a product created earlier in the same batch, say) still falls back to its own query.
+    """
+    slugs: set[str] = set()
+    skus: set[str] = set()
+    for row in rows:
+        try:
+            action, values = values_of(row)
+        except Exception:  # a row we cannot read is the validator's problem, not ours
+            continue
+        if action == "skip":
+            continue
+        ref = values.get("product_ref") or values.get("product_slug")
+        if ref:
+            slugs.add(str(ref))
+        sku = values.get("sku")
+        if sku:
+            skus.add(str(sku))
+    maps = {
+        "products": {},
+        "variants": {},
+        # اللي سألنا عنه بالفعل: لو الكود مش في الخريطة يبقى مش موجود، مش محتاج استعلام تاني
+        "asked_products": set(slugs),
+        "asked_variants": set(skus),
+    }
+    if slugs:
+        for slug, product_id in (
+            await session.execute(_PRODUCTS_BY_SLUGS, {"t": tenant_id, "slugs": sorted(slugs)})
+        ).all():
+            maps["products"][slug] = product_id
+    if skus:
+        for sku, variant_id in (
+            await session.execute(_VARIANTS_BY_SKUS, {"t": tenant_id, "skus": sorted(skus)})
+        ).all():
+            maps["variants"][sku] = variant_id
+    _BATCH_MAPS.set(maps)
 
 
 def _refused(exc: Exception) -> ApplyError:
@@ -203,17 +263,28 @@ async def _upsert_variant(
         if values.get(key)
     }
     sku = values.get("sku")
+    maps = _batch_maps()
     try:
-        product_id = (
-            await session.execute(_PRODUCT_BY_SLUG, {"t": tenant_id, "slug": ref})
-        ).scalar_one_or_none()
+        product_id = maps["products"].get(ref)
+        if product_id is None and ref not in maps["asked_products"]:
+            product_id = (
+                await session.execute(_PRODUCT_BY_SLUG, {"t": tenant_id, "slug": ref})
+            ).scalar_one_or_none()
+            maps["asked_products"].add(ref)
+            if product_id is not None:
+                maps["products"][ref] = product_id
         if product_id is None:
             raise ApplyError("unknown_product", f"product '{ref}' does not exist")
         variant_id = None
         if sku:
-            variant_id = (
-                await session.execute(_VARIANT_BY_SKU, {"t": tenant_id, "sku": sku})
-            ).scalar_one_or_none()
+            variant_id = maps["variants"].get(sku)
+            if variant_id is None and sku not in maps["asked_variants"]:
+                variant_id = (
+                    await session.execute(_VARIANT_BY_SKU, {"t": tenant_id, "sku": sku})
+                ).scalar_one_or_none()
+                maps["asked_variants"].add(sku)
+                if variant_id is not None:
+                    maps["variants"][sku] = variant_id
         if variant_id is None:
             variant = await CatalogService.add_variant(
                 session,
@@ -222,7 +293,12 @@ async def _upsert_variant(
                 sku=sku,
                 option_values=options or None,
                 price=values["price"],
+                # الدفعة أثبتت في نفس المعاملة إن المنتج موجود والكود فاضي، فمفيش استعلامين لكل صف
+                product_checked=True,
+                sku_checked=bool(sku) and sku in maps["asked_variants"],
             )
+            if sku:
+                maps["variants"][sku] = variant.id
         else:
             # A blank colour/size cell must not wipe the options the variant already has.
             fields: dict[str, object] = {"price": values["price"]}
@@ -419,6 +495,7 @@ PORTS = Ports(
     record_opening_stock=_record_opening_stock,
     attach_image=_attach_image,
     attach_item_code=_attach_item_code,
+    prepare_batch=_prepare_batch,
 )
 
 
