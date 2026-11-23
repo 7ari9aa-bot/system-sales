@@ -100,4 +100,14 @@ describe("ChannelChat on Messenger", () => {
   test("no reply bar until a reply is started", () => {
     expect(render([msg("m1", { text: "hi" })])).not.toContain('data-testid="messenger-reply-bar"');
   });
+
+  test("the newest sent message carries the grey Sent line", () => {
+    const html = render([msg("m1", { text: "hi", side: "out", status: "sent", createdAt: new Date(Date.now() - 5 * 60e3).toISOString() })]);
+    expect(html).toContain('data-testid="messenger-status-line"');
+    expect(html).toContain("تم الإرسال منذ 5 د");
+  });
+
+  test("no status line when the customer wrote last", () => {
+    expect(render([msg("m1", { text: "hi", side: "in" })])).not.toContain('data-testid="messenger-status-line"');
+  });
 });

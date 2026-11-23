@@ -178,3 +178,36 @@ export function messengerReactionSummary(reactions) {
   if (!live.length) return null;
   return { emojis: [...new Set(live)], count: live.length };
 }
+
+const STATUS_WORDS = {
+  sent: { ar: "تم الإرسال", en: "Sent" },
+  delivered: { ar: "تم التسليم", en: "Delivered" },
+  read: { ar: "تمت المشاهدة", en: "Seen" },
+};
+
+function ago(ms, lang) {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return lang === "ar" ? "الآن" : "just now";
+  if (minutes < 60) return lang === "ar" ? `منذ ${minutes} د` : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return lang === "ar" ? `منذ ${hours} س` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return lang === "ar" ? `منذ ${days} يوم` : `${days}d ago`;
+}
+
+/**
+ * The grey line Messenger prints under the newest message we sent: "Sent / Delivered / Seen" and
+ * how long ago. Only a state the platform really recorded is named. Once the customer has written
+ * after our message the line is gone, as in Messenger, and a failed or pending message has none.
+ */
+export function messengerStatusLine(messages, lang = "ar", now = Date.now()) {
+  const list = Array.isArray(messages) ? messages : [];
+  const last = list[list.length - 1];
+  if (!last || sideOf(last) !== "out" || last.senderType === "system") return null;
+  const words = STATUS_WORDS[String(last.status || "").toLowerCase()];
+  if (!words) return null;
+  const at = new Date(last.createdAt || 0).getTime();
+  if (!at) return null;
+  const when = ago(Math.max(0, now - at), lang);
+  return lang === "ar" ? `${words.ar} ${when}` : `${words.en} ${when}`;
+}

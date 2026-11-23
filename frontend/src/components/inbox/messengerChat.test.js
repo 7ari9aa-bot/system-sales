@@ -211,3 +211,36 @@ describe("messengerReactionSummary", () => {
     expect(messengerReactionSummary(undefined)).toBeNull();
   });
 });
+
+import { messengerStatusLine } from "./messengerChat";
+
+describe("messengerStatusLine", () => {
+  const now = Date.UTC(2026, 10, 23, 12, 0);
+  const ago = (ms) => new Date(now - ms).toISOString();
+  const sent = (status, ms, extra = {}) => ({ id: "m", side: "out", status, createdAt: ago(ms), ...extra });
+
+  it("names only the state the platform really knows, with how long ago", () => {
+    expect(messengerStatusLine([sent("sent", 5 * 60e3)], "ar", now)).toBe("تم الإرسال منذ 5 د");
+    expect(messengerStatusLine([sent("delivered", 3 * 3600e3)], "ar", now)).toBe("تم التسليم منذ 3 س");
+    expect(messengerStatusLine([sent("read", 2 * 86400e3)], "ar", now)).toBe("تمت المشاهدة منذ 2 يوم");
+    expect(messengerStatusLine([sent("sent", 5 * 60e3)], "en", now)).toBe("Sent 5m ago");
+    expect(messengerStatusLine([sent("read", 60e3)], "en", now)).toBe("Seen 1m ago");
+  });
+
+  it("says 'just now' inside the first minute", () => {
+    expect(messengerStatusLine([sent("sent", 20e3)], "ar", now)).toBe("تم الإرسال الآن");
+    expect(messengerStatusLine([sent("sent", 20e3)], "en", now)).toBe("Sent just now");
+  });
+
+  it("looks at the newest sent message only, and says nothing once the customer wrote after it", () => {
+    const list = [sent("read", 9e5), { id: "c", side: "in", createdAt: ago(1e5) }];
+    expect(messengerStatusLine(list, "ar", now)).toBeNull();
+  });
+
+  it("says nothing for a failed, pending or system message, or an empty thread", () => {
+    expect(messengerStatusLine([sent("failed", 6e4)], "ar", now)).toBeNull();
+    expect(messengerStatusLine([sent("queued", 6e4)], "ar", now)).toBeNull();
+    expect(messengerStatusLine([sent("sent", 6e4, { senderType: "system" })], "ar", now)).toBeNull();
+    expect(messengerStatusLine([], "ar", now)).toBeNull();
+  });
+});

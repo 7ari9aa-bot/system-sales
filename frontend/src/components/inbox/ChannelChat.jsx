@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerIsBigEmoji, messengerPresence, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerIsBigEmoji, messengerPresence, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -190,6 +190,7 @@ export default function ChannelChat({
   // Messenger's only receipt is the reader's avatar under the last bubble they opened, and its
   // header says "Active now" while the customer is writing. Both are derived, never guessed.
   const messengerSeenId = isMessenger ? messengerSeenMessageId(allMessages) : null;
+  const messengerStatus = isMessenger ? messengerStatusLine(allMessages, lang) : null;
   const messengerActiveNow = isMessenger ? messengerPresence(conversation?.lastCustomerMessageAt) : null;
 
   useLayoutEffect(() => {
@@ -570,6 +571,10 @@ export default function ChannelChat({
             </React.Fragment>
           );
         })}
+
+        {messengerStatus && (
+          <div data-testid="messenger-status-line" className="mt-1 px-1 text-end text-[11px] text-[#65676b]" dir="auto">{messengerStatus}</div>
+        )}
 
         {approval && (
           <div
