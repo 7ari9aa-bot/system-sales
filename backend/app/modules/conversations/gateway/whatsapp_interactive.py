@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from app.core.errors import ValidationError
 
-KINDS = ("buttons", "list", "cta_url")
+KINDS = ("buttons", "list", "cta_url", "product", "product_list", "catalog_message", "location")
 
 FOOTER_MAX = 60
 HEADER_TEXT_MAX = 60
@@ -46,6 +46,19 @@ CTA_LABEL_MAX = 20
 CTA_URL_MAX = 2000
 
 HEADER_MEDIA_TYPES = ("image", "video", "document")
+
+# Commerce and location kinds. Meta's interactive reference gives each its own shape, and none of
+# them takes a header media: the product card carries the picture, so a header may only be text.
+PRODUCT_BODY_MAX = 1024
+PRODUCT_FOOTER_MAX = 60
+#: An opaque id Meta issued for the item in the shop's catalog (never a name, never a price).
+PRODUCT_RETAILER_ID_MAX = 256
+CATALOG_ID_MAX = 256
+#: A multi-product message shows up to 10 sections and 30 products in total.
+PRODUCT_SECTIONS_MAX = 10
+PRODUCT_SECTION_TITLE_MAX = 24
+PRODUCT_ITEMS_MAX = 30
+LOCATION_BODY_MAX = 1024
 
 
 def _text(value, where: str, *, required: bool = False, limit: int) -> str | None:
@@ -199,7 +212,96 @@ def _cta_url(spec: dict) -> dict:
     }
 
 
-_BUILDERS = {"buttons": _buttons, "list": _list, "cta_url": _cta_url}
+def _product(spec: dict) -> dict:
+    """One product, opened from the shop's catalog. Meta needs the item's own catalog id."""
+    out = _common(spec, body_max=PRODUCT_BODY_MAX, text_only_header=True)
+    retailer_id = _text(
+        spec.get("product_retailer_id"),
+        "product_retailer_id",
+        required=True,
+        limit=PRODUCT_RETAILER_ID_MAX,
+    )
+    return {
+        "type": "product",
+        **out,
+        "action": {
+            "name": "open_product",
+            "parameters": {"product_retailer_id": retailer_id},
+        },
+    }
+
+
+def _product_list(spec: dict) -> dict:
+    """Several products from one catalog, grouped into sections Meta renders as a carousel."""
+    out = _common(spec, body_max=PRODUCT_BODY_MAX, text_only_header=True)
+    catalog_id = _text(spec.get("catalog_id"), "catalog_id", required=True, limit=CATALOG_ID_MAX)
+    sections_in = spec.get("sections")
+    if not isinstance(sections_in, list) or not sections_in:
+        raise ValidationError("product_list needs at least one section")
+    if len(sections_in) > PRODUCT_SECTIONS_MAX:
+        raise ValidationError(f"a product_list has at most {PRODUCT_SECTIONS_MAX} sections")
+    sections: list[dict] = []
+    total = 0
+    for index, section in enumerate(sections_in):
+        if not isinstance(section, dict):
+            raise ValidationError(f"sections[{index}] must be an object")
+        items_in = section.get("product_items")
+        if not isinstance(items_in, list) or not items_in:
+            raise ValidationError(f"sections[{index}] needs at least one product")
+        items = []
+        for item in items_in:
+            retailer_id = _text(
+                (item or {}).get("product_retailer_id"),
+                f"sections[{index}].product_items",
+                required=True,
+                limit=PRODUCT_RETAILER_ID_MAX,
+            )
+            items.append({"product_retailer_id": retailer_id})
+        total += len(items)
+        if total > PRODUCT_ITEMS_MAX:
+            raise ValidationError(f"a product_list shows at most {PRODUCT_ITEMS_MAX} products")
+        title = _text(
+            section.get("title"),
+            f"sections[{index}].title",
+            limit=PRODUCT_SECTION_TITLE_MAX,
+        )
+        sections.append({"title": title, "product_items": items} if title else {"product_items": items})
+    return {"type": "product_list", **out, "action": {"catalog_id": catalog_id, "sections": sections}}
+
+
+def _catalog_message(spec: dict) -> dict:
+    """The shop's whole catalog, with one product shown as its thumbnail."""
+    out = _common(spec, body_max=PRODUCT_BODY_MAX, text_only_header=True)
+    thumbnail = _text(
+        spec.get("thumbnail_product_retailer_id"),
+        "thumbnail_product_retailer_id",
+        limit=PRODUCT_RETAILER_ID_MAX,
+    )
+    action: dict = {"name": "catalog_message"}
+    if thumbnail:
+        action["parameters"] = {"thumbnail_product_retailer_id": thumbnail}
+    return {"type": "catalog_message", **out, "action": action}
+
+
+def _location(spec: dict) -> dict:
+    """Ask the customer to share their location. Meta opens its own picker; nothing is attached."""
+    body = _text(spec.get("body"), "body", required=True, limit=LOCATION_BODY_MAX)
+    return {
+        "type": "location_request_message",
+        "body": {"text": body},
+        "action": {"name": "send_location"},
+    }
+
+
+_BUILDERS = {
+    "buttons": _buttons,
+    "list": _list,
+    "cta_url": _cta_url,
+    "product": _product,
+    "product_list": _product_list,
+    "catalog_message": _catalog_message,
+    "location": _location,
+}
 
 
 def build_interactive(spec: dict) -> dict:
@@ -226,6 +328,16 @@ def preview_text(spec: dict) -> str:
     action = built["action"]
     if built["type"] == "button":
         lines += [f"[ {b['reply']['title']} ]" for b in action["buttons"]]
+    elif built["type"] == "product":
+        lines.append(f"[ {built['action']['parameters']['product_retailer_id']} ]")
+    elif built["type"] == "product_list":
+        for section in built["action"]["sections"]:
+            ids = ", ".join(i["product_retailer_id"] for i in section["product_items"])
+            lines.append(f"- {section.get('title') or ids}: {ids}")
+    elif built["type"] == "catalog_message":
+        lines.append("[ الكتالوج ]")
+    elif built["type"] == "location_request_message":
+        lines.append("[ مشاركة الموقع ]")
     elif built["type"] == "list":
         lines.append(f"[ {action['button']} ]")
         for section in action["sections"]:

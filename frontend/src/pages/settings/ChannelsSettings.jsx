@@ -348,6 +348,8 @@ export default function ChannelsSettings() {
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
   const [metaConnecting, setMetaConnecting] = React.useState("");
+  // Opt-in, off by default: coexistence only applies to a number already on the WhatsApp Business app.
+  const [waCoexistence, setWaCoexistence] = React.useState(false);
   const [connectingMs, setConnectingMs] = React.useState(0);
   React.useEffect(() => {
     if (!metaConnecting) { setConnectingMs(0); return undefined; }
@@ -545,8 +547,14 @@ export default function ChannelsSettings() {
     void reload().catch(() => {});
   }, [reload, isAr]);
 
-  /** Connect WhatsApp via Embedded Signup (JS SDK popup). */
-  async function connectWhatsApp(channel) {
+  /** Connect WhatsApp via Embedded Signup (JS SDK popup).
+   *
+   * `coexistence` is the shop's own choice: a number that is already on the WhatsApp Business app
+   * can be onboarded in coexistence mode, where the app and the Cloud API both keep working.
+   * Asking for it is opt-in — Meta refuses it for a number it considers ineligible, and that
+   * refusal is shown as Meta worded it.
+   */
+  async function connectWhatsApp(channel, { coexistence = false } = {}) {
     if (metaConnecting) return;
     const prepared = whatsappSignupRef.current;
     if (!prepared) {
@@ -598,12 +606,12 @@ export default function ChannelsSettings() {
             cleanupSignup();
             resolve(payload.data || {});
           } else if (payload.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
+            // Same success event as FINISH, on a number that already runs the WhatsApp Business
+            // app: Meta has just put it in coexistence mode. Treating this as a rejection was the
+            // old behaviour and it threw away a connection Meta had already made.
+            signupReported = true;
             cleanupSignup();
-            reject(new Error(
-              isAr
-                ? "هذا الرقم مربوط حاليًا بتطبيق WhatsApp Business. افصل التطبيق أو أعد المحاولة برقم مؤهل لـCloud API."
-                : "This number is connected to the WhatsApp Business app. Disconnect it or retry with a number eligible for Cloud API."
-            ));
+            resolve({ ...(payload.data || {}), coexistence: true });
           }
         }
 
@@ -637,7 +645,7 @@ export default function ChannelsSettings() {
             extras: {
               setup: {},
               version: "v5",
-              features: [{ name: "whatsapp_business_app_onboarding", enabled: false }],
+              features: [{ name: "whatsapp_business_app_onboarding", enabled: coexistence }],
             },
           }
         );
@@ -744,7 +752,7 @@ export default function ChannelsSettings() {
   /** Unified connect handler — routes to the right flow per channel type. */
   function handleConnect(channel) {
     if (channel.id === "whatsapp") {
-      connectWhatsApp(channel);
+      connectWhatsApp(channel, { coexistence: waCoexistence });
     } else if (META_OAUTH_CHANNELS.has(channel.id)) {
       if (metaConnecting) return;
       const popup = openCenteredPopup("about:blank", "meta_oauth_popup");
@@ -1024,6 +1032,23 @@ export default function ChannelsSettings() {
                             <Unplug className="h-3.5 w-3.5" />
                             {isAr ? "فك الارتباط" : "Disconnect"}
                           </button>
+                        )}
+
+                        {/* A number that already runs the WhatsApp Business app can be onboarded
+                            in coexistence mode (app + Cloud API together). It is a choice, never
+                            the default: Meta decides eligibility and its refusal is shown. */}
+                        {channel.id === "whatsapp" && !isConnected && (
+                          <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={waCoexistence}
+                              onChange={(e) => setWaCoexistence(e.target.checked)}
+                              className="h-3.5 w-3.5 rounded border-slate-300"
+                            />
+                            {isAr
+                              ? "الرقم شغال على تطبيق WhatsApp Business (تشغيل متزامن)"
+                              : "The number also runs the WhatsApp Business app (coexistence)"}
+                          </label>
                         )}
 
                         {/* ═══ Single green "ربط" / "Connect" button ═══ */}

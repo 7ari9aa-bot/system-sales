@@ -447,3 +447,107 @@ def test_what_we_send_is_what_comes_back():
     sent = build_interactive(_buttons())["action"]["buttons"][0]["reply"]
     (tap,) = adapter.parse_inbound(_tap("button_reply", sent))
     assert tap.raw["interactive"]["button_reply"] == sent
+
+
+# ------------------------------------------------- commerce and location kinds
+# Meta's interactive reference gives each of these its own object; a shop that only has buttons and
+# lists cannot send a product card, and hand-written shapes are where the field names go wrong.
+
+
+def test_a_single_product_carries_the_catalogs_own_id():
+    built = build_interactive(
+        {
+            "kind": "product",
+            "body": "المنتج ده متوفر",
+            "header": {"type": "text", "text": "عرض"},
+            "product_retailer_id": "SKU-9",
+        }
+    )
+
+    assert built["type"] == "product"
+    assert built["action"] == {
+        "name": "open_product",
+        "parameters": {"product_retailer_id": "SKU-9"},
+    }
+    assert built["body"]["text"] == "المنتج ده متوفر"
+
+
+def test_a_product_without_a_catalog_id_is_refused_before_meta_sees_it():
+    with pytest.raises(ValidationError):
+        build_interactive({"kind": "product", "body": "x", "product_retailer_id": ""})
+
+
+def test_a_product_list_groups_items_into_sections():
+    built = build_interactive(
+        {
+            "kind": "product_list",
+            "body": "اختار من اللي عندنا",
+            "catalog_id": "CAT-1",
+            "sections": [
+                {"title": "أحذية", "product_items": [{"product_retailer_id": "A"}, {"product_retailer_id": "B"}]},
+                {"product_items": [{"product_retailer_id": "C"}]},
+            ],
+        }
+    )
+
+    assert built["type"] == "product_list"
+    assert built["action"]["catalog_id"] == "CAT-1"
+    assert built["action"]["sections"][0]["product_items"] == [
+        {"product_retailer_id": "A"},
+        {"product_retailer_id": "B"},
+    ]
+    # A section without a title is still valid; the key is simply absent, never empty.
+    assert "title" not in built["action"]["sections"][1]
+
+
+def test_more_than_thirty_products_is_refused():
+    with pytest.raises(ValidationError):
+        build_interactive(
+            {
+                "kind": "product_list",
+                "body": "x",
+                "catalog_id": "CAT-1",
+                "sections": [
+                    {"product_items": [{"product_retailer_id": f"P{i}"} for i in range(31)]}
+                ],
+            }
+        )
+
+
+def test_a_catalog_message_may_omit_its_thumbnail():
+    with_thumb = build_interactive(
+        {"kind": "catalog_message", "body": "شوف الكتالوج", "thumbnail_product_retailer_id": "A"}
+    )
+    without = build_interactive({"kind": "catalog_message", "body": "شوف الكتالوج"})
+
+    assert with_thumb["action"]["parameters"] == {"thumbnail_product_retailer_id": "A"}
+    assert without["action"] == {"name": "catalog_message"}
+
+
+def test_a_location_request_asks_meta_for_the_picker():
+    built = build_interactive({"kind": "location", "body": "ابعتلنا مكانك"})
+
+    assert built == {
+        "type": "location_request_message",
+        "body": {"text": "ابعتلنا مكانك"},
+        "action": {"name": "send_location"},
+    }
+
+
+def test_every_new_kind_has_a_readable_thread_preview():
+    previews = [
+        preview_text({"kind": "product", "body": "ب", "product_retailer_id": "SKU-9"}),
+        preview_text(
+            {
+                "kind": "product_list",
+                "body": "ب",
+                "catalog_id": "CAT-1",
+                "sections": [{"product_items": [{"product_retailer_id": "A"}]}],
+            }
+        ),
+        preview_text({"kind": "catalog_message", "body": "ب"}),
+        preview_text({"kind": "location", "body": "ب"}),
+    ]
+
+    assert all("ب" in text and text.strip() for text in previews)
+    assert "SKU-9" in previews[0]

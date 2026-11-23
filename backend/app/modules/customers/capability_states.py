@@ -132,10 +132,11 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
         # Declared gaps, not API limits: the platform has not built these yet.
         {"key": "flows", "scopes": (), "fields": (), "live_fields": (),
          "blocked": NOT_IMPLEMENTED},
-        {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": NOT_IMPLEMENTED},
-        {"key": "coexistence", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": NOT_IMPLEMENTED},
+        # Built: single product, multi-product and whole-catalog messages in the interactive builder.
+        {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
+        # Built as an opt-in at signup. Meta decides per number whether coexistence is allowed, so
+        # the state says "we can ask", and Meta's own refusal is what the owner sees if it says no.
+        {"key": "coexistence", "scopes": (), "fields": (), "live_fields": ()},
         {"key": "calls", "scopes": (), "fields": (), "live_fields": (),
          "blocked": REGION_RESTRICTED},
     ),
