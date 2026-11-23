@@ -12,6 +12,9 @@ export default defineConfig({
   // UI-timing races (every request 200, elements slower than the 5s default)
   // — not app breakage. A second attempt absorbs the runner-load spikes.
   retries: process.env.CI ? 2 : 0,
+  // Assertions wait as long as a slow runner needs; 5s (the default) is what made the
+  // live-api and Facebook suites flap. This belongs at the top level, not inside `use`.
+  expect: { timeout: 10_000 },
   reporter: "list",
   use: {
     baseURL,
@@ -19,7 +22,6 @@ export default defineConfig({
     screenshot: "only-on-failure",
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
-    expect: { timeout: 10_000 },
   },
   // The deep crawl registers a real tenant through the UI — it needs the
   // live API (the backend job sets E2E_LIVE_API=1); without a backend the

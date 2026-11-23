@@ -84,10 +84,16 @@ async function open(page, api, path = "/facebook/posts") {
   await page.goto(path, { waitUntil: "domcontentloaded", timeout: 30_000 });
 }
 
-test("the feed shows the Page and its real post, with the comment under it", async ({ page }) => {
+test("the feed shows the Page and its real post, with the newest comment under it", async ({ page }) => {
   await open(page, makeApi());
   await expect(page.getByRole("heading", { name: "My Shop" }).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("new shoes")).toBeVisible();
+  // Facebook's Page home draws just the newest comment and folds the rest behind "View more
+  // comments"; the second one has to be opened, not assumed to be on screen.
+  await expect(page.getByTestId("fb-comment-c2")).toBeVisible();
+  await expect(page.getByText("how much?")).toBeHidden();
+  await page.getByRole("button", { name: "View more comments" }).click();
+  await expect(page.getByTestId("fb-comment-c1")).toBeVisible();
   await expect(page.getByText("how much?")).toBeVisible();
   await expect(page.getByText("1,200 followers")).toBeVisible();
   await expect(page.getByText("coming soon")).toBeVisible(); // a scheduled post
@@ -105,7 +111,10 @@ test("the channel strip stays on the far right, and Facebook is its active chann
 test("a comment reply goes to Facebook first, then appears under the comment", async ({ page }) => {
   const api = makeApi();
   await open(page, api);
-  await page.getByRole("button", { name: "Reply" }).first().click();
+  // The reply is answered on a named comment, not on "whichever one happens to be first".
+  await page.getByTestId("fb-comment-c2").waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "View more comments" }).click();
+  await page.getByTestId("fb-comment-c1").getByRole("button", { name: "Reply" }).click();
   await page.getByLabel("Reply", { exact: true }).fill("20 EGP");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("20 EGP")).toBeVisible();
@@ -196,6 +205,8 @@ test("Message privately is offered only within Meta's 7 days of the comment", as
   const api = makeApi();
   api.state.comments.push({ id: "c-old", post_id: "p1", parent_id: null, username: "Old Ola", body: "from long ago", status: "visible", is_page_reply: false, commented_at: new Date(Date.now() - 9 * 86400e3).toISOString(), like_count: 0 });
   await open(page, api);
+  await expect(page.getByTestId("fb-comment-c-old")).toBeHidden();
+  await page.getByRole("button", { name: "View more comments" }).click();
   await expect(page.getByText("from long ago")).toBeVisible({ timeout: 15_000 });
   // c1 and c2 are an hour old, c-old is nine days old: only the two recent ones may be answered privately
   await expect(page.getByRole("button", { name: "Message privately" })).toHaveCount(2);

@@ -89,7 +89,7 @@ export default function FbComment({ comment, postId, pageName, pageAvatar, lang,
   const shownLikes = shownLikeCount(comment, liked);
   const actions_ = commentActions(comment, depth);
   return (
-    <div className={cn("min-w-0", comment.hidden && "opacity-60")}>
+    <div data-testid={`fb-comment-${comment.id}`} className={cn("min-w-0", comment.hidden && "opacity-60")}>
       <div className="flex items-start gap-2">
         <FbAvatar src={comment.isPage ? pageAvatar : ""} name={comment.author} size={depth ? "h-7 w-7" : "h-8 w-8"} />
         <div className="min-w-0 flex-1">
