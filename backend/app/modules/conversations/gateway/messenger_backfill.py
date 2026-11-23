@@ -40,6 +40,9 @@ class BackfillResult:
 
     conversations: list[dict[str, Any]] = field(default_factory=list)
     messages: list[dict[str, Any]] = field(default_factory=list)
+    #: The same messages, kept per thread. A message object does not name its conversation, so a
+    #: flat list cannot be filed into the right thread afterwards; this is what the writer reads.
+    messages_by_conversation: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     pages_read: int = 0
     #: "exhausted" (Meta had nothing more), "capped" (our limit), or "error".
     stopped: str = "exhausted"
@@ -141,5 +144,7 @@ class MessengerBackfill:
                     logger.warning("messenger.backfill_messages_failed conversation=%s", cid)
                     result.error = result.error or str(exc)
                     continue
-                result.messages.extend(payload.get("data") or [])
+                batch = payload.get("data") or []
+                result.messages.extend(batch)
+                result.messages_by_conversation[cid] = batch
         return result

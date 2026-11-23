@@ -23,10 +23,23 @@ def _state(capabilities, key):
 # ---------------------------------------------------------------- the states themselves
 
 
+def _blocked_keys(provider: str) -> set[str]:
+    """Capabilities whose state is a constant statement about Meta, not about this connection.
+
+    ``blocked`` is declared once and holds whether or not the channel is linked (WhatsApp calls are
+    region-restricted everywhere, and Messenger marketing opt-in was deprecated by Meta), so those
+    are excluded from the "everything else is just not connected yet" assertion below.
+    """
+    return {spec["key"] for spec in cs.declared(provider) if spec.get("blocked")}
+
+
 def test_a_channel_that_never_connected_is_not_called_available():
     caps = cs.evaluate("messenger", connected=False, granted_scopes=set())
+    blocked = _blocked_keys("messenger")
 
-    assert {c["state"] for c in caps} == {cs.NEEDS_CONNECTION}
+    assert {c["state"] for c in caps if c["key"] not in blocked} == {cs.NEEDS_CONNECTION}
+    # And nothing is called available just because we have not tried yet.
+    assert cs.AVAILABLE not in {c["state"] for c in caps}
 
 
 def test_messages_arriving_does_not_make_staff_reply_sync_available():
@@ -167,5 +180,30 @@ def test_once_every_field_has_delivered_the_capabilities_go_green():
 
 def test_an_unconnected_channel_reports_every_capability_as_needing_connection():
     report = _report(status="disconnected", subscription=None)
+    blocked = _blocked_keys("messenger")
 
-    assert {c["state"] for c in report["capabilities"]} == {cs.NEEDS_CONNECTION}
+    assert {c["state"] for c in report["capabilities"] if c["key"] not in blocked} == {
+        cs.NEEDS_CONNECTION
+    }
+
+
+def test_marketing_opt_in_is_reported_as_metas_own_limit_with_its_reason():
+    """Meta deprecated Recurring Notifications on 2026-02-10, so no opt-in flow can be built.
+
+    A dead button is worse than an explained one: the state names Meta's deprecation and the
+    closed successor API instead of pretending the platform simply has not built it.
+    """
+    caps = cs.evaluate("messenger", connected=True, granted_scopes={"pages_messaging"})
+    entry = next(c for c in caps if c["key"] == "marketing_optin")
+
+    assert entry["state"] == cs.UNSUPPORTED_BY_API
+    assert "2026-02-10" in entry["reason"]
+
+
+def test_reels_and_stories_publishing_are_no_longer_pinned_to_not_implemented():
+    """Both were built (container, status poll, publish), so they must be judged on scopes."""
+    caps = cs.evaluate("instagram", connected=True, granted_scopes=set())
+    states = {c["key"]: c["state"] for c in caps}
+
+    assert states["reels_publishing"] != cs.NOT_IMPLEMENTED
+    assert states["stories_publishing"] != cs.NOT_IMPLEMENTED

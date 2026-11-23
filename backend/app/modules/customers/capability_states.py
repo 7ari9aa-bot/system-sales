@@ -69,6 +69,23 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
          "fields": ("message_edits",), "live_fields": ("message_edits",)},
         {"key": "reactions", "scopes": ("pages_messaging",),
          "fields": ("message_reactions",), "live_fields": ()},
+        # Platform settings (greeting, Get Started, persistent menu, ice breakers) and inbox
+        # labels are WRITE calls, so they need no webhook field to be verified.
+        {"key": "profile_settings", "scopes": ("pages_messaging",), "fields": (),
+         "live_fields": ()},
+        {"key": "inbox_labels", "scopes": ("pages_messaging",), "fields": (), "live_fields": ()},
+        {"key": "conversation_history", "scopes": ("pages_messaging",), "fields": (),
+         "live_fields": ()},
+        # Measured on Meta's own page: Marketing Messages (Recurring Notifications) is deprecated
+        # on 10 Feb 2026 and its successor API is closed to new integrations. Building an opt-in
+        # flow now would ship a button Meta refuses, so the state says whose limit this is.
+        {"key": "marketing_optin", "scopes": (), "fields": (), "live_fields": (),
+         "blocked": UNSUPPORTED_BY_API,
+         "blocked_reason": (
+             "Meta deprecated Marketing Messages (Recurring Notifications) on 2026-02-10 and the "
+             "replacement Marketing Messages API is limited to existing partners; no new opt-in "
+             "flow can be created"
+         )},
     ),
     "facebook": (
         {"key": "posts", "scopes": ("pages_manage_posts",), "fields": ("feed",),
@@ -96,10 +113,12 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
          "fields": ("story_insights",), "live_fields": (), "quiet_when_idle": True},
         {"key": "publishing", "scopes": ("instagram_business_content_publish",), "fields": (),
          "live_fields": ()},
+        # Both are built (container + status poll + publish), so they are judged like any other
+        # capability instead of being pinned to a stale "not built yet".
         {"key": "reels_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": (), "blocked": NOT_IMPLEMENTED},
+         "fields": (), "live_fields": ()},
         {"key": "stories_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": (), "blocked": NOT_IMPLEMENTED},
+         "fields": (), "live_fields": ()},
     ),
     "whatsapp": (
         {"key": "messages", "scopes": (), "fields": ("messages",),

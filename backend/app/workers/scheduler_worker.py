@@ -142,6 +142,12 @@ async def _refresh_meta_channel_tokens() -> int:
     return await sweep_expiring_tokens()
 
 
+async def _reconcile_messenger_backfill() -> int:
+    from app.workers.messenger_backfill_worker import sweep_messenger_backfill
+
+    return await sweep_messenger_backfill()
+
+
 async def _sync_whatsapp_template_status() -> int:
     from app.workers.whatsapp_template_sync import sweep_template_status
 
@@ -167,6 +173,10 @@ GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     # Meta reviews a template after it is submitted and can pause one later. Asked every
     # 15 minutes, and only for stores that have a template Meta may still change.
     "whatsapp.template_status_sync": (timedelta(minutes=15), _sync_whatsapp_template_status),
+    # A webhook only carries what happens after the subscription, so a store that connects today
+    # opens an empty inbox and a missed delivery leaves a hole. This sweep reads each connected
+    # Page's own conversations on an interval and fills both, capped per store.
+    "messenger.backfill_reconcile": (timedelta(minutes=30), _reconcile_messenger_backfill),
 }
 
 
