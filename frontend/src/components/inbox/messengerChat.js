@@ -238,3 +238,29 @@ export function messengerMessageShape(m) {
   }
   return messengerIsBigEmoji(text) ? "bigEmoji" : "text";
 }
+
+const LINK_SPLIT = /(https?:\/\/[^\s<>"')]+)/giu;
+
+/**
+ * A Messenger bubble keeps its words and turns each web address into a link. Splitting the text
+ * here keeps the rendering honest: only an address the sender really wrote becomes a link.
+ */
+export function messengerLinkParts(text) {
+  const value = String(text || "");
+  if (!value) return [];
+  return value
+    .split(LINK_SPLIT)
+    .filter((part) => part !== "")
+    .map((part) => (/^https?:\/\//i.test(part) ? { type: "link", value: part } : { type: "text", value: part }));
+}
+
+/** The site an address points at, as Messenger labels a preview: the host without "www.". */
+export function messengerLinkHost(url) {
+  try {
+    const parsed = new URL(String(url));
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}

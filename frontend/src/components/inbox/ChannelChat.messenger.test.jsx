@@ -188,4 +188,16 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain('data-testid="messenger-empty"');
     expect(html).toContain("Ahmed Adel");
   });
+
+  test("a web address in a bubble is a real link", () => {
+    const html = render([msg("m1", { text: "شوف https://shop.example/p/1" })]);
+    expect(html).toContain('href="https://shop.example/p/1"');
+    expect(html).toContain('data-testid="messenger-link"');
+  });
+
+  test("a message that is only a link shows the site's name, as Messenger previews it", () => {
+    const html = render([msg("m1", { text: "https://www.shop.example/p/1" })]);
+    expect(html).toContain('data-testid="messenger-link-preview"');
+    expect(html).toContain("shop.example");
+  });
 });

@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -1079,6 +1079,10 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
   const hoverButton = "grid h-7 w-7 place-items-center rounded-full text-[#65676b] hover:bg-[#f0f2f5] focus-visible:bg-[#f0f2f5] focus-visible:outline-none";
   const bare = shape === "photo" || shape === "video" || shape === "sticker" || shape === "bigEmoji";
   const caption = m.mediaUrl && m.text && !String(m.text).startsWith("blob:") && shape !== "file" ? String(m.text) : "";
+  // A message that is only a web address gets Messenger's preview card under the bubble. The card
+  // shows the site and the address the sender wrote; no title or picture is invented for it.
+  const linkParts = shape === "text" ? messengerLinkParts(m.text) : [];
+  const linkOnly = linkParts.length === 1 && linkParts[0].type === "link" ? linkParts[0].value : "";
 
   let body;
   if (shape === "deleted") {
@@ -1122,7 +1126,13 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
           <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
         ) : (
           <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-            {m.text}
+            {messengerLinkParts(m.text).map((part, i) =>
+              part.type === "link" ? (
+                <a key={i} data-testid="messenger-link" href={part.value} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="underline underline-offset-2">{part.value}</a>
+              ) : (
+                <React.Fragment key={i}>{part.value}</React.Fragment>
+              )
+            )}
             {m.ai && <Sparkles className="ms-1 inline h-3 w-3 align-baseline text-amber-300" />}
           </div>
         )}
@@ -1152,6 +1162,14 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
           {body}
           {caption && (shape === "photo" || shape === "video") && (
             <div dir="auto" className="rounded-[18px] bg-[#f0f0f0] px-3 py-2 text-[15px] text-[#050505]">{caption}</div>
+          )}
+          {linkOnly && messengerLinkHost(linkOnly) && (
+            <a data-testid="messenger-link-preview" href={linkOnly} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="block w-[240px] max-w-full overflow-hidden rounded-[18px] border border-[#e4e6eb] bg-white hover:bg-[#f7f8fa]">
+              <div className="px-3 py-2">
+                <div className="text-[11px] uppercase tracking-wide text-[#65676b]" dir="ltr">{messengerLinkHost(linkOnly)}</div>
+                <div className="truncate text-[13.5px] text-[#050505]" dir="ltr">{linkOnly}</div>
+              </div>
+            </a>
           )}
           {badge && bare && <span className="mb-3" />}
           {badge}

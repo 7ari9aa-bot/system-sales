@@ -293,3 +293,28 @@ describe("messengerMessageShape", () => {
     expect(messengerMessageShape({ text: "hello" })).toBe("text");
   });
 });
+
+import { messengerLinkParts, messengerLinkHost } from "./messengerChat";
+
+describe("links inside a Messenger bubble", () => {
+  it("splits the words from the web addresses so only the address is a link", () => {
+    expect(messengerLinkParts("شوف https://shop.example/p/1 ده")).toEqual([
+      { type: "text", value: "شوف " },
+      { type: "link", value: "https://shop.example/p/1" },
+      { type: "text", value: " ده" },
+    ]);
+  });
+
+  it("leaves plain text and an empty message alone", () => {
+    expect(messengerLinkParts("اهلا")).toEqual([{ type: "text", value: "اهلا" }]);
+    expect(messengerLinkParts("")).toEqual([]);
+    expect(messengerLinkParts(null)).toEqual([]);
+  });
+
+  it("names the site without www, and nothing when the address is unreadable", () => {
+    expect(messengerLinkHost("https://www.shop.example/p/1")).toBe("shop.example");
+    expect(messengerLinkHost("https://shop.example")).toBe("shop.example");
+    expect(messengerLinkHost("not a url")).toBe("");
+    expect(messengerLinkHost("javascript:alert(1)")).toBe("");
+  });
+});
