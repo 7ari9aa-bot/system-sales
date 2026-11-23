@@ -740,10 +740,17 @@ class SupplierPaymentService:
                     f"the payment ({value}) is more than what is still owed on the order ({owed})"
                 )
 
-        # A supplier payment is a RECORD (amount, date, supplier, invoice). It never touches the
-        # cash drawer. A caller naming a shift is refused rather than silently ignored.
+        # Paying a supplier in cash out of the till must leave the drawer ledger in the SAME
+        # transaction, or the close reports a shortage equal to the payment and nobody can explain
+        # it. Only cash touches the drawer: a card or bank transfer names no shift.
+        drawer_session = None
         if session_id is not None:
-            raise ValidationError("a supplier payment is a record only, not tied to a shift")
+            if method != "cash":
+                raise ValidationError(
+                    "only a cash payment comes out of a cash drawer: "
+                    f"record this {method} payment without a shift"
+                )
+            drawer_session = await _open_drawer(session, tenant_id, session_id)
 
         payment = SupplierPayment(
             tenant_id=tenant_id,
@@ -752,12 +759,25 @@ class SupplierPaymentService:
             amount=value,
             method=method,
             paid_on=paid_on or datetime.now(UTC).date(),
-            session_id=None,
+            session_id=drawer_session.id if drawer_session is not None else None,
             note=note,
             created_by_user_id=created_by,
         )
         session.add(payment)
         await session.flush()
+        if drawer_session is not None:
+            await _drawer_row(
+                session,
+                tenant_id,
+                drawer_session.id,
+                direction="out",
+                amount=value,
+                reference_type="supplier_payment",
+                reference_id=payment.id,
+                notes=(note or "supplier payment")[:255],
+                actor_user_id=created_by,
+            )
+            await session.flush()
         return payment
 
 
@@ -961,14 +981,33 @@ class SupplierReturnService:
         ret = await SupplierReturnService.get(session, tenant_id, return_id, lock=True)
         if ret.status != "review":
             raise ConflictError(f"this return was already {ret.status}")
+        # A supplier who hands the money back over the counter puts it IN the drawer, so the
+        # ledger gets an `in` row in the same transaction. 'credit' and 'replace' move no money:
+        # the supplier statement carries the value, and a replacement arrives as a purchase order.
+        drawer_session = None
         if session_id is not None:
-            # The refund is a record; it never enters a drawer, so a named shift is refused.
-            raise ValidationError("a supplier return is a record only, not tied to a shift")
-        # No drawer is touched whatever the settlement: the supplier statement counts the value.
-        # settlement 'replace': no money; the replacement arrives as a normal purchase order.
+            if str(ret.settlement) != "cash":
+                raise ValidationError(
+                    "only a cash settlement of a supplier return goes into a cash drawer: "
+                    f"this return settles by {ret.settlement}"
+                )
+            drawer_session = await _open_drawer(session, tenant_id, session_id)
         ret.status = "accepted"
         ret.decided_at = datetime.now(UTC)
         await session.flush()
+        if drawer_session is not None:
+            await _drawer_row(
+                session,
+                tenant_id,
+                drawer_session.id,
+                direction="in",
+                amount=exact_money(ret.total),
+                reference_type="supplier_return",
+                reference_id=ret.id,
+                notes="cash refund from supplier"[:255],
+                actor_user_id=decided_by,
+            )
+            await session.flush()
         return ret
 
     @staticmethod
@@ -1424,3 +1463,58 @@ class GoodsReceiptService:
                 )
             ).scalars()
         )
+
+
+async def _open_drawer(session: AsyncSession, tenant_id: UUID, session_id: UUID):
+    """The OPEN till money is about to move through, or a refusal.
+
+    Locked, because two payments out of one drawer must not both read the same expected cash.
+    """
+    from app.modules.pos.models import PosSession
+
+    pos_session = (
+        await session.execute(
+            select(PosSession)
+            .where(PosSession.tenant_id == tenant_id, PosSession.id == session_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if pos_session is None:
+        raise NotFoundError("pos session not found")
+    if pos_session.status != "OPEN":
+        raise ConflictError("this shift is closed; money cannot move through it")
+    return pos_session
+
+
+async def _drawer_row(
+    session: AsyncSession,
+    tenant_id: UUID,
+    session_id: UUID,
+    *,
+    direction: str,
+    amount: object,
+    reference_type: str,
+    reference_id: UUID,
+    notes: str,
+    actor_user_id: UUID | None,
+) -> None:
+    """One row on the drawer ledger, naming the document it belongs to.
+
+    A row is never edited or deleted: a mistake is corrected by its own reversing row, so the
+    drawer's history explains itself.
+    """
+    from app.modules.pos.models import PosCashMovement
+
+    session.add(
+        PosCashMovement(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            direction=direction,
+            reason="pay_out" if direction == "out" else "pay_in",
+            amount=exact_money(amount),
+            reference_type=reference_type,
+            reference_id=reference_id,
+            notes=notes,
+            created_by_user_id=actor_user_id,
+        )
+    )

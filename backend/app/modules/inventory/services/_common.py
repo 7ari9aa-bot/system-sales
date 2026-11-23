@@ -44,13 +44,17 @@ PHYSICAL_MOVEMENT_REASONS: frozenset[str] = frozenset(
         # warehouse. Not `adjustment`: a report of corrections must not swallow the starting
         # position, and not `purchase`: nothing was bought, so it must never feed cost of goods.
         "opening_stock",
+        # A CONFIRMED sale reversed because it should never have existed (wrong size, wrong price).
+        # Not `return`: the customer did not bring anything back, and a return report that counted
+        # these would show returns for sales that never happened. Written only by the POS void.
+        "void",
     }
 )
 #: Reasons only a domain service may write. A person typing one into POST /inventory/movements
 #: would fake goods leaving to a supplier that no document claims, or a starting position that
 #: no import recorded.
 SERVICE_ONLY_MOVEMENT_REASONS: frozenset[str] = frozenset(
-    {"supplier_return", "supplier_return_reversal", "opening_stock"}
+    {"supplier_return", "supplier_return_reversal", "opening_stock", "void"}
 )
 AVAILABILITY_MOVEMENT_REASONS: frozenset[str] = frozenset({"reservation", "reservation_release"})
 MOVEMENT_REASONS: frozenset[str] = PHYSICAL_MOVEMENT_REASONS | AVAILABILITY_MOVEMENT_REASONS

@@ -135,6 +135,17 @@ export function messengerTimeDivider(messages, index, gapMs = MESSENGER_TIME_GAP
   return now - before >= gapMs;
 }
 
+/**
+ * The time Messenger prints in the centred divider: 12-hour, no leading zero, with the day
+ * period ("2:37 ص" / "2:37 AM"). Built from the real timestamp so nothing is invented; an
+ * unreadable time gives an empty string and the caller keeps the time it already had.
+ */
+export function messengerClockTime(createdAt, lang = "ar", timeZone) {
+  const date = new Date(createdAt || 0);
+  if (!createdAt || Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-US", { hour: "numeric", minute: "2-digit", hour12: true, ...(timeZone ? { timeZone } : {}) }).format(date);
+}
+
 const URL_IN_TEXT = /https?:\/\/[^\s<>"')]+/giu;
 
 /**

@@ -12,13 +12,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
     InventoryBalance,
+    InventoryMovement,
     Stocktake,
     StocktakeAssignment,
     StocktakeLine,
@@ -207,12 +208,31 @@ class StocktakeService:
             raise ValidationError(
                 "some variants are not part of this stocktake", details={"count": len(missing)}
             )
+        # The book quantity the counter was looking at, read once for the whole sheet. This is the
+        # figure approval reconciles against, so a sale made after the count is not subtracted a
+        # second time at approval.
+        books = {
+            row.variant_id: int(row.on_hand)
+            for row in (
+                await session.execute(
+                    select(InventoryBalance.variant_id, InventoryBalance.on_hand).where(
+                        InventoryBalance.tenant_id == tenant_id,
+                        InventoryBalance.warehouse_id == stocktake.warehouse_id,
+                        InventoryBalance.variant_id.in_(list(wanted)),
+                    )
+                )
+            ).all()
+        }
         for line in lines:
             new_qty = wanted[line.variant_id]
             # If changing an already-counted value, track it as a recount
             if line.counted_qty is not None and new_qty != line.counted_qty:
                 line.recount_count = (line.recount_count or 0) + 1
             line.counted_qty = new_qty
+            # The moment this figure became true, and the book it was measured against. Un-counting
+            # clears both, so a line with no figure has neither.
+            line.counted_at = _now() if new_qty is not None else None
+            line.counted_book_qty = books.get(line.variant_id, 0) if new_qty is not None else None
             if user_id:
                 line.counted_by_user_id = user_id
 
@@ -303,11 +323,19 @@ class StocktakeService:
         """Apply every counted line's difference to the ledger, once.
 
         The stocktake row is locked first, so a double click or two managers cannot apply it
-        twice: the second sees APPROVED and is refused. For each counted line the difference is
-        ``counted - expected`` (the snapshot), moved as ``in`` or ``out`` with reason
-        ``adjustment`` on whatever the balance is NOW. If a sale since the snapshot already took
-        the stock the count says is missing, the removal is clamped at zero rather than failing
-        the whole approval; ``applied_delta`` records what really moved.
+        twice: the second sees APPROVED and is refused.
+
+        For each counted line the difference is ``counted - book_at_count``, where
+        ``book_at_count`` is the balance rebuilt at the moment the line was counted: the balance
+        now, minus everything that moved in or out since. A shop sells while the sheet is being
+        filled, and comparing against the count's START snapshot subtracted those sales twice (the
+        dress left once and was written off as missing as well). With the rebuild, a sale during
+        the count moves nothing at approval.
+
+        The movement is ``in`` or ``out`` with reason ``adjustment``. A removal is clamped at the
+        balance so approval never fails on stock a later sale already took; ``applied_delta``
+        records what really moved. A line with no ``counted_at`` (counted before this column
+        existed) falls back to the start snapshot.
         """
         stocktake = await StocktakeService._get(session, tenant_id, stocktake_id, lock=True)
         if stocktake.status != "OPEN":
@@ -334,7 +362,10 @@ class StocktakeService:
 
         adjusted = clamped = 0
         for line in counted:
-            wanted = line.counted_qty - line.expected_qty
+            book_at_count = await StocktakeService._book_qty_at_count(
+                session, tenant_id, line, stocktake.warehouse_id
+            )
+            wanted = line.counted_qty - book_at_count
             if wanted == 0:
                 line.applied_delta = 0
                 continue
@@ -373,6 +404,23 @@ class StocktakeService:
             "clamped": clamped,
             "not_counted": len(lines) - len(counted),
         }
+
+    @staticmethod
+    async def _book_qty_at_count(
+        session: AsyncSession,
+        tenant_id: UUID,
+        line: StocktakeLine,
+        warehouse_id: UUID,
+    ) -> int:
+        """The book quantity this line was measured against.
+
+        Stored when the figure was taken (``counted_book_qty``), so approval compares like with
+        like whatever happened in between. A line counted before that column existed falls back to
+        the count's start snapshot.
+        """
+        if line.counted_book_qty is not None:
+            return int(line.counted_book_qty)
+        return line.expected_qty
 
     @staticmethod
     async def list_recent(session: AsyncSession, tenant_id: UUID, *, limit: int = 20) -> list[dict]:

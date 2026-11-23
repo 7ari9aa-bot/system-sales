@@ -31,16 +31,22 @@ def stock_status(on_hand: int, reorder_level: int) -> str:
     return "in"
 
 
+def checked_level(level: object) -> int:
+    """A reorder level the shop may store: a whole number from 0 (no alert) upward."""
+    # bool is an int in Python: True would silently become a level of 1.
+    if isinstance(level, bool) or not isinstance(level, int):
+        raise ValidationError("reorder level must be a whole number")
+    if level < 0 or level > MAX_REORDER_LEVEL:
+        raise ValidationError(f"reorder level must be between 0 and {MAX_REORDER_LEVEL}")
+    return level
+
+
 class StockLevelService:
     @staticmethod
     async def set_reorder_level(
         session: AsyncSession, tenant_id: UUID, variant_id: UUID, level: object
     ) -> int:
-        # bool is an int in Python: True would silently become a level of 1.
-        if isinstance(level, bool) or not isinstance(level, int):
-            raise ValidationError("reorder level must be a whole number")
-        if level < 0 or level > MAX_REORDER_LEVEL:
-            raise ValidationError(f"reorder level must be between 0 and {MAX_REORDER_LEVEL}")
+        level = checked_level(level)
         # The variant must exist in THIS tenant; a bare insert would only fail on the FK, with
         # a database error instead of a clean not-found.
         exists = (
@@ -74,6 +80,44 @@ class StockLevelService:
             )
         ).scalar_one_or_none()
         return 0 if stored is None else int(stored)
+
+
+    @staticmethod
+    async def set_reorder_level_for_product(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, level: object
+    ) -> int:
+        """One reorder level for a whole model, written to every active size it comes in.
+
+        A clothing shop restocks a size run, not a size: setting the level one variant at a time
+        across eight sizes is how a model ends up with no alert at all. Variants that are inactive
+        are left alone - they are not on the rail, so they cannot run low. Returns how many
+        variants now carry the level.
+        """
+        level = checked_level(level)
+        variants = list(
+            (
+                await session.execute(
+                    text(
+                        "SELECT id FROM product_variants "
+                        "WHERE product_id = :p AND tenant_id = :t AND is_active IS TRUE"
+                    ),
+                    {"p": product_id, "t": tenant_id},
+                )
+            ).scalars()
+        )
+        if not variants:
+            # Either no such model in this tenant, or every size of it is archived.
+            raise NotFoundError(f"product {product_id} has no active variants")
+        stmt = pg_insert(VariantStockSetting).values(
+            [{"tenant_id": tenant_id, "variant_id": v, "reorder_level": level} for v in variants]
+        )
+        await session.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_variant_stock_settings_variant",
+                set_={"reorder_level": level, "updated_at": func.now()},
+            )
+        )
+        return len(variants)
 
 
 class StocktakeGateway:

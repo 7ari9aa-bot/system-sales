@@ -62,18 +62,26 @@ design up.
 | Cash ledger, sell-flow-only reasons refused on the wire | ✅ | `pos/models.py:95`, `pos/router.py:29` |
 | Sell = CreateOrder → capture → settlement → receipt | ✅ | `pos/service.py:266` |
 | Session close: expected = float + in − out, variance stored | ✅ | `pos/service.py:354` |
-| Barcode scan entry point | ❌ | sell takes a raw `items` list |
-| POS Profile (preconfigured defaults) | ❌ | invented per call |
-| Cashier (employee) identity on the session | ❌ | only `opened_by_user_id` |
-| Discount with approval | ❌ | `create_order` accepts `discount_total`, POS never sends it |
-| Split tender (multiple payment methods) | ❌ | one payment per sale |
-| Per-method reconciliation at close | ❌ | cash only |
-| Returns / refunds | ❌ | not wired (must ride orders, ADR-054) |
-| Held / parked carts | ❌ | — |
-| Receipt printing / custom numbering | ❌ | random number only |
-| Walk-in customer | ❌ | `customer_id` is required |
-| Cashier UI (any) | ❌ | no page, no route, no component |
+| Barcode scan entry point | ✅ | till scans into `pos.jsx` (barcode → variant), stocktake scans per line |
+| Manual model/colour/size picker | ✅ | `lib/variantPicker.js`, `VariantPickerDialog.jsx` — for a torn or missing label |
+| POS Profile (preconfigured defaults) | ✅ | `PosProfile` / `PosProfileUser`, `pos/models.py:47` |
+| Cashier (employee) identity on the session | ✅ | `PosSession.cashier_user_id`, `pos/models.py:160`; handover moves it |
+| Discount with approval | ✅ | invoice + line discount, manager approval above the ceiling |
+| Split tender (multiple payment methods) | ✅ | `payments: list[PaymentLine]`, `pos/router.py:283` |
+| Per-method reconciliation at close | ✅ | `PosSessionReconciliation`, `pos/models.py:341` |
+| Returns / refunds | ✅ | real cash refund + drawer-out row (orders refund path, ADR-054) |
+| Exchange difference | ✅ | collected or refunded in the same sale |
+| Held / parked carts | ✅ | `POST …/hold` (`pos/router.py:966`), «الفواتير المعلقة» |
+| Receipt printing / custom numbering | ✅ | ESC/POS over USB/Bluetooth, per-shop copy count, failure surfaced to the cashier |
+| Walk-in customer | ✅ | `walk_in` path in `pos/service.py:1664` |
+| Cashier UI (any) | ✅ | `frontend/src/cashier` |
+| Void of a confirmed sale | ✅ | manager approval + reason, stock restored |
+| Reorder level | ✅ | per variant, or one level for a whole model (a size run) in one action |
+| Estimated cost on a returned piece | ✅ | disclosed in the profit report, never presented as booked |
 | Daily consolidation | ❌ | — |
+
+> This table is measured against the code, not against the plan: when a row changes, the evidence
+> column changes with it. The remaining ❌ rows are the ones still to build.
 
 ---
 

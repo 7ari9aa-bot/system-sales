@@ -314,3 +314,20 @@ describe("links inside a Messenger bubble", () => {
     expect(messengerLinkHost("javascript:alert(1)")).toBe("");
   });
 });
+
+import { messengerClockTime } from "./messengerChat";
+
+describe("messengerClockTime", () => {
+  it("prints a 12-hour time with no leading zero and the day period, like Messenger", () => {
+    // 2026-11-23T00:37:52Z is 02:37 in Cairo (UTC+2)
+    expect(messengerClockTime("2026-11-23T00:37:52Z", "ar", "Africa/Cairo")).toMatch(/^[2٢]:[3٣][7٧] ص$/);
+    expect(messengerClockTime("2026-11-23T00:37:52Z", "en", "Africa/Cairo")).toBe("2:37 AM");
+    expect(messengerClockTime("2026-11-23T13:05:00Z", "en", "Africa/Cairo")).toBe("3:05 PM");
+  });
+
+  it("returns an empty string for a missing or unreadable time", () => {
+    expect(messengerClockTime(null, "ar")).toBe("");
+    expect(messengerClockTime("not a date", "en")).toBe("");
+  });
+});
+

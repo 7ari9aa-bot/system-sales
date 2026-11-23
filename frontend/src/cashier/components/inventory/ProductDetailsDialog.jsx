@@ -12,6 +12,7 @@ import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import { colorHex, stockStatus } from "@/cashier/lib/uiConstants";
 import ReorderLevelCell from "@/cashier/components/inventory/ReorderLevelCell";
+import ModelReorderLevel from "@/cashier/components/inventory/ModelReorderLevel";
 import { fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 
 // تفاصيل منتج مفتوح من بطاقة: بياناته الأساسية مع كل تركيبات اللون والمقاس وأرصدتها.
@@ -118,6 +119,8 @@ export default function ProductDetailsDialog({ product, open, onOpenChange, onMo
             </span>
           ))}
         </div>
+
+        {variants.length > 1 && product.id ? <ModelReorderLevel productId={product.id} sizes={variants.length} /> : null}
 
         {variants.length === 0 ? (
           <EmptyState icon={Inbox} title="لا توجد تركيبات" description="لم تُسجَّل تركيبات لهذا المنتج بعد." compact />

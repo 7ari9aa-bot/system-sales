@@ -329,6 +329,11 @@ class PosReturnLine(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, 
     refund_total: Mapped[Decimal] = mapped_column(MONEY)
     # Why it came back: one of the owner's pos.return_reasons. NULL = none given (or an old return).
     reason: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    # The STATE the garment came back in, which decides where it goes: sellable (back on the
+    # shelf), quarantine (physically there, waiting for inspection), damaged (there, unsellable),
+    # writeoff (gone, not stock), supplier (going back to the supplier). NULL = an old return,
+    # recorded when everything restocked.
+    condition: Mapped[str | None] = mapped_column(String(15), nullable=True)
 
     __table_args__ = (Index("ix_pos_return_lines_tenant_order", "tenant_id", "order_id"),)
 

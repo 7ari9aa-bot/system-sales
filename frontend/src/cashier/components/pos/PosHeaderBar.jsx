@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Banknote, History, Printer, ShoppingCart, Users, Wifi, WifiOff } from "lucide-react";
+import { Banknote, History, LayoutGrid, Printer, ShoppingCart, Users, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
 
 export default function PosHeaderBar({
@@ -11,6 +11,7 @@ export default function PosHeaderBar({
   onCashMovement,
   onHandover,
   onPrinterSetup,
+  onPickVariant,
   isOnline = true,
   offlineCount = 0,
   onSyncOffline,
@@ -73,6 +74,19 @@ export default function PosHeaderBar({
       </div>
 
       <div className="ms-auto flex flex-wrap items-center gap-1.5">
+        {onPickVariant ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-[11px]"
+            onClick={onPickVariant}
+            title="اختيار الصنف من الكتالوج لما الباركود أو التيكيت يكون تالف"
+          >
+            <LayoutGrid className="h-3.5 w-3.5 text-primary" />
+            اختيار صنف
+          </Button>
+        ) : null}
+
         {onCashMovement ? (
           <Button
             variant="outline"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedCounts, diffOf, parseCount, sheetFromApi, sheetTotals, stocktakeErrorMessage } from "./stocktakeAdapter";
+import { changedCounts, countsToSave, diffOf, parseCount, sheetFromApi, sheetTotals, stocktakeErrorMessage } from "./stocktakeAdapter";
 
 const stock = [
   { id: "a", productName: "قميص", sku: "S-A", color: "أسود", size: "L" },
@@ -104,5 +104,25 @@ describe("stocktakeErrorMessage", () => {
   it("never leaks a raw status for an unknown failure", () => {
     expect(stocktakeErrorMessage({ status: 500 })).not.toMatch(/500/);
     expect(stocktakeErrorMessage(undefined)).toBeTruthy();
+  });
+});
+
+describe("countsToSave", () => {
+  it("carries the hand-typed rows along with the scanned one", () => {
+    // the scan saved on its own; without the typed rows this request would wipe them on refetch
+    const typed = [{ variant_id: "v1", counted_qty: 7 }];
+    expect(countsToSave(typed, { v2: 4 })).toEqual([
+      { variant_id: "v1", counted_qty: 7 },
+      { variant_id: "v2", counted_qty: 4 },
+    ]);
+  });
+
+  it("lets the scan win for the line it counted", () => {
+    const typed = [{ variant_id: "v1", counted_qty: 7 }];
+    expect(countsToSave(typed, { v1: 9 })).toEqual([{ variant_id: "v1", counted_qty: 9 }]);
+  });
+
+  it("saves nothing when there is nothing to save", () => {
+    expect(countsToSave([], {})).toEqual([]);
   });
 });

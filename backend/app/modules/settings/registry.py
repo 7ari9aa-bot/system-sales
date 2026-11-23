@@ -219,8 +219,10 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "einvoice.branch_street",  # pos/eta_adapter.py::eta_branch
         "einvoice.branch_building_number",  # pos/eta_adapter.py::eta_branch
         "pos.take_payments",  # pos/service.py::record_sale
+        "pos.allow_record_only_sales",  # pos/service.py::record_sale
         "pos.allow_sale_on_account",  # pos/service.py::record_sale
         "pos.reference_required_methods",  # pos/service.py::record_sale
+        "pos.settle_payment_methods",  # pos/service.py::close_session
         "pos.variance_reason_required",  # pos/service.py::close_session
         "pos.variance_approval_threshold",  # pos/service.py::close_session
         "purchasing.allow_partial_receipt",  # purchasing/service.py::GoodsReceiptService.create
@@ -867,6 +869,54 @@ _reg(
         description_en=(
             "When on, the cashier records how the customer paid (cash, card, transfer) and the "
             "change, and cash goes into the drawer ledger. When off, a sale is recorded only."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.allow_record_only_sales",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="السماح بالبيع دون تحصيل",
+        label_en="Allow Selling Without Collecting",
+        description_ar=(
+            "محل الملابس الذي لم يكمل إعداد النشاط يبيع دون تسجيل أي وسيلة دفع، فلا يدخل أي مبلغ "
+            "في الدرج ولا في الحسابات. هذا الخيار هو الموافقة الصريحة على العمل بهذه الطريقة. "
+            "بدونه يوقف النظام البيع ويطلب إنهاء إعداد التحصيل."
+        ),
+        description_en=(
+            "An apparel shop that skipped its setup would sell without recording any payment, so "
+            "no money reaches the drawer or the books. This switch is the explicit yes to running "
+            "that way. Without it the till refuses the sale and asks for the collection setup."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.settle_payment_methods",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH, Scope.POS_PROFILE),
+        audit=True,
+        branch_delegable=False,
+        segments=("retail",),
+        label_ar="تسوية كل وسائل الدفع عند الإغلاق",
+        label_en="Settle Every Payment Method at Close",
+        description_ar=(
+            "عند التفعيل يطلب إغلاق الوردية عدّاً فعلياً لكل وسيلة دفع استُخدمت (الكارت، المحفظة، "
+            "التحويل) لا للكاش وحده، ويحفظ المتوقع والفعلي والفرق لكل وسيلة. بدونها تُقارن "
+            "الوسائل غير النقدية على الشاشة فقط ولا يُحفظ فرقها."
+        ),
+        description_en=(
+            "When on, closing the shift requires a real count for every payment method the day "
+            "used (card, wallet, transfer), not just cash, and stores expected vs counted vs the "
+            "difference per method. When off, non-cash methods are shown but not settled."
         ),
     )
 )
