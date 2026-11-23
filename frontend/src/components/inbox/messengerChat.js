@@ -218,3 +218,137 @@ export function messengerRowPreview(conversation, lang = "ar") {
   if (!text) return "";
   return conversation?.lastDirection === "outbound" ? `${lang === "ar" ? "أنت" : "You"}: ${text}` : text;
 }
+
+/**
+ * How one message is drawn in Messenger. A photo, video or sticker stands on the page with no
+ * bubble; a file is a card; a removed message is a grey line; a system line is centred grey text.
+ * Anything whose address has not arrived yet stays a plain bubble, so nothing is drawn from air.
+ */
+export function messengerMessageShape(m) {
+  if (m?.senderType === "system") return "system";
+  if (m?.deleted) return "deleted";
+  const text = String(m?.text || "");
+  const url = m?.mediaUrl || "";
+  if (m?.mediaType === "audio" || text.startsWith("🎤")) return "audio";
+  if (url) {
+    if (m.mediaType === "sticker") return "sticker";
+    if (m.mediaType === "video" || m.contentType === "video" || /\.(mp4|mov|webm|3gp)(\?|#|$)/i.test(url)) return "video";
+    if (m.mediaType === "image" || m.contentType === "image" || /\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i.test(url)) return "photo";
+    return "file";
+  }
+  return messengerIsBigEmoji(text) ? "bigEmoji" : "text";
+}
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>"')]+/giu;
+
+/**
+ * What the "Media, files and links" section of the details panel lists: only what the thread
+ * really contains. Photos and videos are media; any other attachment is a file; a link is a
+ * web address a message's text carries.
+ */
+export function messengerSharedItems(messages) {
+  const out = { media: [], files: [], links: [] };
+  for (const m of Array.isArray(messages) ? messages : []) {
+    const kind = String(m?.contentType || m?.mediaType || "").toLowerCase();
+    if (m?.mediaUrl) {
+      if (kind.startsWith("image") || kind === "photo" || kind.startsWith("video")) out.media.push(m);
+      else out.files.push(m);
+    }
+    for (const url of String(m?.text || "").match(URL_IN_TEXT) || []) out.links.push({ id: m.id, url });
+  }
+  return out;
+}
+
+// The marker the backend stores for a reaction that was taken back.
+const REACTION_WITHDRAWN = "\u200b-";
+
+/**
+ * The small badge under a bubble: each emoji once, plus the total number of reactions. A
+ * withdrawn reaction counts for nothing, so taking one back removes the badge.
+ */
+export function messengerReactionSummary(reactions) {
+  const live = (Array.isArray(reactions) ? reactions : []).filter((r) => typeof r === "string" && r.trim() && r !== REACTION_WITHDRAWN);
+  if (!live.length) return null;
+  return { emojis: [...new Set(live)], count: live.length };
+}
+
+const STATUS_WORDS = {
+  sent: { ar: "تم الإرسال", en: "Sent" },
+  delivered: { ar: "تم التسليم", en: "Delivered" },
+  read: { ar: "تمت المشاهدة", en: "Seen" },
+};
+
+function ago(ms, lang) {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return lang === "ar" ? "الآن" : "just now";
+  if (minutes < 60) return lang === "ar" ? `منذ ${minutes} د` : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return lang === "ar" ? `منذ ${hours} س` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return lang === "ar" ? `منذ ${days} يوم` : `${days}d ago`;
+}
+
+/**
+ * The grey line Messenger prints under the newest message we sent: "Sent / Delivered / Seen" and
+ * how long ago. Only a state the platform really recorded is named. Once the customer has written
+ * after our message the line is gone, as in Messenger, and a failed or pending message has none.
+ */
+export function messengerStatusLine(messages, lang = "ar", now = Date.now()) {
+  const list = Array.isArray(messages) ? messages : [];
+  const last = list[list.length - 1];
+  if (!last || sideOf(last) !== "out" || last.senderType === "system") return null;
+  const words = STATUS_WORDS[String(last.status || "").toLowerCase()];
+  if (!words) return null;
+  const at = new Date(last.createdAt || 0).getTime();
+  if (!at) return null;
+  const when = ago(Math.max(0, now - at), lang);
+  return lang === "ar" ? `${words.ar} ${when}` : `${words.en} ${when}`;
+}
+
+/** The grey line under a name in the Messenger list: "You: …" when the newest message is ours. */
+export function messengerRowPreview(conversation, lang = "ar") {
+  const text = String(conversation?.preview || "").trim();
+  if (!text) return "";
+  return conversation?.lastDirection === "outbound" ? `${lang === "ar" ? "أنت" : "You"}: ${text}` : text;
+}
+
+/**
+ * How one message is drawn in Messenger. A photo, video or sticker stands on the page with no
+ * bubble; a file is a card; a removed message is a grey line; a system line is centred grey text.
+ * Anything whose address has not arrived yet stays a plain bubble, so nothing is drawn from air.
+ */
+export function messengerMessageShape(m) {
+  if (m?.senderType === "system") return "system";
+  if (m?.deleted) return "deleted";
+  const text = String(m?.text || "");
+  const url = m?.mediaUrl || "";
+  if (m?.mediaType === "audio" || text.startsWith("🎤")) return "audio";
+  if (url) {
+    if (m.mediaType === "sticker") return "sticker";
+    if (m.mediaType === "video" || m.contentType === "video" || /\.(mp4|mov|webm|3gp)(\?|#|$)/i.test(url)) return "video";
+    if (m.mediaType === "image" || m.contentType === "image" || /\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i.test(url)) return "photo";
+    return "file";
+  }
+  return messengerIsBigEmoji(text) ? "bigEmoji" : "text";
+}
+
+const PHOTO_EXT = /\.(jpe?g|png|webp|gif|bmp)(\?|#|$)/i;
+const CLIP_EXT = /\.(mp4|mov|webm|mkv)(\?|#|$)/i;
+
+/**
+ * The picture, clip or document a message carries, or null for anything else. Messenger shows a
+ * photo and a clip as the thing itself with no bubble behind it, and a file as a card; a voice
+ * note is not offered because the Page API cannot send one.
+ */
+export function messengerAttachment(message) {
+  const url = String(message?.mediaUrl || "");
+  if (!url) return null;
+  const kind = String(message?.contentType || message?.mediaType || "").toLowerCase();
+  if (kind === "voice" || kind === "audio" || kind === "sticker") return null;
+  if (kind.startsWith("image") || kind === "photo") return { kind: "image", url, name: message?.fileName || "" };
+  if (kind.startsWith("video")) return { kind: "video", url, name: message?.fileName || "" };
+  if (kind === "file" || kind === "document") return { kind: "file", url, name: message?.fileName || "" };
+  if (PHOTO_EXT.test(url)) return { kind: "image", url, name: message?.fileName || "" };
+  if (CLIP_EXT.test(url)) return { kind: "video", url, name: message?.fileName || "" };
+  return { kind: "file", url, name: message?.fileName || "" };
+}

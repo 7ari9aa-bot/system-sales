@@ -263,3 +263,153 @@ describe("messengerRowPreview", () => {
     expect(messengerRowPreview(null, "ar")).toBe("");
   });
 });
+
+import { messengerMessageShape } from "./messengerChat";
+
+describe("messengerMessageShape", () => {
+  it("a system line is centred grey text, whatever else it carries", () => {
+    expect(messengerMessageShape({ senderType: "system", text: "x" })).toBe("system");
+  });
+
+  it("a deleted message is the 'removed' line, even if it still has media", () => {
+    expect(messengerMessageShape({ deleted: true, text: "x", mediaUrl: "https://x/a.jpg" })).toBe("deleted");
+  });
+
+  it("a photo or video stands without a bubble; a file is a card; a sticker is bare", () => {
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.jpg", mediaType: "image" })).toBe("photo");
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.mp4", mediaType: "video" })).toBe("video");
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.pdf", contentType: "file" })).toBe("file");
+    expect(messengerMessageShape({ mediaUrl: "https://x/s.png", mediaType: "sticker" })).toBe("sticker");
+  });
+
+  it("a photo that has not finished uploading has no URL yet and stays a bubble", () => {
+    expect(messengerMessageShape({ text: "caption", mediaType: "image" })).toBe("text");
+  });
+
+  it("audio, a lone emoji and plain text keep their own looks", () => {
+    expect(messengerMessageShape({ mediaType: "audio", mediaUrl: "https://x/a.ogg" })).toBe("audio");
+    expect(messengerMessageShape({ text: "🎤 0:03" })).toBe("audio");
+    expect(messengerMessageShape({ text: "👍" })).toBe("bigEmoji");
+    expect(messengerMessageShape({ text: "hello" })).toBe("text");
+  });
+});
+
+import { messengerReactionSummary } from "./messengerChat";
+
+describe("messengerReactionSummary", () => {
+  it("lists each emoji once, in order, with how many people used it", () => {
+    expect(messengerReactionSummary(["❤️", "😂", "❤️"])).toEqual({ emojis: ["❤️", "😂"], count: 3 });
+  });
+
+  it("ignores empty and withdrawn markers, so a removed reaction leaves no badge", () => {
+    expect(messengerReactionSummary(["\u200b-", "", null, "👍"])).toEqual({ emojis: ["👍"], count: 1 });
+    expect(messengerReactionSummary(["\u200b-"])).toBeNull();
+  });
+
+  it("is null when there is nothing to show", () => {
+    expect(messengerReactionSummary([])).toBeNull();
+    expect(messengerReactionSummary(undefined)).toBeNull();
+  });
+});
+
+import { messengerStatusLine } from "./messengerChat";
+
+describe("messengerStatusLine", () => {
+  const now = Date.UTC(2026, 10, 23, 12, 0);
+  const ago = (ms) => new Date(now - ms).toISOString();
+  const sent = (status, ms, extra = {}) => ({ id: "m", side: "out", status, createdAt: ago(ms), ...extra });
+
+  it("names only the state the platform really knows, with how long ago", () => {
+    expect(messengerStatusLine([sent("sent", 5 * 60e3)], "ar", now)).toBe("تم الإرسال منذ 5 د");
+    expect(messengerStatusLine([sent("delivered", 3 * 3600e3)], "ar", now)).toBe("تم التسليم منذ 3 س");
+    expect(messengerStatusLine([sent("read", 2 * 86400e3)], "ar", now)).toBe("تمت المشاهدة منذ 2 يوم");
+    expect(messengerStatusLine([sent("sent", 5 * 60e3)], "en", now)).toBe("Sent 5m ago");
+    expect(messengerStatusLine([sent("read", 60e3)], "en", now)).toBe("Seen 1m ago");
+  });
+
+  it("says 'just now' inside the first minute", () => {
+    expect(messengerStatusLine([sent("sent", 20e3)], "ar", now)).toBe("تم الإرسال الآن");
+    expect(messengerStatusLine([sent("sent", 20e3)], "en", now)).toBe("Sent just now");
+  });
+
+  it("looks at the newest sent message only, and says nothing once the customer wrote after it", () => {
+    const list = [sent("read", 9e5), { id: "c", side: "in", createdAt: ago(1e5) }];
+    expect(messengerStatusLine(list, "ar", now)).toBeNull();
+  });
+
+  it("says nothing for a failed, pending or system message, or an empty thread", () => {
+    expect(messengerStatusLine([sent("failed", 6e4)], "ar", now)).toBeNull();
+    expect(messengerStatusLine([sent("queued", 6e4)], "ar", now)).toBeNull();
+    expect(messengerStatusLine([sent("sent", 6e4, { senderType: "system" })], "ar", now)).toBeNull();
+    expect(messengerStatusLine([], "ar", now)).toBeNull();
+  });
+});
+
+import { messengerRowPreview } from "./messengerChat";
+
+describe("messengerRowPreview", () => {
+  it("puts 'You:' before a message we sent, as the Messenger list does", () => {
+    expect(messengerRowPreview({ preview: "تمام", lastDirection: "outbound" }, "ar")).toBe("أنت: تمام");
+    expect(messengerRowPreview({ preview: "ok", lastDirection: "outbound" }, "en")).toBe("You: ok");
+  });
+
+  it("leaves a customer's message as it is", () => {
+    expect(messengerRowPreview({ preview: "السلام", lastDirection: "inbound" }, "ar")).toBe("السلام");
+    expect(messengerRowPreview({ preview: "hi" }, "en")).toBe("hi");
+  });
+
+  it("is empty when there is no preview, never just 'You:'", () => {
+    expect(messengerRowPreview({ preview: "", lastDirection: "outbound" }, "ar")).toBe("");
+    expect(messengerRowPreview(null, "ar")).toBe("");
+  });
+});
+
+import { messengerMessageShape } from "./messengerChat";
+
+describe("messengerMessageShape", () => {
+  it("a system line is centred grey text, whatever else it carries", () => {
+    expect(messengerMessageShape({ senderType: "system", text: "x" })).toBe("system");
+  });
+
+  it("a deleted message is the 'removed' line, even if it still has media", () => {
+    expect(messengerMessageShape({ deleted: true, text: "x", mediaUrl: "https://x/a.jpg" })).toBe("deleted");
+  });
+
+  it("a photo or video stands without a bubble; a file is a card; a sticker is bare", () => {
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.jpg", mediaType: "image" })).toBe("photo");
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.mp4", mediaType: "video" })).toBe("video");
+    expect(messengerMessageShape({ mediaUrl: "https://x/a.pdf", contentType: "file" })).toBe("file");
+    expect(messengerMessageShape({ mediaUrl: "https://x/s.png", mediaType: "sticker" })).toBe("sticker");
+  });
+
+  it("a photo that has not finished uploading has no URL yet and stays a bubble", () => {
+    expect(messengerMessageShape({ text: "caption", mediaType: "image" })).toBe("text");
+  });
+
+  it("audio, a lone emoji and plain text keep their own looks", () => {
+    expect(messengerMessageShape({ mediaType: "audio", mediaUrl: "https://x/a.ogg" })).toBe("audio");
+    expect(messengerMessageShape({ text: "🎤 0:03" })).toBe("audio");
+    expect(messengerMessageShape({ text: "👍" })).toBe("bigEmoji");
+    expect(messengerMessageShape({ text: "hello" })).toBe("text");
+  });
+});
+
+import { messengerAttachment } from "./messengerChat";
+
+describe("messengerAttachment", () => {
+  it("names a photo, a video and a file from what the server sent", () => {
+    expect(messengerAttachment({ id: "1", contentType: "image", mediaUrl: "https://x/a.jpg" })).toEqual({ kind: "image", url: "https://x/a.jpg", name: "" });
+    expect(messengerAttachment({ id: "2", mediaType: "video", mediaUrl: "https://x/v.mp4" }).kind).toBe("video");
+    expect(messengerAttachment({ id: "3", contentType: "file", mediaUrl: "https://x/f.pdf", fileName: "Invoice.pdf" })).toEqual({ kind: "file", url: "https://x/f.pdf", name: "Invoice.pdf" });
+  });
+
+  it("falls back to the URL's extension when no kind is given", () => {
+    expect(messengerAttachment({ id: "1", mediaUrl: "https://x/photo.PNG?x=1" }).kind).toBe("image");
+    expect(messengerAttachment({ id: "2", mediaUrl: "https://x/clip.mov" }).kind).toBe("video");
+  });
+
+  it("returns null for plain text and for a voice note, which the Page API cannot send", () => {
+    expect(messengerAttachment({ id: "1", text: "hi" })).toBeNull();
+    expect(messengerAttachment({ id: "2", contentType: "voice", mediaUrl: "https://x/a.ogg" })).toBeNull();
+  });
+});

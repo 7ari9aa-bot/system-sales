@@ -110,4 +110,82 @@ describe("ChannelChat on Messenger", () => {
   test("no status line when the customer wrote last", () => {
     expect(render([msg("m1", { text: "hi", side: "in" })])).not.toContain('data-testid="messenger-status-line"');
   });
+
+  test("a photo stands on the page with no bubble around it", () => {
+    const html = render([msg("m1", { mediaType: "image", mediaUrl: "https://cdn.example/a.jpg" })]);
+    expect(html).toContain('data-testid="messenger-photo"');
+    expect(html).toContain("https://cdn.example/a.jpg");
+  });
+
+  test("a file is a card with its name, linked to the file", () => {
+    const html = render([msg("m1", { contentType: "file", mediaUrl: "https://cdn.example/price.pdf", fileName: "price.pdf" })]);
+    expect(html).toContain('data-testid="messenger-file"');
+    expect(html).toContain("price.pdf");
+    expect(html).toContain('href="https://cdn.example/price.pdf"');
+  });
+
+  test("a video shows a player with controls", () => {
+    const html = render([msg("m1", { mediaType: "video", mediaUrl: "https://cdn.example/a.mp4" })]);
+    expect(html).toContain('data-testid="messenger-video"');
+    expect(html).toContain("<video");
+  });
+
+  test("a removed message is a grey line, and its old text is not shown", () => {
+    const html = render([msg("m1", { text: "secret", deleted: true })]);
+    expect(html).toContain('data-testid="messenger-deleted"');
+    expect(html).not.toContain("secret");
+  });
+
+  test("a system line is centred grey text, not a bubble", () => {
+    const html = render([msg("m1", { text: "تم تعيين المحادثة", senderType: "system" })]);
+    expect(html).toContain('data-testid="messenger-system"');
+    expect(html).toContain("تم تعيين المحادثة");
+  });
+
+  test("the customer's small avatar sits by the last bubble of their run", () => {
+    const html = render([msg("m1", { text: "a" }), msg("m2", { text: "b", side: "out", createdAt: "2026-11-22T23:34:00Z" })]);
+    expect(html).toContain('data-testid="messenger-incoming-avatar"');
+  });
+
+  test("no avatar by a bubble that is not the end of the customer's run", () => {
+    const html = render([msg("m1", { text: "a" }), msg("m2", { text: "b", createdAt: "2026-11-22T23:34:00Z" })]);
+    expect(html.match(/data-testid="messenger-incoming-avatar"/g)?.length).toBe(1);
+  });
+
+  test("a photo is the picture itself, with no bubble behind it", () => {
+    const html = render([msg("m1", { side: "out", contentType: "image", mediaUrl: "https://x/a.jpg" })]);
+    expect(html).toContain('data-testid="messenger-photo"');
+    expect(html).toContain("https://x/a.jpg");
+  });
+
+  test("a clip is a player and a document is a card with its name", () => {
+    const clip = render([msg("m1", { side: "in", contentType: "video", mediaUrl: "https://x/v.mp4" })]);
+    expect(clip).toContain('data-testid="messenger-video"');
+    const doc = render([msg("m2", { side: "in", contentType: "file", mediaUrl: "https://x/f.pdf", fileName: "Invoice.pdf" })]);
+    expect(doc).toContain('data-testid="messenger-file"');
+    expect(doc).toContain("Invoice.pdf");
+  });
+
+  test("a system line is centred text, not a bubble", () => {
+    const html = render([msg("m1", { senderType: "system", text: "You started a conversation" })]);
+    expect(html).toContain('data-testid="messenger-system"');
+    expect(html).not.toContain('data-testid="messenger-photo"');
+  });
+
+  test("a message that failed to send shows a red mark and says so, with no fake retry", () => {
+    const html = render([msg("m1", { text: "hi", side: "out", status: "failed" })]);
+    expect(html).toContain('data-testid="messenger-failed"');
+    expect(html).toContain("لم يتم الإرسال");
+    expect(html).not.toContain("messenger-retry");
+  });
+
+  test("a message that was sent has no failure mark", () => {
+    expect(render([msg("m1", { text: "hi", side: "out", status: "sent" })])).not.toContain('data-testid="messenger-failed"');
+  });
+
+  test("an empty thread shows the customer's avatar and name, like Messenger, not a system sentence", () => {
+    const html = render([]);
+    expect(html).toContain('data-testid="messenger-empty"');
+    expect(html).toContain("Ahmed Adel");
+  });
 });
