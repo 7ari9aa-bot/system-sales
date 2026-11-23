@@ -48,14 +48,14 @@ export default function ProductEditor({ product }) {
   async function save(values) {
     try {
       if (!isEdit) {
-        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants });
+        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants, warehouseId: values.warehouseId });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
         if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — الموسم والفئة والماركة والخامة اتحفظوا للمنتج اللي بعده");
         setSeed(nextProductSeed(values));
         setFormKey((k) => k + 1);
         return;
       }
-      const { changed } = await update.mutateAsync({ before: product, after: values });
+      const { changed } = await update.mutateAsync({ before: product, after: values, warehouseId: values.warehouseId });
       const hasPhotos = values.imageFiles?.length > 0;
       const photosOk = await uploadPhotos(product.id, values.imageFiles);
       if (photosOk) toast.success(changed || hasPhotos ? "تم حفظ تعديلات المنتج" : "لا توجد تعديلات لحفظها");
