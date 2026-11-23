@@ -145,8 +145,73 @@ class InstagramAdapter(ChannelAdapter):
         """Instagram post comments arrive on field "comments" in the same
         signed envelope — the shared Meta change parser handles both. Mentions of the account
         (field "mentions") ride the same path so a tag in someone else's comment or caption is
-        not lost."""
-        return [*parse_meta_comment_changes(payload), *self.parse_mentions(payload)]
+        not lost, and so do comments left on a live broadcast (field "live_comments")."""
+        return [
+            *parse_meta_comment_changes(payload),
+            *self.parse_mentions(payload),
+            *self.parse_live_comments(payload),
+        ]
+
+    @staticmethod
+    def parse_live_comments(payload: dict) -> list[InboundComment]:
+        """Comments left on a live broadcast (field ``live_comments``).
+
+        Meta sends these only while a broadcast is running, which is why a quiet account never
+        sees the field: that is not a fault and must not read as one. The value carries the
+        comment's ``id``, its ``text``, the ``from`` author and the broadcast it belongs to, so a
+        live comment is stored as a normal comment on that media — the merchant reads it in the
+        same activity list instead of a place nobody looks.
+        """
+        out: list[InboundComment] = []
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                if change.get("field") != "live_comments":
+                    continue
+                value = change.get("value") or {}
+                comment_id = str(value.get("id") or value.get("comment_id") or "").strip()
+                if not comment_id:
+                    continue
+                author = value.get("from") or {}
+                out.append(
+                    InboundComment(
+                        platform_comment_id=comment_id,
+                        post_id=str(value.get("media_id") or value.get("media", {}).get("id") or "")
+                        or None,
+                        parent_comment_id=str(value.get("parent_id") or "") or None,
+                        author_ref=str(author.get("id") or "") or None,
+                        author_name=author.get("username"),
+                        body=value.get("text"),
+                        verb="add",
+                        raw=value,
+                    )
+                )
+        return out
+
+    @staticmethod
+    def parse_story_insights(payload: dict) -> list[dict]:
+        """A story's metrics, delivered after it expires (field ``story_insights``).
+
+        Returned as plain dicts because these are numbers about a story, not a comment: the value
+        carries ``media_id`` and the metric names Meta chose. A metric of **-1 means "fewer than
+        five"**, not an error and not a missing value — it is kept as sent so the UI can say "أقل
+        من ٥" instead of showing a negative number.
+        """
+        out: list[dict] = []
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                if change.get("field") != "story_insights":
+                    continue
+                value = change.get("value") or {}
+                media_id = str(value.get("media_id") or value.get("id") or "").strip()
+                if not media_id:
+                    continue
+                metrics = {
+                    key: val
+                    for key, val in value.items()
+                    if key not in ("media_id", "id") and isinstance(val, (int, float))
+                }
+                out.append({"media_id": media_id, "metrics": metrics, "raw": value})
+        return out
 
     @staticmethod
     def parse_mentions(payload: dict) -> list[InboundComment]:

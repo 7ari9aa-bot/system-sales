@@ -542,6 +542,21 @@ class IngestService:
                         session, tenant_id, platform=channel, comment=comment
                     )
                     accepted += 1
+            # A story's numbers, delivered after it expires. Parsed by nothing before, so every
+            # story metric Meta sent was dropped on the floor.
+            parse_story_insights = getattr(adapter, "parse_story_insights", None)
+            if callable(parse_story_insights):
+                from app.modules.conversations.instagram_insights import StoryInsightsService
+
+                deliveries = parse_story_insights(payload)
+                if deliveries:
+                    outcome = await StoryInsightsService.apply(
+                        session, tenant_id, channel, deliveries
+                    )
+                    logger.info(
+                        "instagram.story_insights_applied",
+                        extra={"tenant_id": str(tenant_id), "channel": channel, **outcome},
+                    )
             # Replies typed in Meta's own inbox (or another app) come back as `is_echo`.
             # The parsers existed and were never called, so a staff reply from Meta
             # Business Suite never reached FIHRIST and the agent answered the same

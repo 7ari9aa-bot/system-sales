@@ -519,6 +519,10 @@ class SocialPost(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     publish_status: Mapped[str | None] = mapped_column(String(15))
     publish_error: Mapped[str | None] = mapped_column(Text)
+    #: A story's metrics as Meta sent them (field ``story_insights``), keyed by metric name. A
+    #: value of -1 means "fewer than five", so the numbers are kept verbatim rather than cleaned:
+    #: the screen is what decides to write «أقل من ٥» instead of a negative number.
+    insights: Mapped[dict | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint(
