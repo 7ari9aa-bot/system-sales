@@ -29,7 +29,7 @@ import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
 // The six emoji Messenger's reaction picker offers, in its order. The Send API refuses any other,
 // so the picker offers exactly these.
 const MESSENGER_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerClockTime, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -555,7 +555,7 @@ export default function ChannelChat({
                 messengerTimeDivider(visibleMessages, index) && (
                   <div data-testid="messenger-time-divider" className="flex justify-center py-3">
                     <span dir="auto" className="text-[12px] font-medium text-[#65676b]">
-                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${m.time}` : m.time}
+                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${messengerClockTime(m.createdAt, lang) || m.time}` : messengerClockTime(m.createdAt, lang) || m.time}
                     </span>
                   </div>
                 )

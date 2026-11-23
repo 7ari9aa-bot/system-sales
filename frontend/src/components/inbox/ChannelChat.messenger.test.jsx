@@ -23,9 +23,11 @@ describe("ChannelChat on Messenger", () => {
   test("the time is not printed inside the bubble", () => {
     const html = render([msg("m1", { text: "اهلا", time: "٠١:٣٣" })]);
     expect(html).toContain("اهلا");
-    // the time appears once, in the centred divider, and as the hover title; never as bubble text
-    expect(html.match(/٠١:٣٣/g)?.length).toBe(2);
-    expect(html).toContain('data-testid="messenger-time-divider"');
+    // the centred divider prints the 12-hour time with the day period; the old 24-hour string
+    // survives only as the hover title and never as bubble text
+    const divider = html.slice(html.indexOf('data-testid="messenger-time-divider"'));
+    expect(divider.slice(0, divider.indexOf("</div>"))).toMatch(/[١1]:[٣3][٣3] [صم]/);
+    expect(html.match(/٠١:٣٣/g)?.length).toBe(1);
   });
 
   test("a second message a minute later gets no divider of its own", () => {
