@@ -302,13 +302,17 @@ async def test_the_opening_balance_carries_its_unit_cost(db, tenant_ctx):
     variant_id = uuid.UUID(r.json()["variants"][0]["id"])
 
     rows = (
-        await db.execute(
-            select(InventoryMovement).where(
-                InventoryMovement.tenant_id == tenant_ctx.tenant_id,
-                InventoryMovement.variant_id == variant_id,
+        (
+            await db.execute(
+                select(InventoryMovement).where(
+                    InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                    InventoryMovement.variant_id == variant_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].direction == "in"
     assert rows[0].cost_value == Decimal("120.50")
@@ -324,11 +328,15 @@ async def test_an_opening_balance_without_a_cost_stays_unknown_not_zero(db, tena
     variant_id = uuid.UUID(r.json()["variants"][0]["id"])
 
     rows = (
-        await db.execute(
-            select(InventoryMovement).where(
-                InventoryMovement.tenant_id == tenant_ctx.tenant_id,
-                InventoryMovement.variant_id == variant_id,
+        (
+            await db.execute(
+                select(InventoryMovement).where(
+                    InventoryMovement.tenant_id == tenant_ctx.tenant_id,
+                    InventoryMovement.variant_id == variant_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert rows and all(m.cost_value is None for m in rows)

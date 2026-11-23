@@ -32,7 +32,9 @@ COMMENT = {
 
 def test_a_facebook_page_subscribes_to_its_feed_and_messenger_does_not() -> None:
     assert "feed" in subscribed_fields("facebook").split(",")
-    assert "messages" in subscribed_fields("facebook").split(",")
+    # Facebook is the Page's posts and comments; private chat belongs to the Messenger channel.
+    assert "messages" not in subscribed_fields("facebook").split(",")
+    assert "messages" in subscribed_fields("messenger").split(",")
     assert "feed" not in subscribed_fields("messenger").split(",")
 
 

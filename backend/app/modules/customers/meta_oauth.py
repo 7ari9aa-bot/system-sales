@@ -69,22 +69,47 @@ _INSTAGRAM_SCOPES = (
     # to grant them; the DM scopes above are unchanged, so existing chats keep working.
     "instagram_manage_comments,instagram_content_publish"
 )
-# Webhook fields the PAGE subscription asks for, per channel. Only fields that exist on Meta's
+# Webhook fields the PAGE subscription asks for, per CAPABILITY. Only fields that exist on Meta's
 # `page` object are listed. Instagram's own fields (comments, mentions, message_reactions,
 # messaging_seen, live_comments) are NOT Page fields: Meta states that `subscribed_fields` on
 # /{page_id}/subscribed_apps does not configure Instagram webhooks. They are subscribed on the
 # `instagram` object in the App Dashboard (callback /webhooks/instagram, see docs/META_SETUP.md).
 # An Instagram connection still needs its linked Page subscribed, with the chat fields below.
-_BASE_SUBSCRIBED_FIELDS = (
-    "messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads"
+#
+# One source of truth: what the OAuth connect asks for, what the health check expects, what a
+# disconnect keeps for the sibling channel and what docs/META_SETUP.md tells the owner to tick in
+# the App Dashboard are all derived from these two tuples. A field the code parses but never
+# subscribed (echoes, reactions, handovers) used to be silently absent: Meta never sends an event
+# the Page is not subscribed to, however good the parser is.
+_CHAT_FIELDS = (
+    "messages",
+    "messaging_postbacks",
+    "messaging_referrals",
+    "message_deliveries",
+    "message_reads",
 )
+# What only a MESSENGER connection can use: a reaction on one of our messages, a reply typed in
+# the Page inbox, and a thread passed between apps or to a person. The ingest records all three
+# (gateway/page_control.py). Instagram's reactions and echoes arrive on the `instagram` object,
+# not on the Page, so an Instagram connection must not ask the Page for them.
+_MESSENGER_ONLY_FIELDS = ("message_reactions", "message_echoes", "messaging_handovers")
+# The Page's own posts and comments (`feed`) and the Page being tagged (`mention`). Chat is not in
+# here: a Facebook connection that is not also a Messenger one must not pull private messages into
+# a channel that is not connected.
+_FACEBOOK_PAGE_FIELDS = ("feed", "mention")
+
+_BASE_SUBSCRIBED_FIELDS = ",".join(_CHAT_FIELDS)
 _SUBSCRIBED_FIELDS = {
+    "messenger": ",".join((*_CHAT_FIELDS, *_MESSENGER_ONLY_FIELDS)),
+    # Instagram DMs reach the linked Page through the same base chat fields.
     "instagram": _BASE_SUBSCRIBED_FIELDS,
-    # Facebook Page comments are delivered on the Page's `feed` field; without it a
-    # connected Page only ever gets its Messenger traffic. `mention` is the Page tagged
-    # in someone else's post or comment.
-    "facebook": _BASE_SUBSCRIBED_FIELDS + ",feed,mention",
+    "facebook": ",".join(_FACEBOOK_PAGE_FIELDS),
 }
+
+
+def all_page_subscribed_fields() -> list[str]:
+    """Every Page field any channel may ask for, in one stable order (for docs and checks)."""
+    return list(dict.fromkeys([*_CHAT_FIELDS, *_MESSENGER_ONLY_FIELDS, *_FACEBOOK_PAGE_FIELDS]))
 
 
 def subscribed_fields(provider: str) -> str:
@@ -245,26 +270,51 @@ def _graph_fields(payload: dict) -> dict:
 
 
 async def _existing_subscribed_fields(http, *, page_id: str, page_token: str) -> list[str]:
-    """The webhook fields this app already has on the Page, or [] when they cannot be read."""
+    """The webhook fields THIS app already has on the Page. Raises when they cannot be known.
+
+    Two rules, both learned the hard way. First, only the row that belongs to our own app counts:
+    the edge lists every app subscribed to the Page, and another app's fields (a lead-ads tool, a
+    CRM) are not ours to re-write. Second, "I could not read it" is not "there is nothing there":
+    Meta replaces the whole list on a POST, so writing a narrower one after a failed read would
+    silently drop a sibling channel's subscription (Facebook's `feed`, say, while Messenger is
+    being linked). The caller therefore gets a retryable error instead of an empty list.
+    """
+    from app.core.config import get_settings
+
+    own_app_id = (get_settings().meta_app_id or "").strip()
+    unreadable = ExternalProviderError(
+        "Could not read the Page's current webhook subscription from Meta. Try again.",
+        retryable=True,
+    )
     try:
         response = await http.get(
             f"{_GRAPH}/{page_id}/subscribed_apps", params={"access_token": page_token}
         )
-        if not response.is_success:
-            return []
+    except httpx.RequestError:
+        raise unreadable from None
+    if not response.is_success:
+        raise unreadable
+    try:
         data = response.json().get("data")
-    except (httpx.RequestError, ValueError, AttributeError):
-        return []
+    except (ValueError, AttributeError):
+        raise unreadable from None
+    if not isinstance(data, list):
+        raise unreadable
     fields: list[str] = []
-    for entry in data if isinstance(data, list) else []:
-        raw = entry.get("subscribed_fields") if isinstance(entry, dict) else None
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        # With no app id configured we cannot tell which row is ours, so none is trusted.
+        if not own_app_id or str(entry.get("id") or "") != own_app_id:
+            continue
+        raw = entry.get("subscribed_fields")
         fields.extend(f for f in (raw if isinstance(raw, list) else []) if isinstance(f, str) and f)
     return fields
 
 
 async def _subscribe_page_to_app(
     http, *, page_id: str, page_token: str, provider: str = "messenger"
-) -> None:
+) -> bool:
     """Fail the connection if the page cannot receive this app's webhooks.
 
     The fields are the channel's own: a Facebook Page also needs `feed` for its comments and
@@ -272,10 +322,12 @@ async def _subscribe_page_to_app(
     wanted = subscribed_fields(provider)
     # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
     # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
-    # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
-    # fields are still written, exactly as before.
+    # So keep what OUR app already has there, and refuse to write when it cannot be read.
     kept = await _existing_subscribed_fields(http, page_id=page_id, page_token=page_token)
     merged = list(dict.fromkeys([*wanted.split(","), *kept]))
+    # True when this call changed the Page's subscription. A connect that fails afterwards may only
+    # take back what it added itself, never a subscription that was already working.
+    added = bool(set(merged) - set(kept))
     try:
         response = await http.post(
             f"{_GRAPH}/{page_id}/subscribed_apps",
@@ -300,6 +352,7 @@ async def _subscribe_page_to_app(
         raise ExternalProviderError(
             "Meta refused the page webhook subscription. Check the app's messaging permissions."
         )
+    return added
 
 
 class PageChoiceRequired(Exception):
@@ -720,6 +773,57 @@ async def _meta_exchange_and_connect(
         )
 
 
+async def _undo_page_subscription(
+    session: AsyncSession,
+    http,
+    *,
+    page: dict,
+    provider: str,
+    tenant_id: uuid.UUID,
+    token: str,
+) -> None:
+    """Best-effort rollback of a Page subscription this connect created. Never raises.
+
+    A sibling channel on the same Page (Facebook next to Messenger) keeps the fields it needs;
+    only when nobody else is connected on the Page is the subscription removed."""
+    from app.modules.customers import meta_unsubscribe
+
+    page_id = str(page["id"])
+    try:
+        rows = (
+            (
+                await session.execute(
+                    select(Integration).where(
+                        Integration.tenant_id == tenant_id,
+                        Integration.kind == "channel",
+                        Integration.provider.in_(meta_unsubscribe.PAGE_PROVIDERS),
+                        Integration.provider != provider,
+                        Integration.status.in_(("active", "connected", "restricted")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        siblings: list[str] = []
+        for other in rows:
+            creds = decrypt_credentials_dict(other.credentials)
+            other_page = str(
+                (other.config or {}).get("page_id")
+                or (other.config or {}).get("account_id")
+                or creds.get("page_id")
+                or ""
+            )
+            if other_page == page_id:
+                siblings.append(other.provider)
+        await meta_unsubscribe.unsubscribe_page(
+            http, page_id=page_id, page_token=token, sibling_providers=siblings
+        )
+    except Exception:  # noqa: BLE001 - a failed rollback must never hide the original failure
+        _logger.warning("meta.connect_rollback_failed provider=%s", provider, exc_info=True)
+        await _flag("link.rollback_failed", provider, tenant_id, {"page_id": page_id})
+
+
 async def _connect_page(
     session: AsyncSession,
     http: httpx.AsyncClient,
@@ -774,9 +878,26 @@ async def _connect_page(
 
     verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
+    # Everything that can be decided HERE is decided before Meta is touched. Subscribing the Page
+    # changes the owner's Meta setup; refusing afterwards (a plan without this channel, a channel
+    # that was disabled for good) left a subscription at Meta with no connection behind it.
+    existing = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == provider,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "disabled":
+        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
+    if existing is None:
+        await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
+
     # A channel that cannot receive provider webhooks is not connected.
     try:
-        await _subscribe_page_to_app(
+        subscription_added = await _subscribe_page_to_app(
             http, page_id=str(page["id"]), page_token=page_token, provider=provider
         )
     except ExternalProviderError as exc:
@@ -800,20 +921,6 @@ async def _connect_page(
         "refreshable": bool(provider == "instagram" and _config_id and expires_in),
     }
 
-    existing = (
-        await session.execute(
-            select(Integration).where(
-                Integration.tenant_id == tenant_id,
-                Integration.provider == provider,
-                Integration.kind == "channel",
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None and existing.status == "disabled":
-        raise ValidationError("This channel was permanently disabled and cannot be reconnected.")
-    if existing is None:
-        await EntitlementService.ensure_channel_allowed(session, tenant_id, provider)
-
     verified_at = datetime.now(UTC).isoformat()
     connection_meta = _verification_metadata(
         verified_at=verified_at, display_name=verified.display_name
@@ -823,25 +930,35 @@ async def _connect_page(
         **verified.identity_config,
         "_connection": connection_meta,
     }
-    encrypted = encrypt_credentials_dict(credentials)
-    if existing is None:
-        integration = Integration(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            provider=provider,
-            kind="channel",
-            config=integration_config,
-            credentials=encrypted,
-            status="pending",
-        )
-        _activate_verified_channel(integration)
-        session.add(integration)
-    else:
-        _activate_verified_channel(existing)
-        existing.config = integration_config
-        existing.credentials = encrypted
-        integration = existing
-    await session.flush()
+    try:
+        encrypted = encrypt_credentials_dict(credentials)
+        if existing is None:
+            integration = Integration(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                provider=provider,
+                kind="channel",
+                config=integration_config,
+                credentials=encrypted,
+                status="pending",
+            )
+            _activate_verified_channel(integration)
+            session.add(integration)
+        else:
+            _activate_verified_channel(existing)
+            existing.config = integration_config
+            existing.credentials = encrypted
+            integration = existing
+        await session.flush()
+    except Exception:
+        # The subscription at Meta exists but the connection behind it was never saved. Take back
+        # what this connect added, so Meta does not keep sending a Page's events to an account
+        # that has no channel for them.
+        if subscription_added:
+            await _undo_page_subscription(
+                session, http, page=page, provider=provider, tenant_id=tenant_id, token=page_token
+            )
+        raise
 
     display_name = verified.display_name or str(page.get("name") or page["id"])
     return provider, display_name

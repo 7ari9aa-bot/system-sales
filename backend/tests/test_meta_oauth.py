@@ -134,6 +134,9 @@ def _graph_handler(
                 page["instagram_business_account"] = {"id": IG_ID, "username": "fihrist"}
             return httpx.Response(200, json={"data": [page]})
         if f"/{PAGE_ID}/subscribed_apps" in url:
+            if request.method == "GET":
+                # What Meta really answers: the list of apps on the Page (none yet).
+                return httpx.Response(200, json={"data": []})
             return httpx.Response(200, json={"success": True})
         if "/me?" in url or url.rstrip("/?").endswith("/me"):
             # The messenger ownership check hits /me WITH the page token —
@@ -152,16 +155,20 @@ def _graph_handler(
 
 
 async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
-    ) as client:
+    def accepted(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(200, json={"success": True})
+
+    def denied(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(200, json={"error": {"message": "denied"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(accepted)) as client:
         await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
-        )
-    ) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(denied)) as client:
         with pytest.raises(ExternalProviderError, match="webhook subscription"):
             await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
 
@@ -750,6 +757,8 @@ async def test_the_subscription_asks_for_the_channels_own_fields(provider, field
     seen: dict[str, str] = {}
 
     def ok(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": []})
         seen.update(dict(request.url.params))
         return httpx.Response(200, json={"success": True})
 

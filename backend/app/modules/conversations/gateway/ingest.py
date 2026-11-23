@@ -366,6 +366,27 @@ class IngestService:
                 await IngestService.apply_read_watermarks(
                     session, tenant_id, channel, parse_reads(payload)
                 )
+            # A person answering from Meta's own inbox, and Meta moving the thread between apps
+            # or to a person. Both used to be parsed and dropped, so a human reply never showed
+            # here and the AI kept answering a thread a human had been given.
+            parse_echoes = getattr(adapter, "parse_echoes", None)
+            parse_handovers = getattr(adapter, "parse_handovers", None)
+            if callable(parse_echoes) or callable(parse_handovers):
+                from app.core.config import get_settings
+                from app.modules.conversations.gateway.page_control import (
+                    apply_handovers,
+                    record_echoes,
+                )
+
+                own_app_id = (get_settings().meta_app_id or "").strip()
+                if callable(parse_echoes):
+                    await record_echoes(
+                        session, tenant_id, channel, parse_echoes(payload), own_app_id=own_app_id
+                    )
+                if callable(parse_handovers):
+                    await apply_handovers(
+                        session, tenant_id, channel, parse_handovers(payload), own_app_id=own_app_id
+                    )
             # Public comments ride the same signed envelope (field "feed" /
             # "comments"). They are interaction data, not conversation turns:
             # persisted for the analyst, never fanned out to the AI. Adapters
