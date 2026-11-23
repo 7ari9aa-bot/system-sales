@@ -123,6 +123,40 @@ export async function publishPost(files, caption) {
   return api("/social/posts", { method: "POST", body: { pictures, caption: (caption || "").trim() || null } });
 }
 
+export const REEL_LIMITS = { maxBytes: 100 * 1024 * 1024, maxCaption: 2200 };
+
+/** Why this video cannot go out as a Reel, or "" when it can. Checked before uploading. */
+export function reelProblem(file, caption = "", lang = "ar") {
+  const ar = lang === "ar";
+  if (!file) return ar ? "اختر فيديو للريل" : "Choose a video for the Reel";
+  if (!/^video\/(mp4|quicktime)$/i.test(file.type || "")) return ar ? "الريل لازم يكون فيديو MP4 أو MOV. إنستغرام يقبل النوعين دول فقط" : "A Reel must be an MP4 or MOV video. Instagram accepts those only";
+  if (file.size > REEL_LIMITS.maxBytes) return ar ? "الفيديو أكبر من 100 ميغابايت" : "The video is larger than 100 MB";
+  if ((caption || "").length > REEL_LIMITS.maxCaption) return ar ? "النص أطول من 2200 حرف" : "The caption is longer than 2,200 characters";
+  return "";
+}
+
+/** Why this file cannot go out as a story, or "" when it can. */
+export function storyProblem(file, lang = "ar") {
+  const ar = lang === "ar";
+  if (!file) return ar ? "اختر صورة أو فيديو للستوري" : "Choose a picture or a video for the story";
+  if (/^image\/jpe?g$/i.test(file.type || "")) return file.size > PUBLISH_LIMITS.maxBytes ? (ar ? "الصورة أكبر من 8 ميغابايت" : "The picture is larger than 8 MB") : "";
+  if (/^video\/(mp4|quicktime)$/i.test(file.type || "")) return file.size > REEL_LIMITS.maxBytes ? (ar ? "الفيديو أكبر من 100 ميغابايت" : "The video is larger than 100 MB") : "";
+  return ar ? "الستوري صورة JPEG أو فيديو MP4/MOV فقط" : "A story is a JPEG picture or an MP4/MOV video";
+}
+
+/** Publish a Reel. `shareToFeed` is the merchant's choice, not our default to hide. */
+export async function publishReel(file, caption, { shareToFeed = true } = {}) {
+  const video = await toBase64(file);
+  return api("/social/reels", { method: "POST", body: { video, caption: (caption || "").trim() || null, share_to_feed: Boolean(shareToFeed) } });
+}
+
+/** Publish a story: a picture or a video, and no caption — Instagram has no field for one. */
+export async function publishStory(file) {
+  const media = await toBase64(file);
+  const isVideo = /^video\//i.test(file.type || "");
+  return api("/social/stories", { method: "POST", body: { media, is_video: isVideo } });
+}
+
 /** How one post performed. A number Instagram has not produced yet is null, which is not the same as 0. */
 export async function fetchPostInsights(postId) {
   const data = await api(`/social/posts/${encodeURIComponent(postId)}/insights`);
