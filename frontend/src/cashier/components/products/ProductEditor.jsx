@@ -56,9 +56,19 @@ export default function ProductEditor({ product }) {
   async function save(values) {
     try {
       if (!isEdit) {
-        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants, warehouseId: values.warehouseId });
+        const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants, warehouses: values.warehouses, warehouseId: values.warehouseId });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
         if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — الموسم والفئة والماركة والخامة اتحفظوا للمنتج اللي بعده");
+        // التوزيع على مخازن تانية بيتم بعد الحفظ؛ اللي فشل بيتقال بالاسم بدل ما يضيع في صمت.
+        const split = created?.distribution;
+        if (split?.planned?.length) {
+          const failed = split.failed ?? [];
+          if (failed.length) {
+            toast.error(`المنتج اتحفظ لكن ${failed.length} توزيع مخزن ما اتسجلش: ${failed.map((f) => `${f.warehouseName} ${f.quantity}`).join("، ")}. سجّلها من شاشة المخزون.`);
+          } else {
+            toast.success(`الرصيد الافتتاحي اتوزّع على ${new Set(split.planned.map((m) => m.warehouseName)).size + 1} مخازن`);
+          }
+        }
         setSeed(nextProductSeed(values));
         setFormKey((k) => k + 1);
         return;
