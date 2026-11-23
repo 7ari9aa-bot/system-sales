@@ -48,6 +48,10 @@ test("every cashier screen renders without runtime errors", async ({ page }) => 
     await page.goto(route, { waitUntil: "domcontentloaded", timeout: 30_000 });
     // ننتظر ظهور الهيكل الخاص بالكاشير، وإلا فالصفحة لم تُركَّب أصلاً
     await expect(page.locator(".cashier-root"), `${route} must mount the cashier shell`).toBeVisible({ timeout: 8000 });
+    // الهيكل بيظهر قبل ما الشاشة نفسها توصل: كل صفحة كاشير lazy، وCashierLayout بيرسم
+    // PageSkeleton (نصه sr-only «جارٍ التحميل…») لحد ما الـ chunk يحل. قراءة النص هنا فورًا
+    // كانت بتقرا الهيكل نفسه، فاختبار /cashier/sales كان بيفشل أو ينجح حسب سرعة تحميل الملف.
+    await expect(page.getByTestId("cashier-page-loading"), `${route} still shows the loading skeleton`).toHaveCount(0, { timeout: 15_000 });
     // المحتوى الرئيسي (بدون القائمة الجانبية) لازم يكون فيه نص حقيقي، وإلا فالصفحة فاضية أو رسمت دالة مساعدة بالغلط
     const main = page.locator("main:has(.cashier-root)").first();
     await expect(main, `${route} must have a <main> region`).toBeVisible({ timeout: 8000 });

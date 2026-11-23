@@ -14,7 +14,7 @@ class AuthRepository {
   final AuthTokenStore _tokenStore;
 
   Future<AuthUser> login({
-    required String tenantSubdomain,
+    String tenantSubdomain = '',
     required String email,
     required String password,
   }) async {

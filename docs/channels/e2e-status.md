@@ -53,11 +53,17 @@ Playwright process alive is the only configuration that gives a trustworthy resu
 
 The three failures, each diagnosed and handled:
 
-1. `cashier-smoke.spec.js` — STILL FAILING, and outside the channels layer. `/cashier/sales`
-   renders «جارٍ التحميل…» under the spec's mock, which answers every endpoint it does not
-   know with `[]`; that screen reads its data through `useShifts` / `useShiftSales` and never
-   leaves the loading state with an empty array. The fix belongs in the spec's mock (answer
-   the shift endpoints with the shape those hooks read), not in the screen.
+1. `cashier-smoke.spec.js` — FIXED, and the earlier diagnosis here was wrong. The file was not
+   stuck on `useShifts` / `useShiftSales`: the screen renders its table happily with an empty
+   array. The real cause, measured: every cashier page is `lazy()`, and `CashierLayout` draws
+   `PageSkeleton` (sr-only «جارٍ التحميل…») as the Suspense fallback. `.cashier-root` is visible
+   while that fallback is still on screen, so the assertion that read `main.innerText()` right
+   after it captured the skeleton: `main content too short: "جارٍ التحميل…"`, 13 chars. It
+   surfaced on `/cashier/pos` in the measured runs (the earlier full run blamed
+   `/cashier/sales`), i.e. it moves with chunk-load timing, which is why it looked like a mock
+   problem. The spec now waits for `cashier-page-loading` to be gone before reading the text.
+   Measured: without the wait the test failed 3/3 runs; with it, 4/4 passed in each of 3
+   consecutive runs.
 2. `inbox-instagram-attachments.spec.js` — FIXED. The test looked for a button titled
    "Attach media" / «إرفاق ملف أو صورة», but Messenger draws its own composer whose paperclip
    is «إرفاق ملف» / "Attach a file". Now scoped to `messenger-composer`. 7/7 in the file.

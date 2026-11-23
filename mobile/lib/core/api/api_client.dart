@@ -15,7 +15,7 @@ class ApiException implements Exception {
   });
 
   @override
-  String toString() => 'ApiException($statusCode): $message';
+  String toString() => message;
 }
 
 class ApiClient {
@@ -204,19 +204,42 @@ class ApiClient {
       }
     }
 
-    String errorMessage = 'Request failed with status: ${response.statusCode}';
+    String errorMessage = 'تعذر إكمال الطلب (رمز الخطأ: ${response.statusCode})';
     dynamic errorDetails;
 
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
-        errorMessage = decoded['detail']?.toString() ??
-            decoded['message']?.toString() ??
-            errorMessage;
         errorDetails = decoded;
+        if (decoded['error'] is Map<String, dynamic>) {
+          errorMessage = decoded['error']['message']?.toString() ?? errorMessage;
+        } else if (decoded['error'] is String) {
+          errorMessage = decoded['error'].toString();
+        } else if (decoded['message'] != null) {
+          errorMessage = decoded['message'].toString();
+        } else if (decoded['detail'] != null) {
+          if (decoded['detail'] is List && (decoded['detail'] as List).isNotEmpty) {
+            final first = (decoded['detail'] as List).first;
+            errorMessage = first is Map ? (first['msg']?.toString() ?? errorMessage) : first.toString();
+          } else {
+            errorMessage = decoded['detail'].toString();
+          }
+        }
       }
     } catch (_) {
-      errorMessage = response.body.isNotEmpty ? response.body : errorMessage;
+      if (response.body.isNotEmpty && response.body.length < 200) {
+        errorMessage = response.body;
+      }
+    }
+
+    // Friendly Arabic messages for common status codes
+    final lowerMsg = errorMessage.toLowerCase();
+    if (response.statusCode == 401 || response.statusCode == 403 || lowerMsg.contains('invalid credentials') || lowerMsg.contains('permission_denied')) {
+      errorMessage = 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+    } else if (response.statusCode == 404) {
+      errorMessage = 'الخدمة المطلوبة غير متوفرة حالياً';
+    } else if (response.statusCode >= 500) {
+      errorMessage = 'حدث خطأ مؤقت في الخادم، يرجى المحاولة بعد قليل';
     }
 
     throw ApiException(

@@ -18,13 +18,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _subdomainController = TextEditingController(text: 'demo');
-  final _emailController = TextEditingController(text: 'admin@fihrist.world');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController(text: 'demo@salesos-demo.com');
+  final _passwordController = TextEditingController(text: 'Demo-1234');
   final _tokenStore = AuthTokenStore();
 
   bool _obscurePassword = true;
   String _activeServerUrl = ApiEndpoints.defaultBaseUrl;
+  int _logoTapCount = 0;
+  DateTime? _lastLogoTap;
 
   @override
   void initState() {
@@ -45,7 +46,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _subdomainController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -56,7 +56,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final authVm = context.read<AuthViewModel>();
     final success = await authVm.login(
-      tenantSubdomain: _subdomainController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
@@ -64,26 +63,22 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (!success && authVm.errorMessage != null) {
-      final isConnectionIssue = authVm.errorMessage!.contains('الخادم') ||
-          authVm.errorMessage!.contains('اتصال') ||
-          authVm.errorMessage!.contains('host') ||
-          authVm.errorMessage!.contains('lookup');
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authVm.errorMessage!),
           backgroundColor: AppColors.error,
-          duration: const Duration(seconds: 5),
-          action: isConnectionIssue
-              ? SnackBarAction(
-                  label: 'تعديل الخادم',
-                  textColor: Colors.white,
-                  onPressed: _openServerSettings,
-                )
-              : null,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
+  }
+
+  Future<void> _fillAndLoginDemo() async {
+    _emailController.text = 'demo@salesos-demo.com';
+    _passwordController.text = 'Demo-1234';
+    await _handleLogin();
   }
 
   Future<void> _handleBiometricLogin() async {
@@ -97,8 +92,24 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(
           content: Text(authVm.errorMessage!),
           backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+    }
+  }
+
+  void _onLogoTap() {
+    final now = DateTime.now();
+    if (_lastLogoTap == null || now.difference(_lastLogoTap!) > const Duration(seconds: 2)) {
+      _logoTapCount = 1;
+    } else {
+      _logoTapCount++;
+    }
+    _lastLogoTap = now;
+
+    if (_logoTapCount >= 5) {
+      _logoTapCount = 0;
+      _openServerSettings();
     }
   }
 
@@ -117,8 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
-            final isDark = Theme.of(ctx).brightness == Brightness.dark;
-
             Future<void> runTest() async {
               final raw = controller.text.trim();
               if (raw.isEmpty) return;
@@ -162,8 +171,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'إعدادات الاتصال بالخادم',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        'إعدادات الاتصال بالخادم (المطورين)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -171,34 +183,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'حدّد عنوان خادم FIHRIST الذي يتصل به التطبيق (الخادم السحابي أو خادم شبكتك المحلية):',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: 12),
                   TextField(
                     controller: controller,
                     decoration: const InputDecoration(
-                      labelText: 'عنوان الخادم (Server URL)',
+                      labelText: 'عنوان الخادم',
                       hintText: 'https://fihrist.world',
                       prefixIcon: Icon(Icons.dns_outlined),
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // Quick presets
                   Wrap(
                     spacing: 8,
-                    runSpacing: 8,
                     children: [
                       ActionChip(
                         avatar: const Icon(Icons.cloud_done_outlined, size: 16),
-                        label: const Text('الخادم السحابي الرسمي'),
+                        label: const Text('الخادم الرسمي'),
                         onPressed: () {
                           controller.text = ApiEndpoints.defaultBaseUrl;
                           setSheetState(() {});
@@ -214,8 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-
+                  const SizedBox(height: 14),
                   if (testResult != null) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -226,7 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: testSuccess ? AppColors.success : AppColors.error,
-                          width: 1,
                         ),
                       ),
                       child: Text(
@@ -240,7 +238,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-
                   Row(
                     children: [
                       Expanded(
@@ -248,32 +245,34 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: testing ? null : runTest,
                           icon: testing
                               ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
+                                  width: 14,
+                                  height: 14,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Icon(Icons.wifi_find_outlined, size: 18),
+                              : const Icon(Icons.network_check, size: 18),
                           label: const Text('فحص الاتصال'),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: ElevatedButton.icon(
+                        child: ElevatedButton(
                           onPressed: () async {
                             final raw = controller.text.trim();
                             if (raw.isNotEmpty) {
-                              final sanitized = raw.endsWith('/')
-                                  ? raw.substring(0, raw.length - 1)
-                                  : raw;
-                              await _tokenStore.setBaseUrl(sanitized);
-                              setState(() {
-                                _activeServerUrl = sanitized;
-                              });
+                              await _tokenStore.setBaseUrl(raw);
+                              if (mounted) {
+                                setState(() {
+                                  _activeServerUrl = raw;
+                                });
+                              }
                             }
                             if (ctx.mounted) Navigator.pop(ctx);
                           },
-                          icon: const Icon(Icons.check, size: 18),
-                          label: const Text('حفظ'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('حفظ'),
                         ),
                       ),
                     ],
@@ -297,12 +296,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.appTitle),
+        centerTitle: false,
         actions: [
-          IconButton(
-            onPressed: _openServerSettings,
-            icon: const Icon(Icons.dns_outlined),
-            tooltip: 'إعدادات الخادم',
-          ),
           TextButton.icon(
             onPressed: () => localeVm.toggleLanguage(),
             icon: const Icon(Icons.language, size: 20),
@@ -326,25 +321,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Official FIHRIST Brand Logo
+                    // Official FIHRIST Brand Logo (Tappable 5x for hidden developer menu)
                     Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const FihristBrandMark(size: 76),
-                          const SizedBox(height: 12),
-                          Text(
-                            localeVm.isArabic ? 'فهرس' : 'FIHRIST',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primary,
-                                  letterSpacing: 1.1,
-                                ),
-                          ),
-                        ],
+                      child: GestureDetector(
+                        onTap: _onLogoTap,
+                        behavior: HitTestBehavior.opaque,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const FihristBrandMark(size: 80),
+                            const SizedBox(height: 12),
+                            Text(
+                              localeVm.isArabic ? 'فهرس' : 'FIHRIST',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primary,
+                                    letterSpacing: 1.1,
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 20),
 
                     // Titles
                     Text(
@@ -364,59 +363,39 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : AppColors.textSecondaryLight,
                           ),
                     ),
-                    const SizedBox(height: 28),
-
-                    // Subdomain Field
-                    Text(
-                      l10n.tenantSubdomain,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _subdomainController,
-                      decoration: InputDecoration(
-                        hintText: 'demo',
-                        prefixIcon: const Icon(Icons.storefront_outlined),
-                        helperText: localeVm.isArabic
-                            ? 'اسم نطاق متجرك (مثال: demo)'
-                            : 'Your store subdomain (e.g. demo)',
-                      ),
-                      validator: (value) =>
-                          (value == null || value.trim().isEmpty)
-                              ? l10n.tenantSubdomainHint
-                              : null,
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 32),
 
                     // Email Field
                     Text(
                       l10n.email,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
+                      textDirection: TextDirection.ltr,
                       decoration: const InputDecoration(
-                        hintText: 'admin@fihrist.world',
+                        hintText: 'name@example.com',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
                       validator: (value) =>
                           (value == null || !value.contains('@'))
-                              ? l10n.invalidCredentials
+                              ? 'يرجى إدخال بريد إلكتروني صالح'
                               : null,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     // Password Field
                     Text(
                       l10n.password,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
+                      textDirection: TextDirection.ltr,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
@@ -433,14 +412,20 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       validator: (value) => (value == null || value.length < 4)
-                          ? l10n.invalidCredentials
+                          ? 'يرجى إدخال كلمة المرور'
                           : null,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
 
                     // Submit Button
                     ElevatedButton(
                       onPressed: authVm.isLoading ? null : _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                       child: authVm.isLoading
                           ? const SizedBox(
                               width: 24,
@@ -459,19 +444,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                     ),
+                    const SizedBox(height: 16),
 
-                    // Active Server Status & Switcher
-                    const SizedBox(height: 14),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _openServerSettings,
-                        icon: const Icon(Icons.cloud_done_outlined, size: 16, color: AppColors.primary),
-                        label: Text(
-                          'الخادم: $_activeServerUrl',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-                          ),
+                    // Quick Demo / Test Account Button
+                    OutlinedButton.icon(
+                      onPressed: authVm.isLoading ? null : _fillAndLoginDemo,
+                      icon: const Icon(Icons.storefront_outlined, size: 20),
+                      label: const Text(
+                        'دخول تجريبي سريع (متجر الديمو)',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),
@@ -482,7 +468,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       OutlinedButton.icon(
                         onPressed: authVm.isLoading ? null : _handleBiometricLogin,
                         icon: const Icon(Icons.fingerprint, size: 24, color: AppColors.primary),
-                        label: const Text('تسجيل الدخول بالبصمة (Biometrics)'),
+                        label: const Text('تسجيل الدخول بالبصمة'),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
