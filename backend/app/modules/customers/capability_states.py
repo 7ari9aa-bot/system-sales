@@ -182,6 +182,13 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
             "fields": ("messaging_handovers",),
             "live_fields": ("messaging_handovers",),
         },
+        {
+            "key": "message_edit",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("message_edit",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
         # Meta only sends these while a broadcast is live / after a story ends, so a shop that
         # never goes live must not be told something is broken.
         {

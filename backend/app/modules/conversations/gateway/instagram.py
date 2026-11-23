@@ -214,6 +214,67 @@ class InstagramAdapter(ChannelAdapter):
         return out
 
     @staticmethod
+    def _messaging_events(payload: dict):
+        for entry in payload.get("entry", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for event in entry.get("messaging", []) or []:
+                if isinstance(event, dict):
+                    yield event
+
+    def parse_edits(self, payload: dict) -> list[dict]:
+        """A direct message edited after it was sent: the ``message_edit`` event.
+
+        Instagram sends ``{"message_edit": {"mid", "num_edit", "text"?}}``. The text may be missing,
+        in which case the message is still reported (``text=None``) so it can at least be marked
+        edited. It is returned as plain data: it must update the row we hold, never create one.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            edit = event.get("message_edit")
+            if not isinstance(edit, dict):
+                continue
+            mid = edit.get("mid") or edit.get("message_id")
+            if not mid:
+                continue
+            text = edit.get("text")
+            out.append(
+                {
+                    "customer_ref": str((event.get("sender") or {}).get("id", "")),
+                    "recipient_ref": str((event.get("recipient") or {}).get("id", "")),
+                    "mid": str(mid),
+                    "text": text if isinstance(text, str) else None,
+                    "num_edit": edit.get("num_edit"),
+                    "timestamp": event.get("timestamp"),
+                }
+            )
+        return out
+
+    def parse_handovers(self, payload: dict) -> list[dict]:
+        """Thread control on an Instagram conversation (``messaging_handover``).
+
+        Same three events as Messenger (pass / take / request thread control), in the same shape,
+        so the one ownership rule that pauses and resumes the AI serves both channels.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            for kind in ("pass_thread_control", "take_thread_control", "request_thread_control"):
+                data = event.get(kind)
+                if isinstance(data, dict):
+                    out.append(
+                        {
+                            "customer_ref": str((event.get("sender") or {}).get("id", "")),
+                            "event": kind,
+                            "new_owner_app_id": data.get("new_owner_app_id"),
+                            "previous_owner_app_id": data.get("previous_owner_app_id"),
+                            "metadata": data.get("metadata"),
+                            "reason": data.get("handoff_reason") or data.get("reason"),
+                            "timestamp": event.get("timestamp"),
+                        }
+                    )
+        return out
+
+    @staticmethod
     def parse_mentions(payload: dict) -> list[InboundComment]:
         """Someone @-mentioned the account in a comment or a caption (field ``mentions``).
 

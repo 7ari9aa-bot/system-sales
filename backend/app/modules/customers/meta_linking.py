@@ -431,6 +431,14 @@ EVENT_REGISTRY: tuple[EventSpec, ...] = (
         "AI paused / resumed",
         "delivered",
     ),
+    EventSpec(
+        "instagram",
+        "message_edit",
+        "edited message",
+        "message row (original kept)",
+        "thread shows edited marker",
+        "delivered",
+    ),
     EventSpec("instagram", "comments", "comment", "comment row", "comment inbox", "delivered"),
     EventSpec(
         "instagram", "live_comments", "live comment", "comment row", "comment inbox", "delivered"
