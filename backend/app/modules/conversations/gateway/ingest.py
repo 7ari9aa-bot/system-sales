@@ -358,14 +358,19 @@ class IngestService:
 
         An echo for a customer we have never seen, or with no live conversation, is
         dropped: a courtesy record must never fail the batch that carries real messages.
+
+        A staff reply can be media only (a photo, a voice note): the text is absent but the
+        media is the answer. Such an echo is stored with its media instead of being skipped,
+        because dropping it left a reply the customer had already received invisible here.
         """
         stored = 0
         for echo in echoes:
             mid = str(echo.get("mid") or "")
             app_id = str(echo.get("app_id") or "")
             body = echo.get("text")
+            media_url = echo.get("media_url")
             customer_ref = str(echo.get("customer_ref") or "")
-            if not mid or not body or not customer_ref:
+            if not mid or not customer_ref or (not body and not media_url):
                 continue
             if own_app_id and app_id and app_id == str(own_app_id):
                 continue
@@ -398,6 +403,9 @@ class IngestService:
                 direction="outbound",
                 sender_type="agent",
                 body=body,
+                media_url=media_url,
+                media_type=echo.get("media_type"),
+                content_type=echo.get("content_type") or "text",
                 channel_message_id=mid,
                 payload={"source": "meta_echo", "app_id": app_id or None},
             )

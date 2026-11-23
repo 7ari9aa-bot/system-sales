@@ -15,6 +15,7 @@ import pytest
 
 from app.modules.ai import handover as handover_mod
 from app.modules.conversations.gateway.ingest import IngestService
+from app.modules.conversations.gateway.messenger import MessengerAdapter
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
 
@@ -171,3 +172,100 @@ async def test_request_thread_control_changes_nothing(monkeypatch) -> None:
     )
 
     assert applied is False
+
+
+@pytest.mark.asyncio
+async def test_a_media_only_reply_from_metas_inbox_is_stored_with_its_media(monkeypatch) -> None:
+    """A staff member can answer with a photo or a voice note: no text, but a real reply.
+
+    Requiring text dropped exactly those echoes, so the customer had an answer in Messenger
+    that never appeared in the thread and the agent could answer again.
+    """
+    session, sent = _wire(monkeypatch)
+    echo = {
+        **_echo(app_id="999888777"),
+        "text": None,
+        "media_url": "https://cdn.example/photo.jpg",
+        "media_type": "image",
+        "content_type": "image",
+    }
+
+    stored = await IngestService.apply_echoes(
+        session, TENANT, "messenger", [echo], own_app_id=OWN_APP
+    )
+
+    assert stored == 1
+    assert sent[0]["body"] is None
+    assert sent[0]["media_url"] == "https://cdn.example/photo.jpg"
+    assert sent[0]["media_type"] == "image"
+    assert sent[0]["direction"] == "outbound"
+
+
+@pytest.mark.asyncio
+async def test_an_echo_with_neither_text_nor_media_is_still_dropped(monkeypatch) -> None:
+    session, sent = _wire(monkeypatch)
+
+    stored = await IngestService.apply_echoes(
+        session,
+        TENANT,
+        "messenger",
+        [{**_echo(app_id="9"), "text": None, "media_url": None}],
+        own_app_id=OWN_APP,
+    )
+
+    assert stored == 0
+    assert sent == []
+
+
+def test_parse_echoes_reads_an_attachment_only_echo() -> None:
+    payload = {
+        "entry": [
+            {
+                "messaging": [
+                    {
+                        "sender": {"id": "page-1"},
+                        "recipient": {"id": "psid-1"},
+                        "timestamp": 1,
+                        "message": {
+                            "is_echo": True,
+                            "mid": "m-9",
+                            "app_id": "999888777",
+                            "attachments": [
+                                {"type": "image", "payload": {"url": "https://cdn.example/a.jpg"}}
+                            ],
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+
+    [echo] = MessengerAdapter().parse_echoes(payload)
+
+    assert echo["customer_ref"] == "psid-1"
+    assert echo["mid"] == "m-9"
+    assert echo["text"] is None
+    assert echo["media_url"] == "https://cdn.example/a.jpg"
+    assert echo["content_type"] == "image"
+
+
+def test_the_documented_page_fields_are_exactly_what_the_code_subscribes_to() -> None:
+    """The owner ticks these in the App Dashboard; a field the code asks for but the guide
+    omits (or the reverse) is a subscription nobody ever enables."""
+    import re
+    from pathlib import Path
+
+    from app.modules.customers.meta_oauth import subscribed_fields
+
+    guide = (Path(__file__).resolve().parents[2] / "docs" / "META_SETUP.md").read_text()
+    [line] = [
+        ln
+        for ln in guide.splitlines()
+        if ln.startswith("Fields: `messages`") and "message_echoes" in ln
+    ]
+    documented = set(re.findall(r"`([a-z_]+)`", line))
+    coded = set(subscribed_fields("messenger").split(",")) | set(
+        subscribed_fields("facebook").split(",")
+    )
+
+    assert documented == coded

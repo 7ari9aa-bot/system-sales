@@ -460,23 +460,62 @@ class MessengerAdapter(ChannelAdapter):
                 )
         return out
 
+    #: Messenger attachment type -> the content type the inbox renders.
+    _ECHO_ATTACHMENT_TYPES = {"image": "image", "audio": "voice", "video": "video", "file": "file"}
+
     def parse_echoes(self, payload: dict) -> list[dict]:
         """Messages WE (or a human on the Page inbox) sent, echoed back: ``is_echo`` events.
 
         ``customer_ref`` is the recipient (the customer) and ``app_id`` says which app sent it, so
         a reply typed in Meta's own inbox can be told apart from one this system sent.
+
+        An echo is not always text: a staff member answering from Meta's inbox with a photo or a
+        voice note sends an echo whose ``text`` is absent and whose ``attachments`` carry the
+        media. Reading only ``text`` silently dropped exactly those replies, so the customer saw
+        an answer in Messenger that never appeared in our thread. Each attachment becomes its own
+        echo entry (an album is several), with the same suffixed provider id the inbound path
+        uses so a retried delivery still dedupes.
         """
         out: list[dict] = []
         for event in self._messaging_events(payload):
             message = event.get("message")
-            if isinstance(message, dict) and message.get("is_echo"):
+            if not (isinstance(message, dict) and message.get("is_echo")):
+                continue
+            customer_ref = str((event.get("recipient") or {}).get("id", ""))
+            mid = message.get("mid")
+            text = message.get("text")
+            attachments = [a for a in (message.get("attachments") or []) if isinstance(a, dict)]
+            base = {
+                "customer_ref": customer_ref,
+                "app_id": message.get("app_id"),
+                "timestamp": event.get("timestamp"),
+            }
+            if not attachments:
                 out.append(
                     {
-                        "customer_ref": str((event.get("recipient") or {}).get("id", "")),
-                        "mid": message.get("mid"),
-                        "app_id": message.get("app_id"),
-                        "text": message.get("text"),
-                        "timestamp": event.get("timestamp"),
+                        **base,
+                        "mid": mid,
+                        "text": text,
+                        "media_url": None,
+                        "media_type": None,
+                        "content_type": "text",
+                    }
+                )
+                continue
+            for index, attachment in enumerate(attachments):
+                attachment_type = attachment.get("type", "")
+                content_type = self._ECHO_ATTACHMENT_TYPES.get(attachment_type, "unsupported")
+                if attachment_type == "location":
+                    content_type = "location"
+                media_url = (attachment.get("payload") or {}).get("url")
+                out.append(
+                    {
+                        **base,
+                        "mid": mid if index == 0 or not mid else f"{mid}#{index}",
+                        "text": text if index == 0 else None,
+                        "media_url": media_url,
+                        "media_type": content_type if media_url else None,
+                        "content_type": content_type,
                     }
                 )
         return out

@@ -12,14 +12,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.inventory.models import (
     InventoryBalance,
-    InventoryMovement,
     Stocktake,
     StocktakeAssignment,
     StocktakeLine,
