@@ -998,10 +998,11 @@ async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
             row = dict(row)
             row["onboarding_mode"] = mode
             row["measured"] = True
-            # Connected through coexistence means Meta already allowed it for this number; a
-            # cloud_api connection simply has not asked, which is not a refusal.
-            row["state"] = (
-                roadmap_mod.AVAILABLE if mode == "coexistence" else roadmap_mod.ACCOUNT_INELIGIBLE
+            # Connected through coexistence means Meta already allowed it for this number. A
+            # cloud_api connection simply has not asked, which is NOT a refusal: only Meta's own
+            # "no" (recorded at signup) is account_ineligible.
+            row["state"] = roadmap_mod.coexistence_state(
+                config, connected=integration.status in ("active", "connected", "restricted")
             )
         rows.append(row)
     return {

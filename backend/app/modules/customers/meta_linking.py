@@ -72,6 +72,22 @@ CAPABILITY_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _whatsapp_facts(provider: str, config: dict) -> dict[str, bool]:
+    """Readiness facts a WhatsApp connection has actually recorded; nothing is guessed.
+
+    A fact appears only when the connection holds evidence either way: a published Flow count or a
+    linked catalog id. With no evidence the key is absent and the capability stays unverified.
+    """
+    if provider != "whatsapp":
+        return {}
+    facts: dict[str, bool] = {}
+    if "published_flows" in config:
+        facts["flows_ready"] = bool(config.get("published_flows"))
+    if "catalog_id" in config:
+        facts["catalog_ready"] = bool(config.get("catalog_id"))
+    return facts
+
+
 @dataclass(frozen=True)
 class MetaPageConnection:
     """One Page as FIHRIST knows it, with every capability hanging off it.
@@ -90,6 +106,9 @@ class MetaPageConnection:
     subscribed_fields: frozenset[str] | None = None
     seen_fields: frozenset[str] = field(default_factory=frozenset)
     onboarding_mode: str | None = None
+    #: Account-level readiness measured elsewhere (``flows_ready``, ``catalog_ready``). A key that
+    #: is absent was never checked, which is reported as unverified rather than as available.
+    facts: dict[str, bool] = field(default_factory=dict)
 
     @classmethod
     def from_integration(cls, integration: Any) -> MetaPageConnection:
@@ -129,6 +148,7 @@ class MetaPageConnection:
             if isinstance(seen, dict | list)
             else frozenset(),
             onboarding_mode=str(config.get("onboarding_mode") or "") or None,
+            facts=_whatsapp_facts(provider, config),
         )
 
     @property
@@ -146,6 +166,7 @@ class MetaPageConnection:
             ),
             seen_fields=set(self.seen_fields),
             subscription_known=self.subscribed_fields is not None,
+            facts=dict(self.facts),
         )
 
     def working_capabilities(self) -> tuple[str, ...]:

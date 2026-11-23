@@ -24,6 +24,8 @@ NEEDS_PERMISSION = "needs_permission"
 NEEDS_ADVANCED_ACCESS = "needs_advanced_access"
 NEEDS_APP_REVIEW = "needs_app_review"
 ACCOUNT_INELIGIBLE = "account_ineligible"
+NOT_REQUESTED = "not_requested"
+ELIGIBILITY_UNKNOWN = "eligibility_unknown"
 REGION_RESTRICTED = "region_restricted"
 UNSUPPORTED_BY_API = "unsupported_by_api"
 NOT_IMPLEMENTED = "not_implemented"
@@ -40,6 +42,8 @@ STATES = (
     NEEDS_ADVANCED_ACCESS,
     NEEDS_APP_REVIEW,
     ACCOUNT_INELIGIBLE,
+    NOT_REQUESTED,
+    ELIGIBILITY_UNKNOWN,
     REGION_RESTRICTED,
     UNSUPPORTED_BY_API,
     NOT_IMPLEMENTED,
@@ -257,10 +261,23 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
             "fields": ("phone_number_quality_update",),
             "live_fields": (),
         },
-        # Built: the Flow lifecycle on Meta's side and the nfm_reply the customer sends back.
-        {"key": "flows", "scopes": (), "fields": (), "live_fields": ()},
-        # Built: single product, multi-product and whole-catalog messages in the builder.
-        {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
+        # Built, but "built" is not "ready for this account": a Flow needs a published Flow on the
+        # WABA and a catalog message needs a catalog linked to it. Without that fact the state is
+        # unverified, never available.
+        {
+            "key": "flows",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "needs_fact": "flows_ready",
+        },
+        {
+            "key": "catalog_messages",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "needs_fact": "catalog_ready",
+        },
         # The four features Meta gates, declared from whatsapp_roadmap so the badge a screen shows
         # and the reason it shows are the same fact. `coexistence` used to be declared plain
         # AVAILABLE, which was a false green: nothing in signup handled the coexistence step at all.
@@ -313,8 +330,13 @@ def evaluate(
     subscription_fields: set[str] | None = None,
     seen_fields: set[str] | None = None,
     subscription_known: bool = True,
+    facts: dict[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     """One state per capability, from measured facts only.
+
+    ``facts`` carries account-level readiness the webhook cannot show (``flows_ready``,
+    ``catalog_ready``). A capability that declares ``needs_fact`` is available only when that fact
+    is true; unknown reads as unverified, false as not set up.
 
     ``None`` for a fact means "not measured", which is reported as unverified rather than as a
     failure: an unreachable Graph must not look like a missing permission.
@@ -328,6 +350,7 @@ def evaluate(
             subscription_fields=subscription_fields,
             seen_fields=seen_fields,
             subscription_known=subscription_known,
+            facts=facts,
         )
         entry = {"key": spec["key"], "state": state}
         if reason:
@@ -344,6 +367,7 @@ def _state_for(
     subscription_fields: set[str] | None,
     seen_fields: set[str] | None,
     subscription_known: bool,
+    facts: dict[str, bool] | None = None,
 ) -> tuple[str, str | None]:
     blocked = spec.get("blocked")
     if blocked:
@@ -372,5 +396,13 @@ def _state_for(
         unseen = [f for f in live if f not in seen]
         if unseen:
             return DASHBOARD_FIELD_MISSING, f"never delivered: {', '.join(unseen)}"
+
+    needed_fact = spec.get("needs_fact")
+    if needed_fact:
+        known = facts or {}
+        if needed_fact not in known:
+            return NO_LIVE_EVENT_VERIFIED, f"not checked yet: {needed_fact}"
+        if not known[needed_fact]:
+            return NOT_REQUESTED, f"not set up on this account: {needed_fact}"
 
     return AVAILABLE, None
