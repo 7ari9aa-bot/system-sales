@@ -56,6 +56,7 @@ import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, OrderBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
 import { instagramQuoteText } from "./instagram/messageKind";
+import { instagramGroup } from "./instagram/igGroup";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
@@ -499,7 +500,7 @@ export default function ChannelChat({
         className={cn(
           "flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3",
           // Messenger spaces its own bubbles (2px inside a run, 8px between runs), so it takes no blanket gap.
-          !isMessenger && "space-y-2",
+          !isMessenger && !isInstagram && "space-y-2",
           isWhatsApp && "px-5 py-4 space-y-2",
           isTelegram && "px-4 py-3 space-y-1.5 sm:px-6 sm:py-4 telegram-transient-scrollbar",
           isTelegram && telegramMessagesScrolling && "is-scrolling"
@@ -546,6 +547,8 @@ export default function ChannelChat({
           const previousDayKey = (isWhatsApp || isInstagram || isMessenger || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
           // A run of bubbles from one person is one visual group in Messenger.
           const messengerRow = isMessenger ? messengerGroup(visibleMessages, index) : null;
+          // Instagram stacks a run of bubbles from one person 2px apart, like its own thread.
+          const instagramRow = isInstagram ? instagramGroup(visibleMessages, index) : null;
           return (
             <React.Fragment key={m.id}>
               {isMessenger ? (
@@ -579,6 +582,7 @@ export default function ChannelChat({
                 onOpenImage={setViewerId}
                 showSeen={isInstagram && m.status === "read" && m.id === lastSentId}
                 messengerRow={messengerRow}
+                instagramRow={instagramRow}
                 messengerTheme={messengerTheme}
                 showSeenAvatar={isMessenger && m.id === messengerSeenId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
@@ -820,6 +824,16 @@ export default function ChannelChat({
             )}
           </div>
         ) : isInstagram ? (
+          isRecordingVoice ? (
+            <MessengerVoiceRecorder
+              lang={lang}
+              accent="#0095f6"
+              provider="Instagram"
+              onCancel={() => setIsRecordingVoice(false)}
+              onError={(message) => setAttachError(message)}
+              onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false }); }}
+            />
+          ) : (
           <>
           {replyingTo && (
             <div data-testid="ig-reply-bar" dir={lang === "ar" ? "rtl" : "ltr"} className="mb-1 flex items-center gap-2 rounded-xl bg-[#f5f5f5] px-3 py-1.5">
@@ -867,6 +881,17 @@ export default function ChannelChat({
                 </button>
                 <button
                   type="button"
+                  data-testid="ig-send-voice"
+                  onClick={() => { setAttachError(""); setIsRecordingVoice(true); }}
+                  disabled={sending || uploading}
+                  aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record a voice message"}
+                  title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record a voice message"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors disabled:opacity-50"
+                >
+                  <Mic className="h-[19px] w-[19px]" />
+                </button>
+                <button
+                  type="button"
                   data-testid="ig-send-heart"
                   onClick={() => { void onSend?.(conversation.id, "", { heart: true }); }}
                   disabled={sending}
@@ -902,6 +927,7 @@ export default function ChannelChat({
             )}
           </div>
           </>
+          )
         ) : isMessenger ? (
           <>
           {replyingTo && (
@@ -1293,7 +1319,7 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
   );
 }
 
-function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
+function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -1367,7 +1393,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
+    return <InstagramBubble m={m} th={th} lang={_lang} group={instagramRow} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
   if (isTelegram) {

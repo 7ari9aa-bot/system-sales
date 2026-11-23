@@ -31,7 +31,7 @@ const WORDS = {
     denied: "Microphone access was blocked. Allow it in the browser settings.",
     none: "No microphone was found on this device.",
     failed: "Could not start recording. Try again.",
-    unsupported: "This browser cannot record in a format Messenger plays (M4A). Try Safari or attach an audio file.",
+    unsupported: "This browser cannot record in a format {provider} plays (M4A). Try Safari or attach an audio file.",
     tooShort: "The recording is too short. Record at least one second.",
   },
 };
@@ -60,10 +60,12 @@ export default function MessengerVoiceRecorder({
   onError,
   lang = "ar",
   accent = "#0084ff",
+  provider = "Messenger",
   mediaDevices = globalThis.navigator?.mediaDevices,
   Recorder = globalThis.MediaRecorder,
 }) {
-  const w = WORDS[lang] || WORDS.en;
+  const base = WORDS[lang] || WORDS.en;
+  const w = { ...base, unsupported: String(base.unsupported).replace("{provider}", provider) };
   const [seconds, setSeconds] = useState(0);
   const [ready, setReady] = useState(false);
   const rec = useRef(null);
