@@ -117,6 +117,9 @@ def _post_out(p: SocialPost) -> dict:
         "comments_enabled": p.comments_enabled,
         "posted_at": p.posted_at.isoformat() if p.posted_at else None,
         "publish_status": p.publish_status,
+        # A story's metrics as Meta sent them: -1 means "fewer than five", and a missing key means
+        # Meta has not delivered it yet. Both are shown as they are, never as 0.
+        "insights": p.insights or {},
     }
 
 
@@ -314,6 +317,15 @@ async def publish_post(
         ctx.session, ctx.tenant_id, creds, pictures, body.caption
     )
     return {"post_id": media_id}
+
+
+@router.get("/social/stories")
+async def list_stories(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """The stories running right now, as Instagram sees them."""
+    creds = await _credentials(ctx, send=False)
+    return {"items": await SocialService.list_stories(creds)}
 
 
 @router.post("/social/reels", status_code=201)

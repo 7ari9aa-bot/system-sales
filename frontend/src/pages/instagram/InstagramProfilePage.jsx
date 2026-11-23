@@ -5,6 +5,7 @@ import InstagramPostView from "@/components/instagram/InstagramPostView";
 import { IG, igCount } from "@/components/instagram/igTheme";
 import { IgCarousel, IgComment, IgGrid, IgHeart, IgReels, IgVerified } from "@/components/instagram/igIcons";
 import { cn } from "@/lib/utils";
+import InstagramStoryPerformance from "@/components/inbox/InstagramStoryPerformance";
 import { useInstagramData } from "./useInstagramData";
 
 function Stat({ value, label }) {
@@ -77,6 +78,13 @@ export default function InstagramProfilePage({ tab = "posts" }) {
           <Link to="/instagram/profile" aria-current={tab === "posts" ? "page" : undefined} className={tabClass(tab === "posts")}><IgGrid size={24} /><span className="sr-only">{isArabic ? "المنشورات" : "Posts"}</span></Link>
           <Link to="/instagram/profile/reels" aria-current={tab === "reels" ? "page" : undefined} className={tabClass(tab === "reels")}><IgReels size={24} /><span className="sr-only">{isArabic ? "ريلز" : "Reels"}</span></Link>
         </nav>
+        {tab === "posts" && (
+          <InstagramStoryPerformance
+            stories={posts.filter((p) => p.isStory)}
+            lang={lang}
+            className="border-t py-4"
+          />
+        )}
         {postsError && <p role="alert" className="py-10 text-center text-[14px]" style={{ color: IG.error }}>{isArabic ? "تعذر تحميل المنشورات." : "Couldn't load posts."} {postsError}</p>}
         {postsLoading && shown.length === 0 && <p role="status" className="py-10 text-center text-[14px]" style={{ color: IG.secondary }}>{isArabic ? "جارٍ التحميل…" : "Loading…"}</p>}
         {!postsLoading && !postsError && shown.length === 0 && (

@@ -263,6 +263,28 @@ class SocialService:
             lambda link: instagram_adapter.publish_story(credentials, link, is_video=is_video),
         )
 
+    @staticmethod
+    async def list_stories(credentials: dict) -> list[dict]:
+        """The stories running right now, with whatever numbers Meta has already delivered.
+
+        The stored metrics come from the story_insights webhook; a story that is still live has
+        none yet, and Meta answers -1 for a count under five. Both are passed through untouched so
+        the screen can tell "not yet" from "fewer than five" from a real number.
+        """
+        items = await instagram_adapter.list_stories(credentials)
+        return [
+            {
+                "id": str(item.get("id") or ""),
+                "media_type": item.get("media_type"),
+                "media_url": item.get("media_url"),
+                "thumbnail_url": item.get("thumbnail_url"),
+                "permalink": item.get("permalink"),
+                "posted_at": item.get("timestamp"),
+            }
+            for item in items
+            if item.get("id")
+        ]
+
     # ---------- reading ----------
 
     @staticmethod

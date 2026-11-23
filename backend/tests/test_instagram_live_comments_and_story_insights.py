@@ -105,9 +105,13 @@ class _Result:
 class _Session:
     def __init__(self, post=None) -> None:
         self.post = post
+        self.added: list = []
 
     async def execute(self, stmt):
         return _Result(self.post)
+
+    def add(self, row) -> None:
+        self.added.append(row)
 
 
 @pytest.mark.asyncio
@@ -135,10 +139,21 @@ async def test_a_second_delivery_merges_and_never_drops_an_earlier_metric():
 
 
 @pytest.mark.asyncio
-async def test_a_story_we_never_saw_is_counted_not_invented():
+async def test_a_story_that_already_expired_is_recorded_from_the_delivery_alone():
+    """A story lives 24 hours and its numbers arrive after it, so the row is usually gone.
+
+    The delivery names the media, so a minimal story row is created: a story with metrics and
+    nothing invented — no caption, no counts, no guessed date.
+    """
+    session = _Session(None)
+
     outcome = await StoryInsightsService.apply(
-        _Session(None), TENANT, "instagram", [{"media_id": "ghost", "metrics": {"reach": 1}}]
+        session, TENANT, "instagram", [{"media_id": "s-9", "metrics": {"reach": 1}}]
     )
 
-    assert outcome["unknown_story"] == 1
+    assert outcome["created"] == 1
     assert outcome["updated"] == 0
+    row = session.added[0]
+    assert row.media_type == "STORIES"
+    assert row.insights == {"reach": 1}
+    assert row.caption is None

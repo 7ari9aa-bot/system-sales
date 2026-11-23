@@ -802,6 +802,32 @@ class InstagramAdapter(ChannelAdapter):
             else None,
         }
 
+    #: A story carries fewer fields than a post: no caption and no counts of its own.
+    _STORY_FIELDS = "id,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp"
+
+    async def list_stories(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        _client: httpx.AsyncClient | None = None,
+    ) -> list[dict[str, Any]]:
+        """The stories live right now.
+
+        Meta keeps a story for 24 hours and this endpoint only ever returns the ones still
+        running, so an empty list is the normal answer and not a fault. Their numbers arrive later,
+        through the ``story_insights`` webhook, because Meta does not expose a story's insights
+        while it is live.
+        """
+        _, account_id = self._creds(credentials)
+        data = await self._graph(
+            "GET",
+            f"{account_id}/stories",
+            credentials,
+            params={"fields": self._STORY_FIELDS},
+            _client=_client,
+        )
+        return list(data.get("data") or [])
+
     async def list_comments(
         self,
         credentials: ProviderCredentials,

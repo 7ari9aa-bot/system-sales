@@ -61,12 +61,53 @@ export function toWorkspacePost(p, comments, lang = "ar", accountName = "") {
     mediaUrl: p.media_url || p.thumbnail_url || "",
     mediaType: /VIDEO|REELS/i.test(p.media_type || "") ? "video" : "image",
     isReel: /REELS/i.test(p.media_type || ""),
+    isStory: /STORIES/i.test(p.media_type || ""),
+    // Meta's numbers for a story, exactly as delivered: a missing key means "not sent yet", and
+    // -1 means "fewer than five", which is not zero.
+    insights: p.insights && typeof p.insights === "object" ? p.insights : {},
     likes: p.like_count || 0,
     commentsCount: p.comments_count || 0,
     commentsEnabled: p.comments_enabled !== false,
     permalink: p.permalink || "",
     comments: comments || [],
   };
+}
+
+/** Meta's "fewer than five" sentinel, named so no screen writes `=== -1` from memory. */
+export const BELOW_THRESHOLD = -1;
+
+/**
+ * One story metric as the owner should read it.
+ *
+ * Three different situations, three different answers: Meta has not sent it yet (null), Meta sent
+ * -1 because the real count is under five, or a real number.
+ */
+export function storyMetric(value, isAr) {
+  if (value === null || value === undefined || value === "") {
+    return { value: null, text: isAr ? "لسه موصلناش" : "Not delivered yet", belowThreshold: false };
+  }
+  if (value === BELOW_THRESHOLD) {
+    return { value: null, text: isAr ? "أقل من ٥" : "Fewer than 5", belowThreshold: true };
+  }
+  return { value, text: String(value), belowThreshold: false };
+}
+
+/** The metrics worth showing on a story, in the order Instagram itself shows them. */
+export const STORY_METRICS = [
+  ["impressions", "مرات الظهور", "Impressions"],
+  ["reach", "الوصول", "Reach"],
+  ["replies", "الردود", "Replies"],
+  ["taps_forward", "تخطّي", "Taps forward"],
+  ["taps_back", "رجوع", "Taps back"],
+  ["exits", "خروج", "Exits"],
+];
+
+/** A story's rows for the screen: only the metrics Meta actually named. */
+export function storyRows(insights, isAr) {
+  const source = insights && typeof insights === "object" ? insights : {};
+  return STORY_METRICS.filter(([key]) => Object.prototype.hasOwnProperty.call(source, key)).map(
+    ([key, ar, en]) => ({ key, label: isAr ? ar : en, ...storyMetric(source[key], isAr) }),
+  );
 }
 
 export async function fetchPosts({ refresh = false, limit = 25 } = {}) {
