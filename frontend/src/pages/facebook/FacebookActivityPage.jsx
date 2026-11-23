@@ -36,18 +36,27 @@ export default function FacebookActivityPage() {
   const { fresh, earlier, hiddenCount } = useMemo(() => groupNotifications(items, { onlyUnread, showAll, readUpTo }), [items, onlyUnread, showAll, readUpTo]);
   const empty = fresh.length === 0 && earlier.length === 0;
 
-  const row = ({ comment, post, waiting }) => (
+  const row = ({ comment, post, waiting }) => {
+    // A mention arrives from Meta as ids only (no author name, no text), so it must not render as
+    // an empty "commented:" line — same rule the Instagram activity row already follows.
+    const mention = !comment.text && !comment.author;
+    return (
     <li key={comment.id}>
       <Link to={`/facebook/posts/${encodeURIComponent(post.id)}`} className="flex items-center gap-3 rounded-lg p-2 hover:bg-[#f2f2f2]">
         <span className="relative shrink-0"><FbAvatar src="" name={comment.author} size="h-14 w-14" /><CommentBadge /></span>
         <span className="min-w-0 flex-1 text-[15px] leading-5" style={{ color: waiting ? FB.text : FB.text2 }}>
-          <span dir="auto"><b>{comment.author}</b> {ar ? "علّق:" : "commented:"} <span dir="auto">{comment.text}</span></span>
+          {mention ? (
+            <span className="font-semibold">{ar ? "أشار إليك أحدهم" : "Someone mentioned you"}</span>
+          ) : (
+            <span dir="auto"><b>{comment.author}</b> {ar ? "علّق:" : "commented:"} <span dir="auto">{comment.text}</span></span>
+          )}
           <span className="mt-0.5 block text-[13px]" style={{ color: waiting ? FB.blue : FB.text2 }}>{comment.timeLabel}</span>
         </span>
-        {waiting && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: FB.blue }} role="img" aria-label={ar ? "بانتظار ردك" : "Waiting for your reply"} />}
+        {waiting && !mention && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: FB.blue }} role="img" aria-label={ar ? "بانتظار ردك" : "Waiting for your reply"} />}
       </Link>
     </li>
-  );
+    );
+  };
   const tab = (active) => cn("rounded-full px-3 py-1.5 text-[15px] font-semibold", active ? "bg-[#e7f3ff] text-[#0866ff]" : "text-[#050505] hover:bg-[#f2f2f2]");
 
   return (

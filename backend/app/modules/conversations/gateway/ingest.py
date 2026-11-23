@@ -557,6 +557,22 @@ class IngestService:
                     parse_echoes(payload),
                     own_app_id=settings.meta_app_id or None,
                 )
+            # The Page's OWN feed: a post edited, shared, hidden, published or reacted to. The
+            # comment parser above ignores everything that is not a comment, so these changes used
+            # to disappear and the merchant kept seeing the post as it was on publication day.
+            parse_feed = getattr(adapter, "parse_feed_events", None)
+            if callable(parse_feed):
+                from app.modules.conversations.facebook_feed import PageEventProcessor
+
+                changes = parse_feed(payload)
+                if changes:
+                    outcome = await PageEventProcessor.apply(
+                        session, tenant_id, channel, changes
+                    )
+                    logger.info(
+                        "facebook.feed_applied",
+                        extra={"tenant_id": str(tenant_id), "channel": channel, **outcome},
+                    )
             # An edited message: Meta sends the mid and the new text. The old body is kept in
             # provider_metadata so the thread can show that it changed.
             parse_edits = getattr(adapter, "parse_edits", None)
