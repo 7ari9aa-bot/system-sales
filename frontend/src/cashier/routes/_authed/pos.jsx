@@ -44,6 +44,8 @@ import { drawerFailureNotice, printFailureNotice } from "@/cashier/lib/printFail
 const UNDO_TOAST_ID = "pos-undo-remove";
 // رسالة فشل الطباعة: واحدة أحدث تستبدل السابقة.
 const PRINT_FAILED_TOAST_ID = "pos-print-failed";
+// الدرج جهاز تاني: رسالته منفصلة عشان ما تمسحش تحذير الطباعة اللي فيه زرار إعادة الطبع.
+const DRAWER_FAILED_TOAST_ID = "pos-drawer-failed";
 
 export default function PosPage() {
   const { user } = useAuth?.() ?? {};
@@ -405,7 +407,7 @@ function PosScreen({ user, session }) {
         try {
           await kickCashDrawer();
         } catch {
-          toast.warning(drawerFailureNotice().message, { id: PRINT_FAILED_TOAST_ID, duration: 12000 });
+          toast.warning(drawerFailureNotice().message, { id: DRAWER_FAILED_TOAST_ID, duration: 12000 });
         }
       }
 

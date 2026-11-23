@@ -7,7 +7,7 @@ import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import StatusBadge from "@/cashier/components/ui-kit/StatusBadge";
 import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { colorHex } from "@/cashier/lib/uiConstants";
-import { changedCounts, diffOf, parseCount, sheetTotals, stocktakeErrorMessage } from "@/cashier/api/stocktakeAdapter";
+import { changedCounts, countsToSave, diffOf, parseCount, sheetTotals, stocktakeErrorMessage } from "@/cashier/api/stocktakeAdapter";
 import { scanRefusal, scanToCount } from "@/cashier/lib/stocktakeScan";
 import { useApproveStocktake, useCancelStocktake, useSaveCounts } from "@/cashier/api/useStocktake";
 import { fmtInt } from "@/cashier/lib/format";
@@ -68,11 +68,20 @@ export default function StocktakeTable({ sheet, known = [] }) {
       });
     });
 
+  // the latest typed rows, so a scan-triggered save never leaves them behind
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+
   function queueSave(variantId, qty) {
     queued.current[variantId] = qty;
     clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => {
-      const counts = Object.entries(queued.current).map(([variant_id, counted_qty]) => ({ variant_id, counted_qty }));
+    flushTimer.current = setTimeout(function flush() {
+      // one save at a time: a second one would land on the sheet the first is about to replace
+      if (save.isPending) {
+        flushTimer.current = setTimeout(flush, 1000);
+        return;
+      }
+      const counts = countsToSave(pendingRef.current, queued.current);
       queued.current = {};
       if (counts.length === 0) return;
       save.mutate(counts, { onError: (e) => toast.error(stocktakeErrorMessage(e)) });

@@ -80,6 +80,22 @@ export function changedCounts(rows, saved) {
     .map((r) => ({ variant_id: r.id, counted_qty: r.actual }));
 }
 
+/**
+ * The one save request built from what the cashier typed and what the scanner queued.
+ *
+ * Scanning saves on its own, and that save refetches the sheet, which drops the typed counts - so
+ * a save started by a scan must carry the hand-typed rows too, or an hour of counting in the
+ * second half of the sheet disappears because someone scanned a tag. The scanned line wins for its
+ * own variant: it is the newer number.
+ */
+export function countsToSave(pending = [], queued = {}) {
+  const byId = new Map((pending ?? []).map((c) => [String(c.variant_id), c]));
+  for (const [variantId, countedQty] of Object.entries(queued ?? {})) {
+    byId.set(String(variantId), { variant_id: variantId, counted_qty: countedQty });
+  }
+  return [...byId.values()];
+}
+
 /** Why the server said no, in words the person at the counter can act on. */
 export function stocktakeErrorMessage(error, action = "save") {
   const status = error?.status;
