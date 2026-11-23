@@ -530,3 +530,48 @@ class SocialPost(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Bas
         ),
         Index("ix_social_posts_tenant_platform_time", "tenant_id", "platform", "posted_at"),
     )
+
+
+class PageActivity(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, Base):
+    """One thing that happened on the store's Page, as the webhook reported it.
+
+    The Facebook channel's notifications screen used to be rebuilt in the browser from the post
+    list, with the read mark in ``localStorage`` — so it knew nothing about a new post, an edited
+    post, a deleted post, a reaction or a video, and one staff member reading a notification left
+    it unread on every other device. This table is the durable record the webhook writes and the
+    screen reads, so read state is per tenant and shared.
+
+    ``dedup_key`` is the identity of the event as Meta described it (kind + object + the timestamp
+    Meta sent). A delivery Meta retries — which it does for up to seven days — updates the row
+    instead of adding a second notification.
+    """
+
+    __tablename__ = "page_activity"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    #: facebook | instagram — the channel the event belongs to, so one screen can filter.
+    channel: Mapped[str] = mapped_column(String(31), nullable=False)
+    #: mention | post | post_edit | post_delete | reaction | share | video | comment
+    kind: Mapped[str] = mapped_column(String(31), nullable=False)
+    #: The Meta object the event is about (post id, comment id, video id). Never empty.
+    object_id: Mapped[str] = mapped_column(String(127), nullable=False)
+    #: The post a comment/reaction belongs to, when the event carries one.
+    parent_id: Mapped[str | None] = mapped_column(String(127))
+    #: Who caused it, as Meta named them. A mention arrives with ids only.
+    actor_name: Mapped[str | None] = mapped_column(String(255))
+    actor_id: Mapped[str | None] = mapped_column(String(127))
+    #: One line the screen can show without asking Meta anything.
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The change as received, so a replayed or re-read event never loses detail.
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    #: Platform time, not our receipt time: a retried delivery lands in the minute it happened.
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    #: When staff read it. NULL means unread — one row, every device.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dedup_key: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "dedup_key", name="uq_page_activity_tenant_dedup"),
+        Index("ix_page_activity_tenant_channel_time", "tenant_id", "channel", "occurred_at"),
+        Index("ix_page_activity_tenant_unread", "tenant_id", "channel", "read_at"),
+    )

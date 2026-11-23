@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 638,
-    "sha256": "10601e48220edab52fb72661189bc7b05baefaee3d019d310b04be8699df0b8a",
+    "operations": 640,
+    "sha256": "fbf664169f889157f77ebdca53443a6f39f03183194b757c302a500d846aa45c",
     "typed_operations": 352
   },
   "spec": {
@@ -46206,6 +46206,220 @@
           ]
         }
       },
+      "/api/v1/facebook/activity": {
+        "get": {
+          "description": "What happened on the Page, newest first, read from our own table.\n\nThe screen used to derive this from the post list and keep its read mark in `localStorage`, so\na new/edited/deleted post, a reaction or a video never showed up and one person reading a\nnotification left it unread on every other device. These rows come from the webhook.",
+          "operationId": "page_activity_api_v1_facebook_activity_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "only_unread",
+              "required": false,
+              "schema": {
+                "default": false,
+                "title": "Only Unread",
+                "type": "boolean"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 50,
+                "maximum": 200,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Page Activity",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/activity/read": {
+        "post": {
+          "description": "Mark the Page's activity read for the whole tenant — every device, one write.",
+          "operationId": "mark_page_activity_read_api_v1_facebook_activity_read_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Mark Page Activity Read",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
       "/api/v1/facebook/comments/{comment_id}": {
         "delete": {
           "operationId": "delete_comment_api_v1_facebook_comments__comment_id__delete",
@@ -46421,7 +46635,7 @@
       },
       "/api/v1/facebook/comments/{comment_id}/private-reply": {
         "post": {
-          "description": "One private Messenger message to the commenter, within 7 days of the comment.",
+          "description": "One private Messenger message to the commenter, within 7 days of the comment.\n\nSending it needs `pages_messaging` — the Messenger permission. This connection is the Page's\nmanagement grant and deliberately does not ask for it, so a store that never linked Messenger\nis told which function to connect instead of meeting Meta's refusal.",
           "operationId": "private_reply_api_v1_facebook_comments__comment_id__private_reply_post",
           "parameters": [
             {

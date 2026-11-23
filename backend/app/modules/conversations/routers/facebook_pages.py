@@ -18,6 +18,7 @@ from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError,
 from app.modules.conversations.facebook_service import MAX_PICTURE_BYTES, FacebookService
 from app.modules.conversations.gateway import facebook_video
 from app.modules.conversations.gateway.facebook_pages import facebook_pages, page_token_and_id
+from app.modules.conversations.page_activity_service import PageActivityService
 from app.modules.conversations.routers._deps import TenantContext, require_permission
 from app.modules.conversations.routers.inbox import (
     _allowed_channels,
@@ -546,6 +547,50 @@ async def post_insights(
     if await FacebookService.get_post(ctx.session, ctx.tenant_id, post_id) is None:
         raise NotFoundError("post not found")
     return {"post_id": post_id, "metrics": await facebook_pages.get_post_insights(creds, post_id)}
+
+
+@router.get("/facebook/activity")
+async def page_activity(
+    only_unread: bool = False,
+    limit: int = Query(50, ge=1, le=200),
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """What happened on the Page, newest first, read from our own table.
+
+    The screen used to derive this from the post list and keep its read mark in `localStorage`, so
+    a new/edited/deleted post, a reaction or a video never showed up and one person reading a
+    notification left it unread on every other device. These rows come from the webhook.
+    """
+    await _credentials(ctx, send=False)
+    rows = await PageActivityService.list_activity(
+        ctx.session, ctx.tenant_id, channel=_PROVIDER, only_unread=only_unread, limit=limit
+    )
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "kind": row.kind,
+                "object_id": row.object_id,
+                "parent_id": row.parent_id,
+                "actor_name": row.actor_name,
+                "summary": row.summary,
+                "occurred_at": row.occurred_at.isoformat(),
+                "read": row.read_at is not None,
+            }
+            for row in rows
+        ],
+        "unread": sum(1 for row in rows if row.read_at is None),
+    }
+
+
+@router.post("/facebook/activity/read")
+async def mark_page_activity_read(
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Mark the Page's activity read for the whole tenant — every device, one write."""
+    await _credentials(ctx, send=True)
+    marked = await PageActivityService.mark_read(ctx.session, ctx.tenant_id, channel=_PROVIDER)
+    return {"marked": marked}
 
 
 __all__ = ["router", "ValidationError"]

@@ -585,6 +585,21 @@ class IngestService:
                         "facebook.feed_applied",
                         extra={"tenant_id": str(tenant_id), "channel": channel, **outcome},
                     )
+                    # The same events are the notifications screen's food. They are recorded even
+                    # when `apply` could not find the object (unknown_post): a post published
+                    # before the Page was connected is still news the merchant should see, and
+                    # the row is what makes the read mark shared instead of per browser.
+                    from app.modules.conversations.page_activity_service import (
+                        PageActivityService,
+                    )
+
+                    noted = await PageActivityService.record_changes(
+                        session, tenant_id, channel, changes
+                    )
+                    logger.info(
+                        "facebook.feed_activity",
+                        extra={"tenant_id": str(tenant_id), "channel": channel, **noted},
+                    )
             # An edited message: Meta sends the mid and the new text. The old body is kept in
             # provider_metadata so the thread can show that it changed.
             parse_edits = getattr(adapter, "parse_edits", None)
