@@ -759,7 +759,14 @@ class InstagramAdapter(ChannelAdapter):
     ) -> dict[str, Any]:
         """One Graph call, inside the breaker. A rejection is a provider FAILURE."""
         token, _ = self._creds(credentials)
-        url = f"{self._base}/{path.lstrip('/')}"
+        # A standalone Instagram Login credential belongs to graph.instagram.com: the Page-token
+        # host does not accept it, and the Instagram host does not accept a Page token.
+        base = (
+            f"https://graph.instagram.com/{INSTAGRAM_API_VERSION}"
+            if str(credentials.get("login") or "") == "instagram"
+            else self._base
+        )
+        url = f"{base}/{path.lstrip('/')}"
         headers = {"Authorization": f"Bearer {token}"}
 
         async def _call() -> dict[str, Any]:

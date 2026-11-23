@@ -108,6 +108,10 @@ def subscribed_fields(provider: str) -> str:
 # A Facebook connection is the same page-messaging grant as Messenger — the
 # page-scoped token IS the credential; the provider value only names the row.
 _META_PROVIDERS = ("messenger", "instagram", "facebook")
+#: Instagram Login is its own grant (no Page, its own Graph host), so it is a separate provider
+#: value on the start route while the stored channel row stays provider "instagram".
+_INSTAGRAM_LOGIN_PROVIDER = "instagram_login"
+_OAUTH_PROVIDERS = _META_PROVIDERS + (_INSTAGRAM_LOGIN_PROVIDER,)
 #: 15 minutes, deliberately LONGER than the 10 the settings screen waits. The state is minted
 #: before the screen starts its own clock, so with equal windows an owner finishing in the last
 #: seconds met an expired state while the screen was still waiting. The screen is the one that
@@ -157,6 +161,10 @@ def _build_authorize_url(
     another channel's permissions. `response_type=code` is the server-side
     grant in both variants.
     """
+    if provider == _INSTAGRAM_LOGIN_PROVIDER:
+        from app.modules.customers.instagram_login import authorize_url
+
+        return authorize_url(app_id=app_id, redirect_uri=redirect_uri, state=state)
     params: dict[str, str] = {
         "client_id": app_id,
         "redirect_uri": redirect_uri,
@@ -191,8 +199,8 @@ async def meta_oauth_start(
     settings:write when the URL was minted; the callback re-checks nothing
     else because the window is shorter than a coffee.
     """
-    if provider not in _META_PROVIDERS:
-        raise ValidationError(f"Meta OAuth covers {' and '.join(_META_PROVIDERS)} only.")
+    if provider not in _OAUTH_PROVIDERS:
+        raise ValidationError(f"Meta OAuth covers {' and '.join(_OAUTH_PROVIDERS)} only.")
     app_id, _secret, redirect_uri, config_id = _meta_config()
     state = create_oauth_state_token(
         str(ctx.user.id),
@@ -1229,6 +1237,51 @@ async def meta_oauth_choose_page(
 
 
 @meta_oauth_router.get("/integrations/meta/oauth/callback", include_in_schema=False)
+async def _instagram_login_callback(*, session, code, payload, frontend, back, flag):
+    """The standalone Instagram Login callback: no Page, no page token, its own Graph host."""
+    import uuid as _uuid
+
+    from app.core.config import get_settings
+    from app.core.db import bind_tenant
+    from app.modules.customers import instagram_login
+
+    settings = get_settings()
+    app_id = (settings.instagram_app_id or settings.meta_app_id).strip()
+    app_secret = settings.instagram_app_secret.strip()
+    redirect_uri = settings.meta_oauth_redirect_uri_effective
+    if not (app_id and app_secret and redirect_uri):
+        await flag("link.not_configured", "instagram_login", None, {"missing": "app_id/secret"})
+        return back("error", "instagram_login_not_configured")
+
+    try:
+        await bind_tenant(session, _uuid.UUID(str(payload["tenant_id"])))
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            connected_provider, display = await instagram_login.exchange_and_connect(
+                session,
+                http,
+                code=code,
+                tenant_id=_uuid.UUID(str(payload["tenant_id"])),
+                app_id=app_id,
+                app_secret=app_secret,
+                redirect_uri=redirect_uri,
+            )
+        await session.commit()
+    except ExternalProviderError as exc:
+        await session.rollback()
+        _logger.warning("instagram_login.provider_unavailable reason=%s", exc)
+        await flag("link.provider_unavailable", "instagram_login", None, {"reason": str(exc)[:200]})
+        return back("error", f"meta_unavailable:{str(exc)[:120]}")
+    except DomainError as exc:
+        await session.rollback()
+        await flag("link.instagram_login_refused", "instagram_login", None, {"reason": str(exc)[:200]})
+        return back("error", f"instagram_login:{str(exc)[:200]}")
+    except Exception as exc:
+        _logger.exception("instagram_login.connect_failed")
+        await session.rollback()
+        return back("error", f"meta_exchange_failed:{type(exc).__name__}")
+    return back("connected", f"{connected_provider}:{display}")
+
+
 async def meta_oauth_callback(
     request: Request,
     session: DbSession,
@@ -1297,8 +1350,13 @@ async def meta_oauth_callback(
     if payload.get("type") != "oauth_state":
         return await _refuse("invalid_state", "wrong_type")
     provider = payload.get("provider")
-    if provider not in _META_PROVIDERS:
+    if provider not in _OAUTH_PROVIDERS:
         return await _refuse("invalid_provider", "unknown_provider")
+
+    if provider == _INSTAGRAM_LOGIN_PROVIDER:
+        return await _instagram_login_callback(
+            session=session, code=code, payload=payload, frontend=frontend, back=_back, flag=_flag
+        )
 
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))

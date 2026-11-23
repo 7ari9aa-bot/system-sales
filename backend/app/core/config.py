@@ -253,6 +253,11 @@ class Settings(BaseSettings):
     meta_whatsapp_config_id: str = ""
     messenger_app_secret: str = ""
     messenger_verify_token: str = ""
+    # Instagram Login (the standalone path): its own app id and secret from
+    # "Instagram → API setup with Instagram login". Empty id falls back to
+    # META_APP_ID, which is right when one app serves both logins; the secret
+    # never falls back, because a wrong secret must fail loudly, not silently.
+    instagram_app_id: str = ""
     instagram_app_secret: str = ""
     instagram_verify_token: str = ""
     # Email channel webhook (SendGrid bearer / Mailgun HMAC). Empty = the email
