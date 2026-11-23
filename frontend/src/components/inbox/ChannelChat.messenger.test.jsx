@@ -59,6 +59,12 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain("السعر كام؟");
   });
 
+  test("a reply names who replied to whom above the quote", () => {
+    const html = render([msg("m1", { text: "تمام", side: "out", replyTo: { id: "x", body: "السعر كام؟", direction: "inbound" } })]);
+    expect(html).toContain('data-testid="messenger-reply-label"');
+    expect(html).toContain("ردّيت على Ahmed Adel");
+  });
+
   test("a message with no reply has no quote", () => {
     expect(render([msg("m1", { text: "hi" })])).not.toContain('data-testid="messenger-quote"');
   });

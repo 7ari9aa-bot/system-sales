@@ -100,6 +100,7 @@ describe("messengerSeen", () => {
 import {
   messengerIsBigEmoji,
   messengerQuoteText,
+  messengerReplyLabel,
   messengerTimeDivider,
 } from "./messengerChat";
 
@@ -116,6 +117,20 @@ describe("messengerIsBigEmoji", () => {
     expect(messengerIsBigEmoji(null)).toBe(false);
     expect(messengerIsBigEmoji("😂😂😂😂😂😂")).toBe(false);
     expect(messengerIsBigEmoji("123")).toBe(false);
+  });
+});
+
+describe("messengerReplyLabel", () => {
+  it("names who replied to whom, from the side of the reply", () => {
+    expect(messengerReplyLabel({ id: "x" }, "out", "Hamed Adel", "en")).toBe("You replied to Hamed Adel");
+    expect(messengerReplyLabel({ id: "x" }, "in", "Hamed Adel", "en")).toBe("Hamed Adel replied to you");
+    expect(messengerReplyLabel({ id: "x" }, "out", "حامد عادل", "ar")).toBe("ردّيت على حامد عادل");
+  });
+
+  it("says nothing without a quote, and names an unknown customer plainly", () => {
+    expect(messengerReplyLabel(null, "out", "Hamed Adel", "en")).toBe("");
+    expect(messengerReplyLabel({ id: "x" }, "out", "", "en")).toBe("You replied to the customer");
+    expect(messengerReplyLabel({ id: "x" }, "in", "  ", "ar")).toBe("العميل ردّ على رسالتك");
   });
 });
 
