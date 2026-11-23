@@ -277,15 +277,19 @@ export default function ChannelChat({
     if (!attachment || uploading || !conversation) return;
     setUploading(true);
     setAttachError("");
+    // An Instagram file carries no caption in the Send API, so the caption goes out as its own
+    // message right after the file, the way Instagram's own preview posts it.
+    const captionText = isInstagram ? String(caption || "").trim() : String(caption || "");
     const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker, mimeOf: isMessenger || isTelegram ? mimeOfChannelFile : null });
     if (!up.ok) { setUploading(false); setAttachError(up.error); return; }
-    const sent = await onSend?.(conversation.id, caption, {
+    const sent = await onSend?.(conversation.id, isInstagram ? "" : caption, {
       mediaId: up.media.media_id,
       mediaKind: up.media.kind,
       filename: up.media.filename,
       previewFile: attachment.file,
       replyTo: replyingTo || undefined,
     });
+    if (sent !== false && isInstagram && captionText) await onSend?.(conversation.id, captionText);
     setUploading(false);
     if (sent === false) { setAttachError(lang === "ar" ? "تم رفع الملف لكن تعذّر إرساله. حاول مرة أخرى." : "The file was uploaded but could not be sent. Try again."); return; }
     setAttachment(null);
@@ -372,6 +376,7 @@ export default function ChannelChat({
           role="button"
           tabIndex={0}
           onClick={() => setContactDrawerOpen(true)}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setContactDrawerOpen(true); } }}
           className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none hover:opacity-90 transition-opacity"
           title={lang === "ar" ? "عرض تفاصيل جهة الاتصال" : "View contact details"}
         >
@@ -715,7 +720,7 @@ export default function ChannelChat({
           busy={uploading}
           error={attachError}
           lang={lang}
-          onSend={() => { void sendAttachment(""); }}
+          onSend={(caption) => { void sendAttachment(caption); }}
           onCancel={() => { setAttachment(null); setAttachError(""); }}
         />
       )}
@@ -1145,7 +1150,7 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
-      {viewerId && (isWhatsApp || isInstagram) && (
+      {viewerId && (isWhatsApp || isInstagram || isMessenger) && (
         <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
       )}
     </div>

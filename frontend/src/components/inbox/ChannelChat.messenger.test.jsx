@@ -251,4 +251,14 @@ describe("ChannelChat on Messenger", () => {
     const html = render([]);
     expect(html).toMatch(/role="status"[^>]*data-testid="messenger-empty"|data-testid="messenger-empty"[^>]*role="status"/);
   });
+
+  test("a photo opens the full-screen viewer on Messenger too, and the header opens details from the keyboard", async () => {
+    // Static markup cannot click, so read the component source for the two wirings that were missing.
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./ChannelChat.jsx", import.meta.url), "utf8");
+    expect(src).toMatch(/viewerId && \(isWhatsApp \|\| isInstagram \|\| isMessenger\)/);
+    const header = src.slice(src.indexOf("Customer Header clickable section"), src.indexOf("Customer Header clickable section") + 600);
+    expect(header).toContain("onKeyDown");
+  });
 });
+
