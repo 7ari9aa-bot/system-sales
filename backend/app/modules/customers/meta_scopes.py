@@ -36,13 +36,16 @@ def missing_facebook_scopes(granted: object) -> list[str]:
     return [scope for scope in FACEBOOK_PAGE_SCOPES if scope not in have]
 
 
-#: What an Instagram connection needs beyond chat: DMs, comments, and publishing. Missing one does
-#: not stop the account linking (DMs may still work) but the matching feature fails, so the
-#: connection lists them and the owner can connect again.
+#: What an Instagram connection needs beyond chat: DMs, comments, publishing and insights.
+#: Missing one does not stop the account linking (DMs may still work) but the matching feature
+#: fails, so the connection lists them and the owner can connect again. Insights is here because
+#: the post insights tab calls `/{media_id}/insights`, which Meta refuses without
+#: `instagram_manage_insights` (docs/channels/instagram-permissions.md, §5).
 INSTAGRAM_REQUIRED_SCOPES = (
     "instagram_manage_messages",
     "instagram_manage_comments",
     "instagram_content_publish",
+    "instagram_manage_insights",
 )
 
 

@@ -65,9 +65,10 @@ _INSTAGRAM_SCOPES = (
     "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,"
     "instagram_basic,instagram_manage_messages,"
     # Posts and comments from the inbox: read and moderate comments, answer one in
-    # private, and publish a post. A store connected before this must reconnect once
-    # to grant them; the DM scopes above are unchanged, so existing chats keep working.
-    "instagram_manage_comments,instagram_content_publish"
+    # private, publish a post, and read the media insights the post view shows. A store
+    # connected before this must reconnect once to grant them; the DM scopes above are
+    # unchanged, so existing chats keep working.
+    "instagram_manage_comments,instagram_content_publish,instagram_manage_insights"
 )
 # Webhook fields the PAGE subscription asks for, per channel. Only fields that exist on Meta's
 # `page` object are listed. Instagram's own fields (comments, mentions, message_reactions,
