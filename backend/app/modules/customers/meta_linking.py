@@ -357,6 +357,9 @@ class BackfillBounds:
 
     Meta rate-limits per Page and per app, so an unbounded backfill is a way to get the whole
     channel throttled. The bounds are per provider because Meta's own limits are.
+
+    What these bounds buy is a LIMITED HISTORY IMPORT: the most recent conversations inside the
+    caps, never a full sync. Anything that reads or labels a run must say so.
     """
 
     provider: str
@@ -371,8 +374,9 @@ BACKFILL_BOUNDS: dict[str, BackfillBounds] = {
     "messenger": BackfillBounds(
         "messenger", max_pages=5, max_items=100, max_days=90, rate_limit_per_minute=200
     ),
-    # Instagram messaging has no conversation listing worth walking; comments are the backfillable
-    # part, and Meta caps how far a comment list goes.
+    # Instagram messaging is NOT walked by the Messenger walker (it reads a Page's conversations,
+    # which an Instagram Login connection does not have), so reconcile reports it as unsupported.
+    # These caps are for the comment list only, and Meta caps how far that goes.
     "instagram": BackfillBounds(
         "instagram", max_pages=3, max_items=50, max_days=30, rate_limit_per_minute=200
     ),
@@ -395,7 +399,7 @@ def backfill_supported(provider: str) -> tuple[bool, str | None]:
     """Whether a provider can be backfilled at all, and why not when it cannot."""
     bounds = backfill_bounds(provider)
     if bounds.max_items == 0:
-        return False, f"{provider} exposes no history API; nothing can be backfilled"
+        return False, f"{provider} exposes no history API; nothing can be imported"
     return True, None
 
 

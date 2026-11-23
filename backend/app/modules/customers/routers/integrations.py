@@ -850,6 +850,17 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
         raise NotFoundError("channel integration not found")
     if integration.provider not in ("messenger", "instagram"):
         raise ValidationError("Reconciliation exists for Messenger and Instagram only.")
+    if integration.provider == "instagram":
+        # The walker reads a Page's Messenger conversations. An Instagram connection (above all an
+        # Instagram Login one, which has no Page at all) has no such listing here yet, so running it
+        # would compare the wrong world. Say so plainly instead of returning a misleading result.
+        return {
+            "supported": False,
+            "reason": "not_supported_for_this_channel_yet",
+            "missing_locally": [],
+            "stale_locally": [],
+            "error": None,
+        }
 
     config = integration.config if isinstance(integration.config, dict) else {}
     page_id = reconcile_page_id(integration.provider, config)
@@ -861,9 +872,8 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
     if not token:
         raise ValidationError("This channel has no usable token to reconcile with.")
 
-    # Meta's own thread id for a person is the PSID/IGSID, which is exactly what a customer
-    # identity stores for the channel. Comparing those two sets is the comparison that matters:
-    # a person Meta can message and FIHRIST has never seen.
+    # A customer identity stores the PSID, so it is compared with the conversation PARTICIPANTS
+    # (the people), never with Meta's thread ids: a person Meta lists and FIHRIST has never seen.
     rows = (
         await ctx.session.execute(
             select(CustomerIdentity.external_id).where(
@@ -879,7 +889,7 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
             http,
             page_id=page_id,
             token=token,
-            local_thread_ids=local,
+            local_person_ids=local,
             provider=integration.provider,
         )
 

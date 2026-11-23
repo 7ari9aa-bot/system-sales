@@ -25,21 +25,41 @@ def _thread_id(conversation: dict[str, Any]) -> str | None:
     return str(value) if value else None
 
 
+def _participant_ids(conversation: dict[str, Any], *, page_id: str) -> set[str]:
+    """The people in a thread: ``participants.data[].id`` without the Page itself.
+
+    Meta's conversation ``id`` is a THREAD id (``t_...``). FIHRIST stores the PERSON (the PSID) as
+    the customer identity, so a thread id can never be compared with it: every thread would look
+    missing and every customer stale. The participants are the PSIDs, so those are compared.
+    """
+    participants = conversation.get("participants")
+    rows = participants.get("data") if isinstance(participants, dict) else None
+    return {
+        str(row["id"])
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and row.get("id") and str(row["id"]) != str(page_id)
+    }
+
+
 async def reconcile_page(
     http: httpx.AsyncClient,
     *,
     page_id: str,
     token: str,
-    local_thread_ids: set[str],
+    local_person_ids: set[str],
     provider: str = "messenger",
     walker: MessengerBackfill | None = None,
 ) -> dict[str, Any]:
     """Walk what Meta will give us, then say what is missing on each side.
 
-    ``missing_locally`` is the actionable half: a thread Meta has that FIHRIST never stored. A
-    thread FIHRIST has that Meta no longer lists is reported too, but as ``stale_locally`` — Meta
-    drops conversations from that listing for its own reasons, so it is not proof of a deletion and
-    nothing is removed on the strength of it.
+    Both sides are PEOPLE (the PSID a customer identity stores), never thread ids.
+    ``missing_locally`` is the actionable half: a person Meta lists a conversation with that FIHRIST
+    never stored. A person FIHRIST has that Meta no longer lists is reported too, but as
+    ``stale_locally``: Meta drops conversations from that listing for its own reasons, so it is not
+    proof of a deletion and nothing is removed on the strength of it.
+
+    This is a limited-history comparison: it reads at most the provider's bounds of recent
+    conversations, so it can find a gap but never proves the whole history is in sync.
     """
     from app.modules.customers.meta_linking import backfill_bounds, backfill_supported
 
@@ -63,19 +83,23 @@ async def reconcile_page(
         max_pages=bounds.max_pages,
     )
 
-    meta_ids = {tid for tid in (_thread_id(c) for c in result.conversations) if tid}
+    meta_ids: set[str] = set()
+    for conversation in result.conversations:
+        meta_ids |= _participant_ids(conversation, page_id=page_id)
     return {
         "supported": True,
         "reason": None,
         "pages_read": result.pages_read,
-        "conversations_seen": len(meta_ids),
+        "conversations_seen": len(result.conversations),
+        "people_seen": len(meta_ids),
+        "limited_history": True,
         "stopped": result.stopped,
         "error": result.error,
         # Only meaningful when the walk completed; a capped or failed walk cannot prove absence.
         "missing_locally": (
-            sorted(meta_ids - local_thread_ids) if result.stopped == "exhausted" else []
+            sorted(meta_ids - local_person_ids) if result.stopped == "exhausted" else []
         ),
-        "stale_locally": sorted(local_thread_ids - meta_ids)
+        "stale_locally": sorted(local_person_ids - meta_ids)
         if result.stopped == "exhausted"
         else [],
         "bounds": {
