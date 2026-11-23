@@ -1874,7 +1874,8 @@ class PosService(PosReceiptReads):
             {**({"cash": counted} if counted is not None else {}), **method_counts}.items()
         ):
             expected_amount = (
-                expected if method == CASH and expected is not None
+                expected
+                if method == CASH and expected is not None
                 else to_money(by_method.get(method, 0), method)
             )
             session.add(
@@ -2085,9 +2086,7 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
-        return await PosService._order_service().collected_by_method(
-            session, tenant_id, order_ids
-        )
+        return await PosService._order_service().collected_by_method(session, tenant_id, order_ids)
 
     @staticmethod
     async def _record_close(
@@ -3320,7 +3319,6 @@ class PosService(PosReceiptReads):
         """
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
 
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
@@ -4117,7 +4115,6 @@ class PosService(PosReceiptReads):
         sale never collected is reported as ``uncollected``, never paid out of the drawer."""
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
         from app.modules.orders.service import OrderService
 
@@ -4523,7 +4520,9 @@ class PosService(PosReceiptReads):
             # The money: ``collected`` (the replacement cost more and the difference was taken),
             # ``refunded`` (it cost less and the difference went back), ``exchange_only`` (equal,
             # nothing moved) or ``record_only`` (a till that takes no payments).
-            "settlement": settlement["mode"] if settlement["direction"] == "none" else settlement["direction"],
+            "settlement": settlement["mode"]
+            if settlement["direction"] == "none"
+            else settlement["direction"],
             "settled_amount": str(settlement["amount"]),
             "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "uncollected": str(settlement.get("uncollected", "0.00")),
