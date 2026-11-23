@@ -70,6 +70,10 @@ def channel_problems(
             reasons.append(f"إخفاقات متتالية: {failures}")
         if lost > 0:
             reasons.append(f"رسائل وصلت ولم تُعالَج: {lost}")
+        # A resync that failed means the template copy on screen is not what Meta holds: an owner
+        # approving a template has nothing else to look at, so it is reported until a resync works.
+        if health.get("template_resync_error"):
+            reasons.append(f"مزامنة القوالب فشلت: {str(health['template_resync_error'])[:60]}")
         if reasons:
             problems.append(
                 {

@@ -518,6 +518,11 @@ class MessageWorker(StreamWorker):
                     await session.flush()
                     permanent_reason = str(exc)
         if permanent_reason is not None:
+            # The message is failed and committed; the event is about to dead-letter. Ring the
+            # owner's bell first, so the customer's unanswered question is visible somewhere a
+            # person looks. (Phase 3 already notifies a failed SEND; this covers the ones that
+            # die before the provider is ever called.)
+            await self._notify_phase_one_failure(tenant_id, message_id, permanent_reason)
             raise PermanentError(permanent_reason)
         if plan is None:
             return
@@ -941,6 +946,43 @@ class MessageWorker(StreamWorker):
             logger.warning(
                 "outbound.delivery_failed_notification_failed message=%s",
                 message.id,
+                exc_info=True,
+            )
+
+    async def _notify_phase_one_failure(
+        self, tenant_id: uuid.UUID, message_id: uuid.UUID, reason: str
+    ) -> None:
+        """Ring the owner's bell for a message that died BEFORE the provider call.
+
+        A PermanentError raised while the message is being prepared (a reaction without its
+        target, an uploaded file the bucket will not read, a channel with no adapter) marks the
+        message failed and dead-letters the event — and that was the whole story: the customer
+        had asked something, the reply was never sent, and nobody was told. Same bell shape and
+        same dedup key as a failed send, so a retry of this event cannot ring it twice.
+
+        Best-effort by contract: the failure is already committed, and a bell that cannot be
+        written must not replace the real error with its own.
+        """
+        try:
+            async with SessionLocal() as session:
+                async with session.begin():
+                    await bind_tenant(session, tenant_id)
+                    message = (
+                        await session.execute(
+                            select(Message).where(
+                                Message.tenant_id == tenant_id, Message.id == message_id
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if message is None:
+                        return
+                    await self._notify_delivery_failed(
+                        session, tenant_id, message=message, status="failed", error=reason
+                    )
+        except Exception:  # noqa: BLE001 — a bell is best-effort by contract
+            logger.warning(
+                "outbound.phase_one_notification_failed message=%s",
+                message_id,
                 exc_info=True,
             )
 
