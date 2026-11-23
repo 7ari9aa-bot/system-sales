@@ -18,6 +18,7 @@ import {
   returnsSummary,
   supplierFromApi,
   suppliersSummary,
+  buildReturnAcceptance,
 } from "./purchasingAdapter";
 
 const V1 = "11111111-1111-1111-1111-111111111111";
@@ -278,5 +279,49 @@ describe("purchasingErrorMessage", () => {
   it("unknown errors keep their text; empty gets a fallback", () => {
     expect(purchasingErrorMessage({ status: 400, message: "شيء غريب" })).toBe("شيء غريب");
     expect(purchasingErrorMessage({})).toBe("حصل خطأ غير متوقع");
+  });
+});
+
+describe("cash to a supplier out of the till", () => {
+  const pay = (over = {}) => ({ supplierId: "s1", amount: "150.00", method: "cash", note: "", ...over });
+
+  it("names the open shift when the cash leaves the drawer", () => {
+    const built = buildPayment(pay({ fromDrawer: true }), { owed: null, sessionId: "shift-1" });
+    expect(built.ok).toBe(true);
+    expect(built.payload.session_id).toBe("shift-1");
+  });
+
+  it("a payment outside the drawer carries no shift", () => {
+    const built = buildPayment(pay({ fromDrawer: false }), { owed: null, sessionId: "shift-1" });
+    expect("session_id" in built.payload).toBe(false);
+  });
+
+  it("a card payment never claims a drawer even when the box is ticked", () => {
+    const built = buildPayment(pay({ method: "card", fromDrawer: true }), { sessionId: "shift-1" });
+    expect("session_id" in built.payload).toBe(false);
+  });
+
+  it("refuses a drawer payment with no open shift", () => {
+    const built = buildPayment(pay({ fromDrawer: true }), { sessionId: null });
+    expect(built.ok).toBe(false);
+    expect(built.error).toContain("وردية مفتوحة");
+  });
+});
+
+describe("accepting a supplier return settles the money where it lands", () => {
+  it("a cash settlement puts the money into the open drawer", () => {
+    const body = buildReturnAcceptance({ settlement: "cash" }, { sessionId: "shift-1" });
+    expect(body).toEqual({ ok: true, payload: { session_id: "shift-1" } });
+  });
+
+  it("a credit settlement moves no money and names no shift", () => {
+    const body = buildReturnAcceptance({ settlement: "credit" }, { sessionId: "shift-1" });
+    expect(body).toEqual({ ok: true, payload: {} });
+  });
+
+  it("refuses a cash settlement with no open drawer instead of losing the money", () => {
+    const body = buildReturnAcceptance({ settlement: "cash" }, { sessionId: null });
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain("درج");
   });
 });

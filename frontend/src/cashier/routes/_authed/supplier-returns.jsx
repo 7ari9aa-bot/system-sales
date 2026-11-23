@@ -56,6 +56,9 @@ export default function SupplierReturnsPage() {
   const returns = useSupplierReturns({ suppliers: names, variants, orders: orderNumbers });
   const create = useCreateSupplierReturn();
   const accept = useAcceptSupplierReturn();
+  // A cash settlement comes back over the counter, so it goes into the OPEN drawer.
+  const { data: working } = useWorkingSession();
+  const sessionId = working?.status === "open" ? (working.session?.id ?? null) : null;
   const reject = useRejectSupplierReturn();
 
   const [term, setTerm] = useState("");
@@ -91,9 +94,26 @@ export default function SupplierReturnsPage() {
 
   function decide(ret, accepted) {
     const slot = `${accepted ? "accept" : "reject"}:${ret.id}`;
-    const done = { onSuccess: () => toast.success(accepted ? `تم قبول المرتجع ${ret.number}` : `تم رفض المرتجع ${ret.number}: البضاعة رجعت للمخزن`) };
-    if (accepted) accept.mutate({ slot, id: ret.id }, done);
-    else reject.mutate({ slot, id: ret.id }, done);
+    if (!accepted) {
+      reject.mutate({ slot, id: ret.id }, { onSuccess: () => toast.success(`تم رفض المرتجع ${ret.number}: البضاعة رجعت للمخزن`) });
+      return;
+    }
+    const body = buildReturnAcceptance(ret, { sessionId });
+    if (!body.ok) {
+      toast.error(body.error);
+      return;
+    }
+    accept.mutate(
+      { slot, id: ret.id, payload: body.payload },
+      {
+        onSuccess: () =>
+          toast.success(
+            ret.settlement === "cash"
+              ? `تم قبول المرتجع ${ret.number} والفلوس دخلت درج الوردية`
+              : `تم قبول المرتجع ${ret.number}: التسوية على حساب المورد`,
+          ),
+      },
+    );
   }
 
   const columns = supplierReturnColumns({ onAccept: (r) => decide(r, true), onReject: (r) => decide(r, false), busyId: decision });
@@ -107,7 +127,7 @@ export default function SupplierReturnsPage() {
           image={HERO_IMAGE}
           imageAlt={HERO_ALT}
           title="مرتجعات الموردين"
-          description="البضاعة اللي رجعت للمورد: بتخرج من المخزن فورًا، والتسوية بتتسجّل على حساب المورد. مفيش حركة على أي درج."
+          description="البضاعة اللي رجعت للمورد بتخرج من المخزن فورًا. التسوية النقدية بتدخل درج الوردية المفتوحة عند القبول، والآجلة بتتسجّل على حساب المورد."
         >
           <Button
             className={BTN}

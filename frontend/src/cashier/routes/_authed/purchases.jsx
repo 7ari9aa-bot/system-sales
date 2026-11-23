@@ -12,6 +12,7 @@ import purchaseColumns from "@/cashier/components/purchases/purchaseColumns";
 import PurchaseFormDialog from "@/cashier/components/purchases/PurchaseFormDialog";
 import PurchaseDetailsDialog from "@/cashier/components/purchases/PurchaseDetailsDialog";
 import SupplierPaymentDialog from "@/cashier/components/suppliers/SupplierPaymentDialog";
+import { useWorkingSession } from "@/cashier/api/useShifts";
 import { BTN, BTN_PRIMARY, LEDGER, LEDGER_FOOTER, LEDGER_TOOLBAR } from "@/cashier/components/ui-kit/ledgerStyles";
 import { useCatalog } from "@/cashier/api/usePosSale";
 import {
@@ -59,6 +60,9 @@ export default function PurchasesPage() {
   const receiveOrder = useReceivePurchaseOrder();
   const cancelOrder = useCancelPurchaseOrder();
   const paySupplier = usePaySupplier();
+  // The OPEN till, so a cash payment to a supplier can leave its drawer.
+  const { data: working } = useWorkingSession();
+  const sessionId = working?.status === "open" ? (working.session?.id ?? null) : null;
 
   const [term, setTerm] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -252,6 +256,7 @@ export default function PurchasesPage() {
         supplier={paySupplierRow}
         order={paying ? (rows.find((o) => o.id === paying.order.id) ?? paying.order) : null}
         onSubmit={submitPayment}
+        sessionId={sessionId}
         pending={paySupplier.isPending}
         error={paySupplier.error ? purchasingErrorMessage(paySupplier.error) : null}
       />
