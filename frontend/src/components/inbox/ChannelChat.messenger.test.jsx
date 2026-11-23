@@ -200,4 +200,10 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain('data-testid="messenger-link-preview"');
     expect(html).toContain("shop.example");
   });
+
+  test("the thread adds no blanket gap between children, so a run of messages can sit 2px apart", () => {
+    const html = render([msg("m1", { text: "a" })]);
+    const scroller = html.match(/<div class="([^"]*overflow-y-auto[^"]*)"/)?.[1] || "";
+    expect(scroller).not.toContain("space-y-2");
+  });
 });

@@ -490,7 +490,9 @@ export default function ChannelChat({
         ref={scrollRef}
         onScroll={handleMessagesScroll}
         className={cn(
-          "flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3 space-y-2",
+          "flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3",
+          // Messenger spaces its own bubbles (2px inside a run, 8px between runs), so it takes no blanket gap.
+          !isMessenger && "space-y-2",
           isWhatsApp && "px-5 py-4 space-y-2",
           isTelegram && "px-4 py-3 space-y-1.5 sm:px-6 sm:py-4 telegram-transient-scrollbar",
           isTelegram && telegramMessagesScrolling && "is-scrolling"
