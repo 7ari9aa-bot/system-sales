@@ -1268,6 +1268,134 @@ class InstagramAdapter(ChannelAdapter):
                 found[name] = int(values[0]["value"])
         return found
 
+    # ---------- the account's own numbers ----------
+    # Account-level insights, asked for as a total over a period. Meta's current metric list for a
+    # professional account; the retired names are in REMOVED_ACCOUNT_METRICS below so a screen can
+    # say "Meta removed this" instead of drawing an empty card.
+    ACCOUNT_METRICS = (
+        "reach",
+        "profile_views",
+        "website_clicks",
+        "follower_count",
+    )
+
+    #: Metrics Meta retired for Instagram (they answered with an error, not a zero).
+    REMOVED_ACCOUNT_METRICS = frozenset(
+        {"impressions", "plays", "video_views", "profile_activity", "audience_city"}
+    )
+
+    async def get_account_insights(
+        self,
+        credentials: ProviderCredentials,
+        *,
+        period: str = "day",
+        _client: httpx.AsyncClient | None = None,
+    ) -> dict[str, int | None]:
+        """The account's own numbers as {metric: total}. A metric with no data is None, not 0.
+
+        `metric_type=total_value` is what makes Instagram answer with one number per metric instead
+        of a series; asking without it returns a time series and the caller gets nothing usable.
+        Instagram answers with an EMPTY list when it has no data for the period yet, which is not
+        an error and must not read as zero.
+        """
+        _, account_id = self._creds(credentials)
+        data = await self._graph(
+            "GET",
+            f"{account_id}/insights",
+            credentials,
+            params={
+                "metric": ",".join(self.ACCOUNT_METRICS),
+                "period": period,
+                "metric_type": "total_value",
+            },
+            _client=_client,
+        )
+        found: dict[str, int | None] = dict.fromkeys(self.ACCOUNT_METRICS)
+        for item in data.get("data") or []:
+            name = item.get("name")
+            if name not in found:
+                continue
+            total = item.get("total_value")
+            if isinstance(total, dict) and isinstance(total.get("value"), int | float):
+                found[name] = int(total["value"])
+                continue
+            values = item.get("values") or []
+            if values and isinstance(values[0].get("value"), int | float):
+                found[name] = int(values[0]["value"])
+        return found
+
+    # ---------- what a screen may offer, and what Meta will not do ----------
+    #: Instagram's own profile fields, and whether the API can WRITE them. Meta's Instagram Graph
+    #: API reads a professional account's profile; editing the name, username, biography or links
+    #: happens in the Instagram app. That is a platform limit, not a missing feature, so it is
+    #: recorded here with the reason and no screen offers an edit box that cannot save.
+    PROFILE_FIELD_MATRIX: dict[str, dict[str, Any]] = {
+        "username": {"readable": True, "editable": False, "note": "changed in the Instagram app"},
+        "name": {"readable": True, "editable": False, "note": "changed in the Instagram app"},
+        "biography": {"readable": True, "editable": False, "note": "changed in the Instagram app"},
+        "website": {"readable": True, "editable": False, "note": "changed in the Instagram app"},
+        "profile_picture_url": {
+            "readable": True,
+            "editable": False,
+            "note": "a short-lived CDN link; show it, never store it",
+        },
+        "followers_count": {"readable": True, "editable": False, "note": "counted by Instagram"},
+        "follows_count": {"readable": True, "editable": False, "note": "counted by Instagram"},
+        "media_count": {"readable": True, "editable": False, "note": "counted by Instagram"},
+    }
+
+    #: Why a metric is not offered, so the screen says whose limit it is.
+    METRIC_STATES: dict[str, dict[str, str]] = {
+        "impressions": {
+            "state": "removed",
+            "evidence": "Meta retired Instagram impressions; views replaced them",
+        },
+        "plays": {"state": "removed", "evidence": "Meta retired plays; views replaced them"},
+        "video_views": {
+            "state": "removed",
+            "evidence": "Meta retired video_views for Instagram media; views replaced them",
+        },
+        "profile_activity": {
+            "state": "removed",
+            "evidence": "Meta retired the profile_activity audience metric",
+        },
+        "audience_city": {
+            "state": "removed",
+            "evidence": "Meta retired the audience breakdown metrics",
+        },
+    }
+
+    @classmethod
+    def insight_catalog(cls) -> list[dict[str, str]]:
+        """Every Instagram insight this client knows, with an honest state for each.
+
+        A screen reads this instead of asking Meta and showing an error: a live metric is live, a
+        retired one says so with the evidence, and a metric of -1 (Instagram's "fewer than five")
+        is documented as a value, not a failure.
+        """
+        catalog = [
+            {"metric": metric, "state": "live", "scope": "account"}
+            for metric in cls.ACCOUNT_METRICS
+        ]
+        catalog += [
+            {"metric": metric, "state": "live", "scope": "feed"}
+            for metric in cls._INSIGHT_METRICS_FEED
+        ]
+        catalog += [
+            {"metric": metric, "state": "live", "scope": "story"}
+            for metric in cls._INSIGHT_METRICS_STORY
+        ]
+        catalog += [
+            {"metric": metric, "state": spec["state"], "scope": "any", "evidence": spec["evidence"]}
+            for metric, spec in cls.METRIC_STATES.items()
+        ]
+        return catalog
+
+    @classmethod
+    def profile_fields(cls) -> list[dict[str, Any]]:
+        """The profile fields with their readable/editable state, for the settings screen."""
+        return [{"name": name, **spec} for name, spec in cls.PROFILE_FIELD_MATRIX.items()]
+
     # ---------- who the customer is ----------
 
     _PROFILE_FIELDS = (
