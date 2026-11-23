@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
-from app.modules.conversations.models import Message
+from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
 from app.modules.platform.models import IdempotencyKey, Integration, WebhookEvent
@@ -315,6 +315,129 @@ class IngestService:
         except RuntimeError:  # no running loop (a sync test, a CLI replay): skip the courtesy
             logger.warning("ingest.profile_enrich_no_loop tenant=%s channel=%s", tenant_id, channel)
 
+
+    @staticmethod
+    async def _open_conversation(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, customer_id: uuid.UUID
+    ) -> Conversation | None:
+        """The one live conversation this customer has on this channel, if any."""
+        return (
+            await session.execute(
+                select(Conversation)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.customer_id == customer_id,
+                    Conversation.channel == channel,
+                    Conversation.status != "closed",
+                )
+                .order_by(Conversation.last_message_at.desc().nullslast())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def apply_echoes(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        channel: str,
+        echoes: list[dict],
+        *,
+        own_app_id: str | None = None,
+    ) -> int:
+        """Store replies a person sent from OUTSIDE this system (Meta Business Suite).
+
+        Meta echoes every message the Page sends, including our own, so an echo whose
+        ``app_id`` is this app is skipped — we already stored that message when we sent
+        it. Anything else becomes a real outbound message on the thread, so the merchant
+        sees it in FIHRIST and the agent does not answer the customer twice.
+
+        An echo for a customer we have never seen, or with no live conversation, is
+        dropped: a courtesy record must never fail the batch that carries real messages.
+        """
+        stored = 0
+        for echo in echoes:
+            mid = str(echo.get("mid") or "")
+            app_id = str(echo.get("app_id") or "")
+            body = echo.get("text")
+            customer_ref = str(echo.get("customer_ref") or "")
+            if not mid or not body or not customer_ref:
+                continue
+            if own_app_id and app_id and app_id == str(own_app_id):
+                continue
+            customer = await CustomerService.find_by_identity(
+                session, tenant_id, channel, customer_ref
+            )
+            if customer is None:
+                continue
+            already = (
+                await session.execute(
+                    select(Message.id)
+                    .where(
+                        Message.tenant_id == tenant_id,
+                        Message.channel_message_id == mid,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if already is not None:
+                continue
+            conversation = await IngestService._open_conversation(
+                session, tenant_id, channel, customer.id
+            )
+            if conversation is None:
+                continue
+            await ConversationService.add_message(
+                session,
+                tenant_id,
+                conversation_id=conversation.id,
+                direction="outbound",
+                sender_type="agent",
+                body=body,
+                channel_message_id=mid,
+                payload={"source": "meta_echo", "app_id": app_id or None},
+            )
+            stored += 1
+        return stored
+
+    @staticmethod
+    async def apply_handover(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, handover: dict
+    ) -> bool:
+        """Meta thread control, applied to our own conversation state.
+
+        ``take_thread_control`` means a person owns the thread now: the handover record is
+        opened and the conversation moves to ``waiting_human``, which is exactly what stops
+        the agent from answering. ``pass_thread_control`` gives it back, so a thread left in
+        ``waiting_human`` returns to the AI. ``request_thread_control`` only asks for it and
+        changes nothing.
+        """
+        customer_ref = str(handover.get("customer_ref") or "")
+        event = str(handover.get("event") or "")
+        if not customer_ref or event not in ("take_thread_control", "pass_thread_control"):
+            return False
+        customer = await CustomerService.find_by_identity(session, tenant_id, channel, customer_ref)
+        if customer is None:
+            return False
+        conversation = await IngestService._open_conversation(
+            session, tenant_id, channel, customer.id
+        )
+        if conversation is None:
+            return False
+        if event == "take_thread_control":
+            from app.modules.ai.handover import request_human_takeover
+
+            return await request_human_takeover(
+                session,
+                tenant_id,
+                conversation_id=conversation.id,
+                reason="meta_thread_control",
+                note="control taken outside FIHRIST (Meta inbox or another app)",
+            )
+        if conversation.status == "waiting_human":
+            await ConversationService.set_status(session, tenant_id, conversation.id, "open")
+            return True
+        return False
+
     @staticmethod
     async def process_webhook_event(
         session: AsyncSession,
@@ -380,6 +503,27 @@ class IngestService:
                         session, tenant_id, platform=channel, comment=comment
                     )
                     accepted += 1
+            # Replies typed in Meta's own inbox (or another app) come back as `is_echo`.
+            # The parsers existed and were never called, so a staff reply from Meta
+            # Business Suite never reached FIHRIST and the agent answered the same
+            # customer a second time.
+            parse_echoes = getattr(adapter, "parse_echoes", None)
+            if callable(parse_echoes):
+                from app.core.config import settings
+
+                accepted += await IngestService.apply_echoes(
+                    session,
+                    tenant_id,
+                    channel,
+                    parse_echoes(payload),
+                    own_app_id=settings.meta_app_id or None,
+                )
+            # Thread control (messaging_handovers): a human took the thread, or handed it
+            # back. Without this the agent kept replying after a person took over.
+            parse_handovers = getattr(adapter, "parse_handovers", None)
+            if callable(parse_handovers):
+                for handover in parse_handovers(payload):
+                    await IngestService.apply_handover(session, tenant_id, channel, handover)
             # A template's review state changed. The event is only a signal: our copy is brought
             # up to date from Meta itself, never written from what the event says, so a forged or
             # stale event cannot approve anything.
