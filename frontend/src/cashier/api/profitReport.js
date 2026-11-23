@@ -80,6 +80,10 @@ export function profitRows(apiRows = []) {
     margin: pct(r.margin_pct),
     unitsWithoutCost: Number(r.units_without_cost ?? 0),
     costIsEstimate: !!r.cost_returned_is_estimate,
+    // What came back and where it went: only the pieces that returned to the shelf give cost back.
+    unitsReturnedToShelf: Number(r.units_returned_to_shelf ?? 0),
+    costReturned: signedMoney(r.cost_returned ?? "0"),
+    returnedByCondition: { ...(r.returned_by_condition ?? {}) },
   }));
 }
 
@@ -95,6 +99,11 @@ export function profitTotals(apiTotals) {
     unitsWithoutCost: Number(t.units_without_cost ?? 0),
     // The server says whether every unit sold had a real cost. Anything else is a profit that may be too high.
     costIsComplete: t.cost_is_complete === true,
+    // Was missing, so the "the cost of returns is estimated" note could never appear: the notice
+    // read a figure this mapping never filled in.
+    unitsReturned: Number(t.units_returned ?? 0),
+    unitsReturnedToShelf: Number(t.units_returned_to_shelf ?? 0),
+    returnedByCondition: { ...(t.returned_by_condition ?? {}) },
   };
 }
 

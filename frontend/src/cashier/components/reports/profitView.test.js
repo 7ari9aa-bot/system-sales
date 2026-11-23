@@ -295,6 +295,30 @@ describe("the estimated cost of a return", () => {
     expect(notice).toContain("متوسط تكلفة البيع");
   });
 
+  it("splits the pieces that went back on the shelf from the ones that did not", () => {
+    // Two came back, one went back on the shelf: only that one gives cost back, so the note must
+    // not say the whole cost was returned.
+    const notice = returnCostNotice({
+      unitsReturned: 2,
+      unitsReturnedToShelf: 1,
+      returnedByCondition: { sellable: 1, damaged: 1 },
+    });
+    expect(notice).toContain("رجعت للمخزن");
+    expect(notice).toContain("اتشالت");
+    expect(notice).toContain("سليمة 1");
+    expect(notice).toContain("تالفة 1");
+  });
+
+  it("says nothing about shelf or removal when every piece went back on the shelf", () => {
+    const notice = returnCostNotice({
+      unitsReturned: 3,
+      unitsReturnedToShelf: 3,
+      returnedByCondition: { sellable: 3 },
+    });
+    expect(notice).not.toContain("اتشالت");
+    expect(notice).toContain("سليمة 3");
+  });
+
   it("does not claim a cost for a returned piece that never went back on the shelf", () => {
     // The server counts only the units it gave a cost back for; the sentence never invents more.
     expect(returnCostNotice({ unitsReturned: "1" })).toContain("1");

@@ -246,6 +246,32 @@ class ProfitReportService:
         )
         result = (await session.execute(stmt)).all()
 
+        # 5. What came back, split by the STATE the garment came back in. The cost a return gives
+        # back is an estimate either way, but which estimate is only defensible when the reader can
+        # see what came back: a sellable piece returns to the shelf and gives its cost back, a
+        # damaged or written-off one is gone, and a piece going back to the supplier is not stock at
+        # all. Lumping them into one "returned" number hid that.
+        # The rows are per MODEL, COLOUR and SIZE, so the split is keyed the same way: one row
+        # aggregates every order that sold that size in the window.
+        by_condition: dict[Any, dict[str, int]] = {}
+        cond_rows = (
+            await session.execute(
+                select(
+                    PosReturnLine.variant_id,
+                    # Grouped on the raw column (a COALESCE with a bind in GROUP BY is not the
+                    # same expression to Postgres); the NULL -> "unstated" naming happens below.
+                    PosReturnLine.condition,
+                    func.sum(PosReturnLine.quantity).label("units"),
+                )
+                .join(Order, Order.id == PosReturnLine.order_id)
+                .where(PosReturnLine.tenant_id == tenant_id, *order_ok)
+                .group_by(PosReturnLine.variant_id, PosReturnLine.condition)
+            )
+        ).all()
+        for row in cond_rows:
+            slot = by_condition.setdefault(row.variant_id, {})
+            slot[str(row.condition or "unstated")] = int(row.units or 0)
+
         rows: list[dict[str, Any]] = []
         for r in result:
             units = int(r.units_sold or 0)
@@ -259,6 +285,7 @@ class ProfitReportService:
             # of the units that WERE costed. A shop with nothing costed has nothing to give back.
             unit_cost = booked_cost / costed_units if costed_units > 0 else _ZERO
             cost_back = unit_cost * shelved_units
+            conditions = by_condition.get(r.variant_id, {})
             revenue = sales_net - Decimal(r.refund or 0)
             cost = booked_cost - cost_back
             profit = revenue - cost
@@ -278,6 +305,11 @@ class ProfitReportService:
                     "gross_profit": _s(profit),
                     "margin_pct": _s(profit / revenue * 100) if revenue > 0 else None,
                     "units_without_cost": without_cost,
+                    # What came back, by the state it came back in, and how many of those pieces
+                    # actually returned to the shelf (the only ones that give cost back).
+                    "returned_by_condition": conditions,
+                    "units_returned_to_shelf": shelved_units,
+                    "cost_returned": _s(cost_back),
                     "cost_returned_is_estimate": bool(returned and shelved_units),
                     "_profit": profit,
                     "_revenue": revenue,
@@ -290,6 +322,10 @@ class ProfitReportService:
         tot_cost = sum((r["_cost"] for r in rows), _ZERO)
         tot_profit = tot_rev - tot_cost
         no_cost = sum(r["units_without_cost"] for r in rows)
+        tot_conditions: dict[str, int] = {}
+        for r in rows:
+            for state, units in r["returned_by_condition"].items():
+                tot_conditions[state] = tot_conditions.get(state, 0) + units
         for r in rows:
             for k in ("_profit", "_revenue", "_cost"):
                 r.pop(k)
@@ -304,6 +340,14 @@ class ProfitReportService:
                 "margin_pct": _s(tot_profit / tot_rev * 100) if tot_rev > 0 else None,
                 "units_without_cost": no_cost,
                 "cost_is_complete": no_cost == 0,
+                "units_returned": sum(r["units_returned"] for r in rows),
+                "units_returned_to_shelf": sum(r["units_returned_to_shelf"] for r in rows),
+                "returned_by_condition": tot_conditions,
+                # The rule the numbers follow, spelled once for the screen.
+                "cost_returned_basis": (
+                    "estimate: the sale's average cost per unit for the pieces that went back on "
+                    "the shelf; a damaged, written-off or supplier-bound piece gives back nothing"
+                ),
             },
         }
 

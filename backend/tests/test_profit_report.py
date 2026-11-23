@@ -115,7 +115,7 @@ async def _sale(
     return order
 
 
-async def _return(db, tctx, wh, order, variant, *, qty, refund, shelved=True):
+async def _return(db, tctx, wh, order, variant, *, qty, refund, shelved=True, condition=None):
     from tests._pos_helpers import till
 
     shift, _, _ = await till(db, tctx)
@@ -137,6 +137,7 @@ async def _return(db, tctx, wh, order, variant, *, qty, refund, shelved=True):
             quantity=qty,
             unit_price=D(refund) / qty,
             refund_total=D(refund),
+            condition=condition,
         )
     )
     if shelved:
@@ -929,3 +930,67 @@ async def test_every_query_names_the_shop_it_is_for(db, tenant_ctx, monkeypatch)
         filters = len(re.findall(rf"{table}\.tenant_id = ", sql))
         assert froms >= reads, f"{table}: expected {reads} reads, saw {froms}"
         assert filters >= reads, f"{table}: {reads} reads but only {filters} name the shop"
+
+
+async def test_the_cost_a_return_gives_back_is_reported_by_the_state_it_came_back_in(
+    db, tenant_ctx
+) -> None:
+    """A sellable piece returns to the shelf and gives cost back; a damaged one is gone.
+
+    The report used to show one "returned" figure, so a merchant could not tell why the cost came
+    back for one piece and not the other. The split says it, and the estimate stays labelled.
+    """
+    tid = tenant_ctx.tenant_id
+    wh = await _wh(db, tid)
+    prod, v_sellable = await _variant(db, tid, size="M")
+    v_damaged = await CatalogService.add_variant(
+        db, tid, prod.id, price="100", option_values={SIZE_AXIS: "L", COLOR_AXIS: "أسود"}
+    )
+    order = await _sale(db, tenant_ctx, wh, v_sellable, qty=2, net="200", cost="80")
+    # The same order sold one more piece of the other size, at the same cost.
+    db.add(
+        OrderItem(
+            tenant_id=tid,
+            order_id=order.id,
+            variant_id=v_damaged.id,
+            title="y",
+            quantity=1,
+            unit_price=D("100"),
+            total=D("100"),
+        )
+    )
+    order.subtotal = D("300")
+    order.grand_total = D("300")
+    await db.flush()
+
+    await _return(db, tenant_ctx, wh, order, v_sellable, qty=1, refund="100", condition="sellable")
+    await _return(
+        db,
+        tenant_ctx,
+        wh,
+        order,
+        v_damaged,
+        qty=1,
+        refund="100",
+        shelved=False,
+        condition="damaged",
+    )
+
+    rep = await _report(db, tid)
+    sellable = _row(rep, "M")
+    damaged = _row(rep, "L")
+
+    assert sellable["returned_by_condition"] == {"sellable": 1}
+    assert sellable["units_returned_to_shelf"] == 1
+    assert sellable["cost_returned"] == "40.00"
+    assert sellable["cost_returned_is_estimate"] is True
+
+    assert damaged["returned_by_condition"] == {"damaged": 1}
+    assert damaged["units_returned_to_shelf"] == 0
+    assert damaged["cost_returned"] == "0.00"
+    assert damaged["cost_returned_is_estimate"] is False
+
+    assert rep["totals"]["returned_by_condition"] == {"sellable": 1, "damaged": 1}
+    assert rep["totals"]["units_returned"] == 2
+    assert rep["totals"]["units_returned_to_shelf"] == 1
+    assert "estimate" in rep["totals"]["cost_returned_basis"]
