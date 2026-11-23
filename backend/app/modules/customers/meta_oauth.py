@@ -258,37 +258,74 @@ def _graph_fields(payload: dict) -> dict:
     return graph_error_fields(payload.get("error") if isinstance(payload, dict) else None)
 
 
-async def _existing_subscribed_fields(http, *, page_id: str, page_token: str) -> list[str]:
-    """The webhook fields this app already has on the Page, or [] when they cannot be read."""
+async def _existing_subscribed_fields(
+    http, *, page_id: str, page_token: str, app_id: str
+) -> list[str] | None:
+    """The webhook fields THIS app already has on the Page, or None when they cannot be read.
+
+    ``/{page_id}/subscribed_apps`` lists every app on the Page, so reading it without matching
+    ``app_id`` copied other apps' fields onto ours. None means "unknown", which is not the same
+    as "none": the caller must not treat a failed read as an empty subscription.
+    """
+    if not str(app_id or "").strip():
+        # Without our own app id every entry on the Page is someone else's: unknown, not empty.
+        return None
     try:
         response = await http.get(
             f"{_GRAPH}/{page_id}/subscribed_apps", params={"access_token": page_token}
         )
         if not response.is_success:
-            return []
+            return None
         data = response.json().get("data")
     except (httpx.RequestError, ValueError, AttributeError):
-        return []
+        return None
+    if not isinstance(data, list):
+        return None
     fields: list[str] = []
-    for entry in data if isinstance(data, list) else []:
-        raw = entry.get("subscribed_fields") if isinstance(entry, dict) else None
+    for entry in data:
+        if not isinstance(entry, dict) or str(entry.get("id") or "") != str(app_id):
+            continue
+        raw = entry.get("subscribed_fields")
         fields.extend(f for f in (raw if isinstance(raw, list) else []) if isinstance(f, str) and f)
     return fields
 
 
 async def _subscribe_page_to_app(
-    http, *, page_id: str, page_token: str, provider: str = "messenger"
+    http, *, page_id: str, page_token: str, provider: str = "messenger", app_id: str = ""
 ) -> None:
     """Fail the connection if the page cannot receive this app's webhooks.
 
     The fields are the channel's own: a Facebook Page also needs `feed` for its comments and
     an Instagram account `comments`, which the base messaging fields alone never deliver."""
+    if not app_id:
+        # The caller normally passes it; the settings are the only other source of truth.
+        from app.core.config import get_settings
+
+        app_id = (get_settings().meta_app_id or "").strip()
     wanted = subscribed_fields(provider)
     # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
     # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
     # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
     # fields are still written, exactly as before.
-    kept = await _existing_subscribed_fields(http, page_id=page_id, page_token=page_token)
+    kept = await _existing_subscribed_fields(
+        http, page_id=page_id, page_token=page_token, app_id=app_id
+    )
+    if kept is None:
+        # The read failed: we cannot know what this app already subscribed, so writing `wanted`
+        # alone could drop a field another capability added. One retry, then say so out loud
+        # instead of pretending the list was empty.
+        kept = await _existing_subscribed_fields(
+            http, page_id=page_id, page_token=page_token, app_id=app_id
+        )
+        if kept is None:
+            _logger.warning(
+                "meta.subscription_read_failed page=%s app=%s provider=%s: writing the "
+                "channel's own fields only, existing ones cannot be confirmed",
+                page_id,
+                app_id,
+                provider,
+            )
+            kept = []
     merged = list(dict.fromkeys([*wanted.split(","), *kept]))
     try:
         response = await http.post(
@@ -791,7 +828,11 @@ async def _connect_page(
     # A channel that cannot receive provider webhooks is not connected.
     try:
         await _subscribe_page_to_app(
-            http, page_id=str(page["id"]), page_token=page_token, provider=provider
+            http,
+            page_id=str(page["id"]),
+            page_token=page_token,
+            provider=provider,
+            app_id=app_id,
         )
     except ExternalProviderError as exc:
         # Without this subscription nothing the customer sends would ever arrive.
