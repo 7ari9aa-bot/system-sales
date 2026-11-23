@@ -388,6 +388,39 @@ class MessengerAdapter(ChannelAdapter):
                     )
         return out
 
+    def parse_edits(self, payload: dict) -> list[dict]:
+        """A message that was edited after it was sent: ``message_edits`` events.
+
+        Meta sends the message id and the new text; the old text is only in our own row. An
+        entry may arrive as a bare mid (an edit whose text Meta will not repeat), which is
+        reported with ``text=None`` so the caller can at least mark the message edited.
+        """
+        out: list[dict] = []
+        for event in self._messaging_events(payload):
+            edits = event.get("message_edits")
+            if not isinstance(edits, list):
+                continue
+            customer_ref = str((event.get("sender") or {}).get("id", ""))
+            recipient_ref = str((event.get("recipient") or {}).get("id", ""))
+            for edit in edits:
+                if isinstance(edit, dict):
+                    mid = edit.get("mid") or edit.get("message_id")
+                    text = edit.get("text")
+                else:
+                    mid, text = edit, None
+                if not mid:
+                    continue
+                out.append(
+                    {
+                        "customer_ref": customer_ref,
+                        "recipient_ref": recipient_ref,
+                        "mid": str(mid),
+                        "text": text if isinstance(text, str) else None,
+                        "timestamp": event.get("timestamp"),
+                    }
+                )
+        return out
+
     def parse_echoes(self, payload: dict) -> list[dict]:
         """Messages WE (or a human on the Page inbox) sent, echoed back: ``is_echo`` events.
 

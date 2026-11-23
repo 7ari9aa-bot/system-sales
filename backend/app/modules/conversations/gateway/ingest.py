@@ -400,6 +400,45 @@ class IngestService:
         return stored
 
     @staticmethod
+    async def apply_edits(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, edits: list[dict]
+    ) -> int:
+        """Rewrite a message Meta says was edited, keeping what it said before.
+
+        The original body is kept once in ``provider_metadata.original_body`` so a second edit
+        does not overwrite the history, and ``edited`` is set so the UI can show its marker.
+        A mid we do not hold (another tenant's message, or one we never stored) is ignored: an
+        edit may never touch a row outside this tenant, and must never create a new message.
+        """
+        updated = 0
+        for edit in edits:
+            mid = str(edit.get("mid") or "")
+            if not mid:
+                continue
+            row = (
+                await session.execute(
+                    select(Message).where(
+                        Message.tenant_id == tenant_id,
+                        Message.channel_message_id == mid,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                continue
+            if row.channel and channel and row.channel != channel:
+                continue
+            text = edit.get("text")
+            if isinstance(text, str) and text and text != row.body:
+                metadata = dict(row.provider_metadata or {})
+                metadata.setdefault("original_body", row.body)
+                metadata["edited_at"] = edit.get("timestamp")
+                row.body = text
+                row.provider_metadata = metadata
+            row.edited = True
+            updated += 1
+        return updated
+
+    @staticmethod
     async def apply_handover(
         session: AsyncSession, tenant_id: uuid.UUID, channel: str, handover: dict
     ) -> bool:
@@ -517,6 +556,13 @@ class IngestService:
                     channel,
                     parse_echoes(payload),
                     own_app_id=settings.meta_app_id or None,
+                )
+            # An edited message: Meta sends the mid and the new text. The old body is kept in
+            # provider_metadata so the thread can show that it changed.
+            parse_edits = getattr(adapter, "parse_edits", None)
+            if callable(parse_edits):
+                accepted += await IngestService.apply_edits(
+                    session, tenant_id, channel, parse_edits(payload)
                 )
             # Thread control (messaging_handovers): a human took the thread, or handed it
             # back. Without this the agent kept replying after a person took over.
