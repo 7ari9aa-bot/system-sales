@@ -15,6 +15,7 @@ from app.modules.inventory.service import (
     ReplenishmentService,
     ValuationService,
 )
+from app.modules.inventory.stock_view import StockLevelService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
@@ -142,7 +143,20 @@ async def test_apparel_insights_report(db: AsyncSession, tenant_ctx):
     insights = await InventoryReportingService.apparel_insights(db, tid)
     # 1. Top selling contains var
     assert any(item["variant_id"] == str(var.id) for item in insights["top_selling_variants"])
-    # 2. Rebalancing suggested from WH2 (surplus) to WH1 (starved)
+    # Nobody has set a level for this piece, so it is NOT called low - the response says so
+    # instead, and no transfer is invented out of a threshold the shop never chose.
+    assert insights["stockout_risk_variants"] == []
+    assert insights["stockout_risk_unconfigured"] == 2
+    assert insights["branch_rebalance_opportunities"] == []
+
+    # The shop's own level: 3 pieces. WH1 holds 2, so it is short by 1 and WH2 can spare it.
+    await StockLevelService.set_reorder_level(db, tid, var.id, 3)
+    insights = await InventoryReportingService.apparel_insights(db, tid)
+    risks = [r for r in insights["stockout_risk_variants"] if r["variant_id"] == str(var.id)]
+    assert [
+        (r["warehouse_id"], r["available"], r["reorder_level"], r["shortfall"]) for r in risks
+    ] == [(str(wh1.id), 2, 3, 1)]
+    # 2. Rebalancing suggested from WH2 (above its level) to WH1 (below its level)
     rebalances = [
         r
         for r in insights["branch_rebalance_opportunities"]
@@ -152,4 +166,6 @@ async def test_apparel_insights_report(db: AsyncSession, tenant_ctx):
     ]
     assert len(rebalances) == 1
     assert rebalances[0]["source_available"] == 20
-    assert rebalances[0]["suggested_transfer_quantity"] > 0
+    # Topped up to its own level (3 - 2), never more, and the source stays above its level.
+    assert rebalances[0]["suggested_transfer_quantity"] == 1
+    assert rebalances[0]["reorder_level"] == 3
