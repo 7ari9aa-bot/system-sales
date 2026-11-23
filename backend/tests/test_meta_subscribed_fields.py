@@ -45,14 +45,15 @@ def test_a_connection_with_every_instagram_scope_lacks_none():
         "instagram_manage_messages",
         "instagram_manage_comments",
         "instagram_content_publish",
+        "instagram_manage_insights",
     ]
     assert missing_instagram_scopes(granted) == []
 
 
 def test_a_connection_missing_one_instagram_scope_names_it():
-    assert missing_instagram_scopes(["instagram_manage_messages", "instagram_manage_comments"]) == [
-        "instagram_content_publish"
-    ]
+    assert missing_instagram_scopes(
+        ["instagram_manage_messages", "instagram_manage_comments", "instagram_manage_insights"]
+    ) == ["instagram_content_publish"]
 
 
 def test_a_connection_that_recorded_no_scopes_lacks_all_of_them():
@@ -60,4 +61,5 @@ def test_a_connection_that_recorded_no_scopes_lacks_all_of_them():
         "instagram_manage_messages",
         "instagram_manage_comments",
         "instagram_content_publish",
+        "instagram_manage_insights",
     ]

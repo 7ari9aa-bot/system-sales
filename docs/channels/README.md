@@ -6,7 +6,7 @@
 |---|---|---|
 | WhatsApp | `/api/v1/webhooks/whatsapp` | [whatsapp.md](whatsapp.md) |
 | Messenger (فيسبوك) | `/api/v1/webhooks/messenger` | [messenger.md](messenger.md) |
-| Instagram | `/api/v1/webhooks/instagram` | [instagram.md](instagram.md) |
+| Instagram | `/api/v1/webhooks/instagram` | [instagram.md](instagram.md) — الصلاحيات: [instagram-permissions.md](instagram-permissions.md) |
 | Telegram | `/api/v1/webhooks/telegram` | [telegram.md](telegram.md) |
 | Webchat | `/api/v1/webchat/{public_key}/messages` | [webchat.md](webchat.md) |
 
