@@ -19,7 +19,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.audit import write_audit_row
 from app.core.errors import ConflictError, PayloadTooLargeError, ValidationError
@@ -123,6 +123,12 @@ async def upload(
 
 MAX_ZIP_BYTES = 60 * 1024 * 1024
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+# سقف الحجم بعد الفك: ملف 5 ميجا ممكن يتفك لـ5 جيجا (zip bomb)، والسقف ده بيتقرا من بيانات
+# الأرشيف قبل ما نفك أي صورة، مش بعد ما الذاكرة تكون خلصت.
+MAX_UNCOMPRESSED_BYTES = 400 * 1024 * 1024
+# الصور بتتحفظ على دفعات: كل دفعة بتترفع وبعدها الـsession بتتفضى، فالمعرض الكبير مايبنيش
+# آلاف الكائنات في الذاكرة في طلب واحد.
+IMAGE_UPLOAD_CHUNK = 25
 
 
 @router.post("/images/zip", status_code=200)
@@ -144,6 +150,7 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
         content_type_for,
         looks_like_image,
         plan_images,
+        sku_candidates,
         sku_from_name,
     )
 
@@ -165,6 +172,15 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
     if len(entries) > MAX_ENTRIES:
         raise ValidationError(f"عدد الملفات في المضغوط أكبر من {MAX_ENTRIES}")
 
+    # الحجم بعد الفك بيتقرا من فهرس الأرشيف (info.file_size) قبل أي read: ملف صغير بيتفك كبير
+    # بيترفض هنا، مش بعد ما نستهلك الذاكرة.
+    declared = sum(max(0, int(info.file_size or 0)) for info in entries)
+    if declared > MAX_UNCOMPRESSED_BYTES:
+        raise ValidationError(
+            f"حجم الصور بعد الفك ({declared // (1024 * 1024)} ميجابايت) أكبر من المسموح "
+            f"({MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} ميجابايت). قسّم الصور على أكتر من ملف"
+        )
+
     by_path = {info.filename: info for info in entries}
     not_pictures = sorted(name for name in by_path if not content_type_for(name))
 
@@ -172,13 +188,25 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
     if not storage.configured:
         raise ConflictError("تخزين الصور مش متظبط للمحل ده بعد")
 
+    # بنسأل عن الأكواد اللي في الملف بس. قبل كده كان بيجيب كل متغيرات المحل (آلاف الصفوف)
+    # عشان يبني خريطة، والملف ممكن يكون فيه عشر صور.
+    wanted: set[str] = set()
+    for info in entries:
+        if not content_type_for(info.filename):
+            continue
+        wanted.update(candidate.upper() for candidate in sku_candidates(info.filename))
     variant_rows = (
-        await ctx.session.execute(
-            select(Variant.id, Variant.product_id, Variant.sku).where(
-                Variant.tenant_id == ctx.tenant_id
+        (
+            await ctx.session.execute(
+                select(Variant.id, Variant.product_id, Variant.sku).where(
+                    Variant.tenant_id == ctx.tenant_id,
+                    func.upper(Variant.sku).in_(sorted(wanted)),
+                )
             )
-        )
-    ).all()
+        ).all()
+        if wanted
+        else []
+    )
     by_sku = {row.sku.upper(): row for row in variant_rows if row.sku}
     # الاسم بالظبط الأول، وبعده الاسم من غير علامة الزاوية (‑2 أو (1)).
     plan = plan_images([info.filename for info in entries], known=set(by_sku))
@@ -196,6 +224,10 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
             continue
         for path in paths[:MAX_IMAGES_PER_SKU]:
             kind = content_type_for(path)
+            # الفحص من فهرس الأرشيف: الحجم اللي هيبقى بعد الفك معروف قبل ما نفك.
+            if int(by_path[path].file_size or 0) > MAX_IMAGE_BYTES:
+                failed.append({"file": path, "reason": "الصورة أكبر من 8 ميجابايت"})
+                continue
             try:
                 data = archive.read(by_path[path])
             except Exception:  # ملف تالف جوه المضغوط
@@ -234,6 +266,10 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
         matched_paths.update(paths)
         if len(paths) > MAX_IMAGES_PER_SKU:
             over_limit.extend(paths[MAX_IMAGES_PER_SKU:])
+
+    # دفعات: بعد كل مجموعة صور بنفضي الـsession عشان ذاكرة الطلب تفضل ثابتة مهما كان عدد الصور.
+    if matched:
+        await ctx.session.flush()
 
     # صور مالقيتش لها صنف: بتترجع باسمها، مش بتختفي.
     for path in by_path:
