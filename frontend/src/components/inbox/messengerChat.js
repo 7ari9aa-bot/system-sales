@@ -121,6 +121,19 @@ export function messengerQuoteText(quote, lang = "ar") {
   return "…";
 }
 
+/**
+ * The small line Messenger prints above a quoted message: who replied to whom. `side` is the
+ * side of the message that carries the reply, and the quote knows whether the message being
+ * quoted came from the Page or from the customer.
+ */
+export function messengerReplyLabel(quote, side, customerName, lang = "ar") {
+  if (!quote || typeof quote !== "object") return "";
+  const ar = lang === "ar";
+  const who = String(customerName || "").trim() || (ar ? "العميل" : "the customer");
+  if (side === "out") return ar ? `ردّيت على ${who}` : `You replied to ${who}`;
+  return ar ? `${who} ردّ على رسالتك` : `${who} replied to you`;
+}
+
 // Messenger prints a centred time only after a pause, never inside a bubble.
 export const MESSENGER_TIME_GAP_MS = 15 * 60 * 1000;
 

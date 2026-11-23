@@ -29,7 +29,7 @@ import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
 // The six emoji Messenger's reaction picker offers, in its order. The Send API refuses any other,
 // so the picker offers exactly these.
 const MESSENGER_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerReplyLabel, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -1212,7 +1212,10 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
   return (
     <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
       {quote && (
-        <div data-testid="messenger-quote" dir="auto" className="mb-0.5 max-w-[76%] truncate rounded-[18px] bg-[#f0f0f0] px-3 py-1.5 text-[13px] text-[#65676b]">{quote}</div>
+        <>
+          <div data-testid="messenger-reply-label" dir="auto" className={cn("mb-0.5 max-w-[76%] truncate text-[12px] leading-[16px] text-[#65676b]", out ? "pe-1" : "ps-1")}>{messengerReplyLabel(m.replyTo, out ? "out" : "in", conversation?.customer || conversation?.name, lang)}</div>
+          <div data-testid="messenger-quote" dir="auto" className="mb-0.5 max-w-[76%] truncate rounded-[18px] bg-[#f0f0f0] px-3 py-1.5 text-[13px] text-[#65676b]">{quote}</div>
+        </>
       )}
       <div className={cn("group/msg flex max-w-[82%] items-end gap-1 sm:max-w-[76%]", out ? "flex-row-reverse" : "flex-row")}>
         {!out && (
