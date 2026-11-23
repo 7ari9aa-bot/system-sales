@@ -48,14 +48,27 @@ export default function InstagramActivityPage() {
               <h2 className="px-6 py-2 text-[16px] font-bold">{title}</h2>
               {list.map(({ comment, post }) => {
                 const waiting = needsAnswer(comment);
+                // A mention arrives from Meta as ids only (author_name and body are null), so it is
+                // the one row with no text and no author. Instagram still tells the merchant they
+                // were mentioned, so it must not render as an empty "commented:" line.
+                const mention = !comment.text && !(comment.handle || comment.author);
                 return (
                   <Link key={comment.id} to={`/instagram/p/${encodeURIComponent(post.id)}`} data-testid="ig-activity-row" className="flex items-center gap-3 px-6 py-2 hover:bg-[#f3f5f7]">
                     <IgAvatar src={comment.avatarUrl} size={44} />
                     <p className="min-w-0 flex-1 text-[14px] leading-[18px]">
-                      <bdi dir="auto" className="font-semibold">{comment.handle || comment.author}</bdi>{" "}
-                      {isArabic ? "علّق:" : "commented:"} <span dir="auto" className="[unicode-bidi:isolate]">{comment.text}</span>{" "}
-                      <span style={{ color: IG.secondary }}>{igShortTime(comment.commentedAt, lang)}</span>
-                      {waiting && <span className={cn("ms-2 inline-block rounded px-1.5 text-[11px] font-semibold text-white")} style={{ background: IG.blue }}>{isArabic ? "بدون رد" : "Needs reply"}</span>}
+                      {mention ? (
+                        <>
+                          <span className="font-semibold">{isArabic ? "أشار إليك أحدهم" : "Someone mentioned you"}</span>{" "}
+                          <span style={{ color: IG.secondary }}>{igShortTime(comment.commentedAt, lang)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <bdi dir="auto" className="font-semibold">{comment.handle || comment.author}</bdi>{" "}
+                          {isArabic ? "علّق:" : "commented:"} <span dir="auto" className="[unicode-bidi:isolate]">{comment.text}</span>{" "}
+                          <span style={{ color: IG.secondary }}>{igShortTime(comment.commentedAt, lang)}</span>
+                        </>
+                      )}
+                      {waiting && !mention && <span className={cn("ms-2 inline-block rounded px-1.5 text-[11px] font-semibold text-white")} style={{ background: IG.blue }}>{isArabic ? "بدون رد" : "Needs reply"}</span>}
                     </p>
                     <span className="h-11 w-11 shrink-0 overflow-hidden rounded-[4px] bg-[#f3f5f7]">{post.mediaUrl && post.mediaType !== "video" && <img src={post.mediaUrl} alt="" className="h-full w-full object-cover" />}</span>
                   </Link>
