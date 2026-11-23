@@ -46,8 +46,15 @@ async def test_every_event_the_report_named_is_recorded(db, tenant_ctx):
         _change("post", edited=True, created_time=1_700_000_002),
         _change("post", verb="remove", created_time=1_700_000_003),
         _change("reaction", verb="add", created_time=1_700_000_004),
-        {"field": "feed", "value": {"item": "comment", "comment_id": "C1", "post_id": "P1",
-                                    "created_time": 1_700_000_005}},
+        {
+            "field": "feed",
+            "value": {
+                "item": "comment",
+                "comment_id": "C1",
+                "post_id": "P1",
+                "created_time": 1_700_000_005,
+            },
+        },
     ]
 
     await PageActivityService.record_changes(db, tenant_ctx.tenant_id, "facebook", changes)
@@ -66,7 +73,9 @@ async def test_a_retried_delivery_is_one_notification(db, tenant_ctx):
     change = _change("post", message="عرض", created_time=1_700_000_010)
 
     first = await PageActivityService.record_changes(db, tenant_ctx.tenant_id, "facebook", [change])
-    second = await PageActivityService.record_changes(db, tenant_ctx.tenant_id, "facebook", [change])
+    second = await PageActivityService.record_changes(
+        db, tenant_ctx.tenant_id, "facebook", [change]
+    )
 
     assert first["written"] == 1 and second["written"] == 0
     assert second["duplicates"] == 1
@@ -80,7 +89,10 @@ async def test_two_reactions_a_minute_apart_are_two_events(db, tenant_ctx):
         db,
         tenant_ctx.tenant_id,
         "facebook",
-        [_change("reaction", created_time=1_700_000_020), _change("reaction", created_time=1_700_000_080)],
+        [
+            _change("reaction", created_time=1_700_000_020),
+            _change("reaction", created_time=1_700_000_080),
+        ],
     )
     rows = await PageActivityService.list_activity(db, tenant_ctx.tenant_id, channel="facebook")
     assert len(rows) == 2
@@ -107,7 +119,10 @@ async def test_marking_read_is_one_tenant_wide_write(db, tenant_ctx):
         db,
         tenant_ctx.tenant_id,
         "facebook",
-        [_change("post", created_time=1_700_000_030), _change("reaction", created_time=1_700_000_031)],
+        [
+            _change("post", created_time=1_700_000_030),
+            _change("reaction", created_time=1_700_000_031),
+        ],
     )
 
     marked = await PageActivityService.mark_read(db, tenant_ctx.tenant_id, channel="facebook")
@@ -125,9 +140,12 @@ async def test_marking_read_up_to_a_time_leaves_the_newer_ones_unread(db, tenant
     )
     cutoff = datetime.fromtimestamp(1_700_000_040, tz=UTC) - timedelta(seconds=1)
 
-    assert await PageActivityService.mark_read(
-        db, tenant_ctx.tenant_id, channel="facebook", up_to=cutoff
-    ) == 0
+    assert (
+        await PageActivityService.mark_read(
+            db, tenant_ctx.tenant_id, channel="facebook", up_to=cutoff
+        )
+        == 0
+    )
     unread = await PageActivityService.list_activity(
         db, tenant_ctx.tenant_id, channel="facebook", only_unread=True
     )

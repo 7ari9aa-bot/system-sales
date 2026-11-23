@@ -26,6 +26,9 @@ from app.modules.conversations.routers.inbox import (
 from app.modules.conversations.routers.inbox import (
     router as _inbox_router,
 )
+from app.modules.conversations.routers.messenger_profile import (
+    router as _messenger_profile_router,
+)
 from app.modules.conversations.routers.social import router as _social_router
 from app.modules.conversations.routers.stream import (
     _stream_auth,
@@ -71,6 +74,7 @@ router.routes.extend(_inbox_router.routes)
 router.routes.extend(_stream_router.routes)
 router.routes.extend(_social_router.routes)
 router.routes.extend(_facebook_pages_router.routes)
+router.routes.extend(_messenger_profile_router.routes)
 
 __all__ = [
     "AssignRequest",

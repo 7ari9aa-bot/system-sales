@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 640,
-    "sha256": "fbf664169f889157f77ebdca53443a6f39f03183194b757c302a500d846aa45c",
+    "operations": 643,
+    "sha256": "45e70cbb0b6929f3b3eb7d0f49079cb2f630722c37b4ffb7856471d1b0ee156e",
     "typed_operations": 352
   },
   "spec": {
@@ -63672,6 +63672,322 @@
           "summary": "Submit Template",
           "tags": [
             "templates"
+          ]
+        }
+      },
+      "/api/v1/messenger/profile": {
+        "get": {
+          "description": "The Page's Messenger profile as Meta holds it, not as we last wrote it.",
+          "operationId": "read_profile_api_v1_messenger_profile_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read Profile",
+          "tags": [
+            "messenger"
+          ]
+        }
+      },
+      "/api/v1/messenger/profile/{setting}": {
+        "delete": {
+          "description": "Remove one setting. Meta has no per-field delete endpoint; it takes a field list.",
+          "operationId": "clear_profile_api_v1_messenger_profile__setting__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "setting",
+              "required": true,
+              "schema": {
+                "title": "Setting",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Clear Profile",
+          "tags": [
+            "messenger"
+          ]
+        },
+        "put": {
+          "description": "Set one Messenger profile setting. Meta answers first, so a refusal is never \"saved\".",
+          "operationId": "write_profile_api_v1_messenger_profile__setting__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "setting",
+              "required": true,
+              "schema": {
+                "title": "Setting",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Body",
+                  "type": "object"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Write Profile",
+          "tags": [
+            "messenger"
           ]
         }
       },
