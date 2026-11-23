@@ -183,6 +183,16 @@ This guide covers the Meta Developer Console setup required by the connect butto
 - بعض الفرق تُكمل كل الخطوات وتظل الرسالة تظهر أيامًا حتى تُحدَّث حالة التطبيق عند ميتا. إن اكتملت الأربع ولم تزل، افتح تذكرة من Meta Support مع **Session ID** الظاهر أسفل النافذة (مثل `01a1fc32-...`) فهو ما يطلبه الدعم.
 - ربط **فيسبوك وماسنجر** لا يتأثر بهذه الرسالة، وهو يعمل بصلاحيات صفحات عادية.
 
+## تاسعًا: استيراد محادثات ماسنجر القديمة
+
+عند ربط ماسنجر لأول مرة يُقرأ تاريخ الصفحة من ميتا تلقائيًا مرة واحدة (آخر ٩٠ يومًا)، ويمكن للمالك تشغيله يدويًا لتعويض فترة انقطع فيها الـwebhook: `POST /api/v1/integrations/messenger/backfill` بالجسم `{"days": 14}` أو `{"since": "2026-11-20T00:00:00Z"}` (يحتاج صلاحية `settings:write`)، والحالة من `GET` على نفس المسار.
+
+- ميتا تُعيد تفاصيل **آخر ٢٠ رسالة فقط** في كل محادثة، والأقدم تُتخطّى وتُحصى؛ فهذه أداة تعويض وليست نسخة كاملة.
+- لا يبدأ عدّاد أول رد ولا يُشغَّل الذكاء الاصطناعي ولا تُرسل إشعارات لهذه الرسائل القديمة، ولا يزيد عدّاد غير المقروء.
+- التكرار آمن: الرسالة تُعرَّف بمعرّف ميتا، فلا تُكتب مرتين ولو تداخلت الفترات أو سبقها الـwebhook.
+- يتوقف التشغيل ويُستأنف لاحقًا إذا طلبت ميتا التمهل، وإذا انفتح قاطع الدائرة `provider.messenger` (نفس قاطع الإرسال، فيتوقف الإرسال نحو ٣٠ ثانية على الأكثر).
+- لماسنجر فقط: يحتاج الإذن `pages_messaging`، وهو غير مطلوب في ربط فيسبوك وحده.
+
 ---
 
 ## 1. App basics
@@ -348,3 +358,13 @@ Notes:
 - An account with an **Admin, Developer or Tester** role on the app may be allowed to try the connect for its own account before the steps above are finished, so do not test with an account that has no role.
 - Some teams finish every step and still see the message for days until Meta refreshes the app's status. If all of the above is done and it persists, open a Meta Support ticket with the **Session ID** shown at the bottom of the window (like `01a1fc32-...`); it is what support asks for.
 - **Facebook and Messenger** connect are unaffected: they use ordinary Page permissions.
+
+## 9. Importing old Messenger conversations
+
+The first time Messenger is connected, the Page's history is read from Meta once (the last 90 days). The owner can also run it by hand to recover a window in which the webhook was down: `POST /api/v1/integrations/messenger/backfill` with `{"days": 14}` or `{"since": "2026-11-20T00:00:00Z"}` (needs `settings:write`); `GET` on the same path reports where it got to.
+
+- Meta returns details for only the **latest 20 messages** of each conversation. Older ones are skipped and counted, so this is a recovery tool, not a full export.
+- These old messages start no first-response clock, run no AI, send no notification and add nothing to the unread count.
+- Running it again is safe: a message is keyed by Meta's id, so it is never written twice, even when windows overlap or the webhook already delivered it.
+- A run stops and can be resumed when Meta asks to slow down, and when the `provider.messenger` circuit breaker is open. That breaker is shared with sending, so a failing backfill can pause sending for up to 30 seconds.
+- Messenger only: it needs `pages_messaging`, which a Facebook-only connection no longer asks for.

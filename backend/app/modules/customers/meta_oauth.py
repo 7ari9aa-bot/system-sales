@@ -965,6 +965,12 @@ async def _connect_page(
         **verified.identity_config,
         "_connection": connection_meta,
     }
+    # A reconnect rewrites the whole config, so what a Messenger history import recorded is carried
+    # over: the "queued once" stamp is what stops every reconnect from re-reading the same history.
+    if existing is not None and isinstance(existing.config, dict):
+        kept = existing.config.get("_backfill")
+        if isinstance(kept, dict):
+            integration_config["_backfill"] = kept
     try:
         encrypted = encrypt_credentials_dict(credentials)
         if existing is None:
@@ -985,6 +991,8 @@ async def _connect_page(
             existing.credentials = encrypted
             integration = existing
         await session.flush()
+        if provider == "messenger":
+            await _queue_first_history_import(session, tenant_id, integration)
     except Exception:
         # The subscription at Meta exists but the connection behind it was never saved. Take back
         # what this connect added, so Meta does not keep sending a Page's events to an account
@@ -997,6 +1005,34 @@ async def _connect_page(
 
     display_name = verified.display_name or str(page.get("name") or page["id"])
     return provider, display_name
+
+
+async def _queue_first_history_import(session, tenant_id, integration) -> None:
+    """Queue the Messenger history import once, the first time this Page is connected.
+
+    Only a job row is written here: the connect runs inside the OAuth callback, and reading
+    a Page's history from Meta is not something to do while the owner waits on a popup. A Page
+    that was already imported (or queued) is left alone, so reconnecting never repeats it, and a
+    failure to queue never fails the connection: the owner can still start it by hand.
+    """
+    config = dict(integration.config) if isinstance(integration.config, dict) else {}
+    state = config.get("_backfill")
+    if isinstance(state, dict) and (state.get("auto_queued_at") or state.get("last_run_at")):
+        return
+    try:
+        from app.workers.messenger_backfill import enqueue_backfill
+
+        async with session.begin_nested():
+            await enqueue_backfill(session, tenant_id)
+    except Exception:  # noqa: BLE001 - a history import must never break a connection
+        _logger.warning("meta_oauth.history_import_not_queued tenant=%s", tenant_id, exc_info=True)
+        return
+    config["_backfill"] = {
+        **(state if isinstance(state, dict) else {}),
+        "auto_queued_at": datetime.now(UTC).isoformat(),
+    }
+    integration.config = config
+    await session.flush()
 
 
 def _popup_html(result: dict, frontend_origin: str) -> str:

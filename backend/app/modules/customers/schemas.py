@@ -30,6 +30,7 @@ serializing a refusal, turning a privacy rule into a 500.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -97,6 +98,38 @@ class IntegrationDisconnectBody(BaseModel):
     """
 
     confirm: bool = False
+
+
+class MessengerBackfillBody(BaseModel):
+    """``POST /integrations/messenger/backfill``: read Meta's history into the inbox.
+
+    ``since`` names the start of a webhook outage to recover (everything newer is read); without it
+    the last ``days`` days are read. Either way the run is bounded by Meta's own limit of 20
+    readable messages per thread, so this is a recovery tool, not a full export.
+    """
+
+    days: int | None = Field(default=None, ge=1, le=365)
+    since: datetime | None = None
+
+
+class MessengerBackfillOut(BaseModel):
+    job_id: str
+    status: str
+    days: int
+    since: datetime | None = None
+
+
+class MessengerBackfillStatusOut(BaseModel):
+    """What the last backfill did, read from the channel's own record (never a token)."""
+
+    connected: bool
+    running: bool = False
+    finished: bool = False
+    threads_done: int = 0
+    stopped_reason: str | None = None
+    last_run_at: str | None = None
+    last_result: dict | None = None
+    auto_queued_at: str | None = None
 
 
 class IntegrationVerificationOut(BaseModel):

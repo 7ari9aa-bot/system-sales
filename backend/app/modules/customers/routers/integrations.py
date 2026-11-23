@@ -710,6 +710,114 @@ async def disconnect_integration(
     return _integration_output(integration)
 
 
+_BACKFILL_ACTIVE = ("queued", "processing", "retrying")
+
+
+async def _messenger_channel(ctx: TenantContext) -> Integration:
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.provider == "messenger",
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("Messenger is not connected")
+    return integration
+
+
+async def _backfill_job_running(ctx: TenantContext) -> bool:
+    from app.modules.platform.models import Job
+
+    return (
+        await ctx.session.execute(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.tenant_id == ctx.tenant_id,
+                Job.kind == "messenger.backfill",
+                Job.status.in_(_BACKFILL_ACTIVE),
+            )
+        )
+    ).scalar_one() > 0
+
+
+@platform_router.post(
+    "/integrations/messenger/backfill",
+    response_model=schemas.MessengerBackfillOut,
+    status_code=202,
+)
+async def start_messenger_backfill(
+    body: schemas.MessengerBackfillBody,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Read the Page's Messenger history from Meta and store what the inbox is missing.
+
+    Use it after a webhook outage (``since`` = when it began) or to pull in a thread that predates
+    the connection. Safe to repeat: a message is stored once, whatever number of times Meta lists
+    it, and nothing it stores wakes the AI, starts a response clock or notifies anyone. Only an
+    active Messenger channel can run it, and only one run is allowed at a time.
+    """
+    from app.workers.messenger_backfill import enqueue_backfill
+
+    integration = await _messenger_channel(ctx)
+    if integration.status not in ("active", "connected"):
+        raise ValidationError(
+            "Messenger must be connected and active to read its history",
+            details={"status": integration.status},
+        )
+    if await _backfill_job_running(ctx):
+        raise ConflictError("a Messenger history import is already running")
+    job = await enqueue_backfill(
+        ctx.session, ctx.tenant_id, user_id=ctx.user.id, days=body.days, since=body.since
+    )
+    await AuditService.write(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "integration.messenger_backfill_started",
+        "integration",
+        str(integration.id),
+        before=None,
+        after={"days": body.days, "since": body.since.isoformat() if body.since else None},
+    )
+    from app.workers.messenger_backfill import decode_options
+
+    return schemas.MessengerBackfillOut(
+        job_id=str(job.id),
+        status=job.status,
+        days=decode_options(job.correlation_id)["days"],
+        since=body.since,
+    )
+
+
+@platform_router.get(
+    "/integrations/messenger/backfill",
+    response_model=schemas.MessengerBackfillStatusOut,
+)
+async def messenger_backfill_status(ctx: SettingsReadCtx):
+    """Where the last Messenger history import got to. Reads our own record; calls nothing."""
+    from app.workers.messenger_backfill import read_state
+
+    try:
+        integration = await _messenger_channel(ctx)
+    except NotFoundError:
+        return schemas.MessengerBackfillStatusOut(connected=False)
+    state = read_state(integration)
+    return schemas.MessengerBackfillStatusOut(
+        connected=integration.status in ("active", "connected"),
+        running=await _backfill_job_running(ctx),
+        finished=bool(state.get("finished")),
+        threads_done=int(state.get("threads_done") or 0),
+        stopped_reason=state.get("stopped_reason"),
+        last_run_at=state.get("last_run_at"),
+        last_result=state.get("last_result"),
+        auto_queued_at=state.get("auto_queued_at"),
+    )
+
+
 @platform_router.get(
     "/integrations/{integration_id}/diagnostics",
     response_model=schemas.ChannelDiagnosticsOut,
