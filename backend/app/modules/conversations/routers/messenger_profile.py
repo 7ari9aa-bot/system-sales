@@ -23,7 +23,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
+from app.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.modules.conversations.gateway.facebook_pages import page_token_and_id
 from app.modules.conversations.gateway.messenger_profile import MessengerProfile
 from app.modules.conversations.routers._deps import TenantContext, require_permission
@@ -170,6 +175,91 @@ async def clear_profile(
     token, _page_id = page_token_and_id(config)
     await MessengerProfile().delete_fields(_http(request), token=token, fields=[setting])
     return {"setting": setting, "cleared": True}
+
+
+# ── conversation labels ────────────────────────────────────────────────────────────────────────
+# Meta's own labels on one customer's thread (`custom_labels` on the PSID). They live in Messenger,
+# not in our database, so two staff members on two devices see the same label — and the label is
+# visible in Meta's own inbox too. Same rule as the profile: no `pages_messaging`, no call.
+
+
+class LabelsRequest(BaseModel):
+    """The labels to add or remove on one thread."""
+
+    labels: list[str] = Field(min_length=1, max_length=20)
+    psid: str | None = Field(
+        default=None,
+        description="The customer's Page-scoped id; when omitted the conversation's own is used",
+    )
+
+
+@router.post("/messenger/labels/{conversation_id}")
+async def add_labels(
+    conversation_id: str,
+    body: LabelsRequest,
+    request: Request,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Attach labels to one conversation, in Meta, where the owner's other tools see them."""
+    # The permission is checked BEFORE the thread is even looked up: a caller without
+    # `pages_messaging` must be refused for that reason, not told whether the id exists.
+    config = await _credentials(ctx, send=True)
+    psid = await _psid(ctx, conversation_id, body.psid)
+    token, _page_id = page_token_and_id(config)
+    await MessengerProfile().add_labels(_http(request), token=token, psid=psid, labels=body.labels)
+    return {"conversation_id": conversation_id, "labels": body.labels, "saved": True}
+
+
+@router.delete("/messenger/labels/{conversation_id}")
+async def remove_labels(
+    conversation_id: str,
+    body: LabelsRequest,
+    request: Request,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    """Remove labels from one conversation."""
+    config = await _credentials(ctx, send=True)
+    psid = await _psid(ctx, conversation_id, body.psid)
+    token, _page_id = page_token_and_id(config)
+    await MessengerProfile().remove_labels(
+        _http(request), token=token, psid=psid, labels=body.labels
+    )
+    return {"conversation_id": conversation_id, "labels": body.labels, "cleared": True}
+
+
+async def _psid(ctx: TenantContext, conversation_id: str, given: str | None) -> str:
+    """The PSID to label: the one the caller named, or the conversation's own identity.
+
+    Reading it from the conversation instead of trusting the browser matters: a PSID typed into a
+    request could label somebody else's thread, and Meta would do it, because the Page token has
+    that power. The PSID is the customer's Messenger identity (`customer_identities`), which is the
+    same row `read_signal_service` reads for mark_seen.
+    """
+    if given:
+        return given
+    from app.modules.conversations.customer_profile import customers
+    from app.modules.conversations.models import Conversation
+
+    conversation = await ctx.session.get(Conversation, _uuid(conversation_id))
+    if conversation is None or conversation.tenant_id != ctx.tenant_id:
+        raise NotFoundError("المحادثة غير موجودة")
+    if str(conversation.channel) != "messenger":
+        raise ValidationError("التسميات على ميتا للماسنجر بس؛ القناة دي ملهاش تسميات هناك")
+    identity = await customers().channel_identity(
+        ctx.session, ctx.tenant_id, conversation.customer_id, "messenger"
+    )
+    if identity is None or not identity.external_id:
+        raise ValidationError("مفيش هوية ماسنجر للعميل ده، فمش ممكن نوسم المحادثة")
+    return str(identity.external_id)
+
+
+def _uuid(value: str):
+    import uuid as _uuid_module
+
+    try:
+        return _uuid_module.UUID(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("معرّف محادثة غير صالح") from exc
 
 
 __all__ = ["router", "SETTINGS"]

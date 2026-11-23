@@ -194,3 +194,83 @@ async def test_clearing_a_setting_deletes_only_that_field(db, tenant_ctx):
     method, path, params, _raw = seen[0]
     assert method == "DELETE" and path.endswith("/me/messenger_profile")
     assert params["fields"] in ("persistent_menu", ["persistent_menu"])
+
+
+# ── conversation labels ───────────────────────────────────────────────────────────────────────
+# Meta keeps the label on the thread (custom_labels on the PSID), so two staff members on two
+# devices see the same label, and the owner's Meta inbox sees it too. What must not happen is
+# labelling somebody else's thread: the PSID comes from the conversation, never from the request.
+
+
+def _label_paths():
+    return ("/api/v1/messenger/labels/{cid}",)
+
+
+async def test_labels_are_sent_to_the_conversations_own_psid(db, tenant_ctx, monkeypatch):
+    seen: list = []
+    psids: list[str] = []
+
+    async def _fake_psid(_ctx, conversation_id, given):
+        psids.append(conversation_id)
+        return "PSID-1"
+
+    monkeypatch.setattr(mp, "_psid", _fake_psid)
+    resp = await _request(
+        db,
+        tenant_ctx,
+        "POST",
+        "/api/v1/messenger/labels/c1",
+        body={"labels": ["VIP"]},
+        seen=seen,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"conversation_id": "c1", "labels": ["VIP"], "saved": True}
+    method, path, _params, raw = seen[0]
+    assert method == "POST" and path.endswith("/PSID-1/custom_labels")
+    assert '"VIP"' in raw
+    assert psids == ["c1"]
+
+
+async def test_removing_a_label_sends_the_names_as_fields(db, tenant_ctx, monkeypatch):
+    seen: list = []
+
+    async def _fake_psid(_ctx, _conversation_id, _given):
+        return "PSID-2"
+
+    monkeypatch.setattr(mp, "_psid", _fake_psid)
+    resp = await _request(
+        db,
+        tenant_ctx,
+        "DELETE",
+        "/api/v1/messenger/labels/c2",
+        body={"labels": ["VIP"]},
+        seen=seen,
+    )
+    assert resp.status_code == 200, resp.text
+    method, path, params, _raw = seen[0]
+    assert method == "DELETE" and path.endswith("/PSID-2/custom_labels")
+    assert params["fields"] in ("VIP", ["VIP"])
+
+
+async def test_an_empty_label_list_is_refused_before_meta(db, tenant_ctx):
+    seen: list = []
+    resp = await _request(
+        db, tenant_ctx, "POST", "/api/v1/messenger/labels/c3", body={"labels": []}, seen=seen
+    )
+    assert resp.status_code in (400, 422)
+    assert seen == []
+
+
+async def test_labelling_needs_pages_messaging_like_every_messenger_write(db, tenant_ctx):
+    seen: list = []
+    resp = await _request(
+        db,
+        tenant_ctx,
+        "POST",
+        "/api/v1/messenger/labels/c4",
+        body={"labels": ["VIP"]},
+        config=_REFUSED,
+        seen=seen,
+    )
+    assert resp.status_code == 403
+    assert seen == []

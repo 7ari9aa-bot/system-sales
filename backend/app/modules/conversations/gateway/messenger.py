@@ -388,6 +388,45 @@ class MessengerAdapter(ChannelAdapter):
                     )
         return out
 
+    #: Meta has shipped this field under both names; a warning must not vanish over a spelling.
+    _POLICY_FIELDS = ("messaging_policy_enforcement", "policy_enforcement")
+
+    def parse_policy_events(self, payload: dict) -> list[dict]:
+        """Meta restricting or warning the Page's messaging: `messaging_policy_enforcement`.
+
+        Until now nothing read this field, so a Page Meta had warned — and then blocked — looked
+        perfectly healthy in FIHRIST while every reply the agent wrote went nowhere. The event is a
+        statement about the Page, not a conversation turn, so it is returned as plain data and the
+        caller records it as operational state.
+
+        The value Meta sends is ``{"policy_enforcement": {"action": ..., "reason": ...}}``; the
+        object has also arrived unwrapped, so both are accepted. An entry with no action is
+        ignored rather than guessed at: a wrong "blocked" is worse than a missing one.
+        """
+        out: list[dict] = []
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                if change.get("field") not in self._POLICY_FIELDS:
+                    continue
+                value = change.get("value") or {}
+                if not isinstance(value, dict):
+                    continue
+                inner = value.get("policy_enforcement")
+                body = inner if isinstance(inner, dict) else value
+                action = str(body.get("action") or "").strip().upper()
+                if not action:
+                    continue
+                out.append(
+                    {
+                        "action": action,
+                        "reason": str(body.get("reason") or "").strip() or None,
+                        "expires_at": body.get("expiration_time") or body.get("expires_at"),
+                        "at": entry.get("time") or body.get("timestamp"),
+                        "page_id": str(entry.get("id") or "").strip() or None,
+                    }
+                )
+        return out
+
     def parse_edits(self, payload: dict) -> list[dict]:
         """A message that was edited after it was sent: ``message_edits`` events.
 

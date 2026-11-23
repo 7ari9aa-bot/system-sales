@@ -638,6 +638,14 @@ class IngestService:
                         )
                     else:
                         await _record_template_resync(session, tenant_id, channel, error=None)
+            # Meta warning, then blocking, the Page's messaging: `messaging_policy_enforcement`.
+            # Nothing read this field before, so a Page Meta had already blocked kept looking
+            # healthy and the agent kept writing replies that could not be delivered.
+            parse_policy = getattr(adapter, "parse_policy_events", None)
+            if callable(parse_policy):
+                policy_events = parse_policy(payload)
+                if policy_events:
+                    await _apply_policy_events(session, tenant_id, channel, policy_events)
             # Meta saying the ACCOUNT is limited or banned, or that its sending limit moved. The
             # events are signed, and the only thing done with them is to tighten the channel's
             # status or note a number: nothing here lets an event loosen anything.
@@ -985,6 +993,87 @@ async def _apply_account_signals(
         logger.warning(
             "ingest.account_signal_failed tenant=%s channel=%s", tenant_id, channel, exc_info=True
         )
+
+
+async def _apply_policy_events(
+    session, tenant_id: uuid.UUID, channel: str, events: list[dict]
+) -> None:
+    """Record Meta's messaging-policy news as operational state and as a notification.
+
+    A BLOCK is not a guess: Meta said the Page may not message, so the channel is moved to
+    ``restricted`` (a lifecycle state that already exists) and every surface that reads
+    ``check_integrations`` shows it. A WARN is recorded and nothing else: it is a warning, and
+    restricting a working channel over one would cost the owner the channel for nothing. Neither
+    ever moves a channel BACK to active — only reconnecting does that, because a quiet period
+    proves nothing.
+
+    The notification row is written through the same Page activity feed the rest of the Page's
+    news uses, with the event's own timestamp in the dedup key, so a delivery Meta retries updates
+    the row instead of nagging the owner twice.
+    """
+    from app.modules.conversations.page_activity_service import PageActivityService
+
+    try:
+        integration = (
+            await session.execute(
+                select(Integration)
+                .where(
+                    Integration.tenant_id == tenant_id,
+                    Integration.provider == channel,
+                    Integration.kind == "channel",
+                )
+                .order_by(
+                    case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                    Integration.id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        health = dict((integration.webhook_health if integration else None) or {})
+        now = datetime.now(UTC)
+        for event in events:
+            action = str(event.get("action") or "").upper()
+            at = _epoch_or_now(event.get("at"), now)
+            health["messaging_policy"] = {
+                "action": action,
+                "reason": event.get("reason") or "",
+                "expires_at": event.get("expires_at"),
+                "at": at.isoformat(),
+            }
+            if integration is not None and action == "BLOCK":
+                if integration.status in ("active", "connected"):
+                    integration.status = "restricted"
+            await PageActivityService.record(
+                session,
+                tenant_id,
+                channel=channel,
+                kind="policy",
+                object_id=str(event.get("page_id") or channel),
+                occurred_at=at,
+                summary=(
+                    f"ميتا أوقفت مراسلة الصفحة: {event.get('reason') or action}"
+                    if action == "BLOCK"
+                    else f"تحذير من ميتا على مراسلة الصفحة: {event.get('reason') or action}"
+                ),
+            )
+        if integration is not None:
+            integration.webhook_health = health
+            await session.flush()
+    except Exception:  # noqa: BLE001 - the delivery is accepted; the mark is best-effort
+        logger.warning(
+            "ingest.policy_event_failed tenant=%s channel=%s", tenant_id, channel, exc_info=True
+        )
+
+
+def _epoch_or_now(value: object, fallback: datetime) -> datetime:
+    """Meta's epoch seconds, or the current time when the event carries no usable stamp."""
+    try:
+        seconds = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return fallback
+    if seconds <= 0:
+        return fallback
+    return datetime.fromtimestamp(seconds, tz=UTC)
 
 
 async def _record_template_resync(

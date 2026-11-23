@@ -39,6 +39,7 @@ KINDS = (
     "video",
     "comment",
     "live_comment",
+    "policy",
 )
 
 #: Meta's `item` values, mapped to what the notification says happened.
@@ -55,6 +56,7 @@ _SUMMARY = {
     "video": "فيديو جديد على الصفحة",
     "comment": "تعليق جديد",
     "live_comment": "تعليق مباشر جديد",
+    "policy": "ميتا حذّرت أو أوقفت مراسلة الصفحة",
 }
 
 
