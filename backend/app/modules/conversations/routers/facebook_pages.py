@@ -529,6 +529,18 @@ async def private_reply(
     return {"message_id": mid}
 
 
+@router.get("/facebook/insights/catalog")
+async def insight_catalog(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """Every insight we know about and its honest state: live, retired by Meta, or not exposed.
+
+    A screen reads this so a retired metric is a labelled card, not an error: Meta removed the
+    impressions family, and Page ratings and verification have no API surface at all.
+    """
+    return {"metrics": facebook_pages.insight_catalog()}
+
+
 @router.get("/facebook/insights")
 async def page_insights(
     since: int | None = None,
@@ -536,7 +548,8 @@ async def page_insights(
     ctx: TenantContext = Depends(require_permission("conversations:read")),
 ):
     creds = await _credentials(ctx, send=False)
-    return {"metrics": await facebook_pages.get_page_insights(creds, since=since, until=until)}
+    report = await facebook_pages.insights_report(creds, kind="page", since=since, until=until)
+    return {"metrics": report["data"], "unavailable": report["unavailable"]}
 
 
 @router.get("/facebook/posts/{post_id}/insights")
@@ -546,7 +559,12 @@ async def post_insights(
     creds = await _credentials(ctx, send=False)
     if await FacebookService.get_post(ctx.session, ctx.tenant_id, post_id) is None:
         raise NotFoundError("post not found")
-    return {"post_id": post_id, "metrics": await facebook_pages.get_post_insights(creds, post_id)}
+    report = await facebook_pages.insights_report(creds, kind="post", post_id=post_id)
+    return {
+        "post_id": post_id,
+        "metrics": report["data"],
+        "unavailable": report["unavailable"],
+    }
 
 
 @router.get("/facebook/activity")

@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 643,
-    "sha256": "45e70cbb0b6929f3b3eb7d0f49079cb2f630722c37b4ffb7856471d1b0ee156e",
+    "operations": 644,
+    "sha256": "b6a1d2dd9d277ec63dc75c5c9337eabd7bd2018ef0bcd5024a7fd67251464ef0",
     "typed_operations": 352
   },
   "spec": {
@@ -46870,6 +46870,102 @@
             }
           },
           "summary": "Page Insights",
+          "tags": [
+            "facebook"
+          ]
+        }
+      },
+      "/api/v1/facebook/insights/catalog": {
+        "get": {
+          "description": "Every insight we know about and its honest state: live, retired by Meta, or not exposed.\n\nA screen reads this so a retired metric is a labelled card, not an error: Meta removed the\nimpressions family, and Page ratings and verification have no API surface at all.",
+          "operationId": "insight_catalog_api_v1_facebook_insights_catalog_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Insight Catalog",
           "tags": [
             "facebook"
           ]
