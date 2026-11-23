@@ -54,21 +54,22 @@ def test_the_capability_report_carries_the_roadmap_states_not_a_false_green():
             seen_fields=set(),
         )
     }
-    assert rows["coexistence"]["state"] == ACCOUNT_INELIGIBLE
+    # Nobody has asked Meta, so nobody has refused: not_requested, never account_ineligible.
+    assert rows["coexistence"]["state"] == "not_requested"
     assert "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" in (rows["coexistence"]["reason"] or "")
     assert rows["calls"]["state"] == REGION_RESTRICTED
     assert rows["groups"]["state"] == ACCOUNT_INELIGIBLE
     assert rows["marketing_messages"]["state"] == NEEDS_APP_REVIEW
-    # The features that genuinely work stay working.
-    assert rows["flows"]["state"] == AVAILABLE
-    assert rows["catalog_messages"]["state"] == AVAILABLE
+    # Built is not ready: with no Flow / catalog fact measured they are unverified, not green.
+    assert rows["flows"]["state"] == "no_live_event_verified"
+    assert rows["catalog_messages"]["state"] == "no_live_event_verified"
 
 
 def test_a_measured_state_only_replaces_a_known_one():
     measured = roadmap.state_for("coexistence", measured=AVAILABLE)
     assert measured["state"] == AVAILABLE and measured["measured"] is True
     unknown = roadmap.state_for("coexistence", measured="totally_fine")
-    assert unknown["state"] == ACCOUNT_INELIGIBLE
+    assert unknown["state"] == "not_requested"
     assert "measured" not in unknown
 
 

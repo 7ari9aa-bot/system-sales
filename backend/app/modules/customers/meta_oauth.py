@@ -91,13 +91,19 @@ _HUMAN_INBOX_SUBSCRIBED_FIELDS = "message_echoes,messaging_handovers,message_edi
 _MESSENGER_SUBSCRIBED_FIELDS = (
     _BASE_SUBSCRIBED_FIELDS + ",message_reactions," + _HUMAN_INBOX_SUBSCRIBED_FIELDS
 )
+_FACEBOOK_SUBSCRIBED_FIELDS = "feed,mention"
 _SUBSCRIBED_FIELDS = {
     "messenger": _MESSENGER_SUBSCRIBED_FIELDS,
     "instagram": _BASE_SUBSCRIBED_FIELDS,
     # Facebook Page comments are delivered on the Page's `feed` field; without it a
     # connected Page only ever gets its Messenger traffic. `mention` is the Page tagged
     # in someone else's post or comment.
-    "facebook": _MESSENGER_SUBSCRIBED_FIELDS + ",feed,mention",
+    # Facebook Management is NOT Messenger: `feed` and `mention` need the management scopes and a
+    # MANAGE task, while `messages` and the rest need pages_messaging and MESSAGING. Asking for both
+    # on a Facebook-only link requested fields the grant could never deliver. Messenger's fields
+    # join the Page subscription only when a Messenger channel is actually connected on it, and
+    # `_subscribe_page_to_app` keeps what the Page already has, so linking both keeps both.
+    "facebook": _FACEBOOK_SUBSCRIBED_FIELDS,
 }
 
 
@@ -147,6 +153,36 @@ def _meta_config() -> tuple[str, str, str, str]:
             "API_PUBLIC_BASE_URL (see docs/META_SETUP.md)."
         )
     return app_id, app_secret, redirect_uri, config_id
+
+
+def _instagram_login_config() -> tuple[str, str, str]:
+    """(app_id, app_secret, redirect_uri) for Instagram Login, from ONE source of truth.
+
+    The authorize URL and the code exchange are two halves of one grant: a code issued to app A
+    cannot be redeemed with app B's id and secret. They used to read different settings (the start
+    used META_APP_ID, the callback INSTAGRAM_APP_ID or META_APP_ID with INSTAGRAM_APP_SECRET), so a
+    deployment with a separate Instagram app began the login with one app and ended it with another.
+
+    The pair is chosen as a PAIR: the Instagram app when it is configured (id AND secret), otherwise
+    the Meta app (id AND secret). Never an id from one and a secret from the other.
+    """
+    from app.core.config import get_settings
+
+    s = get_settings()
+    redirect_uri = s.meta_oauth_redirect_uri_effective
+    ig_id, ig_secret = s.instagram_app_id.strip(), s.instagram_app_secret.strip()
+    meta_id, meta_secret = s.meta_app_id.strip(), s.meta_app_secret.strip()
+    if ig_id and ig_secret:
+        app_id, app_secret = ig_id, ig_secret
+    else:
+        app_id, app_secret = meta_id, meta_secret
+    if not (app_id and app_secret and redirect_uri):
+        raise ValidationError(
+            "Instagram Login is not configured on this server — set INSTAGRAM_APP_ID and "
+            "INSTAGRAM_APP_SECRET (or META_APP_ID and META_APP_SECRET) and either "
+            "META_OAUTH_REDIRECT_URI or API_PUBLIC_BASE_URL (see docs/META_SETUP.md)."
+        )
+    return app_id, app_secret, redirect_uri
 
 
 def _build_authorize_url(
@@ -201,7 +237,11 @@ async def meta_oauth_start(
     """
     if provider not in _OAUTH_PROVIDERS:
         raise ValidationError(f"Meta OAuth covers {' and '.join(_OAUTH_PROVIDERS)} only.")
-    app_id, _secret, redirect_uri, config_id = _meta_config()
+    if provider == _INSTAGRAM_LOGIN_PROVIDER:
+        app_id, _secret, redirect_uri = _instagram_login_config()
+        config_id = ""
+    else:
+        app_id, _secret, redirect_uri, config_id = _meta_config()
     state = create_oauth_state_token(
         str(ctx.user.id),
         {"tenant_id": str(ctx.tenant_id), "provider": provider},
@@ -311,29 +351,30 @@ async def _subscribe_page_to_app(
 
         app_id = (get_settings().meta_app_id or "").strip()
     wanted = subscribed_fields(provider)
-    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
-    # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
-    # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
-    # fields are still written, exactly as before.
+    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its comments
+    # (`feed`) would lose them the moment Messenger is linked on it, with no error. So the existing
+    # fields are read first, and a read that FAILS is not "nothing there": writing then would
+    # replace a working subscription with a guess and silently cut the other channel's webhooks.
+    # One retry, then refuse the link with a clear, retryable error and write nothing.
     kept = await _existing_subscribed_fields(
         http, page_id=page_id, page_token=page_token, app_id=app_id
     )
     if kept is None:
-        # The read failed: we cannot know what this app already subscribed, so writing `wanted`
-        # alone could drop a field another capability added. One retry, then say so out loud
-        # instead of pretending the list was empty.
         kept = await _existing_subscribed_fields(
             http, page_id=page_id, page_token=page_token, app_id=app_id
         )
-        if kept is None:
-            _logger.warning(
-                "meta.subscription_read_failed page=%s app=%s provider=%s: writing the "
-                "channel's own fields only, existing ones cannot be confirmed",
-                page_id,
-                app_id,
-                provider,
-            )
-            kept = []
+    if kept is None:
+        _logger.warning(
+            "meta.subscription_read_failed page=%s app=%s provider=%s: not writing",
+            page_id,
+            app_id,
+            provider,
+        )
+        raise ExternalProviderError(
+            "Could not read this Page's current webhook subscription from Meta, so it was left "
+            "untouched. Try again in a moment.",
+            retryable=True,
+        )
     merged = list(dict.fromkeys([*wanted.split(","), *kept]))
     try:
         response = await http.post(
@@ -482,6 +523,44 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
     except Exception as exc:  # noqa: BLE001 - diagnostic fallback must never break the connect
         _logger.warning("meta_oauth.granted_pages_failed %s", str(exc)[:200])
     return list(found.values())
+
+
+async def _page_has_other_active_function(
+    session: AsyncSession, *, tenant_id: uuid.UUID, provider: str, page_id: str
+) -> bool:
+    """Whether this workspace already runs ANOTHER function (Facebook / Messenger / Instagram) on
+    the Page, so its webhook subscription is still in use and must not be removed.
+
+    Facebook and Messenger share the Page's one subscription; taking the app off the Page after a
+    failed second link would silently cut the first one's webhooks. When this cannot be answered
+    the safe answer is "yes, it is in use": a leftover subscription is harmless, a removed one is
+    an outage.
+    """
+    try:
+        rows = (
+            (
+                await session.execute(
+                    select(Integration).where(
+                        Integration.tenant_id == tenant_id,
+                        Integration.kind == "channel",
+                        Integration.provider.in_(("messenger", "facebook", "instagram")),
+                        Integration.provider != provider,
+                        Integration.status.in_(("active", "connected", "restricted")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    except Exception:  # noqa: BLE001 - unknown means "keep the subscription"
+        return True
+    for row in rows:
+        # The credentials are encrypted at rest; the Page id every row needs for routing is in its
+        # config (`page_id` for Facebook, `account_id` for Messenger).
+        config = row.config if isinstance(row.config, dict) else {}
+        if page_id in {str(config.get("page_id") or ""), str(config.get("account_id") or "")}:
+            return True
+    return False
 
 
 async def _unsubscribe_page_from_app(
@@ -884,7 +963,12 @@ async def _connect_page(
 
     verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
-    # A channel that cannot receive provider webhooks is not connected.
+    # A channel that cannot receive provider webhooks is not connected. The per-Page lock is held
+    # until this link's transaction ends, so a second instance linking the other capability on the
+    # same Page waits instead of racing the read-merge-write below.
+    from app.modules.customers.meta_linking import lock_page_subscription
+
+    await lock_page_subscription(session, str(page["id"]))
     try:
         await _subscribe_page_to_app(
             http,
@@ -948,7 +1032,11 @@ async def _connect_page(
         # The Page is already subscribed by this point. For a brand-new connect nothing local
         # exists, so the subscription is taken back rather than left pointing at a channel this
         # workspace does not have. A reconnect keeps it: the previous channel is still live.
-        if existing is None:
+        # And so does a Page another function of this workspace already runs: Facebook failing to
+        # save must never take Messenger's webhooks off the Page (they share the one subscription).
+        if existing is None and not await _page_has_other_active_function(
+            session, tenant_id=tenant_id, provider=provider, page_id=str(page["id"])
+        ):
             await _unsubscribe_page_from_app(http, page_id=str(page["id"]), page_token=page_token)
         raise
 
@@ -1240,15 +1328,12 @@ async def _instagram_login_callback(*, session, code, payload, frontend, back, f
     """The standalone Instagram Login callback: no Page, no page token, its own Graph host."""
     import uuid as _uuid
 
-    from app.core.config import get_settings
     from app.core.db import bind_tenant
     from app.modules.customers import instagram_login
 
-    settings = get_settings()
-    app_id = (settings.instagram_app_id or settings.meta_app_id).strip()
-    app_secret = settings.instagram_app_secret.strip()
-    redirect_uri = settings.meta_oauth_redirect_uri_effective
-    if not (app_id and app_secret and redirect_uri):
+    try:
+        app_id, app_secret, redirect_uri = _instagram_login_config()
+    except ValidationError:
         await flag("link.not_configured", "instagram_login", None, {"missing": "app_id/secret"})
         return back("error", "instagram_login_not_configured")
 

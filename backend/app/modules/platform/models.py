@@ -190,15 +190,14 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
             ),
         ),
         # Facebook and Messenger are two capabilities of ONE Page object: the Messenger row keeps
-        # the Page id in `account_id`, the Facebook row in `page_id`. Keyed by provider they could
-        # both be connected, in different workspaces, and one Page would answer for two tenants.
-        # This index keys the PAGE alone, across both providers.
+        # the Page id in `account_id`, the Facebook row in `page_id`. One workspace may run both on
+        # the same Page, so the index is keyed on (provider, Page): a Page cannot carry the same
+        # function twice. That a Page belongs to ONE workspace only cannot be said by an index (it
+        # needs "same tenant"), so the database trigger from migration fe2026112308 enforces it.
         Index(
-            "uq_integrations_active_page_identity",
-            text(
-                "CASE WHEN provider IN ('messenger', 'facebook') "
-                "THEN COALESCE(config->>'page_id', config->>'account_id') END"
-            ),
+            "uq_integrations_active_page_provider",
+            "provider",
+            text("COALESCE(config->>'page_id', config->>'account_id')"),
             unique=True,
             postgresql_where=text(
                 "kind = 'channel' AND status IN ('active', 'connected') "

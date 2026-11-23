@@ -77,7 +77,7 @@ class StockViewService:
     async def set_reorder_level_for_product(
         session: AsyncSession, tenant_id: UUID, product_id: UUID, level: int
     ) -> int:
-        """One reorder level for a whole model (a clothing size run), answering how many sizes took it."""
+        """One reorder level for a whole model (a size run); returns how many sizes took it."""
         return await StockLevelService.set_reorder_level_for_product(
             session, tenant_id, product_id, level
         )
@@ -282,7 +282,7 @@ class StockViewService:
         limit: int = 500,
         offset: int = 0,
     ) -> dict:
-        """One window of the view PLUS the total, so a screen (or an export) can say what it left out.
+        """One window of the view PLUS the total, so a screen or export can say what it left out.
 
         ``has_more`` is computed from the total, not guessed from the page being full: the last
         full page of a 2,000-row shop must not promise a page that does not exist.
@@ -475,4 +475,3 @@ class StockViewService:
             "retail_value": str(to_money(Decimal(row.retail_value or 0))),
             "unknown_cost_variants": int(row.unknown),
         }
-

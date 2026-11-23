@@ -188,7 +188,10 @@ async def test_a_cash_expense_leaves_the_drawer_it_was_paid_from(db, tenant_ctx)
     )
     after = await _drawer(db, tenant_ctx, shift.id)
     # (inflow, outflow): the drawer's book now shows the 100 that physically left it.
-    assert (before, after) == ((Decimal("0.00"), Decimal("0.00")), (Decimal("0.00"), Decimal("100.00")))
+    assert (before, after) == (
+        (Decimal("0.00"), Decimal("0.00")),
+        (Decimal("0.00"), Decimal("100.00")),
+    )
     assert expense.session_id == shift.id
 
     from app.modules.pos.models import PosCashMovement
@@ -232,7 +235,7 @@ async def test_voiding_a_cash_expense_puts_the_money_back(db, tenant_ctx) -> Non
     """A correction is a reversing row, never a deleted one."""
     shift = await _open_shift(db, tenant_ctx)
     cat = await _category(db, tenant_ctx)
-    before = await _drawer(db, tenant_ctx, shift.id)
+    await _drawer(db, tenant_ctx, shift.id)
     expense = await ExpenseService.create(
         db,
         tenant_ctx.tenant_id,

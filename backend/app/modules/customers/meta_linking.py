@@ -72,6 +72,22 @@ CAPABILITY_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _whatsapp_facts(provider: str, config: dict) -> dict[str, bool]:
+    """Readiness facts a WhatsApp connection has actually recorded; nothing is guessed.
+
+    A fact appears only when the connection holds evidence either way: a published Flow count or a
+    linked catalog id. With no evidence the key is absent and the capability stays unverified.
+    """
+    if provider != "whatsapp":
+        return {}
+    facts: dict[str, bool] = {}
+    if "published_flows" in config:
+        facts["flows_ready"] = bool(config.get("published_flows"))
+    if "catalog_id" in config:
+        facts["catalog_ready"] = bool(config.get("catalog_id"))
+    return facts
+
+
 @dataclass(frozen=True)
 class MetaPageConnection:
     """One Page as FIHRIST knows it, with every capability hanging off it.
@@ -90,6 +106,9 @@ class MetaPageConnection:
     subscribed_fields: frozenset[str] | None = None
     seen_fields: frozenset[str] = field(default_factory=frozenset)
     onboarding_mode: str | None = None
+    #: Account-level readiness measured elsewhere (``flows_ready``, ``catalog_ready``). A key that
+    #: is absent was never checked, which is reported as unverified rather than as available.
+    facts: dict[str, bool] = field(default_factory=dict)
 
     @classmethod
     def from_integration(cls, integration: Any) -> MetaPageConnection:
@@ -100,10 +119,21 @@ class MetaPageConnection:
         )
         scopes = connection.get("granted_scopes")
         tasks = connection.get("page_tasks")
+        # The Page id lives in `page_id` for Facebook and in `account_id` for Messenger (the OAuth
+        # callback writes only that). An Instagram or WhatsApp `account_id` is NOT a Page.
+        provider = str(integration.provider)
+        page_id = str(
+            config.get("page_id") or (config.get("account_id") if provider == "messenger" else "")
+        )
+        # What actually arrived is recorded in `webhook_health["seen_fields"]` (a field -> time map
+        # written by the webhook handler), never in `config`.
+        health = getattr(integration, "webhook_health", None)
+        health = health if isinstance(health, dict) else {}
+        seen = health.get("seen_fields")
         return cls(
-            provider=str(integration.provider),
-            page_id=str(config.get("page_id") or "") or None,
-            asset_id=str(config.get("waba_id") or config.get("page_id") or "") or None,
+            provider=provider,
+            page_id=page_id or None,
+            asset_id=str(config.get("waba_id") or page_id or "") or None,
             status=str(integration.status),
             # Whether a token EXISTS is knowable here; its value never leaves the vault.
             has_token=bool(getattr(integration, "credentials", None)),
@@ -114,8 +144,11 @@ class MetaPageConnection:
                 if isinstance(config.get("subscribed_fields"), list | tuple)
                 else None
             ),
-            seen_fields=frozenset(config.get("seen_fields") or ()),
+            seen_fields=frozenset(str(k) for k in seen)
+            if isinstance(seen, dict | list)
+            else frozenset(),
             onboarding_mode=str(config.get("onboarding_mode") or "") or None,
+            facts=_whatsapp_facts(provider, config),
         )
 
     @property
@@ -133,6 +166,7 @@ class MetaPageConnection:
             ),
             seen_fields=set(self.seen_fields),
             subscription_known=self.subscribed_fields is not None,
+            facts=dict(self.facts),
         )
 
     def working_capabilities(self) -> tuple[str, ...]:
@@ -175,6 +209,26 @@ def subscription_lock(page_id: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _SUBSCRIPTION_LOCKS[page_id] = lock
     return lock
+
+
+async def lock_page_subscription(session: Any, page_id: str) -> None:
+    """Serialise subscription changes for one Page across EVERY API instance.
+
+    ``subscription_lock`` only orders requests inside one process; two instances behind a load
+    balancer would still read, merge and write at the same time and the later POST would win. A
+    Postgres transaction-level advisory lock is shared by all of them and is released by the commit
+    or rollback that ends the link, so it can never be left held. A non-Postgres session (unit
+    tests) has nothing to lock and is skipped.
+    """
+    from sqlalchemy import text
+
+    bind = session.get_bind() if hasattr(session, "get_bind") else None
+    if getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+        return
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"meta_page_subscription:{page_id}"},
+    )
 
 
 class PageSubscriptionManager:
@@ -324,6 +378,9 @@ class BackfillBounds:
 
     Meta rate-limits per Page and per app, so an unbounded backfill is a way to get the whole
     channel throttled. The bounds are per provider because Meta's own limits are.
+
+    What these bounds buy is a LIMITED HISTORY IMPORT: the most recent conversations inside the
+    caps, never a full sync. Anything that reads or labels a run must say so.
     """
 
     provider: str
@@ -338,8 +395,9 @@ BACKFILL_BOUNDS: dict[str, BackfillBounds] = {
     "messenger": BackfillBounds(
         "messenger", max_pages=5, max_items=100, max_days=90, rate_limit_per_minute=200
     ),
-    # Instagram messaging has no conversation listing worth walking; comments are the backfillable
-    # part, and Meta caps how far a comment list goes.
+    # Instagram messaging is NOT walked by the Messenger walker (it reads a Page's conversations,
+    # which an Instagram Login connection does not have), so reconcile reports it as unsupported.
+    # These caps are for the comment list only, and Meta caps how far that goes.
     "instagram": BackfillBounds(
         "instagram", max_pages=3, max_items=50, max_days=30, rate_limit_per_minute=200
     ),
@@ -362,7 +420,7 @@ def backfill_supported(provider: str) -> tuple[bool, str | None]:
     """Whether a provider can be backfilled at all, and why not when it cannot."""
     bounds = backfill_bounds(provider)
     if bounds.max_items == 0:
-        return False, f"{provider} exposes no history API; nothing can be backfilled"
+        return False, f"{provider} exposes no history API; nothing can be imported"
     return True, None
 
 
@@ -423,20 +481,30 @@ EVENT_REGISTRY: tuple[EventSpec, ...] = (
     EventSpec(
         "instagram", "messages", "inbound DM", "message row", "AI turn + realtime", "delivered"
     ),
-    EventSpec(
-        "instagram",
-        "messaging_handovers",
-        "thread control",
-        "conversation ownership",
-        "AI paused / resumed",
-        "delivered",
-    ),
+    # A hand-off between Meta apps reaches Instagram inside `messages` (message.admin_text), so it
+    # has no webhook field of its own; Instagram's `messaging_handovers` does not exist.
     EventSpec(
         "instagram",
         "message_edit",
         "edited message",
         "message row (original kept)",
         "thread shows edited marker",
+        "delivered",
+    ),
+    EventSpec(
+        "instagram",
+        "messaging_seen",
+        "read receipt",
+        "message status",
+        "read ticks in the thread",
+        "delivered",
+    ),
+    EventSpec(
+        "instagram",
+        "message_reactions",
+        "reaction",
+        "message reaction",
+        "realtime",
         "delivered",
     ),
     EventSpec("instagram", "comments", "comment", "comment row", "comment inbox", "delivered"),

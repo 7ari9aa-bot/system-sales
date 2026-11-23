@@ -757,12 +757,28 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
                     credentials.get("api_key") or credentials.get("page_access_token") or ""
                 )
                 asset = _page_id_of(integration, credentials)
+            # An Instagram Login token is honoured by graph.instagram.com only, and that grant has
+            # no debug_token / Page-permission list to measure, so it is probed on its own host.
+            ig_login = integration.provider == "instagram" and diag._is_instagram_login(config)
+            graph = diag.INSTAGRAM_LOGIN_GRAPH if ig_login else None
+            if ig_login:
+                # The account id is the asset; the Instagram app (not the Facebook one) owns it.
+                asset = str(config.get("account_id") or asset)
             if token and asset:
                 subscription = await diag.probe_subscription(
-                    http, asset_id=asset, token=token, app_id=settings.meta_app_id or None
+                    http,
+                    asset_id=asset,
+                    token=token,
+                    app_id=(
+                        (settings.instagram_app_id or settings.meta_app_id)
+                        if ig_login
+                        else settings.meta_app_id
+                    )
+                    or None,
+                    graph=graph,
                 )
             if token and integration.provider != "whatsapp":
-                permissions = await diag.probe_permissions(http, token=token)
+                permissions = await diag.probe_permissions(http, token=token, graph=graph)
 
     failed = (
         await ctx.session.execute(
@@ -834,6 +850,17 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
         raise NotFoundError("channel integration not found")
     if integration.provider not in ("messenger", "instagram"):
         raise ValidationError("Reconciliation exists for Messenger and Instagram only.")
+    if integration.provider == "instagram":
+        # The walker reads a Page's Messenger conversations. An Instagram connection (above all an
+        # Instagram Login one, which has no Page at all) has no such listing here yet, so running it
+        # would compare the wrong world. Say so plainly instead of returning a misleading result.
+        return {
+            "supported": False,
+            "reason": "not_supported_for_this_channel_yet",
+            "missing_locally": [],
+            "stale_locally": [],
+            "error": None,
+        }
 
     config = integration.config if isinstance(integration.config, dict) else {}
     page_id = reconcile_page_id(integration.provider, config)
@@ -845,9 +872,8 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
     if not token:
         raise ValidationError("This channel has no usable token to reconcile with.")
 
-    # Meta's own thread id for a person is the PSID/IGSID, which is exactly what a customer
-    # identity stores for the channel. Comparing those two sets is the comparison that matters:
-    # a person Meta can message and FIHRIST has never seen.
+    # A customer identity stores the PSID, so it is compared with the conversation PARTICIPANTS
+    # (the people), never with Meta's thread ids: a person Meta lists and FIHRIST has never seen.
     rows = (
         await ctx.session.execute(
             select(CustomerIdentity.external_id).where(
@@ -863,7 +889,7 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
             http,
             page_id=page_id,
             token=token,
-            local_thread_ids=local,
+            local_person_ids=local,
             provider=integration.provider,
         )
 
@@ -972,10 +998,11 @@ async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
             row = dict(row)
             row["onboarding_mode"] = mode
             row["measured"] = True
-            # Connected through coexistence means Meta already allowed it for this number; a
-            # cloud_api connection simply has not asked, which is not a refusal.
-            row["state"] = (
-                roadmap_mod.AVAILABLE if mode == "coexistence" else roadmap_mod.ACCOUNT_INELIGIBLE
+            # Connected through coexistence means Meta already allowed it for this number. A
+            # cloud_api connection simply has not asked, which is NOT a refusal: only Meta's own
+            # "no" (recorded at signup) is account_ineligible.
+            row["state"] = roadmap_mod.coexistence_state(
+                config, connected=integration.status in ("active", "connected", "restricted")
             )
         rows.append(row)
     return {

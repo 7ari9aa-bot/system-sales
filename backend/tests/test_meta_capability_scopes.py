@@ -96,13 +96,28 @@ class _Result:
         return self.value
 
 
+class _ManyResult:
+    def __init__(self, rows) -> None:
+        self._rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
 class _Session:
-    def __init__(self, existing=None) -> None:
+    def __init__(self, existing=None, others=()) -> None:
         self.existing = existing
+        # Other channel rows of the same workspace (e.g. Messenger already on the Page).
+        self.others = list(others)
         self.added: list[object] = []
         self.flushed = False
 
     async def execute(self, stmt):
+        if "other" in str(getattr(stmt, "_where_criteria", "")) or "!=" in str(stmt):
+            return _ManyResult(self.others)
         return _Result(self.existing)
 
     def add(self, obj) -> None:
@@ -212,6 +227,47 @@ async def test_a_failed_first_save_takes_the_subscription_back(monkeypatch):
         )
 
     assert unsubscribed == [{"page_id": "page-1", "page_token": "page-token"}]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_facebook_save_leaves_messengers_subscription_alone(monkeypatch):
+    """Messenger already runs on this Page. Facebook then failing to save must NOT take the app
+    off the Page: they share one subscription, and removing it would cut Messenger's webhooks."""
+    unsubscribed: list[dict] = []
+
+    async def subscribe(*args, **kwargs):
+        return None
+
+    async def unsubscribe(http, *, page_id, page_token):
+        unsubscribed.append({"page_id": page_id})
+        return True
+
+    monkeypatch.setattr(meta_oauth, "_subscribe_page_to_app", subscribe)
+    monkeypatch.setattr(meta_oauth, "_unsubscribe_page_from_app", unsubscribe)
+    monkeypatch.setattr(meta_oauth, "verify_channel_credentials", _verified)
+
+    messenger_row = SimpleNamespace(provider="messenger", config={"account_id": "page-1"})
+    session = _Session(existing=None, others=[messenger_row])
+
+    async def failing_flush():
+        raise RuntimeError("database went away")
+
+    session.flush = failing_flush
+
+    with pytest.raises(RuntimeError):
+        await meta_oauth._connect_page(
+            session,
+            http=None,
+            page=_page(),
+            provider="facebook",
+            tenant_id=uuid.uuid4(),
+            user_token="user-token",
+            expires_in=None,
+            granted=[],
+            config_id="",
+        )
+
+    assert unsubscribed == []
 
 
 async def _verified(provider, credentials, config, client=None):

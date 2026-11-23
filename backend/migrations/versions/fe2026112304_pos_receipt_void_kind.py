@@ -11,7 +11,7 @@ through ``order_id``. Nothing is ever deleted: the sale receipt stays, the
 payments stay, the stock movements stay, and the void adds the reversing ones.
 
 Revision ID: fe2026112304
-Revises: fe2026112303
+Revises: fe2026112304a
 Create Date: 2026-11-23 22:10:00.000000
 """
 
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "fe2026112304"
-down_revision: str | None = "fe2026112303"
+down_revision: str | None = "fe2026112304a"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -151,19 +151,35 @@ def _graph_handler(
     return handler
 
 
-async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
-    ) as client:
-        await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
+def _subscribed_apps_handler(post, *, existing=None, read_ok=True):
+    """A Graph double for ``/{page}/subscribed_apps``: GET lists what is there, POST replaces it."""
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            if not read_ok:
+                return httpx.Response(500, json={"error": {"message": "boom"}})
+            data = [{"id": "app-1", "subscribed_fields": list(existing)}] if existing else []
+            return httpx.Response(200, json={"data": data})
+        return post(request)
+
+    return handler
+
+
+async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
+    ok = _subscribed_apps_handler(lambda request: httpx.Response(200, json={"success": True}))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as client:
+        await meta_oauth._subscribe_page_to_app(
+            client, page_id=PAGE_ID, page_token=PAGE_TOKEN, app_id="app-1"
         )
-    ) as client:
+
+    denied = _subscribed_apps_handler(
+        lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(denied)) as client:
         with pytest.raises(ExternalProviderError, match="webhook subscription"):
-            await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
+            await meta_oauth._subscribe_page_to_app(
+                client, page_id=PAGE_ID, page_token=PAGE_TOKEN, app_id="app-1"
+            )
 
 
 def _patch_graph(monkeypatch, handler) -> list[str]:
@@ -749,11 +765,234 @@ async def test_the_subscription_asks_for_the_channels_own_fields(provider, field
 
     seen: dict[str, str] = {}
 
-    def ok(request: httpx.Request) -> httpx.Response:
+    def post(request: httpx.Request) -> httpx.Response:
         seen.update(dict(request.url.params))
         return httpx.Response(200, json={"success": True})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as http:
-        await _subscribe_page_to_app(http, page_id="1", page_token="tok", provider=provider)
+    handler = _subscribed_apps_handler(post)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider=provider, app_id="app-1"
+        )
     assert field in seen["subscribed_fields"].split(",")
     assert seen["access_token"] == "tok"
+
+
+async def test_a_subscription_that_cannot_be_read_is_never_overwritten() -> None:
+    """The read failing is not "nothing subscribed": writing then would replace a working
+    subscription (another channel's fields) with a guess, silently cutting its webhooks."""
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+
+    posts: list[httpx.Request] = []
+
+    def post(request: httpx.Request) -> httpx.Response:
+        posts.append(request)
+        return httpx.Response(200, json={"success": True})
+
+    handler = _subscribed_apps_handler(post, read_ok=False)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(ExternalProviderError, match="left untouched") as raised:
+            await _subscribe_page_to_app(
+                http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+            )
+    assert raised.value.retryable is True
+    assert posts == []
+
+
+async def test_linking_a_second_capability_keeps_the_first_ones_fields() -> None:
+    """Messenger already on the Page, then Facebook linked: the POST must still carry Messenger's
+    fields, or linking Facebook would cut Messenger's webhooks."""
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app, subscribed_fields
+
+    sent: dict[str, str] = {}
+
+    def post(request: httpx.Request) -> httpx.Response:
+        sent.update(dict(request.url.params))
+        return httpx.Response(200, json={"success": True})
+
+    messenger = subscribed_fields("messenger").split(",")
+    handler = _subscribed_apps_handler(post, existing=messenger)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+        )
+    written = set(sent["subscribed_fields"].split(","))
+    assert set(messenger) <= written
+    assert {"feed", "mention"} <= written
+
+
+async def test_a_facebook_only_link_asks_for_no_messenger_fields() -> None:
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+
+    sent: dict[str, str] = {}
+
+    def post(request: httpx.Request) -> httpx.Response:
+        sent.update(dict(request.url.params))
+        return httpx.Response(200, json={"success": True})
+
+    handler = _subscribed_apps_handler(post)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+        )
+    assert set(sent["subscribed_fields"].split(",")) == {"feed", "mention"}
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, rows=None, fail=False):
+        self._rows, self._fail = rows or [], fail
+
+    async def execute(self, _stmt):
+        if self._fail:
+            raise RuntimeError("db down")
+        return _Rows(self._rows)
+
+
+def _row(provider: str, **config):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(provider=provider, config=config)
+
+
+async def test_a_page_another_function_still_uses_keeps_its_subscription() -> None:
+    """Messenger runs on Page 100; Facebook failing to save must not take the app off that Page."""
+    import uuid
+
+    session = _FakeSession([_row("messenger", account_id="100")])
+    assert await meta_oauth._page_has_other_active_function(
+        session, tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_a_page_nothing_else_uses_may_be_unsubscribed() -> None:
+    import uuid
+
+    session = _FakeSession([_row("messenger", account_id="999")])
+    assert not await meta_oauth._page_has_other_active_function(
+        session, tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+    assert not await meta_oauth._page_has_other_active_function(
+        _FakeSession([]), tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_when_it_cannot_tell_the_subscription_is_kept() -> None:
+    """A leftover subscription is harmless; a removed one is an outage."""
+    import uuid
+
+    assert await meta_oauth._page_has_other_active_function(
+        _FakeSession(fail=True), tenant_id=uuid.uuid4(), provider="facebook", page_id="100"
+    )
+
+
+async def test_the_page_lock_is_skipped_off_postgres_and_taken_on_it() -> None:
+    from types import SimpleNamespace
+
+    from app.modules.customers.meta_linking import lock_page_subscription
+
+    calls: list[str] = []
+
+    class Session:
+        def __init__(self, dialect):
+            self._dialect = dialect
+
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name=self._dialect))
+
+        async def execute(self, stmt, params=None):
+            calls.append(str(stmt))
+
+    await lock_page_subscription(Session("sqlite"), "100")
+    assert calls == []
+    await lock_page_subscription(Session("postgresql"), "100")
+    assert len(calls) == 1 and "pg_advisory_xact_lock" in calls[0]
+
+
+def _ig_settings(monkeypatch, **values):
+    from types import SimpleNamespace
+
+    base = {
+        "meta_app_id": "",
+        "meta_app_secret": "",
+        "instagram_app_id": "",
+        "instagram_app_secret": "",
+        "meta_oauth_redirect_uri_effective": "https://api.example.com/cb",
+    }
+    fake = SimpleNamespace(**{**base, **values})
+    monkeypatch.setattr("app.core.config.get_settings", lambda: fake)
+
+
+def test_instagram_login_uses_the_separate_instagram_app_as_a_pair(monkeypatch) -> None:
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="ig-secret",
+    )
+    assert meta_oauth._instagram_login_config() == (
+        "ig-id",
+        "ig-secret",
+        "https://api.example.com/cb",
+    )
+
+
+def test_instagram_login_never_mixes_an_id_from_one_app_with_a_secret_from_another(
+    monkeypatch,
+) -> None:
+    # An Instagram id with no Instagram secret must not borrow the Meta secret: a code issued to
+    # one app cannot be redeemed with the other's credentials.
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="",
+    )
+    assert meta_oauth._instagram_login_config()[:2] == ("meta-id", "meta-secret")
+
+
+def test_instagram_login_falls_back_to_the_meta_app(monkeypatch) -> None:
+    _ig_settings(monkeypatch, meta_app_id="meta-id", meta_app_secret="meta-secret")
+    assert meta_oauth._instagram_login_config()[:2] == ("meta-id", "meta-secret")
+
+
+def test_instagram_login_unconfigured_fails_loudly_at_the_start(monkeypatch) -> None:
+    _ig_settings(monkeypatch)
+    with pytest.raises(meta_oauth.ValidationError, match="Instagram Login is not configured"):
+        meta_oauth._instagram_login_config()
+
+
+async def test_the_start_url_and_the_callback_use_the_same_app(monkeypatch) -> None:
+    """The authorize URL's client_id is the very id the code will be exchanged with."""
+    from urllib.parse import parse_qs, urlparse
+
+    _ig_settings(
+        monkeypatch,
+        meta_app_id="meta-id",
+        meta_app_secret="meta-secret",
+        instagram_app_id="ig-id",
+        instagram_app_secret="ig-secret",
+    )
+    app_id, _secret, redirect_uri = meta_oauth._instagram_login_config()
+    url = meta_oauth._build_authorize_url(
+        app_id=app_id,
+        redirect_uri=redirect_uri,
+        state="s",
+        provider="instagram_login",
+        config_id="",
+    )
+    assert parse_qs(urlparse(url).query)["client_id"] == ["ig-id"]
+    # ...and the callback resolves the identical pair.
+    assert meta_oauth._instagram_login_config()[0] == "ig-id"

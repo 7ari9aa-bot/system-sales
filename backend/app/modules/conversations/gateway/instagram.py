@@ -125,20 +125,19 @@ class InstagramAdapter(ChannelAdapter):
         message". The id is the provider message id of that last message.
         """
         out: list[StatusUpdate] = []
-        for entry in payload.get("entry", []) or []:
-            for event in entry.get("messaging", []) or []:
-                read = event.get("read")
-                if not isinstance(read, dict):
-                    continue
-                mid = read.get("mid")
-                if mid:
-                    out.append(
-                        StatusUpdate(
-                            channel_message_id=str(mid),
-                            status="read",
-                            timestamp=event.get("timestamp"),
-                        )
+        for event in self._messaging_events(payload):
+            read = event.get("read")
+            if not isinstance(read, dict):
+                continue
+            mid = read.get("mid")
+            if mid:
+                out.append(
+                    StatusUpdate(
+                        channel_message_id=str(mid),
+                        status="read",
+                        timestamp=event.get("timestamp"),
                     )
+                )
         return out
 
     def parse_comments(self, payload: dict) -> list[InboundComment]:
@@ -215,12 +214,25 @@ class InstagramAdapter(ChannelAdapter):
 
     @staticmethod
     def _messaging_events(payload: dict):
+        """Every messaging event, wherever this API setup puts it.
+
+        Meta documents the messaging fields (message_edit, messaging_seen, message_reactions) in
+        ``entry[].messaging[]``, but also says the payload "can vary by authorization setup". A
+        setup that delivers them as ``entry[].changes[].value`` is read too, so an event is not
+        lost to its envelope. The value carries the same sender/recipient/event keys.
+        """
         for entry in payload.get("entry", []) or []:
             if not isinstance(entry, dict):
                 continue
             for event in entry.get("messaging", []) or []:
                 if isinstance(event, dict):
                     yield event
+            for change in entry.get("changes", []) or []:
+                value = change.get("value") if isinstance(change, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                if "sender" in value or "recipient" in value:
+                    yield value
 
     def parse_edits(self, payload: dict) -> list[dict]:
         """A direct message edited after it was sent: the ``message_edit`` event.
@@ -251,10 +263,13 @@ class InstagramAdapter(ChannelAdapter):
         return out
 
     def parse_handovers(self, payload: dict) -> list[dict]:
-        """Thread control on an Instagram conversation (``messaging_handover``).
+        """Thread control on an Instagram conversation, in Messenger's shape.
 
-        Same three events as Messenger (pass / take / request thread control), in the same shape,
-        so the one ownership rule that pauses and resumes the AI serves both channels.
+        Meta's Instagram webhook documentation names no ``messaging_handover`` field: a hand-off
+        between Meta apps reaches Instagram inside ``messages`` (``message.admin_text``), which
+        ``parse_inbound`` now ignores rather than answer. This reader is kept for setups that do
+        send pass / take / request thread control events, so the one ownership rule that pauses
+        and resumes the AI serves both channels. It is not claimed as a verified delivery.
         """
         out: list[dict] = []
         for event in self._messaging_events(payload):
@@ -402,6 +417,18 @@ class InstagramAdapter(ChannelAdapter):
         mid = message.get("mid")
         text = message.get("text")
         reply_to = (message.get("reply_to") or {}).get("mid")
+
+        # A hand-off between Meta apps arrives as a `message` that carries only `admin_text` (and
+        # maybe `handoff_reason`): Meta documents that "mid and text are not included" because there
+        # is no underlying message. Treating it as a customer message would feed the AI an empty
+        # turn that no customer wrote. Receiving the notice does not itself transfer ownership.
+        if (
+            not mid
+            and not text
+            and not message.get("attachments")
+            and not message.get("is_deleted")
+        ):
+            return []
 
         if message.get("is_deleted"):
             # An unsend: the row is kept, the body is cleared by the caller.
