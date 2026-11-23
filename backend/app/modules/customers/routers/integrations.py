@@ -790,6 +790,66 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
     )
 
 
+@platform_router.post("/integrations/{integration_id}/messenger-reconcile")
+async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
+    """Compare FIHRIST's threads for a Page to what Meta still lists, within the provider's bounds.
+
+    The answer names what Meta has that we never stored, so a missed webhook becomes a list to
+    import instead of a silent gap. A capped or failed walk reports that it could not prove
+    absence, and a rate limit or outage comes back as an error with its reason.
+    """
+    import httpx
+
+    from app.modules.conversations.messenger_reconcile import reconcile_page
+    from app.modules.customers.models import CustomerIdentity
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in ("messenger", "instagram"):
+        raise ValidationError("Reconciliation exists for Messenger and Instagram only.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    page_id = str(config.get("page_id") or "") or None
+    if not page_id:
+        raise ValidationError("This channel has no Page id to reconcile against.")
+
+    credentials = await IntegrationCredentialsService.decrypt(ctx.session, integration)
+    token = str(credentials.get("page_access_token") or credentials.get("api_key") or "")
+    if not token:
+        raise ValidationError("This channel has no usable token to reconcile with.")
+
+    # Meta's own thread id for a person is the PSID/IGSID, which is exactly what a customer
+    # identity stores for the channel. Comparing those two sets is the comparison that matters:
+    # a person Meta can message and FIHRIST has never seen.
+    rows = (
+        await ctx.session.execute(
+            select(CustomerIdentity.external_id).where(
+                CustomerIdentity.tenant_id == ctx.tenant_id,
+                CustomerIdentity.channel == integration.provider,
+            )
+        )
+    ).scalars()
+    local = {str(value) for value in rows if value}
+
+    async with httpx.AsyncClient(timeout=20.0) as http:
+        return await reconcile_page(
+            http,
+            page_id=page_id,
+            token=token,
+            local_thread_ids=local,
+            provider=integration.provider,
+        )
+
+
 @platform_router.get("/integrations/{integration_id}/reconnect-plan")
 async def reconnect_plan_route(
     integration_id: UUID,

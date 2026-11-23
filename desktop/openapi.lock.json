@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 655,
-    "sha256": "8107144c77548639368c7f8469db374c3ba062f105d7a3f72f41b0ee5ec26596",
+    "operations": 656,
+    "sha256": "90cbd5f29426002e07a0c47e43b5f574db5f5375798bd6a00706ab15ee9e192d",
     "typed_operations": 352
   },
   "spec": {
@@ -54466,6 +54466,112 @@
             }
           },
           "summary": "Disconnect Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/messenger-reconcile": {
+        "post": {
+          "description": "Compare FIHRIST's threads for a Page to what Meta still lists, within the provider's bounds.\n\nThe answer names what Meta has that we never stored, so a missed webhook becomes a list to\nimport instead of a silent gap. A capped or failed walk reports that it could not prove\nabsence, and a rate limit or outage comes back as an error with its reason.",
+          "operationId": "messenger_reconcile_api_v1_integrations__integration_id__messenger_reconcile_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Messenger Reconcile",
           "tags": [
             "platform"
           ]
