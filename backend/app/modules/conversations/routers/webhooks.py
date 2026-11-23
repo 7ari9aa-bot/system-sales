@@ -5,11 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import sys
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.errors import NotFoundError, PermissionDeniedError
@@ -26,6 +25,13 @@ from app.modules.platform.models import Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
 
+#: A channel that still RECEIVES deliveries keeps its transport health current whatever its
+#: connection state says. One waiting to be reconnected (`reauth_required`) or limited by Meta
+#: (`restricted`) still gets webhooks, and recording only active ones left exactly those looking
+#: as if nothing had ever arrived. A removed channel (`disconnected`, `disabled`) is absent on
+#: purpose.
+HEALTH_TRACKED_STATUSES = ("active", "connected", "reauth_required", "restricted")
+
 webhook_router = APIRouter(tags=["channels"])
 
 # Channels accepted on the generic webhook endpoint. Webchat is deliberately
@@ -33,15 +39,6 @@ webhook_router = APIRouter(tags=["channels"])
 # let anyone inject messages with a forged "public_key" body field. Webchat
 # traffic goes through public_router only (validated + rate-limited there).
 _WEBHOOK_CHANNELS = {"whatsapp", "telegram", "messenger", "instagram", "facebook"}
-
-
-def _get_adapter(channel: str):
-    """Resolve adapter with transparent support for monkeypatched router.get_adapter."""
-    cr = sys.modules.get("app.modules.conversations.router")
-    if cr and hasattr(cr, "get_adapter"):
-        fn = cr.get_adapter
-        return fn(channel)
-    return default_get_adapter(channel)
 
 
 async def _flag_untenanted(key: str, channel: str, details: dict | None = None) -> None:
@@ -59,7 +56,7 @@ async def _flag_untenanted(key: str, channel: str, details: dict | None = None) 
 async def verify_webhook(channel: str, request: Request):
     if channel not in _WEBHOOK_CHANNELS:
         raise NotFoundError(f"unknown channel: {channel}")
-    adapter = _get_adapter(channel)
+    adapter = default_get_adapter(channel)
     if adapter is None:
         raise NotFoundError(f"unknown channel: {channel}")
     challenge = adapter.verify_request(dict(request.query_params))
@@ -75,7 +72,7 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     """Signature → replay guard → persist raw → queue (§22) → fast ACK."""
     if channel not in _WEBHOOK_CHANNELS:
         raise NotFoundError(f"unknown channel: {channel}")
-    adapter = _get_adapter(channel)
+    adapter = default_get_adapter(channel)
     if adapter is None:
         raise NotFoundError(f"unknown channel: {channel}")
     raw = await request.body()
@@ -108,13 +105,19 @@ async def channel_webhook(channel: str, request: Request, session: DbSession):
     splitter = getattr(adapter, "split_by_account", None)
     parts = splitter(payload) if callable(splitter) else [payload]
     if len(parts) <= 1:
-        return await _ingest_one(session, channel, adapter, parts[0] if parts else payload, raw)
+        return await _ingest_one(
+            session, channel, adapter, parts[0] if parts else payload, _delivery_digest(raw)
+        )
 
     results = [
         await _ingest_one(
-            session, channel, adapter, part, json.dumps(part, sort_keys=True).encode()
+            session,
+            channel,
+            adapter,
+            part,
+            _batch_part_digest(raw, index, adapter.resolve_tenant_key(part)),
         )
-        for part in parts
+        for index, part in enumerate(parts)
     ]
     return {"ok": True, "queued": any(r.get("queued") for r in results), "accounts": len(parts)}
 
@@ -177,16 +180,20 @@ async def meta_page_webhook(request: Request, session: DbSession):
     for capability, envelopes in routed.items():
         if not envelopes:
             continue
-        adapter = _get_adapter(capability)
+        adapter = default_get_adapter(capability)
         if adapter is None:
             # Not registered in this deployment: ACK the part we cannot serve instead of 500ing
             # the whole delivery — the other capability's events in it are real.
             logger.warning("webhook.meta_page.no_adapter capability=%s", capability)
             continue
         capabilities.append(capability)
-        for envelope in envelopes:
-            body = json.dumps(envelope, sort_keys=True).encode()
-            results.append(await _ingest_one(session, capability, adapter, envelope, body))
+        for index, envelope in enumerate(envelopes):
+            # The Page delivery was signed ONCE, over the whole body; each capability's envelope
+            # is told apart by the capability and its position within it.
+            digest = _batch_part_digest(
+                raw, index, f"{capability}:{adapter.resolve_tenant_key(envelope)}"
+            )
+            results.append(await _ingest_one(session, capability, adapter, envelope, digest))
 
     return {
         "ok": True,
@@ -196,7 +203,60 @@ async def meta_page_webhook(request: Request, session: DbSession):
     }
 
 
-async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes) -> dict:
+async def _record_transport_health(session, tenant_id, channel: str) -> None:
+    """Stamp the channel's `webhook_health` with "a delivery just arrived".
+
+    This is transport health, not a claim that the event was processed: the durable
+    WebhookEvent/outbox path tracks processing independently. See HEALTH_TRACKED_STATUSES for
+    which channels are stamped.
+    """
+    integration = (
+        await session.execute(
+            select(Integration)
+            .where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == channel,
+                Integration.kind == "channel",
+                Integration.status.in_(HEALTH_TRACKED_STATUSES),
+            )
+            # Two rows for one provider can coexist (an old one awaiting reconnect and the new
+            # active one); the live connection is the one that owns the health.
+            .order_by(
+                case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                Integration.id,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        return
+    health = dict(integration.webhook_health or {})
+    health.update({"last_webhook_at": datetime.now(UTC).isoformat(), "consecutive_failures": 0})
+    health.pop("last_error", None)
+    integration.webhook_health = health
+
+
+def _delivery_digest(raw: bytes) -> str:
+    """The replay guard's identity for a single-account delivery: the bytes Meta signed."""
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _batch_part_digest(raw: bytes, index: int, account_key: object) -> str:
+    """The digest of ONE account's slice of a batched, signed delivery.
+
+    The digest is what the replay guard compares, so it has to be built from the only thing the
+    provider promises to repeat byte-for-byte: the signed body. It used to be
+    ``sha256(json.dumps(part, sort_keys=True))`` — a re-serialisation WE invented — which made the
+    audit row's ``external_event_id`` name our own JSON rather than the delivery, and let two
+    genuinely distinct deliveries that happen to serialise the same collapse into one (the second
+    acknowledged as a replay and silently dropped). Position and account tell the parts of ONE
+    delivery apart; the signed bytes keep the identity anchored to the provider.
+    """
+    material = b"\x00".join((raw, str(index).encode(), str(account_key or "").encode()))
+    return hashlib.sha256(material).hexdigest()
+
+
+async def _ingest_one(session, channel: str, adapter, payload: dict, digest: str) -> dict:
     """Tenant -> health -> replay guard -> durable row -> outbox, for one account's envelope."""
     tenant_key = adapter.resolve_tenant_key(payload)
     tenant_id = await IngestService.resolve_tenant(session, channel, tenant_key)
@@ -234,28 +294,7 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes)
     # silently never materialized.)
     await bind_tenant(session, tenant_id)
 
-    # This is transport health, not a claim that the event was processed. The
-    # durable WebhookEvent/outbox path below tracks processing independently.
-    integration = (
-        await session.execute(
-            select(Integration).where(
-                Integration.tenant_id == tenant_id,
-                Integration.provider == channel,
-                Integration.kind == "channel",
-                Integration.status.in_(("active", "connected")),
-            )
-        )
-    ).scalar_one_or_none()
-    if integration is not None:
-        health = dict(integration.webhook_health or {})
-        health.update(
-            {
-                "last_webhook_at": datetime.now(UTC).isoformat(),
-                "consecutive_failures": 0,
-            }
-        )
-        health.pop("last_error", None)
-        integration.webhook_health = health
+    await _record_transport_health(session, tenant_id, channel)
 
     # S10: durable ingress record + replay rejection. Both providers sign a
     # STATIC HMAC over the raw body — neither contract carries a timestamp or
@@ -264,7 +303,6 @@ async def _ingest_one(session, channel: str, adapter, payload: dict, raw: bytes)
     # (uq_webhook_events_provider_external) makes the second insert a no-op.
     # This is also the audit trail the WebhookEvent table was built for and
     # never had written to it.
-    digest = hashlib.sha256(raw).hexdigest()
     inserted = (
         await session.execute(
             pg_insert(WebhookEvent)

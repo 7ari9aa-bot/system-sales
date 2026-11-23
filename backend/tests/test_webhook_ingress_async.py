@@ -54,11 +54,13 @@ async def _call_route(
     """Drive the REAL route with the real WhatsApp payload shape; only the
     crypto signature and the SECURITY-DEFINER tenant lookup are stubbed."""
     import app.modules.conversations.router as cr
+    from app.modules.conversations.routers import webhooks as webhook_routes
 
     async def _resolve(_session, _adapter, _key):
         return tenant_id
 
-    monkeypatch.setattr(cr, "get_adapter", lambda _ch: whatsapp_adapter)
+    # The route looks its adapter up in its own module; patching a re-export elsewhere is ignored.
+    monkeypatch.setattr(webhook_routes, "default_get_adapter", lambda _ch: whatsapp_adapter)
     monkeypatch.setattr(whatsapp_adapter, "check_signature", lambda _h, _b: True)
     monkeypatch.setattr(IngestService, "resolve_tenant", _resolve)
     raw = json.dumps(payload).encode()

@@ -214,6 +214,11 @@ CATALOGUE: tuple[MetricDefinition, ...] = (
         type="counter",
     ),
     MetricDefinition(
+        name="http_requests_failed_total",
+        help_text="Requests that ended in an unhandled exception (the `request_failed` log line).",
+        type="counter",
+    ),
+    MetricDefinition(
         name="budget_fail_total",
         help_text="Budget reservation or limit exhaustion failures.",
         type="counter",

@@ -15,6 +15,7 @@ back on the settings page with an explicit marker — never a bare error page.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets as py_secrets
@@ -506,6 +507,35 @@ async def _take_page_choice(ticket: str) -> dict | None:
     The removal is the atomic part: of two requests that both passed their checks, only the one
     whose GETDEL finds the ticket may continue."""
     return _open_parked_choice(await get_redis().getdel(_page_choice_key(ticket)))
+
+
+#: The whole code-to-channel exchange, in seconds. It is up to six Graph calls one after another
+#: inside the browser's redirect, each allowed 8 s: a slow Meta kept the popup spinning for as long
+#: as 48 s with nothing said. A deadline turns that into an answer the owner can act on.
+OAUTH_EXCHANGE_BUDGET_SECONDS = 25.0
+
+
+async def _bounded_exchange(
+    session: AsyncSession,
+    code: str,
+    state_payload: dict,
+    *,
+    budget: float | None = None,
+) -> tuple[str, str]:
+    """`_meta_exchange_and_connect` under a total deadline.
+
+    Running out of time is reported as Meta being unavailable (retryable), the same answer the
+    caller already gives a Graph outage, because that is what it is from the owner's side.
+    """
+    limit = OAUTH_EXCHANGE_BUDGET_SECONDS if budget is None else budget
+    try:
+        async with asyncio.timeout(limit):
+            return await _meta_exchange_and_connect(session, code, state_payload)
+    except TimeoutError:
+        raise ExternalProviderError(
+            "Meta is taking too long to answer. Try connecting again in a minute.",
+            retryable=True,
+        ) from None
 
 
 async def _meta_exchange_and_connect(
@@ -1171,7 +1201,7 @@ async def meta_oauth_callback(
 
     try:
         await bind_tenant(session, uuid.UUID(str(payload["tenant_id"])))
-        connected_provider, page_name = await _meta_exchange_and_connect(session, code, payload)
+        connected_provider, page_name = await _bounded_exchange(session, code, payload)
     except PageChoiceRequired as choice:
         await session.rollback()
         return _back(

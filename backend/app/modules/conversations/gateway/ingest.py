@@ -13,7 +13,6 @@ owned by the webhook router.
 from __future__ import annotations
 
 import asyncio
-
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -276,9 +275,7 @@ class IngestService:
     # ------------------------------------------------- who the customer is --
 
     @staticmethod
-    def _enrich_profile_soon(
-        tenant_id: uuid.UUID, customer_id: uuid.UUID, channel: str
-    ) -> None:
+    def _enrich_profile_soon(tenant_id: uuid.UUID, customer_id: uuid.UUID, channel: str) -> None:
         """Learn a Meta customer's name and photo without making the webhook wait for Meta.
 
         Fire-and-forget by design: the caller is the ingest path, which owes Meta a fast 200.
@@ -317,8 +314,6 @@ class IngestService:
             asyncio.create_task(_run())
         except RuntimeError:  # no running loop (a sync test, a CLI replay): skip the courtesy
             logger.warning("ingest.profile_enrich_no_loop tenant=%s channel=%s", tenant_id, channel)
-
-    # ------------------------------------------------ §24 ingress lifecycle --
 
     @staticmethod
     async def process_webhook_event(
@@ -401,10 +396,15 @@ class IngestService:
                             await TemplateService.sync_from_meta(
                                 session, tenant_id, credentials=credentials
                             )
-                    except Exception:  # noqa: BLE001 - the sweep retries within 15 minutes
+                    except Exception as exc:  # noqa: BLE001 - the sweep retries within 15 minutes
                         logger.warning(
                             "webhook.template_resync_failed tenant=%s", tenant_id, exc_info=True
                         )
+                        await _record_template_resync(
+                            session, tenant_id, channel, error=type(exc).__name__
+                        )
+                    else:
+                        await _record_template_resync(session, tenant_id, channel, error=None)
             await session.execute(
                 sa_update(WebhookEvent)
                 .where(WebhookEvent.id == event_id)
@@ -675,3 +675,58 @@ class IngestService:
                 )
                 .values(status="read")
             )
+
+
+async def _record_template_resync(
+    session, tenant_id: uuid.UUID, channel: str, *, error: str | None
+) -> None:
+    """Leave a mark on the channel when its template copy could not be refreshed.
+
+    A failed resync used to be a log line and nothing else: the store's templates stayed at
+    whatever Meta last said and the only trace was a warning nobody reads, so an owner staring at
+    a template stuck on "pending" had nothing to look at. The mark rides `webhook_health`, which
+    `check_integrations` already reports, and only a resync that SUCCEEDS clears it — the next
+    unrelated delivery arriving is not evidence that templates are fresh.
+
+    Best-effort by contract: the messages above are the job, and a mark that cannot be written
+    must not turn a delivered message into a retried one.
+    """
+    try:
+        integration = (
+            await session.execute(
+                select(Integration)
+                .where(
+                    Integration.tenant_id == tenant_id,
+                    Integration.provider == channel,
+                    Integration.kind == "channel",
+                )
+                .order_by(
+                    case((Integration.status.in_(("active", "connected")), 0), else_=1),
+                    Integration.id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if integration is None:
+            return
+        health = dict(integration.webhook_health or {})
+        if error is None:
+            if "template_resync_error" not in health:
+                return
+            health.pop("template_resync_error", None)
+            health.pop("template_resync_failed_at", None)
+            health["template_resync_ok_at"] = datetime.now(UTC).isoformat()
+        else:
+            health["template_resync_error"] = error[:120]
+            health["template_resync_failed_at"] = datetime.now(UTC).isoformat()
+        integration.webhook_health = health
+        await session.flush()
+    except Exception:  # noqa: BLE001 - a mark is a courtesy, the ingested messages are the job
+        logger.warning(
+            "ingest.template_resync_mark_failed tenant=%s channel=%s",
+            tenant_id,
+            channel,
+            exc_info=True,
+        )
+
+    # ------------------------------------------------ §24 ingress lifecycle --

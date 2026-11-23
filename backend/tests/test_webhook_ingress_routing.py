@@ -284,8 +284,10 @@ async def test_one_meta_batch_is_split_and_queued_under_each_phone_tenant(
             "201000000002": other.id,
         }.get(phone_id)
 
-    adapter = cr.get_adapter("whatsapp")
-    monkeypatch.setattr(cr, "get_adapter", lambda _channel: adapter)
+    from app.modules.conversations.routers import webhooks as webhook_routes
+
+    adapter = webhook_routes.default_get_adapter("whatsapp")
+    monkeypatch.setattr(webhook_routes, "default_get_adapter", lambda _channel: adapter)
     monkeypatch.setattr(
         "app.modules.conversations.routers.webhooks.IngestService.resolve_tenant", _resolve
     )

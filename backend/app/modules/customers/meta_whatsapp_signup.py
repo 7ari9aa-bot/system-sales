@@ -491,6 +491,7 @@ async def whatsapp_signup_complete(
     from app.modules.customers.routers.integrations import (
         _activate_verified_channel,
         _verification_metadata,
+        audit_channel_connected,
     )
     from app.modules.platform.integration_verifier import verify_channel_credentials
     from app.modules.platform.models import Integration
@@ -597,6 +598,21 @@ async def whatsapp_signup_complete(
         raise ConflictError(
             "This WhatsApp number is already connected to another workspace."
         ) from None
+
+    # The manual connect writes this row; the one-click flow redirects the same webhook traffic
+    # and used to leave no trace. Shared helper so the two ways in cannot drift apart.
+    await audit_channel_connected(
+        session,
+        tenant_id,
+        ctx.user.id,
+        integration,
+        is_new=existing is None,
+        extra={
+            "via": "embedded_signup",
+            "phone_number_id": body.phone_number_id,
+            "waba_id": body.waba_id,
+        },
+    )
 
     logger.info(
         "whatsapp.embedded_signup_connected tenant=%s phone_number_id=%s waba=%s",

@@ -121,6 +121,20 @@ MAX_PHOTOS_PER_POST = 10
 REACTION_KINDS = ("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY")
 
 
+def _published_post_id(body: dict[str, Any]) -> str:
+    """The id Meta gave the new post, or a refusal.
+
+    ``str(body.get("post_id") or body.get("id"))`` turned an answer with neither key into the
+    text ``"None"``, which then looked like a post id: it was stored, shown, and later used to
+    comment on or delete a post that does not exist. A publish that returned no id has not been
+    shown to have worked, so it says so.
+    """
+    post_id = (body.get("post_id") or body.get("id")) if isinstance(body, dict) else None
+    if not post_id:
+        raise ExternalProviderError("facebook returned no id for the new post")
+    return str(post_id)
+
+
 class FacebookPagesClient:
     def __init__(self, *, api_version: str = INSTAGRAM_API_VERSION):
         self._base = f"https://graph.facebook.com/{api_version}"
@@ -256,7 +270,7 @@ class FacebookPagesClient:
         body = await self._graph(
             "POST", f"{page_id}/{edge}", credentials, data=data, _client=_client
         )
-        return str(body.get("post_id") or body.get("id"))
+        return _published_post_id(body)
 
     async def _publish_album(
         self, credentials, page_id: str, message, photos: list[str], schedule_at, _client
@@ -288,7 +302,7 @@ class FacebookPagesClient:
             data["published"] = "false"
             data["scheduled_publish_time"] = str(when)
         body = await self._graph("POST", f"{page_id}/feed", credentials, data=data, _client=_client)
-        return str(body.get("post_id") or body.get("id"))
+        return _published_post_id(body)
 
     async def update_post(
         self, credentials: ProviderCredentials, post_id: str, message: str, _client=None

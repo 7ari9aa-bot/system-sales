@@ -43,6 +43,21 @@ describe("Meta SDK event origins", () => {
     expect(isMetaSdkOrigin("not a URL")).toBe(false);
   });
 
+  it("accepts a signup message only from a Meta origin AND another window (W11)", async () => {
+    const { isMetaSignupMessage } = await import("./ChannelsSettings.jsx");
+    const popup = { name: "signup-popup" };
+    expect(isMetaSignupMessage({ origin: "https://www.facebook.com", source: popup })).toBe(true);
+    expect(isMetaSignupMessage({ origin: "https://business.facebook.com", source: popup })).toBe(true);
+    // the page talking to itself is not the popup
+    expect(isMetaSignupMessage({ origin: "https://www.facebook.com", source: window })).toBe(false);
+    // no source at all: cannot be a window the SDK opened
+    expect(isMetaSignupMessage({ origin: "https://www.facebook.com", source: null })).toBe(false);
+    // right window, wrong origin
+    expect(isMetaSignupMessage({ origin: "https://evil.test", source: popup })).toBe(false);
+    expect(isMetaSignupMessage({ origin: "https://evilfacebook.com", source: popup })).toBe(false);
+    expect(isMetaSignupMessage(null)).toBe(false);
+  });
+
   it("requires the same origin and the exact OAuth popup window", async () => {
     const { isMetaOAuthPopupMessage } = await import("./ChannelsSettings.jsx");
     const popup = {};

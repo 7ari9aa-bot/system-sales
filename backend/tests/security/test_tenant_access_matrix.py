@@ -136,6 +136,12 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         # provider webhook entrypoints (signature-verified inside the handler)
         "GET /api/v1/webhooks/{channel}",
         "POST /api/v1/webhooks/{channel}",
+        # The one callback for a Facebook Page's Messenger and Facebook events (meta_page_events):
+        # Meta posts it with no session, the X-Hub-Signature-256 HMAC under the app secret is the
+        # credential (fails closed without one) and the GET answers only the verify-token
+        # handshake. Covered by tests/test_meta_page_router.py.
+        "GET /api/v1/webhooks/meta/page",
+        "POST /api/v1/webhooks/meta/page",
         # ETA e-receipt authority callbacks (modules/einvoice/providers/eta/callbacks.py): the
         # authority calls with the per-till callback key (never a user token). The handler
         # resolves the store from the key's hash through a SECURITY DEFINER lookup, then binds

@@ -45,6 +45,7 @@ def test_other_channels_send_their_name_in_the_webhook(scheduled, channel):
 
 def test_a_missing_event_loop_is_not_an_ingest_failure(monkeypatch):
     """A CLI replay or a sync test has no loop: the courtesy is skipped, the message is not."""
+
     def _boom(coro):
         coro.close()
         raise RuntimeError("no running event loop")

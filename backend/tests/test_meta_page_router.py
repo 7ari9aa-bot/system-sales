@@ -399,10 +399,13 @@ async def test_post_splits_a_mixed_delivery_between_messenger_and_facebook(inges
     assert "changes" not in chat["entry"][0]
     assert page_news["entry"][0]["changes"][0]["field"] == "feed"
     assert "messaging" not in page_news["entry"][0]
-    # Each envelope's own bytes are what the replay guard digests — distinct per capability, so
-    # one delivery cannot dedupe the other half away.
-    assert json.loads(ingested[0]["raw"])["entry"][0].get("changes") is None
-    assert ingested[0]["raw"] != ingested[1]["raw"]
+    # The replay guard digests the bytes Meta signed plus the capability and position, so the two
+    # halves of ONE delivery stay distinct (neither dedupes the other away) while the identity is
+    # still anchored to the signed body rather than to JSON we re-serialised ourselves.
+    digests = [c["raw"] for c in ingested]
+    assert digests[0] != digests[1]
+    assert all(len(d) == 64 and int(d, 16) >= 0 for d in digests)
+    assert hashlib.sha256(raw).hexdigest() not in digests  # a part is never the whole delivery
 
 
 @pytest.mark.usefixtures("page_settings")

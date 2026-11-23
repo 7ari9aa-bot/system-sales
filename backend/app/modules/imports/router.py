@@ -166,9 +166,7 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
         raise ValidationError(f"عدد الملفات في المضغوط أكبر من {MAX_ENTRIES}")
 
     by_path = {info.filename: info for info in entries}
-    not_pictures = sorted(
-        name for name in by_path if not content_type_for(name)
-    )
+    not_pictures = sorted(name for name in by_path if not content_type_for(name))
 
     storage = get_storage()
     if not storage.configured:

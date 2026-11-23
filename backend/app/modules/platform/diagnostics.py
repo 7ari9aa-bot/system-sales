@@ -32,12 +32,60 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.redis import get_redis
-from app.modules.platform.models import Integration, OutboxEvent
+from app.modules.platform.models import Integration, OutboxEvent, WebhookEvent
 
 # Checks outside the platform module read sibling tables with parameter-bound
 # SQL, never their ORM models — a module-scope model import here re-merges the
 # cross-module cycle the boundary ratchet keeps split (see tests/
 # test_module_boundaries.py), and this engine only needs counts and names.
+
+
+#: Events that were received but never became a message: `failed` is retrying, `dead` gave up.
+UNPROCESSED_EVENT_STATUSES = ("failed", "dead")
+#: A channel failing this many deliveries in a row is reported (the badge goes degraded at one).
+CHANNEL_FAILURE_THRESHOLD = 3
+
+
+def channel_problems(
+    rows: list[tuple[str, str, dict | None]],
+    unprocessed: dict[str, int] | None = None,
+) -> list[dict]:
+    """One entry per channel that needs attention, with the reason in plain words.
+
+    A channel is listed when its connection is broken, when its deliveries keep failing, or when
+    messages the customer sent were received and then never turned into a message (a dead event is
+    a customer who was never answered, so it is not allowed to stay invisible).
+    """
+    unprocessed = unprocessed or {}
+    problems: list[dict] = []
+    for provider, status, health in rows:
+        health = health or {}
+        failures = health.get("consecutive_failures") or 0
+        failures = failures if isinstance(failures, int) and not isinstance(failures, bool) else 0
+        lost = int(unprocessed.get(provider, 0))
+        reasons: list[str] = []
+        if status in ("disconnected", "restricted", "reauth_required"):
+            reasons.append(f"حالة: {status}")
+        if failures >= CHANNEL_FAILURE_THRESHOLD:
+            reasons.append(f"إخفاقات متتالية: {failures}")
+        if lost > 0:
+            reasons.append(f"رسائل وصلت ولم تُعالَج: {lost}")
+        # A resync that failed means the template copy on screen is not what Meta holds: an owner
+        # approving a template has nothing else to look at, so it is reported until a resync works.
+        if health.get("template_resync_error"):
+            reasons.append(f"مزامنة القوالب فشلت: {str(health['template_resync_error'])[:60]}")
+        if reasons:
+            problems.append(
+                {
+                    "provider": provider,
+                    "status": status,
+                    "failures": failures,
+                    "unprocessed": lost,
+                    "reasons": reasons,
+                    "last_error": str(health.get("last_error") or "")[:200] or None,
+                }
+            )
+    return problems
 
 
 class SystemDiagnosticsService:
@@ -604,15 +652,21 @@ class SystemDiagnosticsService:
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
 
-            failing_list: list[str] = []
-            for provider, status, wh in rows:
-                health_dict = wh or {}
-                consecutive_fail = health_dict.get("consecutive_failures", 0)
-                if (
-                    status in ("disconnected", "restricted", "reauth_required")
-                    or consecutive_fail >= 3
-                ):
-                    failing_list.append(f"{provider} (حالة: {status}، إخفاقات: {consecutive_fail})")
+            # Received but never processed: a customer message that was lost on our side.
+            unprocessed_rows = (
+                await session.execute(
+                    select(WebhookEvent.provider, func.count())
+                    .where(
+                        WebhookEvent.tenant_id == tenant_id,
+                        WebhookEvent.processing_status.in_(UNPROCESSED_EVENT_STATUSES),
+                    )
+                    .group_by(WebhookEvent.provider)
+                )
+            ).all()
+            unprocessed = {provider: int(count) for provider, count in unprocessed_rows}
+
+            problems = channel_problems([(p, st, wh) for p, st, wh in rows], unprocessed)
+            failing_list = [f"{p['provider']} ({'، '.join(p['reasons'])})" for p in problems]
 
             if failing_list:
                 status_val = "degraded"
@@ -623,10 +677,17 @@ class SystemDiagnosticsService:
                 remediation = (
                     "توجه إلى الإعدادات -> التكاملات وقم بإعادة ربط القناة وتحديث الرموز السرية."
                 )
+                # `error` used to stay None while the status said degraded, so anything reading
+                # only `error` saw a healthy-looking row. Name the worst channel and its error.
+                worst = max(problems, key=lambda p: (p["unprocessed"], p["failures"]))
+                error = f"{worst['provider']}: {'; '.join(worst['reasons'])}"
+                if worst["last_error"]:
+                    error += f" ({worst['last_error']})"
             else:
                 status_val = "healthy"
                 root_cause = None
                 remediation = None
+                error = None
 
             return {
                 "id": "channels_integrations",
@@ -634,10 +695,14 @@ class SystemDiagnosticsService:
                 "name_ar": "قنوات المراسلة والتكاملات",
                 "name_en": "Channels & Integrations",
                 "status": status_val,
-                "error": None,
+                "error": error,
                 "root_cause": root_cause,
                 "remediation": remediation,
-                "metrics": {"total_integrations": len(rows), "failing_count": len(failing_list)},
+                "metrics": {
+                    "total_integrations": len(rows),
+                    "failing_count": len(failing_list),
+                    "unprocessed_events": sum(unprocessed.values()),
+                },
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         except Exception as exc:

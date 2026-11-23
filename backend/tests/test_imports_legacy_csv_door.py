@@ -110,17 +110,13 @@ async def test_both_doors_judge_a_file_the_same_way(db, tenant_ctx):
     from_old_door = await _verdicts(db, tenant_ctx, legacy.json()["session_id"])
 
     # The same bytes dropped in the Import Center itself.
-    async with AsyncClient(
-        transport=ASGITransport(app=_app(owner)), base_url="http://t"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=_app(owner)), base_url="http://t") as c:
         upload = await c.post(
             "/api/v1/imports/sessions?filename=products.csv", content=bad.encode()
         )
     assert upload.status_code == 201, upload.text
     center_id = upload.json()["id"]
-    async with AsyncClient(
-        transport=ASGITransport(app=_app(owner)), base_url="http://t"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=_app(owner)), base_url="http://t") as c:
         await c.post(f"/api/v1/imports/sessions/{center_id}/validate")
     from_center = await _verdicts(db, tenant_ctx, center_id)
 

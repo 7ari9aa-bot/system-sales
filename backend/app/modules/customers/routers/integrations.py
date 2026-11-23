@@ -271,6 +271,34 @@ async def list_integrations(ctx: SettingsReadCtx):
     return [_integration_output(i) for i in rows]
 
 
+async def audit_channel_connected(
+    session,
+    tenant_id,
+    actor_user_id,
+    integration,
+    *,
+    is_new: bool,
+    extra: dict | None = None,
+) -> None:
+    """Write the `integration.connected` audit row for a channel that now works.
+
+    Every way in (manual connect, WhatsApp Embedded Signup) redirects the same webhook traffic,
+    so every way in leaves this row. Identity metadata only: never a token, a code or a PIN.
+    """
+    after = {"provider": integration.provider, "status": integration.status, "is_new": is_new}
+    if extra:
+        after.update(extra)
+    await AuditService.write(
+        session,
+        tenant_id,
+        actor_user_id,
+        "integration.connected",
+        "integration",
+        str(integration.id),
+        after=after,
+    )
+
+
 @platform_router.post(
     "/integrations/connect",
     status_code=201,
