@@ -91,13 +91,19 @@ _HUMAN_INBOX_SUBSCRIBED_FIELDS = "message_echoes,messaging_handovers,message_edi
 _MESSENGER_SUBSCRIBED_FIELDS = (
     _BASE_SUBSCRIBED_FIELDS + ",message_reactions," + _HUMAN_INBOX_SUBSCRIBED_FIELDS
 )
+_FACEBOOK_SUBSCRIBED_FIELDS = "feed,mention"
 _SUBSCRIBED_FIELDS = {
     "messenger": _MESSENGER_SUBSCRIBED_FIELDS,
     "instagram": _BASE_SUBSCRIBED_FIELDS,
     # Facebook Page comments are delivered on the Page's `feed` field; without it a
     # connected Page only ever gets its Messenger traffic. `mention` is the Page tagged
     # in someone else's post or comment.
-    "facebook": _MESSENGER_SUBSCRIBED_FIELDS + ",feed,mention",
+    # Facebook Management is NOT Messenger: `feed` and `mention` need the management scopes and a
+    # MANAGE task, while `messages` and the rest need pages_messaging and MESSAGING. Asking for both
+    # on a Facebook-only link requested fields the grant could never deliver. Messenger's fields
+    # join the Page subscription only when a Messenger channel is actually connected on it, and
+    # `_subscribe_page_to_app` keeps what the Page already has, so linking both keeps both.
+    "facebook": _FACEBOOK_SUBSCRIBED_FIELDS,
 }
 
 
@@ -311,29 +317,30 @@ async def _subscribe_page_to_app(
 
         app_id = (get_settings().meta_app_id or "").strip()
     wanted = subscribed_fields(provider)
-    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its
-    # comments (`feed`) would lose them the moment Messenger is linked on it, with no error.
-    # So keep what is already there. Reading it is a courtesy: if it fails, the channel's own
-    # fields are still written, exactly as before.
+    # Meta REPLACES the list on every POST. A Page that Facebook already linked for its comments
+    # (`feed`) would lose them the moment Messenger is linked on it, with no error. So the existing
+    # fields are read first, and a read that FAILS is not "nothing there": writing then would
+    # replace a working subscription with a guess and silently cut the other channel's webhooks.
+    # One retry, then refuse the link with a clear, retryable error and write nothing.
     kept = await _existing_subscribed_fields(
         http, page_id=page_id, page_token=page_token, app_id=app_id
     )
     if kept is None:
-        # The read failed: we cannot know what this app already subscribed, so writing `wanted`
-        # alone could drop a field another capability added. One retry, then say so out loud
-        # instead of pretending the list was empty.
         kept = await _existing_subscribed_fields(
             http, page_id=page_id, page_token=page_token, app_id=app_id
         )
-        if kept is None:
-            _logger.warning(
-                "meta.subscription_read_failed page=%s app=%s provider=%s: writing the "
-                "channel's own fields only, existing ones cannot be confirmed",
-                page_id,
-                app_id,
-                provider,
-            )
-            kept = []
+    if kept is None:
+        _logger.warning(
+            "meta.subscription_read_failed page=%s app=%s provider=%s: not writing",
+            page_id,
+            app_id,
+            provider,
+        )
+        raise ExternalProviderError(
+            "Could not read this Page's current webhook subscription from Meta, so it was left "
+            "untouched. Try again in a moment.",
+            retryable=True,
+        )
     merged = list(dict.fromkeys([*wanted.split(","), *kept]))
     try:
         response = await http.post(
@@ -884,7 +891,12 @@ async def _connect_page(
 
     verified = await verify_channel_credentials(provider, credentials, config, client=http)
 
-    # A channel that cannot receive provider webhooks is not connected.
+    # A channel that cannot receive provider webhooks is not connected. The per-Page lock is held
+    # until this link's transaction ends, so a second instance linking the other capability on the
+    # same Page waits instead of racing the read-merge-write below.
+    from app.modules.customers.meta_linking import lock_page_subscription
+
+    await lock_page_subscription(session, str(page["id"]))
     try:
         await _subscribe_page_to_app(
             http,

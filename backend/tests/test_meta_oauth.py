@@ -151,19 +151,35 @@ def _graph_handler(
     return handler
 
 
-async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"success": True}))
-    ) as client:
-        await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
+def _subscribed_apps_handler(post, *, existing=None, read_ok=True):
+    """A Graph double for ``/{page}/subscribed_apps``: GET lists what is there, POST replaces it."""
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            if not read_ok:
+                return httpx.Response(500, json={"error": {"message": "boom"}})
+            data = [{"id": "app-1", "subscribed_fields": list(existing)}] if existing else []
+            return httpx.Response(200, json={"data": data})
+        return post(request)
+
+    return handler
+
+
+async def test_page_webhook_subscription_must_be_explicitly_accepted() -> None:
+    ok = _subscribed_apps_handler(lambda request: httpx.Response(200, json={"success": True}))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as client:
+        await meta_oauth._subscribe_page_to_app(
+            client, page_id=PAGE_ID, page_token=PAGE_TOKEN, app_id="app-1"
         )
-    ) as client:
+
+    denied = _subscribed_apps_handler(
+        lambda request: httpx.Response(200, json={"error": {"message": "denied"}})
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(denied)) as client:
         with pytest.raises(ExternalProviderError, match="webhook subscription"):
-            await meta_oauth._subscribe_page_to_app(client, page_id=PAGE_ID, page_token=PAGE_TOKEN)
+            await meta_oauth._subscribe_page_to_app(
+                client, page_id=PAGE_ID, page_token=PAGE_TOKEN, app_id="app-1"
+            )
 
 
 def _patch_graph(monkeypatch, handler) -> list[str]:
@@ -749,11 +765,74 @@ async def test_the_subscription_asks_for_the_channels_own_fields(provider, field
 
     seen: dict[str, str] = {}
 
-    def ok(request: httpx.Request) -> httpx.Response:
+    def post(request: httpx.Request) -> httpx.Response:
         seen.update(dict(request.url.params))
         return httpx.Response(200, json={"success": True})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(ok)) as http:
-        await _subscribe_page_to_app(http, page_id="1", page_token="tok", provider=provider)
+    handler = _subscribed_apps_handler(post)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider=provider, app_id="app-1"
+        )
     assert field in seen["subscribed_fields"].split(",")
     assert seen["access_token"] == "tok"
+
+
+async def test_a_subscription_that_cannot_be_read_is_never_overwritten() -> None:
+    """The read failing is not "nothing subscribed": writing then would replace a working
+    subscription (another channel's fields) with a guess, silently cutting its webhooks."""
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+
+    posts: list[httpx.Request] = []
+
+    def post(request: httpx.Request) -> httpx.Response:
+        posts.append(request)
+        return httpx.Response(200, json={"success": True})
+
+    handler = _subscribed_apps_handler(post, read_ok=False)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        with pytest.raises(ExternalProviderError, match="left untouched") as raised:
+            await _subscribe_page_to_app(
+                http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+            )
+    assert raised.value.retryable is True
+    assert posts == []
+
+
+async def test_linking_a_second_capability_keeps_the_first_ones_fields() -> None:
+    """Messenger already on the Page, then Facebook linked: the POST must still carry Messenger's
+    fields, or linking Facebook would cut Messenger's webhooks."""
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app, subscribed_fields
+
+    sent: dict[str, str] = {}
+
+    def post(request: httpx.Request) -> httpx.Response:
+        sent.update(dict(request.url.params))
+        return httpx.Response(200, json={"success": True})
+
+    messenger = subscribed_fields("messenger").split(",")
+    handler = _subscribed_apps_handler(post, existing=messenger)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+        )
+    written = set(sent["subscribed_fields"].split(","))
+    assert set(messenger) <= written
+    assert {"feed", "mention"} <= written
+
+
+async def test_a_facebook_only_link_asks_for_no_messenger_fields() -> None:
+    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+
+    sent: dict[str, str] = {}
+
+    def post(request: httpx.Request) -> httpx.Response:
+        sent.update(dict(request.url.params))
+        return httpx.Response(200, json={"success": True})
+
+    handler = _subscribed_apps_handler(post)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        await _subscribe_page_to_app(
+            http, page_id="1", page_token="tok", provider="facebook", app_id="app-1"
+        )
+    assert set(sent["subscribed_fields"].split(",")) == {"feed", "mention"}

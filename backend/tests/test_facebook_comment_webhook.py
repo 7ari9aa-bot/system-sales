@@ -32,15 +32,16 @@ COMMENT = {
 
 def test_a_facebook_page_subscribes_to_its_feed_and_messenger_does_not() -> None:
     assert "feed" in subscribed_fields("facebook").split(",")
-    assert "messages" in subscribed_fields("facebook").split(",")
+    # Facebook Management never asks for Messenger's fields; they join when Messenger is linked.
+    assert "messages" not in subscribed_fields("facebook").split(",")
     assert "feed" not in subscribed_fields("messenger").split(",")
 
 
-def test_messenger_and_facebook_pages_subscribe_to_reactions_but_instagram_does_not() -> None:
+def test_only_messenger_subscribes_to_reactions_on_a_page() -> None:
     """A customer's reaction to a Messenger message is a `message_reactions` Page field. Without
     it the adapter's reaction parser never sees an event."""
     assert "message_reactions" in subscribed_fields("messenger").split(",")
-    assert "message_reactions" in subscribed_fields("facebook").split(",")
+    assert "message_reactions" not in subscribed_fields("facebook").split(",")
     assert "message_reactions" not in subscribed_fields("instagram").split(",")
 
 

@@ -177,6 +177,26 @@ def subscription_lock(page_id: str) -> asyncio.Lock:
     return lock
 
 
+async def lock_page_subscription(session: Any, page_id: str) -> None:
+    """Serialise subscription changes for one Page across EVERY API instance.
+
+    ``subscription_lock`` only orders requests inside one process; two instances behind a load
+    balancer would still read, merge and write at the same time and the later POST would win. A
+    Postgres transaction-level advisory lock is shared by all of them and is released by the commit
+    or rollback that ends the link, so it can never be left held. A non-Postgres session (unit
+    tests) has nothing to lock and is skipped.
+    """
+    from sqlalchemy import text
+
+    bind = session.get_bind() if hasattr(session, "get_bind") else None
+    if getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+        return
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"meta_page_subscription:{page_id}"},
+    )
+
+
 class PageSubscriptionManager:
     """One owner for a Page's webhook subscription: compute, merge, never shrink by accident.
 
