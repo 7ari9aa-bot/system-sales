@@ -300,6 +300,15 @@ class Settings(BaseSettings):
     # keyed every user to the inner proxy's edge IP and mass-throttled them.
     trusted_proxy_count: int = 1
 
+    # Operator alerts (M6): where "something is broken" is pushed. Empty = off, nothing is sent and
+    # nothing is probed. Any chat tool that accepts a JSON POST works (Slack and Discord incoming
+    # webhooks, a Telegram relay, an ntfy or Mattermost URL): the body carries both `text` and
+    # `content`. The URL is a credential, so it is never logged. The cooldown keeps a flapping
+    # failure to ONE message per window; the hourly cap bounds the worst case across all of them.
+    ops_alert_webhook_url: str = ""
+    ops_alert_cooldown_seconds: int = 900
+    ops_alert_max_per_hour: int = 20
+
     # Internal service credential used by trusted metrics scrapers.
     service_token_internal: str = "change-me-too"
 

@@ -407,6 +407,17 @@ def _exception_handlers(app: FastAPI) -> None:
             request_id=request_id,
             exc_info=exc,
         )
+        # M6: tell the operator, in the background. The route TEMPLATE (never the URL, which can
+        # carry ids) and the exception class name are all that leave the process.
+        from app.core.ops_alerts import fire_and_forget
+
+        route = getattr(request.scope.get("route"), "path", None) or "unmatched"
+        fire_and_forget(
+            "unhandled 500",
+            f"{request.method} {route}",
+            detail=exc.__class__.__name__,
+            request_id=request_id or "",
+        )
         body = build_error_envelope(
             "internal_error",
             "Internal server error",

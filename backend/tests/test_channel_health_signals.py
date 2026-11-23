@@ -95,7 +95,7 @@ class _Session:
 
 
 def _row():
-    return SimpleNamespace(provider="messenger", tenant_id=uuid.uuid4())
+    return SimpleNamespace(provider="messenger", tenant_id=uuid.uuid4(), processing_status="failed")
 
 
 async def _fail(integration, row, exc, monkeypatch):

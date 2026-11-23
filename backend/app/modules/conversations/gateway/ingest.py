@@ -469,13 +469,23 @@ class IngestService:
 
             row = (
                 await session.execute(
-                    select(WebhookEvent.provider, WebhookEvent.tenant_id).where(
-                        WebhookEvent.id == event_id
-                    )
+                    select(
+                        WebhookEvent.provider,
+                        WebhookEvent.tenant_id,
+                        WebhookEvent.processing_status,
+                    ).where(WebhookEvent.id == event_id)
                 )
             ).first()
             if row is None or row.tenant_id is None:
                 return
+            if getattr(row, "processing_status", None) == "dead":
+                # M6: the failure that spent the retry budget is a customer message that will
+                # never be answered. The operator hears about it now, not from the customer.
+                from app.core.ops_alerts import fire_and_forget
+
+                fire_and_forget(
+                    "webhook dead-lettered", str(row.provider), detail=type(exc).__name__
+                )
             integration = (
                 await session.execute(
                     select(Integration).where(

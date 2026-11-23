@@ -6,7 +6,7 @@ Reviewed at commit `c0617b1e`. Status column: `fixed`, `open`, `retracted`.
 
 **Closing pass (branch `feat/meta-audit-close`).** Every row was re-checked against the code. Many were
 already fixed on `main` and the table had not caught up; those are marked with the mechanism that fixes
-them. One row remains open on purpose: **M6** needs the owner's choice of an error and alert service. **M19** is now built: Meta's `account_update` restrictions (`ACCOUNT_RESTRICTION`, `DISABLED_UPDATE`, `ACCOUNT_VIOLATION`) move a live WhatsApp channel to `restricted` with Meta's reason, and `phone_number_quality_update` limit changes are recorded. **W11** is fixed in
+them. Every row is now closed or justified. **M6** is built as a vendor-neutral operator alert (`OPS_ALERT_WEBHOOK_URL`, off when unset) instead of a hosted error service, which would need an account and a DSN only the owner can create. **M19** is built: Meta's `account_update` restrictions move a live WhatsApp channel to `restricted` with Meta's reason, and `phone_number_quality_update` limit changes are recorded. **W11** is fixed in
 part, for the reason given in its row. Tests that need a database (`DATABASE_URL_APP_ADMIN`) skip locally and
 are confirmed only by CI.
 
@@ -66,7 +66,7 @@ are confirmed only by CI.
 | M3 | High | `webhooks.py:56` | A failed verify handshake was refused silently. | fixed |
 | M4 | High | `webhooks.py:120` | An unknown account got one `info` line and a 200. | fixed (counted + row) |
 | M5 | High | `observability.py:81-92` | Most logs (stdlib) skip structlog: raw text, no JSON, level, timestamp or request id. | fixed (stdlib log lines are JSON with level, time, logger and request id; the redaction filter still runs first) |
-| M6 | High | repo-wide | No error aggregation (no Sentry) and no alert channel. | open (needs the owner's decision on an error and alert service; not built here) |
+| M6 | High | repo-wide | No error aggregation (no Sentry) and no alert channel. | fixed (`app/core/ops_alerts.py`: an unhandled 500 and a webhook that spends its retry budget push one message to `OPS_ALERT_WEBHOOK_URL` (Slack, Discord, Mattermost, ntfy or a Telegram relay). Off when unset. Deduplicated per failure per cooldown across workers through Redis, capped per hour with an in-process fallback, redacted and clipped, SSRF-guarded, sent in the background with a 3 s timeout, never raises. The message carries the route template, exception class and request id, never a URL, payload or token. 17 tests, the two hook tests fail without the wiring. A hosted aggregator such as Sentry stays possible later; it would need the owner's account and DSN) |
 | M7 | High | `diagnostics.py:49-73` | No check on `webhook_events` in `failed`/`dead`; a dead inbound message is invisible. | fixed (`check_integrations` counts failed and dead `webhook_events` per provider) |
 | M8 | High | `health.py:64-77` | `last_webhook_at` is never compared with now: "never arrived" and "stopped" both read healthy. | fixed (a 24 h staleness check and a 1 h never-arrived check in `health.py`) |
 | M9 | Medium | `webhooks.py:138` | `last_webhook_at` is only written for `active`/`connected`. | fixed (transport health is stamped for active, connected, reauth_required and restricted) |
