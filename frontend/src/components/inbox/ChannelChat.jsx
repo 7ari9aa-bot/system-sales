@@ -425,7 +425,7 @@ export default function ChannelChat({
           type="button"
           onClick={() => setContactDrawerOpen(true)}
           title={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
-          aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : undefined}
+          aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
           className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors", isInstagram ? "text-[#0c1014] hover:opacity-60" : "hover:bg-black/5 text-muted-foreground")}
         >
           {isInstagram ? <IgInfo /> : <MoreVertical className="h-[18px] w-[18px]" />}
@@ -519,7 +519,7 @@ export default function ChannelChat({
           </div>
         )}
         {isMessenger && !loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
-          <div data-testid="messenger-empty" className="flex flex-col items-center gap-2 py-12">
+          <div data-testid="messenger-empty" role="status" className="flex flex-col items-center gap-2 py-12">
             <ConversationAvatar conversation={conversation} className="h-[60px] w-[60px] text-[20px]" />
             <div dir="auto" className="text-[17px] font-bold text-[#050505]">{conversation.customer || conversation.name}</div>
           </div>

@@ -236,4 +236,14 @@ describe("ChannelChat on Messenger", () => {
     expect(html).not.toContain("نشط الآن");
     expect(html).not.toContain("Active now");
   });
+
+  test("the details button is named for screen readers on Messenger", () => {
+    const html = render([msg("m1", { text: "a" })]);
+    expect(html).toMatch(/<button[^>]*aria-label="خيارات المحادثة والملف الشخصي"/);
+  });
+
+  test("an empty thread is announced as a status", () => {
+    const html = render([]);
+    expect(html).toMatch(/role="status"[^>]*data-testid="messenger-empty"|data-testid="messenger-empty"[^>]*role="status"/);
+  });
 });
