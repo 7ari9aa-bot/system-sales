@@ -22,6 +22,7 @@ from typing import Any
 
 import httpx
 
+from app.modules.customers import capability_states
 from app.modules.customers.meta_oauth import _GRAPH, subscribed_fields
 from app.modules.customers.meta_scopes import (
     FACEBOOK_PAGE_SCOPES,
@@ -231,6 +232,8 @@ def build_report(
     """
     now = now or datetime.now(UTC)
     health = webhook_health if isinstance(webhook_health, dict) else {}
+    seen_map = health.get("seen_fields")
+    seen_map = seen_map if isinstance(seen_map, dict) else {}
     obj, path = WEBHOOK_OBJECT.get(provider, ("", ""))
     callback = f"{api_base_url.rstrip('/')}{path}" if api_base_url and path else path or None
     checks: list[dict[str, Any]] = []
@@ -443,11 +446,41 @@ def build_report(
                 )
             )
 
+    # 7. One state per capability, so a screen never shows a dead button without a reason and
+    #    never calls the whole channel healthy because one event arrived.
+    live = permissions if isinstance(permissions, dict) else None
+    if live and live.get("state") == OK:
+        granted: set[str] | None = set(live.get("granted") or [])
+    elif recorded_scopes is not None:
+        granted = set(recorded_scopes)
+    else:
+        granted = None
+    sub_fields: set[str] | None
+    sub_known = True
+    if isinstance(subscription, dict):
+        if subscription.get("state") == OK:
+            sub_fields = set(subscription.get("fields") or [])
+        elif subscription.get("state") == "missing":
+            sub_fields = set()
+        else:
+            sub_fields, sub_known = None, False
+    else:
+        sub_fields, sub_known = None, False
+    capabilities = capability_states.evaluate(
+        provider,
+        connected=connected,
+        granted_scopes=granted,
+        subscription_fields=sub_fields,
+        seen_fields=set(seen_map),
+        subscription_known=sub_known,
+    )
+
     order = {ERROR: 3, WARNING: 2, UNKNOWN: 1, OK: 0}
     worst = max((c["status"] for c in checks), key=lambda s: order[s], default=OK)
     return {
         "provider": provider,
         "state": worst,
+        "capabilities": capabilities,
         "webhook_object": obj or None,
         "callback_url": callback,
         "last_webhook_at": health.get("last_webhook_at"),
