@@ -12,7 +12,15 @@ is surfaced as is):
 * the body is at most 1024 characters, a header text at most 60, a footer at most 60;
 * variables are positional `{{1}}`, `{{2}}`... with no gap, and a body may not start or end
   with one (Meta refuses it);
-* a template carries at most 10 buttons: up to 10 quick replies, 2 URL, 1 phone number.
+* a template carries at most 10 buttons: up to 10 quick replies, 2 URL, 1 phone number,
+  1 copy-code, 1 voice call, and a catalog button only in a MARKETING template.
+
+The richer component shapes follow Meta's own reference pages, not memory:
+`templates/components` (media and location headers, copy-code and voice-call buttons),
+`templates/marketing-templates/media-card-carousel-templates` (2 to 10 cards),
+`templates/marketing-templates/limited-time-offer-templates` (MARKETING only, no footer),
+`templates/authentication-templates/authentication-templates` (OTP body, footer and button),
+`catalogs/catalog-template-messages` (the catalog button).
 """
 
 from __future__ import annotations
@@ -50,6 +58,17 @@ MAX_BUTTONS = 10
 MAX_QUICK_REPLIES = 10
 MAX_URL_BUTTONS = 2
 MAX_PHONE_BUTTONS = 1
+MAX_COPY_CODE_BUTTONS = 1
+MAX_VOICE_CALL_BUTTONS = 1
+MAX_CATALOG_BUTTONS = 1
+COPY_CODE_EXAMPLE_MAX = 20
+CAROUSEL_MIN_CARDS = 2
+CAROUSEL_MAX_CARDS = 10
+CAROUSEL_MAX_BUTTONS = 2
+HEADER_MEDIA_FORMATS = frozenset({"IMAGE", "VIDEO", "GIF", "DOCUMENT"})
+OTP_TYPES = frozenset({"COPY_CODE", "ONE_TAP", "ZERO_TAP"})
+CODE_EXPIRATION_MIN_MINUTES = 1
+CODE_EXPIRATION_MAX_MINUTES = 90
 
 _NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
 _VAR_RE = re.compile(r"\{\{\s*(\d+)\s*\}\}")
@@ -76,22 +95,160 @@ def check_positional(text: str, *, where: str) -> int:
     return len(expected)
 
 
+def _media_header(spec: dict) -> dict:
+    """A media header: the asset is uploaded first, and only its handle travels here."""
+    fmt = str(spec.get("format") or "").upper()
+    if fmt not in HEADER_MEDIA_FORMATS:
+        raise ValidationError(
+            "a media header format is IMAGE, VIDEO, GIF or DOCUMENT"
+        )
+    handle = str(spec.get("handle") or "").strip()
+    if not handle:
+        raise ValidationError("a media header needs an uploaded asset handle")
+    return {"type": "HEADER", "format": fmt, "example": {"header_handle": [handle]}}
+
+
+def _carousel(cards: list[dict], *, category: str | None) -> dict:
+    """A media card carousel: 2 to 10 cards, each with its own header and at most 2 buttons.
+
+    Meta's own rule, quoted: if any card carries a body text, every card must carry one, so the
+    cards stay the same height. It is refused here instead of being sent and rejected later.
+    """
+    if category and category != "MARKETING":
+        raise ValidationError("a carousel is only available in a MARKETING template")
+    if not isinstance(cards, list) or not (CAROUSEL_MIN_CARDS <= len(cards) <= CAROUSEL_MAX_CARDS):
+        raise ValidationError(
+            f"a carousel carries {CAROUSEL_MIN_CARDS} to {CAROUSEL_MAX_CARDS} cards"
+        )
+    out: list[dict] = []
+    with_body = 0
+    for index, card in enumerate(cards, start=1):
+        if not isinstance(card, dict):
+            raise ValidationError(f"carousel card {index} must be an object")
+        media = card.get("header_media")
+        if not isinstance(media, dict):
+            raise ValidationError(f"carousel card {index} needs a header_media")
+        components: list[dict] = [_media_header(media)]
+        body = (card.get("body") or "").strip()
+        if body:
+            with_body += 1
+            if len(body) > BODY_MAX:
+                raise ValidationError(f"carousel card {index} body is at most {BODY_MAX} characters")
+            count = check_positional(body, where=f"carousel card {index} body")
+            item: dict[str, Any] = {"type": "BODY", "text": body}
+            if count:
+                examples = list(card.get("body_examples") or [])
+                if len(examples) < count:
+                    raise ValidationError(
+                        f"give {count} example value(s) for carousel card {index}"
+                    )
+                item["example"] = {"body_text": [examples[:count]]}
+            components.append(item)
+        buttons = list(card.get("buttons") or [])
+        if buttons:
+            if len(buttons) > CAROUSEL_MAX_BUTTONS:
+                raise ValidationError(
+                    f"carousel card {index} carries at most {CAROUSEL_MAX_BUTTONS} buttons"
+                )
+            components.append({"type": "BUTTONS", "buttons": _check_buttons(buttons)})
+        out.append({"components": components})
+    if with_body and with_body != len(out):
+        raise ValidationError(
+            "if one carousel card has a body text, every card must have one"
+        )
+    return {"type": "CAROUSEL", "cards": out}
+
+
+def _limited_time_offer(spec: dict, *, category: str | None, has_footer: bool) -> dict:
+    """A running countdown for an offer code. MARKETING only, and Meta allows no footer."""
+    if category and category != "MARKETING":
+        raise ValidationError("a limited-time offer is only available in a MARKETING template")
+    if has_footer:
+        raise ValidationError("a limited-time offer template cannot carry a footer")
+    text = str(spec.get("text") or "").strip()
+    if not text:
+        raise ValidationError("a limited-time offer needs its text")
+    has_expiration = spec.get("has_expiration")
+    if not isinstance(has_expiration, bool):
+        raise ValidationError("say whether the offer has an expiration (has_expiration)")
+    return {
+        "type": "LIMITED_TIME_OFFER",
+        "limited_time_offer": {"text": text, "has_expiration": has_expiration},
+    }
+
+
+def _authentication(spec: dict, *, category: str | None) -> tuple[dict, dict | None, dict]:
+    """An authentication (OTP) template: Meta writes the body, so we only choose its options."""
+    if category and category != "AUTHENTICATION":
+        raise ValidationError("an OTP template must be categorized AUTHENTICATION")
+    add_security = spec.get("add_security_recommendation", True)
+    if not isinstance(add_security, bool):
+        raise ValidationError("add_security_recommendation is true or false")
+    body: dict[str, Any] = {"type": "BODY", "add_security_recommendation": add_security}
+    footer: dict[str, Any] | None = None
+    minutes = spec.get("code_expiration_minutes")
+    if minutes is not None:
+        if not isinstance(minutes, int) or not (
+            CODE_EXPIRATION_MIN_MINUTES <= minutes <= CODE_EXPIRATION_MAX_MINUTES
+        ):
+            raise ValidationError(
+                "code_expiration_minutes is a whole number of minutes from "
+                f"{CODE_EXPIRATION_MIN_MINUTES} to {CODE_EXPIRATION_MAX_MINUTES}"
+            )
+        footer = {"type": "FOOTER", "code_expiration_minutes": minutes}
+    otp_type = str(spec.get("otp_type") or "COPY_CODE").upper()
+    if otp_type not in OTP_TYPES:
+        raise ValidationError("otp_type is COPY_CODE, ONE_TAP or ZERO_TAP")
+    buttons: dict[str, Any] = {"type": "BUTTONS", "buttons": [{"type": "OTP", "otp_type": otp_type}]}
+    return body, footer, buttons
+
+
 def build_components(
     *,
-    body: str,
+    body: str | None = None,
     header_text: str | None = None,
     footer: str | None = None,
     buttons: list[dict] | None = None,
     body_examples: list[str] | None = None,
     header_examples: list[str] | None = None,
+    category: str | None = None,
+    header_media: dict | None = None,
+    header_location: bool = False,
+    carousel: list[dict] | None = None,
+    limited_time_offer: dict | None = None,
+    authentication: dict | None = None,
 ) -> list[dict]:
-    """The `components` array Meta wants, validated against its limits."""
-    if not (body or "").strip():
+    """The `components` array Meta wants, validated against its limits.
+
+    Every argument is optional except that a template needs *something* Meta can show: a body,
+    an OTP body, or a carousel. Passing a `category` turns on that category's own rules (an OTP
+    body belongs to AUTHENTICATION, an offer or a carousel to MARKETING).
+    """
+    category = (category or "").upper() or None
+    if category and category not in CATEGORIES:
+        raise ValidationError("category is UTILITY, MARKETING or AUTHENTICATION")
+    if authentication is not None and (body or "").strip():
+        raise ValidationError(
+            "an OTP template's body is written by Meta: give the authentication options, not a body"
+        )
+    if not (body or "").strip() and authentication is None and not carousel:
         raise ValidationError("template body is required")
-    if len(body) > BODY_MAX:
-        raise ValidationError(f"body is at most {BODY_MAX} characters")
-    count = check_positional(body, where="body")
+    headers = sum(1 for present in (bool(header_text), bool(header_media), bool(header_location)) if present)
+    if headers > 1:
+        raise ValidationError("a template carries one header: text, media or location")
+
     components: list[dict] = []
+    body_component: dict[str, Any] | None = None
+
+    if (body or "").strip():
+        if len(body) > BODY_MAX:
+            raise ValidationError(f"body is at most {BODY_MAX} characters")
+        count = check_positional(body, where="body")
+        body_component = {"type": "BODY", "text": body}
+        if count:
+            if not body_examples or len(body_examples) < count:
+                raise ValidationError(f"give {count} example value(s) for the body variables")
+            body_component["example"] = {"body_text": [body_examples[:count]]}
 
     if header_text:
         if len(header_text) > HEADER_MAX:
@@ -105,13 +262,37 @@ def build_components(
                 raise ValidationError("a header variable needs an example value")
             header["example"] = {"header_text": header_examples[:1]}
         components.append(header)
+    elif header_media:
+        components.append(_media_header(header_media))
+    elif header_location:
+        if category and category not in {"UTILITY", "MARKETING"}:
+            raise ValidationError("a location header is only in a UTILITY or MARKETING template")
+        components.append({"type": "HEADER", "format": "LOCATION"})
 
-    body_component: dict[str, Any] = {"type": "BODY", "text": body}
-    if count:
-        if not body_examples or len(body_examples) < count:
-            raise ValidationError(f"give {count} example value(s) for the body variables")
-        body_component["example"] = {"body_text": [body_examples[:count]]}
-    components.append(body_component)
+    if authentication is not None:
+        auth_body, auth_footer, auth_buttons = _authentication(authentication, category=category)
+        components.append(auth_body)
+        if auth_footer:
+            components.append(auth_footer)
+        if footer:
+            raise ValidationError("an OTP template's footer is Meta's expiry line, not free text")
+        if buttons:
+            raise ValidationError("an OTP template's button is Meta's own OTP button")
+        components.append(auth_buttons)
+        return components
+
+    if body_component:
+        components.append(body_component)
+
+    if limited_time_offer is not None:
+        components.append(
+            _limited_time_offer(limited_time_offer, category=category, has_footer=bool(footer))
+        )
+
+    if carousel is not None:
+        if footer:
+            raise ValidationError("a carousel template carries no footer")
+        components.append(_carousel(carousel, category=category))
 
     if footer:
         if len(footer) > FOOTER_MAX:
@@ -121,20 +302,35 @@ def build_components(
         components.append({"type": "FOOTER", "text": footer})
 
     if buttons:
-        components.append({"type": "BUTTONS", "buttons": _check_buttons(buttons)})
+        components.append({"type": "BUTTONS", "buttons": _check_buttons(buttons, category=category)})
     return components
 
 
-def _check_buttons(buttons: list[dict]) -> list[dict]:
+def _check_buttons(buttons: list[dict], *, category: str | None = None) -> list[dict]:
+    """Meta's button rules: 10 in total, with its own cap on each kind."""
     if len(buttons) > MAX_BUTTONS:
         raise ValidationError(f"a template has at most {MAX_BUTTONS} buttons")
     out: list[dict] = []
-    kinds = {"QUICK_REPLY": 0, "URL": 0, "PHONE_NUMBER": 0}
+    kinds = {"QUICK_REPLY": 0, "URL": 0, "PHONE_NUMBER": 0, "COPY_CODE": 0, "VOICE_CALL": 0, "CATALOG": 0}
     for button in buttons:
         kind = str(button.get("type") or "").upper()
         if kind not in kinds:
-            raise ValidationError("a button is QUICK_REPLY, URL or PHONE_NUMBER")
+            raise ValidationError(
+                "a button is QUICK_REPLY, URL, PHONE_NUMBER, COPY_CODE, VOICE_CALL or CATALOG"
+            )
         text = str(button.get("text") or "").strip()
+        if kind == "COPY_CODE":
+            # Meta's copy-code button has no label: it copies the example string to the clipboard.
+            example = str(button.get("example") or "").strip()
+            if not example:
+                raise ValidationError("a copy-code button needs the code it copies (example)")
+            if len(example) > COPY_CODE_EXAMPLE_MAX:
+                raise ValidationError(
+                    f"a copy-code example is at most {COPY_CODE_EXAMPLE_MAX} characters"
+                )
+            kinds[kind] += 1
+            out.append({"type": "COPY_CODE", "example": example})
+            continue
         if not text or len(text) > BUTTON_TEXT_MAX:
             raise ValidationError(f"a button label is 1 to {BUTTON_TEXT_MAX} characters")
         kinds[kind] += 1
@@ -153,6 +349,10 @@ def _check_buttons(buttons: list[dict]) -> list[dict]:
             if not re.fullmatch(r"\+?[0-9]{7,15}", phone):
                 raise ValidationError("a phone button needs digits, optionally starting with +")
             item["phone_number"] = phone
+        if kind == "CATALOG":
+            # Meta shows the shop's own catalog; the label is the only thing we choose.
+            if category and category != "MARKETING":
+                raise ValidationError("a catalog button is only available in a MARKETING template")
         out.append(item)
     if kinds["QUICK_REPLY"] > MAX_QUICK_REPLIES:
         raise ValidationError(f"at most {MAX_QUICK_REPLIES} quick replies")
@@ -160,6 +360,12 @@ def _check_buttons(buttons: list[dict]) -> list[dict]:
         raise ValidationError(f"at most {MAX_URL_BUTTONS} URL buttons")
     if kinds["PHONE_NUMBER"] > MAX_PHONE_BUTTONS:
         raise ValidationError(f"at most {MAX_PHONE_BUTTONS} phone button")
+    if kinds["COPY_CODE"] > MAX_COPY_CODE_BUTTONS:
+        raise ValidationError(f"at most {MAX_COPY_CODE_BUTTONS} copy-code button")
+    if kinds["VOICE_CALL"] > MAX_VOICE_CALL_BUTTONS:
+        raise ValidationError(f"at most {MAX_VOICE_CALL_BUTTONS} voice call button")
+    if kinds["CATALOG"] > MAX_CATALOG_BUTTONS:
+        raise ValidationError(f"at most {MAX_CATALOG_BUTTONS} catalog button")
     return out
 
 

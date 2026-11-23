@@ -21,7 +21,9 @@ templates_router = APIRouter(prefix="/message-templates", tags=["templates"])
 
 class TemplateUpsertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=127)
-    body_text: str = Field(min_length=1, max_length=4096)
+    # An OTP template has no body of ours (Meta writes it), so the body is only
+    # required when the request does not carry authentication options.
+    body_text: str = Field(default="", max_length=4096)
     language: str = Field(default="ar", max_length=15)
     provider: str = Field(default="whatsapp", max_length=31)
     variables: list[str] = Field(default_factory=list)
@@ -32,6 +34,12 @@ class TemplateUpsertRequest(BaseModel):
     buttons: list[dict] = Field(default_factory=list, max_length=10)
     body_examples: list[str] = Field(default_factory=list, max_length=20)
     header_examples: list[str] = Field(default_factory=list, max_length=1)
+    # Meta's richer shapes: a media or location header, a carousel, an offer, an OTP body.
+    header_media: dict | None = None
+    header_location: bool = False
+    carousel: list[dict] = Field(default_factory=list, max_length=10)
+    limited_time_offer: dict | None = None
+    authentication: dict | None = None
 
 
 class TemplateRejectRequest(BaseModel):
@@ -75,6 +83,11 @@ def _template_input(body: TemplateUpsertRequest) -> TemplateInput:
         buttons=tuple(body.buttons),
         body_examples=tuple(body.body_examples),
         header_examples=tuple(body.header_examples),
+        header_media=body.header_media,
+        header_location=body.header_location,
+        carousel=tuple(body.carousel),
+        limited_time_offer=body.limited_time_offer,
+        authentication=body.authentication,
     )
 
 

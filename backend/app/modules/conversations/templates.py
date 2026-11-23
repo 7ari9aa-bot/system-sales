@@ -71,6 +71,13 @@ class TemplateInput:
     buttons: tuple[dict, ...] = ()
     body_examples: tuple[str, ...] = ()
     header_examples: tuple[str, ...] = ()
+    # The richer component shapes Meta documents (media/location headers, carousel,
+    # limited-time offer, OTP body). All empty for a plain body template.
+    header_media: dict | None = None
+    header_location: bool = False
+    carousel: tuple[dict, ...] = ()
+    limited_time_offer: dict | None = None
+    authentication: dict | None = None
 
 
 def _validate(data: TemplateInput) -> None:
@@ -79,7 +86,8 @@ def _validate(data: TemplateInput) -> None:
         raise ValidationError("template name is required")
     if len(name) > 127:
         raise ValidationError("template name is too long")
-    if not (data.body_text or "").strip():
+    if not (data.body_text or "").strip() and not data.authentication:
+        # An OTP template is the one case with no body of ours: Meta writes that body.
         raise ValidationError("template body is required")
     if data.provider not in KNOWN_PROVIDERS:
         raise ValidationError(f"provider must be one of: {', '.join(sorted(KNOWN_PROVIDERS))}")
@@ -102,6 +110,12 @@ def _components_for(data: TemplateInput) -> list[dict]:
         buttons=list(data.buttons) or None,
         body_examples=list(data.body_examples) or None,
         header_examples=list(data.header_examples) or None,
+        category=data.category,
+        header_media=data.header_media,
+        header_location=data.header_location,
+        carousel=list(data.carousel) or None,
+        limited_time_offer=data.limited_time_offer,
+        authentication=data.authentication,
     )
 
 
