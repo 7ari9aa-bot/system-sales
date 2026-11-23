@@ -1053,3 +1053,148 @@ async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
     # The profit report excludes cancelled orders, so the reversal reaches it through the status.
     assert status == "cancelled"
 
+
+# ----------------------------------- the refund's derived writes (P1) ----
+# A POS refund wrote the Refund rows and the drawer movement but left the reversed PAYMENT saying
+# "captured" and the customer still worth the money the shop had given back. These assert the two
+# derived facts the shared refund path has always written.
+
+
+async def _payment_rows(db, tenant_ctx, order_id):
+    from app.modules.orders.models import OrderPayment
+
+    return list(
+        (
+            await db.execute(
+                sa.select(OrderPayment).where(
+                    OrderPayment.tenant_id == tenant_ctx.tenant_id,
+                    OrderPayment.order_id == order_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _customer_worth(db, tenant_ctx, customer_id):
+    from app.modules.customers.models import Customer
+
+    await db.flush()
+    return Decimal(
+        str(
+            (
+                await db.execute(
+                    sa.select(Customer.lifetime_value).where(
+                        Customer.tenant_id == tenant_ctx.tenant_id,
+                        Customer.id == customer_id,
+                    )
+                )
+            ).scalar_one()
+        )
+    )
+
+
+async def _order_status(db, tenant_ctx, order_id):
+    from app.modules.orders.models import Order
+
+    await db.flush()
+    return (
+        await db.execute(
+            sa.select(Order.status).where(
+                Order.tenant_id == tenant_ctx.tenant_id, Order.id == order_id
+            )
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_partial_return_marks_the_payment_partially_refunded_and_lowers_the_customer(
+    db, tenant_ctx
+):
+    """2 pieces sold for 200 cash, 1 came back: the payment is partially refunded, worth 100."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sold = await _sale(
+        db, tenant_ctx, shift, variant, customer, quantity=2, payments=[{"method": "cash", "amount": "200.00"}]
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("200.00")
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["partially_refunded"]
+    # The customer is worth what is left of the money, not what was once collected.
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("100.00")
+    # A partial return is not a refunded sale, and the sale keeps its status.
+    assert await _order_status(db, tenant_ctx, sold["order_id"]) == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_returning_the_whole_sale_refunds_the_payment_and_the_order(db, tenant_ctx):
+    """The whole 200 came back: the payment reads refunded and the sale is no longer "completed"."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sold = await _sale(
+        db, tenant_ctx, shift, variant, customer, quantity=2, payments=[{"method": "cash", "amount": "200.00"}]
+    )
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 2}],
+    )
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["refunded"]
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("0.00")
+    # The SALE keeps its own status: a till sale never enters the completed lifecycle, and its
+    # revenue is offset by the return document itself (which is what the day totals and the
+    # shift report read). A status rewrite here would double-count the reversal.
+    assert await _order_status(db, tenant_ctx, sold["order_id"]) == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_a_cheaper_exchange_refunds_its_difference_on_the_customer_too(db, tenant_ctx):
+    """A cheaper replacement gives back the difference: the payment and the worth follow it."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    cheap = await _sellable_variant_of(db, tenant_ctx, price="60.00", stock=20)
+    sold = await _sale(
+        db, tenant_ctx, shift, variant, customer, quantity=2, payments=[{"method": "cash", "amount": "200.00"}]
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("200.00")
+
+    result = await PosService.exchange(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        return_lines=[{"variant_id": str(variant.id), "quantity": 2}],
+        new_lines=[{"variant_id": str(cheap.id), "quantity": 2}],
+        actor_user_id=tenant_ctx.user.id,
+    )
+    assert result["settlement"] == "refunded"
+    assert Decimal(result["settled_amount"]) == Decimal("80.00")
+
+    payments = await _payment_rows(db, tenant_ctx, sold["order_id"])
+    assert [p.status for p in payments] == ["partially_refunded"]
+    # 200 collected - 80 given back = 120 kept.
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("120.00")
+
+
+async def _sellable_variant_of(db, tenant_ctx, *, price, stock):
+    from tests.test_pos_returns import _sellable_variant
+
+    return await _sellable_variant(db, tenant_ctx, price=price, stock=stock)

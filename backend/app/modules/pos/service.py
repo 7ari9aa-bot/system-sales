@@ -4141,6 +4141,18 @@ class PosService(PosReceiptReads):
                 )
             )
         await session.flush()
+
+        # The money is back, so the two DERIVED facts have to follow it, exactly as the shared
+        # refund path (``OrderService.register_refund``) does. Skipping them left a POS-refunded
+        # sale still reading "captured" on the order and the customer still worth money the shop
+        # had already given back — so lifetime value, segments and the payment's own state
+        # disagreed with the refunds that caused them.
+        touched = {slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None}
+        if touched:
+            await PosService._apply_refunded_payment_states(
+                session, tenant_id, order, touched
+            )
+
         return {
             "mode": "tender",
             "refunded": plan.refunded,
@@ -4148,6 +4160,70 @@ class PosService(PosReceiptReads):
             "by_method": plan.by_method,
             "slices": list(plan.slices),
         }
+
+    @staticmethod
+    async def _apply_refunded_payment_states(
+        session: AsyncSession, tenant_id: UUID, order: object, payment_ids: set[UUID]
+    ) -> None:
+        """Mark the reversed payments ``partially_refunded``/``refunded`` and lower the customer.
+
+        Both writes are derived from the ``refunds`` rows just written, never from this call's
+        amount: a second refund on the same tender must land on the same status the shared path
+        would give it, and the customer's worth is recomputed from the ledger (see
+        ``OrderService._recompute_lifetime_value``) rather than nudged.
+
+        A VOIDED order is left alone: its status is already ``cancelled``, which is the stronger
+        statement, and a full refund must not overwrite it.
+        """
+        from app.modules.orders.models import OrderPayment, Refund
+        from app.modules.orders.service import OrderService
+
+        payments = (
+            (
+                await session.execute(
+                    select(OrderPayment).where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order.id,
+                        OrderPayment.id.in_(payment_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        fully_refunded = bool(payments)
+        for payment in payments:
+            refunded_total = Decimal(
+                str(
+                    (
+                        await session.execute(
+                            select(func.coalesce(func.sum(Refund.amount), 0))
+                            .select_from(Refund)
+                            .where(
+                                Refund.tenant_id == tenant_id,
+                                Refund.payment_id == payment.id,
+                                Refund.status != "rejected",
+                            )
+                        )
+                    ).scalar_one()
+                )
+            )
+            payment_total = to_money(payment.amount, "captured amount")
+            payment.status = (
+                "refunded" if refunded_total >= payment_total else "partially_refunded"
+            )
+            if payment.status != "refunded":
+                fully_refunded = False
+        await session.flush()
+
+        # A fully refunded sale must not stay "completed": dashboards and analytics would keep
+        # counting refunded money as revenue. Same rule and same transition as the shared path.
+        if fully_refunded and getattr(order, "status", None) == "completed":
+            await OrderService._transition(
+                session, tenant_id, order, "refunded", note="fully refunded at the till"
+            )
+
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
 
     # ----------------------------------------------------------- exchanges ----
 

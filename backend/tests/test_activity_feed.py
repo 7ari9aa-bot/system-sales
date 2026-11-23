@@ -304,13 +304,13 @@ async def test_a_void_is_its_own_row_with_the_reason_and_the_manager_who_approve
     shift = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
     variant = await _sellable_variant(db, tenant_ctx)
     customer = await _customer(db, tenant_ctx)
-    sold = await pos_sell(
+    sold = await PosService.record_sale(
         db,
         tenant_ctx.tenant_id,
-        shift.id,
-        customer_id=customer.id,
+        register.id,
         items=[{"variant_id": str(variant.id), "quantity": 1}],
-        payments=[{"method": "cash", "amount": "20.00"}],
+        customer_id=customer.id,
+        payments=[{"method": "cash", "amount": "25.00"}],
     )
 
     voided = await PosService.void_sale(
