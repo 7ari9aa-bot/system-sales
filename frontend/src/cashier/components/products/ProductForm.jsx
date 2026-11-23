@@ -9,6 +9,12 @@ import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
 import { variantLimitProblem } from "@/cashier/lib/productLimits";
 import { useWarehouses } from "@/cashier/api/useCatalogWrite";
+import {
+  bindProductImage,
+  deleteProductImage,
+  reorderProductImages,
+} from "@/cashier/api/productImage";
+import { useQueryClient } from "@tanstack/react-query";
 import { CARD, CARD_PAD, DOT, MAIN_COL, SECTION_HEAD, SECTION_HINT, SECTION_TITLE, WRAP } from "@/cashier/components/products/formStyles";
 import { useShopOptions } from "@/cashier/api/useShopOptions";
 import { useStockMaterials } from "@/cashier/api/useStock";
@@ -22,7 +28,17 @@ import { MAX_IMAGES_PER_SKU } from "@/cashier/lib/productImageRules";
 const MAX_PRODUCT_IMAGES = MAX_IMAGES_PER_SKU;
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
-export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels, isSaving = false }) {
+export default function ProductForm({
+  product,
+  seed,
+  onSubmit,
+  onCancel,
+  onPrintLabels,
+  isSaving = false,
+  uploadProgress = {},
+  failedPhotos = 0,
+  onRetryFailed,
+}) {
   const isEdit = !!product;
   // أساس الـSKU من السيرفر (استعلام واحد). العدّ في المتصفح بقى خطة رجوع بس لنشر قديم بلا الـendpoint.
   const { data: serverSkuBase } = useNextSkuBase();
@@ -59,6 +75,44 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
     if (form.warehouseId || activeWarehouses.length === 0) return;
     patch({ warehouseId: activeWarehouses[0].id });
   }, [form.warehouseId, activeWarehouses]);
+
+  const queryClient = useQueryClient();
+  // الصور المحفوظة بتتحكم من هنا (حذف/ترتيب/ربط بلون) وبتحفظ على السيرفر فورًا.
+  const refreshProduct = () => queryClient.invalidateQueries();
+
+  async function handleDeleteSaved(image) {
+    try {
+      await deleteProductImage(product.id, image.id);
+      toast.success("اتحذفت الصورة");
+      await refreshProduct();
+    } catch (e) {
+      toast.error(e?.message ?? "تعذّر حذف الصورة");
+    }
+  }
+
+  async function handleMoveSaved(image, step) {
+    const ids = saved.map((i) => i.id);
+    const from = ids.indexOf(image.id);
+    const to = from + step;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    try {
+      await reorderProductImages(product.id, ids);
+      await refreshProduct();
+    } catch (e) {
+      toast.error(e?.message ?? "تعذّر ترتيب الصور");
+    }
+  }
+
+  async function handleBindSaved(image, variantId) {
+    try {
+      await bindProductImage(product.id, image.id, variantId);
+      toast.success(variantId ? "الصورة اتربطت باللون" : "الصورة رجعت لمعرض المنتج");
+      await refreshProduct();
+    } catch (e) {
+      toast.error(e?.message ?? "تعذّر ربط الصورة");
+    }
+  }
 
   const { options: shopOptions } = useShopOptions();
   // اقتراحات الخامة هي خامات المحل نفسه (زي ما المواسم بتيجي من مواسم المحل): قائمة مقترحة،
@@ -220,6 +274,16 @@ export default function ProductForm({ product, seed, onSubmit, onCancel, onPrint
           maxImages={MAX_PRODUCT_IMAGES}
           onPickImages={pickImages}
           onRemovePicked={removePicked}
+          colors={(product?.variants ?? [])
+            .filter((v) => v.color)
+            .map((v) => ({ variantId: v.id, name: v.color }))
+            .filter((c, i, all) => all.findIndex((x) => x.name === c.name) === i)}
+          progress={uploadProgress}
+          failedCount={failedPhotos}
+          onRetryFailed={onRetryFailed}
+          onDeleteSaved={product ? handleDeleteSaved : undefined}
+          onMoveSaved={product ? handleMoveSaved : undefined}
+          onBindSaved={product ? handleBindSaved : undefined}
           canSave={canSave}
           isSaving={isSaving}
           onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, imageFiles: picked.map((p) => p.file) })}

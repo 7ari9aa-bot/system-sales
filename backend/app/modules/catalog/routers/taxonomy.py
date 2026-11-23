@@ -18,7 +18,9 @@ from ._deps import (
     AddImageRequest,
     CreateBrandRequest,
     CreateCategoryRequest,
+    ReorderImagesRequest,
     TenantCtxDep,
+    UpdateImageRequest,
     Warehouse,
     WriteCtx,
     _image_out,
@@ -95,6 +97,43 @@ async def upload_product_image(product_id: UUID, request: Request, ctx: WriteCtx
         await storage.delete_objects([stored.storage_key])
         raise
     return _image_out(image, tenant_id=ctx.tenant_id)
+
+
+@router.patch("/products/{product_id}/images/{image_id}")
+async def update_product_image(
+    product_id: UUID, image_id: UUID, body: UpdateImageRequest, ctx: WriteCtx
+):
+    """ربط الصورة بلون أو تركيبة، أو رجوعها لمعرض المنتج — بدون رفع الصورة تاني."""
+    image = await CatalogService.update_image(
+        ctx.session,
+        ctx.tenant_id,
+        product_id,
+        image_id,
+        alt=body.alt,
+        variant_id=body.variant_id,
+        unbind_variant=body.unbind_variant,
+    )
+    return _image_out(image, tenant_id=ctx.tenant_id)
+
+
+@router.post("/products/{product_id}/images/order")
+async def reorder_product_images(product_id: UUID, body: ReorderImagesRequest, ctx: WriteCtx):
+    """ترتيب صور المنتج زي ما التاجر عايزها تظهر في الكاشير."""
+    rows = await CatalogService.reorder_images(
+        ctx.session, ctx.tenant_id, product_id, body.image_ids
+    )
+    return [_image_out(i, tenant_id=ctx.tenant_id) for i in rows]
+
+
+@router.delete("/products/{product_id}/images/{image_id}", status_code=204)
+async def delete_product_image(product_id: UUID, image_id: UUID, ctx: WriteCtx):
+    """حذف صورة من المعرض، ومعاها الملف المخزّن لو كان على التخزين بتاعنا."""
+    key = await CatalogService.delete_image(ctx.session, ctx.tenant_id, product_id, image_id)
+    if key:
+        storage = get_storage()
+        if storage.configured:
+            await storage.delete_objects([key])
+    return None
 
 
 @router.get("/products/{product_id}/images")

@@ -6,7 +6,7 @@ import { nextProductSeed } from "@/cashier/components/products/productSeed";
 import BarcodeLabelsDialog from "@/cashier/components/products/BarcodeLabelsDialog";
 import { GLOW, PAGE } from "@/cashier/components/products/formStyles";
 import { useCreateProduct, useUpdateProduct } from "@/cashier/api/useCatalogWrite";
-import { uploadProductImages } from "@/cashier/api/productImage";
+import { retryFailedImages, uploadProductImages } from "@/cashier/api/productImage";
 import { createSaveGuard } from "@/cashier/lib/saveOnce";
 
 // شاشة إضافة / تعديل منتج (تُستخدم من مسار الإضافة ومسار التعديل).
@@ -24,13 +24,21 @@ export default function ProductEditor({ product }) {
   // الإضافة تُحفظ في الباك (منتج + تركيبات + باركود + رصيد افتتاحي) ثم يتفعّل المنتج ليظهر في شاشة البيع.
   // التعديل يُرسل الفرق فقط (بيانات المنتج وسعر/كود/باركود كل تركيبة وتركيبات جديدة). الرصيد يتغيّر بالجرد وحركات المخزون.
   // المنتج اتحفظ خلاص، فأي صورة تفشل ما تلغيش الحفظ: نرفع الباقي ونقول بالاسم أنهي صورة ما اترفعتش.
+  // تقدم الرفع لكل صورة: الشاشة بتعرض "جاري الرفع/تم/فشل" لكل صورة، والفاشل بيتعاد لوحده.
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [failedPhotos, setFailedPhotos] = useState([]);
+
   async function uploadPhotos(productId, files) {
     if (!files?.length) return true;
     if (!productId) {
       toast.error("المنتج اتحفظ لكن الصور ما اترفعتش (تعذّر تحديد المنتج). افتح المنتج وأضفها من التعديل.");
       return false;
     }
-    const { failed } = await uploadProductImages(productId, files);
+    setUploadProgress({});
+    const { failed } = await uploadProductImages(productId, files, {
+      onProgress: (index, state) => setUploadProgress((prev) => ({ ...prev, [index]: state })),
+    });
+    setFailedPhotos(failed);
     if (failed.length === 0) return true;
     toast.error(`المنتج اتحفظ لكن ${failed.length} صورة ما اترفعتش: ${failed.map((f) => `${f.name} (${f.message})`).join("، ")}`);
     return false;
@@ -82,6 +90,18 @@ export default function ProductEditor({ product }) {
         onPrintLabels={(rows) => setLabels({ rows, name: product?.name ?? "منتج جديد" })}
         onSubmit={handleSubmit}
         isSaving={isSaving}
+        uploadProgress={uploadProgress}
+        failedPhotos={failedPhotos.length}
+        onRetryFailed={async () => {
+          const id = product?.id;
+          if (!id) return;
+          setUploadProgress({});
+          const { failed } = await retryFailedImages(id, failedPhotos, {
+            onProgress: (index, state) => setUploadProgress((prev) => ({ ...prev, [index]: state })),
+          });
+          setFailedPhotos(failed);
+          if (failed.length === 0) toast.success("كل الصور اترفعت");
+        }}
       />
 
       <BarcodeLabelsDialog open={!!labels} onOpenChange={(o) => !o && setLabels(null)} rows={labels?.rows ?? []} productName={labels?.name ?? ""} />

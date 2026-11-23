@@ -73,7 +73,8 @@ describe("uploadProductImages", () => {
     apiMock.mockResolvedValueOnce({ id: "i1" }).mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce({ id: "i3" });
     const r = await uploadProductImages("p1", [file({ name: "1.png" }), file({ name: "2.png" }), file({ name: "3.png" })]);
     expect(r.uploaded.map((u) => u.id)).toEqual(["i1", "i3"]);
-    expect(r.failed).toEqual([{ name: "2.png", message: "boom" }]);
+    expect(r.failed).toHaveLength(1);
+    expect(r.failed[0]).toMatchObject({ name: "2.png", message: "boom" });
   });
   it("uploads in the order picked", async () => {
     apiMock.mockResolvedValue({});

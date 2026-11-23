@@ -138,6 +138,78 @@ class TaxonomyServiceMixin:
         return image
 
     @staticmethod
+    async def get_image(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, image_id: UUID
+    ) -> ProductImage:
+        """One gallery row that must belong to this product (404 otherwise)."""
+        row = (
+            await session.execute(
+                select(ProductImage).where(
+                    ProductImage.tenant_id == tenant_id,
+                    ProductImage.product_id == product_id,
+                    ProductImage.id == image_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise NotFoundError("image not found on this product")
+        return row
+
+    @staticmethod
+    async def update_image(
+        session: AsyncSession,
+        tenant_id: UUID,
+        product_id: UUID,
+        image_id: UUID,
+        *,
+        alt: str | None = None,
+        variant_id: UUID | None = None,
+        unbind_variant: bool = False,
+    ) -> ProductImage:
+        """Rebind a shot to a colour/variant (or back to the product gallery) and retitle it."""
+        from app.modules.catalog.services import CatalogService
+
+        image = await TaxonomyServiceMixin.get_image(session, tenant_id, product_id, image_id)
+        if alt is not None:
+            image.alt = alt
+        if unbind_variant:
+            image.variant_id = None
+        elif variant_id is not None:
+            variant = await CatalogService.get_variant(
+                session, tenant_id, variant_id, include_inactive=True
+            )
+            if variant.product_id != product_id:
+                raise ValidationError("variant does not belong to this product")
+            image.variant_id = variant.id
+        await session.flush()
+        return image
+
+    @staticmethod
+    async def reorder_images(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, image_ids: list[UUID]
+    ) -> list[ProductImage]:
+        """Set the gallery order to exactly ``image_ids`` (first shown first)."""
+        rows = await TaxonomyServiceMixin.list_images(session, tenant_id, product_id)
+        by_id = {row.id: row for row in rows}
+        if set(image_ids) != set(by_id) or len(image_ids) != len(by_id):
+            raise ValidationError("image_ids must list every image of this product exactly once")
+        for index, image_id in enumerate(image_ids):
+            by_id[image_id].position = index
+        await session.flush()
+        return [by_id[i] for i in image_ids]
+
+    @staticmethod
+    async def delete_image(
+        session: AsyncSession, tenant_id: UUID, product_id: UUID, image_id: UUID
+    ) -> str | None:
+        """Remove a gallery row and hand back the stored object key so the caller can delete it."""
+        image = await TaxonomyServiceMixin.get_image(session, tenant_id, product_id, image_id)
+        url = image.url
+        await session.delete(image)
+        await session.flush()
+        return url[len("s3://") :] if url.startswith("s3://") else None
+
+    @staticmethod
     async def list_images(
         session: AsyncSession, tenant_id: UUID, product_id: UUID
     ) -> list[ProductImage]:

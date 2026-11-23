@@ -143,6 +143,20 @@ class CreateCategoryRequest(BaseModel):
     parent_id: UUID | None = None
 
 
+class UpdateImageRequest(BaseModel):
+    """ربط الصورة بلون/تركيبة، أو رجوعها لمعرض المنتج، مع نص بديل."""
+
+    alt: str | None = Field(default=None, max_length=255)
+    variant_id: UUID | None = None
+    unbind_variant: bool = False
+
+
+class ReorderImagesRequest(BaseModel):
+    """ترتيب المعرض: كل صور المنتج مرة واحدة بالترتيب المطلوب."""
+
+    image_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
 class AddImageRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
     alt: str | None = Field(default=None, max_length=255)

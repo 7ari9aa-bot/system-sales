@@ -45,19 +45,67 @@ export async function uploadProductImage(productId, file) {
 }
 
 /**
- * Upload several files one after another (the backend appends each, so order = pick order).
- * Never throws: returns { uploaded, failed:[{name, message}] } so a product that was saved is not
- * reported as failed just because one photo did not go through.
+ * رفع مجموعة صور: 3 في نفس الوقت بدل صورة وراء صورة.
+ * ما بيرميش: بيرجّع { uploaded, failed } — المنتج اتحفظ خلاص، فصورة فشلت مش سبب لتقرير فشل الحفظ.
+ * onProgress(index, { status, message }) بيتنادى لكل صورة عشان الشاشة تعرض تقدمها.
  */
-export async function uploadProductImages(productId, files) {
+export async function uploadProductImages(productId, files, { concurrency = 3, onProgress } = {}) {
+  const list = [...(files ?? [])];
   const uploaded = [];
   const failed = [];
-  for (const file of files ?? []) {
+  let next = 0;
+
+  const report = (index, status, message) => {
     try {
-      uploaded.push(await uploadProductImage(productId, file));
-    } catch (e) {
-      failed.push({ name: file?.name ?? "صورة", message: e?.message ?? "تعذّر رفع الصورة" });
+      onProgress?.(index, { status, message });
+    } catch {
+      // تقدم الصورة مش سبب لتوقف الرفع
     }
-  }
+  };
+
+  const worker = async () => {
+    while (next < list.length) {
+      const index = next;
+      next += 1;
+      const file = list[index];
+      report(index, "uploading");
+      try {
+        uploaded.push(await uploadProductImage(productId, file));
+        report(index, "done");
+      } catch (e) {
+        const message = e?.message ?? "تعذّر رفع الصورة";
+        failed.push({ index, name: file?.name ?? "صورة", message, file });
+        report(index, "failed", message);
+      }
+    }
+  };
+
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, list.length)) }, worker);
+  await Promise.all(workers);
   return { uploaded, failed };
+}
+
+/** إعادة محاولة الصور اللي فشلت بس، من غير ما نرفع اللي نجح تاني. */
+export async function retryFailedImages(productId, failed = [], options = {}) {
+  const files = failed.map((f) => f.file).filter(Boolean);
+  if (files.length === 0) return { uploaded: [], failed };
+  return uploadProductImages(productId, files, options);
+}
+
+/** حذف صورة محفوظة (الصف والملف المخزّن). */
+export async function deleteProductImage(productId, imageId) {
+  return api(`/products/${seg(productId)}/images/${seg(imageId)}`, { method: "DELETE" });
+}
+
+/** ترتيب المعرض: كل الصور بالترتيب المطلوب. */
+export async function reorderProductImages(productId, imageIds) {
+  return api(`/products/${seg(productId)}/images/order`, { method: "POST", body: { image_ids: imageIds } });
+}
+
+/** ربط صورة بلون/تركيبة معيّنة، أو رجوعها لمعرض المنتج بـ variantId = null. */
+export async function bindProductImage(productId, imageId, variantId) {
+  return api(`/products/${seg(productId)}/images/${seg(imageId)}`, {
+    method: "PATCH",
+    body: variantId ? { variant_id: variantId } : { unbind_variant: true },
+  });
 }
