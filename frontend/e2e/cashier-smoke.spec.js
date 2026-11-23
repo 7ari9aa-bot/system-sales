@@ -51,6 +51,15 @@ test("every cashier screen renders without runtime errors", async ({ page }) => 
     // المحتوى الرئيسي (بدون القائمة الجانبية) لازم يكون فيه نص حقيقي، وإلا فالصفحة فاضية أو رسمت دالة مساعدة بالغلط
     const main = page.locator("main:has(.cashier-root)").first();
     await expect(main, `${route} must have a <main> region`).toBeVisible({ timeout: 8000 });
+    // A screen whose data hook is still retrying paints the shared skeleton, whose only text is
+    // «جارٍ التحميل…» (13 characters). Asserting the length straight after mount measured that
+    // skeleton, not the screen: CI failed on a different route each attempt for exactly this
+    // reason. Wait for the skeleton to clear first, then judge the content. A screen that never
+    // leaves the skeleton still fails, which is what this test is for.
+    await expect(
+      main.getByText("جارٍ التحميل…"),
+      `${route} never left its loading skeleton`,
+    ).toHaveCount(0, { timeout: 15_000 });
     const text = (await main.innerText()).trim();
     expect(text.length, `${route} main content too short: "${text.slice(0, 60)}"`).toBeGreaterThan(30);
     await expect(page.getByText("حصل خطأ والنظام وقف"), `${route} hit the error boundary`).toHaveCount(0);
