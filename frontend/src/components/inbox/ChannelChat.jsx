@@ -1393,7 +1393,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null,
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} group={instagramRow} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
+    return <InstagramBubble m={m} th={th} lang={_lang} group={instagramRow} peerName={_conversation?.customer || ""} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
   if (isTelegram) {

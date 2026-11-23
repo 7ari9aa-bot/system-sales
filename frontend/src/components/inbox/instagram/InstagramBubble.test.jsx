@@ -115,3 +115,32 @@ describe("reply-to (Send API reply_to)", () => {
     expect(instagramQuoteText(msg({ text: "سلام" }), "ar")).toBe("سلام");
   });
 });
+
+describe("InstagramBubble reply quote", () => {
+  const quoted = (over = {}, props = {}) => html({ text: "بكرة", replyTo: { id: "q1", direction: "inbound", body: "السعر كام؟" }, ...over }, props);
+
+  test("the quote sits inside the bubble, named after who wrote it", () => {
+    const out = quoted({}, { peerName: "Nour" });
+    const quote = out.indexOf('data-testid="ig-quote"');
+    const bubble = out.indexOf('data-testid="ig-bubble"');
+    const text = out.indexOf("بكرة");
+    expect(quote).toBeGreaterThan(bubble);
+    expect(quote).toBeLessThan(text);
+    expect(out).toContain("Nour");
+    expect(out).toContain("السعر كام؟");
+  });
+
+  test("quoting our own message says You, and falls back to the customer name", () => {
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "outbound", body: "أهلاً" } })).toContain("You");
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "inbound", body: "أهلاً" } }, { lang: "ar" })).toContain("العميل");
+  });
+
+  test("an unavailable original is said, not left blank", () => {
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "inbound", available: false } })).toContain("Message unavailable");
+  });
+
+  test("a photo reply keeps the quote as a pill above it", () => {
+    const out = html({ contentType: "image", mediaUrl: "https://c/a.jpg", replyTo: { id: "q", direction: "inbound", body: "شوف" } });
+    expect(out.indexOf('data-testid="ig-quote"')).toBeLessThan(out.indexOf('data-testid="ig-bubble"'));
+  });
+});
