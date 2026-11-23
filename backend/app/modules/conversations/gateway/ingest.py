@@ -182,10 +182,16 @@ class IngestService:
             if message.reply_to_message_id
             else None
         )
-        if cls._came_from_ad(message):
+        referral = cls._referral_details(message)
+        if referral:
             # Meta extends the messaging window to 7 days for a conversation that began from a
-            # Click-to-Messenger / Click-to-Direct ad. add_message turns this into the marker.
-            provider_metadata = {**(provider_metadata or {}), "from_ad": True}
+            # Click-to-Messenger / Click-to-Direct ad (add_message turns `from_ad` into the
+            # marker), and the ad itself is context the agent needs: which campaign brought this
+            # person in. Only the fields Meta sent, checked, so a hostile payload cannot put
+            # anything else on the screen.
+            provider_metadata = {**(provider_metadata or {}), "referral": referral}
+            if str(referral.get("source") or "").upper() == "ADS" or referral.get("ad_id"):
+                provider_metadata["from_ad"] = True
 
         created = await ConversationService.add_message(
             session,
@@ -861,6 +867,36 @@ class IngestService:
                             message.customer_name = name
         except Exception:  # noqa: BLE001 - a name is never worth losing a received message
             logger.warning("ingest.customer_name_lookup_failed channel=%s", channel, exc_info=True)
+
+    #: The referral fields worth showing, and the longest each may be. Meta's own keys; anything
+    #: else in the object is dropped rather than passed through.
+    _REFERRAL_FIELDS = ("source", "type", "ref", "ad_id", "ref_source", "headline", "ctwa_clid")
+
+    @classmethod
+    def _referral_details(cls, message) -> dict | None:
+        """The Click-to-Messenger / Click-to-Direct referral, as a small checked dict.
+
+        The adapters keep it under ``raw["_messenger"]`` (Messenger) or ``raw["_ig"]`` (Instagram).
+        Before this, the only thing kept was a bare ``from_ad`` flag, so the agent could tell the
+        conversation started from an ad but not which one — the campaign, the ad id and the
+        headline Meta sent were thrown away.
+        """
+        raw = message.raw if isinstance(message.raw, dict) else {}
+        for key in ("_messenger", "_ig"):
+            extra = raw.get(key)
+            if not isinstance(extra, dict):
+                continue
+            referral = extra.get("referral")
+            if not isinstance(referral, dict):
+                continue
+            kept = {}
+            for name in cls._REFERRAL_FIELDS:
+                value = referral.get(name)
+                if isinstance(value, str) and value.strip():
+                    kept[name] = value.strip()[:255]
+            if kept:
+                return kept
+        return None
 
     @staticmethod
     def _came_from_ad(message) -> bool:

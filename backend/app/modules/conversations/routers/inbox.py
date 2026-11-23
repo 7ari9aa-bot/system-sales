@@ -349,11 +349,16 @@ def _quick_replies(m) -> list[str]:
 
 
 def _present_card(m) -> dict | None:
-    """The shared post, the story someone replied to, or the story that mentioned us.
+    """The shared post, the story someone replied to, the story that mentioned us, or the ad.
 
-    Instagram sends these as links, not files. Only the three known shapes leave here, with a
-    web link (https) and a short title: the raw webhook body never reaches the browser.
+    Instagram sends these as links, not files. Only the known shapes leave here, with a web link
+    (https) and a short title: the raw webhook body never reaches the browser. A Click-to-Messenger
+    / Click-to-Direct referral rides the same field, because it is the same kind of thing — context
+    about how the thread started, not a message the customer wrote.
     """
+    referral = _present_referral(m)
+    if referral is not None:
+        return referral
     payload = m.payload if isinstance(m.payload, dict) else {}
     raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
     ig = raw.get("_ig") if isinstance(raw.get("_ig"), dict) else {}
@@ -381,6 +386,32 @@ def _provider_order(m) -> tuple:
     except (TypeError, ValueError):
         provider_time = 0
     return (m.created_at, provider_time)
+
+
+def _present_referral(m) -> dict | None:
+    """The ad or m.me link that started the conversation, as a card, or None.
+
+    `_referral_details` already checked the shape when the message was ingested; this reads the
+    stored copy and keeps only printable strings, so an old row written before that check existed
+    cannot put anything odd on the screen either.
+    """
+    stored = (m.provider_metadata or {}).get("referral")
+    if not isinstance(stored, dict) or not stored:
+        return None
+    fields = {
+        name: stored[name][:255]
+        for name in ("source", "type", "ref", "ad_id", "ref_source", "headline")
+        if isinstance(stored.get(name), str) and stored[name].strip()
+    }
+    if not fields:
+        return None
+    return {
+        "type": "referral",
+        "kind": "ad" if str(fields.get("source") or "").upper() == "ADS" else "link",
+        "url": None,
+        "title": fields.get("headline") or fields.get("ref") or fields.get("source"),
+        **fields,
+    }
 
 
 def _present_quote(m, quoted) -> dict | None:

@@ -51,3 +51,18 @@ the id exists.
 * `tests/test_messenger_profile_routes.py` — labels reach the conversation's own PSID, removal sends
   the names as `fields`, an empty list never leaves the server, and a missing `pages_messaging` is a
   `403` with no Meta call.
+
+## Referral / ad context
+
+A Click-to-Messenger or Click-to-Direct referral used to survive as a single `from_ad: True` flag
+plus a text line ("ADS / summer / ad 120210"). The campaign, ad id and headline Meta sent were
+thrown away, so the agent could see that an ad brought the person in but not which one.
+
+`IngestService._referral_details()` keeps only the documented fields (`source`, `type`, `ref`,
+`ad_id`, `ref_source`, `headline`, `ctwa_clid`), each a trimmed string of at most 255 characters,
+in the message's `provider_metadata.referral`. `from_ad` is still set from the same data, so the
+7-day ad window rule is unchanged. The thread presents it as a card (`type: referral`, `kind: ad`
+for `source: ADS`, `kind: link` for an m.me/short link), and a row written before this check existed
+still renders safely because only printable strings leave the API.
+
+Tests: `tests/test_referral_context.py`.
