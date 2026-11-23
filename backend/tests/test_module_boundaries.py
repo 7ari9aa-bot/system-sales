@@ -309,7 +309,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # orders -> settings.capabilities, so the till is the right owner. NOTE: main was already at 277
 # against this ceiling before this change (one edge from another commit, not written down here), so
 # this test stays red by that one edge until its owner records it.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 278
+# 278 -> 296 on 2026-11-23 (owner-approved raise): measured 296 on feat/meta-channels-full-fix, of
+# which main already carried 292 (the ceiling was stale before this branch). The branch adds 4,
+# all in the Meta channel layer (conversations/customers reading each other's services through
+# function-scope imports: page connection, capability states, read signal, handover).
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 296
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
@@ -410,7 +414,9 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 278
 #   • authority -> decisions (executor+service: DecisionService for lease minting)
 # Old-module count SHRANK from 94 to 92 (net -2) via prior read-model work.
 # The ratchet tightened on the old side; the new modules bring their 9 edges.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 9
+# 9 -> 12 on 2026-11-23 (owner-approved raise): main already measured 12 (authority, billing,
+# catalog, conversations, customers, inventory, marketing, platform); the Meta branch adds none.
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 12
 # 8 -> 9 on 2026-10-21 (owner-approved raise): measured 9 on a clean main. All nine are in
 # authority/billing/conversations/customers/marketing/platform, none in the cashier modules
 # (pos, inventory, purchasing, expenses). A pre-existing overshoot, now recorded as the ceiling.
@@ -458,6 +464,8 @@ BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 9
 # three modules, and `notifications` is out of every cycle. `identity` can still
 # only be reasoned about together with `billing` and `platform`; that pair is the
 # next thing to pay down, and this is the floor it has to beat.
+# 2026-11-23 (owner-approved): `imports` joined the commerce component on main (the Import Center
+# reads catalog/inventory services); the Meta branch adds no module to any cycle.
 BASELINE_CYCLIC_SCCS: frozenset[frozenset[str]] = frozenset(
     [
         frozenset(
@@ -466,6 +474,7 @@ BASELINE_CYCLIC_SCCS: frozenset[frozenset[str]] = frozenset(
                 "catalog",
                 "conversations",
                 "customers",
+                "imports",
                 "inventory",
                 "operations",
                 "orders",
