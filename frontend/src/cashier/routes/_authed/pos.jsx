@@ -37,6 +37,7 @@ import { saleTender, whenOffline } from "@/cashier/api/tenderPlan";
 import { printableReceipt, receiptBytes } from "@/cashier/lib/receiptPrint";
 import { isPrinterConnected, printRaw, kickCashDrawer } from "@/cashier/lib/printerBridge";
 import { drawerFailureNotice, printFailureNotice } from "@/cashier/lib/printFailure";
+import { useDrawerExpected } from "@/cashier/api/useShifts";
 
 // Only methods the backend accepts; the profile's own list narrows this further once loaded.
 
@@ -97,6 +98,9 @@ function PosScreen({ user, session }) {
   const [cashMovementPending, setCashMovementPending] = useState(false);
   const [cashMovementError, setCashMovementError] = useState(null);
   const [handoverOpen, setHandoverOpen] = useState(false);
+  // The handover dialog shows what the drawer should hold before it asks for the count.
+  const drawerOn = Boolean(session?.tender?.take_payments);
+  const drawerNow = useDrawerExpected(session?.id, handoverOpen && drawerOn);
   const [handoverPending, setHandoverPending] = useState(false);
   const [handoverError, setHandoverError] = useState(null);
   const [printerOpen, setPrinterOpen] = useState(false);
@@ -459,11 +463,11 @@ function PosScreen({ user, session }) {
     }
   };
 
-  const handleHandoverConfirm = async (newCashierId) => {
+  const handleHandoverConfirm = async ({ newCashierId, countedCash, varianceReason }) => {
     setHandoverError(null);
     setHandoverPending(true);
     try {
-      await posApi.handoverSession(session.id, newCashierId, newIntent());
+      await posApi.handoverSession(session.id, { newCashierId, countedCash, varianceReason }, newIntent());
       toast.success("تم تسليم الوردية بنجاح.");
       setHandoverOpen(false);
       qc.invalidateQueries({ queryKey: ["cashier", "session", session.id] });
@@ -681,6 +685,8 @@ function PosScreen({ user, session }) {
         open={handoverOpen}
         onOpenChange={setHandoverOpen}
         currentCashierId={session.cashier_user_id}
+        drawerOn={drawerOn}
+        expectedCash={drawerNow.data?.expected_cash ?? null}
         pending={handoverPending}
         error={handoverError}
         onConfirm={handleHandoverConfirm}

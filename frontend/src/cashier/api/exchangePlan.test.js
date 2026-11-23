@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { newIntent, posApi } from "./posApi";
 import { setQty, returnableLines } from "./returnPlan";
-import { differenceMinor, exchangeErrorMessage, exchangeRequest, sendExchange, settlementKind } from "./exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangeRequest, sendExchange, settlementKind, settlementPrompt, settlementSummary } from "./exchangePlan";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
 
@@ -88,5 +88,72 @@ describe("sendExchange", () => {
     expect(req.returnLines[0].restock).toBe(true);
     expect(req.returnLines[1].restock).toBe(false);
     expect("restock" in req.returnLines[2]).toBe(false);
+  });
+});
+
+describe("the difference is real money", () => {
+  const till = { take_payments: true, methods: ["cash", "card"], reference_required: ["card"], allow_on_account: false };
+
+  it("sends the tender that covers a dearer replacement", () => {
+    const req = exchangeRequest(sale, back(1), repl, {
+      rules: till,
+      differenceMinor: 18667,
+      tenderLines: [{ method: "cash", amount: "186.67", tendered: "200" }],
+    });
+    expect(req.payments).toEqual([{ method: "cash", amount: "186.67", tendered: "200.00" }]);
+  });
+
+  it("refuses to complete while the difference is not covered", () => {
+    expect(() =>
+      exchangeRequest(sale, back(1), repl, { rules: till, differenceMinor: 18667, tenderLines: [] }),
+    ).toThrow(/طريقة دفع/);
+    expect(() =>
+      exchangeRequest(sale, back(1), repl, {
+        rules: till,
+        differenceMinor: 18667,
+        tenderLines: [{ method: "cash", amount: "100.00" }],
+      }),
+    ).toThrow(/أقل/);
+  });
+
+  it("sends the refund method for a cheaper replacement, and nothing when it is the original tenders", () => {
+    expect(exchangeRequest(sale, back(3), repl, { rules: till, differenceMinor: -1000, refundMethod: "cash" }).refundMethod).toBe("cash");
+    expect(exchangeRequest(sale, back(3), repl, { rules: till, differenceMinor: -1000 }).refundMethod).toBeUndefined();
+  });
+
+  it("moves no money on a till that takes no payments", () => {
+    const req = exchangeRequest(sale, back(1), repl, {
+      rules: { take_payments: false, methods: [] },
+      differenceMinor: 18667,
+      tenderLines: [{ method: "cash", amount: "186.67" }],
+    });
+    expect(req.payments).toBeUndefined();
+    expect(req.refundMethod).toBeUndefined();
+  });
+
+  it("sends an equal swap with no settlement at all", () => {
+    const req = exchangeRequest(sale, back(1), repl, { rules: till, differenceMinor: 0 });
+    expect(req.payments).toBeUndefined();
+  });
+});
+
+describe("what the screen says about the settlement", () => {
+  it("prompts for the collection, the refund, or says nothing moves", () => {
+    expect(settlementPrompt("pay", 5000, { takePayments: true })).toContain("تحصّل");
+    expect(settlementPrompt("refund", -5000, { takePayments: true })).toContain("ترجع للعميل");
+    expect(settlementPrompt("even", 0, { takePayments: true })).toContain("من غير تحصيل");
+    expect(settlementPrompt("pay", 5000, { takePayments: false })).toContain("بيتسجّل");
+  });
+
+  it("reports what the SERVER settled, including the part never collected", () => {
+    expect(settlementSummary({ settlement: "collected", settled_amount: "100.00", settled_by_method: { cash: "100.00" } })).toContain("اتحصّل فرق 100.00");
+    const refunded = settlementSummary({ settlement: "refunded", settled_amount: "50.00", settled_by_method: { card: "50.00" }, uncollected: "0.00" });
+    expect(refunded).toContain("اترد فرق 50.00");
+    expect(refunded).toContain("بطاقة 50.00");
+    expect(settlementSummary({ settlement: "exchange_only" })).toContain("بدون فرق");
+    expect(settlementSummary({ settlement: "record_only" })).toContain("مش بيسجّل مدفوعات");
+    expect(
+      settlementSummary({ settlement: "refunded", settled_amount: "20.00", uncollected: "30.00" }),
+    ).toContain("لم تُحصَّل أصلًا");
   });
 });

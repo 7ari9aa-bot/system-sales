@@ -1222,6 +1222,10 @@ export default {
   "pos.handover.submit": "Confirm Handover",
   "pos.handover.success": "Shift handed over successfully.",
   "pos.handover.requiresOverride": "Handing over another cashier's shift requires manager override.",
+  "pos.handover.counted": "Counted cash in the drawer",
+  "pos.handover.expected": "Expected in the drawer",
+  "pos.handover.reason": "Reason for the difference",
+  "pos.handover.countFirst": "Count the drawer first: the handover records each cashier's custody.",
 
   // Offline Mode & Sync Queue
   "pos.offline.status": "Offline (Working in Offline Mode)",

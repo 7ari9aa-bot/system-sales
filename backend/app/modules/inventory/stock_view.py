@@ -81,7 +81,6 @@ class StockLevelService:
         ).scalar_one_or_none()
         return 0 if stored is None else int(stored)
 
-
     @staticmethod
     async def set_reorder_level_for_product(
         session: AsyncSession, tenant_id: UUID, product_id: UUID, level: object

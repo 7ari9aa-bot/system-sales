@@ -17,7 +17,6 @@ import pytest
 import sqlalchemy as sa
 
 from app.modules.pos.refund import Tender, allocate, allocate_by_method, plan_for
-from tests._pos_helpers import start_day
 
 RETURNS_PATH = "/api/v1/pos/sessions/{session_id}/returns"
 EXCHANGES_PATH = "/api/v1/pos/sessions/{session_id}/exchanges"
@@ -142,9 +141,7 @@ async def _refund_rows(db, tenant_ctx):
     from app.modules.orders.models import Refund
 
     return list(
-        (
-            await db.execute(sa.select(Refund).where(Refund.tenant_id == tenant_ctx.tenant_id))
-        )
+        (await db.execute(sa.select(Refund).where(Refund.tenant_id == tenant_ctx.tenant_id)))
         .scalars()
         .all()
     )
@@ -173,7 +170,13 @@ async def test_cash_sale_then_cash_return_refunds_and_lowers_the_drawer(db, tena
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
-        db, tenant_ctx, shift, variant, customer, quantity=5, payments=[{"method": "cash", "amount": "500.00"}]
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=5,
+        payments=[{"method": "cash", "amount": "500.00"}],
     )
     before = await PosService.drawer_summary(db, tenant_ctx.tenant_id, shift.id)
     assert Decimal(before["expected_cash"]) == Decimal("500.00")
@@ -226,7 +229,10 @@ async def test_split_tender_return_is_split_across_the_original_methods(db, tena
         tenant_ctx.tenant_id,
         shift.id,
         order_id=sold["order_id"],
-        lines=[{"variant_id": str(variant.id), "quantity": 1}, {"variant_id": str(variant.id), "quantity": 1}],
+        lines=[
+            {"variant_id": str(variant.id), "quantity": 1},
+            {"variant_id": str(variant.id), "quantity": 1},
+        ],
         refund=None,
     )
     # 2 pieces back = 200.00, all of it cash-first.
@@ -423,6 +429,62 @@ async def test_close_settles_every_method_the_day_collected(db, tenant_ctx):
     assert Decimal(str(rows["cash"].variance)) == Decimal("0.00")
 
 
+async def test_the_close_route_carries_the_method_counts(db, tenant_ctx):
+    """The report's §2.3: the service settled every method, but the route could not receive them."""
+    import sqlalchemy as sa
+
+    from app.modules.pos.models import PosSessionReconciliation
+    from app.modules.pos.router import CloseSessionRequest, close_session
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "100.00", "reference": "AUTH-7"},
+        ],
+    )
+
+    class Ctx:
+        session = db
+        tenant_id = tenant_ctx.tenant_id
+
+        class user:
+            id = tenant_ctx.user.id
+
+    class Override:
+        active = True
+
+    closed = await close_session(
+        shift.id,
+        Ctx(),
+        Override(),
+        CloseSessionRequest(counted_cash="100.00", counted_methods={"card": "95.00"}),
+    )
+    rows = {
+        row.method: row
+        for row in (
+            (
+                await db.execute(
+                    sa.select(PosSessionReconciliation).where(
+                        PosSessionReconciliation.session_id == shift.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    }
+    assert closed["status"] == "CLOSED"
+    assert Decimal(str(rows["card"].counted_amount)) == Decimal("95.00")
+    assert Decimal(str(rows["card"].variance)) == Decimal("-5.00")
+
+
 async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it(db, tenant_ctx):
     from app.modules.errors import ValidationError
     from app.modules.pos.service import PosService
@@ -443,9 +505,7 @@ async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it
     )
 
     with pytest.raises(ValidationError):
-        await PosService.close_session(
-            db, tenant_ctx.tenant_id, shift.id, counted_cash="50.00"
-        )
+        await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, counted_cash="50.00")
 
 
 async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
@@ -469,7 +529,11 @@ async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
     )
 
     row = (
-        (await db.execute(sa.select(PosSessionHandover).where(PosSessionHandover.session_id == handed.id)))
+        (
+            await db.execute(
+                sa.select(PosSessionHandover).where(PosSessionHandover.session_id == handed.id)
+            )
+        )
         .scalars()
         .one()
     )
@@ -530,7 +594,6 @@ async def test_an_apparel_shop_that_skipped_setup_cannot_sell_without_collecting
 
 
 async def test_record_only_selling_is_allowed_once_the_owner_says_so(db, tenant_ctx):
-    from app.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     await _apparel_shop_that_skipped_setup(db, tenant_ctx)
@@ -599,11 +662,7 @@ async def test_a_confirmed_sale_can_be_voided_and_nothing_is_deleted(db, tenant_
 
     # The sale receipt and its cash-in row are still there; the void added its own rows.
     receipts = list(
-        (
-            await db.execute(
-                sa.select(PosReceipt).where(PosReceipt.order_id == sold["order_id"])
-            )
-        )
+        (await db.execute(sa.select(PosReceipt).where(PosReceipt.order_id == sold["order_id"])))
         .scalars()
         .all()
     )

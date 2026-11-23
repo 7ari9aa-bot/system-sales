@@ -1874,7 +1874,8 @@ class PosService(PosReceiptReads):
             {**({"cash": counted} if counted is not None else {}), **method_counts}.items()
         ):
             expected_amount = (
-                expected if method == CASH and expected is not None
+                expected
+                if method == CASH and expected is not None
                 else to_money(by_method.get(method, 0), method)
             )
             session.add(
@@ -2085,9 +2086,7 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
-        return await PosService._order_service().collected_by_method(
-            session, tenant_id, order_ids
-        )
+        return await PosService._order_service().collected_by_method(session, tenant_id, order_ids)
 
     @staticmethod
     async def _record_close(
@@ -2349,14 +2348,29 @@ class PosService(PosReceiptReads):
         """What the close will record: the day's figures and the closing balance. Read-only."""
         pos_session = await PosService._get_session(session, tenant_id, session_id)
         totals = await PosService._day_totals(session, tenant_id, pos_session)
+        drawer_on = bool(
+            await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+        )
+        # What each method should hold, so the screen can ask for the terminal counts too and show a
+        # gap per method instead of one cash figure. A record-only till reads its sales' payments.
+        by_method = (
+            (await PosService.drawer_summary(session, tenant_id, session_id))["by_method"]
+            if drawer_on
+            else await PosService._day_by_method(session, tenant_id, pos_session)
+        )
         return {
             "session_id": pos_session.id,
             "status": pos_session.status,
             # Whether this close counts a drawer. The screen asks for the count only then, so it can
             # never disagree with ``close_session``, which refuses a close that lacks one.
-            "take_payments": bool(
-                await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
+            "take_payments": drawer_on,
+            # Whether every non-cash method must be counted, and what each one should hold.
+            "settle_payment_methods": bool(
+                await PosService._setting(
+                    session, tenant_id, "pos.settle_payment_methods", pos_session
+                )
             ),
+            "by_method": {str(k): str(v) for k, v in by_method.items()},
             **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()},
         }
 
@@ -3320,7 +3334,6 @@ class PosService(PosReceiptReads):
         """
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
 
         pos_session = await PosService._get_session(session, tenant_id, session_id, lock=True)
@@ -4117,7 +4130,6 @@ class PosService(PosReceiptReads):
         sale never collected is reported as ``uncollected``, never paid out of the drawer."""
         from app.core.events.writer import add_outbox_event
         from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.models import Order, OrderItem
         from app.modules.orders.service import OrderService
 
@@ -4523,7 +4535,9 @@ class PosService(PosReceiptReads):
             # The money: ``collected`` (the replacement cost more and the difference was taken),
             # ``refunded`` (it cost less and the difference went back), ``exchange_only`` (equal,
             # nothing moved) or ``record_only`` (a till that takes no payments).
-            "settlement": settlement["mode"] if settlement["direction"] == "none" else settlement["direction"],
+            "settlement": (
+                settlement["mode"] if settlement["direction"] == "none" else settlement["direction"]
+            ),
             "settled_amount": str(settlement["amount"]),
             "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "uncollected": str(settlement.get("uncollected", "0.00")),

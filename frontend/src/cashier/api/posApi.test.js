@@ -187,9 +187,10 @@ describe("recordSale note", () => {
     expect(calls[1].body).toEqual({ reason: "pay_in", amount: "100.50", notes: "morning" });
     expect(calls[1].headers["Idempotency-Key"]).toMatch(/^pos-/);
 
-    await posApi.handoverSession("s1", "u2", newIntent());
+    await posApi.handoverSession("s1", { newCashierId: "u2" }, newIntent());
     expect(calls[2].path).toBe("/pos/sessions/s1/handover");
     expect(calls[2].body).toEqual({ new_cashier_id: "u2" });
+
     expect(calls[2].headers["Idempotency-Key"]).toMatch(/^pos-/);
   });
 });
@@ -217,5 +218,23 @@ describe("the profit report is read from the profit route", () => {
     expect(calls.at(-1).path).toBe("/reports/profit/by-variant");
     await posApi.profitByVariant("");
     expect(calls.at(-1).path).toBe("/reports/profit/by-variant");
+  });
+});
+
+describe("handover wire", () => {
+  it("sends the counted drawer and the reason when the drawer was counted", async () => {
+    calls.length = 0;
+    await posApi.handoverSession("s1", { newCashierId: "u2", countedCash: "180.5", varianceReason: "نقص 20" }, newIntent());
+    expect(calls[0].body).toEqual({
+      new_cashier_id: "u2",
+      counted_cash: "180.50",
+      variance_reason: "نقص 20",
+    });
+  });
+
+  it("an uncounted hand-over carries no cash key at all", async () => {
+    calls.length = 0;
+    await posApi.handoverSession("s1", { newCashierId: "u2", countedCash: "" }, newIntent());
+    expect(calls[0].body).toEqual({ new_cashier_id: "u2" });
   });
 });

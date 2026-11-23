@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeBody, closeProblems, countsDrawer, gapMinor, gapText } from "./closePlan";
+import { closeBody, closeProblems, countsDrawer, gapMinor, gapText, methodGapMinor, methodProblems, methodsToCount } from "./closePlan";
 
 const ON = { take_payments: true };
 const OFF = { take_payments: false };
@@ -84,5 +84,49 @@ describe("the request body", () => {
   it("throws on a count the server would refuse rather than sending it", () => {
     expect(() => closeBody({ rules: ON, counted: "-1", expected: "100" })).toThrow();
     expect(() => closeBody({ rules: ON, counted: "abc", expected: "100" })).toThrow();
+  });
+});
+
+describe("per-method settlement at close", () => {
+  const byMethod = { cash: "100.00", card: "90.00", wallet: "0.00" };
+
+  it("counts every non-cash method that collected something", () => {
+    expect(methodsToCount(byMethod)).toEqual(["card"]);
+  });
+
+  it("never asks for cash twice: the drawer field already carries it", () => {
+    expect(methodsToCount({ cash: "50.00" })).toEqual([]);
+  });
+
+  it("reads a method's gap in cents", () => {
+    expect(methodGapMinor("85", "90.00")).toBe(-500);
+    expect(methodGapMinor("90", "90.00")).toBe(0);
+    expect(methodGapMinor("", "90.00")).toBeNull();
+  });
+
+  it("refuses a required method left blank", () => {
+    const problems = methodProblems({ byMethod, countedMethods: {}, settle: true });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("البطاقة");
+  });
+
+  it("says nothing when the shop does not require a method count", () => {
+    expect(methodProblems({ byMethod, countedMethods: {}, settle: false })).toEqual([]);
+  });
+
+  it("refuses a count it cannot read, required or not", () => {
+    expect(methodProblems({ byMethod, countedMethods: { card: "تسعة" }, settle: false })).toHaveLength(1);
+  });
+
+  it("sends the counted methods on the wire, skipping the blank ones", () => {
+    const body = closeBody({
+      rules: { take_payments: true },
+      counted: "100",
+      expected: "100.00",
+      countedMethods: { card: "85", wallet: "" },
+      settle: true,
+    });
+    expect(body.counted_methods).toEqual({ card: "85.00" });
+    expect(body.counted_cash).toBe("100.00");
   });
 });

@@ -12,7 +12,6 @@ import ExchangeSettlementBar from "@/cashier/components/exchanges/ExchangeSettle
 import ExchangeActionsBar from "@/cashier/components/exchanges/ExchangeActionsBar";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
-import { fmtMoney } from "@/cashier/lib/format";
 import { fromMinor, toMinor } from "@/cashier/api/money";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
@@ -20,7 +19,8 @@ import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSal
 import { searchCatalog } from "@/cashier/api/catalogAdapter";
 import { estimateRefund, returnableLines, sendReturn, setLineRestock, setQty, tableLine } from "@/cashier/api/returnPlan";
 import { addReplacement, previewTotal, removeReplacement, setReplacementQty, useExchangeQuote } from "@/cashier/api/exchangeCart";
-import { differenceMinor, exchangeErrorMessage, exchangeRequest } from "@/cashier/api/exchangePlan";
+import { differenceMinor, exchangeErrorMessage, exchangeRequest, settlementSummary } from "@/cashier/api/exchangePlan";
+import { buildTender, defaultTender } from "@/cashier/api/tenderPlan";
 
 
 const asInvoice = (d) => ({
@@ -56,6 +56,9 @@ function ExchangeScreen({ session }) {
   const [termError, setTermError] = useState("");
   const [restockChoice, setRestock] = useState(null); // null = the shop's own default (shown and applied)
   const [reason, setReason] = useState(null);
+  const [tenderLines, setTenderLines] = useState([]); // how the customer pays the difference
+  const [refundMethod, setRefundMethod] = useState(""); // "" = the tenders the sale actually collected
+  const rules = session.tender; // this till's own tender rules: methods, references, split
   const policy = useReturnPolicy(session.id).data;
   const restock = restockChoice ?? policy?.restock_default ?? true;
   const [busy, setBusy] = useState(false);
@@ -92,7 +95,14 @@ function ExchangeScreen({ session }) {
   const diffMinor = invoice && quoteReady ? differenceMinor(invoice.detail, lines, quote.total) : 0;
   const shownNew = newLines.length ? Number(quote.total) : 0;
   const hasDraft = !!invoice || newLines.length > 0;
-  const canComplete = !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy;
+  const recording = Boolean(rules?.take_payments);
+  const kind = diffMinor > 0 ? "pay" : diffMinor < 0 ? "refund" : "even";
+  const tenderPlan =
+    recording && kind === "pay"
+      ? buildTender(rules, fromMinor(diffMinor), tenderLines)
+      : { ok: true, payload: {} };
+  const canComplete =
+    !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy && tenderPlan.ok;
 
   // A new draft (different lines / quantities) must never reuse the intent of an earlier attempt.
   const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty, l.restock]), newLines.map((l) => [l.variantId, l.qty]), restockChoice, reason]);
@@ -102,6 +112,16 @@ function ExchangeScreen({ session }) {
       intentFor.current = fingerprint;
     }
   }, [fingerprint]);
+
+  // When the difference changes (a line added, a quantity moved) the tender that covered the old
+  // amount is meaningless: refill it with the new amount owed, on the till's first method.
+  useEffect(() => {
+    if (!recording || diffMinor <= 0) {
+      setTenderLines([]);
+      return;
+    }
+    setTenderLines(defaultTender(rules, fromMinor(diffMinor)));
+  }, [recording, diffMinor, rules]);
 
   function selectInvoice(inv) {
     setInvoice(inv);
@@ -121,6 +141,8 @@ function ExchangeScreen({ session }) {
     setError("");
     setTermError("");
     setPayError(null);
+    setTenderLines([]);
+    setRefundMethod("");
     intentRef.current = null;
   }
   function submitSearch() {
@@ -167,13 +189,19 @@ function ExchangeScreen({ session }) {
     if (busy) return;
     setBusy(true);
     try {
-      const req = exchangeRequest(invoice.detail, lines, newLines, { restock: restockChoice ?? undefined, reason });
+      const req = exchangeRequest(invoice.detail, lines, newLines, {
+        restock: restockChoice ?? undefined,
+        reason,
+        rules,
+        differenceMinor: diffMinor,
+        tenderLines,
+        refundMethod: refundMethod || null,
+      });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
-      const net = Number(res.net);
-      toast.success(
-        net > 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح المحل ${fmtMoney(net)}` : net < 0 ? `تم الاستبدال ${res.new_receipt_number}. الفرق لصالح العميل ${fmtMoney(Math.abs(net))}` : `تم الاستبدال ${res.new_receipt_number} بدون فرق`,
-      );
+      // The money is the server's answer, not the screen's arithmetic: it knows which tenders the
+      // original sale collected and how much of each was still refundable.
+      toast.success(`تم الاستبدال ${res.new_receipt_number}. ${settlementSummary(res)}`, { duration: 12000 });
       intentRef.current = null;
       setDialog(null);
       await qc.invalidateQueries({ queryKey: ["cashier"] });
@@ -259,10 +287,20 @@ function ExchangeScreen({ session }) {
             reasons={policy?.reasons}
             reason={reason}
             onReasonChange={setReason}
+            rules={rules}
+            tenderLines={tenderLines}
+            onTenderChange={setTenderLines}
+            refundMethod={refundMethod}
+            onRefundMethodChange={setRefundMethod}
           />
         </div>
       </div>
       <div ref={actionsRef}>
+        {!tenderPlan.ok && invoice && newLines.length > 0 ? (
+          <p role="alert" className="px-3 pb-1 text-center text-[11px] font-semibold text-rose-600">
+            {tenderPlan.message}
+          </p>
+        ) : null}
         <ExchangeActionsBar canComplete={canComplete} hasDraft={hasDraft} busy={busy} label="إتمام الاستبدال" onComplete={onComplete} onCancel={() => setDialog("cancel")} />
       </div>
       <ConfirmDialog

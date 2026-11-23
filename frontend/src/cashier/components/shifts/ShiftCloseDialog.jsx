@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/cashier/components/ui/input";
 import { Textarea } from "@/cashier/components/ui/textarea";
 import { fmtMoney, fmtMoneyDeduction } from "@/cashier/lib/format";
-import { closeProblems, countsDrawer, gapMinor } from "@/cashier/api/closePlan";
+import { closeProblems, countsDrawer, gapMinor, methodGapMinor, methodProblems, methodsToCount } from "@/cashier/api/closePlan";
 
 // إغلاق اليوم: تسجيل لما حدث فقط (رصيد البداية + الفواتير − المرتجعات)، وليس جردًا للدرج.
 // `preview` = the backend's close-preview (every figure computed from the ledger, not on the client).
@@ -20,6 +20,8 @@ export function heldInvoicesPhrase(n) {
 export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount = 0, preview, previewLoading = false, onSubmit, pending = false, error = null, drawer = null, rules = null }) {
   const [counted, setCounted] = useState("");
   const [reason, setReason] = useState("");
+  // {method: typed amount} for the card / wallet / transfer terminals.
+  const [countedMethods, setCountedMethods] = useState({});
   if (!shift) return null;
 
   // A till that takes payments has a drawer to count. One that does not closes exactly as it always has.
@@ -38,6 +40,12 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
     canApprove: true,
   });
   const needsReason = counts && gap !== null && gap !== 0 && (rules?.reasonRequired ?? true);
+  // A shop that settles methods at close must count every non-cash method the shift collected on.
+  const byMethod = preview?.by_method ?? {};
+  const settleMethods = Boolean(preview?.settle_payment_methods);
+  const methods = methodsToCount(byMethod);
+  const methodGaps = methodProblems({ byMethod, countedMethods, settle: settleMethods });
+  const methodLabel = (m) => ({ card: "البطاقة", wallet: "المحفظة", transfer: "التحويل", cash: "النقدية" }[m] ?? m);
 
   const ready = Boolean(preview) && !previewLoading;
   const money = (v) => (ready ? fmtMoney(Number(v ?? 0)) : "…");
@@ -97,7 +105,51 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
                 <p className="text-[11px] leading-relaxed text-amber-700">الفرق أكبر من الحد المسموح ({fmtMoney(rules.threshold)}): الإغلاق يحتاج مديرًا بصلاحية الموافقة.</p>
               ) : null}
             </div>
-          ) : (
+          ) : null}
+          {methods.length ? (
+            <div className="grid gap-2 rounded-xl border border-border p-3 text-xs" data-testid="method-count">
+              <p className="font-semibold">تسوية وسائل الدفع</p>
+              {methods.map((m) => {
+                const expectedM = byMethod[m] ?? "0";
+                const g = methodGapMinor(countedMethods[m], expectedM);
+                return (
+                  <div key={m} className="grid gap-1">
+                    <div className="num flex justify-between py-0.5">
+                      <span className="text-muted-foreground">{methodLabel(m)} — المتوقع</span>
+                      <span>{fmtMoney(Number(expectedM))}</span>
+                    </div>
+                    <Input
+                      inputMode="decimal"
+                      dir="ltr"
+                      value={countedMethods[m] ?? ""}
+                      onChange={(e) => setCountedMethods((all) => ({ ...all, [m]: e.target.value }))}
+                      placeholder={settleMethods ? "مطلوب" : "اختياري"}
+                      aria-label={`المعدود ${methodLabel(m)}`}
+                    />
+                    {g !== null ? (
+                      <div className={`num flex justify-between font-semibold ${g === 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                        <span>{g === 0 ? "مطابق" : g < 0 ? "ناقص" : "زيادة"}</span>
+                        <span>{g === 0 ? "" : fmtMoney(Math.abs(g) / 100)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {settleMethods ? (
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  عدّ كل وسيلة اتحصّل عليها في الوردية: الإغلاق مرفوض لو وسيلة ناقصة.
+                </p>
+              ) : null}
+              {methodGaps.length ? (
+                <ul className="list-inside list-disc text-[11px] font-semibold text-rose-600">
+                  {methodGaps.map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+          {counts ? null : (
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               الإغلاق يسجّل ما حدث في اليوم فقط. لا يُطلب عدّ الدرج ولا يُحسب عجز أو زيادة.
             </p>
@@ -128,8 +180,8 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
           </Button>
           <Button
             className="font-bold"
-            disabled={!ready || pending || (counts && (expected == null || problems.length > 0))}
-            onClick={() => onSubmit(counts ? { counted, expected, reason } : undefined)}
+            disabled={!ready || pending || (counts && (expected == null || problems.length > 0)) || methodGaps.length > 0}
+            onClick={() => onSubmit(counts ? { counted, expected, reason, countedMethods, settle: settleMethods } : undefined)}
           >
             {pending ? "جارٍ الإغلاق…" : heldCount > 0 ? "تأكيد الإغلاق وتصفير المعلقة" : "تأكيد إغلاق اليوم"}
           </Button>
