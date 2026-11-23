@@ -94,6 +94,7 @@ export default function ChannelChat({
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const messengerImageInput = useRef(null);
   const igFileInput = useRef(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
@@ -888,6 +889,24 @@ export default function ChannelChat({
             >
               <Smile className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              data-testid="messenger-image-button"
+              onClick={() => messengerImageInput.current?.click()}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#e4e6eb]"
+              title={lang === "ar" ? "إرسال صورة" : "Send a photo"}
+              aria-label={lang === "ar" ? "إرسال صورة" : "Send a photo"}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </button>
+            <input
+              ref={messengerImageInput}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              hidden
+              data-testid="messenger-image-input"
+              onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) pickFile(file); }}
+            />
             <input
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -985,6 +1004,8 @@ export default function ChannelChat({
         channel={channel}
         conversation={conversation}
         lang={lang}
+        onSearch={() => { setContactDrawerOpen(false); setSearchOpen(true); setSearchQuery(""); }}
+        onTheme={() => { setContactDrawerOpen(false); setThemePickerOpen(true); }}
         onListStateChange={isInstagram ? (row, body) => onListStateChange?.(row, body) : undefined}
         onOpenCustomerProfile={() => {
           setCustomer360Record({

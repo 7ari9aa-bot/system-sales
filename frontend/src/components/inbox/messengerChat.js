@@ -145,3 +145,23 @@ export function messengerTimeDivider(messages, index, gapMs = MESSENGER_TIME_GAP
   if (!now || !before) return true;
   return now - before >= gapMs;
 }
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>"')]+/giu;
+
+/**
+ * What the "Media, files and links" section of the details panel lists: only what the thread
+ * really contains. Photos and videos are media; any other attachment is a file; a link is a
+ * web address a message's text carries.
+ */
+export function messengerSharedItems(messages) {
+  const out = { media: [], files: [], links: [] };
+  for (const m of Array.isArray(messages) ? messages : []) {
+    const kind = String(m?.contentType || m?.mediaType || "").toLowerCase();
+    if (m?.mediaUrl) {
+      if (kind.startsWith("image") || kind === "photo" || kind.startsWith("video")) out.media.push(m);
+      else out.files.push(m);
+    }
+    for (const url of String(m?.text || "").match(URL_IN_TEXT) || []) out.links.push({ id: m.id, url });
+  }
+  return out;
+}

@@ -168,3 +168,28 @@ describe("messengerTimeDivider", () => {
     expect(messengerTimeDivider([msg("2026-11-22T10:00:00Z"), {}], 1)).toBe(true);
   });
 });
+
+import { messengerSharedItems } from "./messengerChat";
+
+describe("messengerSharedItems", () => {
+  const list = [
+    { id: "1", text: "hi" },
+    { id: "2", mediaType: "image", mediaUrl: "https://x/a.jpg" },
+    { id: "3", contentType: "video", mediaUrl: "https://x/v.mp4" },
+    { id: "4", contentType: "file", mediaUrl: "https://x/f.pdf", fileName: "f.pdf" },
+    { id: "5", text: "see https://shop.example/p/1 now" },
+    { id: "6", contentType: "voice", mediaUrl: "https://x/a.ogg" },
+  ];
+
+  it("splits the thread into media, files and links from what was really sent", () => {
+    const out = messengerSharedItems(list);
+    expect(out.media.map((m) => m.id)).toEqual(["2", "3"]);
+    expect(out.files.map((m) => m.id)).toEqual(["4", "6"]);
+    expect(out.links).toEqual([{ id: "5", url: "https://shop.example/p/1" }]);
+  });
+
+  it("is empty for a thread with nothing shared, and never invents items", () => {
+    expect(messengerSharedItems([{ id: "1", text: "hi" }])).toEqual({ media: [], files: [], links: [] });
+    expect(messengerSharedItems(null)).toEqual({ media: [], files: [], links: [] });
+  });
+});

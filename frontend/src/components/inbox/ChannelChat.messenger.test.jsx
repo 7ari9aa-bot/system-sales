@@ -68,4 +68,10 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain('data-testid="messenger-composer"');
     expect(html).toContain('placeholder="Aa"');
   });
+
+  test("the composer has Messenger's blue image button, limited to images", () => {
+    const html = render([msg("m1", { text: "hi" })]);
+    expect(html).toContain('data-testid="messenger-image-button"');
+    expect(html).toContain('accept="image/jpeg,image/png,image/gif,image/webp"');
+  });
 });
