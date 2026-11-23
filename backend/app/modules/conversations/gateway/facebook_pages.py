@@ -93,6 +93,43 @@ def mention_tag(psids: list[str]) -> str:
     return "@[" + ",".join(seen) + "]"
 
 
+#: The Page fields an owner may edit, and the permission each write needs. A field Meta does not
+#: expose at all is listed with ``exposed=False`` so a screen says "read-only" instead of drawing a
+#: box that cannot save. Verified against Meta's Page fields reference; nothing invented.
+PAGE_FIELD_MATRIX: dict[str, dict[str, Any]] = {
+    "about": {"editable": True, "write_scope": "pages_manage_metadata"},
+    "description": {"editable": True, "write_scope": "pages_manage_metadata"},
+    "website": {"editable": True, "write_scope": "pages_manage_metadata"},
+    "phone": {"editable": True, "write_scope": "pages_manage_metadata"},
+    "emails": {"editable": True, "write_scope": "pages_manage_metadata", "note": "a list"},
+    "category": {"editable": True, "write_scope": "pages_manage_metadata"},
+    "hours": {
+        "editable": True,
+        "write_scope": "pages_manage_metadata",
+        "note": "structured JSON per day, not free text",
+    },
+    "name": {"editable": False, "note": "renamed through Meta's own review flow, not here"},
+    "id": {"editable": False},
+    "followers_count": {"editable": False, "note": "counted by Meta"},
+    "fan_count": {"editable": False, "note": "counted by Meta"},
+    "verification_status": {
+        "editable": False,
+        "exposed": False,
+        "note": "Business Suite shows it; the API does not expose verification",
+    },
+    "rating": {
+        "editable": False,
+        "exposed": False,
+        "note": "Page ratings have no API surface",
+    },
+}
+
+#: What a Page edit form may send, in display order.
+EDITABLE_PAGE_FIELDS: tuple[str, ...] = tuple(
+    name for name, spec in PAGE_FIELD_MATRIX.items() if spec.get("editable")
+)
+
+
 def check_metrics(metrics: list[str]) -> list[str]:
     bad = [m for m in metrics if m in REMOVED_METRICS]
     if bad:
@@ -654,6 +691,49 @@ class FacebookPagesClient:
         _, page_id = self._creds(credentials)
         body = await self._graph("GET", f"{page_id}/stories", credentials, _client=_client)
         return body.get("data") or []
+
+    # ---- page fields ----
+    async def update_page_fields(
+        self, credentials: ProviderCredentials, values: dict[str, Any], _client=None
+    ) -> dict[str, Any]:
+        """Write the Page fields Meta allows, refusing a read-only or unknown field FIRST.
+
+        Refusing before the call matters: a POST that names `name` or `verification_status` is
+        rejected by Meta with a generic permission error that tells the owner nothing about which
+        field was the problem.
+        """
+        if not values:
+            raise ValueError("no fields to update")
+        unknown = sorted(k for k in values if k not in EDITABLE_PAGE_FIELDS)
+        if unknown:
+            raise ValueError(f"these Page fields are not editable through the API: {', '.join(unknown)}")
+        _, page_id = self._creds(credentials)
+        return await self._graph("POST", page_id, credentials, data=values, _client=_client)
+
+    # ---- post controls ----
+    async def set_post_pinned(
+        self, credentials: ProviderCredentials, post_id: str, pinned: bool, _client=None
+    ) -> None:
+        """Pin or unpin a post on the Page. Meta takes `is_pinned` on the post object."""
+        await self._graph(
+            "POST",
+            post_id,
+            credentials,
+            data={"is_pinned": "true" if pinned else "false"},
+            _client=_client,
+        )
+
+    async def set_post_hidden(
+        self, credentials: ProviderCredentials, post_id: str, hidden: bool, _client=None
+    ) -> None:
+        """Hide or unhide a post from the timeline. The post still exists for its author."""
+        await self._graph(
+            "POST",
+            post_id,
+            credentials,
+            data={"is_hidden": "true" if hidden else "false"},
+            _client=_client,
+        )
 
     # ---- insights ----
     async def get_page_insights(

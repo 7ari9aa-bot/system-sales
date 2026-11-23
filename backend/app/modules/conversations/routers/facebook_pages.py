@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import binascii
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -319,6 +319,61 @@ async def edit_post(
     return _post_out(
         await FacebookService.edit(ctx.session, ctx.tenant_id, creds, post_id, body.message)
     )
+
+
+class PageFieldsRequest(BaseModel):
+    """The Page fields to write. Anything not in EDITABLE_PAGE_FIELDS is refused before Meta."""
+
+    values: dict[str, Any]
+
+
+class PostControlRequest(BaseModel):
+    on: bool
+
+
+@router.patch("/facebook/page")
+async def update_page_fields(
+    body: PageFieldsRequest,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Edit the Page's description, contact details, website, category or hours."""
+    creds = await _credentials(ctx, send=True)
+    return await facebook_pages.update_page_fields(creds, body.values)
+
+
+@router.get("/facebook/page/fields")
+async def page_field_matrix(
+    ctx: TenantContext = Depends(require_permission("conversations:read")),
+):
+    """Which Page fields are editable, which need a permission, and which Meta does not expose."""
+    return {
+        "fields": [
+            {"name": name, **spec}
+            for name, spec in facebook_pages.PAGE_FIELD_MATRIX.items()
+        ]
+    }
+
+
+@router.post("/facebook/posts/{post_id}/pin")
+async def pin_post(
+    post_id: str,
+    body: PostControlRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    await facebook_pages.set_post_pinned(creds, post_id, body.on)
+    return {"post_id": post_id, "pinned": body.on}
+
+
+@router.post("/facebook/posts/{post_id}/hide")
+async def hide_post(
+    post_id: str,
+    body: PostControlRequest,
+    ctx: TenantContext = Depends(require_permission("conversations:write")),
+):
+    creds = await _credentials(ctx, send=True)
+    await facebook_pages.set_post_hidden(creds, post_id, body.on)
+    return {"post_id": post_id, "hidden": body.on}
 
 
 @router.delete("/facebook/posts/{post_id}", status_code=204)
