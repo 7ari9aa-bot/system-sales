@@ -372,6 +372,7 @@ export default function ChannelChat({
           role="button"
           tabIndex={0}
           onClick={() => setContactDrawerOpen(true)}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setContactDrawerOpen(true); } }}
           className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none hover:opacity-90 transition-opacity"
           title={lang === "ar" ? "عرض تفاصيل جهة الاتصال" : "View contact details"}
         >
@@ -1145,7 +1146,7 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
-      {viewerId && (isWhatsApp || isInstagram) && (
+      {viewerId && (isWhatsApp || isInstagram || isMessenger) && (
         <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
       )}
     </div>
