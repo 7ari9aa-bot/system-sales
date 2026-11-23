@@ -27,12 +27,22 @@ from app.modules.conversations.gateway.base import (
     parse_provider_body,
 )
 from app.modules.conversations.gateway.messenger_media import (
+    SENDABLE_REACTIONS,
     MessengerLimitError,
     attachment_type,
     check_attachment,
 )
 
 logger = logging.getLogger(__name__)
+
+# A reaction is not a message: Messenger takes it as a sender action naming the message and one
+# emoji. The six below are the ones the Messenger picker offers, so they are the ones a Page can
+# use; Meta refuses any other. The removal marker matches the one Instagram and WhatsApp store.
+REACTION_REMOVED = "∅"
+
+# Meta's Quick Replies: at most 13 buttons under a text message, each title at most 20 characters.
+MAX_QUICK_REPLIES = 13
+QUICK_REPLY_TITLE_CHARS = 20
 
 
 class MessengerAdapter(ChannelAdapter):
@@ -516,6 +526,48 @@ class MessengerAdapter(ChannelAdapter):
 
         await get_breaker(PROVIDER_MESSENGER).call(_post)
 
+    @staticmethod
+    def check_outbound(message: OutboundMessage) -> None:
+        """Refuse what Messenger would refuse, before spending a call on it.
+
+        Raises MessengerLimitError (a ValueError) naming the rule broken. A reaction carries no
+        text: only its emoji is checked, and only against the set Messenger accepts.
+        """
+        meta = message.meta or {}
+        if meta.get("reaction_to_provider_id"):
+            emoji = (message.body or "").strip()
+            if emoji and emoji != REACTION_REMOVED and emoji not in SENDABLE_REACTIONS:
+                raise MessengerLimitError(
+                    "reaction_not_allowed",
+                    "Messenger only accepts its own six reaction emoji",
+                )
+            return
+        quick = meta.get("quick_replies") or []
+        if quick:
+            if not (message.body or "").strip():
+                raise MessengerLimitError(
+                    "quick_replies_need_text", "quick replies must come with a text message"
+                )
+            if len(quick) > MAX_QUICK_REPLIES:
+                raise MessengerLimitError(
+                    "too_many_quick_replies", f"at most {MAX_QUICK_REPLIES} quick replies"
+                )
+            seen: list[str] = []
+            for q in quick:
+                title = str((q or {}).get("title", "")).strip()
+                if not title:
+                    raise MessengerLimitError("quick_reply_empty", "a quick reply needs a title")
+                if len(title) > QUICK_REPLY_TITLE_CHARS:
+                    raise MessengerLimitError(
+                        "quick_reply_too_long",
+                        f"a quick reply title is at most {QUICK_REPLY_TITLE_CHARS} characters",
+                    )
+                if title in seen:
+                    raise MessengerLimitError(
+                        "quick_reply_duplicate", "quick replies must be different from each other"
+                    )
+                seen.append(title)
+
     async def send(
         self,
         credentials: ProviderCredentials,
@@ -535,10 +587,32 @@ class MessengerAdapter(ChannelAdapter):
             "Content-Type": "application/json",
         }
         recipient = {"id": message.customer_ref}
+        self.check_outbound(message)
         # A text message and an attachment are two messages on Messenger: one request cannot carry
         # both. A file with a caption therefore goes out as the file, then the caption.
         payloads: list[dict[str, Any]] = []
-        if message.template_name:
+        reaction_target = (message.meta or {}).get("reaction_to_provider_id")
+        if reaction_target:
+            # Reacting is a sender action, not a message: the emoji rides on the message id. An
+            # empty emoji withdraws ours, exactly as the picker's second tap does in Messenger.
+            emoji = (message.body or "").strip()
+            if emoji and emoji != REACTION_REMOVED:
+                payloads.append(
+                    {
+                        "recipient": recipient,
+                        "sender_action": "react",
+                        "payload": {"message_id": reaction_target, "emoji": emoji},
+                    }
+                )
+            else:
+                payloads.append(
+                    {
+                        "recipient": recipient,
+                        "sender_action": "unreact",
+                        "payload": {"message_id": reaction_target},
+                    }
+                )
+        elif message.template_name:
             payloads.append(
                 {
                     "recipient": recipient,
@@ -570,7 +644,22 @@ class MessengerAdapter(ChannelAdapter):
             if message.body:
                 payloads.append({"recipient": recipient, "message": {"text": message.body}})
         else:
-            payloads.append({"recipient": recipient, "message": {"text": message.body or ""}})
+            text_message: dict[str, Any] = {"text": message.body or ""}
+            quick = (message.meta or {}).get("quick_replies") or []
+            if quick:
+                # The chips sit under the text; the title is also the payload, so a tap comes back
+                # as the words the customer read.
+                text_message["quick_replies"] = [
+                    {
+                        "content_type": "text",
+                        "title": str((q or {}).get("title", "")).strip(),
+                        "payload": str(
+                            (q or {}).get("payload") or (q or {}).get("title", "")
+                        ).strip(),
+                    }
+                    for q in quick
+                ]
+            payloads.append({"recipient": recipient, "message": text_message})
 
         # The policy layer grants a human a 7-day window, but Meta only honours it when the request
         # says so: without the tag a reply after hour 24 is refused by the provider even though we

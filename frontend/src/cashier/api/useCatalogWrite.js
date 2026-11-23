@@ -3,6 +3,7 @@ import { posApi } from "./posApi";
 import { catalogApi } from "./catalogApi";
 import { CATALOG_KEY } from "./usePosSale";
 import { planProductEdit, productToForm, shouldRetryEditLoad } from "./productEdit";
+import { planOpeningDistribution } from "@/cashier/lib/stockDistribution";
 
 /** كل مخازن المحل النشطة: الاختيار في نموذج المنتج بيتبني عليها، والأول النشط هو الافتراضي. */
 export function useWarehouses() {
@@ -27,6 +28,36 @@ export async function defaultWarehouseId() {
 }
 
 /** Save a product to the backend, then refresh the POS catalog so it is sellable right away. */
+/**
+ * يحفظ منتج جديد ويوزّع رصيده الافتتاحي على المخازن المختارة.
+ * الرصيد في النموذج إجمالي؛ الـintake بياخد نصيب المخزن الأساسي، وبعد كده كل مخزن تاني
+ * بياخد حركة «in» بكميته. فشل حركة توزيع ما بيلغيش المنتج — بيتقال بالاسم في النتيجة.
+ */
+export async function saveProductWithDistribution(input, warehouseId) {
+  const plan = planOpeningDistribution(input.variants ?? [], input.warehouses ?? [], warehouseId);
+  const variants = (input.variants ?? []).map((v) => ({
+    ...v,
+    stock: plan.primaryStock[v.id ?? v.sku] ?? Number(v.stock ?? 0),
+  }));
+  const created = await catalogApi.createProduct({ ...input, variants }, { warehouseId });
+
+  const bySku = new Map((created?.variants ?? []).map((v) => [String(v.sku ?? "").trim(), v.id]));
+  const failed = [];
+  for (const move of plan.movements) {
+    const variantId = bySku.get(String(move.sku ?? "").trim());
+    if (!variantId) {
+      failed.push({ ...move, message: "التركيبة مش موجودة بعد الحفظ" });
+      continue;
+    }
+    try {
+      await catalogApi.moveStock({ variantId, warehouseId: move.warehouseId, direction: "in", quantity: move.quantity, reason: "adjustment" });
+    } catch (e) {
+      failed.push({ ...move, message: e?.message ?? String(e) });
+    }
+  }
+  return { ...created, distribution: { planned: plan.movements, failed } };
+}
+
 export function useCreateProduct() {
   const qc = useQueryClient();
   return useMutation({
@@ -34,7 +65,7 @@ export function useCreateProduct() {
       const needsStock = (input.variants ?? []).some((v) => Number(v.stock) > 0);
       // المخزن اللي اختاره التاجر بيفوز؛ لو مفيش اختيار (أو مفيش رصيد) بنرجع للمخزن الافتراضي.
       const warehouseId = needsStock ? input.warehouseId || (await defaultWarehouseId()) : undefined;
-      return catalogApi.createProduct(input, { warehouseId });
+      return saveProductWithDistribution(input, warehouseId);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: CATALOG_KEY }),
   });

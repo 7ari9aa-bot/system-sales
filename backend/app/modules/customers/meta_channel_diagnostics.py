@@ -52,6 +52,7 @@ DASHBOARD_FIELDS = {
         "messaging_referrals",
         "message_deliveries",
         "message_reads",
+        "message_reactions",
         "feed",
     ),
     "instagram": ("messages", "messaging_postbacks", "comments"),

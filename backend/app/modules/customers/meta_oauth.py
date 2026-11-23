@@ -99,8 +99,9 @@ _MESSENGER_ONLY_FIELDS = ("message_reactions", "message_echoes", "messaging_hand
 _FACEBOOK_PAGE_FIELDS = ("feed", "mention")
 
 _BASE_SUBSCRIBED_FIELDS = ",".join(_CHAT_FIELDS)
+_MESSENGER_SUBSCRIBED_FIELDS = ",".join((*_CHAT_FIELDS, *_MESSENGER_ONLY_FIELDS))
 _SUBSCRIBED_FIELDS = {
-    "messenger": ",".join((*_CHAT_FIELDS, *_MESSENGER_ONLY_FIELDS)),
+    "messenger": _MESSENGER_SUBSCRIBED_FIELDS,
     # Instagram DMs reach the linked Page through the same base chat fields.
     "instagram": _BASE_SUBSCRIBED_FIELDS,
     "facebook": ",".join(_FACEBOOK_PAGE_FIELDS),
@@ -113,7 +114,7 @@ def all_page_subscribed_fields() -> list[str]:
 
 
 def subscribed_fields(provider: str) -> str:
-    return _SUBSCRIBED_FIELDS.get(provider, _BASE_SUBSCRIBED_FIELDS)
+    return _SUBSCRIBED_FIELDS.get(provider, _MESSENGER_SUBSCRIBED_FIELDS)
 
 
 # A Facebook connection is the same page-messaging grant as Messenger — the

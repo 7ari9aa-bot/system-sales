@@ -7,6 +7,8 @@ import ProductVariantsPicker from "@/cashier/components/products/ProductVariants
 import ProductSummarySection from "@/cashier/components/products/ProductSummarySection";
 import ProductImageCard from "@/cashier/components/products/ProductImageCard";
 import VariantsMatrix from "@/cashier/components/products/VariantsMatrix";
+import StockDistribution from "@/cashier/components/products/StockDistribution";
+import { allocationProblem, withPrimaryWarehouse } from "@/cashier/lib/stockDistribution";
 import { variantLimitProblem } from "@/cashier/lib/productLimits";
 import { useWarehouses } from "@/cashier/api/useCatalogWrite";
 import {
@@ -207,7 +209,12 @@ export default function ProductForm({
     setRows((prev) => prev.map((r) => (String(r.barcode ?? "").trim() ? r : { ...r, autoBarcode: true })));
   }
 
-  const canSave = form.name.trim().length > 2 && rows.length > 0 && rows.every((r) => Number(r.sellPrice) > 0);
+  // التوزيع الغلط بيمنع الحفظ: منتج برصيد أكبر من اللي في الجدول مش حاجة تتحفظ وتتصلح بعدين.
+  const canSave =
+    form.name.trim().length > 2 &&
+    rows.length > 0 &&
+    rows.every((r) => Number(r.sellPrice) > 0) &&
+    !allocationProblem(rows, activeWarehouses, form.warehouseId);
 
   return (
     <>
@@ -255,7 +262,11 @@ export default function ProductForm({
                   <select
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs font-semibold"
                     value={form.warehouseId ?? ""}
-                    onChange={(e) => patch({ warehouseId: e.target.value })}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setRows((prev) => withPrimaryWarehouse(prev, next));
+                      patch({ warehouseId: next });
+                    }}
                   >
                     {activeWarehouses.map((w) => (
                       <option key={w.id} value={w.id}>{w.name}</option>
@@ -277,6 +288,17 @@ export default function ProductForm({
                 onGenerate={generateRows}
                 onGenerateBarcodes={generateBarcodes}
                 defaultSell={form.sellPrice}
+              />
+              <StockDistribution
+                rows={rows}
+                warehouses={activeWarehouses}
+                primaryId={form.warehouseId}
+                onChangeAllocation={(rowId, warehouseId, value) =>
+                  setRows((prev) =>
+                    prev.map((r) => (r.id === rowId ? { ...r, alloc: { ...(r.alloc ?? {}), [warehouseId]: value } } : r)),
+                  )
+                }
+                problem={allocationProblem(rows, activeWarehouses, form.warehouseId)}
               />
             </div>
           </div>
@@ -300,7 +322,7 @@ export default function ProductForm({
           onBindSaved={product ? handleBindSaved : undefined}
           canSave={canSave}
           isSaving={isSaving}
-          onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, imageFiles: picked.map((p) => p.file) })}
+          onSave={() => onSubmit({ ...form, colors, sizes, variants: rows, warehouses: activeWarehouses, imageFiles: picked.map((p) => p.file) })}
           onCancel={onCancel}
         />
       </div>

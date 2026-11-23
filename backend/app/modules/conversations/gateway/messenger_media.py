@@ -10,6 +10,12 @@ from __future__ import annotations
 
 _MB = 1024 * 1024
 
+#: The six emoji Messenger's own reaction picker offers. Meta refuses any other, so these are the
+#: only ones a Page may send; the removal marker matches what Instagram and WhatsApp store.
+SENDABLE_REACTIONS = frozenset(
+    {"\U0001f44d", "\u2764\ufe0f", "\U0001f602", "\U0001f62e", "\U0001f622", "\U0001f621"}
+)
+
 #: Per attachment type, the largest file Messenger fetches from a link.
 MAX_BYTES = {"image": 8 * _MB, "audio": 25 * _MB, "video": 25 * _MB, "file": 25 * _MB}
 
