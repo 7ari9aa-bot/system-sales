@@ -80,7 +80,8 @@ CUSTOMERS_ROUTE_COUNT = 15
 # channel's webhook subscription from Meta; when Meta cannot be reached the removal is kept as
 # pending and this route tries it again.
 # 8 -> 9: GET /integrations/{integration_id}/diagnostics, the per-channel health report.
-PLATFORM_ROUTE_COUNT = 9
+# 9 -> 12: GET reconnect-plan, GET whatsapp-roadmap, POST messenger-reconcile (the linking layer).
+PLATFORM_ROUTE_COUNT = 12
 
 #: Routes that answer 204 and therefore have NO body to type. Enumerated by
 #: path+method rather than filtered by status code, so a new 204 has to be
@@ -129,6 +130,9 @@ GATED_WRITES: dict[str, str] = {
     "POST /integrations/{integration_id}/disconnect": "settings:write",
     "POST /integrations/{integration_id}/retry-meta-cleanup": "settings:write",
     "GET /integrations/{integration_id}/diagnostics": "settings:read",
+    "GET /integrations/{integration_id}/reconnect-plan": "settings:read",
+    "GET /integrations/{integration_id}/whatsapp-roadmap": "settings:read",
+    "POST /integrations/{integration_id}/messenger-reconcile": "settings:read",
     "GET /integrations/meta/oauth/start": "settings:write",
     "POST /integrations/meta/oauth/choose-page": "settings:write",
     "GET /integrations/whatsapp/embedded-signup/start": "settings:write",

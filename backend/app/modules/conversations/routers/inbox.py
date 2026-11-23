@@ -414,7 +414,7 @@ def _present_referral(m) -> dict | None:
     stored copy and keeps only printable strings, so an old row written before that check existed
     cannot put anything odd on the screen either.
     """
-    stored = (m.provider_metadata or {}).get("referral")
+    stored = (getattr(m, "provider_metadata", None) or {}).get("referral")
     if not isinstance(stored, dict) or not stored:
         return None
     fields = {

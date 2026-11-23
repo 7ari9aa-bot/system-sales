@@ -790,7 +790,25 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
     )
 
 
-@platform_router.post("/integrations/{integration_id}/messenger-reconcile")
+def reconcile_page_id(provider: str, config: dict) -> str | None:
+    """The Page id a reconciliation walks, or None.
+
+    A Messenger channel keeps its Page id in `account_id` (the OAuth callback writes only that);
+    an Instagram channel's `account_id` is the Instagram account, never a Page, so Instagram needs
+    an explicit `page_id`.
+    """
+    explicit = str(config.get("page_id") or "")
+    if explicit:
+        return explicit
+    if provider == "messenger":
+        return str(config.get("account_id") or "") or None
+    return None
+
+
+@platform_router.post(
+    "/integrations/{integration_id}/messenger-reconcile",
+    response_model=schemas.MessengerReconcileOut,
+)
 async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
     """Compare FIHRIST's threads for a Page to what Meta still lists, within the provider's bounds.
 
@@ -818,7 +836,7 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
         raise ValidationError("Reconciliation exists for Messenger and Instagram only.")
 
     config = integration.config if isinstance(integration.config, dict) else {}
-    page_id = str(config.get("page_id") or "") or None
+    page_id = reconcile_page_id(integration.provider, config)
     if not page_id:
         raise ValidationError("This channel has no Page id to reconcile against.")
 
@@ -850,7 +868,10 @@ async def messenger_reconcile(integration_id: UUID, ctx: SettingsReadCtx):
         )
 
 
-@platform_router.get("/integrations/{integration_id}/reconnect-plan")
+@platform_router.get(
+    "/integrations/{integration_id}/reconnect-plan",
+    response_model=schemas.ReconnectPlanOut,
+)
 async def reconnect_plan_route(
     integration_id: UUID,
     ctx: SettingsReadCtx,
@@ -914,7 +935,10 @@ def diag_webhook_objects() -> tuple[str, ...]:
     return tuple(diag.WEBHOOK_OBJECT)
 
 
-@platform_router.get("/integrations/{integration_id}/whatsapp-roadmap")
+@platform_router.get(
+    "/integrations/{integration_id}/whatsapp-roadmap",
+    response_model=schemas.WhatsAppRoadmapOut,
+)
 async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
     """The WhatsApp features Meta gates, each with its state and what the owner can do.
 

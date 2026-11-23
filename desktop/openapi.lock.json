@@ -1,8 +1,8 @@
 {
   "measured": {
     "operations": 656,
-    "sha256": "90cbd5f29426002e07a0c47e43b5f574db5f5375798bd6a00706ab15ee9e192d",
-    "typed_operations": 352
+    "sha256": "f50ba6f886a5c80bd81d231680d99af7b0e3faa6fe884bac275126ef8bb14d68",
+    "typed_operations": 355
   },
   "spec": {
     "components": {
@@ -12988,6 +12988,59 @@
           "title": "MessageSendRequest",
           "type": "object"
         },
+        "MessengerReconcileOut": {
+          "additionalProperties": true,
+          "description": "POST /integrations/{id}/messenger-reconcile: what Meta lists that we never stored.",
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "missing_locally": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Missing Locally",
+              "type": "array"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "stale_locally": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Stale Locally",
+              "type": "array"
+            },
+            "supported": {
+              "title": "Supported",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "supported"
+          ],
+          "title": "MessengerReconcileOut",
+          "type": "object"
+        },
         "MetaOAuthChoosePageOut": {
           "description": "Contract for POST /integrations/meta/oauth/choose-page: which channel was connected,\nas ``<provider>:<display name>`` (the popup shows it back to the owner).",
           "properties": {
@@ -17013,6 +17066,99 @@
             "authority_uuid"
           ],
           "title": "ReceiptOut",
+          "type": "object"
+        },
+        "ReconnectCapabilityOut": {
+          "properties": {
+            "capability": {
+              "title": "Capability",
+              "type": "string"
+            },
+            "plan": {
+              "additionalProperties": true,
+              "title": "Plan",
+              "type": "object"
+            }
+          },
+          "required": [
+            "capability",
+            "plan"
+          ],
+          "title": "ReconnectCapabilityOut",
+          "type": "object"
+        },
+        "ReconnectPlanOut": {
+          "description": "GET /integrations/{id}/reconnect-plan: one Page connection and what to ask Meta for.",
+          "properties": {
+            "capabilities": {
+              "items": {
+                "$ref": "#/components/schemas/ReconnectCapabilityOut"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "connected": {
+              "title": "Connected",
+              "type": "boolean"
+            },
+            "granted_scopes": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Granted Scopes",
+              "type": "array"
+            },
+            "has_token": {
+              "title": "Has Token",
+              "type": "boolean"
+            },
+            "page_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Id"
+            },
+            "page_tasks": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Page Tasks",
+              "type": "array"
+            },
+            "states": {
+              "additionalProperties": true,
+              "title": "States",
+              "type": "object"
+            },
+            "subscribed_fields": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subscribed Fields"
+            }
+          },
+          "required": [
+            "connected",
+            "has_token",
+            "granted_scopes",
+            "page_tasks",
+            "capabilities",
+            "states"
+          ],
+          "title": "ReconnectPlanOut",
           "type": "object"
         },
         "RecordSaleOut": {
@@ -25335,6 +25481,34 @@
             "grand_total"
           ],
           "title": "WebsiteOrderOut",
+          "type": "object"
+        },
+        "WhatsAppRoadmapOut": {
+          "description": "GET /integrations/{id}/whatsapp-roadmap: the features Meta gates, each with its state.",
+          "properties": {
+            "connected": {
+              "title": "Connected",
+              "type": "boolean"
+            },
+            "features": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Features",
+              "type": "array"
+            },
+            "onboarding_mode": {
+              "title": "Onboarding Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connected",
+            "onboarding_mode",
+            "features"
+          ],
+          "title": "WhatsAppRoadmapOut",
           "type": "object"
         },
         "WhatsAppSignupCompleteBody": {
@@ -54555,7 +54729,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/MessengerReconcileOut"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -54677,7 +54853,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/ReconnectPlanOut"
+                  }
                 }
               },
               "description": "Successful Response"
@@ -54999,7 +55177,9 @@
             "200": {
               "content": {
                 "application/json": {
-                  "schema": {}
+                  "schema": {
+                    "$ref": "#/components/schemas/WhatsAppRoadmapOut"
+                  }
                 }
               },
               "description": "Successful Response"
