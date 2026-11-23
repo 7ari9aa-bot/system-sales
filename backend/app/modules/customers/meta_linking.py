@@ -443,20 +443,30 @@ EVENT_REGISTRY: tuple[EventSpec, ...] = (
     EventSpec(
         "instagram", "messages", "inbound DM", "message row", "AI turn + realtime", "delivered"
     ),
-    EventSpec(
-        "instagram",
-        "messaging_handovers",
-        "thread control",
-        "conversation ownership",
-        "AI paused / resumed",
-        "delivered",
-    ),
+    # A hand-off between Meta apps reaches Instagram inside `messages` (message.admin_text), so it
+    # has no webhook field of its own; Instagram's `messaging_handovers` does not exist.
     EventSpec(
         "instagram",
         "message_edit",
         "edited message",
         "message row (original kept)",
         "thread shows edited marker",
+        "delivered",
+    ),
+    EventSpec(
+        "instagram",
+        "messaging_seen",
+        "read receipt",
+        "message status",
+        "read ticks in the thread",
+        "delivered",
+    ),
+    EventSpec(
+        "instagram",
+        "message_reactions",
+        "reaction",
+        "message reaction",
+        "realtime",
         "delivered",
     ),
     EventSpec("instagram", "comments", "comment", "comment row", "comment inbox", "delivered"),

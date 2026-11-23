@@ -55,7 +55,10 @@ def test_the_diagnostics_ask_for_the_fields_the_app_actually_subscribes():
     assert {"message_echoes", "messaging_handovers", "message_edits", "message_reactions"} <= page
     # Instagram's own object, including the fields this app parses but never asked to receive.
     instagram = set(DASHBOARD_FIELDS["instagram"])
-    assert {"mentions", "live_comments", "story_insights", "messaging_handovers"} <= instagram
+    assert {"mentions", "live_comments", "story_insights"} <= instagram
+    # Meta's own names for Instagram messaging; the Page names do not exist on this object.
+    assert {"messaging_seen", "message_reactions", "message_edit"} <= instagram
+    assert {"messaging_handovers", "message_edits", "message_reads"}.isdisjoint(instagram)
 
 
 def test_instagram_asks_for_comment_and_publish_permissions():

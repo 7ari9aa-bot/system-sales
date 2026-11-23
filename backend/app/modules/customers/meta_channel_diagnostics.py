@@ -63,15 +63,23 @@ DASHBOARD_FIELDS = {
     ),
     # Instagram's own fields live on the `instagram` object in the App Dashboard, not on the
     # Page subscription. Naming them here is what the setup screen tells the owner to tick.
+    # The names are Meta's own for the Instagram messaging webhook (Webhooks for Instagram
+    # Messaging and the Instagram webhook examples): `message_reactions`, `messaging_seen`,
+    # `message_edit`. They are NOT the Page names: `messaging_handovers`, `message_reads` and
+    # `message_edits` belong to the Page object and do not exist for Instagram, so asking the
+    # owner to tick them sent them looking for a checkbox that is not there. A hand-off between
+    # Meta apps reaches Instagram inside `messages` (`message.admin_text` / `handoff_reason`), so
+    # it needs no field of its own.
     "instagram": (
         "messages",
         "messaging_postbacks",
+        "messaging_seen",
+        "message_reactions",
+        "message_edit",
         "comments",
         "mentions",
         "live_comments",
         "story_insights",
-        "messaging_handovers",
-        "message_edit",
     ),
     "whatsapp_business_account": (
         "messages",
@@ -92,7 +100,7 @@ DASHBOARD_FIELDS = {
 #: warning it can do nothing about.
 REQUIRED_FIELDS = {
     "page": ("messages", "message_echoes", "messaging_handovers"),
-    "instagram": ("messages", "comments", "messaging_handovers"),
+    "instagram": ("messages", "comments"),
     "whatsapp_business_account": ("messages", "message_template_status_update"),
 }
 
