@@ -11,6 +11,7 @@ import json
 import httpx
 import pytest
 
+from app.core.errors import ValidationError
 from app.modules.conversations.gateway.messenger_profile import MessengerProfile
 
 TOKEN = "page-token"
@@ -56,7 +57,10 @@ async def test_get_started_and_menu_and_ice_breakers_use_their_own_fields():
     assert bodies[1]["persistent_menu"][0]["composer_input_disabled"] is False
     assert bodies[2] == {
         "ice_breakers": [
-            {"locale": "default", "call_to_actions": [{"question": "الشحن كام؟", "payload": "SHIPPING"}]}
+            {
+                "locale": "default",
+                "call_to_actions": [{"question": "الشحن كام؟", "payload": "SHIPPING"}],
+            }
         ]
     }
 
@@ -65,19 +69,19 @@ async def test_get_started_and_menu_and_ice_breakers_use_their_own_fields():
 async def test_metas_limits_are_enforced_before_the_call():
     seen, transport = _record()
     async with httpx.AsyncClient(transport=transport) as http:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             await MessengerProfile().set_ice_breakers(
                 http,
                 token=TOKEN,
                 questions=[{"question": f"q{i}", "payload": "P"} for i in range(4)],
             )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             await MessengerProfile().set_persistent_menu(
                 http,
                 token=TOKEN,
                 items=[{"type": "postback", "title": "t", "payload": "P"}] * 6,
             )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             await MessengerProfile().set_greeting(http, token=TOKEN, text="x" * 161)
     assert seen == []
 

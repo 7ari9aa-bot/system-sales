@@ -47,7 +47,9 @@ async def test_it_reads_the_conversations_and_their_messages():
 
 @pytest.mark.asyncio
 async def test_the_cap_stops_the_walk_and_says_so():
-    pages = [{"data": [{"id": f"t_{i}"} for i in range(5)], "paging": {"next": "https://x?after=c2"}}]
+    pages = [
+        {"data": [{"id": f"t_{i}"} for i in range(5)], "paging": {"next": "https://x?after=c2"}}
+    ]
     calls, transport = _paged(pages)
     async with httpx.AsyncClient(transport=transport) as http:
         result = await MessengerBackfill().walk(

@@ -524,7 +524,6 @@ def _messaging_pages(all_pages: list[dict], provider: str = "messenger") -> list
     ]
 
 
-
 def _page_choices(pages: list[dict]) -> list[dict]:
     """What the browser may see about a Page: its id and name, nothing secret."""
     return [{"id": str(page["id"]), "name": str(page.get("name") or page["id"])} for page in pages]
@@ -947,9 +946,7 @@ async def _connect_page(
         # exists, so the subscription is taken back rather than left pointing at a channel this
         # workspace does not have. A reconnect keeps it: the previous channel is still live.
         if existing is None:
-            await _unsubscribe_page_from_app(
-                http, page_id=str(page["id"]), page_token=page_token
-            )
+            await _unsubscribe_page_from_app(http, page_id=str(page["id"]), page_token=page_token)
         raise
 
     display_name = verified.display_name or str(page.get("name") or page["id"])
@@ -1273,7 +1270,9 @@ async def _instagram_login_callback(*, session, code, payload, frontend, back, f
         return back("error", f"meta_unavailable:{str(exc)[:120]}")
     except DomainError as exc:
         await session.rollback()
-        await flag("link.instagram_login_refused", "instagram_login", None, {"reason": str(exc)[:200]})
+        await flag(
+            "link.instagram_login_refused", "instagram_login", None, {"reason": str(exc)[:200]}
+        )
         return back("error", f"instagram_login:{str(exc)[:200]}")
     except Exception as exc:
         _logger.exception("instagram_login.connect_failed")

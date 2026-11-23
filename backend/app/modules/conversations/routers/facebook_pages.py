@@ -348,8 +348,7 @@ async def page_field_matrix(
     """Which Page fields are editable, which need a permission, and which Meta does not expose."""
     return {
         "fields": [
-            {"name": name, **spec}
-            for name, spec in facebook_pages.PAGE_FIELD_MATRIX.items()
+            {"name": name, **spec} for name, spec in facebook_pages.PAGE_FIELD_MATRIX.items()
         ]
     }
 

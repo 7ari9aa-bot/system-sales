@@ -103,8 +103,12 @@ def test_whatsapp_template_status_is_its_own_capability():
         "whatsapp",
         connected=True,
         granted_scopes=set(),
-        subscription_fields={"messages", "account_update", "phone_number_quality_update",
-                             "message_template_status_update"},
+        subscription_fields={
+            "messages",
+            "account_update",
+            "phone_number_quality_update",
+            "message_template_status_update",
+        },
         seen_fields={"messages"},
     )
 
@@ -113,8 +117,13 @@ def test_whatsapp_template_status_is_its_own_capability():
 
 
 def test_whatsapp_gaps_are_labelled_honestly():
-    caps = cs.evaluate("whatsapp", connected=True, granted_scopes=set(),
-                       subscription_fields={"messages"}, seen_fields={"messages"})
+    caps = cs.evaluate(
+        "whatsapp",
+        connected=True,
+        granted_scopes=set(),
+        subscription_fields={"messages"},
+        seen_fields={"messages"},
+    )
 
     # Flows are built (whatsapp_flows): the lifecycle calls and the nfm_reply the customer
     # sends back. So the honest state is no longer "not implemented".
@@ -124,9 +133,14 @@ def test_whatsapp_gaps_are_labelled_honestly():
 
 def test_every_declared_capability_gets_a_known_state():
     for provider in ("messenger", "facebook", "instagram", "whatsapp"):
-        caps = cs.evaluate(provider, connected=True, granted_scopes=None,
-                           subscription_fields=None, seen_fields=set(),
-                           subscription_known=False)
+        caps = cs.evaluate(
+            provider,
+            connected=True,
+            granted_scopes=None,
+            subscription_fields=None,
+            seen_fields=set(),
+            subscription_known=False,
+        )
         assert caps, provider
         for cap in caps:
             assert cap["state"] in cs.STATES, (provider, cap)
@@ -140,11 +154,20 @@ def _report(**over):
         provider="messenger",
         status="active",
         config={"page_id": "1"},
-        webhook_health={"last_webhook_at": "2026-11-22T10:00:00Z",
-                        "seen_fields": {"messages": "2026-11-22T10:00:00Z"}},
-        recorded_scopes=["pages_messaging", "pages_show_list", "pages_read_engagement",
-                         "pages_manage_metadata", "pages_manage_engagement",
-                         "pages_manage_posts", "read_insights", "business_management"],
+        webhook_health={
+            "last_webhook_at": "2026-11-22T10:00:00Z",
+            "seen_fields": {"messages": "2026-11-22T10:00:00Z"},
+        },
+        recorded_scopes=[
+            "pages_messaging",
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_metadata",
+            "pages_manage_engagement",
+            "pages_manage_posts",
+            "read_insights",
+            "business_management",
+        ],
         subscription={"state": "ok", "fields": list(OUR_FIELDS)},
         permissions=None,
         server_webhook_ready=True,
@@ -167,9 +190,11 @@ def test_once_every_field_has_delivered_the_capabilities_go_green():
     report = _report(
         webhook_health={
             "last_webhook_at": "2026-11-22T10:00:00Z",
-            "seen_fields": {"messages": "2026-11-22T10:00:00Z",
-                            "message_echoes": "2026-11-22T10:00:00Z",
-                            "messaging_handovers": "2026-11-22T10:00:00Z"},
+            "seen_fields": {
+                "messages": "2026-11-22T10:00:00Z",
+                "message_echoes": "2026-11-22T10:00:00Z",
+                "messaging_handovers": "2026-11-22T10:00:00Z",
+            },
         }
     )
 

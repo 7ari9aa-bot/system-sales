@@ -35,8 +35,8 @@ from app.modules.conversations.routers.inbox import (
 )
 from app.modules.conversations.social_service import (
     MAX_PICTURE_BYTES,
-    MAX_VIDEO_BYTES,
     MAX_REPLY_CHARS,
+    MAX_VIDEO_BYTES,
     SocialService,
 )
 

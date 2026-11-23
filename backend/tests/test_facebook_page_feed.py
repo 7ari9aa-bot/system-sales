@@ -103,9 +103,7 @@ def test_a_real_comment_is_not_mistaken_for_a_mention():
 
 def test_the_processor_sees_every_feed_and_mention_change():
     payload = _feed({"item": "post", "post_id": "p-1"}, {"item": "comment", "comment_id": "c-1"})
-    payload["entry"][0]["changes"].append(
-        {"field": "mention", "value": {"post_id": "p-2"}}
-    )
+    payload["entry"][0]["changes"].append({"field": "mention", "value": {"post_id": "p-2"}})
 
     assert len(FacebookPageAdapter().parse_feed_events(payload)) == 3
 
@@ -134,10 +132,20 @@ async def test_a_post_edit_updates_the_caption_we_hold():
     session = _Session(post)
 
     outcome = await PageEventProcessor.apply(
-        session, TENANT, "facebook", [{"field": "feed", "value": {"item": "post",
-                                                                 "post_id": "p-1",
-                                                                 "message": "كابشن جديد",
-                                                                 "verb": "edited"}}]
+        session,
+        TENANT,
+        "facebook",
+        [
+            {
+                "field": "feed",
+                "value": {
+                    "item": "post",
+                    "post_id": "p-1",
+                    "message": "كابشن جديد",
+                    "verb": "edited",
+                },
+            }
+        ],
     )
 
     assert post.caption == "كابشن جديد"
@@ -150,13 +158,17 @@ async def test_a_reaction_moves_the_counter_without_inventing_a_total():
     session = _Session(post)
 
     await PageEventProcessor.apply(
-        session, TENANT, "facebook",
+        session,
+        TENANT,
+        "facebook",
         [{"field": "feed", "value": {"item": "reaction", "post_id": "p-1", "verb": "add"}}],
     )
     assert post.like_count == 5
 
     await PageEventProcessor.apply(
-        session, TENANT, "facebook",
+        session,
+        TENANT,
+        "facebook",
         [{"field": "feed", "value": {"item": "reaction", "post_id": "p-1", "verb": "remove"}}],
     )
     assert post.like_count == 4
@@ -168,7 +180,9 @@ async def test_a_removal_marks_the_post_removed_instead_of_deleting_it():
     session = _Session(post)
 
     await PageEventProcessor.apply(
-        session, TENANT, "facebook",
+        session,
+        TENANT,
+        "facebook",
         [{"field": "feed", "value": {"item": "post", "post_id": "p-1", "verb": "remove"}}],
     )
 
@@ -181,7 +195,9 @@ async def test_a_change_for_a_post_we_never_saw_is_counted_not_invented():
     session = _Session(None)
 
     outcome = await PageEventProcessor.apply(
-        session, TENANT, "facebook",
+        session,
+        TENANT,
+        "facebook",
         [{"field": "feed", "value": {"item": "post", "post_id": "ghost", "message": "x"}}],
     )
 
@@ -194,7 +210,9 @@ async def test_a_comment_change_is_left_to_the_comment_parser():
     session = _Session(None)
 
     outcome = await PageEventProcessor.apply(
-        session, TENANT, "facebook",
+        session,
+        TENANT,
+        "facebook",
         [{"field": "feed", "value": {"item": "comment", "comment_id": "c-1"}}],
     )
 

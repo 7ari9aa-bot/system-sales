@@ -12,8 +12,8 @@ import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
 from app.modules.conversations.gateway import whatsapp_flows as flows
-from app.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
 from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
 
 CREDS = {"access_token": "tok", "waba_id": "waba-1"}
 
@@ -65,7 +65,8 @@ def test_the_flow_button_label_and_mode_are_checked():
 def test_the_inbox_preview_shows_the_body_and_the_flow_button():
     text = preview_text({"kind": "flow", "body": "احجز موعد", "cta": "ابدأ", "flow_id": "9"})
     assert text == "احجز موعد\n[ ابدأ ]"
-    assert build_interactive({"kind": "flow", "body": "ب", "cta": "ج", "flow_id": "9"})["type"] == "flow"
+    flow = build_interactive({"kind": "flow", "body": "ب", "cta": "ج", "flow_id": "9"})
+    assert flow["type"] == "flow"
 
 
 # --- the reply the customer sends ----------------------------------------------------
@@ -154,9 +155,7 @@ async def test_create_posts_the_name_and_category_to_the_business_account():
         return httpx.Response(200, json={"id": "flow-1"})
 
     async with _client(handler) as client:
-        data = await flows.WhatsAppFlowsClient().create(
-            CREDS, name="حجز مواعيد", _client=client
-        )
+        data = await flows.WhatsAppFlowsClient().create(CREDS, name="حجز مواعيد", _client=client)
     assert data["id"] == "flow-1"
     assert seen["url"].endswith("/waba-1/flows")
     assert seen["body"] == {"name": "حجز مواعيد", "categories": [{"name": "OTHER"}]}

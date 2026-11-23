@@ -706,7 +706,9 @@ class FacebookPagesClient:
             raise ValueError("no fields to update")
         unknown = sorted(k for k in values if k not in EDITABLE_PAGE_FIELDS)
         if unknown:
-            raise ValueError(f"these Page fields are not editable through the API: {', '.join(unknown)}")
+            raise ValueError(
+                f"these Page fields are not editable through the API: {', '.join(unknown)}"
+            )
         _, page_id = self._creds(credentials)
         return await self._graph("POST", page_id, credentials, data=values, _client=_client)
 

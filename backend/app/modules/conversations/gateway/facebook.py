@@ -15,7 +15,6 @@ changes only the registry key, so:
 """
 
 from app.modules.conversations.gateway.base import InboundComment
-from app.modules.conversations.gateway.base import InboundComment
 from app.modules.conversations.gateway.messenger import MessengerAdapter
 
 

@@ -315,7 +315,6 @@ class IngestService:
         except RuntimeError:  # no running loop (a sync test, a CLI replay): skip the courtesy
             logger.warning("ingest.profile_enrich_no_loop tenant=%s channel=%s", tenant_id, channel)
 
-
     @staticmethod
     async def _open_conversation(
         session: AsyncSession, tenant_id: uuid.UUID, channel: str, customer_id: uuid.UUID
@@ -581,9 +580,7 @@ class IngestService:
 
                 changes = parse_feed(payload)
                 if changes:
-                    outcome = await PageEventProcessor.apply(
-                        session, tenant_id, channel, changes
-                    )
+                    outcome = await PageEventProcessor.apply(session, tenant_id, channel, changes)
                     logger.info(
                         "facebook.feed_applied",
                         extra={"tenant_id": str(tenant_id), "channel": channel, **outcome},

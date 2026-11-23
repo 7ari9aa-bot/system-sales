@@ -11,12 +11,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.modules.conversations.routers.webhooks import webhook_fields
-from app.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
 from app.modules.customers.meta_channel_diagnostics import (
     DASHBOARD_FIELDS,
     REQUIRED_FIELDS,
     build_report,
 )
+from app.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
 
 NOW = datetime(2026, 11, 23, 9, 0, tzinfo=UTC)
 
@@ -36,9 +36,7 @@ def test_a_customer_message_proves_messages_only():
 
 def test_an_echo_proves_message_echoes_not_messages():
     payload = {
-        "entry": [
-            {"messaging": [{"message": {"mid": "m2", "text": "رد الموظف", "is_echo": True}}]}
-        ]
+        "entry": [{"messaging": [{"message": {"mid": "m2", "text": "رد الموظف", "is_echo": True}}]}]
     }
     assert webhook_fields(payload) == ["message_echoes"]
 
@@ -49,9 +47,7 @@ def test_a_takeover_proves_messaging_handovers():
 
 
 def test_a_whatsapp_template_update_proves_its_own_field():
-    payload = {
-        "entry": [{"id": "waba", "changes": [{"field": "message_template_status_update"}]}]
-    }
+    payload = {"entry": [{"id": "waba", "changes": [{"field": "message_template_status_update"}]}]}
     assert webhook_fields(payload) == ["message_template_status_update"]
 
 

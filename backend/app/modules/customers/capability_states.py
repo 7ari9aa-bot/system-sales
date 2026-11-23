@@ -59,86 +59,175 @@ WORKING = (AVAILABLE,)
 #: statement about Meta or about us, so a dead button is explained instead of hidden.
 _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
     "messenger": (
-        {"key": "inbox", "scopes": ("pages_messaging",), "fields": ("messages",),
-         "live_fields": ("messages",)},
-        {"key": "staff_reply_sync", "scopes": ("pages_messaging",),
-         "fields": ("message_echoes",), "live_fields": ("message_echoes",)},
-        {"key": "handover", "scopes": ("pages_messaging",),
-         "fields": ("messaging_handovers",), "live_fields": ("messaging_handovers",)},
-        {"key": "message_edit", "scopes": ("pages_messaging",),
-         "fields": ("message_edits",), "live_fields": ("message_edits",)},
-        {"key": "reactions", "scopes": ("pages_messaging",),
-         "fields": ("message_reactions",), "live_fields": ()},
+        {
+            "key": "inbox",
+            "scopes": ("pages_messaging",),
+            "fields": ("messages",),
+            "live_fields": ("messages",),
+        },
+        {
+            "key": "staff_reply_sync",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_echoes",),
+            "live_fields": ("message_echoes",),
+        },
+        {
+            "key": "handover",
+            "scopes": ("pages_messaging",),
+            "fields": ("messaging_handovers",),
+            "live_fields": ("messaging_handovers",),
+        },
+        {
+            "key": "message_edit",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_edits",),
+            "live_fields": ("message_edits",),
+        },
+        {
+            "key": "reactions",
+            "scopes": ("pages_messaging",),
+            "fields": ("message_reactions",),
+            "live_fields": (),
+        },
         # Platform settings (greeting, Get Started, persistent menu, ice breakers) and inbox
         # labels are WRITE calls, so they need no webhook field to be verified.
-        {"key": "profile_settings", "scopes": ("pages_messaging",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "profile_settings",
+            "scopes": ("pages_messaging",),
+            "fields": (),
+            "live_fields": (),
+        },
         {"key": "inbox_labels", "scopes": ("pages_messaging",), "fields": (), "live_fields": ()},
-        {"key": "conversation_history", "scopes": ("pages_messaging",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "conversation_history",
+            "scopes": ("pages_messaging",),
+            "fields": (),
+            "live_fields": (),
+        },
         # Measured on Meta's own page: Marketing Messages (Recurring Notifications) is deprecated
         # on 10 Feb 2026 and its successor API is closed to new integrations. Building an opt-in
         # flow now would ship a button Meta refuses, so the state says whose limit this is.
-        {"key": "marketing_optin", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": UNSUPPORTED_BY_API,
-         "blocked_reason": (
-             "Meta deprecated Marketing Messages (Recurring Notifications) on 2026-02-10 and the "
-             "replacement Marketing Messages API is limited to existing partners; no new opt-in "
-             "flow can be created"
-         )},
+        {
+            "key": "marketing_optin",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": UNSUPPORTED_BY_API,
+            "blocked_reason": (
+                "Meta deprecated Marketing Messages (Recurring Notifications) on 2026-02-10, "
+                "and the replacement Marketing Messages API is limited to existing partners; "
+                "no new opt-in flow can be created"
+            ),
+        },
     ),
     "facebook": (
-        {"key": "posts", "scopes": ("pages_manage_posts",), "fields": ("feed",),
-         "live_fields": ()},
-        {"key": "comments", "scopes": ("pages_manage_engagement",), "fields": ("feed",),
-         "live_fields": ("feed",)},
-        {"key": "mentions", "scopes": ("pages_read_engagement",), "fields": ("mention",),
-         "live_fields": ()},
+        {"key": "posts", "scopes": ("pages_manage_posts",), "fields": ("feed",), "live_fields": ()},
+        {
+            "key": "comments",
+            "scopes": ("pages_manage_engagement",),
+            "fields": ("feed",),
+            "live_fields": ("feed",),
+        },
+        {
+            "key": "mentions",
+            "scopes": ("pages_read_engagement",),
+            "fields": ("mention",),
+            "live_fields": (),
+        },
         {"key": "insights", "scopes": ("read_insights",), "fields": (), "live_fields": ()},
     ),
     "instagram": (
-        {"key": "direct", "scopes": ("instagram_business_manage_messages",),
-         "fields": ("messages",), "live_fields": ("messages",)},
-        {"key": "comments", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("comments",), "live_fields": ("comments",)},
-        {"key": "mentions", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("mentions",), "live_fields": ()},
-        {"key": "handover", "scopes": ("instagram_business_manage_messages",),
-         "fields": ("messaging_handovers",), "live_fields": ("messaging_handovers",)},
+        {
+            "key": "direct",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("messages",),
+            "live_fields": ("messages",),
+        },
+        {
+            "key": "comments",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("comments",),
+            "live_fields": ("comments",),
+        },
+        {
+            "key": "mentions",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("mentions",),
+            "live_fields": (),
+        },
+        {
+            "key": "handover",
+            "scopes": ("instagram_business_manage_messages",),
+            "fields": ("messaging_handovers",),
+            "live_fields": ("messaging_handovers",),
+        },
         # Meta only sends these while a broadcast is live / after a story ends, so a shop that
         # never goes live must not be told something is broken.
-        {"key": "live_comments", "scopes": ("instagram_business_manage_comments",),
-         "fields": ("live_comments",), "live_fields": (), "quiet_when_idle": True},
-        {"key": "story_insights", "scopes": ("instagram_manage_insights",),
-         "fields": ("story_insights",), "live_fields": (), "quiet_when_idle": True},
-        {"key": "publishing", "scopes": ("instagram_business_content_publish",), "fields": (),
-         "live_fields": ()},
+        {
+            "key": "live_comments",
+            "scopes": ("instagram_business_manage_comments",),
+            "fields": ("live_comments",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
+        {
+            "key": "story_insights",
+            "scopes": ("instagram_manage_insights",),
+            "fields": ("story_insights",),
+            "live_fields": (),
+            "quiet_when_idle": True,
+        },
+        {
+            "key": "publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
         # Both are built (container + status poll + publish), so they are judged like any other
         # capability instead of being pinned to a stale "not built yet".
-        {"key": "reels_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": ()},
-        {"key": "stories_publishing", "scopes": ("instagram_business_content_publish",),
-         "fields": (), "live_fields": ()},
+        {
+            "key": "reels_publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
+        {
+            "key": "stories_publishing",
+            "scopes": ("instagram_business_content_publish",),
+            "fields": (),
+            "live_fields": (),
+        },
     ),
     "whatsapp": (
-        {"key": "messages", "scopes": (), "fields": ("messages",),
-         "live_fields": ("messages",)},
-        {"key": "templates", "scopes": (), "fields": ("message_template_status_update",),
-         "live_fields": ()},
-        {"key": "account_alerts", "scopes": (), "fields": ("account_update",),
-         "live_fields": ()},
-        {"key": "number_quality", "scopes": (), "fields": ("phone_number_quality_update",),
-         "live_fields": ()},
+        {"key": "messages", "scopes": (), "fields": ("messages",), "live_fields": ("messages",)},
+        {
+            "key": "templates",
+            "scopes": (),
+            "fields": ("message_template_status_update",),
+            "live_fields": (),
+        },
+        {"key": "account_alerts", "scopes": (), "fields": ("account_update",), "live_fields": ()},
+        {
+            "key": "number_quality",
+            "scopes": (),
+            "fields": ("phone_number_quality_update",),
+            "live_fields": (),
+        },
         # Declared gaps, not API limits: the platform has not built these yet.
         # Built: the Flow lifecycle on Meta's side and the nfm_reply the customer sends back.
         {"key": "flows", "scopes": (), "fields": (), "live_fields": ()},
-        # Built: single product, multi-product and whole-catalog messages in the interactive builder.
+        # Built: single product, multi-product and whole-catalog messages in the builder.
         {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
         # Built as an opt-in at signup. Meta decides per number whether coexistence is allowed, so
         # the state says "we can ask", and Meta's own refusal is what the owner sees if it says no.
         {"key": "coexistence", "scopes": (), "fields": (), "live_fields": ()},
-        {"key": "calls", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": REGION_RESTRICTED},
+        {
+            "key": "calls",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": REGION_RESTRICTED,
+        },
     ),
 }
 
@@ -194,7 +283,9 @@ def _state_for(
     if not connected:
         return NEEDS_CONNECTION, None
 
-    missing = [s for s in spec.get("scopes", ()) if granted_scopes is not None and s not in granted_scopes]
+    missing = [
+        s for s in spec.get("scopes", ()) if granted_scopes is not None and s not in granted_scopes
+    ]
     if missing:
         return NEEDS_PERMISSION, f"missing scopes: {', '.join(missing)}"
 

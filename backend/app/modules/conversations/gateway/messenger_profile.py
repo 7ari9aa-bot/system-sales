@@ -73,7 +73,9 @@ class MessengerProfile:
         try:
             payload = resp.json()
         except ValueError as exc:
-            raise ExternalProviderError(f"messenger profile: not JSON ({resp.status_code})") from exc
+            raise ExternalProviderError(
+                f"messenger profile: not JSON ({resp.status_code})"
+            ) from exc
         if not isinstance(payload, dict):
             raise ExternalProviderError("messenger profile: unexpected payload")
         message = _error_of(payload)

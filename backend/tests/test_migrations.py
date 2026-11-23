@@ -30,9 +30,7 @@ TELEGRAM_LEGACY_PAUSE_MIGRATION = (
 CHANNEL_TENANT_ROUTING_MIGRATION = (
     VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
 )
-FACEBOOK_PAGE_IDENTITY_MIGRATION = (
-    VERSIONS_DIR / "fe2026112302_facebook_page_identity.py"
-)
+FACEBOOK_PAGE_IDENTITY_MIGRATION = VERSIONS_DIR / "fe2026112302_facebook_page_identity.py"
 
 
 class _RecordingOp:

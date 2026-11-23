@@ -49,7 +49,9 @@ def test_messenger_still_asks_for_the_inbox_and_nothing_more():
 
     assert "pages_messaging" in messenger
     assert _scopes(PAGES_BASE_SCOPES) <= messenger
-    assert not set(FACEBOOK_PAGE_SCOPES) & messenger, "chat must not ask to publish or read insights"
+    assert not set(FACEBOOK_PAGE_SCOPES) & messenger, (
+        "chat must not ask to publish or read insights"
+    )
 
 
 def test_a_page_the_operator_has_no_task_on_is_never_offered():
@@ -191,6 +193,4 @@ async def test_a_failed_first_save_takes_the_subscription_back(monkeypatch):
 
 
 async def _verified(provider, credentials, config, client=None):
-    return SimpleNamespace(
-        display_name="صفحة", identity_config={"page_id": "page-1"}
-    )
+    return SimpleNamespace(display_name="صفحة", identity_config={"page_id": "page-1"})

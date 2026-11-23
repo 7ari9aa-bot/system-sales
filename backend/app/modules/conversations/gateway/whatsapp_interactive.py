@@ -22,7 +22,16 @@ from urllib.parse import urlparse
 
 from app.core.errors import ValidationError
 
-KINDS = ("buttons", "list", "cta_url", "product", "product_list", "catalog_message", "location", "flow")
+KINDS = (
+    "buttons",
+    "list",
+    "cta_url",
+    "product",
+    "product_list",
+    "catalog_message",
+    "location",
+    "flow",
+)
 
 FOOTER_MAX = 60
 HEADER_TEXT_MAX = 60
@@ -265,8 +274,14 @@ def _product_list(spec: dict) -> dict:
             f"sections[{index}].title",
             limit=PRODUCT_SECTION_TITLE_MAX,
         )
-        sections.append({"title": title, "product_items": items} if title else {"product_items": items})
-    return {"type": "product_list", **out, "action": {"catalog_id": catalog_id, "sections": sections}}
+        sections.append(
+            {"title": title, "product_items": items} if title else {"product_items": items}
+        )
+    return {
+        "type": "product_list",
+        **out,
+        "action": {"catalog_id": catalog_id, "sections": sections},
+    }
 
 
 def _catalog_message(spec: dict) -> dict:

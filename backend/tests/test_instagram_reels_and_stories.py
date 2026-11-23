@@ -10,16 +10,22 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from app.core.errors import ValidationError
 from app.modules.conversations.gateway.instagram import InstagramAdapter
 from app.modules.conversations.social_service import SocialService
-from app.core.errors import ValidationError
 
 CREDS = {"api_key": "tok", "account_id": "ig-1"}
 
 
 def _transport(calls: list[dict], status: str = "FINISHED") -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
-        calls.append({"method": request.method, "path": request.url.path, "params": dict(request.url.params)})
+        calls.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "params": dict(request.url.params),
+            }
+        )
         path = request.url.path
         if path.endswith("/media") and request.method == "POST":
             return httpx.Response(200, json={"id": "container-1"})

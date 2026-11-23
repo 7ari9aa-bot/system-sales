@@ -126,8 +126,11 @@ class PageEventProcessor:
         if result["unknown_post"]:
             logger.info(
                 "facebook.feed_unknown_post",
-                extra={"tenant_id": str(tenant_id), "platform": platform,
-                       "count": result["unknown_post"]},
+                extra={
+                    "tenant_id": str(tenant_id),
+                    "platform": platform,
+                    "count": result["unknown_post"],
+                },
             )
         return result
 

@@ -70,7 +70,9 @@ class MessengerBackfill:
         try:
             payload = resp.json()
         except ValueError as exc:
-            raise ExternalProviderError(f"messenger backfill: not JSON ({resp.status_code})") from exc
+            raise ExternalProviderError(
+                f"messenger backfill: not JSON ({resp.status_code})"
+            ) from exc
         if not isinstance(payload, dict):
             raise ExternalProviderError("messenger backfill: unexpected payload")
         err = payload.get("error")
