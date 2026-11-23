@@ -99,3 +99,29 @@ async def test_a_page_never_grows_past_its_ceiling(db, tenant_ctx):
     r = await _call(owner, "GET", "/api/v1/products/page?limit=5000")
     assert r.status_code == 200
     assert len(r.json()["items"]) <= 200
+
+
+async def test_a_typed_percent_or_underscore_is_searched_literally_not_as_a_wildcard(
+    db, tenant_ctx
+):
+    """التاجر بيكتب "50%" أو "a_b": العلامة دي حرف عادي في البحث، مش «أي حاجة»."""
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    t = tenant_ctx.tenant_id
+    for title, slug in (
+        ("خصم 50% على الكل", "sale-half"),
+        ("تيشيرت عادي", "plain-tee"),
+        ("شنطة a_b", "bag-a-underscore-b"),
+        ("شنطة aXb", "bag-axb"),
+    ):
+        p = await CatalogService.create_product(db, t, title=title, slug=slug)
+        await CatalogService.update_product(db, t, p.id, status="active")
+
+    percent = await _call(owner, "GET", "/api/v1/products/page?q=50%25&limit=20")
+    assert percent.status_code == 200, percent.text
+    assert [i["title"] for i in percent.json()["items"]] == ["خصم 50% على الكل"]
+
+    underscore = await _call(owner, "GET", "/api/v1/products/page?q=a_b&limit=20")
+    assert [i["title"] for i in underscore.json()["items"]] == ["شنطة a_b"]
+
+    bare = await _call(owner, "GET", "/api/v1/products/page?q=%25&limit=20")
+    assert bare.json()["total"] == 1  # only the title that really contains a "%"

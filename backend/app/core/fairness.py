@@ -111,6 +111,8 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # have no worker consumer, so they ride the automation tier.
     "website.purchase.created": EventPriority.HUMAN_RESPONSE,
     "website.purchase.confirmed": EventPriority.HUMAN_RESPONSE,
+    # A public comment landed: it only tells an open screen to refetch, nobody waits on it.
+    "social_comment.changed": EventPriority.NORMAL_AUTOMATION,
     "website.published": EventPriority.NORMAL_AUTOMATION,
     "website.rolled_back": EventPriority.NORMAL_AUTOMATION,
     "order.created": EventPriority.CRITICAL_SYSTEM,

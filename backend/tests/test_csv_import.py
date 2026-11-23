@@ -508,15 +508,12 @@ async def test_customer_import_route_conflict_is_not_a_green_lie(
     assert body["error_details"][0]["row"] == 1
 
 
-async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -> None:
-    tenant_id = tenant_ctx.tenant_id
-    app = _app(db, tenant_id, tenant_ctx.user.id)
-
-    response = await _post_import(app, "/api/v1/imports/products", _PRODUCTS_CSV)
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["imported"] == 1 and body["success"] is True
+# ``POST /imports/products`` is no longer an open route: it answers 404 and points at the Import
+# Center unless the shop's ``imports.legacy_csv_endpoint`` key is on, and when it is on the file
+# goes through the same validation as any upload. Both states are pinned in
+# ``test_imports_legacy_csv_door.py``; an assertion here that the route returns 200 by default
+# would contradict that file, so the customer and permission routes below are what this module
+# still covers.
 
 
 async def test_import_route_requires_write_permission(db: AsyncSession, tenant_ctx) -> None:
