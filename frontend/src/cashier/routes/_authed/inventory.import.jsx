@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import UploadStep from "@/cashier/components/imports/UploadStep";
+import ImageZipCard from "@/cashier/components/imports/ImageZipCard";
 import PasteRowsCard from "@/cashier/components/imports/PasteRowsCard";
 import MappingStep, { shownPolicy } from "@/cashier/components/imports/MappingStep";
 import ReviewStep from "@/cashier/components/imports/ReviewStep";
@@ -14,6 +15,7 @@ import {
   useImportPreview,
   useImportSession,
   useSaveMapping,
+  useImageZip,
   usePasteImport,
   useStartImport,
   useUploadImport,
@@ -35,11 +37,12 @@ export default function InventoryImportPage() {
 
   const upload = useUploadImport();
   const paste = usePasteImport();
+  const images = useImageZip();
   const save = useSaveMapping(id);
   const validate = useValidateImport(id);
   const start = useStartImport(id);
   const cancel = useCancelImport(id);
-  const busy = upload.isPending || paste.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
+  const busy = upload.isPending || paste.isPending || images.isPending || save.isPending || validate.isPending || start.isPending || cancel.isPending;
 
   const run = async (fn, after) => {
     setError("");
@@ -116,6 +119,11 @@ export default function InventoryImportPage() {
       {step === "upload" && !id && (
         <>
           <UploadStep busy={upload.isPending} error={error} onFile={onFile} />
+          <ImageZipCard
+            busy={images.isPending}
+            error=""
+            onUpload={(file) => images.mutateAsync(file).catch(() => null)}
+          />
           <PasteRowsCard
             busy={paste.isPending}
             error=""

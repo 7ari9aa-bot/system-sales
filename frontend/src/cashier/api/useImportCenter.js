@@ -6,6 +6,7 @@ import {
   getImportSession,
   listImportSessions,
   pasteImportRows,
+  uploadImageZip,
   saveImportMapping,
   startImport,
   uploadImportFile,
@@ -41,6 +42,18 @@ export function usePasteImport() {
   return useMutation({
     mutationFn: (text) => pasteImportRows(text),
     onSuccess: () => qc.invalidateQueries({ queryKey: [...IMPORT_KEY, "recent"] }),
+  });
+}
+
+/** صور في ملف مضغوط: بعد ما تتربط بالـSKU، شاشات المنتجات والمخزون بتقرأ من جديد. */
+export function useImageZip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file) => uploadImageZip(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...IMPORT_KEY, "recent"] });
+      qc.invalidateQueries({ queryKey: STOCK_KEY });
+    },
   });
 }
 

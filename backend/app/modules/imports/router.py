@@ -19,9 +19,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.core.audit import write_audit_row
-from app.core.errors import PayloadTooLargeError, ValidationError
+from app.core.errors import ConflictError, PayloadTooLargeError, ValidationError
+from app.modules.catalog.models import ProductVariant as Variant
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.imports import service
 from app.modules.imports.models import ImportSession
@@ -117,6 +119,145 @@ async def upload(
     )
     await _audit(ctx, "import.upload", imp, file_size=imp.file_size, sha256=imp.file_sha256)
     return {**_out(imp), **service.describe(imp)}
+
+
+MAX_ZIP_BYTES = 60 * 1024 * 1024
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+@router.post("/images/zip", status_code=200)
+async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.zip"):
+    """صور في ملف مضغوط: اسم الملف هو الـSKU، والصورة بتتربط بالصنف وتتحفظ عندنا.
+
+    اللي مش لاقي صنفه أو مش صورة حقيقية بيرجع في التقرير باسمه — التاجر يشوف اللي ماوصلش
+    بدل ما يفضل يدوّر. الصور بتتحفظ بنفس مسار رفع الصورة باليد، فالحدود والقواعد واحدة.
+    """
+    import hashlib
+    import io
+    import zipfile
+
+    from app.core.storage import FetchedMedia, get_storage
+    from app.modules.catalog.service import CatalogService
+    from app.modules.imports.image_zip import (
+        MAX_ENTRIES,
+        MAX_IMAGES_PER_SKU,
+        content_type_for,
+        looks_like_image,
+        plan_images,
+        sku_from_name,
+    )
+
+    body = await request.body()
+    if not body:
+        raise ValidationError("الملف المضغوط فاضي")
+    if len(body) > MAX_ZIP_BYTES:
+        raise ValidationError("حجم الملف المضغوط أكبر من 60 ميجابايت")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(body))
+    except zipfile.BadZipFile as exc:
+        raise ValidationError("الملف مش مضغوط صالح (zip)") from exc
+
+    entries = [
+        info
+        for info in archive.infolist()
+        if not info.is_dir() and not info.filename.startswith("__MACOSX")
+    ]
+    if len(entries) > MAX_ENTRIES:
+        raise ValidationError(f"عدد الملفات في المضغوط أكبر من {MAX_ENTRIES}")
+
+    by_path = {info.filename: info for info in entries}
+    not_pictures = sorted(
+        name for name in by_path if not content_type_for(name)
+    )
+
+    storage = get_storage()
+    if not storage.configured:
+        raise ConflictError("تخزين الصور مش متظبط للمحل ده بعد")
+
+    variant_rows = (
+        await ctx.session.execute(
+            select(Variant.id, Variant.product_id, Variant.sku).where(
+                Variant.tenant_id == ctx.tenant_id
+            )
+        )
+    ).all()
+    by_sku = {row.sku.upper(): row for row in variant_rows if row.sku}
+    # الاسم بالظبط الأول، وبعده الاسم من غير علامة الزاوية (‑2 أو (1)).
+    plan = plan_images([info.filename for info in entries], known=set(by_sku))
+
+    matched: list[dict] = []
+    matched_paths: set[str] = set()
+    unknown_skus: list[str] = []
+    over_limit: list[str] = []
+    failed: list[dict] = []
+
+    for sku_key, paths in plan.items():
+        variant = by_sku.get(sku_key)
+        if variant is None:
+            unknown_skus.append(sku_key)
+            continue
+        for path in paths[:MAX_IMAGES_PER_SKU]:
+            kind = content_type_for(path)
+            try:
+                data = archive.read(by_path[path])
+            except Exception:  # ملف تالف جوه المضغوط
+                failed.append({"file": path, "reason": "تعذّر قراءة الملف من المضغوط"})
+                continue
+            if len(data) > MAX_IMAGE_BYTES:
+                failed.append({"file": path, "reason": "الصورة أكبر من 8 ميجابايت"})
+                continue
+            if not looks_like_image(kind, data):
+                failed.append({"file": path, "reason": "الملف مش صورة حقيقية"})
+                continue
+            media = FetchedMedia(
+                data=data, content_type=kind, checksum=hashlib.sha256(data).hexdigest()
+            )
+            stored = await storage.store(
+                media, prefix=f"product-images/{ctx.tenant_id}", original_url=None
+            )
+            if not stored.durable or not stored.storage_key:
+                failed.append({"file": path, "reason": "تعذّر حفظ الصورة. أعد المحاولة"})
+                continue
+            try:
+                image = await CatalogService.add_image(
+                    ctx.session,
+                    ctx.tenant_id,
+                    variant.product_id,
+                    url=f"s3://{stored.storage_key}",
+                    alt=None,
+                    variant_id=variant.id,
+                )
+            except Exception:
+                await storage.delete_objects([stored.storage_key])
+                failed.append({"file": path, "reason": "تعذّر ربط الصورة بالصنف"})
+                continue
+            matched_paths.add(path)
+            matched.append({"file": path, "sku": variant.sku, "image_id": str(image.id)})
+        matched_paths.update(paths)
+        if len(paths) > MAX_IMAGES_PER_SKU:
+            over_limit.extend(paths[MAX_IMAGES_PER_SKU:])
+
+    # صور مالقيتش لها صنف: بتترجع باسمها، مش بتختفي.
+    for path in by_path:
+        if path in matched_paths or not content_type_for(path):
+            continue
+        unknown_skus.append(sku_from_name(path))
+
+    await ctx.session.flush()
+    return {
+        "matched": matched,
+        "unknown_skus": sorted(unknown_skus),
+        "not_pictures": not_pictures,
+        "over_limit": sorted(over_limit),
+        "failed": failed,
+        "stats": {
+            "attached": len(matched),
+            "unknown": len(unknown_skus),
+            "not_pictures": len(not_pictures),
+            "over_limit": len(over_limit),
+            "failed": len(failed),
+        },
+    }
 
 
 class PasteRequest(BaseModel):

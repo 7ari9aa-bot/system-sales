@@ -109,6 +109,15 @@ export const uploadImportFile = (file) => {
 export const pasteImportRows = (text) =>
   api("/imports/sessions/paste", { method: "POST", body: { text } });
 
+/** ملف مضغوط فيه صور بأسماء الأصناف: الباك بيربطها بالـSKU ويحفظها. */
+export const uploadImageZip = (file) =>
+  api(`/imports/images/zip?filename=${seg(file.name)}`, {
+    method: "POST",
+    body: file,
+    rawBody: true,
+    contentType: "application/zip",
+  });
+
 export const getImportSession = (id, { signal } = {}) => api(base(id), { signal });
 export const listImportSessions = () => api("/imports/sessions?limit=10");
 export const saveImportMapping = (id, { mapping, options }) =>
