@@ -55,6 +55,7 @@ import { checkFile as checkChannelFile, mimeOf as mimeOfChannelFile } from "./ch
 import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, OrderBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
+import { instagramQuoteText } from "./instagram/messageKind";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
@@ -820,6 +821,15 @@ export default function ChannelChat({
           </div>
         ) : isInstagram ? (
           <>
+          {replyingTo && (
+            <div data-testid="ig-reply-bar" dir={lang === "ar" ? "rtl" : "ltr"} className="mb-1 flex items-center gap-2 rounded-xl bg-[#f5f5f5] px-3 py-1.5">
+              <div className="min-w-0 flex-1 border-s-2 border-[#dbdfe4] ps-2">
+                <div className="text-[12px] font-semibold text-[#262626]">{lang === "ar" ? `الرد على ${replyingTo.side === "out" ? "نفسك" : conversation.customer}` : `Replying to ${replyingTo.side === "out" ? "yourself" : conversation.customer}`}</div>
+                <div className="truncate text-[12px] text-[#8e8e8e]" dir="auto">{instagramQuoteText(replyingTo, lang)}</div>
+              </div>
+              <button type="button" data-testid="ig-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#8e8e8e] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
+            </div>
+          )}
           {quickOpen && <IgQuickReplies items={quickReplies} onChange={setQuickReplies} onClose={() => setQuickOpen(false)} lang={lang} />}
           <div dir="ltr" className="flex h-[46px] items-center gap-1 rounded-full border border-[#dbdfe4] bg-white px-3">
             <button
@@ -1357,7 +1367,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
+    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
   if (isTelegram) {

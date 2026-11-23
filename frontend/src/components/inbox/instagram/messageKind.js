@@ -28,3 +28,27 @@ export function instagramKind(m) {
 export function safeHttps(url) {
   return typeof url === "string" && /^https:\/\//i.test(url) ? url : "";
 }
+
+// What the reply bar prints for the message being quoted: Instagram shows an icon for media
+// and the text for anything written, never the whole body.
+const QUOTE_LABEL = {
+  image: { ar: "صورة", en: "Photo" },
+  video: { ar: "فيديو", en: "Video" },
+  voice: { ar: "رسالة صوتية", en: "Voice message" },
+  file: { ar: "ملف", en: "File" },
+  heart: { ar: "قلب", en: "Heart" },
+  sticker: { ar: "ملصق", en: "Sticker" },
+  share: { ar: "منشور", en: "Post" },
+  story_reply: { ar: "رد على ستوري", en: "Story reply" },
+  story_mention: { ar: "إشارة في ستوري", en: "Story mention" },
+  deleted: { ar: "رسالة محذوفة", en: "Deleted message" },
+  unsupported: { ar: "مرفق غير مدعوم", en: "Unsupported attachment" },
+};
+
+export function instagramQuoteText(m, lang = "ar") {
+  const kind = instagramKind(m);
+  const label = QUOTE_LABEL[kind];
+  const text = String(m?.text || "").trim();
+  if (label) return `${label[lang === "ar" ? "ar" : "en"]}${text && kind !== "heart" && kind !== "deleted" ? ` · ${text}` : ""}`;
+  return text || (lang === "ar" ? "رسالة" : "Message");
+}

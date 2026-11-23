@@ -48,6 +48,7 @@ export const IgReels = (p) => (
 );
 export const IgChevronDown = (p) => (<Svg {...p}><path d="m6 9 6 6 6-6" /></Svg>);
 export const IgBack = (p) => (<Svg {...p}><path d="M15 5 8 12l7 7" /></Svg>);
+export const IgReply = (p) => (<Svg {...p}><path d="M10 7 4.6 12.4 10 17.8" /><path d="M4.6 12.4h8.9a5.9 5.9 0 0 1 5.9 5.9" /></Svg>);
 export const IgClose = (p) => (<Svg {...p}><path d="M5 5l14 14M19 5 5 19" /></Svg>);
 export const IgSearch = (p) => (<Svg {...p}><circle cx="10.5" cy="10.5" r="7" /><path d="m16 16 5.5 5.5" /></Svg>);
 export const IgChannels = (p) => (<Svg {...p}><path d="M3 6h18M3 12h18M3 18h18" /></Svg>);
