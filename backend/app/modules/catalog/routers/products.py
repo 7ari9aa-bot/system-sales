@@ -54,6 +54,63 @@ async def list_products(
     return result
 
 
+@router.get("/products/page")
+async def products_page(
+    ctx: TenantCtxDep,
+    q: str | None = None,
+    status: str | None = None,
+    category_id: UUID | None = None,
+    brand_id: UUID | None = None,
+    season: str | None = None,
+    material: str | None = None,
+    sort: str = "newest",
+    limit: int = 50,
+    offset: int = 0,
+):
+    """صفحة من كتالوج المحل، مفلترة ومعدودة على السيرفر.
+
+    شاشة المنتجات كانت بتجيب ``?limit=500`` مرة واحدة وتدوّر وتفلتر في المتصفح، فمحل عنده
+    3000 منتج مايشوفش غير أول 500. الرد هنا بيحمل الصفحة + الإجمالي، فالشاشة تقدر تقول
+    «1–50 من 3000» وتكمل لباقي الكتالوج.
+    """
+    products, total = await CatalogService.search_products(
+        ctx.session,
+        ctx.tenant_id,
+        q=q,
+        status=status,
+        category_id=category_id,
+        brand_id=brand_id,
+        season=season,
+        material=material,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    images_by_product = await CatalogService.list_images_for_products(
+        ctx.session, ctx.tenant_id, [product.id for product in products]
+    )
+    variants_by_product = await CatalogService.list_variants_for_products(
+        ctx.session, ctx.tenant_id, [product.id for product in products]
+    )
+    items = [
+        _product_out(
+            product,
+            variants_by_product.get(product.id, []),
+            images_by_product.get(product.id, []),
+            tenant_id=ctx.tenant_id,
+        )
+        for product in products
+    ]
+    start = max(0, int(offset or 0))
+    return {
+        "items": items,
+        "total": total,
+        "limit": len(items),
+        "offset": start,
+        "has_more": start + len(items) < total,
+    }
+
+
 # ---------------------------------------------------------------------------
 # إدخال منتج كامل بطلب واحد.
 #

@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Archive, Pencil, Plus, RotateCcw, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useBrands, useCategories } from "@/cashier/api/useCatalogWrite";
-import { useCatalogProducts, useSetProductStatus } from "@/cashier/api/useCatalogList";
+import { PAGE_SIZE, useCatalogPage, useSetProductStatus } from "@/cashier/api/useCatalogList";
 import { useStockSeasons } from "@/cashier/api/useStock";
-import { PRODUCT_STATUS, filterProductRows, priceRangeLabel, sortProductRows, statusCounts } from "@/cashier/lib/productRows";
+import { PRODUCT_STATUS, priceRangeLabel } from "@/cashier/lib/productRows";
 import { fmtInt, fmtNumber } from "@/cashier/lib/format";
 
 // صفحة المنتجات: سجل الكتالوج. المخزون له شاشته (أرصدة وحركات)، وهنا الموديلات نفسها:
@@ -23,21 +23,38 @@ const TD = "px-4 py-3 text-right text-[13px] text-[#3a342d] align-middle";
 const STATUS_ORDER = ["", "active", "draft", "archived"];
 
 export default function ProductsCatalogPage() {
-  const [filters, setFilters] = useState({ term: "", categoryId: "", brandId: "", season: "", status: "active" });
+  const [filters, setFilters] = useState({ term: "", categoryId: "", brandId: "", season: "", status: "active", sort: "newest" });
+  const [page, setPage] = useState(0);
   const [confirming, setConfirming] = useState(null);
-  const products = useCatalogProducts();
+  // البحث بيتأخر شوية عشان كل حرف مايعملش طلب لوحده
+  const [typed, setTyped] = useState("");
+  const products = useCatalogPage({ ...filters, term: typed }, page);
   const categories = useCategories();
   const brands = useBrands();
   const seasons = useStockSeasons();
   const setStatus = useSetProductStatus();
 
-  const all = products.data ?? [];
-  const rows = useMemo(() => sortProductRows(filterProductRows(all, filters)), [all, filters]);
-  const counts = useMemo(() => statusCounts(all), [all]);
+  const rows = products.data?.rows ?? [];
+  const total = products.data?.total ?? 0;
+  const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const to = page * PAGE_SIZE + rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const categoryName = useMemo(() => new Map((categories.data ?? []).map((c) => [String(c.id), c.name])), [categories.data]);
   const brandName = useMemo(() => new Map((brands.data ?? []).map((b) => [String(b.id), b.name])), [brands.data]);
 
-  const patch = (next) => setFilters((f) => ({ ...f, ...next }));
+  // أي تغيير في فلتر بيرجّعك لأول صفحة: الصفحة القديمة مش موجودة في النتيجة الجديدة.
+  const patch = (next) => {
+    setFilters((f) => ({ ...f, ...next }));
+    setPage(0);
+  };
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setTyped(filters.term);
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [filters.term]);
 
   async function changeStatus(row, status) {
     if (confirming !== row.id) {
@@ -60,7 +77,7 @@ export default function ProductsCatalogPage() {
           <div>
             <h1 className="font-heading text-[26px] font-bold text-[#2a2622]">المنتجات</h1>
             <p className="mt-1 text-[13px] text-[#8a8277]">
-              {fmtInt(all.length)} منتج في الكتالوج · {fmtInt(counts.active)} متاح للبيع · {fmtInt(counts.archived)} مؤرشف
+              {fmtInt(total)} منتج مطابق · بتشوف {fmtInt(from)}–{fmtInt(to)} · صفحة {fmtInt(page + 1)} من {fmtInt(pages)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -88,7 +105,7 @@ export default function ProductsCatalogPage() {
             <select value={filters.status} onChange={(e) => patch({ status: e.target.value })} className={FIELD} aria-label="الحالة">
               {STATUS_ORDER.map((value) => (
                 <option key={value || "all"} value={value}>
-                  {value ? PRODUCT_STATUS[value].label : `كل الحالات (${fmtInt(all.length)})`}
+                  {value ? PRODUCT_STATUS[value].label : "كل الحالات"}
                 </option>
               ))}
             </select>
@@ -110,19 +127,25 @@ export default function ProductsCatalogPage() {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            <select value={filters.sort} onChange={(e) => patch({ sort: e.target.value })} className={FIELD} aria-label="الترتيب">
+              <option value="newest">الأحدث أولًا</option>
+              <option value="oldest">الأقدم أولًا</option>
+              <option value="name">الاسم (أ – ي)</option>
+              <option value="name_desc">الاسم (ي – أ)</option>
+            </select>
           </div>
         </div>
 
         <div className="overflow-hidden rounded-[18px] border border-[#e6e1da] bg-white shadow-[0_1px_2px_rgba(40,30,20,.05)]">
-          {products.isLoading ? (
+          {products.isLoading && rows.length === 0 ? (
             <p className="p-8 text-center text-[13px] text-[#8a8277]">جاري تحميل المنتجات…</p>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 p-10 text-center">
               <p className="text-[15px] font-semibold text-[#2a2622]">
-                {all.length === 0 ? "لسه مفيش منتجات في الكتالوج" : "مفيش منتج مطابق للفلاتر"}
+                {total === 0 && !filters.term ? "لسه مفيش منتجات في الكتالوج" : "مفيش منتج مطابق للفلاتر"}
               </p>
               <p className="max-w-[420px] text-[13px] text-[#8a8277]">
-                {all.length === 0
+                {total === 0 && !filters.term
                   ? "ابدأ بإضافة منتج واحد، أو استورد ملف Excel فيه منتجاتك كلها."
                   : "وسّع البحث أو شيل فلتر الحالة عشان تشوف المؤرشف والمسودة."}
               </p>
@@ -192,6 +215,34 @@ export default function ProductsCatalogPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {total > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eee9e2] bg-[#faf9f7] px-4 py-3">
+              <p className="text-[12px] text-[#8a8277]">
+                {fmtInt(from)}–{fmtInt(to)} من {fmtInt(total)} منتج
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className={`${GHOST} disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  السابق
+                </button>
+                <span className="text-[12px] font-semibold text-[#6b6358]">
+                  صفحة {fmtInt(page + 1)} من {fmtInt(pages)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={!products.data?.hasMore}
+                  className={`${GHOST} disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  التالي
+                </button>
+              </div>
             </div>
           )}
         </div>

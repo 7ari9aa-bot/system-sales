@@ -5,6 +5,7 @@ import { catalogApi } from "@/cashier/api/catalogApi";
 import { toProductRow } from "@/cashier/lib/productRows";
 
 const LIST_KEY = ["cashier", "catalog", "productList"];
+export const PAGE_SIZE = 50;
 
 export function useCatalogProducts() {
   return useQuery({
@@ -14,6 +15,37 @@ export function useCatalogProducts() {
       const res = await posApi.products();
       const list = Array.isArray(res) ? res : (res?.items ?? []);
       return list.map(toProductRow);
+    },
+  });
+}
+
+/**
+ * صفحة من الكتالوج من السيرفر: البحث والفلترة والترتيب والعدّ كلهم في قاعدة البيانات.
+ * قبل كده الشاشة كانت بتجيب أول 500 منتج وبتدوّر فيهم، فمحل عنده 3000 منتج مايشوفش الباقي.
+ */
+export function useCatalogPage(filters, page = 0, pageSize = PAGE_SIZE) {
+  const params = {
+    term: filters?.term ?? "",
+    status: filters?.status ?? "",
+    categoryId: filters?.categoryId ?? "",
+    brandId: filters?.brandId ?? "",
+    season: filters?.season ?? "",
+    sort: filters?.sort ?? "newest",
+    limit: pageSize,
+    offset: page * pageSize,
+  };
+  return useQuery({
+    queryKey: [...LIST_KEY, "page", params],
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+    queryFn: async () => {
+      const res = await catalogApi.productsPage(params);
+      const items = Array.isArray(res) ? res : (res?.items ?? []);
+      return {
+        rows: items.map(toProductRow),
+        total: Number(res?.total ?? items.length),
+        hasMore: Boolean(res?.has_more),
+      };
     },
   });
 }
