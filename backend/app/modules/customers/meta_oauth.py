@@ -451,10 +451,14 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
         )
         ids: list[str] = []
         for scope in data.get("granular_scopes") or []:
+            # Any Page grant names the Pages the owner ticked. `pages_messaging` is only there
+            # for a messaging channel: a Facebook-only connection is never asked for it.
             if scope.get("scope") in {
                 "pages_show_list",
                 "pages_messaging",
                 "pages_manage_metadata",
+                "pages_read_engagement",
+                "pages_manage_posts",
             }:
                 ids.extend(str(i) for i in scope.get("target_ids") or [])
         for page_id in dict.fromkeys(ids):
@@ -479,21 +483,37 @@ async def _granted_target_pages(http, user_token: str) -> list[dict]:
     return list(found.values())
 
 
-def _messaging_pages(all_pages: list[dict]) -> list[dict]:
-    """The Pages this operator can run messaging on.
+#: Page tasks (Meta's `tasks` list on a Page) that let an operator run each kind of channel.
+#: Chat needs MESSAGING (or full MANAGE); the Page's own posts, comments and insights need any
+#: content or admin task, so a person who may moderate or analyse a Page but not read its inbox
+#: can still connect it as a Facebook channel.
+_MESSAGING_TASKS = frozenset({"MESSAGING", "MANAGE"})
+_PAGE_MANAGEMENT_TASKS = frozenset(
+    {"MANAGE", "CREATE_CONTENT", "MODERATE", "ANALYZE", "ADVERTISE", "MESSAGING"}
+)
+
+
+def _pages_for(provider: str, all_pages: list[dict]) -> list[dict]:
+    """The Pages this operator can connect for `provider`.
 
     A Page whose `tasks` list is missing or empty is kept (older Graph answers omit it). A Page
-    whose list is present but names neither MESSAGING nor MANAGE is NOT one the operator can run
-    chat on, so it is never offered, not even as a fallback when nothing else qualifies: the old
-    fallback returned every Page and let the owner connect one Meta would then refuse.
+    whose list is present but names none of the tasks the channel needs is NOT one the operator
+    can run it on, so it is never offered, not even as a fallback when nothing else qualifies: the
+    old fallback returned every Page and let the owner connect one Meta would then refuse.
+
+    Messenger and Instagram carry private messages, so they need a messaging task. Facebook is the
+    Page's posts, comments and numbers, so any Page-management task is enough: filtering it by
+    messaging tasks hid Pages the operator could manage perfectly well.
     """
+    needed = _MESSAGING_TASKS if provider in ("messenger", "instagram") else _PAGE_MANAGEMENT_TASKS
     return [
-        page
-        for page in all_pages
-        if not page.get("tasks")
-        or "MESSAGING" in (page.get("tasks") or [])
-        or "MANAGE" in (page.get("tasks") or [])
+        page for page in all_pages if not page.get("tasks") or needed & set(page.get("tasks") or [])
     ]
+
+
+def _messaging_pages(all_pages: list[dict]) -> list[dict]:
+    """Pages a messaging channel (Messenger, Instagram) can run on."""
+    return _pages_for("messenger", all_pages)
 
 
 def _page_choices(pages: list[dict]) -> list[dict]:
@@ -746,7 +766,7 @@ async def _meta_exchange_and_connect(
                 for p in all_pages
             ],
         )
-        pages = _messaging_pages(all_pages)
+        pages = _pages_for(provider, all_pages)
         if len(pages) > 1:
             # One channel holds one Page and the owner ticked several: ask which, instead of
             # silently taking the first. Nothing is stored yet — the choice finishes the connect.

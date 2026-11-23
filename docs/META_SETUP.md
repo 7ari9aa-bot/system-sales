@@ -78,6 +78,18 @@ https://<api-host>/api/v1/integrations/meta/oauth/callback
 
 عند فصل قناة يزيل الخادم اشتراكها من ميتا. إن كانت الصفحة مشتركة معها قناة أخرى متصلة (مثل ماسنجر مع فيسبوك) يُبقي الاشتراك ويقتصر على حقول القناة الباقية. وإن تعذّر الوصول إلى ميتا يبقى الفصل محليًا ناجحًا وتُعلَّم الإزالة «معلّقة» لتُعاد من زر إعادة المحاولة.
 
+### صلاحيات كل قناة
+
+كل قناة تطلب ما تحتاجه فقط، ولا تحمل صلاحيات قناة أخرى:
+
+| القناة | الصلاحيات | الصفحات التي تظهر عند الربط |
+|---|---|---|
+| ماسنجر | `pages_show_list`، `pages_read_engagement`، `pages_manage_metadata`، `pages_messaging` | صفحات لها مهمة `MESSAGING` أو `MANAGE` |
+| فيسبوك | `pages_show_list`، `pages_read_engagement`، `pages_manage_metadata`، `pages_manage_posts`، `pages_manage_engagement`، `pages_read_user_content`، `read_insights` | أي صفحة لها مهمة إدارة (`MANAGE` أو `CREATE_CONTENT` أو `MODERATE` أو `ANALYZE` أو `ADVERTISE` أو `MESSAGING`) |
+| إنستجرام | صلاحيات الرسائل والتعليقات والنشر الخاصة بإنستجرام مع `pages_messaging` | صفحات لها مهمة `MESSAGING` أو `MANAGE` |
+
+قناة فيسبوك لا تطلب `pages_messaging`: محادثات العملاء من شأن ماسنجر، ومن يربط صفحته للمنشورات والتعليقات والإحصاءات فقط لا يُطلب منه الوصول إلى رسائلها الخاصة. اربط ماسنجر أيضًا إن أردت الرسائل.
+
 ## رابعًا: وضع التطوير وحساب المجرّب
 
 ما دام التطبيق في وضع التطوير فلن يُقبل أي حساب إلا إذا كان له دور عليه: Admin أو Developer أو Tester. أضف حساب المشغّل من صفحة Roles ثم Testers واطلب منه قبول الدعوة قبل الضغط على زر الربط، وإلا فسيرجع الخطأ access_denied إلى صفحة القنوات. للإنتاج العام يحتاج التطبيق موافقة App Review على الصلاحيات pages_messaging وinstagram_manage_messages وpages_manage_metadata.
@@ -243,6 +255,18 @@ Signature: `WHATSAPP_APP_SECRET`. Handshake: `WHATSAPP_VERIFY_TOKEN`.
 On the channels page press "Diagnose channel": it shows the connection, permissions, the Page subscription (asked of Meta live), the server's webhook readiness, the last webhook received and the last error. If no event has ever arrived, the likeliest cause is the app-level URL missing in the dashboard (it cannot be checked from the server). The app must be **Live** for real users' events to arrive.
 
 Disconnecting a channel removes its subscription from Meta. If another connected channel still shares the Page (Messenger with Facebook) the subscription is kept and narrowed to the remaining channel's fields. If Meta cannot be reached the local disconnect still succeeds and the removal is marked "pending" so it can be retried.
+
+### Permissions per channel
+
+Each channel asks only for what it needs and never carries another channel's permissions:
+
+| Channel | Permissions | Pages offered when connecting |
+|---|---|---|
+| Messenger | `pages_show_list`, `pages_read_engagement`, `pages_manage_metadata`, `pages_messaging` | Pages with a `MESSAGING` or `MANAGE` task |
+| Facebook | `pages_show_list`, `pages_read_engagement`, `pages_manage_metadata`, `pages_manage_posts`, `pages_manage_engagement`, `pages_read_user_content`, `read_insights` | Any Page with a management task (`MANAGE`, `CREATE_CONTENT`, `MODERATE`, `ANALYZE`, `ADVERTISE` or `MESSAGING`) |
+| Instagram | Instagram's own message, comment and publish permissions plus `pages_messaging` | Pages with a `MESSAGING` or `MANAGE` task |
+
+The Facebook channel does not ask for `pages_messaging`: customer chat belongs to Messenger, and a store that connects its Page only for posts, comments and insights is not asked for access to the Page's private messages. Connect Messenger as well for chat.
 
 ## 4. Development mode and testers
 

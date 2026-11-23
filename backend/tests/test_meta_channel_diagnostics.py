@@ -107,6 +107,17 @@ def test_a_facebook_channel_missing_only_a_posting_permission_is_a_warning() -> 
     assert "pages_manage_posts" in check["detail"]["missing"]
 
 
+def test_a_facebook_channel_is_not_faulted_for_lacking_private_messaging() -> None:
+    """`pages_messaging` belongs to Messenger. A Facebook-only Page that holds every Page
+    permission it asked for has nothing missing, and is never an ERROR for lacking chat access."""
+    from app.modules.customers.meta_scopes import FACEBOOK_BASE_SCOPES
+
+    granted = [*FACEBOOK_BASE_SCOPES, *FACEBOOK_PAGE_SCOPES]
+    assert "pages_messaging" not in granted
+    check = _by_key(_report("facebook", recorded_scopes=granted))["permissions"]
+    assert check["status"] == d.OK
+
+
 def test_instagram_names_its_own_scopes() -> None:
     report = _report("instagram", recorded_scopes=["pages_messaging", "instagram_manage_messages"])
     missing = _by_key(report)["permissions"]["detail"]["missing"]

@@ -75,6 +75,21 @@ def test_only_the_qualified_pages_are_offered_from_a_mixed_list() -> None:
     assert [p["id"] for p in mo._messaging_pages(mixed)] == ["1", "2", "3"]
 
 
+def test_a_facebook_channel_is_offered_every_page_the_operator_can_manage() -> None:
+    """Facebook is the Page's posts, comments and numbers, not its inbox: a Page the operator may
+    only moderate or analyse is still a Page they can connect as Facebook, even without a
+    messaging task. Messenger and Instagram keep the messaging filter."""
+    pages = [
+        {"id": "1", "name": "Chat", "tasks": ["MESSAGING"]},
+        {"id": "2", "name": "Analytics only", "tasks": ["ANALYZE"]},
+        {"id": "3", "name": "Editor", "tasks": ["CREATE_CONTENT", "MODERATE"]},
+        {"id": "4", "name": "Nothing useful", "tasks": ["VIEW_PERMISSIONS"]},
+    ]
+    assert [p["id"] for p in mo._pages_for("facebook", pages)] == ["1", "2", "3"]
+    assert [p["id"] for p in mo._pages_for("messenger", pages)] == ["1"]
+    assert [p["id"] for p in mo._pages_for("instagram", pages)] == ["1"]
+
+
 def test_the_browser_sees_ids_and_names_never_tokens() -> None:
     choices = mo._page_choices(PAGES)
     assert choices[0] == {"id": "111", "name": "Shop One"}
@@ -288,7 +303,7 @@ def _graph(pages, calls):
     return handler
 
 
-async def _run_callback(monkeypatch, pages, calls):
+async def _run_callback(monkeypatch, pages, calls, provider="facebook"):
     """Run the callback's connect against a faked Meta; `calls` collects every URL it hit."""
     import httpx
 
@@ -307,7 +322,7 @@ async def _run_callback(monkeypatch, pages, calls):
         return None
 
     monkeypatch.setattr(dbmod, "bind_tenant", no_bind)
-    state = {"provider": "facebook", "tenant_id": str(TENANT), "sub": USER}
+    state = {"provider": provider, "tenant_id": str(TENANT), "sub": USER}
     return await mo._meta_exchange_and_connect(_NoWrites(), "code", state)
 
 
@@ -316,12 +331,22 @@ async def test_several_pages_pause_the_connect_before_anything_is_stored(
 ) -> None:
     calls: list[str] = []
     with pytest.raises(mo.PageChoiceRequired) as pause:
-        await _run_callback(monkeypatch, PAGES, calls)
+        await _run_callback(monkeypatch, PAGES, calls, provider="messenger")
+    # Messenger carries private chat, so the analytics-only Page is not offered.
     assert [c["id"] for c in pause.value.choices] == ["111", "222"]
     parked = await mo._take_page_choice(pause.value.ticket)
     assert parked["secrets"]["user_token"] == USER_TOKEN
-    assert parked["user_id"] == USER and parked["provider"] == "facebook"
+    assert parked["user_id"] == USER and parked["provider"] == "messenger"
     assert parked["page_ids"] == ["111", "222"]
+
+
+async def test_a_facebook_connect_offers_the_analytics_only_page_too(redis, monkeypatch) -> None:
+    """Facebook is the Page's posts, comments and numbers, so a Page the operator can only
+    analyse is offered; the old messaging filter silently hid it."""
+    calls: list[str] = []
+    with pytest.raises(mo.PageChoiceRequired) as pause:
+        await _run_callback(monkeypatch, PAGES, calls, provider="facebook")
+    assert [c["id"] for c in pause.value.choices] == ["111", "222", "333"]
 
 
 async def test_the_pause_never_subscribes_a_page_to_the_webhook(redis, monkeypatch) -> None:

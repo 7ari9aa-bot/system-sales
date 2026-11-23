@@ -24,6 +24,7 @@ import httpx
 
 from app.modules.customers.meta_oauth import _GRAPH, subscribed_fields
 from app.modules.customers.meta_scopes import (
+    FACEBOOK_BASE_SCOPES,
     FACEBOOK_PAGE_SCOPES,
     INSTAGRAM_REQUIRED_SCOPES,
     MESSENGER_SCOPES,
@@ -154,7 +155,7 @@ async def probe_permissions(http: httpx.AsyncClient, *, token: str) -> dict[str,
 
 def _required_scopes(provider: str) -> tuple[str, ...]:
     if provider == "facebook":
-        return tuple(MESSENGER_SCOPES.split(",")) + tuple(FACEBOOK_PAGE_SCOPES)
+        return (*FACEBOOK_BASE_SCOPES, *FACEBOOK_PAGE_SCOPES)
     if provider == "instagram":
         return tuple(INSTAGRAM_REQUIRED_SCOPES) + ("pages_messaging",)
     if provider == "messenger":

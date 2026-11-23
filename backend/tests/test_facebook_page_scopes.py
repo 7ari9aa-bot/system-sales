@@ -12,6 +12,7 @@ import pytest
 
 from app.modules.customers.meta_oauth import _build_authorize_url
 from app.modules.customers.meta_scopes import (
+    FACEBOOK_BASE_SCOPES,
     FACEBOOK_PAGE_SCOPES,
     FACEBOOK_SCOPES,
     MESSENGER_SCOPES,
@@ -38,8 +39,14 @@ def test_the_facebook_dialog_asks_for_posting_comments_and_insights():
     assert NEEDED <= _scopes("facebook")
 
 
-def test_the_facebook_dialog_still_asks_for_page_messaging():
-    assert set(MESSENGER_SCOPES.split(",")) <= _scopes("facebook")
+def test_the_facebook_dialog_does_not_ask_for_private_messaging():
+    """Chat is the Messenger channel's job: a store that only connects its Page for posts,
+    comments and insights must not be asked for `pages_messaging`."""
+    facebook = _scopes("facebook")
+    assert "pages_messaging" not in facebook
+    # It still lists and reads the Page it manages.
+    assert set(FACEBOOK_BASE_SCOPES) <= facebook
+    assert "pages_messaging" in set(MESSENGER_SCOPES.split(","))
 
 
 def test_messenger_is_not_asked_to_let_us_post():
@@ -89,6 +96,8 @@ def test_a_business_login_config_replaces_the_scope_list_for_instagram_only():
 
 
 def test_a_connection_with_everything_granted_lacks_nothing():
+    assert missing_facebook_scopes(sorted(NEEDED)) == []
+    # A connection that also holds `pages_messaging` (an older one) is not flagged either.
     assert missing_facebook_scopes(sorted(NEEDED | {"pages_messaging"})) == []
 
 

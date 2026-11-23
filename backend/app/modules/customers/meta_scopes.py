@@ -9,10 +9,11 @@ from __future__ import annotations
 #: What a store that only chats on Messenger is asked for.
 MESSENGER_SCOPES = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging"
 
-#: The Facebook channel is the Page's chat PLUS its own posts, comments and numbers, so it asks for
-#: what Meta's Pages API demands for each (developers.facebook.com/docs/pages-api): publish a post
-#: (pages_manage_posts), reply to / hide / delete / like a comment (pages_manage_engagement), read
-#: what people wrote on the Page (pages_read_user_content) and read its insights (read_insights).
+#: The Facebook channel is the Page's own posts, comments and numbers (its chat is the Messenger
+#: channel), so it asks for what Meta's Pages API demands for each
+#: (developers.facebook.com/docs/pages-api): publish a post (pages_manage_posts), reply to / hide /
+#: delete / like a comment (pages_manage_engagement), read what people wrote on the Page
+#: (pages_read_user_content) and read its insights (read_insights).
 #: Without them Meta refuses every one of those calls on a real Page. Messenger keeps the narrow
 #: list: a store that only chats must not be asked to let us post for it.
 FACEBOOK_PAGE_SCOPES = (
@@ -21,7 +22,13 @@ FACEBOOK_PAGE_SCOPES = (
     "pages_read_user_content",
     "read_insights",
 )
-FACEBOOK_SCOPES = MESSENGER_SCOPES + "," + ",".join(FACEBOOK_PAGE_SCOPES)
+
+#: What the Facebook channel needs just to list and read a Page it manages. `pages_messaging` is
+#: NOT here on purpose: chatting with customers is the Messenger channel's job, and a store that
+#: connects only its Facebook Page (posts, comments, insights) must not be asked to hand over
+#: private-message access it never uses, nor be refused for lacking it.
+FACEBOOK_BASE_SCOPES = ("pages_show_list", "pages_read_engagement", "pages_manage_metadata")
+FACEBOOK_SCOPES = ",".join((*FACEBOOK_BASE_SCOPES, *FACEBOOK_PAGE_SCOPES))
 
 
 def missing_facebook_scopes(granted: object) -> list[str]:
