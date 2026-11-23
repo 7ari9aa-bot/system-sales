@@ -7,6 +7,7 @@ import io
 from openpyxl import load_workbook
 
 from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
     SHEET_FIELDS,
     SHEET_IMAGES,
     SHEET_ITEM_CODES,
@@ -28,6 +29,7 @@ def test_the_template_has_one_sheet_per_importable_kind():
         SHEET_STOCK,
         SHEET_IMAGES,
         SHEET_ITEM_CODES,
+        SHEET_CUSTOMERS,
     ]
     assert set(TEMPLATE_SHEETS) == set(wb.sheetnames)
 

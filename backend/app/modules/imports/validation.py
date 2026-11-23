@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from app.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
 from app.modules.imports import normalize as n
 from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
     SHEET_IMAGES,
     SHEET_ITEM_CODES,
     SHEET_PRODUCTS,
@@ -437,6 +438,88 @@ def validate_item_codes(
         if v.ok:
             v.values = {"sku": sku, "code_type": kind, "code": code}
             v.action = "skip" if existing.get((kind, code)) == sku else "create"
+        verdicts.append(v)
+    return verdicts
+
+
+def value_in(held: dict[str, bool], value: str | None) -> str | None:
+    """'live' when a live customer holds it, 'gone' when only a deleted one does, else None."""
+    if value is None or value not in held:
+        return None
+    return "live" if held[value] else "gone"
+
+
+def validate_customers(
+    rows: list[tuple[int, dict[str, str]]],
+    mapping: dict[str, str | None],
+    *,
+    taken_phones: dict[str, bool],
+    taken_emails: set[str],
+) -> list[RowVerdict]:
+    """A customer: a name, at least one way to reach them, and not someone the shop already has.
+
+    The customers service never edits an existing customer, so this refuses the same rows, now,
+    where the merchant can fix them, instead of at run time. ``taken_phones`` maps each canonical
+    phone the shop holds to whether a LIVE customer has it (a deleted customer still holds its
+    number: the database refuses a second one); ``taken_emails`` holds the emails of live
+    customers. Two rows of the file that normalise to the same handle are the same person: the
+    second is refused, so the file cannot collide with itself once its first row is in.
+    """
+    verdicts: list[RowVerdict] = []
+    phone_row: dict[str, int] = {}
+    email_row: dict[str, int] = {}
+    for number, row in rows:
+        v = RowVerdict(SHEET_CUSTOMERS, number)
+        name = _try(v, "name", n.parse_title, _get(row, mapping, "name"), field="name")
+        phone = _try(v, "phone", n.parse_phone, _get(row, mapping, "phone"))
+        email = _try(v, "email", n.parse_email, _get(row, mapping, "email"))
+        tags = _try(v, "tags", n.parse_tags, _get(row, mapping, "tags")) or []
+        source = n.clean_text(_get(row, mapping, "source"))[:63] or "import"
+        if not v.errors and phone is None and email is None:
+            v.errors.append(
+                RowError(
+                    "phone", "no_contact", "give a phone or an email so the customer can be found"
+                )
+            )
+        for field_key, value, held, first in (
+            ("phone", phone, value_in(taken_phones, phone), phone_row),
+            ("email", email, "live" if email in taken_emails else None, email_row),
+        ):
+            if value is None:
+                continue
+            if held == "live":
+                v.errors.append(
+                    RowError(
+                        field_key, "already_a_customer", f"a customer with this {field_key} exists"
+                    )
+                )
+            elif held == "gone":
+                v.errors.append(
+                    RowError(
+                        field_key,
+                        "phone_of_deleted_customer",
+                        "this phone belongs to a deleted customer and cannot be reused",
+                    )
+                )
+            elif value in first:
+                v.errors.append(
+                    RowError(
+                        field_key,
+                        "duplicate_in_file",
+                        f"same {field_key} as row {first[value]}",
+                    )
+                )
+            else:
+                first[value] = number
+        if v.ok:
+            v.values = {
+                "name": name,
+                "phone": phone,
+                "email": email,
+                "source": source,
+                "tags": tags,
+            }
+            v.action = "create"
         verdicts.append(v)
     return verdicts
 

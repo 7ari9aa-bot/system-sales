@@ -25,6 +25,7 @@ SHEET_VARIANTS = "Variants"
 SHEET_STOCK = "Opening Stock"
 SHEET_IMAGES = "Images"
 SHEET_ITEM_CODES = "Item Codes"
+SHEET_CUSTOMERS = "Customers"
 
 PRODUCT_FIELDS: tuple[FieldSpec, ...] = (
     # Optional here: a one-sheet file of names and prices is what most shops have, and the
@@ -135,6 +136,52 @@ STOCK_FIELDS: tuple[FieldSpec, ...] = (
     ),
 )
 
+CUSTOMER_FIELDS: tuple[FieldSpec, ...] = (
+    FieldSpec(
+        "name",
+        "اسم العميل",
+        "Customer name",
+        ("name", "customername", "fullname", "customer", "client", "اسمالعميل", "الاسم", "العميل"),
+        required=True,
+    ),
+    # Phone and email are each optional, but a row needs at least one: a name alone cannot be
+    # told apart from the next customer with the same name, so it could never be matched again.
+    FieldSpec(
+        "phone",
+        "الهاتف",
+        "Phone",
+        (
+            "phone",
+            "mobile",
+            "tel",
+            "telephone",
+            "whatsapp",
+            "phonenumber",
+            "mobilenumber",
+            "الهاتف",
+            "رقمالهاتف",
+            "الموبايل",
+            "رقمالموبايل",
+            "الجوال",
+            "التليفون",
+            "واتساب",
+        ),
+    ),
+    FieldSpec(
+        "email",
+        "البريد الإلكتروني",
+        "Email",
+        ("email", "mail", "emailaddress", "البريد", "البريدالالكتروني", "الايميل", "ايميل"),
+    ),
+    FieldSpec(
+        "source",
+        "المصدر",
+        "Source",
+        ("source", "channel", "origin", "المصدر", "القناة"),
+    ),
+    FieldSpec("tags", "الوسوم", "Tags", ("tags", "tag", "labels", "الوسوم", "الوسم", "تصنيف")),
+)
+
 IMAGE_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("sku", "SKU", "SKU", ("sku", "itemcode", "code", "كود"), required=True),
     FieldSpec(
@@ -200,4 +247,5 @@ SHEET_FIELDS: dict[str, tuple[FieldSpec, ...]] = {
     SHEET_STOCK: STOCK_FIELDS,
     SHEET_IMAGES: IMAGE_FIELDS,
     SHEET_ITEM_CODES: ITEM_CODE_FIELDS,
+    SHEET_CUSTOMERS: CUSTOMER_FIELDS,
 }

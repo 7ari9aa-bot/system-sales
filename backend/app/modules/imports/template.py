@@ -3,6 +3,9 @@
 Built from ``fields.py``, the same table the column matcher reads, so a merchant who fills the
 template in gets every column matched automatically and the two can never drift apart.
 
+The Customers sheet is independent of the others: a file may carry only that sheet. A customer
+needs a name and a phone or an email.
+
 The Images sheet takes links (http/https), one picture per row. A link is downloaded when the
 import runs and the copy is kept in the shop's own storage.
 """
@@ -17,6 +20,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from app.modules.imports.fields import (
+    SHEET_CUSTOMERS,
     SHEET_FIELDS,
     SHEET_IMAGES,
     SHEET_ITEM_CODES,
@@ -26,7 +30,14 @@ from app.modules.imports.fields import (
     FieldSpec,
 )
 
-TEMPLATE_SHEETS = (SHEET_PRODUCTS, SHEET_VARIANTS, SHEET_STOCK, SHEET_IMAGES, SHEET_ITEM_CODES)
+TEMPLATE_SHEETS = (
+    SHEET_PRODUCTS,
+    SHEET_VARIANTS,
+    SHEET_STOCK,
+    SHEET_IMAGES,
+    SHEET_ITEM_CODES,
+    SHEET_CUSTOMERS,
+)
 
 # One believable value per column, shown as a comment on the header and NEVER as a data row: a
 # sample row would be imported as a real product the moment a merchant uploads the file as is.
@@ -53,6 +64,13 @@ _EXAMPLES: dict[str, dict[str, str]] = {
     SHEET_STOCK: {"sku": "TEE-RED-M", "barcode": "", "warehouse": "", "quantity": "25"},
     SHEET_IMAGES: {"sku": "TEE-RED-M", "file_name": "https://example.com/photos/tee-red.jpg"},
     SHEET_ITEM_CODES: {"sku": "TEE-RED-M", "code_type": "EGS", "code": "EG-123456789-TEE-RED-M"},
+    SHEET_CUSTOMERS: {
+        "name": "منى أحمد",
+        "phone": "01012345678",
+        "email": "mona@example.com",
+        "source": "معرض",
+        "tags": "vip, جملة",
+    },
 }
 
 _HEADER_FILL = PatternFill("solid", start_color="1F2937")
