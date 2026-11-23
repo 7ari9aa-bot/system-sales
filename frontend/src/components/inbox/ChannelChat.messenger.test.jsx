@@ -74,4 +74,30 @@ describe("ChannelChat on Messenger", () => {
     expect(html).toContain('data-testid="messenger-image-button"');
     expect(html).toContain('accept="image/jpeg,image/png,image/gif,image/webp"');
   });
+
+  test("a customer's reactions show as a badge under the bubble", () => {
+    const html = render([msg("m1", { text: "hi", side: "out", reactions: ["❤️", "😂", "❤️"] })]);
+    expect(html).toContain('data-testid="messenger-reactions"');
+    expect(html).toContain("❤️");
+    expect(html).toContain("😂");
+  });
+
+  test("no reactions, no badge; a withdrawn reaction leaves no badge", () => {
+    expect(render([msg("m1", { text: "hi" })])).not.toContain('data-testid="messenger-reactions"');
+    expect(render([msg("m1", { text: "hi", reactions: ["\u200b-"] })])).not.toContain('data-testid="messenger-reactions"');
+  });
+
+  test("a saved message has reply and copy next to it, as Messenger shows on hover", () => {
+    const html = render([msg("m1", { text: "hi" })]);
+    expect(html).toContain('data-testid="messenger-hover-reply"');
+    expect(html).toContain('data-testid="messenger-hover-copy"');
+  });
+
+  test("it offers no reaction button, because Messenger's Send API cannot react as a Page", () => {
+    expect(render([msg("m1", { text: "hi" })])).not.toContain("messenger-hover-react");
+  });
+
+  test("no reply bar until a reply is started", () => {
+    expect(render([msg("m1", { text: "hi" })])).not.toContain('data-testid="messenger-reply-bar"');
+  });
 });

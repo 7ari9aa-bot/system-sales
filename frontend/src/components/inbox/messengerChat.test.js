@@ -193,3 +193,21 @@ describe("messengerSharedItems", () => {
     expect(messengerSharedItems(null)).toEqual({ media: [], files: [], links: [] });
   });
 });
+
+import { messengerReactionSummary } from "./messengerChat";
+
+describe("messengerReactionSummary", () => {
+  it("lists each emoji once, in order, with how many people used it", () => {
+    expect(messengerReactionSummary(["❤️", "😂", "❤️"])).toEqual({ emojis: ["❤️", "😂"], count: 3 });
+  });
+
+  it("ignores empty and withdrawn markers, so a removed reaction leaves no badge", () => {
+    expect(messengerReactionSummary(["\u200b-", "", null, "👍"])).toEqual({ emojis: ["👍"], count: 1 });
+    expect(messengerReactionSummary(["\u200b-"])).toBeNull();
+  });
+
+  it("is null when there is nothing to show", () => {
+    expect(messengerReactionSummary([])).toBeNull();
+    expect(messengerReactionSummary(undefined)).toBeNull();
+  });
+});

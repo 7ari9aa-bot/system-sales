@@ -18,11 +18,13 @@ import {
   Play,
   Pause,
   ThumbsUp,
+  Reply,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerIsBigEmoji, messengerPresence, messengerQuoteText, messengerSeenMessageId, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerIsBigEmoji, messengerPresence, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -872,6 +874,16 @@ export default function ChannelChat({
           </div>
           </>
         ) : isMessenger ? (
+          <>
+          {replyingTo && (
+            <div data-testid="messenger-reply-bar" dir={lang === "ar" ? "rtl" : "ltr"} className="mb-1 flex items-center gap-2 rounded-xl bg-[#f0f2f5] px-3 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-[#050505]">{lang === "ar" ? `الرد على ${replyingTo.side === "out" ? "نفسك" : conversation.customer}` : `Replying to ${replyingTo.side === "out" ? "yourself" : conversation.customer}`}</div>
+                <div className="truncate text-[12px] text-[#65676b]" dir="auto">{messengerQuoteText({ body: replyingTo.text, content_type: replyingTo.contentType }, lang)}</div>
+              </div>
+              <button type="button" data-testid="messenger-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
+            </div>
+          )}
           <div dir="ltr" data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
             <button
               type="button"
@@ -944,6 +956,7 @@ export default function ChannelChat({
               </button>
             )}
           </div>
+          </>
         ) : (
           <div
             className="flex items-center gap-2 rounded-full px-3 py-1.5"
@@ -1143,6 +1156,9 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
     const quote = m.replyTo ? messengerQuoteText(m.replyTo, _lang) : "";
     // A lone emoji has no bubble in Messenger, so it is printed large on the page itself.
     const bigEmoji = !isAudio && !m.mediaUrl && messengerIsBigEmoji(m.text);
+    const reactions = messengerReactionSummary(m.reactions);
+    const canAct = !m.unsaved && !m.deleted;
+    const hoverButton = "grid h-7 w-7 place-items-center rounded-full text-[#65676b] hover:bg-[#f0f2f5] focus-visible:bg-[#f0f2f5] focus-visible:outline-none";
     return (
       <div className={cn("flex flex-col", out ? "items-end" : "items-start", group.alone ? "mt-2" : "mt-0.5")}>
         {quote && (
@@ -1150,30 +1166,53 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
             {quote}
           </div>
         )}
-        {bigEmoji ? (
-          <div data-testid="messenger-big-emoji" title={m.time} className="text-[44px] leading-[1.1]" dir="auto">{String(m.text).trim()}</div>
-        ) : (
-          <div
-            title={m.time}
-            className={cn(
-              "max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
-              messengerBubbleCorners({ out, first: group.first, last: group.last })
-            )}
-            style={{
-              background: messengerBubbleBackground(messengerTheme, out),
-              color: out ? "#FFFFFF" : th?.inText || "#050505",
-            }}
-          >
-            {isAudio ? (
-              <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
-            ) : (
-              <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
-                {m.text}
-                {m.ai && <Sparkles className="ms-1 inline h-3 w-3 align-baseline text-amber-300" />}
-              </div>
-            )}
-          </div>
-        )}
+        <div className={cn("group/msg flex max-w-full items-center gap-1", out ? "flex-row-reverse" : "flex-row")}>
+          {bigEmoji ? (
+            <div data-testid="messenger-big-emoji" title={m.time} className="text-[44px] leading-[1.1]" dir="auto">{String(m.text).trim()}</div>
+          ) : (
+            <div
+              title={m.time}
+              className={cn(
+                "relative max-w-[82%] px-3 py-2 text-[15px] leading-[1.35] sm:max-w-[76%] rounded-[18px]",
+                messengerBubbleCorners({ out, first: group.first, last: group.last }),
+                reactions && "mb-3"
+              )}
+              style={{
+                background: messengerBubbleBackground(messengerTheme, out),
+                color: out ? "#FFFFFF" : th?.inText || "#050505",
+              }}
+            >
+              {isAudio ? (
+                <VoiceBubble m={m} out={out} time={m.time} status={m.status} checkmarks={false} />
+              ) : (
+                <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" dir="auto">
+                  {m.text}
+                  {m.ai && <Sparkles className="ms-1 inline h-3 w-3 align-baseline text-amber-300" />}
+                </div>
+              )}
+              {reactions && (
+                <span data-testid="messenger-reactions" className={cn("absolute -bottom-3 flex items-center gap-0.5 rounded-full border-2 border-white bg-[#f0f2f5] px-1.5 text-[12px] leading-[18px] text-[#050505]", out ? "end-2" : "start-2")}>
+                  {reactions.emojis.join("")}
+                  {reactions.count > 1 && <span className="text-[11px] text-[#65676b]">{reactions.count}</span>}
+                </span>
+              )}
+            </div>
+          )}
+          {canAct && (
+            <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100">
+              {onReply && (
+                <button type="button" data-testid="messenger-hover-reply" className={hoverButton} onClick={() => onReply(m)} title={_lang === "ar" ? "رد" : "Reply"} aria-label={_lang === "ar" ? "رد" : "Reply"}>
+                  <Reply className="h-4 w-4" />
+                </button>
+              )}
+              {m.text && (
+                <button type="button" data-testid="messenger-hover-copy" className={hoverButton} onClick={() => { void navigator.clipboard?.writeText(String(m.text)); }} title={_lang === "ar" ? "نسخ" : "Copy"} aria-label={_lang === "ar" ? "نسخ" : "Copy"}>
+                  <Copy className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {showSeenAvatar && (
           <span data-testid="messenger-seen-avatar" className="mt-1 inline-flex">
             <ConversationAvatar conversation={_conversation} className="h-4 w-4 text-[8px]" />

@@ -165,3 +165,16 @@ export function messengerSharedItems(messages) {
   }
   return out;
 }
+
+// The marker the backend stores for a reaction that was taken back.
+const REACTION_WITHDRAWN = "\u200b-";
+
+/**
+ * The small badge under a bubble: each emoji once, plus the total number of reactions. A
+ * withdrawn reaction counts for nothing, so taking one back removes the badge.
+ */
+export function messengerReactionSummary(reactions) {
+  const live = (Array.isArray(reactions) ? reactions : []).filter((r) => typeof r === "string" && r.trim() && r !== REACTION_WITHDRAWN);
+  if (!live.length) return null;
+  return { emojis: [...new Set(live)], count: live.length };
+}
