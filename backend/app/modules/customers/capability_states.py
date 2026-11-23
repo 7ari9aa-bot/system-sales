@@ -53,10 +53,26 @@ STATES = (
 #: States that mean the capability genuinely works today.
 WORKING = (AVAILABLE,)
 
+
 #: A capability and what it needs. ``scopes`` are checked against what Meta says the token holds;
 #: ``fields`` against the asset subscription; ``live_fields`` are the webhook fields that must have
 #: delivered at least once before the feature can be called verified. ``blocked`` is a constant
 #: statement about Meta or about us, so a dead button is explained instead of hidden.
+def _roadmap_state(key: str) -> str:
+    """The declared state of a Meta-gated WhatsApp feature (see whatsapp_roadmap)."""
+    from app.modules.customers.whatsapp_roadmap import ROADMAP
+
+    return str(ROADMAP[key]["state"])
+
+
+def _roadmap_reason(key: str) -> str:
+    """Why that state, in Meta's terms, so a badge carries its evidence."""
+    from app.modules.customers.whatsapp_roadmap import ROADMAP
+
+    spec = ROADMAP[key]
+    return f"{spec['eligibility']} — {spec['evidence']}"
+
+
 _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
     "messenger": (
         {
@@ -218,20 +234,44 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
             "fields": ("phone_number_quality_update",),
             "live_fields": (),
         },
-        # Declared gaps, not API limits: the platform has not built these yet.
         # Built: the Flow lifecycle on Meta's side and the nfm_reply the customer sends back.
         {"key": "flows", "scopes": (), "fields": (), "live_fields": ()},
         # Built: single product, multi-product and whole-catalog messages in the builder.
         {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
-        # Built as an opt-in at signup. Meta decides per number whether coexistence is allowed, so
-        # the state says "we can ask", and Meta's own refusal is what the owner sees if it says no.
-        {"key": "coexistence", "scopes": (), "fields": (), "live_fields": ()},
+        # The four features Meta gates, declared from whatsapp_roadmap so the badge a screen shows
+        # and the reason it shows are the same fact. `coexistence` used to be declared plain
+        # AVAILABLE, which was a false green: nothing in signup handled the coexistence step at all.
+        {
+            "key": "coexistence",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("coexistence"),
+            "blocked_reason": _roadmap_reason("coexistence"),
+        },
         {
             "key": "calls",
             "scopes": (),
             "fields": (),
             "live_fields": (),
-            "blocked": REGION_RESTRICTED,
+            "blocked": _roadmap_state("calls"),
+            "blocked_reason": _roadmap_reason("calls"),
+        },
+        {
+            "key": "groups",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("groups"),
+            "blocked_reason": _roadmap_reason("groups"),
+        },
+        {
+            "key": "marketing_messages",
+            "scopes": (),
+            "fields": (),
+            "live_fields": (),
+            "blocked": _roadmap_state("marketing_messages"),
+            "blocked_reason": _roadmap_reason("marketing_messages"),
         },
     ),
 }

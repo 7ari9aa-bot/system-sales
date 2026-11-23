@@ -790,6 +790,53 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
     )
 
 
+@platform_router.get("/integrations/{integration_id}/whatsapp-roadmap")
+async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
+    """The WhatsApp features Meta gates, each with its state and what the owner can do.
+
+    Calls, Groups and Marketing Messages are not switches FIHRIST owns: Meta decides per number,
+    per business account and per approval. They are listed here with that state and the evidence,
+    so the channel screen shows a reason instead of a button that cannot work. Coexistence is the
+    one of the four FIHRIST can ask for at signup, and its measured state comes from what the
+    connection actually recorded.
+    """
+    from app.modules.customers import whatsapp_roadmap as roadmap_mod
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider != "whatsapp":
+        raise ValidationError("The WhatsApp roadmap exists for the WhatsApp channel only.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    mode = str(config.get("onboarding_mode") or "cloud_api")
+    rows = []
+    for row in roadmap_mod.roadmap():
+        if row["key"] == "coexistence":
+            row = dict(row)
+            row["onboarding_mode"] = mode
+            row["measured"] = True
+            # Connected through coexistence means Meta already allowed it for this number; a
+            # cloud_api connection simply has not asked, which is not a refusal.
+            row["state"] = (
+                roadmap_mod.AVAILABLE if mode == "coexistence" else roadmap_mod.ACCOUNT_INELIGIBLE
+            )
+        rows.append(row)
+    return {
+        "connected": integration.status in ("active", "connected", "restricted"),
+        "onboarding_mode": mode,
+        "features": rows,
+    }
+
+
 @platform_router.post(
     "/integrations/{integration_id}/retry-meta-cleanup",
     response_model=schemas.IntegrationOut,

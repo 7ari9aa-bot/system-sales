@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 653,
-    "sha256": "7fd3c1e1b77ac80d28dfce7906555c52f36939d433734762d167636d4949db3c",
+    "operations": 654,
+    "sha256": "d407a2a200cd1befaa6328b5afe5d5cf0e40d93742a58826b8ead73bc0eb48c4",
     "typed_operations": 352
   },
   "spec": {
@@ -25338,12 +25338,18 @@
           "type": "object"
         },
         "WhatsAppSignupCompleteBody": {
-          "description": "What the JS SDK popup hands back, plus the two ids from its session.",
+          "description": "What the JS SDK popup hands back, plus the two ids from its session.\n\n``onboarding_mode`` records which way the customer connected. Meta's coexistence flow ends with\nthe FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING step, and a customer who picks it is choosing to\nkeep using the WhatsApp Business app on the same number — not failing to connect. Refusing that\nstep, or folding it into \"cloud_api\", would hide the difference from every screen afterwards.",
           "properties": {
             "code": {
               "maxLength": 4096,
               "minLength": 8,
               "title": "Code",
+              "type": "string"
+            },
+            "onboarding_mode": {
+              "default": "cloud_api",
+              "pattern": "^(cloud_api|coexistence)$",
+              "title": "Onboarding Mode",
               "type": "string"
             },
             "phone_number_id": {
@@ -25385,6 +25391,11 @@
             },
             "id": {
               "title": "Id",
+              "type": "string"
+            },
+            "onboarding_mode": {
+              "default": "cloud_api",
+              "title": "Onboarding Mode",
               "type": "string"
             },
             "phone_number_id": {
@@ -54671,6 +54682,112 @@
             }
           },
           "summary": "Verify Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/whatsapp-roadmap": {
+        "get": {
+          "description": "The WhatsApp features Meta gates, each with its state and what the owner can do.\n\nCalls, Groups and Marketing Messages are not switches FIHRIST owns: Meta decides per number,\nper business account and per approval. They are listed here with that state and the evidence,\nso the channel screen shows a reason instead of a button that cannot work. Coexistence is the\none of the four FIHRIST can ask for at signup, and its measured state comes from what the\nconnection actually recorded.",
+          "operationId": "whatsapp_roadmap_api_v1_integrations__integration_id__whatsapp_roadmap_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Whatsapp Roadmap",
           "tags": [
             "platform"
           ]
