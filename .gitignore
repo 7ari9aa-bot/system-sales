@@ -99,3 +99,6 @@ kids-sweatshirt-gen/
 
 # Demo login body with cleartext credentials
 backend/scripts/_login_body.json
+
+# Local CI / release build downloads
+build_release_artifacts/
