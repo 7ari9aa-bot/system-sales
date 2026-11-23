@@ -26,7 +26,6 @@ from app.modules.conversations.routers.inbox import (
     _sendable_channels,
 )
 from app.modules.conversations.routers.social import _comment_out
-from app.modules.customers.meta_scopes import missing_private_reply_scopes
 
 router = APIRouter(tags=["facebook"])
 
@@ -517,6 +516,8 @@ async def private_reply(
     management grant and deliberately does not ask for it, so a store that never linked Messenger
     is told which function to connect instead of meeting Meta's refusal.
     """
+    from app.modules.customers.meta_scopes import missing_private_reply_scopes
+
     creds = await _credentials(ctx, send=True)
     connection = creds.get("_connection") if isinstance(creds.get("_connection"), dict) else {}
     if missing_private_reply_scopes(connection.get("granted_scopes")):
@@ -570,7 +571,7 @@ async def post_insights(
 @router.get("/facebook/activity")
 async def page_activity(
     only_unread: bool = False,
-    limit: int = Query(50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ctx: TenantContext = Depends(require_permission("conversations:read")),
 ):
     """What happened on the Page, newest first, read from our own table.

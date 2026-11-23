@@ -37,7 +37,6 @@ from app.modules.conversations.routers.inbox import (
     _channel_config,
     _sendable_channels,
 )
-from app.modules.customers.meta_scopes import missing_private_reply_scopes
 
 router = APIRouter(tags=["messenger"])
 
@@ -90,6 +89,8 @@ async def _credentials(ctx: TenantContext, *, send: bool) -> dict:
         raise ConflictError("Messenger is not connected")
     # Changing the Page's Messenger profile IS a Messenger call: without `pages_messaging` Meta
     # refuses it, so the store is told which permission to grant instead of seeing a Meta error.
+    from app.modules.customers.meta_scopes import missing_private_reply_scopes
+
     if send and missing_private_reply_scopes((config or {}).get("granted_scopes")):
         raise PermissionDeniedError(
             "Messenger profile settings need the pages_messaging permission; "

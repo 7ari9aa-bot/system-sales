@@ -158,6 +158,9 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     # Normal Automation: orchestration and housekeeping events.
     "notification.queued": EventPriority.NORMAL_AUTOMATION,
     "customer.merged": EventPriority.NORMAL_AUTOMATION,
+    # A public comment or mention changed on a social post: it refreshes the interactions list and
+    # nobody is blocked on it, so it is housekeeping, not an interactive reply path.
+    "social_comment.changed": EventPriority.NORMAL_AUTOMATION,
     # A deposit RULE changing is a settings write: it moves no money and nobody
     # waits on it, so it is not the money tier beside order.created.
     "order.deposit_policy_changed": EventPriority.NORMAL_AUTOMATION,

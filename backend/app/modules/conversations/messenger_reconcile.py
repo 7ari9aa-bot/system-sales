@@ -17,7 +17,6 @@ from typing import Any
 import httpx
 
 from app.modules.conversations.gateway.messenger_backfill import MessengerBackfill
-from app.modules.customers.meta_linking import backfill_bounds, backfill_supported
 
 
 def _thread_id(conversation: dict[str, Any]) -> str | None:
@@ -42,6 +41,8 @@ async def reconcile_page(
     drops conversations from that listing for its own reasons, so it is not proof of a deletion and
     nothing is removed on the strength of it.
     """
+    from app.modules.customers.meta_linking import backfill_bounds, backfill_supported
+
     supported, why = backfill_supported(provider)
     if not supported:
         return {

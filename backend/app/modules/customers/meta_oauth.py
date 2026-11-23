@@ -1236,7 +1236,6 @@ async def meta_oauth_choose_page(
     return {"connected": f"{provider}:{display_name}"}
 
 
-@meta_oauth_router.get("/integrations/meta/oauth/callback", include_in_schema=False)
 async def _instagram_login_callback(*, session, code, payload, frontend, back, flag):
     """The standalone Instagram Login callback: no Page, no page token, its own Graph host."""
     import uuid as _uuid
@@ -1284,6 +1283,7 @@ async def _instagram_login_callback(*, session, code, payload, frontend, back, f
     return back("connected", f"{connected_provider}:{display}")
 
 
+@meta_oauth_router.get("/integrations/meta/oauth/callback", include_in_schema=False)
 async def meta_oauth_callback(
     request: Request,
     session: DbSession,
