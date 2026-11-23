@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 654,
-    "sha256": "d407a2a200cd1befaa6328b5afe5d5cf0e40d93742a58826b8ead73bc0eb48c4",
+    "operations": 655,
+    "sha256": "8107144c77548639368c7f8469db374c3ba062f105d7a3f72f41b0ee5ec26596",
     "typed_operations": 352
   },
   "spec": {
@@ -54466,6 +54466,128 @@
             }
           },
           "summary": "Disconnect Integration",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/{integration_id}/reconnect-plan": {
+        "get": {
+          "description": "One Page connection, its capability states, and what to ask Meta for.\n\nFour problems look identical on a channel screen (\"it does not work\"): a dead token, a missing\nscope, an unsubscribed webhook field, and a feature Meta has not approved. Each needs a\ndifferent action, so this route says which one it is instead of sending the owner to reconnect\neverything. `capability` narrows it to one function; without it every capability is answered.",
+          "operationId": "reconnect_plan_route_api_v1_integrations__integration_id__reconnect_plan_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "integration_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Integration Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "query",
+              "name": "capability",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Capability"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reconnect Plan Route",
           "tags": [
             "platform"
           ]

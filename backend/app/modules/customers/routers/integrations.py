@@ -790,6 +790,70 @@ async def channel_diagnostics(integration_id: UUID, ctx: SettingsReadCtx):
     )
 
 
+@platform_router.get("/integrations/{integration_id}/reconnect-plan")
+async def reconnect_plan_route(
+    integration_id: UUID,
+    ctx: SettingsReadCtx,
+    capability: str | None = None,
+):
+    """One Page connection, its capability states, and what to ask Meta for.
+
+    Four problems look identical on a channel screen ("it does not work"): a dead token, a missing
+    scope, an unsubscribed webhook field, and a feature Meta has not approved. Each needs a
+    different action, so this route says which one it is instead of sending the owner to reconnect
+    everything. `capability` narrows it to one function; without it every capability is answered.
+    """
+    from app.modules.customers import meta_linking
+
+    integration = (
+        await ctx.session.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                Integration.tenant_id == ctx.tenant_id,
+                Integration.kind == "channel",
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("channel integration not found")
+    if integration.provider not in diag_webhook_objects():
+        raise ValidationError("The linking layer exists for the Meta channels only.")
+
+    connection = meta_linking.MetaPageConnection.from_integration(integration)
+    wanted = [capability] if capability else list(meta_linking.CAPABILITIES)
+    unknown = [name for name in wanted if name not in meta_linking.CAPABILITIES]
+    if unknown:
+        raise ValidationError("unknown capability: " + ", ".join(unknown))
+
+    return {
+        "page_id": connection.page_id,
+        "connected": connection.connected,
+        "has_token": connection.has_token,
+        "granted_scopes": sorted(connection.granted_scopes or ()),
+        "page_tasks": sorted(connection.page_tasks or ()),
+        "subscribed_fields": (
+            sorted(connection.subscribed_fields)
+            if connection.subscribed_fields is not None
+            else None
+        ),
+        "capabilities": [
+            {
+                "capability": name,
+                "plan": meta_linking.reconnect_plan(connection, name),
+            }
+            for name in wanted
+        ],
+        "states": connection.capability_states(),
+    }
+
+
+def diag_webhook_objects() -> tuple[str, ...]:
+    """The providers the shared linking layer covers (the Meta channels)."""
+    from app.modules.customers import meta_channel_diagnostics as diag
+
+    return tuple(diag.WEBHOOK_OBJECT)
+
+
 @platform_router.get("/integrations/{integration_id}/whatsapp-roadmap")
 async def whatsapp_roadmap(integration_id: UUID, ctx: SettingsReadCtx):
     """The WhatsApp features Meta gates, each with its state and what the owner can do.
