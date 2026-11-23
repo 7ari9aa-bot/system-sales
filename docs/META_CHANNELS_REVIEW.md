@@ -6,9 +6,7 @@ Reviewed at commit `c0617b1e`. Status column: `fixed`, `open`, `retracted`.
 
 **Closing pass (branch `feat/meta-audit-close`).** Every row was re-checked against the code. Many were
 already fixed on `main` and the table had not caught up; those are marked with the mechanism that fixes
-them. Two rows remain open on purpose: **M6** needs the owner's choice of an error and alert service, and
-**M19** is a feature (Meta's `account_update` and `phone_number_quality_update` events are not handled and
-nothing sets `restricted`) that needs the payload shape verified from Meta's docs first. **W11** is fixed in
+them. One row remains open on purpose: **M6** needs the owner's choice of an error and alert service. **M19** is now built: Meta's `account_update` restrictions (`ACCOUNT_RESTRICTION`, `DISABLED_UPDATE`, `ACCOUNT_VIOLATION`) move a live WhatsApp channel to `restricted` with Meta's reason, and `phone_number_quality_update` limit changes are recorded. **W11** is fixed in
 part, for the reason given in its row. Tests that need a database (`DATABASE_URL_APP_ADMIN`) skip locally and
 are confirmed only by CI.
 
@@ -81,7 +79,7 @@ are confirmed only by CI.
 | M16 | Low | `observability.py:139` | `request_failed` has no counter. | fixed (`http_requests_failed_total` counts unhandled request failures) |
 | M17 | Retracted | `webhooks.py:171` | "ON CONFLICT needs a unique index": `uq_webhook_events_provider_external` exists (`b2c3d4e5f6a7`). | retracted |
 | M18 | Unconfirmed | `webhooks.py:69` | No body size cap before `request.body()`; a middleware may cover it. | fixed (resolved by inspection: `BodySizeLimitMiddleware` caps webhook bodies at 1 MiB with a 413, and `/webhooks/*` is not exempted) |
-| M19 | Unconfirmed | grep | Nothing found that sets `restricted` or handles `account_update` / `phone_number_quality_update`. | open (confirmed: nothing sets `restricted` and `account_update` and `phone_number_quality_update` are not handled; a feature that needs Meta's payload shape verified) |
+| M19 | Unconfirmed | grep | Nothing found that sets `restricted` or handles `account_update` / `phone_number_quality_update`. | fixed (confirmed missing, then built from Meta's documented payloads: the adapter's `parse_account_signals` reads `account_update` events `ACCOUNT_RESTRICTION` / `DISABLED_UPDATE` / `ACCOUNT_VIOLATION` and `phone_number_quality_update`; account-only envelopes are placed by business account like template events; `_apply_account_signals` restricts a live channel and records the reason in `webhook_health`, only ever tightening status; `channel_problems` reports it; 21 tests in `test_whatsapp_account_signals.py`, 19 fail on the old code) |
 
 ## C. What developers hit, and how it was solved (official sources read)
 

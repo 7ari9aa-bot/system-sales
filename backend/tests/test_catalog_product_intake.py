@@ -267,8 +267,8 @@ async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refus
     rows = (
         await db.execute(
             select(Product).where(
-            Product.tenant_id == tenant_ctx.tenant_id, Product.material == too_long
-        )
+                Product.tenant_id == tenant_ctx.tenant_id, Product.material == too_long
+            )
         )
     ).all()
     assert rows == []

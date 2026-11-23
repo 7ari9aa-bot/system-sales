@@ -163,7 +163,7 @@ def _rebased_sku(sku: str | None, base: str) -> str | None:
     match = _SHOP_SKU_SERIES.match(sku)
     if match is None:
         return None
-    return base + sku[match.end():]
+    return base + sku[match.end() :]
 
 
 @router.get("/products/next-sku")

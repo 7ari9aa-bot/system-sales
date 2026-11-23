@@ -49,6 +49,26 @@ _CANONICAL_MEDIA_CONTENT: dict[str, str] = {
 REACTION_REMOVED = "\u2205"
 
 
+def _short(value: object, limit: int = 60) -> str:
+    """A provider-supplied label as short printable text ("" when it is not text at all)."""
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return ""
+    return "".join(ch for ch in str(value) if ch.isprintable())[:limit].strip()
+
+
+def _restriction_detail(event: str, value: dict) -> str:
+    """The one phrase that says WHY, from the documented field of each restricting event."""
+    if event == "ACCOUNT_RESTRICTION":
+        info = value.get("restriction_info")
+        first = info[0] if isinstance(info, list) and info and isinstance(info[0], dict) else {}
+        return _short(first.get("restriction_type"))
+    if event == "DISABLED_UPDATE":
+        info = value.get("ban_info")
+        return _short(info.get("waba_ban_state")) if isinstance(info, dict) else ""
+    info = value.get("violation_info")
+    return _short(info.get("violation_type")) if isinstance(info, dict) else ""
+
+
 class WhatsAppAdapter:
     name = "whatsapp"
 
@@ -123,13 +143,22 @@ class WhatsAppAdapter:
 
     #: Meta's field name for "a template's review state changed".
     TEMPLATE_STATUS_FIELD = "message_template_status_update"
+    #: Account-level news that names the business account and no phone number.
+    ACCOUNT_UPDATE_FIELD = "account_update"
+    QUALITY_UPDATE_FIELD = "phone_number_quality_update"
+    #: Every field whose envelope is placed by business account rather than by phone number.
+    ACCOUNT_LEVEL_FIELDS = frozenset(
+        {TEMPLATE_STATUS_FIELD, ACCOUNT_UPDATE_FIELD, QUALITY_UPDATE_FIELD}
+    )
+    #: `account_update` events that mean Meta has limited or switched off the account.
+    RESTRICTING_EVENTS = frozenset({"ACCOUNT_RESTRICTION", "DISABLED_UPDATE", "ACCOUNT_VIOLATION"})
 
     def resolve_template_account(self, payload: dict) -> str | None:
-        """The business account id when this envelope is only template-status news.
+        """The business account id when this envelope is only account-level news.
 
-        Meta's template events name the business account (`entry[].id`) and carry no phone number,
-        so `resolve_tenant_key` cannot place them. An envelope that mixes in anything else, or
-        names several accounts, answers None and keeps its normal routing.
+        Meta's template, account and quality events name the business account (`entry[].id`) and
+        carry no phone number, so `resolve_tenant_key` cannot place them. An envelope that mixes
+        in anything else, or names several accounts, answers None and keeps its normal routing.
         """
         accounts: set[str] = set()
         for entry in payload.get("entry", []) or []:
@@ -137,7 +166,7 @@ class WhatsAppAdapter:
                 return None
             changes = entry.get("changes") or []
             if not changes or any(
-                not isinstance(c, dict) or c.get("field") != self.TEMPLATE_STATUS_FIELD
+                not isinstance(c, dict) or c.get("field") not in self.ACCOUNT_LEVEL_FIELDS
                 for c in changes
             ):
                 return None
@@ -155,6 +184,47 @@ class WhatsAppAdapter:
             if isinstance(entry, dict)
             for change in entry.get("changes", []) or []
         )
+
+    def parse_account_signals(self, payload: dict) -> list[dict]:
+        """What Meta says about the health of the account, reduced to facts we act on.
+
+        Two kinds, both read from fields Meta documents:
+
+        * ``{"kind": "restriction", "event": ..., "detail": ...}`` for `account_update` events
+          `ACCOUNT_RESTRICTION` (policy enforcement; `restriction_info[].restriction_type`),
+          `DISABLED_UPDATE` (`ban_info.waba_ban_state`) and `ACCOUNT_VIOLATION`
+          (`violation_info.violation_type`). Every other `account_update` event (partner sharing,
+          pricing tiers, calling quality...) is not a limit on sending and is ignored here.
+        * ``{"kind": "limit", "event": ..., "limit": ...}`` for `phone_number_quality_update`,
+          which reports throughput / messaging-limit changes. Informational only.
+
+        Values are clipped to short printable text: they end up in a status line, never in a query.
+        """
+        signals: list[dict] = []
+        for entry in payload.get("entry", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for change in entry.get("changes", []) or []:
+                if not isinstance(change, dict):
+                    continue
+                value = change.get("value")
+                value = value if isinstance(value, dict) else {}
+                field = change.get("field")
+                event = _short(value.get("event"))
+                if field == self.ACCOUNT_UPDATE_FIELD and event in self.RESTRICTING_EVENTS:
+                    signals.append(
+                        {
+                            "kind": "restriction",
+                            "event": event,
+                            "detail": _restriction_detail(event, value),
+                        }
+                    )
+                elif field == self.QUALITY_UPDATE_FIELD:
+                    limit = value.get("max_daily_conversations_per_business") or value.get(
+                        "current_limit"
+                    )
+                    signals.append({"kind": "limit", "event": event, "limit": _short(limit)})
+        return signals
 
     def split_by_account(self, payload: dict) -> list[dict]:
         """One envelope per phone number, which is how the webhook router asks adapters to split.
