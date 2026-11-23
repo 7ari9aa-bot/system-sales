@@ -60,7 +60,7 @@ function EmptyThread({ lang, requests }) {
       <div>
         <span className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-[#0c1014]"><IgMessenger size={48} /></span>
         <h2 className="mt-4 text-[20px] font-normal">{requests ? (isArabic ? "طلبات المراسلة" : "Message requests") : (isArabic ? "رسائلك" : "Your messages")}</h2>
-        <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{requests ? (isArabic ? "افتح طلبًا لترى من يراسلك. ردّك يقبل الطلب وينقله إلى رسائلك." : "Open a request to see who is messaging you. Replying accepts it and moves it to your messages.") : (isArabic ? "اختر محادثة للرد على عملائك." : "Choose a chat to reply to your customers.")}</p>
+        <p className="mt-1 text-[14px]" style={{ color: IG.secondary }}>{requests ? (isArabic ? "افتح طلبًا لترى من يراسلك. ردّك يقبل الطلب وينقله إلى رسائلك." : "Open a request to see who is messaging you. Replying accepts it and moves it to your messages.") : (isArabic ? "أرسل رسالة لبدء محادثة." : "Send a message to start a chat.")}</p>
       </div>
     </div>
   );
@@ -105,12 +105,6 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
             <h1 className="text-[20px] font-bold"><span dir="ltr" className="block truncate">{username || "Instagram"}</span></h1>
           </header>
         )}
-        <div className="shrink-0 px-6 pb-3">
-          <label className="flex h-10 items-center gap-2 rounded-full px-4" style={{ background: IG.hover }}>
-            <IgSearch size={16} className="text-[#6a717a]" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isArabic ? "بحث" : "Search"} aria-label={isArabic ? "بحث في المحادثات" : "Search chats"} className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#6a717a]" />
-          </label>
-        </div>
         {showingArchive ? null : showingRequests ? (
           <p className="shrink-0 px-6 pb-3 text-[12px] leading-4" style={{ color: IG.secondary }}>
             {isArabic ? "هذه الرسائل من أشخاص قمت بتقييدهم أو لا تتابعهم. لن يعرفوا أنك شاهدت طلبهم حتى تسمح لهم بمراسلتك." : "These messages are from people you've restricted or don't follow. They won't know you viewed their request until you allow them to message you."}
@@ -125,6 +119,12 @@ export default function InstagramDirectPage({ folder: routeFolder = "primary" })
             ))}
           </nav>
         )}
+        <div className="shrink-0 px-6 pb-3">
+          <label className="flex h-10 items-center gap-2 rounded-full px-4" style={{ background: IG.hover }}>
+            <IgSearch size={16} className="text-[#6a717a]" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isArabic ? "بحث" : "Search"} aria-label={isArabic ? "بحث في المحادثات" : "Search chats"} className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#6a717a]" />
+          </label>
+        </div>
         {!showingArchive && !showingRequests && archivedCount > 0 && (
           <Link to="/instagram/direct/archived" data-testid="ig-archive-link" className="flex shrink-0 items-center gap-3 px-6 py-3 text-[14px] font-semibold hover:bg-[#f3f5f7]">
             <IgArchive size={20} /><span className="flex-1">{isArabic ? "المحادثات المؤرشفة" : "Archived chats"}</span><span style={{ color: IG.secondary }}>{archivedCount}</span>
