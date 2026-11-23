@@ -134,7 +134,8 @@ def test_arabic_text_is_counted_in_characters_not_bytes():
 # ------------------------------------------------------------------ the kind
 
 
-@pytest.mark.parametrize("kind", [None, "", "carousel", "flow", 3])
+# "flow" used to be listed here: it is a real kind now, built in whatsapp_flows.
+@pytest.mark.parametrize("kind", [None, "", "carousel", 3])
 def test_an_unknown_kind_is_refused(kind):
     _refused({"kind": kind, "body": "x"}, "kind")
 

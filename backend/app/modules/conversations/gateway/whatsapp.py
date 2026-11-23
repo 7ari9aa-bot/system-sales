@@ -24,6 +24,10 @@ from app.modules.conversations.gateway.base import (
     parse_provider_body,
 )
 from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+from app.modules.conversations.gateway.whatsapp_flows import (
+    flow_reply_text,
+    parse_flow_reply,
+)
 from app.modules.conversations.gateway.whatsapp_order import order_summary, parse_order
 from app.modules.conversations.gateway.whatsapp_templates import build_send_components
 from app.modules.conversations.policy import template_language
@@ -334,6 +338,11 @@ class WhatsAppAdapter:
             list_reply = interactive.get("list_reply")
             if list_reply is not None:
                 return list_reply.get("title"), None, None, "list"
+            if str(interactive.get("type") or "") == "nfm_reply":
+                # A filled WhatsApp Flow. The answers are in response_json (a JSON string);
+                # the raw webhook keeps them structured, and the thread gets one line each.
+                reply = parse_flow_reply(interactive)
+                return flow_reply_text(reply), None, None, "flow"
             return None, None, None, "unsupported"
         if msg_type == "reaction":
             # WhatsApp removes a reaction by sending an EMPTY emoji. A message

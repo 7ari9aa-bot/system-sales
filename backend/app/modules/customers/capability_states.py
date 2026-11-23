@@ -130,8 +130,8 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
         {"key": "number_quality", "scopes": (), "fields": ("phone_number_quality_update",),
          "live_fields": ()},
         # Declared gaps, not API limits: the platform has not built these yet.
-        {"key": "flows", "scopes": (), "fields": (), "live_fields": (),
-         "blocked": NOT_IMPLEMENTED},
+        # Built: the Flow lifecycle on Meta's side and the nfm_reply the customer sends back.
+        {"key": "flows", "scopes": (), "fields": (), "live_fields": ()},
         # Built: single product, multi-product and whole-catalog messages in the interactive builder.
         {"key": "catalog_messages", "scopes": (), "fields": (), "live_fields": ()},
         # Built as an opt-in at signup. Meta decides per number whether coexistence is allowed, so

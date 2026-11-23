@@ -116,7 +116,9 @@ def test_whatsapp_gaps_are_labelled_honestly():
     caps = cs.evaluate("whatsapp", connected=True, granted_scopes=set(),
                        subscription_fields={"messages"}, seen_fields={"messages"})
 
-    assert _state(caps, "flows") == cs.NOT_IMPLEMENTED, "ours to build, not Meta's limit"
+    # Flows are built (whatsapp_flows): the lifecycle calls and the nfm_reply the customer
+    # sends back. So the honest state is no longer "not implemented".
+    assert _state(caps, "flows") != cs.NOT_IMPLEMENTED
     assert _state(caps, "calls") == cs.REGION_RESTRICTED
 
 

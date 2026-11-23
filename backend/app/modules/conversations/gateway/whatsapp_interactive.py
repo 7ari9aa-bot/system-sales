@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from app.core.errors import ValidationError
 
-KINDS = ("buttons", "list", "cta_url", "product", "product_list", "catalog_message", "location")
+KINDS = ("buttons", "list", "cta_url", "product", "product_list", "catalog_message", "location", "flow")
 
 FOOTER_MAX = 60
 HEADER_TEXT_MAX = 60
@@ -293,6 +293,24 @@ def _location(spec: dict) -> dict:
     }
 
 
+def _flow(spec: dict) -> dict:
+    """A WhatsApp Flow message. The shapes and limits live in whatsapp_flows."""
+    from app.modules.conversations.gateway.whatsapp_flows import build_flow_message
+
+    return build_flow_message(
+        body=str(spec.get("body") or ""),
+        flow_cta=str(spec.get("cta") or spec.get("flow_cta") or ""),
+        flow_id=spec.get("flow_id"),
+        flow_name=spec.get("flow_name"),
+        flow_token=spec.get("flow_token"),
+        screen=spec.get("screen"),
+        screen_data=spec.get("screen_data"),
+        header_text=spec.get("header_text"),
+        footer_text=spec.get("footer_text"),
+        mode=spec.get("mode"),
+    )
+
+
 _BUILDERS = {
     "buttons": _buttons,
     "list": _list,
@@ -301,6 +319,7 @@ _BUILDERS = {
     "product_list": _product_list,
     "catalog_message": _catalog_message,
     "location": _location,
+    "flow": _flow,
 }
 
 
@@ -336,6 +355,8 @@ def preview_text(spec: dict) -> str:
             lines.append(f"- {section.get('title') or ids}: {ids}")
     elif built["type"] == "catalog_message":
         lines.append("[ الكتالوج ]")
+    elif built["type"] == "flow":
+        lines.append(f"[ {built['action']['parameters']['flow_cta']} ]")
     elif built["type"] == "location_request_message":
         lines.append("[ مشاركة الموقع ]")
     elif built["type"] == "list":
