@@ -375,6 +375,9 @@ class ExchangeLine(BaseModel):
     quantity: StrictInt = Field(ge=1, le=100000)
     reason: str | None = Field(default=None, max_length=63)
     restock: bool | None = None  # as on ReturnLine; only meaningful on the returned side
+    # As on ReturnLine: the state the garment came back in decides where it goes (a torn piece in a
+    # swap must not go straight back on the rail). None = sellable.
+    condition: str | None = Field(default=None, max_length=15)
 
 
 class ExchangeRequest(BaseModel):
