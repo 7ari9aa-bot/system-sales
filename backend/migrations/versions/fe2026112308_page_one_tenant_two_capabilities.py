@@ -1,7 +1,7 @@
 """one Page, one workspace, two capabilities: Facebook and Messenger may share a Page
 
-Revision ID: fe2026112305
-Revises: fe2026112304
+Revision ID: fe2026112308
+Revises: fe2026112307
 Create Date: 2026-11-23 22:30:00.000000
 
 ``fe2026112302`` keyed the Page alone across Facebook and Messenger. That made the two functions
@@ -27,8 +27,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "fe2026112305"
-down_revision: str | None = "fe2026112304"
+revision: str = "fe2026112308"
+down_revision: str | None = "fe2026112307"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -31,7 +31,7 @@ CHANNEL_TENANT_ROUTING_MIGRATION = (
     VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
 )
 FACEBOOK_PAGE_IDENTITY_MIGRATION = VERSIONS_DIR / "fe2026112302_facebook_page_identity.py"
-PAGE_TWO_CAPABILITIES_MIGRATION = VERSIONS_DIR / "fe2026112305_page_one_tenant_two_capabilities.py"
+PAGE_TWO_CAPABILITIES_MIGRATION = VERSIONS_DIR / "fe2026112308_page_one_tenant_two_capabilities.py"
 
 
 class _RecordingOp:
@@ -864,3 +864,28 @@ def test_the_model_declares_the_page_provider_index_not_the_page_alone_index() -
     page = by_name["uq_integrations_active_page_provider"]
     assert str(page.expressions[0]).endswith("provider")
     assert "COALESCE(config->>'page_id', config->>'account_id')" in str(page.expressions[1])
+
+
+def test_the_migration_chain_has_one_head_and_no_duplicate_revision_ids() -> None:
+    """Two files sharing a revision id make Alembic silently run only one of them.
+
+    That is how a migration that creates a table could be skipped on a fresh database while every
+    test stayed green. One head, and every revision id declared exactly once.
+    """
+    import re
+
+    declared: dict[str, list[str]] = {}
+    for path in sorted(VERSIONS_DIR.glob("*.py")):
+        match = re.search(r'^revision\s*(?::[^=]+)?=\s*"([^"]+)"', path.read_text(), re.M)
+        if match:
+            declared.setdefault(match.group(1), []).append(path.name)
+    duplicated = {rev: files for rev, files in declared.items() if len(files) > 1}
+    assert not duplicated, f"revision ids declared more than once: {duplicated}"
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(VERSIONS_DIR.parent.parent / "alembic.ini"))
+    config.set_main_option("script_location", str(VERSIONS_DIR.parent))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    assert len(heads) == 1, f"the migration chain has several heads: {heads}"

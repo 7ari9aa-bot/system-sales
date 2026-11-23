@@ -193,7 +193,7 @@ class Integration(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
         # the Page id in `account_id`, the Facebook row in `page_id`. One workspace may run both on
         # the same Page, so the index is keyed on (provider, Page): a Page cannot carry the same
         # function twice. That a Page belongs to ONE workspace only cannot be said by an index (it
-        # needs "same tenant"), so the database trigger from migration fe2026112305 enforces it.
+        # needs "same tenant"), so the database trigger from migration fe2026112308 enforces it.
         Index(
             "uq_integrations_active_page_provider",
             "provider",
