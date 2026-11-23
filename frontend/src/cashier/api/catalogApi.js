@@ -127,9 +127,25 @@ function optionValues(v) {
   return o;
 }
 
+/** One page of the catalog, filtered, sorted and counted by the server. */
+export function productsPageQuery({ term, status, categoryId, brandId, season, sort, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (term?.trim()) params.set("q", term.trim());
+  if (status) params.set("status", status);
+  if (categoryId) params.set("category_id", categoryId);
+  if (brandId) params.set("brand_id", brandId);
+  if (season) params.set("season", season);
+  if (sort) params.set("sort", sort);
+  params.set("limit", String(limit ?? 50));
+  params.set("offset", String(offset ?? 0));
+  return params.toString();
+}
+
 export const catalogApi = {
   /** The next SKU base the server hands out (SKU-0007). The screen no longer counts the catalog. */
   nextSku: () => api("/products/next-sku"),
+  /** A page of products with its total, so a shop with 3000 items is not cut at 500. */
+  productsPage: (filters) => api(`/products/page?${productsPageQuery(filters)}`),
   warehouses: () => api("/warehouses"),
   ensureDefaultWarehouse: () => post("/warehouses/ensure-default", {}),
   shopOptions: () => api("/apparel/options"),

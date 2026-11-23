@@ -23,6 +23,7 @@ const CORE_KEYS = [
   ['/data-deletion', 'data-deletion'],
   ['/contact-sales', 'contact-sales'],
   ['/support', 'support'],
+  ['/download', 'download'],
 ];
 
 // Keyword landing pages

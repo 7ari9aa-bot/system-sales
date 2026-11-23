@@ -206,4 +206,44 @@ describe("ChannelChat on Messenger", () => {
     const scroller = html.match(/<div class="([^"]*overflow-y-auto[^"]*)"/)?.[1] || "";
     expect(scroller).not.toContain("space-y-2");
   });
+
+  test("the composer follows the language direction, so in Arabic the like sits at the far left", () => {
+    const html = render([msg("m1", { text: "a" })]);
+    expect(html).toMatch(/dir="rtl"[^>]*data-testid="messenger-composer"|data-testid="messenger-composer"[^>]*dir="rtl"/);
+  });
+
+  test("every composer button has an accessible name and the attach button says it opens a menu", () => {
+    const html = render([msg("m1", { text: "a" })]);
+    const composer = html.slice(html.indexOf('data-testid="messenger-composer"'));
+    const buttons = composer.match(/<button[^>]*>/g) || [];
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    for (const b of buttons) expect(b).toMatch(/aria-label="[^"]+"/);
+    expect(composer).toContain('aria-haspopup="menu"');
+  });
+
+  test("never claims the customer is active now: Meta gives a Page no presence data", () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const html = renderToStaticMarkup(
+      React.createElement(ChannelChat, {
+        channel: { id: "messenger", name: "Messenger", theme },
+        conversation: { id: "c1", name: "Ahmed Adel", channel: "messenger", lastCustomerMessageAt: recent, messages: [msg("m1", { text: "a", createdAt: recent })] },
+        lang: "ar",
+        t: (k, d) => d || k,
+        onSend() {},
+        onReact() {},
+      }),
+    );
+    expect(html).not.toContain("نشط الآن");
+    expect(html).not.toContain("Active now");
+  });
+
+  test("the details button is named for screen readers on Messenger", () => {
+    const html = render([msg("m1", { text: "a" })]);
+    expect(html).toMatch(/<button[^>]*aria-label="خيارات المحادثة والملف الشخصي"/);
+  });
+
+  test("an empty thread is announced as a status", () => {
+    const html = render([]);
+    expect(html).toMatch(/role="status"[^>]*data-testid="messenger-empty"|data-testid="messenger-empty"[^>]*role="status"/);
+  });
 });

@@ -15,8 +15,9 @@ import { resolveSkuBase } from "@/cashier/api/catalogApi";
 import { useExistingSkus, useNextSkuBase } from "@/cashier/api/useCatalogWrite";
 import { imageProblem, imagesOf } from "@/cashier/api/productImage";
 import { initialProductForm } from "@/cashier/components/products/productSeed";
+import { MAX_IMAGES_PER_SKU } from "@/cashier/lib/productImageRules";
 
-const MAX_PRODUCT_IMAGES = 4;
+const MAX_PRODUCT_IMAGES = MAX_IMAGES_PER_SKU;
 
 // نموذج إضافة / تعديل منتج مع مولّد متغيرات اللون والمقاس.
 export default function ProductForm({ product, seed, onSubmit, onCancel, onPrintLabels, isSaving = false }) {

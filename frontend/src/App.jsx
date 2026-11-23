@@ -82,6 +82,8 @@ const MarketingRoutes = () => (
         <Route path="/data-deletion" element={<Fihrist />} />
         <Route path="/contact-sales" element={<Fihrist />} />
         <Route path="/support" element={<Fihrist />} />
+        <Route path="/download" element={<Fihrist />} />
+        <Route path="/mobile" element={<Fihrist />} />
         <Route path="/solutions/*" element={<Fihrist />} />
         <Route path="/blog/*" element={<Fihrist />} />
         <Route path="*" element={<PageNotFound />} />

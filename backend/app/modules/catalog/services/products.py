@@ -4,19 +4,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
 from app.modules.catalog.models import Product, ProductVariant
 from app.modules.catalog.services._common import (
     _PRODUCT_STATUSES,
     _positive_decimal,
 )
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-
-SEASON_MAX_LENGTH = 40
-MATERIAL_MAX_LENGTH = 60
 
 
 def _clean_season(raw: str | None) -> str | None:
@@ -361,6 +359,107 @@ class ProductServiceMixin:
             .all()
         )
         return list(rows)
+
+    @staticmethod
+    def _product_filters(
+        tenant_id: UUID,
+        *,
+        q: str | None = None,
+        status: str | None = None,
+        category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
+        material: str | None = None,
+    ) -> list:
+        """The WHERE clauses of the product list, shared by the page and its total count.
+
+        One place, so the count can never disagree with the rows the shop is looking at.
+        """
+        clauses = [Product.tenant_id == tenant_id]
+        term = (q or "").strip()
+        if term:
+            # الاسم أو الـslug أو كود أي صنف داخل المنتج: التاجر بيدوّر باللي قدامه.
+            like = f"%{term.lower()}%"
+            clauses.append(
+                or_(
+                    func.lower(Product.title).like(like),
+                    func.lower(Product.slug).like(like),
+                    select(ProductVariant.id)
+                    .where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.product_id == Product.id,
+                        func.lower(func.coalesce(ProductVariant.sku, "")).like(like),
+                    )
+                    .exists(),
+                )
+            )
+        if status and status != "all":
+            clauses.append(Product.status == status)
+        if category_id is not None:
+            clauses.append(Product.category_id == category_id)
+        if brand_id is not None:
+            clauses.append(Product.brand_id == brand_id)
+        wanted_season = _clean_season(season)
+        if wanted_season is not None:
+            clauses.append(func.lower(Product.season) == wanted_season.lower())
+        wanted_material = _clean_material(material)
+        if wanted_material is not None:
+            clauses.append(func.lower(Product.material) == wanted_material.lower())
+        return clauses
+
+    @staticmethod
+    async def search_products(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        q: str | None = None,
+        status: str | None = None,
+        category_id: UUID | None = None,
+        brand_id: UUID | None = None,
+        season: str | None = None,
+        material: str | None = None,
+        sort: str = "newest",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Product], int]:
+        """One page of the shop's catalog, filtered and counted on the server.
+
+        The products screen used to pull ``?limit=500`` once and search, filter and sort in the
+        browser: a shop with 3,000 products could only ever reach the first 500. Here the database
+        does the work and returns the page together with the total, so the screen can say "1–50 من
+        3,000" and walk the rest.
+        """
+        clauses = ProductServiceMixin._product_filters(
+            tenant_id,
+            q=q,
+            status=status,
+            category_id=category_id,
+            brand_id=brand_id,
+            season=season,
+            material=material,
+        )
+        order = {
+            "newest": (Product.created_at.desc(), Product.id.desc()),
+            "oldest": (Product.created_at.asc(), Product.id.asc()),
+            "name": (func.lower(Product.title).asc(), Product.id.asc()),
+            "name_desc": (func.lower(Product.title).desc(), Product.id.desc()),
+        }.get(sort or "newest", (Product.created_at.desc(), Product.id.desc()))
+        page_size = max(1, min(int(limit or 50), 200))
+        rows = (
+            (
+                await session.execute(
+                    select(Product)
+                    .where(*clauses)
+                    .order_by(*order)
+                    .limit(page_size)
+                    .offset(max(0, int(offset or 0)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        total = await session.scalar(select(func.count(Product.id)).where(*clauses))
+        return list(rows), int(total or 0)
 
     @staticmethod
     async def get_products_by_ids(

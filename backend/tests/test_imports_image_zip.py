@@ -211,3 +211,76 @@ async def test_a_broken_archive_or_missing_storage_says_so(db, tenant_ctx, monke
     monkeypatch.setattr(storage_module, "get_storage", lambda: NoStorage())
     unconfigured = await _post_zip(owner, _zip({"TEE-BK-M.png": PNG}))
     assert unconfigured.status_code == 409
+
+
+# ------------------------------------------------------- حماية قبل الفك (zip bomb والحجم)
+
+
+async def test_a_zip_that_expands_past_the_limit_is_refused_before_anything_is_read(
+    db, tenant_ctx, monkeypatch
+):
+    """الحجم بعد الفك بيتقرا من فهرس الأرشيف: ملف صغير بيتفك كبير بيترفض من غير فك ولا حفظ."""
+    from app.modules.imports import router as imports_router
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    await _variant(db, tenant_ctx, "TEE-BK-M")
+    store = FakeStorage()
+    monkeypatch.setattr(storage_module, "get_storage", lambda: store)
+    monkeypatch.setattr(imports_router, "MAX_UNCOMPRESSED_BYTES", 1024)
+
+    payload = _zip({"TEE-BK-M.jpg": PNG + b"0" * 800, "TEE-BK-M-2.jpg": PNG + b"0" * 800})
+    r = await _post_zip(owner, payload)
+    assert r.status_code == 400, r.text
+    assert "بعد الفك" in r.text
+    assert store.written == []
+
+
+async def test_a_picture_over_the_size_limit_is_rejected_from_the_index_not_after_extracting(
+    db, tenant_ctx, monkeypatch
+):
+    from app.modules.imports import router as imports_router
+
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    await _variant(db, tenant_ctx, "BIG-1")
+    store = FakeStorage()
+    monkeypatch.setattr(storage_module, "get_storage", lambda: store)
+    monkeypatch.setattr(imports_router, "MAX_IMAGE_BYTES", 64)
+
+    r = await _post_zip(owner, _zip({"BIG-1.jpg": PNG + b"0" * 200}))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["stats"]["attached"] == 0
+    assert body["failed"][0]["reason"] == "الصورة أكبر من 8 ميجابايت"
+    assert store.written == []  # مافيش صورة اتخزنت ولا اتقرت للفك
+
+
+async def test_only_the_skus_inside_the_file_are_looked_up(db, tenant_ctx, monkeypatch):
+    """المحل ممكن يكون فيه آلاف الأصناف؛ الملف فيه واحد، فالسؤال عن واحد."""
+    owner = await ctx_for(db, tenant_ctx, "owner")
+    await _variant(db, tenant_ctx, "IN-FILE")
+    for i in range(5):
+        await _variant(db, tenant_ctx, f"OTHER-{i}")
+    store = FakeStorage()
+    monkeypatch.setattr(storage_module, "get_storage", lambda: store)
+
+    seen: list[str] = []
+    real_execute = type(db).execute
+
+    async def _spy(self, statement, *args, **kwargs):
+        text = str(statement)
+        if "product_variants" in text:
+            seen.append(" ".join(text.split()))
+        return await real_execute(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(type(db), "execute", _spy)
+    try:
+        r = await _post_zip(owner, _zip({"IN-FILE.png": PNG}))
+    finally:
+        monkeypatch.setattr(type(db), "execute", real_execute)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["stats"]["attached"] == 1
+    # الاستعلام بيقيّد الأكواد اللي في الملف، مش كل أكواد المحل
+    assert seen, "expected one variant lookup"
+    # خريطة الأكواد بتيجي من استعلام مقيّد بالأكواد اللي في الملف، مش بجلب كل أصناف المحل
+    assert any("upper(product_variants.sku) IN" in sql for sql in seen)

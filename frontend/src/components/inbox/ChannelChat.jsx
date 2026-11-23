@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConversationAvatar from "@/components/inbox/ConversationAvatar";
 import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerPresence, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -191,7 +191,6 @@ export default function ChannelChat({
   // header says "Active now" while the customer is writing. Both are derived, never guessed.
   const messengerSeenId = isMessenger ? messengerSeenMessageId(allMessages) : null;
   const messengerStatus = isMessenger ? messengerStatusLine(allMessages, lang) : null;
-  const messengerActiveNow = isMessenger ? messengerPresence(conversation?.lastCustomerMessageAt) : null;
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -383,8 +382,8 @@ export default function ChannelChat({
             </div>
             {isMessenger ? (
               // Messenger prints "Active now" while the customer is writing, otherwise the page name.
-              <div data-testid="messenger-presence" className={cn("truncate text-[13px]", messengerActiveNow ? "text-[#0084FF]" : "text-[#65676B]")}>
-                {messengerActiveNow ? (lang === "ar" ? "نشط الآن" : "Active now") : channel.name}
+              <div data-testid="messenger-presence" className="truncate text-[13px] text-[#65676B]">
+                {channel.name}
               </div>
             ) : (
               <div className={cn("truncate text-[11.5px]", isWhatsApp ? "text-left text-[color:var(--wa-text-secondary)]" : isTelegram ? "text-[#7f9db8]" : isInstagram ? "text-[#8e8e8e]" : "text-muted-foreground")}>
@@ -426,7 +425,7 @@ export default function ChannelChat({
           type="button"
           onClick={() => setContactDrawerOpen(true)}
           title={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
-          aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : undefined}
+          aria-label={isInstagram ? (lang === "ar" ? "معلومات المحادثة" : "Conversation information") : lang === "ar" ? "خيارات المحادثة والملف الشخصي" : "Chat options & Profile"}
           className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors", isInstagram ? "text-[#0c1014] hover:opacity-60" : "hover:bg-black/5 text-muted-foreground")}
         >
           {isInstagram ? <IgInfo /> : <MoreVertical className="h-[18px] w-[18px]" />}
@@ -520,7 +519,7 @@ export default function ChannelChat({
           </div>
         )}
         {isMessenger && !loadingMessages && !messagesError && (conversation.messages || []).length === 0 && (
-          <div data-testid="messenger-empty" className="flex flex-col items-center gap-2 py-12">
+          <div data-testid="messenger-empty" role="status" className="flex flex-col items-center gap-2 py-12">
             <ConversationAvatar conversation={conversation} className="h-[60px] w-[60px] text-[20px]" />
             <div dir="auto" className="text-[17px] font-bold text-[#050505]">{conversation.customer || conversation.name}</div>
           </div>
@@ -897,12 +896,15 @@ export default function ChannelChat({
               <button type="button" data-testid="messenger-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
             </div>
           )}
-          <div dir="ltr" data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
+          <div dir={lang === "ar" ? "rtl" : "ltr"} data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
             <button
               type="button"
               onClick={() => setAttachmentMenuOpen((v) => !v)}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
               title={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+              aria-label={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+              aria-haspopup="menu"
+              aria-expanded={attachmentMenuOpen}
             >
               <Paperclip className="h-4 w-4" />
             </button>
@@ -911,6 +913,7 @@ export default function ChannelChat({
               onClick={() => setEmojiPickerOpen((v) => !v)}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
               title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
             >
               <Smile className="h-4 w-4" />
             </button>

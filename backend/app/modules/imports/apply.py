@@ -74,6 +74,9 @@ class Ports:
     attach_image: Callable[[AsyncSession, uuid.UUID, str, str], Awaitable[uuid.UUID]]
     # (sku, EGS|GS1, code) -> identifier id. Registers the tax item code on the variant.
     attach_item_code: Callable[[AsyncSession, uuid.UUID, str, str, str], Awaitable[uuid.UUID]]
+    # Optional: called once with the batch's rows so the ports can look up every product and SKU
+    # they will need in two queries instead of two per row. None keeps the per-row behaviour.
+    prepare_batch: Callable[[AsyncSession, uuid.UUID, list], Awaitable[None]] | None = None
 
 
 @dataclass(slots=True)
@@ -159,6 +162,9 @@ async def apply_batch(
     if rows and rows[0].sheet == SHEET_IMAGES:
         rows = rows[:IMAGE_BATCH_LIMIT]
     result.taken = len(rows)
+    if rows and ports.prepare_batch is not None:
+        # خرائط المنتجات والأكواد مرة واحدة للدفعة بدل استعلامين لكل صف
+        await ports.prepare_batch(session, tenant_id, rows)
 
     for row in rows:
         action, values = values_of(row)

@@ -3,8 +3,8 @@
  * الدالة نقيّة عشان الرسائل تتختبر من غير شبكة ولا متصفح.
  */
 
-export const MAX_IMAGE_BYTES_MB = 8;
-export const MAX_IMAGES_PER_SKU = 10;
+export { MAX_IMAGE_BYTES_MB, MAX_IMAGES_PER_SKU } from "@/cashier/lib/productImageRules";
+import { MAX_IMAGES_PER_SKU } from "@/cashier/lib/productImageRules";
 
 export function zipFileProblem(file) {
   if (!file) return "اختر ملفًا مضغوطًا أولًا";

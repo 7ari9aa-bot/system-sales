@@ -104,3 +104,4 @@ backend/scripts/_login_body.json
 build_release_artifacts/
 *.apk
 *.aab
+!frontend/public/downloads/*.apk

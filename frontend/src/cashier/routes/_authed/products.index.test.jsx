@@ -3,9 +3,16 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 // الصفحة بتقرا الكتالوج والتقسيمات؛ الاختبار بيشتغل على استجابات ثابتة بدل الشبكة.
-const state = { products: [], loading: false };
+const state = { products: [], loading: false, total: 0, hasMore: false, lastFilters: null };
 vi.mock("@/cashier/api/useCatalogList", () => ({
-  useCatalogProducts: () => ({ data: state.products, isLoading: state.loading }),
+  PAGE_SIZE: 50,
+  useCatalogPage: (filters, page) => {
+    state.lastFilters = { filters, page };
+    return {
+      data: { rows: state.products, total: state.total, hasMore: state.hasMore },
+      isLoading: state.loading,
+    };
+  },
   useSetProductStatus: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("@/cashier/api/useCatalogWrite", () => ({
@@ -56,16 +63,30 @@ describe("the products page is a catalogue, not the add form", () => {
     expect(html).not.toContain("اسم المنتج");
   });
 
-  it("hides archived models from the selling list and offers to bring them back", () => {
-    state.products = [row({ id: "p2", title: "بنطلون قديم", status: "archived" })];
+  it("asks the server for the selling list only, not for archived models", () => {
+    // الفلترة بقت على السيرفر: الشاشة مابتحمّلش الكتالوج كله وتعرض منه.
+    state.products = [row()];
+    state.total = 1;
+    draw();
+    expect(state.lastFilters.filters.status).toBe("active");
+    expect(state.lastFilters.filters.term).toBe("");
+  });
+
+  it("shows how much of the catalogue you are seeing and offers the next page", () => {
+    state.products = Array.from({ length: 50 }, (_, i) => row({ id: `p${i}`, title: `منتج ${i}` }));
+    state.total = 320;
+    state.hasMore = true;
     const html = draw();
-    expect(html).not.toContain("بنطلون قديم");
-    state.products = [row({ id: "p2", title: "بنطلون قديم", status: "archived" }), row()];
-    expect(draw()).not.toContain("بنطلون قديم");
+    expect(html).toContain("320");
+    expect(html).toContain("1–50 من 320");
+    expect(html).toContain("التالي");
+    expect(html).toContain("صفحة 1 من 7");
   });
 
   it("says so when the shop has no products yet, and points at both ways to start", () => {
     state.products = [];
+    state.total = 0;
+    state.hasMore = false;
     const html = draw();
     expect(html).toContain("لسه مفيش منتجات في الكتالوج");
     expect(html).toContain("إضافة منتج");

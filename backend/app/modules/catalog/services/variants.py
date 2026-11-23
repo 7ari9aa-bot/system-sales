@@ -48,14 +48,23 @@ class VariantServiceMixin:
         title: str | None = None,
         option_values: dict | None = None,
         price: object,
+        product_checked: bool = False,
+        sku_checked: bool = False,
     ) -> ProductVariant:
-        """Add a variant to a product; SKU (when given) is unique per tenant."""
+        """Add a variant to a product; SKU (when given) is unique per tenant.
+
+        ``product_checked`` / ``sku_checked`` say the caller already proved, inside this same
+        transaction, that the product exists and that the SKU is free — the import batch does that
+        once for the whole batch. The database's unique constraint still guards the write, and a
+        lost race still surfaces as ``ConflictError``.
+        """
         from app.modules.catalog.services import CatalogService
 
-        await CatalogService.get_product(session, tenant_id, product_id)
+        if not product_checked:
+            await CatalogService.get_product(session, tenant_id, product_id)
         unit_price = _positive_decimal(price, "price")
         sku = sku or None
-        if sku is not None:
+        if sku is not None and not sku_checked:
             duplicate = (
                 await session.execute(
                     select(ProductVariant.id).where(
@@ -332,6 +341,41 @@ class VariantServiceMixin:
 
     #: The screen hands out SKU-0007 (base) and SKU-0007-0101 (variant).
     SKU_BASE_RE = r"^SKU-(\d+)"
+
+    @staticmethod
+    async def allocate_sku_base(session: AsyncSession, tenant_id: UUID) -> str:
+        """Hand out the next SKU base for this shop, atomically.
+
+        ``next_sku_base`` only *reads* the highest number, so two employees who open the
+        add-product screen at the same moment are both shown SKU-0007 and the second save hits the
+        unique constraint. This reserves the number in the database with one statement
+        (``INSERT ... ON CONFLICT DO UPDATE ... RETURNING``): whichever request arrives second sees
+        the bumped row and gets the number after it. A number handed out is never handed out again.
+        """
+        from sqlalchemy import text as sql_text
+
+        series = VariantServiceMixin.SKU_BASE_RE
+        used = await session.scalar(
+            select(func.max(func.cast(func.substring(ProductVariant.sku, series), Integer))).where(
+                ProductVariant.tenant_id == tenant_id,
+                ProductVariant.sku.op("~")(series),
+            )
+        )
+        seed = (used or 0) + 1
+        taken = await session.scalar(
+            sql_text(
+                """
+                INSERT INTO sku_counters (id, tenant_id, last_number, created_at, updated_at)
+                VALUES (gen_random_uuid(), :tenant_id, :seed, now(), now())
+                ON CONFLICT ON CONSTRAINT uq_sku_counters_tenant DO UPDATE
+                    SET last_number = GREATEST(sku_counters.last_number, :seed) + 1,
+                        updated_at = now()
+                RETURNING last_number
+                """
+            ),
+            {"tenant_id": tenant_id, "seed": seed},
+        )
+        return f"SKU-{int(taken or seed):04d}"
 
     @staticmethod
     async def next_sku_base(session: AsyncSession, tenant_id: UUID) -> str:

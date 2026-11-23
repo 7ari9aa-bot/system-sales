@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from app.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
 from app.modules.imports import normalize as n
 from app.modules.imports.fields import (
     SHEET_IMAGES,
@@ -304,7 +305,8 @@ def validate_stock(
     return verdicts
 
 
-MAX_IMAGES_PER_SKU = 10  # a gallery, not a dump: a typo that repeats a row must not add 500
+# a gallery, not a dump: a typo that repeats a row must not add 500.
+MAX_IMAGES_PER_SKU = CATALOG_MAX_IMAGES_PER_SKU
 
 
 def validate_images(
