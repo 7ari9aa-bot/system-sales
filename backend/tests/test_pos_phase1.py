@@ -265,11 +265,15 @@ async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tena
         ],
     )
     preview = await PosService.close_preview(db, tenant_ctx.tenant_id, pos_session.id)
-    # The close records the day, not payment methods: opening 50 + one 25 invoice = 75.
+    # Opening 50 + one 25 invoice = 75.
     assert Decimal(preview["closing_balance"]) == Decimal("75.00")
-    assert "by_method" not in preview
     assert preview["invoice_count"] == 1
     assert Decimal(preview["sales_total"]) == Decimal("25.00")
+    # The preview ALSO says what each payment method holds, because a close can require each one
+    # counted. This shop does not take payments (record-only), so no tender was recorded and no
+    # method is expected to hold anything - the figure is the day's money, not an invented count.
+    assert preview["take_payments"] is False
+    assert preview["by_method"] == {}
 
 
 async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
