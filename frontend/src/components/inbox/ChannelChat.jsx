@@ -10,6 +10,7 @@ import {
   CheckCheck,
   Paperclip,
   ImageIcon,
+  Mic,
   Smile,
   Heart,
   MoreVertical,
@@ -41,6 +42,7 @@ import InteractiveComposer from "./whatsapp/InteractiveComposer";
 import { composerAvailability } from "./whatsapp/composerState";
 import AttachPreview from "./whatsapp/AttachPreview";
 import VoiceRecorder from "./whatsapp/VoiceRecorder";
+import MessengerVoiceRecorder from "./MessengerVoiceRecorder";
 import { checkFile } from "./whatsapp/attachments";
 import { ACCEPT as IG_ACCEPT, checkFile as checkInstagramFile } from "./instagram/igAttachments";
 import IgAttachPreview from "./instagram/IgAttachPreview";
@@ -97,6 +99,7 @@ export default function ChannelChat({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const messengerImageInput = useRef(null);
+  const messengerGifInput = useRef(null);
   const igFileInput = useRef(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
@@ -896,36 +899,39 @@ export default function ChannelChat({
               <button type="button" data-testid="messenger-reply-cancel" onClick={() => setReplyingTo(null)} aria-label={lang === "ar" ? "إلغاء الرد" : "Cancel reply"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[#65676b] hover:bg-[#e4e6eb]"><X className="h-4 w-4" /></button>
             </div>
           )}
-          <div dir={lang === "ar" ? "rtl" : "ltr"} data-testid="messenger-composer" className="flex h-9 items-center gap-1 rounded-full bg-[#f0f2f5] px-2">
+          {isRecordingVoice ? (
+            <MessengerVoiceRecorder
+              lang={lang}
+              accent={messengerTheme.accent}
+              onCancel={() => setIsRecordingVoice(false)}
+              onError={(message) => setAttachError(message)}
+              onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false }); }}
+            />
+          ) : (
+          <div dir={lang === "ar" ? "rtl" : "ltr"} data-testid="messenger-composer" className="flex min-h-9 items-center gap-0.5">
+            {/* Messenger order, start to end: attach, photo, GIF, mic, then the box with its emoji button inside. */}
             <button
               type="button"
               onClick={() => setAttachmentMenuOpen((v) => !v)}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
-              title={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
-              aria-label={lang === "ar" ? "إرفاق ملف أو صورة" : "Attach media"}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-[#f0f2f5]"
+              style={{ color: messengerTheme.accent }}
+              title={lang === "ar" ? "إرفاق ملف" : "Attach a file"}
+              aria-label={lang === "ar" ? "إرفاق ملف" : "Attach a file"}
               aria-haspopup="menu"
               aria-expanded={attachmentMenuOpen}
             >
-              <Paperclip className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setEmojiPickerOpen((v) => !v)}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#f0f2f5]"
-              title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
-              aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
-            >
-              <Smile className="h-4 w-4" />
+              <Paperclip className="h-5 w-5" />
             </button>
             <button
               type="button"
               data-testid="messenger-image-button"
               onClick={() => messengerImageInput.current?.click()}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#0084ff] hover:bg-[#e4e6eb]"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-[#f0f2f5]"
+              style={{ color: messengerTheme.accent }}
               title={lang === "ar" ? "إرسال صورة" : "Send a photo"}
               aria-label={lang === "ar" ? "إرسال صورة" : "Send a photo"}
             >
-              <ImageIcon className="h-4 w-4" />
+              <ImageIcon className="h-5 w-5" />
             </button>
             <input
               ref={messengerImageInput}
@@ -935,16 +941,59 @@ export default function ChannelChat({
               data-testid="messenger-image-input"
               onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) pickFile(file); }}
             />
+            <button
+              type="button"
+              data-testid="messenger-gif-button"
+              onClick={() => messengerGifInput.current?.click()}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-extrabold leading-none hover:bg-[#f0f2f5]"
+              style={{ color: messengerTheme.accent }}
+              title={lang === "ar" ? "إرسال GIF" : "Send a GIF"}
+              aria-label={lang === "ar" ? "إرسال GIF" : "Send a GIF"}
+            >
+              <span className="rounded-[4px] border-2 px-[3px] py-[1px]" style={{ borderColor: messengerTheme.accent }}>GIF</span>
+            </button>
             <input
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              dir="auto"
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
-              placeholder="Aa"
-              aria-label={t("inbox.typeMessage")}
-              disabled={sending}
-              className={cn("h-full min-w-0 flex-1 bg-transparent px-2 text-[15px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
+              ref={messengerGifInput}
+              type="file"
+              accept="image/gif"
+              hidden
+              data-testid="messenger-gif-input"
+              onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) pickFile(file); }}
             />
+            <button
+              type="button"
+              data-testid="messenger-mic-button"
+              onClick={() => { setAttachError(""); setIsRecordingVoice(true); }}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-[#f0f2f5]"
+              style={{ color: messengerTheme.accent }}
+              title={lang === "ar" ? "رسالة صوتية" : "Voice message"}
+              aria-label={lang === "ar" ? "رسالة صوتية" : "Voice message"}
+            >
+              <Mic className="h-5 w-5" />
+            </button>
+            <div className="mx-1 flex h-9 min-w-0 flex-1 items-center rounded-full bg-[#f0f2f5] ps-3 pe-1">
+              <input
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                dir="auto"
+                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }}
+                placeholder="Aa"
+                aria-label={t("inbox.typeMessage")}
+                disabled={sending}
+                className={cn("h-full min-w-0 flex-1 bg-transparent text-[15px] text-[#050505] outline-none placeholder:text-[#65676b]", lang === "ar" ? "text-right" : "text-left")}
+              />
+              <button
+                type="button"
+                data-testid="messenger-emoji-button"
+                onClick={() => setEmojiPickerOpen((v) => !v)}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full hover:bg-[#e4e6eb]"
+                style={{ color: messengerTheme.accent }}
+                title={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+                aria-label={lang === "ar" ? "الرموز التعبيرية" : "Emoji picker"}
+              >
+                <Smile className="h-5 w-5" />
+              </button>
+            </div>
             {text.trim() ? (
               <button
                 type="button"
@@ -952,26 +1001,27 @@ export default function ChannelChat({
                 disabled={sending}
                 aria-label={t("inbox.send")}
                 title={t("inbox.send")}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: messengerTheme.accent }}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full transition-opacity hover:bg-[#f0f2f5] disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ color: messengerTheme.accent }}
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-5 w-5" />
               </button>
             ) : (
-              // Messenger keeps a blue thumbs-up in the send slot while the box is empty.
+              // Messenger keeps a thumbs-up in the send slot while the box is empty.
               <button
                 type="button"
                 onClick={() => { void submitMessage("👍"); }}
                 disabled={sending}
                 aria-label={lang === "ar" ? "إرسال إعجاب" : "Send a like"}
                 title={lang === "ar" ? "إرسال إعجاب" : "Send a like"}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ background: messengerTheme.accent }}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full transition-opacity hover:bg-[#f0f2f5] disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ color: messengerTheme.accent }}
               >
-                <ThumbsUp className="h-4 w-4" />
+                <ThumbsUp className="h-5 w-5" fill="currentColor" />
               </button>
             )}
           </div>
+          )}
           </>
         ) : (
           <div
