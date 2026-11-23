@@ -171,11 +171,19 @@ class ReadSignalService:
     async def _customer_ref(
         session: AsyncSession, tenant_id: uuid.UUID, conversation
     ) -> str | None:
-        """The Instagram-scoped id the thread is addressed by (the same one a send uses)."""
+        """The scoped id this thread is addressed by, on the conversation's OWN channel.
+
+        Instagram addresses a thread by the Instagram-scoped id and Messenger by the page-scoped
+        id (PSID). Reading a fixed ``instagram`` identity for a Messenger thread finds no row, so
+        ``mark_seen`` and ``typing_on`` silently never fired on Messenger at all.
+        """
         from app.modules.conversations.customer_profile import customers
 
+        channel = str(getattr(conversation, "channel", "") or "")
+        if not channel:
+            return None
         identity = await customers().channel_identity(
-            session, tenant_id, conversation.customer_id, "instagram"
+            session, tenant_id, conversation.customer_id, channel
         )
         row = identity.external_id if identity is not None else None
         return str(row) if row else None
