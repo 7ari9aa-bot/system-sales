@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, useParams } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/lib/marketing-i18n';
@@ -154,6 +154,8 @@ const DashboardRoutes = () => (
         {/* المنتجات والمخزون انتقلوا للكاشير: الروابط القديمة تحوّل للصفحات الجديدة. */}
         <Route path="/products" element={<Navigate to="/cashier/inventory" replace />} />
         <Route path="/products/new" element={<Navigate to="/cashier/products/new" replace />} />
+        {/* رابط تعديل منتج قديم كان بيقع على 404 لأن الصفحة بقت تحت /cashier. */}
+        <Route path="/products/:productId/edit" element={<LegacyProductEditRedirect />} />
         <Route path="/inventory" element={<Navigate to="/cashier/inventory" replace />} />
         <Route path="/supply-chain" element={<Navigate to="/cashier/supply-chain" replace />} />
         <Route path="/pos" element={<Navigate to="/cashier/pos" replace />} />
@@ -190,6 +192,11 @@ const DashboardRoutes = () => (
     <Route path="*" element={<PageNotFound />} />
   </Routes>
 );
+
+function LegacyProductEditRedirect() {
+  const { productId } = useParams();
+  return <Navigate to={`/cashier/products/${productId}/edit`} replace />;
+}
 
 function App() {
   // الـRouter لازم يكون بره AuthProvider — لأن المصادقة بتستخدم

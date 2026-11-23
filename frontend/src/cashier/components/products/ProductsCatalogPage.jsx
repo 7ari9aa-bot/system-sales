@@ -81,7 +81,7 @@ export default function ProductsCatalogPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link to="/products/new" className={PRIMARY}>
+            <Link to="/cashier/products/new" className={PRIMARY}>
               <Plus className="h-4 w-4" /> إضافة منتج
             </Link>
             <Link to="/inventory/import" className={GHOST}>
@@ -150,7 +150,7 @@ export default function ProductsCatalogPage() {
                   : "وسّع البحث أو شيل فلتر الحالة عشان تشوف المؤرشف والمسودة."}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                <Link to="/products/new" className={PRIMARY}><Plus className="h-4 w-4" /> إضافة منتج</Link>
+                <Link to="/cashier/products/new" className={PRIMARY}><Plus className="h-4 w-4" /> إضافة منتج</Link>
                 <Link to="/inventory/import" className={GHOST}><Upload className="h-4 w-4" /> استيراد من Excel</Link>
               </div>
             </div>
@@ -197,7 +197,7 @@ export default function ProductsCatalogPage() {
                       </td>
                       <td className={TD}>
                         <div className="flex items-center gap-2">
-                          <Link to={`/products/${row.id}/edit`} className="inline-flex items-center gap-1 rounded-lg border border-[#d9d4cd] px-2.5 py-1.5 text-[12px] font-semibold text-[#3a342d] hover:border-[#E8761A] hover:text-[#E8761A]">
+                          <Link to={`/cashier/products/${row.id}/edit`} className="inline-flex items-center gap-1 rounded-lg border border-[#d9d4cd] px-2.5 py-1.5 text-[12px] font-semibold text-[#3a342d] hover:border-[#E8761A] hover:text-[#E8761A]">
                             <Pencil className="h-3.5 w-3.5" /> تعديل
                           </Link>
                           {row.status === "archived" ? (
