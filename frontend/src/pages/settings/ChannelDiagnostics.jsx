@@ -1,5 +1,6 @@
 import React from "react";
 import { api } from "@/lib/api";
+import { capabilityLabel, sortCapabilities, stateLabel } from "@/lib/capabilityStates";
 
 /** Channels that have a Meta health report (the backend refuses any other). */
 const META_CHANNELS = new Set(["messenger", "facebook", "instagram", "whatsapp"]);
@@ -94,6 +95,38 @@ export function DiagnosticsReport({ report, isAr }) {
                 <DetailLines detail={check.detail} isAr={isAr} />
               </div>
             </div>
+          </li>
+        ))}
+      </ul>
+      <CapabilityList capabilities={report.capabilities} isAr={isAr} />
+    </div>
+  );
+}
+
+/**
+ * One line per capability, with Meta's own reason.
+ *
+ * A capability that is not available is shown, not hidden: the owner needs to know that staff
+ * replies from Meta Business Suite will not sync, and that Flows are ours to build rather than
+ * Meta refusing them.
+ */
+export function CapabilityList({ capabilities, isAr }) {
+  const list = sortCapabilities(capabilities);
+  if (!list.length) return null;
+  return (
+    <div data-testid="channel-capabilities" className="mt-3 border-t border-border pt-2">
+      <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">
+        {isAr ? "الوظائف وحالتها" : "Capabilities"}
+      </div>
+      <ul className="space-y-1.5">
+        {list.map((capability) => (
+          <li key={capability.key} data-capability={capability.key} data-state={capability.state} className="text-[12px]">
+            <div className={capability.state === "available" ? "text-emerald-700" : capability.state === "not_implemented" ? "text-muted-foreground" : "text-amber-700"}>
+              <span aria-hidden="true" className="w-3 shrink-0 text-center font-semibold">{capability.state === "available" ? "✓" : "!"}</span>
+              <span className="font-medium">{capabilityLabel(capability.key, isAr)}</span>
+              <span className="text-foreground"> — {stateLabel(capability.state, isAr)}</span>
+            </div>
+            {capability.reason && <div className="ms-4 mt-0.5 text-[11.5px] text-foreground">{capability.reason}</div>}
           </li>
         ))}
       </ul>
