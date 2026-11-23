@@ -126,6 +126,23 @@ export function isMetaSdkOrigin(origin) {
   }
 }
 
+/**
+ * A WhatsApp Embedded Signup message we may act on (W11).
+ *
+ * `isMetaSdkOrigin` alone let any frame that can name a Meta origin talk this page into accepting a
+ * code. The signup itself runs in a popup the SDK opens, so the message must come FROM another
+ * browsing context: a message with no source, or one this page posted to itself, is not the popup.
+ * The host set stays Meta-owned on purpose — a `*.facebook.com` name cannot be registered by anyone
+ * else, so it is the source check, not the host list, that is the gate here.
+ */
+export function isMetaSignupMessage(event) {
+  if (!event || !isMetaSdkOrigin(event.origin)) return false;
+  const source = event.source;
+  if (!source) return false;
+  const self = typeof window === "undefined" ? null : window;
+  return self === null || source !== self;
+}
+
 /** Map channel connect or OAuth error strings to actionable sentences. */
 function friendlyChannelError(raw, isAr) {
   const detail = String(raw || "");
@@ -563,7 +580,7 @@ export default function ChannelsSettings() {
         }, SIGNUP_WINDOW_MS);
 
         function onMessage(event) {
-          if (!isMetaSdkOrigin(event.origin)) return;
+          if (!isMetaSignupMessage(event)) return;
           let payload;
           try {
             payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
