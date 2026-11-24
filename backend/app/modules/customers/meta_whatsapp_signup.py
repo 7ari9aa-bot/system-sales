@@ -91,6 +91,8 @@ class WhatsAppSignupCompleteOut(BaseModel):
     coexistence_status: str = "unknown"
     is_on_biz_app: bool | None = None
     platform_type: str | None = None
+    #: How far the app's data (contacts + chat history) got: READY, CONTACTS_SYNC_PENDING, ...
+    sync_state: str | None = None
 
 
 def _whatsapp_config() -> tuple[str, str, str]:
@@ -574,6 +576,108 @@ async def _forget_pending_pin(phone_number_id: str) -> None:
         pass
 
 
+def _parse_instant(value: object) -> datetime | None:
+    """An ISO timestamp from config, or None when it is absent/unreadable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+async def _start_coexistence_sync(
+    session,
+    tenant_id,
+    *,
+    integration,
+    phone_number_id: str,
+    waba_id: str,
+    token: str,
+) -> str:
+    """Ask Meta for the app's contacts and chat history — now, and once.
+
+    Meta accepts each of these requests ONCE per connection and only inside 24 hours of onboarding,
+    so it is sent at the end of the connect instead of waiting for a worker that may never run.
+    A failure is recorded on the channel (``sync_error``) and retried by the next connect attempt;
+    it never turns a connected number into a failed connect, because the number IS connected.
+    """
+    from app.modules.conversations import whatsapp_sync
+
+    config = dict(integration.config or {})
+    epoch = whatsapp_sync.epoch_for(config)
+    completed_at = _parse_instant(config.get("coexistence_verified_at")) or datetime.now(UTC)
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False
+        ) as http:
+            runs = await whatsapp_sync.request_all(
+                session,
+                tenant_id,
+                phone_number_id=phone_number_id,
+                waba_id=waba_id,
+                epoch=epoch,
+                onboarding_completed_at=completed_at,
+                token=token,
+                http=http,
+            )
+    except Exception as exc:  # noqa: BLE001 - a sync fault must not fail a working connection
+        logger.warning(
+            "whatsapp.coexistence_sync_not_started tenant=%s phone_number_id=%s",
+            tenant_id,
+            phone_number_id,
+            exc_info=True,
+        )
+        config["sync_error"] = type(exc).__name__
+        integration.config = config
+        await session.flush()
+        return whatsapp_sync.STATE_CONNECTED_PENDING_SYNC
+
+    state = whatsapp_sync.channel_sync_state(
+        runs.get(whatsapp_sync.WHATSAPP_SYNC_CONTACTS),
+        runs.get(whatsapp_sync.WHATSAPP_SYNC_HISTORY),
+    )
+    config["sync_state"] = state
+    config.pop("sync_error", None)
+    integration.config = config
+    await session.flush()
+    return state
+
+
+async def _retry_pending_sync(
+    session, tenant_id, integration, *, phone_number_id: str, waba_id: str
+) -> None:
+    """A replayed connect finishes a sync that did not start the first time.
+
+    Only when the channel is coexistence and the sync is not settled: the request may already have
+    been sent (the run row says so) and then nothing happens, which is exactly the protection we
+    want around Meta's one-shot request.
+    """
+    from app.modules.conversations import whatsapp_sync
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    if str(config.get("onboarding_mode") or "") != "coexistence":
+        return
+    if whatsapp_sync.is_ready(str(config.get("sync_state") or "")):
+        return
+    try:
+        stored = decrypt_credentials_dict(integration.credentials or {})
+    except Exception:  # noqa: BLE001 - unreadable credentials are the connect flow's problem
+        return
+    token = stored.get("access_token")
+    if not isinstance(token, str) or not token:
+        return
+    await _start_coexistence_sync(
+        session,
+        tenant_id,
+        integration=integration,
+        phone_number_id=phone_number_id,
+        waba_id=waba_id,
+        token=token,
+    )
+
+
 async def _prepare_number(
     http: httpx.AsyncClient,
     *,
@@ -653,6 +757,13 @@ async def whatsapp_signup_complete(
             "whatsapp.embedded_signup_replayed tenant=%s phone_number_id=%s",
             tenant_id,
             body.phone_number_id,
+        )
+        await _retry_pending_sync(
+            session,
+            tenant_id,
+            existing,
+            phone_number_id=body.phone_number_id,
+            waba_id=body.waba_id,
         )
         return _connected_result(existing, body)
 
@@ -766,6 +877,19 @@ async def whatsapp_signup_complete(
         },
     )
 
+    sync_state: str | None = None
+    if onboarding_mode == "coexistence":
+        # Contacts + history, requested immediately: the window is 24 hours and Meta grants each
+        # request once per connection.
+        sync_state = await _start_coexistence_sync(
+            session,
+            tenant_id,
+            integration=integration,
+            phone_number_id=body.phone_number_id,
+            waba_id=body.waba_id,
+            token=token,
+        )
+
     logger.info(
         "whatsapp.embedded_signup_connected tenant=%s phone_number_id=%s waba=%s",
         tenant_id,
@@ -783,6 +907,7 @@ async def whatsapp_signup_complete(
         "coexistence_status": coexistence_status,
         "is_on_biz_app": platform_facts["is_on_biz_app"],
         "platform_type": platform_facts["platform_type"],
+        "sync_state": sync_state,
     }
 
 
@@ -820,6 +945,7 @@ def _connected_result(integration, body: WhatsAppSignupCompleteBody) -> dict:
         "coexistence_status": stored_status,
         "is_on_biz_app": stored_on_app if isinstance(stored_on_app, bool) else None,
         "platform_type": config.get("platform_type") or None,
+        "sync_state": config.get("sync_state") or None,
     }
 
 
