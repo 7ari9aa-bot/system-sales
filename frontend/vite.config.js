@@ -55,14 +55,16 @@ export default defineConfig(({ mode }) => {
   // same .env files the app code gets (third arg: all vars, not just VITE_).
   const env = loadEnv(mode, process.cwd(), '');
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
-  // حارس أمان: وضع معاينة الكاشير يتخطى تسجيل الدخول، فممنوع منعاً باتاً أن يُبنى مع الإنتاج.
+  // حارس أمان: أوضاع معاينة الواجهات تتخطى تسجيل الدخول، ولا تُبنى مع الإنتاج.
   const cashierPreview = (env.VITE_CASHIER_PREVIEW || process.env.VITE_CASHIER_PREVIEW) === '1';
+  const dashboardPreview = (env.VITE_DASHBOARD_PREVIEW || process.env.VITE_DASHBOARD_PREVIEW) === '1';
   const deployEnv = process.env.VERCEL_ENV || '';
-  if (cashierPreview && (deployEnv === 'production' || (!deployEnv && process.env.NODE_ENV === 'production' && process.env.CI_ALLOW_CASHIER_PREVIEW !== '1' && process.env.VERCEL))) {
-    throw new Error('VITE_CASHIER_PREVIEW=1 bypasses login and must never be enabled for a production build.');
+  const previewBypassRequested = cashierPreview || dashboardPreview;
+  if (previewBypassRequested && (deployEnv === 'production' || (!deployEnv && process.env.NODE_ENV === 'production' && process.env.CI_ALLOW_CASHIER_PREVIEW !== '1' && process.env.VERCEL))) {
+    throw new Error('Preview-only login bypasses must never be enabled for a production build.');
   }
-  // على Vercel Preview فقط (VERCEL_ENV=preview) يتفعل وضع معاينة الكاشير تلقائياً بدون أي إعداد يدوي.
-  // الإنتاج (VERCEL_ENV=production) والتطوير المحلي والـ CI لا يتأثرون أبداً.
+  // على Vercel Preview فقط تتفعل معاينات الواجهات ببيانات تجريبية تلقائياً.
+  // الإنتاج لا يعرّف هذه العلامات، لذلك تظل كل مسارات الداشبورد محمية.
   const autoPreview = deployEnv === 'preview';
   const apiProxy = {
     '/api': { target: apiProxyTarget, changeOrigin: true },
@@ -77,12 +79,14 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), productionLikeRouting()],
     define: {
       'import.meta.env.VITE_CASHIER_PREVIEW': JSON.stringify(cashierPreview || autoPreview ? '1' : ''),
+      'import.meta.env.VITE_DASHBOARD_PREVIEW': JSON.stringify(dashboardPreview || autoPreview ? '1' : ''),
     },
     resolve: {
       alias: { '@': path.resolve(dirname, 'src') },
     },
     server: {
       port: 3000,
+      allowedHosts: ['sb-1z5ia6othf2b.vercel.run'],
       proxy: apiProxy,
     },
     // Keep API calls same-origin in browser checks against the built app too.

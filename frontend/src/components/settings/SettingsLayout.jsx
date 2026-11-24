@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge, Store,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge, Store, Search, Home,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,10 @@ import {
 // works on (Store, Operations, Billing & data). A cashier changes their own password; only an
 // owner changes the shop's name, team or plan.
 const NAV_GROUPS = [
+  {
+    key: "settings.overview.title",
+    items: [{ to: "/settings/overview", icon: Home, labelKey: "settings.overview.title" }],
+  },
   {
     key: "settings.group.account",
     items: [
@@ -64,7 +68,18 @@ export default function SettingsLayout() {
   const { lang } = useI18n();
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
+  const normalizedQuery = query.trim().toLocaleLowerCase(lang === "ar" ? "ar" : "en");
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) =>
+      !normalizedQuery || t(item.labelKey).toLocaleLowerCase(lang === "ar" ? "ar" : "en").includes(normalizedQuery),
+    ),
+  })).filter((group) => group.items.length > 0);
+  const currentPage = NAV_GROUPS.flatMap((group) => group.items).find((item) =>
+    item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
   const displayName = user?.full_name || user?.email?.split("@")[0] || "—";
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
@@ -107,8 +122,20 @@ export default function SettingsLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-3">
-          {NAV_GROUPS.map((group) => (
+        <div className="px-3 pt-4">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("settings.search")}
+              aria-label={t("settings.search")}
+              className="h-10 w-full rounded-lg border border-sidebar-border bg-background ps-9 pe-3 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
+        </div>
+        <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-3" aria-label={t("settings.title")}>
+          {visibleGroups.length ? visibleGroups.map((group) => (
             <div key={group.key}>
               <div className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {t(group.key)}
@@ -136,7 +163,9 @@ export default function SettingsLayout() {
                 })}
               </div>
             </div>
-          ))}
+          )) : (
+            <p className="px-3 py-4 text-[12.5px] text-muted-foreground" role="status">{t("settings.search.empty")}</p>
+          )}
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
@@ -187,7 +216,10 @@ export default function SettingsLayout() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", "min-w-0")}>{t("settings.title")}</h1>
+          <div className="min-w-0">
+            <p className="text-[10.5px] font-medium text-muted-foreground">{t("settings.title")}</p>
+            <h1 className="truncate font-display text-[16px] font-semibold">{t(currentPage?.labelKey || "settings.title")}</h1>
+          </div>
         </header>
         <main className="w-full px-4 sm:px-6 lg:px-8 py-4">
           <Outlet />

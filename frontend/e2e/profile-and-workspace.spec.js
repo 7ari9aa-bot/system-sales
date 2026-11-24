@@ -157,6 +157,21 @@ test("the workspace owns the shop's name, currency and time zone — and not the
   await expect(input).toHaveValue("Fihrist Store");
 });
 
+test("settings overview links independent pages and the settings search narrows navigation", async ({ page }) => {
+  await setup(page);
+  await page.goto("/settings/overview");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Settings center" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Workspace/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Login & security/ })).toBeVisible();
+
+  await page.getByRole("textbox", { name: "Search settings…" }).fill("cashier");
+  await expect(page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Cashier" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Workspace" })).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Cashier" }).click();
+  await expect(page).toHaveURL(/\/settings\/pos$/);
+});
+
 test("the settings sidebar is grouped by who each setting belongs to", async ({ page }) => {
   await setup(page);
   await page.goto("/settings");
