@@ -21,7 +21,12 @@ from sqlalchemy import func, select
 
 from app.modules.conversations import whatsapp_sync
 from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.models import Conversation, Message, WhatsAppSyncRun
+from app.modules.conversations.models import (
+    Conversation,
+    Message,
+    WhatsAppContactTombstone,
+    WhatsAppSyncRun,
+)
 from app.modules.customers.models import Customer
 from app.modules.customers.service import CustomerService
 from app.modules.platform.models import Integration, OutboxEvent
@@ -519,6 +524,100 @@ async def test_contacts_become_customers_without_opening_conversations(tenant_ct
         )
     ).scalar_one()
     assert run.chunks_seen == 1
+
+
+# ------------------------------------------------------------- removal tombstones
+
+
+def _contact_batch(*, action: str, phone: str, when: str | None = None) -> dict:
+    contact: dict = {"phone": phone, "name": "اتشال", "action": action}
+    if when:
+        contact["timestamp"] = when
+    return {
+        "phone_number_id": NUMBER,
+        "request_id": "req-2",
+        "contacts": [contact],
+    }
+
+
+async def test_a_removal_for_an_unknown_contact_still_leaves_a_tombstone(tenant_ctx) -> None:
+    """Remove-before-add: the removal used to be dropped because no customer matched."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201444444444", when="2026-11-24T10:00:00+00:00")],
+    )
+
+    assert await _count(session, WhatsAppContactTombstone, tenant_id=tenant_id) == 1
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+
+    # The add it referred to arrives afterwards and must NOT resurrect the contact.
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201444444444", when="2026-11-24T09:59:00+00:00")],
+    )
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+
+
+async def test_a_genuinely_newer_add_wins_and_clears_the_tombstone(tenant_ctx) -> None:
+    """The merchant put the contact back: the newer add is the truth, and the row goes away."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201555555555", when="2026-11-24T09:00:00+00:00")],
+    )
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201555555555", when="2026-11-24T11:00:00+00:00")],
+    )
+
+    assert stored == 1
+    assert await _count(session, Customer, tenant_id=tenant_id) == 1
+    assert await _count(session, WhatsAppContactTombstone, tenant_id=tenant_id) == 0
+
+
+async def test_an_add_without_a_timestamp_never_beats_a_removal(tenant_ctx) -> None:
+    """Meta sometimes omits the timestamp: an add that cannot prove it is newer keeps it."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201666666666", when="2026-11-24T09:00:00+00:00")],
+    )
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201666666666")],
+    )
+
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
 
 
 # --------------------------------------------------------------- unsupported messages

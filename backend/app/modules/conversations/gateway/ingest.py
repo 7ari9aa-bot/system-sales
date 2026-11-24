@@ -692,7 +692,19 @@ class IngestService:
                     # must resolve to the same customer a live message from that phone does.
                     "bsuid": contact.get("user_id"),
                 }
+                contact_number = str(batch.get("phone_number_id") or "")
                 if contact.get("action") == "remove":
+                    # The removal is a FACT even when we never held this contact: a remove can
+                    # arrive before the add it refers to, and the app may remove someone whose
+                    # add never reached us. Recording it is what stops a later stale add from
+                    # resurrecting a contact the merchant deleted.
+                    await whatsapp_sync.record_contact_tombstone(
+                        session,
+                        tenant_id,
+                        phone_number_id=contact_number,
+                        external_id=identity_ref,
+                        removed_at=action_at,
+                    )
                     customer = await CustomerService.find_by_identity(
                         session, tenant_id, channel, identity_ref
                     )
@@ -713,6 +725,27 @@ class IngestService:
                                 pass
                         identity.extra = {**previous, **identity_extra}
                     continue
+                if await whatsapp_sync.contact_was_removed(
+                    session,
+                    tenant_id,
+                    phone_number_id=contact_number,
+                    external_id=identity_ref,
+                    at=action_at,
+                ):
+                    # Older than the removal (or carrying no timestamp at all): the merchant
+                    # deleted this contact, and a reordered batch must not bring them back.
+                    logger.info(
+                        "whatsapp.contact_add_after_removal_ignored tenant=%s handle=%s",
+                        tenant_id,
+                        identity_ref,
+                    )
+                    continue
+                await whatsapp_sync.clear_contact_tombstone(
+                    session,
+                    tenant_id,
+                    phone_number_id=contact_number,
+                    external_id=identity_ref,
+                )
                 customer = await CustomerService.get_or_create_by_identity(
                     session,
                     tenant_id,

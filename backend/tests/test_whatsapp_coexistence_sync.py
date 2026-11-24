@@ -432,7 +432,12 @@ async def test_replayed_chunk_key_does_not_double_count_progress_or_messages(ses
     assert run.progress == 45
 
 
-async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress(session) -> None:
+async def test_initial_contacts_snapshot_is_recorded_not_declared_complete(session) -> None:
+    """smb_app_state_sync carries the first snapshot AND every later delta.
+
+    So "a batch arrived" is not "the list is complete", and neither is a progress number we
+    invented. The snapshot is its own fact; the run settles at the 24-hour deadline.
+    """
     run = _run(tenant_id=TENANT, sync_type=sync.WHATSAPP_SYNC_CONTACTS)
     session.rows.append(run)
     await sync.record_chunk(
@@ -445,14 +450,20 @@ async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress
         chunk_key="contacts-snapshot",
         contacts_snapshot_received=True,
     )
-    assert run.state == "completed"
-    assert run.progress == 100
+    assert run.state == "in_progress"
+    assert run.progress != 100
+    assert run.phases.get("contacts_snapshot_received_at")
     history = _run(
         tenant_id=TENANT,
         sync_type=sync.WHATSAPP_SYNC_HISTORY,
         state="completed",
     )
-    assert sync.channel_sync_state(run, history) == sync.STATE_READY
+    # Still inside the window: the channel is not ready and says why.
+    run.deadline_at = NOW + timedelta(hours=1)
+    assert sync.channel_sync_state(run, history, now=NOW) == (sync.STATE_CONTACTS_SYNC_IN_PROGRESS)
+    # The window closes: nothing is owed to Meta any more.
+    run.deadline_at = NOW - timedelta(minutes=1)
+    assert sync.channel_sync_state(run, history, now=NOW) == sync.STATE_READY
 
 
 async def test_history_webhook_decline_marks_run_not_shared(session) -> None:

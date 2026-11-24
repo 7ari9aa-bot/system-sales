@@ -40,6 +40,7 @@ from app.core.errors import ExternalProviderError, ValidationError
 from app.modules.conversations.models import (
     WHATSAPP_SYNC_CONTACTS,
     WHATSAPP_SYNC_HISTORY,
+    WhatsAppContactTombstone,
     WhatsAppSyncRun,
 )
 
@@ -553,6 +554,107 @@ async def request_all(
             )
             out[sync_type] = None
     return out
+
+
+async def record_contact_tombstone(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    external_id: str,
+    removed_at: datetime | None = None,
+) -> WhatsAppContactTombstone | None:
+    """Remember a contact removal, whether or not we ever held that contact.
+
+    Idempotent and order-aware: the row keeps the LATEST removal, so a replayed older removal
+    cannot move the line back and let a stale add through.
+    """
+    handle = str(external_id or "").strip()
+    if not handle:
+        return None
+    moment = removed_at or datetime.now(UTC)
+    row = (
+        await session.execute(
+            select(WhatsAppContactTombstone).where(
+                WhatsAppContactTombstone.tenant_id == tenant_id,
+                WhatsAppContactTombstone.phone_number_id == str(phone_number_id or ""),
+                WhatsAppContactTombstone.external_id == handle,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = WhatsAppContactTombstone(
+            tenant_id=tenant_id,
+            phone_number_id=str(phone_number_id or ""),
+            external_id=handle,
+            removed_at=moment,
+        )
+        session.add(row)
+        return row
+    existing = row.removed_at
+    if existing is not None and existing.tzinfo is None:
+        existing = existing.replace(tzinfo=UTC)
+    if existing is None or moment > existing:
+        row.removed_at = moment
+    return row
+
+
+async def contact_was_removed(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    external_id: str,
+    at: datetime | None,
+) -> bool:
+    """Whether an add/update arriving at ``at`` is older than a recorded removal.
+
+    ``at`` is Meta's own timestamp. An add that carries none cannot prove it is newer than the
+    removal, and the safe answer is to keep the removal: resurrecting a deleted contact is visible
+    to the merchant, while ignoring an untimestamped add costs one missing name.
+    """
+    handle = str(external_id or "").strip()
+    if not handle:
+        return False
+    row = (
+        await session.execute(
+            select(WhatsAppContactTombstone.removed_at).where(
+                WhatsAppContactTombstone.tenant_id == tenant_id,
+                WhatsAppContactTombstone.phone_number_id == str(phone_number_id or ""),
+                WhatsAppContactTombstone.external_id == handle,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return False
+    if at is None:
+        return True
+    removed = row if row.tzinfo is not None else row.replace(tzinfo=UTC)
+    return at <= removed
+
+
+async def clear_contact_tombstone(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    external_id: str,
+) -> None:
+    """A genuinely newer add wins: the merchant put the contact back."""
+    handle = str(external_id or "").strip()
+    if not handle:
+        return
+    row = (
+        await session.execute(
+            select(WhatsAppContactTombstone).where(
+                WhatsAppContactTombstone.tenant_id == tenant_id,
+                WhatsAppContactTombstone.phone_number_id == str(phone_number_id or ""),
+                WhatsAppContactTombstone.external_id == handle,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        await session.delete(row)
 
 
 def contacts_settled_by_deadline(run: WhatsAppSyncRun, now: datetime | None = None) -> bool:
