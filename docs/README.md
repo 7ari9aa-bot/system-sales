@@ -71,3 +71,4 @@ Kept for context. They describe a moment, not the current system: [reports/](rep
 | [archive/](archive/) | Superseded plans. Do not follow them; see [archive/README.md](archive/README.md). |
 | [reviews/](reviews/) | Review notes from earlier waves. |
 | [superpowers/](superpowers/) | Implementation plans. |
+- [WhatsApp coexistence: the manual end-to-end check](channels/whatsapp-coexistence-manual-check.md) — the part fixtures cannot prove, with the expected result per step
