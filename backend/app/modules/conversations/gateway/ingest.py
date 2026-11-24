@@ -612,6 +612,26 @@ class IngestService:
                 if not identity_ref:
                     continue
                 action_at = contact.get("timestamp") or batch.get("timestamp")
+                existing_customer = await CustomerService.find_by_identity(
+                    session, tenant_id, channel, identity_ref
+                )
+                existing_identity = (
+                    await CustomerService.channel_identity(
+                        session, tenant_id, existing_customer.id, channel
+                    )
+                    if existing_customer is not None
+                    else None
+                )
+                previous_extra = (
+                    existing_identity.extra if existing_identity and isinstance(existing_identity.extra, dict) else {}
+                )
+                previous_at = previous_extra.get("whatsapp_app_contact_updated_at")
+                if action_at and previous_at:
+                    try:
+                        if datetime.fromisoformat(previous_at) > action_at:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
                 identity_extra = {
                     "identity_type": contact.get("identity_type") or "phone",
                     "whatsapp_app_contact": contact.get("action") != "remove",
