@@ -447,7 +447,7 @@ async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress
     )
     assert run.state == "completed"
     assert run.progress == 100
-    assert sync.channel_sync_state(run, _history("completed")) == sync.STATE_READY
+    assert sync.channel_sync_state(run, _run(tenant_id=TENANT, sync_type=sync.WHATSAPP_SYNC_HISTORY, state="completed")) == sync.STATE_READY
 
 
 async def test_history_webhook_decline_marks_run_not_shared(session) -> None:
