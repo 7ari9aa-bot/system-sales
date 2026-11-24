@@ -478,21 +478,38 @@ async def record_chunk(
         await session.flush()
     if request_id and not run.request_id:
         run.request_id = request_id
+    phases = dict(run.phases or {})
+    seen = list(phases.get("_seen_chunk_keys") or [])
+    effective_key = chunk_key or (
+        f"{sync_type}:{phase}:{chunk_order}:{progress}:{request_id or ''}"
+        if phase is not None or chunk_order is not None or progress is not None
+        else None
+    )
+    if effective_key and effective_key in seen:
+        return run
+    if effective_key:
+        # Keep bounded per-run dedupe metadata; a history transfer has a finite number of chunks.
+        phases["_seen_chunk_keys"] = (seen + [effective_key])[-2048:]
     if progress is not None:
         run.progress = max(run.progress or 0, min(100, int(progress)))
-    # A chunk that arrives late must never walk a finished transfer backwards.
-    if (run.progress or 0) >= 100:
+    # History has Meta's explicit terminal marker. Contact state sync does not: the first
+    # initial snapshot is the only observable initial-sync event; subsequent adds/updates are live.
+    if sync_type == WHATSAPP_SYNC_CONTACTS and contacts_snapshot_received:
         run.state = "completed"
+        run.progress = 100
+        run.completed_at = run.completed_at or datetime.now(UTC)
+    elif (run.progress or 0) >= 100:
+        run.state = "completed"
+        run.completed_at = run.completed_at or datetime.now(UTC)
     elif run.state != "completed":
         run.state = "in_progress"
-    phases = dict(run.phases or {})
     if phase is not None:
         bucket = dict(phases.get(str(phase)) or {})
         bucket["chunks"] = int(bucket.get("chunks") or 0) + 1
         if chunk_order is not None:
             bucket["last_order"] = max(int(bucket.get("last_order") or -1), int(chunk_order))
         phases[str(phase)] = bucket
-        run.phases = phases
+    run.phases = phases
     run.chunks_seen = (run.chunks_seen or 0) + 1
     run.messages_stored = (run.messages_stored or 0) + max(0, messages_stored)
     if run.state == "completed":
