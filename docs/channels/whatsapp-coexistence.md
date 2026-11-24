@@ -38,8 +38,14 @@ any → OFFBOARDED
   `request_id`, so a retried connect replays instead of asking Meta twice.
 * The 24-hour deadline is Meta's, not ours: a request after it cannot be made, and the run records
   `deadline_expired` rather than pretending it is still coming.
-* `READY` requires either a completed history transfer **or** an explicit refusal (2593109). A
-  silent timeout is `SYNC_FAILED`, never `READY`.
+* `READY` requires **both** halves settled, exactly as `channel_sync_state` computes it:
+  * **contacts** — completed (an explicit `progress: 100` from Meta) **or** settled by the 24-hour
+    window closing. The window closing is reported as `settled_by: "deadline"`, never as a
+    complete list: `smb_app_state_sync` carries the first snapshot *and* every later
+    add/update/remove, so no webhook proves the list ended;
+  * **history** — completed, or an explicit refusal (2593109). A silent timeout is `SYNC_FAILED`,
+    never `READY`.
+  A run still inside its window blocks `READY` even when history is done.
 * Progress arrives out of order (`phase`, `chunk_order`, `progress`). Each chunk is stored
   idempotently, and a late chunk folds into progress without walking a completed transfer backwards.
 
@@ -64,7 +70,8 @@ six-month-old conversation.
 
 * **2593109** — the merchant chose not to share history. That is an answer, not an error: both
   the immediate API refusal and the documented history webhook form end the run as
-  `HISTORY_NOT_SHARED`; the channel can still reach `READY` once the contacts snapshot is received.
+  `HISTORY_NOT_SHARED`; the channel can still reach `READY` once the contacts half has settled
+  (completed, or its 24-hour window closed).
 * **131060** — Meta received a message type we do not render. FIHRIST stores a system message in
   the affected recipient's inbox thread explaining why the customer message is missing.
 
