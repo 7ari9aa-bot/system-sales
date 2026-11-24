@@ -137,7 +137,7 @@ async def test_a_coexistence_number_is_never_registered(monkeypatch) -> None:
     assert facts["is_on_biz_app"] is True
 
 
-async def test_a_cloud_api_number_is_still_registered_then_subscribed(monkeypatch) -> None:
+async def test_a_cloud_api_only_number_is_rejected_without_register_or_subscribe(monkeypatch) -> None:
     calls: list[str] = []
 
     async def fake_register(http, *, phone_number_id, token, pin=None):
@@ -151,34 +151,12 @@ async def test_a_cloud_api_number_is_still_registered_then_subscribed(monkeypatc
     monkeypatch.setattr(signup, "_subscribe_app_to_waba", fake_subscribe)
 
     async with _client(lambda request: httpx.Response(200, json=_API_ONLY)) as client:
-        mode, status, _facts, pin = await signup._prepare_number(
-            client, waba_id="1", phone_number_id="456", token="t", requested_mode="coexistence"
-        )
-
-    assert calls == ["register", "subscribe"]
-    assert (mode, status, pin) == ("cloud_api", signup.COEXISTENCE_NOT_ON_APP, "654321")
-
-
-async def test_a_failed_registration_never_subscribes(monkeypatch) -> None:
-    """Registering is the step Meta refuses; subscribing first would orphan a subscription."""
-    calls: list[str] = []
-
-    async def fake_register(http, *, phone_number_id, token, pin=None):
-        calls.append("register")
-        raise ExternalProviderError("refused", retryable=False)
-
-    async def fake_subscribe(http, *, waba_id, token):
-        calls.append("subscribe")
-
-    monkeypatch.setattr(signup, "_register_phone_number", fake_register)
-    monkeypatch.setattr(signup, "_subscribe_app_to_waba", fake_subscribe)
-
-    async with _client(lambda request: httpx.Response(200, json=_API_ONLY)) as client:
-        with pytest.raises(ExternalProviderError):
+        with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
             await signup._prepare_number(
                 client, waba_id="1", phone_number_id="456", token="t", requested_mode="coexistence"
             )
-    assert calls == ["register"]
+
+    assert calls == []
 
 
 # ---------- the connection spec ----------
