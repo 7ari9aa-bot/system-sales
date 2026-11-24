@@ -517,6 +517,7 @@ export default function ChannelChat({
           isTelegram && telegramMessagesScrolling && "is-scrolling"
         )}
         style={messageBackgroundStyle}
+        data-testid="chat-wallpaper"
       >
         {loadingOlderMessages && <div role="status" className="py-2 text-center text-[11.5px] text-muted-foreground">{t("common.loading")}</div>}
         {isInstagram && !hasOlderMessages && !loadingMessages && !searchQuery.trim() && (

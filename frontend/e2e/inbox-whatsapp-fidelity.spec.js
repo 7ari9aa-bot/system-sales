@@ -135,7 +135,9 @@ test("light: surfaces match the real WhatsApp Web screenshot", async ({ page }) 
       header: bg(document.querySelector("[data-testid=chat-header]")),
       list: bg(document.querySelector("[data-testid=chat-list]")),
       search: bg(document.querySelector("[data-testid=chat-list] input")),
-      wallpaper: bg(document.querySelector("[data-testid=chat-header]").nextElementSibling),
+      // The wallpaper lives on the message area itself; a sibling guess broke the moment a
+      // wrapper was added around the thread.
+      wallpaper: bg(document.querySelector("[data-testid=chat-wallpaper]")),
     };
   });
   expect(c).toEqual({
