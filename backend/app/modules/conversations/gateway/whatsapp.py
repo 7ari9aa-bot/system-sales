@@ -443,6 +443,13 @@ class WhatsAppAdapter:
         if not phone_number_id or not token:
             raise ExternalProviderError("whatsapp integration missing credentials")
 
+        # Meta allows 20 messages a second for ONE number, shared by every worker process. The
+        # slot is taken here, before the provider call, so a burst paces itself instead of
+        # collecting 130429s that look like failures to the merchant.
+        from app.modules.conversations.gateway import whatsapp_throughput
+
+        await whatsapp_throughput.acquire(str(phone_number_id))
+
         body_payload = self._build_send_payload(message)
 
         async def _post() -> str:
