@@ -472,4 +472,11 @@ def test_an_ambiguous_dispatching_reservation_is_never_sent_twice() -> None:
     run = _run(state="dispatching")
     allowed, reason = sync.may_request(run, NOW, sync.deadline_from(NOW))
     assert not allowed
-    assert "outcome is unknown" in reason
+    assert "do not resend" in reason
+
+
+def test_a_webhook_completed_sync_without_request_id_is_not_resent() -> None:
+    run = _run(state="completed")
+    allowed, reason = sync.may_request(run, NOW, sync.deadline_from(NOW))
+    assert not allowed
+    assert "webhook activity" in reason
