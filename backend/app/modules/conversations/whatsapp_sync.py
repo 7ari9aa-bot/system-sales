@@ -221,6 +221,55 @@ async def _get_run(
     ).scalar_one_or_none()
 
 
+async def attribute_chunk(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    epoch: str,
+    sync_type: str,
+    request_id: str | None = None,
+) -> WhatsAppSyncRun | None:
+    """The run a webhook batch belongs to — or ``None`` when it belongs to none.
+
+    A webhook names the phone number and the field, never the epoch or the request that produced
+    it, so the run is the only thing that can tie a batch to a link. The lookup is by number, sync
+    type AND epoch, and the batch's own ``request_id`` has to agree with the one recorded on that
+    run. Anything else is stale: a chunk from a link that has since been replaced, or a request id
+    this deployment never issued. Folding such a batch into the current run would move the wrong
+    progress bar, mark the wrong transfer complete, and store messages from an old epoch — which is
+    why the check runs BEFORE anything is written, not after.
+    """
+    run = await _get_run(
+        session, tenant_id, phone_number_id=phone_number_id, sync_type=sync_type, epoch=epoch
+    )
+    if run is None:
+        logger.warning(
+            "whatsapp_sync.chunk_without_run",
+            extra={
+                "tenant_id": str(tenant_id),
+                "phone_number_id": phone_number_id,
+                "sync_type": sync_type,
+                "epoch": epoch,
+                "request_id": request_id,
+            },
+        )
+        return None
+    if request_id and run.request_id and request_id != run.request_id:
+        logger.warning(
+            "whatsapp_sync.chunk_request_mismatch",
+            extra={
+                "tenant_id": str(tenant_id),
+                "phone_number_id": phone_number_id,
+                "sync_type": sync_type,
+                "expected_request_id": run.request_id,
+                "chunk_request_id": request_id,
+            },
+        )
+        return None
+    return run
+
+
 async def channel_epoch(
     session: AsyncSession, tenant_id: uuid.UUID, *, phone_number_id: str | None = None
 ) -> str | None:
@@ -310,8 +359,11 @@ async def _request_sync_durable(
             async with durable.begin():
                 await bind_tenant(durable, tenant_id)
                 run = await _get_run(
-                    durable, tenant_id, phone_number_id=phone_number_id,
-                    sync_type=sync_type, epoch=epoch
+                    durable,
+                    tenant_id,
+                    phone_number_id=phone_number_id,
+                    sync_type=sync_type,
+                    epoch=epoch,
                 )
                 if run is not None:
                     run.state = "not_shared"
@@ -324,8 +376,11 @@ async def _request_sync_durable(
             async with durable.begin():
                 await bind_tenant(durable, tenant_id)
                 run = await _get_run(
-                    durable, tenant_id, phone_number_id=phone_number_id,
-                    sync_type=sync_type, epoch=epoch
+                    durable,
+                    tenant_id,
+                    phone_number_id=phone_number_id,
+                    sync_type=sync_type,
+                    epoch=epoch,
                 )
                 if run is not None:
                     # Network failures may be ambiguous: keep the reservation non-retryable.
@@ -340,8 +395,11 @@ async def _request_sync_durable(
         async with durable.begin():
             await bind_tenant(durable, tenant_id)
             run = await _get_run(
-                durable, tenant_id, phone_number_id=phone_number_id,
-                sync_type=sync_type, epoch=epoch
+                durable,
+                tenant_id,
+                phone_number_id=phone_number_id,
+                sync_type=sync_type,
+                epoch=epoch,
             )
             if run is None:
                 raise ExternalProviderError(
@@ -579,27 +637,20 @@ async def record_chunk(
     the last one: progress only moves forward, the per-phase high-water mark is the maximum seen,
     and a chunk that arrives twice changes no number.
     """
-    run = await _get_run(
-        session, tenant_id, phone_number_id=phone_number_id, sync_type=sync_type, epoch=epoch
+    run = await attribute_chunk(
+        session,
+        tenant_id,
+        phone_number_id=phone_number_id,
+        epoch=epoch,
+        sync_type=sync_type,
+        request_id=request_id,
     )
     if run is None:
-        if not phone_number_id:
-            return None
-        # The data arrived before the run row did — a request whose recording was lost with its
-        # transaction, or a chunk that beat the flush. Creating the row keeps the progress (and
-        # Meta's request id) visible instead of dropping the evidence on the floor.
-        run = WhatsAppSyncRun(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            phone_number_id=phone_number_id,
-            waba_id=waba_id,
-            sync_type=sync_type,
-            onboarding_epoch=epoch,
-            state="in_progress",
-            request_id=request_id,
-        )
-        session.add(run)
-        await session.flush()
+        # Not this run's data: no row is created for it. A phantom run used to be written here "to
+        # keep the evidence", which is exactly how a stale chunk after a re-link became progress on
+        # the live transfer. The durable reservation commits the run before Meta is asked, so a
+        # chunk that matches no run is stale, not early.
+        return None
     if request_id and not run.request_id:
         run.request_id = request_id
     phases = dict(run.phases or {})

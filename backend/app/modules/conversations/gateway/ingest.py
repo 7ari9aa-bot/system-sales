@@ -536,6 +536,22 @@ class IngestService:
             )
         stored = 0
         for batch in batches:
+            if (
+                epoch
+                and await whatsapp_sync.attribute_chunk(
+                    session,
+                    tenant_id,
+                    phone_number_id=str(batch.get("phone_number_id") or ""),
+                    epoch=epoch,
+                    sync_type=whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+                    request_id=batch.get("request_id"),
+                )
+                is None
+            ):
+                # Not this run's history: not one message from it is stored. Checking before the
+                # write is the point — after it, the rows are already in a conversation they do
+                # not belong to.
+                continue
             batch_stored = 0
             for item in batch.get("messages") or []:
                 batch_stored += await IngestService._store_imported_message(
@@ -594,6 +610,20 @@ class IngestService:
             )
         stored = 0
         for batch in batches:
+            if (
+                epoch
+                and await whatsapp_sync.attribute_chunk(
+                    session,
+                    tenant_id,
+                    phone_number_id=str(batch.get("phone_number_id") or ""),
+                    epoch=epoch,
+                    sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS,
+                    request_id=batch.get("request_id"),
+                )
+                is None
+            ):
+                # A stale contact batch must not create customers, and must not touch the run.
+                continue
             if epoch:
                 await whatsapp_sync.record_chunk(
                     session,

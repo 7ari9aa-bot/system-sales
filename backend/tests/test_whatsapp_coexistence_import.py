@@ -19,8 +19,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
+from app.modules.conversations import whatsapp_sync
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.models import Conversation, Message, WhatsAppSyncRun
+from app.modules.customers.models import Customer
 from app.modules.customers.service import CustomerService
 from app.modules.platform.models import Integration, OutboxEvent
 
@@ -69,15 +71,42 @@ def _message(mid: str, *, when: datetime | None = None, direction="inbound", **o
     return item
 
 
-def _chunk(*messages: dict, phase=0, chunk_order=0, progress=0) -> dict:
+def _chunk(*messages: dict, phase=0, chunk_order=0, progress=0, request_id="req-1") -> dict:
     return {
         "phone_number_id": NUMBER,
-        "request_id": "req-1",
+        "request_id": request_id,
         "phase": phase,
         "chunk_order": chunk_order,
         "progress": progress,
         "messages": list(messages),
     }
+
+
+async def _run(
+    session,
+    tenant_id,
+    *,
+    sync_type: str = whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+    request_id: str = "req-1",
+) -> WhatsAppSyncRun:
+    """The run the durable reservation commits BEFORE Meta is asked for data.
+
+    Every import in production lands on a run that already exists, so the tests create it too —
+    a chunk that matches no run is stale by definition, and must not be folded in.
+    """
+    run = WhatsAppSyncRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        phone_number_id=NUMBER,
+        waba_id="1001",
+        sync_type=sync_type,
+        onboarding_epoch=EPOCH,
+        state="in_progress",
+        request_id=request_id,
+    )
+    session.add(run)
+    await session.flush()
+    return run
 
 
 async def _count(session, model, **filters) -> int:
@@ -93,6 +122,7 @@ async def _count(session, model, **filters) -> int:
 async def test_history_is_stored_at_its_own_time_and_never_answered(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
     long_ago = datetime.now(UTC) - timedelta(days=40)
     before_events = await _count(session, OutboxEvent)
 
@@ -122,6 +152,7 @@ async def test_history_is_stored_at_its_own_time_and_never_answered(tenant_ctx) 
 async def test_a_replayed_chunk_adds_nothing(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
     chunk = _chunk(_message("wamid.H2"))
 
     assert await IngestService.apply_history(session, tenant_id, "whatsapp", [chunk]) == 1
@@ -132,6 +163,7 @@ async def test_a_replayed_chunk_adds_nothing(tenant_ctx) -> None:
 async def test_late_chunks_land_and_never_walk_the_transfer_backwards(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
 
     # Phase 2 arrives first (out of order) and reports the transfer complete.
     await IngestService.apply_history(
@@ -155,6 +187,7 @@ async def test_late_chunks_land_and_never_walk_the_transfer_backwards(tenant_ctx
 async def test_history_records_its_request_id_and_completion(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id, request_id="req-1")
     await IngestService.apply_history(
         session, tenant_id, "whatsapp", [_chunk(_message("wamid.H3"), progress=100)]
     )
@@ -217,6 +250,7 @@ async def test_an_echo_already_imported_by_history_still_takes_the_thread(tenant
     """
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
     long_ago = datetime.now(UTC) - timedelta(days=3)
     await IngestService.apply_history(
         session,
@@ -332,12 +366,85 @@ async def test_a_replayed_echo_is_stored_once(tenant_ctx) -> None:
     assert await _count(session, Message, tenant_id=tenant_id) == 1
 
 
+# ----------------------------------------------------- attribution (stale chunks)
+
+
+async def test_a_stale_chunk_from_an_older_link_is_ignored(tenant_ctx) -> None:
+    """A re-link starts a new epoch and a new run; the old link's chunks keep arriving.
+
+    They must not land: not one message, not one percent of progress, not a completion. Otherwise
+    the current transfer looks finished while the customer's real history was never imported.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    run = await _run(session, tenant_id, request_id="req-new")
+
+    stored = await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.S1"), request_id="req-old", progress=100)],
+    )
+
+    assert stored == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 0
+    await session.refresh(run)
+    assert (run.progress, run.state, run.messages_stored) == (0, "in_progress", 0)
+
+
+async def test_a_chunk_with_no_run_is_dropped_instead_of_becoming_one(tenant_ctx) -> None:
+    """record_chunk used to invent a run "to keep the evidence".
+
+    That is how a stale chunk after a re-link turned into progress on a transfer nobody asked
+    for. The reservation commits the run before Meta is called, so a chunk with no run is stale.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+
+    stored = await IngestService.apply_history(
+        session, tenant_id, "whatsapp", [_chunk(_message("wamid.S2"))]
+    )
+
+    assert stored == 0
+    assert await _count(session, WhatsAppSyncRun, tenant_id=tenant_id) == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 0
+
+
+async def test_a_stale_contact_batch_creates_no_customers(tenant_ctx) -> None:
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    run = await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-new"
+    )
+
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [
+            {
+                "phone_number_id": NUMBER,
+                "request_id": "req-old",
+                "contacts": [{"phone": CUSTOMER, "name": "قديم", "action": "add"}],
+            }
+        ],
+    )
+
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+    await session.refresh(run)
+    assert (run.state, run.chunks_seen or 0) == ("in_progress", 0)
+
+
 # --------------------------------------------------------------- contacts
 
 
 async def test_contacts_become_customers_without_opening_conversations(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
 
     stored = await IngestService.apply_app_state_sync(
         session,
