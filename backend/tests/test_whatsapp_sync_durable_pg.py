@@ -14,13 +14,12 @@ CONNECTION could not see this test's rows, and a second event loop could not run
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.db import bind_tenant
 from app.modules.conversations import whatsapp_sync
@@ -143,10 +142,17 @@ async def test_a_crash_after_meta_accepted_does_not_erase_the_reservation(
     assert "do not resend" in reason
 
 
-async def test_two_requests_at_once_send_one_meta_call(
+async def test_a_second_request_reuses_the_reservation_without_calling_meta_again(
     tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ) -> None:
-    """A retry storm must not spend the merchant's single allowance twice."""
+    """A retry must not spend the merchant's single allowance twice.
+
+    Two REAL concurrent callers cannot be simulated here: every session in this harness shares the
+    one test connection (a second caller on the same connection is a transaction-state error, not a
+    race). What is asserted is the guarantee that makes the race safe — the second request reads the
+    open reservation and reuses its request id instead of posting to Meta again — plus the DB-level
+    one-open-run-per-number constraint that rejects a duplicate insert.
+    """
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _channel(session, tenant_id)
     posts: list[str] = []
@@ -157,10 +163,8 @@ async def test_two_requests_at_once_send_one_meta_call(
 
     monkeypatch.setattr(whatsapp_sync, "post_sync_request", _post)
 
-    first, second = await asyncio.gather(
-        whatsapp_sync.request_sync(session, tenant_id, **_ask()),
-        whatsapp_sync.request_sync(session, tenant_id, **_ask()),
-    )
+    first = await whatsapp_sync.request_sync(session, tenant_id, **_ask())
+    second = await whatsapp_sync.request_sync(session, tenant_id, **_ask())
 
     assert posts == [NUMBER]
     assert first.request_id == "req-once"
@@ -195,4 +199,11 @@ async def test_the_durable_session_is_tenant_scoped(
 
     async with app_sessions_on_test_connection() as other:
         await bind_tenant(other, uuid.uuid4())  # a different shop
+        # A superuser/BYPASSRLS role ignores every policy, so the assertion would pass for the
+        # wrong reason. CI runs as the app role; a local superuser run is skipped instead.
+        bypass = await other.scalar(
+            text("SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user")
+        )
+        if bypass:
+            pytest.skip("RLS is vacuous under a superuser/BYPASSRLS role")
         assert await _row(other, tenant_id) is None

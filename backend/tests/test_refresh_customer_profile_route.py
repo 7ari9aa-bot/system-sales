@@ -83,7 +83,7 @@ async def test_a_whatsapp_chat_is_left_alone(db, tenant_ctx, ig, connected) -> N
     ctx = await ctx_for(db, tenant_ctx, "owner")
     assert await refresh_customer_profile(cid, ctx=ctx) == {
         "updated": False,
-        "reason": "not_instagram",
+        "reason": "not_supported_channel",
     }
     assert ig.calls == []
 

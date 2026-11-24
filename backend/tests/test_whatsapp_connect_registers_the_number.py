@@ -8,8 +8,6 @@ checks the stored row: connected, with the token still readable and the PIN we s
 
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,7 +25,9 @@ _COMPLETE = "/api/v1/integrations/whatsapp/embedded-signup/complete"
 _BODY = {"code": "AQD" + "x" * 30, "waba_id": "900", "phone_number_id": "777"}
 
 
-def _fake_meta(*, status: str, seen: list[tuple[str, str]], register_ok: bool = True):
+def _fake_meta(
+    *, status: str, seen: list[tuple[str, str]], register_ok: bool = True, on_biz_app: bool = True
+):
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         seen.append((request.method, path))
@@ -44,14 +44,14 @@ def _fake_meta(*, status: str, seen: list[tuple[str, str]], register_ok: bool = 
         if request.method == "GET" and "status" in request.url.params.get("fields", ""):
             return httpx.Response(200, json={"status": status})
         # display name + the verifier's own read of the number, including the two fields the
-        # connect requires: this number is Cloud API only, so it still has to be registered.
+        # connect requires: the number is on the Business app AND the Cloud API (coexistence).
         return httpx.Response(
             200,
             json={
                 "id": "777",
                 "display_phone_number": "+20 100 000 0000",
                 "verified_name": "Fihrist Shop",
-                "is_on_biz_app": False,
+                "is_on_biz_app": on_biz_app,
                 "platform_type": "CLOUD_API",
             },
         )
@@ -83,28 +83,25 @@ async def _stored(db, tenant_ctx):
     return row
 
 
-async def test_connecting_an_unregistered_number_registers_it_and_keeps_the_pin_encrypted(
+async def test_a_coexistence_number_connects_without_spending_a_register_call(
     monkeypatch, db, tenant_ctx
 ) -> None:
+    """Coexistence numbers stay registered inside the Business app, so the connect must NOT spend
+    one of Meta's ten register attempts, and it stores no PIN."""
     seen: list[tuple[str, str]] = []
     r = await _connect(monkeypatch, db, tenant_ctx, _fake_meta(status="PENDING", seen=seen))
     assert r.status_code == 201, r.text
 
-    assert ("POST", f"/{signup._GRAPH_VERSION}/777/register") in seen
-    order = [p for _m, p in seen]
-    # register first: a number Meta refuses must not leave a subscription behind (W8)
-    assert order.index(f"/{signup._GRAPH_VERSION}/777/register") < order.index(
-        f"/{signup._GRAPH_VERSION}/900/subscribed_apps"
-    )
+    paths = [p for _m, p in seen]
+    assert not any(p.endswith("/register") for p in paths)
+    # The WABA is still subscribed, otherwise nothing is ever delivered.
+    assert f"/{signup._GRAPH_VERSION}/900/subscribed_apps" in paths
 
     row = await _stored(db, tenant_ctx)
     assert row.status == "active"
     creds = decrypt_credentials_dict(row.credentials)
     assert creds["access_token"] == "TOKEN-123"
-    assert len(creds["registration_pin"]) == 6 and creds["registration_pin"].isdigit()
-    # at rest it is ciphertext, and the PIN never reaches the API response
-    assert creds["registration_pin"] not in json.dumps(row.credentials)
-    assert creds["registration_pin"] not in r.text
+    assert "registration_pin" not in creds
 
 
 async def test_a_number_meta_already_connected_is_left_alone_and_stores_no_pin(
@@ -118,12 +115,16 @@ async def test_a_number_meta_already_connected_is_left_alone_and_stores_no_pin(
     assert "registration_pin" not in creds and creds["access_token"] == "TOKEN-123"
 
 
-async def test_a_refused_registration_stores_nothing(monkeypatch, db, tenant_ctx) -> None:
-    """A number Meta will not register cannot receive: fail the connect, do not store it as live."""
+async def test_a_cloud_api_only_number_is_refused_and_stores_nothing(
+    monkeypatch, db, tenant_ctx
+) -> None:
+    """A number that is not on the WhatsApp Business app cannot use coexistence, so the connect is
+    refused before anything is written."""
     seen: list[tuple[str, str]] = []
-    handler = _fake_meta(status="PENDING", seen=seen, register_ok=False)
+    handler = _fake_meta(status="PENDING", seen=seen, on_biz_app=False)
     r = await _connect(monkeypatch, db, tenant_ctx, handler)
     assert r.status_code >= 400
+    assert not any(p.endswith("/subscribed_apps") for _m, p in seen)
     rows = (
         (
             await db.execute(

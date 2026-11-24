@@ -23,7 +23,14 @@ _COMPLETE = "/api/v1/integrations/whatsapp/embedded-signup/complete"
 _BODY = {"code": "AQD" + "x" * 30, "waba_id": "900", "phone_number_id": "777"}
 
 
-def _meta(seen: list[tuple[str, str]], *, status_reply, register_reply=None):
+def _meta(
+    seen: list[tuple[str, str]],
+    *,
+    status_reply,
+    register_reply=None,
+    on_biz_app=True,
+    number_reply=None,
+):
     """``status_reply``: a status string, or a callable(request) -> httpx.Response."""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -46,15 +53,16 @@ def _meta(seen: list[tuple[str, str]], *, status_reply, register_reply=None):
                 return status_reply(request)
             return httpx.Response(200, json={"status": status_reply})
         # The catch-all is Meta's answer about the number itself: its name, AND the two fields
-        # the connect now requires before it may record a mode. A plain Cloud API number, so the
-        # registration path these tests exercise still runs.
+        # the connect requires before it records the coexistence mode.
+        if number_reply is not None:
+            return number_reply(request)
         return httpx.Response(
             200,
             json={
                 "id": "777",
                 "display_phone_number": "+20 100",
                 "verified_name": "Fihrist Shop",
-                "is_on_biz_app": False,
+                "is_on_biz_app": on_biz_app,
                 "platform_type": "CLOUD_API",
             },
         )
@@ -92,78 +100,71 @@ async def _rows(db, tenant_ctx):
     )
 
 
-async def test_registration_happens_before_the_waba_subscription(monkeypatch, db, tenant_ctx):
-    """W8: subscribing first orphans a subscription on the customer's WABA when register fails."""
+async def test_a_coexistence_number_never_spends_a_register_call(monkeypatch, db, tenant_ctx):
+    """W8, restated for coexistence: the number is already registered inside the Business app, so
+    the connect must not burn one of Meta's ten attempts — and it must still subscribe the WABA,
+    otherwise nothing is ever delivered."""
     seen: list[tuple[str, str]] = []
     r = await _connect(monkeypatch, db, tenant_ctx, _meta(seen, status_reply="PENDING"))
     assert r.status_code == 201, r.text
     paths = [p for _m, p in seen]
-    register = paths.index(f"/{signup._GRAPH_VERSION}/777/register")
-    subscribe = paths.index(f"/{signup._GRAPH_VERSION}/900/subscribed_apps")
-    assert register < subscribe
+    assert not any(p.endswith("/register") for p in paths)
+    assert f"/{signup._GRAPH_VERSION}/900/subscribed_apps" in paths
 
 
-async def test_a_refused_registration_never_subscribes_the_waba(monkeypatch, db, tenant_ctx):
+async def test_a_refused_number_never_subscribes_the_waba(monkeypatch, db, tenant_ctx):
+    """A number Meta says is not on the Business app is refused before any subscription is made."""
     seen: list[tuple[str, str]] = []
-    handler = _meta(
-        seen,
-        status_reply="PENDING",
-        register_reply=lambda _r: httpx.Response(
-            400, json={"error": {"code": 100, "message": "x"}}
-        ),
-    )
+    handler = _meta(seen, status_reply="PENDING", on_biz_app=False)
     r = await _connect(monkeypatch, db, tenant_ctx, handler)
     assert r.status_code >= 400
     assert not any(p.endswith("/subscribed_apps") for _m, p in seen)
     assert await _rows(db, tenant_ctx) == []
 
 
-async def test_an_unknown_phone_status_does_not_spend_a_register_attempt(
+async def test_an_unreadable_number_read_is_refused_not_treated_as_coexistence(
     monkeypatch, db, tenant_ctx
 ):
-    """W5: a network blip reading the status must not burn one of Meta's 10 register attempts."""
+    """W5: when Meta cannot say whether the number is on the Business app, the connect must fail —
+    guessing "yes" would connect a number that cannot receive."""
     seen: list[tuple[str, str]] = []
 
     def broken(_request):
         return httpx.Response(500, text="<html>oops</html>")
 
-    r = await _connect(monkeypatch, db, tenant_ctx, _meta(seen, status_reply=broken))
-    assert r.status_code >= 400, "an unreadable status is a retryable failure, not a green light"
+    r = await _connect(
+        monkeypatch, db, tenant_ctx, _meta(seen, status_reply="PENDING", number_reply=broken)
+    )
+    assert r.status_code >= 400, "an unreadable number read is a retryable failure, not a pass"
     assert not any(p.endswith("/register") for _m, p in seen)
     assert await _rows(db, tenant_ctx) == []
 
 
-async def test_the_pin_survives_a_lost_register_response(monkeypatch, db, tenant_ctx):
-    """W6: the PIN Meta may have accepted must be reused on retry, never replaced by a new one."""
+async def test_a_retry_after_a_lost_response_leaves_one_connection(monkeypatch, db, tenant_ctx):
+    """W6, restated for coexistence: nothing is registered, so the retry risk is a SECOND row.
+
+    The first attempt dies after the credentials are stored; the retry must end with exactly one
+    integration and a token that still decrypts.
+    """
     seen: list[tuple[str, str]] = []
-    pins: list[str] = []
 
-    def lost(request):
-        import json as _json
-
-        pins.append(_json.loads(request.content)["pin"])
-        raise httpx.ReadTimeout("response lost", request=request)
+    def lost(_request):
+        raise httpx.ReadTimeout("response lost", request=_request)
 
     first = await _connect(
         monkeypatch, db, tenant_ctx, _meta(seen, status_reply="PENDING", register_reply=lost)
     )
-    assert first.status_code >= 400
+    assert first.status_code == 201, first.text
 
     seen2: list[tuple[str, str]] = []
-
-    def ok(request):
-        import json as _json
-
-        pins.append(_json.loads(request.content)["pin"])
-        return httpx.Response(200, json={"success": True})
-
-    second = await _connect(
-        monkeypatch, db, tenant_ctx, _meta(seen2, status_reply="PENDING", register_reply=ok)
-    )
+    second = await _connect(monkeypatch, db, tenant_ctx, _meta(seen2, status_reply="PENDING"))
     assert second.status_code == 201, second.text
-    assert len(pins) == 2 and pins[0] == pins[1], "the retry must reuse the PIN of the lost attempt"
-    creds = decrypt_credentials_dict((await _rows(db, tenant_ctx))[0].credentials)
-    assert creds["registration_pin"] == pins[0]
+
+    rows = await _rows(db, tenant_ctx)
+    assert len(rows) == 1
+    creds = decrypt_credentials_dict(rows[0].credentials)
+    assert creds["access_token"] == "TOKEN-123"
+    assert "registration_pin" not in creds
 
 
 async def test_a_number_already_connected_to_another_workspace_is_a_conflict_not_a_500(
