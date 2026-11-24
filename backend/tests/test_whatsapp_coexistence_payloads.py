@@ -97,6 +97,67 @@ def test_two_history_elements_are_two_batches_with_their_own_progress() -> None:
     assert batches[1]["messages"][0]["customer_ref"] == "201222222222"
 
 
+def _identity_value(*, thread_id: str | None, bsuid: str | None, message: dict) -> dict:
+    thread: dict = {"messages": [message]}
+    if thread_id:
+        thread["id"] = thread_id
+    if bsuid:
+        thread["context"] = {"user_id": bsuid}
+    value = _history_value(messages=[])
+    value["history"] = [{"metadata": {"phase": 0}, "threads": [thread]}]
+    return value
+
+
+def test_a_customer_with_a_phone_and_a_bsuid_stays_one_customer() -> None:
+    """The phone is the identity everywhere else, so it has to be the identity here too.
+
+    Preferring the BSUID split one person into two customers: their history under the BSUID and
+    everything after the link under their number.
+    """
+    value = _identity_value(
+        thread_id="201111111111",
+        bsuid="EG.BSUID.1",
+        message={
+            "id": "wamid.ID1",
+            "from_user_id": "EG.BSUID.1",
+            "timestamp": "1700000000",
+            "type": "text",
+            "text": {"body": "أهلاً"},
+        },
+    )
+
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+
+    assert message["customer_ref"] == "201111111111"
+    assert message["identity_type"] == "phone"
+    assert message["phone"] == "201111111111"
+    # The BSUID is kept as the alias, not thrown away.
+    assert message["bsuid"] == "EG.BSUID.1"
+    # And the customer's own message is still INBOUND even though it names the BSUID.
+    assert message["direction"] == "inbound"
+
+
+def test_a_customer_without_a_phone_keeps_the_bsuid_as_identity() -> None:
+    value = _identity_value(
+        thread_id=None,
+        bsuid="EG.BSUID.2",
+        message={
+            "id": "wamid.ID2",
+            "from_user_id": "EG.BSUID.2",
+            "timestamp": "1700000000",
+            "type": "text",
+            "text": {"body": "بدون رقم"},
+        },
+    )
+
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+
+    assert message["customer_ref"] == "EG.BSUID.2"
+    assert message["identity_type"] == "bsuid"
+    assert message["phone"] is None
+    assert message["direction"] == "inbound"
+
+
 def test_the_same_webhook_parses_to_the_same_chunk_keys() -> None:
     """Replay safety: identical payloads must produce identical keys, or dedupe stops working."""
     value = _history_value(messages=[], phase=3, chunk_order=4, progress=50)

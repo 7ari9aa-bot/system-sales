@@ -238,14 +238,17 @@ def _normalize_thread_message(
     *,
     identity_type: str = "phone",
     parent_ref: str | None = None,
+    bsuid: str | None = None,
 ) -> dict | None:
     """One historical message as the backfill path stores it."""
     if not isinstance(msg, dict):
         return None
     sender = str(msg.get("from_user_id") or msg.get("from") or "").strip()
-    # `from_user_id` is the BSUID path; `from` is the phone path. Both identify
-    # the customer when they match the thread handle. The business number is outbound.
-    direction = "inbound" if sender and sender == thread_id else "outbound"
+    # `from_user_id` is the BSUID path; `from` is the phone path. Both identify the customer, and
+    # a thread now hangs off the phone while its messages may still name the BSUID — comparing
+    # only against the thread handle turned the customer's own messages into outbound ones.
+    handles = {handle for handle in (thread_id, bsuid or "") if handle}
+    direction = "inbound" if sender and sender in handles else "outbound"
     if not sender and business_number and str(msg.get("from") or "").strip() == business_number:
         direction = "outbound"
     body, media_url, media_type, content_type = extract_content(msg)
@@ -258,6 +261,7 @@ def _normalize_thread_message(
         "channel_message_id": str(msg.get("id") or "").strip() or None,
         "customer_ref": thread_id,
         "identity_type": identity_type,
+        "bsuid": bsuid or None,
         "username": str(msg.get("username") or "").strip() or None,
         "parent_ref": msg_parent,
         "phone": thread_id if identity_type == "phone" else None,
@@ -352,10 +356,15 @@ def _history_batch(
     for thread in threads:
         context = thread.get("context") if isinstance(thread.get("context"), dict) else {}
         bsuid = str(context.get("user_id") or context.get("from_user_id") or "").strip()
-        thread_id = str(bsuid or thread.get("id") or thread.get("wa_id") or "").strip()
+        phone = str(thread.get("id") or thread.get("wa_id") or "").strip()
+        # The phone is the primary identity EVERYWHERE else — live messages, contact sync and app
+        # echoes all key on it — so preferring the BSUID here split one person into two customers:
+        # their history under the BSUID, everything after the link under their number. The BSUID
+        # stays as the alias, and is the primary only for a customer who has no phone at all.
+        thread_id = phone or bsuid
         if not thread_id:
             continue
-        identity_type = "bsuid" if bsuid else "phone"
+        identity_type = "phone" if phone else "bsuid"
         parent_ref = (
             str(context.get("parent_user_id") or context.get("parent_ref") or "").strip() or None
         )
@@ -366,6 +375,7 @@ def _history_batch(
                 business_number,
                 identity_type=identity_type,
                 parent_ref=parent_ref,
+                bsuid=bsuid,
             )
             if normalized is not None:
                 messages.append(normalized)

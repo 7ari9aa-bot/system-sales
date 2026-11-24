@@ -468,7 +468,7 @@ class IngestService:
             return 0
         identity_extra = {
             key: item.get(key)
-            for key in ("identity_type", "username", "parent_ref")
+            for key in ("identity_type", "username", "parent_ref", "bsuid")
             if item.get(key) is not None
         }
         customer = await CustomerService.get_or_create_by_identity(
@@ -688,6 +688,9 @@ class IngestService:
                     "whatsapp_app_contact_updated_at": action_at.isoformat() if action_at else None,
                     "username": contact.get("username"),
                     "parent_ref": contact.get("parent_ref"),
+                    # The BSUID is the alias, never the identity: a contact whose phone we know
+                    # must resolve to the same customer a live message from that phone does.
+                    "bsuid": contact.get("user_id"),
                 }
                 if contact.get("action") == "remove":
                     customer = await CustomerService.find_by_identity(
