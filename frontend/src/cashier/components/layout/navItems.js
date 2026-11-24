@@ -73,6 +73,20 @@ export function pageTitle(pathname) {
   if (pathname === "/inventory/movements") return "حركة الأصناف";
   if (pathname === "/inventory/stocktake") return "الجرد الفعلي";
   if (pathname === "/supply-chain" || pathname === "/cashier/supply-chain") return "سلاسل الإمداد والمستودعات";
+  // Each supply-chain module is its own page now, so the header names the module, not the section.
+  const supplySection = pathname.replace(/^\/cashier/, "").match(/^\/supply-chain\/([a-z-]+)$/);
+  if (supplySection) {
+    const titles = {
+      receipts: "أذونات الاستلام والجودة",
+      transfers: "التحويلات بين المستودعات",
+      replenishment: "محرك التجديد وإعادة الشراء",
+      locations: "المواقع والرفوف الداخلية",
+      valuation: "تقييم FIFO والتكاليف",
+      traceability: "التتبع والدفعات والسيريال",
+      allocations: "تخصيص القنوات",
+    };
+    if (titles[supplySection[1]]) return titles[supplySection[1]];
+  }
   if (pathname === "/returns/log") return "سجل المرتجعات";
   if (pathname === "/exchanges/log") return "سجل الاستبدال";
   const match = flatNav

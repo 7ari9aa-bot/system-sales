@@ -75,7 +75,9 @@ export default function CashierApp() {
         {/* إعدادات الكاشير انتقلت لقسم الإعدادات الرئيسي (قسم إعدادات واحد). */}
         <Route path="settings" element={<Navigate to="/settings/pos" replace />} />
         <Route path="shifts" element={<Page19 />} />
-        <Route path="supply-chain" element={<PageSupplyChain />} />
+        {/* A module per URL: the old single-page tab strip is now a set of real pages. */}
+        <Route path="supply-chain" element={<Navigate to="supply-chain/receipts" replace />} />
+        <Route path="supply-chain/:section" element={<PageSupplyChain />} />
         <Route path="supplier-returns" element={<Page20 />} />
         <Route path="suppliers" element={<Page21 />} />
         <Route path="*" element={<Navigate to="/cashier/pos" replace />} />

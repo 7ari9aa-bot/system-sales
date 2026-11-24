@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { useParams, useNavigate } from "react-router-dom";
 import { useStockScreens } from "@/cashier/api/useShopOptions";
 import { activeOrFirst, visibleTabs } from "@/cashier/lib/stockScreens";
 
@@ -53,7 +54,14 @@ export default function InventoryPage() {
   const { lang } = useI18n();
   const isAr = lang === "ar";
 
-  const [activeTabRaw, setActiveTab] = useState("receipts"); // receipts | transfers | replenishment | locations | valuation | traceability | allocations
+  // Every module has its own URL (/cashier/supply-chain/<section>): the page never stacks seven
+  // workspaces behind a tab strip that a refresh or a shared link cannot reproduce.
+  const { section } = useParams();
+  const navigate = useNavigate();
+  const [activeTabRaw, setActiveTab] = useState(section || "receipts"); // receipts | transfers | replenishment | locations | valuation | traceability | allocations
+  useEffect(() => {
+    if (section && section !== activeTabRaw) setActiveTab(section);
+  }, [section, activeTabRaw]);
   // The owner can hide the transfers and online-allocation tabs; nothing is removed, so turning one back on restores it.
   const screens = useStockScreens();
 
@@ -790,7 +798,7 @@ export default function InventoryPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => navigate(`/cashier/supply-chain/${tab.id}`)}
                 className={cn(
                   "flex items-center gap-2 border-b-2 py-3.5 px-3 text-xs font-semibold transition-all whitespace-nowrap",
                   active
