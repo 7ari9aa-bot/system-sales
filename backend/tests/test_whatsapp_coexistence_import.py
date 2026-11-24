@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 
 from app.modules.conversations.gateway.ingest import IngestService
 from app.modules.conversations.models import Conversation, Message, WhatsAppSyncRun
+from app.modules.customers.service import CustomerService
 from app.modules.platform.models import Integration, OutboxEvent
 
 pytestmark = pytest.mark.asyncio
@@ -205,6 +206,100 @@ async def test_an_app_echo_is_a_human_outbound_reply_that_takes_the_thread(tenan
     ).scalar_one()
     # waiting_human is what stops the agent answering a message the merchant already answered.
     assert conversation.status == "waiting_human"
+
+
+async def test_an_echo_already_imported_by_history_still_takes_the_thread(tenant_ctx) -> None:
+    """The launch blocker: history sync stores the merchant's own reply first.
+
+    The echo that follows finds the wamid already stored, so nothing new is written — but the
+    conversation MUST still leave the agent's hands. Coupling the handover to "did we write a row"
+    left the AI free to answer a customer the merchant had already answered from the phone.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    long_ago = datetime.now(UTC) - timedelta(days=3)
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.E9", when=long_ago, direction="outbound"))],
+    )
+
+    assert (
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E9")])
+        == 0
+    )
+
+    assert await _count(session, Message, tenant_id=tenant_id) == 1
+    conversation = (
+        await session.execute(select(Conversation).where(Conversation.tenant_id == tenant_id))
+    ).scalar_one()
+    assert conversation.status == "waiting_human"
+
+
+async def test_our_own_send_echoed_back_does_not_take_the_thread(tenant_ctx) -> None:
+    """The opposite case, and the reason the handover is not unconditional.
+
+    Meta echoes messages this system sent too. If a duplicate echo took the thread every time, the
+    agent would silence itself with its own reply.
+    """
+    from app.modules.conversations.service import ConversationService
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    customer = await CustomerService.get_or_create_by_identity(
+        session, tenant_id, channel="whatsapp", external_id=CUSTOMER, name=None, phone=CUSTOMER
+    )
+    conversation = await ConversationService.get_or_create(
+        session, tenant_id, customer_id=customer.id, channel="whatsapp"
+    )
+    await ConversationService.add_message(
+        session,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="outbound",
+        sender_type="agent",
+        body="رد من فهرست",
+        channel_message_id="wamid.OWN",
+        payload={"source": "fihrist"},
+    )
+
+    assert (
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.OWN")])
+        == 0
+    )
+    await session.refresh(conversation)
+    assert conversation.status != "waiting_human"
+
+
+async def test_a_replayed_echo_creates_one_handover(tenant_ctx) -> None:
+    from app.modules.ai.models import AIHandover
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E7")])
+    await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E7")])
+
+    assert await _count(session, AIHandover, tenant_id=tenant_id) == 1
+
+
+async def test_a_handover_failure_fails_the_batch_so_it_is_retried(tenant_ctx, monkeypatch) -> None:  # noqa: ANN001
+    """Swallowing the failure left the agent answering over the merchant.
+
+    Raising fails the webhook event, which Meta retries; the retry is safe because the message row
+    is already deduped by wamid.
+    """
+    import app.modules.ai.handover as handover
+
+    async def explode(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("handover store unavailable")
+
+    monkeypatch.setattr(handover, "request_human_takeover", explode)
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    with pytest.raises(RuntimeError):
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E8")])
 
 
 async def test_a_media_only_echo_is_stored(tenant_ctx) -> None:

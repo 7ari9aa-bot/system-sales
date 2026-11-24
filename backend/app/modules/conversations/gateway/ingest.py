@@ -688,9 +688,20 @@ class IngestService:
         echo becomes a real outbound message from a HUMAN, it may start a conversation the merchant
         began from their phone, and it takes the thread away from the AI — otherwise the agent,
         which never saw the reply, answers the customer a second time with a different answer.
+
+        Storing the row and taking the thread are two separate guarantees. The launch blocker was
+        coupling them: an echo whose wamid history sync had ALREADY imported found the row, skipped
+        the rest of the loop and left the conversation with the agent — the merchant had answered
+        from the phone and the AI could still reply over them. So the handover below runs for every
+        echo that is genuinely the merchant's, whether or not this call wrote the row.
+
+        The one duplicate that must NOT take the thread is our own send coming back as an echo:
+        that is the AI's own message, and silencing the agent after it answers would break the
+        channel. ``payload.imported_from`` is the discriminator: imports carry it, sends do not.
         """
         stored = 0
         for echo in echoes:
+            mid = echo.get("channel_message_id")
             wrote = await IngestService._store_imported_message(
                 session,
                 tenant_id,
@@ -701,11 +712,29 @@ class IngestService:
                 source="whatsapp_business_app",
                 status="sent",
             )
-            if not wrote:
+            stored += wrote
+            if not wrote and mid:
+                existing_payload = (
+                    await session.execute(
+                        select(Message.payload)
+                        .where(
+                            Message.tenant_id == tenant_id,
+                            Message.channel_message_id == mid,
+                        )
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                imported = isinstance(existing_payload, dict) and bool(
+                    existing_payload.get("imported_from")
+                )
+                if not imported:
+                    # Our own send echoed back: nothing to store and nothing to hand over.
+                    continue
+            customer_ref = str(echo.get("customer_ref") or "")
+            if not customer_ref:
                 continue
-            stored += 1
             customer = await CustomerService.find_by_identity(
-                session, tenant_id, channel, echo["customer_ref"]
+                session, tenant_id, channel, customer_ref
             )
             if customer is None:
                 continue
@@ -716,21 +745,17 @@ class IngestService:
                 continue
             from app.modules.ai.handover import request_human_takeover
 
-            try:
-                await request_human_takeover(
-                    session,
-                    tenant_id,
-                    conversation_id=conversation.id,
-                    reason="whatsapp_business_app_reply",
-                    note="replied from the WhatsApp Business app on the phone",
-                )
-            except Exception:  # noqa: BLE001 - the reply is stored; handover is best effort
-                logger.warning(
-                    "whatsapp.app_echo_handover_failed tenant=%s conversation=%s",
-                    tenant_id,
-                    conversation.id,
-                    exc_info=True,
-                )
+            # Idempotent by design: an open handover is reused, never duplicated. A failure here is
+            # NOT logged and swallowed — the agent would keep the thread and answer over the
+            # merchant. Raising fails the webhook event so it is retried, and the retry is safe
+            # because the message row is already deduped by wamid.
+            await request_human_takeover(
+                session,
+                tenant_id,
+                conversation_id=conversation.id,
+                reason="whatsapp_business_app_reply",
+                note="replied from the WhatsApp Business app on the phone",
+            )
         return stored
 
     @staticmethod
