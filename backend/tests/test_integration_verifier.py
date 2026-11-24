@@ -20,8 +20,22 @@ from app.modules.platform.integration_verifier import (
             {"access_token": "wa-secret"},
             {"phone_number_id": "123456789"},
             "/v27.0/123456789",
-            {"id": "123456789", "verified_name": "Shop", "display_phone_number": "+1 555"},
-            {"phone_number_id": "123456789"},
+            {
+                "id": "123456789",
+                "verified_name": "Shop",
+                "display_phone_number": "+1 555",
+                # WhatsApp verification now refuses a number Meta does not report as being on both
+                # the Business app and the Cloud API, so the payload carries the coexistence pair.
+                "is_on_biz_app": True,
+                "platform_type": "CLOUD_API",
+            },
+            # The coexistence proof is recorded on the identity as text, so the next connect can
+            # show what Meta actually said instead of re-asking.
+            {
+                "phone_number_id": "123456789",
+                "is_on_biz_app": "true",
+                "platform_type": "CLOUD_API",
+            },
             "Shop",
         ),
         (
