@@ -12,14 +12,21 @@ from app.modules.platform.service import IntegrationCredentialsService
 from tests.test_customers_http_surface import TENANT, _call
 
 
-async def test_connect_persists_only_after_provider_verification(monkeypatch) -> None:  # noqa: ANN001
+async def test_whatsapp_cannot_be_connected_with_a_pasted_token(monkeypatch) -> None:  # noqa: ANN001
+    """Embedded Signup is the only door into a WhatsApp channel.
+
+    A token paste used to verify the number and save an ACTIVE Integration without the WABA
+    subscription, the onboarding mode, the coexistence proof or the contacts/history sync — a
+    channel that looked connected and received nothing. The public route now refuses WhatsApp
+    before it verifies anything, so no API client can create that half-built channel.
+    """
+    verified: list[str] = []
+
     async def allow_channel(_session, _tenant_id, _provider) -> None:
         return None
 
     async def verify(provider, credentials, config) -> VerifiedChannel:  # noqa: ANN001
-        assert provider == "whatsapp"
-        assert credentials == {"access_token": "submitted-secret"}
-        assert config == {"phone_number_id": "123456789"}
+        verified.append(provider)
         return VerifiedChannel({"phone_number_id": "123456789"}, "Shop")
 
     monkeypatch.setattr(
@@ -41,12 +48,43 @@ async def test_connect_persists_only_after_provider_verification(monkeypatch) ->
         },
     )
 
+    assert response.status_code == 400, response.text
+    assert "Embedded Signup" in response.text
+    assert "submitted-secret" not in response.text
+    # Refused BEFORE the provider was called: a rejection must not burn a Graph API request.
+    assert verified == []
+
+
+async def test_connect_persists_only_after_provider_verification(monkeypatch) -> None:  # noqa: ANN001
+    """A non-WhatsApp channel still verifies first and persists only on success."""
+
+    async def allow_channel(_session, _tenant_id, _provider) -> None:
+        return None
+
+    async def verify(provider, credentials, config) -> VerifiedChannel:  # noqa: ANN001
+        assert provider == "webchat"
+        return VerifiedChannel({"public_key": "wc_live_key"}, "Shop")
+
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.EntitlementService.ensure_channel_allowed",
+        staticmethod(allow_channel),
+    )
+    monkeypatch.setattr(
+        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+    )  # noqa: E501
+
+    response, _session = await _call(
+        "POST",
+        "/api/v1/integrations/connect",
+        permissions={"settings:write"},
+        body={"provider": "webchat", "credentials": {}, "config": {}},
+    )
+
     assert response.status_code == 201, response.text
     result = response.json()
     assert result["status"] == "active"
     assert result["credentials_verified"] is True
     assert result["display_name"] == "Shop"
-    assert "submitted-secret" not in response.text
 
 
 async def test_telegram_connect_registers_webhook_with_server_routing_key(monkeypatch) -> None:  # noqa: ANN001
@@ -224,9 +262,9 @@ async def test_failed_provider_verification_does_not_create_an_active_channel(
         "/api/v1/integrations/connect",
         permissions={"settings:write"},
         body={
-            "provider": "whatsapp",
-            "credentials": {"access_token": "invalid-secret"},
-            "config": {"phone_number_id": "123456789"},
+            "provider": "instagram",
+            "credentials": {"api_key": "invalid-secret"},
+            "config": {},
         },
     )
 

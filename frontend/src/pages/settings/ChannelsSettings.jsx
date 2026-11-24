@@ -10,11 +10,10 @@ import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell"
 import ChannelIcon from "@/components/dashboard/ChannelIcon";
 import { Badge } from "@/components/dashboard/ui";
 
+// WhatsApp is deliberately absent: it has no credential form, because a pasted token cannot
+// create a working WhatsApp channel. Meta's Embedded Signup is the only door, and the backend
+// refuses WhatsApp on the generic connect route for the same reason.
 const CONNECTION_FIELDS = {
-  whatsapp: [
-    { name: "phone_number_id", type: "text", label: ["معرّف رقم الهاتف", "Phone number ID"] },
-    { name: "access_token", type: "password", label: ["رمز الوصول", "Access token"] },
-  ],
   facebook: [
     { name: "page_id", type: "text", label: ["معرّف الصفحة", "Page ID"] },
     { name: "page_access_token", type: "password", label: ["رمز وصول الصفحة", "Page access token"] },
@@ -844,10 +843,7 @@ export default function ChannelsSettings() {
 
     const channelConfig = {};
     const credentials = {};
-    if (editing.id === "whatsapp") {
-      channelConfig.phone_number_id = String(values.phone_number_id || "").trim();
-      credentials.access_token = String(values.access_token || "").trim();
-    } else if (editing.id === "facebook") {
+    if (editing.id === "facebook") {
       channelConfig.page_id = String(values.page_id || "").trim();
       credentials.page_access_token = String(values.page_access_token || "").trim();
     } else if (editing.id === "instagram") {

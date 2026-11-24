@@ -310,6 +310,17 @@ async def connect_integration(
 ):
     """Verify credentials before persisting a channel as active."""
     provider = body.provider
+    if provider == "whatsapp":
+        # There must be ONE way to create a WhatsApp channel. Embedded Signup is that way: Meta
+        # hands back the WABA and phone number id, the app gets subscribed to the WABA, the
+        # onboarding mode is recorded (a Business App number is coexistence, not cloud_api) and the
+        # contacts/history sync is requested. A token-paste here produced an Integration that looked
+        # active while none of that had happened, so the number received nothing and never synced.
+        raise ValidationError(
+            "WhatsApp connects through Embedded Signup, not a pasted token. Finish the WhatsApp "
+            "link from Settings → Channels so Meta records the coexistence mode and starts the "
+            "contacts and history sync."
+        )
     unexpected = set(body.credentials) - _CHANNEL_CREDENTIAL_FIELDS[provider]
     if unexpected:
         raise ValidationError("Unexpected credential fields for this provider.")
