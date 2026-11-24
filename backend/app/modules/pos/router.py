@@ -1161,6 +1161,7 @@ async def reject_refund(
         external_reference=body.external_reference,
         actor_user_id=ctx.user.id,
         session_id=body.session_id,
+        override=override,
     )
 
 

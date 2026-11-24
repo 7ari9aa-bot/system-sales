@@ -348,6 +348,38 @@ class CustomerAccountService:
     # ---- internals ----
 
     @staticmethod
+    async def reverse_unpaid_return(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        amount: object,
+        *,
+        order_id: uuid.UUID | None = None,
+        reason: str | None = None,
+        actor_user_id: uuid.UUID | None = None,
+    ) -> CustomerLedgerEntry | None:
+        """Returned goods cancel the unpaid part of the sale, up to what is actually owed.
+
+        Capped at the current balance on purpose: a shop never hands a customer credit for goods
+        they already settled, and a stale figure must not push the account below zero.
+        """
+        current = await CustomerAccountService.balance(session, tenant_id, customer_id)
+        if current <= 0:
+            return None
+        value = min(CustomerAccountService._positive(amount), current)
+        return await CustomerAccountService._post(
+            session,
+            tenant_id,
+            customer_id,
+            "reversal",
+            -value,
+            order_id=order_id,
+            reason=reason,
+            actor_user_id=actor_user_id,
+            current=current,
+        )
+
+    @staticmethod
     def _positive(amount: object) -> Decimal:
         try:
             value = money(amount)

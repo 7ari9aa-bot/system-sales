@@ -1803,7 +1803,10 @@ async def test_a_declined_reversal_is_rejected_and_the_room_comes_back(db, tenan
         db, tenant_ctx.tenant_id, refund_id, "الماكينة رفضت العملية"
     )
     assert rejected["status"] == "rejected"
-    assert await PosService.list_pending_refunds(db, tenant_ctx.tenant_id) == []
+    # The attempt is closed, but nobody was paid: the money stays owed and visible to follow up.
+    pending = await PosService.list_pending_refunds(db, tenant_ctx.tenant_id)
+    assert [row["refund_id"] for row in pending] == [rejected["outstanding"]["refund_id"]]
+    assert Decimal(str(pending[0]["amount"])) == Decimal("100.00")
     position = await OrderService.refund_position(
         db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
     )

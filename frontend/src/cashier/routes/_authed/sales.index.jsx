@@ -150,10 +150,18 @@ export default function SalesLogPage() {
   return (
     <div className="-mx-2 -my-2 min-h-[calc(100vh-1rem)] bg-[#FAF7F2] px-4 pb-12 pt-6 text-[#0F172A] sm:-mx-3 sm:px-8 lg:px-10 lg:pt-9">
       <PendingRefundsPanel
-        sessionId={working.data?.session?.id ?? working.data?.id ?? shiftId ?? null}
+        sessionId={working.data?.session?.id ?? working.data?.id ?? null}
         pending={pendingRefunds}
         onConfirmed={(res) => setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))}
-        onRejected={(res) => setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))}
+        onRejected={(res) =>
+          setPendingRefunds((prev) =>
+            // The attempt is rejected, but the customer was not paid: the follow-up row is the
+            // money still owed, and it stays in the list until someone settles it.
+            res?.outstanding
+              ? mergePendingRefunds(withoutPendingRefund(prev, res.refund_id), [res.outstanding])
+              : withoutPendingRefund(prev, res.refund_id),
+          )
+        }
       />
       {manualReversals.length ? (
         <div

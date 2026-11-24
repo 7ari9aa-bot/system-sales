@@ -93,7 +93,10 @@ export function settlementSummary(result) {
   const parts = [];
   if (result?.settlement === "collected") parts.push(`اتحصّل فرق ${amount.toFixed(2)} ج.م`);
   else if (result?.settlement === "refunded") {
-    const confirmed = Math.max(amount - pending, 0);
+    // ``refunded`` from the server is money that already left the shop or was confirmed on the
+    // machine; pending money is reported apart. Subtracting it a second time here turned
+    // "50 cash back + 50 pending on the machine" into "0 refunded".
+    const confirmed = Number(result?.refunded ?? amount);
     parts.push(`اترد فرق ${confirmed.toFixed(2)} ج.م`);
     if (pending > 0) {
       parts.push(`منها ${pending.toFixed(2)} ج.م لسه مستنية تأكيد الماكينة`);
@@ -109,7 +112,12 @@ export function settlementSummary(result) {
   return parts.join(" — ");
 }
 
-const METHOD_LABEL = { cash: "نقدي", card: "بطاقة", transfer: "تحويل", wallet: "محفظة" };
+const METHOD_LABEL = {
+  cash: "نقدي",
+  card: "بطاقة",
+  bank_transfer: "تحويل بنكي",
+  wallet: "محفظة",
+};
 
 /** Backend refusals in plain Arabic; anything unknown is passed through, never hidden. */
 export function exchangeErrorMessage(err) {

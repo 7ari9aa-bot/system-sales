@@ -118,8 +118,11 @@ export const posApi = {
    * paid back. This is the other half of that promise.
    */
   listPendingRefunds: () => api("/pos/refunds/pending"),
+  // The body is handed over as an OBJECT: api() stringifies it. Stringifying here too sent a JSON
+  // *string* to a route that expects a model, so every reject from the counter died with a 422 and
+  // the service fixes never ran.
   rejectRefund: (refundId, body) =>
-    api(`/pos/refunds/${refundId}/reject`, { method: "POST", body: JSON.stringify(body) }),
+    api(`/pos/refunds/${refundId}/reject`, { method: "POST", body }),
   confirmRefund: async (refundId, externalReference) =>
     post(`/pos/refunds/${seg(refundId)}/confirm`, {
       external_reference: String(externalReference ?? "").trim(),

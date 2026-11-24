@@ -4188,10 +4188,15 @@ class PosService(PosReceiptReads):
             cash_tenders = [tender for tender in tenders if tender.method == CASH]
             if cash_part <= ZERO or not cash_tenders:
                 # Nothing for the drawer: the whole refund is the cashier's manual reversal.
+                await PosService._reverse_uncollected(
+                    session, tenant_id, order, source_plan.uncollected, actor_user_id
+                )
                 return {
                     **record_only,
                     "mode": "cash_only",
-                    "uncollected": to_money(0, "uncollected"),
+                    # The invoice's own unpaid part, not zero: a cash-only shop still has to show
+                    # that part of the sale was never collected.
+                    "uncollected": source_plan.uncollected,
                     "terminal_only": terminal_only,
                     "awaiting_confirmation": awaiting_manual,
                     "slices": [
@@ -4251,6 +4256,10 @@ class PosService(PosReceiptReads):
         # sale still reading "captured" on the order and the customer still worth money the shop
         # had already given back — so lifetime value, segments and the payment's own state
         # disagreed with the refunds that caused them.
+        await PosService._reverse_uncollected(
+            session, tenant_id, order, plan.uncollected, actor_user_id
+        )
+
         touched = [slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None]
         if touched:
             from app.modules.orders.service import OrderService
@@ -4297,6 +4306,36 @@ class PosService(PosReceiptReads):
         }
 
     @staticmethod
+    async def _reverse_uncollected(
+        session: AsyncSession,
+        tenant_id: UUID,
+        order: object,
+        uncollected: object,
+        actor_user_id: UUID | None = None,
+    ) -> None:
+        """Goods came back, so the part of the sale the customer never paid stops being owed.
+
+        A credit sale put the unpaid part on the customer's account (a ``charge``). Returning the
+        goods refunded only the money actually collected, so the ledger kept the debt with nothing
+        to reverse it: the customer gave the clothes back and still owed for them.
+        """
+        from app.modules.customer_accounts.service import CustomerAccountService
+
+        customer_id = getattr(order, "customer_id", None)
+        amount = to_money(uncollected, "uncollected")
+        if customer_id is None or amount <= ZERO:
+            return
+        await CustomerAccountService.reverse_unpaid_return(
+            session,
+            tenant_id,
+            customer_id,
+            amount,
+            order_id=getattr(order, "id", None),
+            reason="returned goods: the unpaid part of the sale is no longer owed",
+            actor_user_id=actor_user_id,
+        )
+
+    @staticmethod
     async def reject_refund(
         session: AsyncSession,
         tenant_id: UUID,
@@ -4307,6 +4346,7 @@ class PosService(PosReceiptReads):
         external_reference: object | None = None,
         actor_user_id: UUID | None = None,
         session_id: UUID | None = None,
+        override: bool = False,
     ) -> dict:
         """The terminal refused: record why, and free the reservation.
 
@@ -4391,6 +4431,15 @@ class PosService(PosReceiptReads):
                 )
                 if open_session.status != "OPEN":
                     raise ConflictError("the drawer is closed: open a shift to pay cash out")
+                # Paying cash out of somebody else's drawer is not a write permission: it is their
+                # money and their count. The same two rules every other cash path uses apply here.
+                PosService._ensure_holds_shift(open_session, actor_user_id, override=override)
+                await PosService._ensure_may_operate(
+                    session, tenant_id, open_session, actor_user_id, override=override
+                )
+                PosService._ensure_session_current(
+                    open_session, tz=await PosService._shop_timezone(session, tenant_id)
+                )
             new_row = Refund(
                 tenant_id=tenant_id,
                 payment_id=tender.payment_id,
@@ -4447,11 +4496,37 @@ class PosService(PosReceiptReads):
         row.processed_at = datetime.now(UTC)
         await session.flush()
 
+        outstanding = None
+        if replacement is None:
+            # Nothing was paid out, so the shop still owes this money. Closing the attempt without a
+            # replacement used to leave the customer unpaid with nothing in the pending list to
+            # follow it up: the attempt was history, the debt was not. A follow-up row keeps it
+            # visible until someone actually refunds it.
+            follow_up = Refund(
+                tenant_id=tenant_id,
+                payment_id=row.payment_id,
+                amount=to_money(row.amount, "refund"),
+                reason=f"still owed after rejected refund {refund_id}: {text_reason}"[:255],
+                status="pending",
+                created_by_user_id=actor_user_id,
+            )
+            session.add(follow_up)
+            await session.flush()
+            outstanding = {
+                "refund_id": str(follow_up.id),
+                "method": str(payment.method),
+                "amount": str(to_money(follow_up.amount, "refund")),
+                "order_id": str(payment.order_id),
+                "status": "pending",
+                "manual": True,
+            }
+
         return {
             "refund_id": str(row.id),
             "status": row.status,
             "reason": text_reason,
             "replacement": replacement,
+            "outstanding": outstanding,
         }
 
     @staticmethod

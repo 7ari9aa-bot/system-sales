@@ -216,6 +216,7 @@ describe("the exchange message about money not yet returned", () => {
   it("does not call a pending card reversal refunded", () => {
     const text = settlementSummary({
       ...base,
+      refunded: "0.00",
       awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
     });
     expect(text).toContain("اترد فرق 0.00");
@@ -229,5 +230,17 @@ describe("the exchange message about money not yet returned", () => {
     });
     expect(text).toContain("يدويًا");
     expect(text).toContain("30.00");
+  });
+});
+
+describe("the exchange methods the server actually knows", () => {
+  it("sends bank_transfer, not transfer", () => {
+    const text = settlementSummary({
+      settlement: "refunded",
+      settled_amount: "20.00",
+      refunded: "20.00",
+      settled_by_method: { bank_transfer: "20.00" },
+    });
+    expect(text).toContain("تحويل بنكي");
   });
 });
