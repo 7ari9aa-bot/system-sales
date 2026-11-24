@@ -448,6 +448,8 @@ async def record_chunk(
     waba_id: str | None = None,
     chunk_key: str | None = None,
     contacts_snapshot_received: bool = False,
+    not_shared: bool = False,
+    error: str | None = None,
 ) -> WhatsAppSyncRun | None:
     """Fold one webhook batch into the run's progress.
 
@@ -494,7 +496,11 @@ async def record_chunk(
         run.progress = max(run.progress or 0, min(100, int(progress)))
     # History has Meta's explicit terminal marker. Contact state sync does not: the first
     # initial snapshot is the only observable initial-sync event; subsequent adds/updates are live.
-    if sync_type == WHATSAPP_SYNC_CONTACTS and contacts_snapshot_received:
+    if not_shared and sync_type == WHATSAPP_SYNC_HISTORY:
+        run.state = "not_shared"
+        run.error = str(error or "the merchant chose not to share chat history")[:2000]
+        run.completed_at = run.completed_at or datetime.now(UTC)
+    elif sync_type == WHATSAPP_SYNC_CONTACTS and contacts_snapshot_received:
         run.state = "completed"
         run.progress = 100
         run.completed_at = run.completed_at or datetime.now(UTC)
