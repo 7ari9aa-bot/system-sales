@@ -137,7 +137,9 @@ async def test_a_coexistence_number_is_never_registered(monkeypatch) -> None:
     assert facts["is_on_biz_app"] is True
 
 
-async def test_a_cloud_api_only_number_is_rejected_without_register_or_subscribe(monkeypatch) -> None:
+async def test_a_cloud_api_only_number_is_rejected_without_register_or_subscribe(
+    monkeypatch,
+) -> None:
     calls: list[str] = []
 
     async def fake_register(http, *, phone_number_id, token, pin=None):
@@ -222,7 +224,9 @@ def test_a_replayed_connect_answers_with_the_stored_mode() -> None:
 
 
 async def test_manual_token_verification_rejects_cloud_api_only_numbers() -> None:
-    async with _client(lambda request: httpx.Response(200, json={"id": "456", **_API_ONLY})) as client:
+    async with _client(
+        lambda request: httpx.Response(200, json={"id": "456", **_API_ONLY})
+    ) as client:
         with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
             await whatsapp_spec.whatsapp_connection_spec.verify(
                 {"access_token": "t"}, {"phone_number_id": "456"}, client=client
