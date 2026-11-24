@@ -323,3 +323,129 @@ def test_other_delivery_errors_are_not_unsupported_message_notices() -> None:
         {"statuses": [{"id": "wamid.K", "status": "failed", "errors": [{"code": 131047}]}]},
     )
     assert wa.parse_unsupported_notices(payload) == []
+
+
+# ---------- official Meta coexistence payload regressions ----------
+
+
+def test_official_history_metadata_is_read_from_nested_history_metadata() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "history": [
+            {
+                "metadata": {"phase": 2, "chunk_order": 7, "progress": 100},
+                "threads": [],
+            }
+        ],
+    }
+    batch = wa.parse_history_batches(_envelope("history", value))[0]
+    assert (batch["phase"], batch["chunk_order"], batch["progress"]) == (2, 7, 100)
+
+
+def test_history_declined_webhook_2593109_is_explicit_not_shared() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "request_id": "req-declined",
+        "history": [
+            {
+                "metadata": {"phase": 0, "chunk_order": 0, "progress": 0},
+                "errors": [{"code": 2593109, "message": "User declined history"}],
+                "threads": [],
+            }
+        ],
+    }
+    batch = wa.parse_history_batches(_envelope("history", value))[0]
+    assert batch["not_shared"] is True
+    assert "declined" in batch["error"].lower()
+    assert batch["messages"] == []
+
+
+def test_bsuid_only_history_thread_and_sender_are_preserved() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "history": [
+            {
+                "metadata": {"phase": 1, "chunk_order": 2, "progress": 50},
+                "threads": [
+                    {
+                        "context": {"user_id": "bsuid-customer-1", "parent_user_id": "parent-1"},
+                        "messages": [
+                            {
+                                "id": "wamid.BSUID",
+                                "from_user_id": "bsuid-customer-1",
+                                "timestamp": "1700000000",
+                                "type": "text",
+                                "text": {"body": "مرحبا"},
+                                "history_context": {"status": "read"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+    assert message["customer_ref"] == "bsuid-customer-1"
+    assert message["identity_type"] == "bsuid"
+    assert message["parent_ref"] == "parent-1"
+    assert message["direction"] == "inbound"
+    assert message["status"] == "read"
+
+
+def test_media_placeholder_is_an_explicit_unavailable_media_message() -> None:
+    value = _history_value(
+        messages=[
+            {
+                "id": "wamid.PLACEHOLDER",
+                "from": "201111111111",
+                "timestamp": "1700000000",
+                "type": "media_placeholder",
+                "media_placeholder": {"type": "image"},
+            }
+        ]
+    )
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+    assert message["content_type"] == "unsupported"
+    assert "unavailable" in message["body"].lower()
+    assert message["media_url"] is None
+
+
+def test_app_state_sync_preserves_bsuid_and_provider_timestamp() -> None:
+    payload = _envelope(
+        "smb_app_state_sync",
+        {
+            "metadata": {"phone_number_id": "456", "timestamp": "1700000000"},
+            "state_sync": [
+                {
+                    "type": "contact",
+                    "action": "add",
+                    "contact": {"user_id": "bsuid-contact", "full_name": "مستخدم بلا رقم"},
+                }
+            ],
+        },
+    )
+    contact = wa.parse_state_sync_batches(payload)[0]["contacts"][0]
+    assert contact["identity_ref"] == "bsuid-contact"
+    assert contact["identity_type"] == "bsuid"
+    assert contact["phone"] is None
+    assert contact["timestamp"] == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+def test_echo_recipient_can_be_bsuid_only() -> None:
+    echoes = wa.parse_message_echoes(
+        _envelope(
+            "smb_message_echoes",
+            _echo_value(
+                {
+                    "id": "wamid.ECHO-BSUID",
+                    "to_user_id": "bsuid-recipient",
+                    "timestamp": "1700000000",
+                    "type": "text",
+                    "text": {"body": "وصلت"},
+                }
+            ),
+        )
+    )
+    assert len(echoes) == 1
+    assert echoes[0]["customer_ref"] == "bsuid-recipient"
+    assert echoes[0]["identity_type"] == "bsuid"
