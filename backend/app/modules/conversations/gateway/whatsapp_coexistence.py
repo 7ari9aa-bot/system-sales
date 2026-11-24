@@ -333,9 +333,27 @@ def parse_history_batches(payload: dict) -> list[dict]:
                 if normalized is not None:
                     messages.append(normalized)
         errors = [item for item in history_items if _history_error_code(item) == 2593109]
+        chunk_material = json.dumps(
+            {
+                "request_id": _request_id(value),
+                "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
+                "chunk_order": _int_or_none(sync_metadata.get("chunk_order", value.get("chunk_order"))),
+                "progress": _int_or_none(sync_metadata.get("progress", value.get("progress"))),
+                "message_ids": sorted(
+                    str(message.get("channel_message_id") or "")
+                    for message in messages
+                    if message.get("channel_message_id")
+                ),
+                "not_shared": bool(errors),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        chunk_key = hashlib.sha256(chunk_material.encode("utf-8")).hexdigest()
         batches.append(
             {
                 "phone_number_id": _phone_number_id(value),
+                "chunk_key": chunk_key,
                 "request_id": _request_id(value),
                 "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
                 "chunk_order": _int_or_none(sync_metadata.get("chunk_order", value.get("chunk_order"))),
