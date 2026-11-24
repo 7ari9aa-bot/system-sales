@@ -1442,6 +1442,7 @@ async def _apply_account_signals(
                 health["partner_removed"] = {
                     "event": signal.get("event") or "",
                     "reason": signal.get("reason") or "",
+                    "initiated_by": signal.get("initiated_by") or "",
                     "waba_id": signal.get("waba_id") or "",
                     "at": now,
                 }
