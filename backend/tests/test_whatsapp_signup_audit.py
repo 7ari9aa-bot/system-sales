@@ -67,12 +67,19 @@ def harness(monkeypatch):
     async def verify(*_a, **_k):
         return types.SimpleNamespace(identity_config={"account_id": "2002"}, display_name="Shop")
 
+    async def platform_facts(*_a, **_k):
+        # A Cloud API number: the connect path registers it, which is what this test stubs above.
+        # Meta's own answer about the number is a separate read, stubbed so the flow never leaves
+        # the process.
+        return {"is_on_biz_app": False, "platform_type": "CLOUD_API"}
+
     monkeypatch.setattr(signup, "_exchange_code_for_token", exchange)
     monkeypatch.setattr(signup, "_verify_phone_belongs_to_waba", ok)
     monkeypatch.setattr(signup, "_phone_display_name", display)
     monkeypatch.setattr(signup, "_register_phone_number", register)
     monkeypatch.setattr(signup, "_subscribe_app_to_waba", ok)
     monkeypatch.setattr(signup, "_take_pending_pin", pin)
+    monkeypatch.setattr(signup, "_number_platform_facts", platform_facts)
     monkeypatch.setattr(
         "app.modules.platform.integration_verifier.verify_channel_credentials", verify
     )

@@ -78,13 +78,22 @@ def test_an_unknown_feature_is_a_key_error_not_a_blank_badge():
         roadmap.state_for("teleportation")
 
 
-def test_the_signup_records_coexistence_and_defaults_to_cloud_api():
+def test_the_signup_asks_for_coexistence_by_default():
+    """The channel's target journey is a number that already runs the WhatsApp Business app.
+
+    The popup therefore asks Meta for the Business App flow unless a caller says otherwise; the
+    stored mode is still decided from Meta's own answer (see test_whatsapp_coexistence_onboarding).
+    """
     body = WhatsAppSignupCompleteBody(
         code="abcdefgh", waba_id="123", phone_number_id="456", onboarding_mode="coexistence"
     )
     assert body.onboarding_mode == "coexistence"
     default = WhatsAppSignupCompleteBody(code="abcdefgh", waba_id="123", phone_number_id="456")
-    assert default.onboarding_mode == "cloud_api"
+    assert default.onboarding_mode == "coexistence"
+    explicit = WhatsAppSignupCompleteBody(
+        code="abcdefgh", waba_id="123", phone_number_id="456", onboarding_mode="cloud_api"
+    )
+    assert explicit.onboarding_mode == "cloud_api"
 
 
 def test_a_made_up_onboarding_mode_is_refused():

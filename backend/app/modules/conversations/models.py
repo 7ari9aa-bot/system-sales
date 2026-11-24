@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -575,3 +576,93 @@ class PageActivity(TenantMixin, AppendOnlyCreatedAtMixin, WorkspaceScopeMixin, B
         Index("ix_page_activity_tenant_channel_time", "tenant_id", "channel", "occurred_at"),
         Index("ix_page_activity_tenant_unread", "tenant_id", "channel", "read_at"),
     )
+
+
+#: WhatsApp Business App (coexistence) sync kinds. Meta calls the contacts one
+#: ``smb_app_state_sync`` on the wire; we store the short name and translate in the adapter.
+WHATSAPP_SYNC_CONTACTS = "contacts"
+WHATSAPP_SYNC_HISTORY = "history"
+WHATSAPP_SYNC_TYPES = frozenset({WHATSAPP_SYNC_CONTACTS, WHATSAPP_SYNC_HISTORY})
+
+#: The lifecycle of ONE sync kind for ONE connection. Meta allows each kind to be requested once
+#: per onboarding, inside a 24-hour window, and re-requesting means offboarding and re-linking —
+#: so every state here has to be durable, never inferred from a message arriving.
+WHATSAPP_SYNC_STATES = frozenset(
+    {
+        "pending",  # decided, not sent yet
+        "requested",  # Meta accepted the request and returned a request_id
+        "in_progress",  # chunks/batches are arriving
+        "completed",  # Meta reported progress 100 (history) or the sync finished
+        "not_shared",  # the merchant declined history sharing (Meta error 2593109)
+        "failed",  # Meta refused the request; only a re-link can retry
+        "expired",  # the 24-hour window closed before the request was sent
+    }
+)
+
+
+class WhatsAppSyncRun(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """One WhatsApp Business App data-sync request: contacts or chat history.
+
+    Coexistence is not just "the number works both ways". Meta moves the app's contacts and up to
+    180 days of chat history to the partner through ``POST /{phone-number-id}/smb_app_data``, and
+    the merchant's consent to that transfer is time-boxed: both requests must be sent within 24
+    hours of onboarding, and each may be sent ONCE. A second request is not a retry — it needs an
+    offboarding and a fresh link. That is why this is a table and not a Redis flag: losing the
+    ``request_id`` means losing the ability to follow the transfer, and re-sending by accident is
+    the failure the merchant cannot undo.
+
+    ``onboarding_epoch`` is what makes "once per connection" real. It is stamped when the number
+    proved coexistence, so a re-linked number legitimately starts a new run while a retried
+    webhook, a restarted worker or a second request in the same connection all hit the same row.
+    """
+
+    __tablename__ = "whatsapp_sync_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "phone_number_id",
+            "sync_type",
+            "onboarding_epoch",
+            name="uq_whatsapp_sync_runs_tenant_number_type_epoch",
+        ),
+        Index(
+            "ix_whatsapp_sync_runs_tenant_number",
+            "tenant_id",
+            "phone_number_id",
+            "sync_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_number_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    waba_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: contacts | history
+    sync_type: Mapped[str] = mapped_column(String(31), nullable=False)
+    #: The connection this run belongs to (see the class docstring).
+    onboarding_epoch: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: pending | requested | in_progress | completed | not_shared | failed | expired
+    state: Mapped[str] = mapped_column(
+        String(31), nullable=False, default="pending", server_default="pending"
+    )
+    #: Meta's handle for THIS transfer — the only way to follow its progress.
+    request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: When we sent the request. Also the audit trail for "was it inside the 24h window".
+    requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: onboarding_completed_at + 24h: after this Meta no longer accepts a first request.
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: 0-100 as Meta reports it. 100 means the whole transfer is done.
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    #: per-phase bookkeeping: {"0": {"chunks": 3, "last_order": 7}, ...}
+    phases: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+    #: How many webhook batches/chunks this run has already accepted (dedupe evidence).
+    chunks_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    #: Rows this run actually wrote — the number the settings screen shows.
+    messages_stored: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    #: Why it failed, in the shop's language: Meta's code plus our reading of it.
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

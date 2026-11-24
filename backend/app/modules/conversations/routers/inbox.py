@@ -282,6 +282,11 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
                 "id": str(m.id),
                 "direction": m.direction,
                 "sender_type": m.sender_type,
+                # Where an OUTBOUND message came from: "whatsapp_business_app" for a reply the
+                # merchant typed on their phone (an echo), "whatsapp_history" for one imported
+                # from the app's own log, None for anything sent here. The bubble labels it, so
+                # a human reply from the phone is never drawn as the AI's.
+                "source": _message_source(m),
                 "body": None if m.deleted else m.body,
                 "media_url": None if m.deleted else media_urls.get(m.id, m.media_url),
                 "media_type": None if m.deleted else m.media_type,
@@ -310,6 +315,15 @@ def _present_messages(rows, media_urls: dict, outside_page: dict | None = None) 
             }
         )
     return items
+
+
+def _message_source(m) -> str | None:
+    """The import origin stamped on a message, or None for a live one."""
+    meta = m.provider_metadata if isinstance(m.provider_metadata, dict) else {}
+    source = meta.get("imported_from")
+    if not isinstance(source, str):
+        return None
+    return source.strip() or None
 
 
 _CARD_KEYS = ("share", "story_reply", "story_mention")

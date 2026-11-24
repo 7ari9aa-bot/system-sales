@@ -45,9 +45,18 @@ def _meta(seen: list[tuple[str, str]], *, status_reply, register_reply=None):
             if callable(status_reply):
                 return status_reply(request)
             return httpx.Response(200, json={"status": status_reply})
+        # The catch-all is Meta's answer about the number itself: its name, AND the two fields
+        # the connect now requires before it may record a mode. A plain Cloud API number, so the
+        # registration path these tests exercise still runs.
         return httpx.Response(
             200,
-            json={"id": "777", "display_phone_number": "+20 100", "verified_name": "Fihrist Shop"},
+            json={
+                "id": "777",
+                "display_phone_number": "+20 100",
+                "verified_name": "Fihrist Shop",
+                "is_on_biz_app": False,
+                "platform_type": "CLOUD_API",
+            },
         )
 
     return handler
