@@ -13,12 +13,12 @@ away again. Everything below exists because of that.
 
 | Area | Rule |
 |---|---|
-| Onboarding | `is_on_biz_app` + `platform_type` decide the mode. A Business App number is never recorded as `cloud_api`. |
+| Onboarding | `is_on_biz_app` + `platform_type` decide the mode. A Business App number is never recorded as `cloud_api`; a Cloud API-only number is rejected for this product. |
 | Registration | `_register_phone_number` is **never** called on the coexistence path; the app is still subscribed to the WABA. |
-| Sync | Contacts (`smb_app_state_sync`) and history (`history`) are requested **once** per onboarding epoch, inside Meta's 24-hour window, with `request_id` persisted. |
-| History | Stored at Meta's own timestamp, **no AI answer**, and no fake 24-hour service window. |
+| Sync | Contacts (`smb_app_state_sync`) and history (`history`) are requested **once** per onboarding epoch, inside Meta's 24-hour window. A separate committed reservation is written before either Meta request; ambiguous outcomes are never resent automatically. |
+| History | Nested phase/chunk/progress metadata, 2593109 decline webhooks, BSUID threads and message statuses are parsed. Messages are stored at Meta's timestamp, **no AI answer**, and no fake 24-hour service window. |
 | Echoes | A message the merchant sends from the phone lands as a **human** outbound message and pulls the thread to `waiting_human`, so the agent cannot answer the same customer twice. |
-| Identity | The phone when there is one, the **BSUID** when there is not. A message naming nobody is refused. |
+| Identity | The phone when there is one, the **BSUID** when there is not, including history, contacts and app echoes. A message naming nobody is refused. |
 | Lifecycle | `PARTNER_REMOVED` / `ACCOUNT_OFFBOARDED` disconnect the channel and stop sending; `ACCOUNT_RECONNECTED` requires the number to be verified again. |
 | Throughput | 20 messages a second **per phone number**, paced in Redis so every worker shares the budget. |
 
@@ -56,9 +56,9 @@ six-month-old conversation.
 | Field | Parser | Effect |
 |---|---|---|
 | `history` | `parse_history` | messages stored with `imported_from=whatsapp_history`, no outbox event |
-| `smb_app_state_sync` | `parse_app_state_sync` | contacts become customers; **no** conversation is opened; a removal is not a deletion |
+| `smb_app_state_sync` | `parse_app_state_sync` | phone- and BSUID-keyed contacts reconcile to customers; timestamped removals mark the app-contact relation inactive without deleting customer history; **no** conversation is opened |
 | `smb_message_echoes` | `parse_app_echoes` | outbound human message + `request_human_takeover` |
-| `messages` (131060) | `parse_unsupported_notice` | recorded as a notice; does not degrade the channel |
+| `messages` (131060) | `parse_unsupported_notice` | a visible system notice is stored in the recipient's inbox thread; does not degrade the channel |
 
 ## Error codes that are not failures
 
