@@ -729,7 +729,10 @@ class IngestService:
             already = (
                 await session.execute(
                     select(Message.id)
-                    .where(Message.tenant_id == tenant_id, Message.channel_message_id == mid)
+                    .where(
+                        Message.tenant_id == tenant_id,
+                        Message.channel_message_id == f"unsupported:{mid}",
+                    )
                     .limit(1)
                 )
             ).scalar_one_or_none()
