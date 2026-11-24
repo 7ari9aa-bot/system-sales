@@ -5,8 +5,8 @@ The review's P0 gaps 1-5, one test each:
 * the popup no longer asks Meta to switch the WhatsApp Business app flow off, and the body
   defaults to coexistence instead of cloud_api;
 * the mode is derived from ``is_on_biz_app`` + ``platform_type`` read back from Graph;
-* a coexistence number is never registered again (that spends one of Meta's 10 attempts and can
-  lock the number for 72 hours), while a Cloud-API-only number still is;
+* a coexistence number is never registered again, and Cloud-API-only numbers are rejected for
+  this product rather than being silently connected through a different onboarding mode;
 * an unreadable or unexpected answer fails the connect instead of recording a mode nobody proved;
 * a replayed connect answers with the mode that was STORED, not the one the retry guessed.
 """
