@@ -106,7 +106,10 @@ def may_request(run: WhatsAppSyncRun | None, now: datetime, deadline: datetime) 
     if run.request_id:
         return False, "this connection already asked Meta for this sync"
     if run.state in {"pending", "dispatching", "in_progress", "completed", "requested"}:
-        return False, "this connection already has a sync reservation or webhook activity; do not resend"
+        return (
+            False,
+            "this connection already has a sync reservation or webhook activity; do not resend",
+        )
     if run.state == "expired":
         return False, "the 24-hour window Meta allows for the first sync request has closed"
     if run.state == "failed":
@@ -279,7 +282,9 @@ async def _request_sync_durable(
             allowed, reason = may_request(run, now, deadline)
             if not allowed:
                 if run is None:
-                    raise ValidationError(f"Could not start the WhatsApp {sync_type} sync: {reason}.")
+                    raise ValidationError(
+                        f"Could not start the WhatsApp {sync_type} sync: {reason}."
+                    )
                 return run
             run = WhatsAppSyncRun(
                 id=uuid.uuid4(),
