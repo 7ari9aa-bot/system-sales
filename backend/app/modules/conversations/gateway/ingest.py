@@ -13,6 +13,7 @@ owned by the webhook router.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -27,6 +28,7 @@ from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
+from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import IdempotencyKey, Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -466,12 +468,19 @@ class IngestService:
             # A duplicate webhook, or the same message arriving in history and live: the first
             # copy wins and nothing is written twice.
             return 0
+        identity_extra = {
+            key: item.get(key)
+            for key in ("identity_type", "username", "parent_ref")
+            if item.get(key) is not None
+        }
         customer = await CustomerService.get_or_create_by_identity(
             session,
             tenant_id,
             channel=channel,
             external_id=item["customer_ref"],
             name=None,
+            phone=item.get("phone"),
+            identity_extra=identity_extra or None,
         )
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=channel
@@ -539,7 +548,8 @@ class IngestService:
                     direction=item["direction"],
                     sender_type="customer" if item["direction"] == "inbound" else "agent",
                     source="whatsapp_history",
-                    status="received" if item["direction"] == "inbound" else "sent",
+                    status=item.get("status")
+                    or ("received" if item["direction"] == "inbound" else "sent"),
                 )
             stored += batch_stored
             if epoch:
@@ -556,6 +566,9 @@ class IngestService:
                     chunk_order=batch.get("chunk_order"),
                     progress=batch.get("progress"),
                     messages_stored=batch_stored,
+                    chunk_key=batch.get("chunk_key"),
+                    not_shared=bool(batch.get("not_shared")),
+                    error=batch.get("error"),
                 )
         return stored
 
@@ -592,18 +605,53 @@ class IngestService:
                     sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS,
                     request_id=batch.get("request_id"),
                     messages_stored=0,
+                    chunk_key=batch.get("chunk_key"),
+                    contacts_snapshot_received=True,
                 )
             for contact in batch.get("contacts") or []:
+                identity_ref = str(contact.get("identity_ref") or contact.get("phone") or "").strip()
+                if not identity_ref:
+                    continue
+                action_at = contact.get("timestamp") or batch.get("timestamp")
+                identity_extra = {
+                    "identity_type": contact.get("identity_type") or "phone",
+                    "whatsapp_app_contact": contact.get("action") != "remove",
+                    "whatsapp_app_contact_action": contact.get("action") or "add",
+                    "whatsapp_app_contact_updated_at": action_at.isoformat() if action_at else None,
+                    "username": contact.get("username"),
+                    "parent_ref": contact.get("parent_ref"),
+                }
                 if contact.get("action") == "remove":
+                    customer = await CustomerService.find_by_identity(
+                        session, tenant_id, channel, identity_ref
+                    )
+                    if customer is None:
+                        continue
+                    identity = await CustomerService.channel_identity(
+                        session, tenant_id, customer.id, channel
+                    )
+                    if identity is not None:
+                        previous = identity.extra if isinstance(identity.extra, dict) else {}
+                        previous_at = previous.get("whatsapp_app_contact_updated_at")
+                        # Older or duplicate removals cannot overwrite a newer re-add.
+                        if action_at and previous_at:
+                            try:
+                                if datetime.fromisoformat(previous_at) > action_at:
+                                    continue
+                            except (TypeError, ValueError):
+                                pass
+                        identity.extra = {**previous, **identity_extra}
                     continue
                 customer = await CustomerService.get_or_create_by_identity(
                     session,
                     tenant_id,
                     channel=channel,
-                    external_id=contact["phone"],
+                    external_id=identity_ref,
                     name=contact.get("name"),
+                    phone=contact.get("phone"),
+                    identity_extra=identity_extra,
                 )
-                if contact.get("name") and not customer.name:
+                if contact.get("name"):
                     customer.name = contact["name"]
                 stored += 1
         return stored
@@ -688,13 +736,47 @@ class IngestService:
             ).scalar_one_or_none()
             if already is not None:
                 continue
-            logger.info(
-                "whatsapp.unsupported_message tenant=%s channel=%s message_id=%s detail=%s",
+            recipient_ref = str(notice.get("recipient_ref") or "").strip()
+            if not recipient_ref:
+                logger.warning(
+                    "whatsapp.unsupported_message_without_recipient tenant=%s channel=%s message_id=%s",
+                    tenant_id,
+                    channel,
+                    mid,
+                )
+                continue
+            customer = await CustomerService.get_or_create_by_identity(
+                session,
                 tenant_id,
-                channel,
-                mid,
-                notice.get("details"),
+                channel=channel,
+                external_id=recipient_ref,
+                name=None,
+                identity_extra={"identity_type": "phone"},
             )
+            conversation = await ConversationService.get_or_create(
+                session, tenant_id, customer_id=customer.id, channel=channel
+            )
+            detail = str(notice.get("details") or notice.get("title") or "").strip()
+            session.add(
+                Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation.id,
+                    channel=channel,
+                    direction="inbound",
+                    sender_type="system",
+                    body=(
+                        "A WhatsApp message could not be delivered to FIHRIST because it came "
+                        "from an unsupported device or message type."
+                        + (f" Meta: {detail}" if detail else "")
+                    ),
+                    content_type="unsupported",
+                    channel_message_id=f"unsupported:{mid}",
+                    status="received",
+                    payload={"notice_code": 131060, "provider_message_id": mid},
+                    provider_metadata={"imported_from": "whatsapp_unsupported_notice"},
+                )
+            )
+            conversation.last_message_at = datetime.now(UTC)
             recorded += 1
         return recorded
 
