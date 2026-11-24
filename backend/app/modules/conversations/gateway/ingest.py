@@ -13,7 +13,6 @@ owned by the webhook router.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
