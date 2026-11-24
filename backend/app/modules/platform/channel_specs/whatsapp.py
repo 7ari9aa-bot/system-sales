@@ -1,13 +1,9 @@
-"""WhatsApp Cloud API — connection spec.
+"""WhatsApp Business App Coexistence — connection verification.
 
-The owner pastes a permanent Cloud API token + the phone number id. The live
-verification reads the number back from Graph and REJECTS when the id does not
-match the token, so a copy/paste slip can never connect somebody else's number.
-
-The same read asks for the two fields Meta documents as proof that a number runs
-on the WhatsApp Business app AND the Cloud API together (`is_on_biz_app` +
-`platform_type: CLOUD_API`). They are recorded as facts on the connection, so
-the coexistence flow never has to trust what a browser told it.
+The token and phone number id originate from Meta Embedded Signup. Verification reads the
+number back from Graph, checks that the id belongs to the token, and fails closed unless
+Meta confirms the same number is active in both WhatsApp Business app and Cloud API.
+No Cloud API-only number can be connected through this spec.
 """
 
 from __future__ import annotations
