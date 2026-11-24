@@ -209,3 +209,25 @@ describe("the idempotency key follows the whole body", () => {
     expect(print(a)).toBe(print(b));
   });
 });
+
+describe("the exchange message about money not yet returned", () => {
+  const base = { settlement: "refunded", settled_amount: "100.00", settled_by_method: {}, uncollected: "0.00" };
+
+  it("does not call a pending card reversal refunded", () => {
+    const text = settlementSummary({
+      ...base,
+      awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
+    });
+    expect(text).toContain("اترد فرق 0.00");
+    expect(text).toContain("لسه مستنية تأكيد الماكينة");
+  });
+
+  it("names the manual reversal a cash-only shop has to do", () => {
+    const text = settlementSummary({
+      ...base,
+      terminal_only: [{ method: "card", amount: "30.00" }],
+    });
+    expect(text).toContain("يدويًا");
+    expect(text).toContain("30.00");
+  });
+});

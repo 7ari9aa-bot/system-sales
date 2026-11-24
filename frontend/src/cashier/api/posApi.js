@@ -118,6 +118,8 @@ export const posApi = {
    * paid back. This is the other half of that promise.
    */
   listPendingRefunds: () => api("/pos/refunds/pending"),
+  rejectRefund: (refundId, body) =>
+    api(`/pos/refunds/${refundId}/reject`, { method: "POST", body: JSON.stringify(body) }),
   confirmRefund: async (refundId, externalReference) =>
     post(`/pos/refunds/${seg(refundId)}/confirm`, {
       external_reference: String(externalReference ?? "").trim(),

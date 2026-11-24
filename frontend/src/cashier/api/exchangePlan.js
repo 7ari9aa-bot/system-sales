@@ -80,9 +80,28 @@ export function settlementSummary(result) {
   const methods = Object.entries(byMethod)
     .map(([method, value]) => `${METHOD_LABEL[method] ?? method} ${value}`)
     .join(" · ");
+  // A card reversal is promised at the counter and proven at the machine, and a cash-only shop
+  // reverses it by hand. Neither is money returned yet, so neither may be announced as refunded.
+  const pending = (result?.awaiting_confirmation ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  );
+  const manual = (result?.terminal_only ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  );
   const parts = [];
   if (result?.settlement === "collected") parts.push(`اتحصّل فرق ${amount.toFixed(2)} ج.م`);
-  else if (result?.settlement === "refunded") parts.push(`اترد فرق ${amount.toFixed(2)} ج.م`);
+  else if (result?.settlement === "refunded") {
+    const confirmed = Math.max(amount - pending, 0);
+    parts.push(`اترد فرق ${confirmed.toFixed(2)} ج.م`);
+    if (pending > 0) {
+      parts.push(`منها ${pending.toFixed(2)} ج.م لسه مستنية تأكيد الماكينة`);
+    }
+    if (manual > 0) {
+      parts.push(`${manual.toFixed(2)} ج.م يترد يدويًا على الماكينة ويُسجَّل رقم المرجع`);
+    }
+  }
   else if (result?.settlement === "exchange_only") parts.push("استبدال بدون فرق");
   else parts.push("الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات)");
   if (methods) parts.push(methods);

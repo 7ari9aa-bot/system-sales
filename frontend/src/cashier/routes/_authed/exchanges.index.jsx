@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
 import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
 import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
+import { mergePendingRefunds, withoutPendingRefund } from "@/cashier/api/pendingRefunds";
 import ReturnOriginalTable from "@/cashier/components/returns/ReturnOriginalTable";
 import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
 import ExchangeNewItemsTable from "@/cashier/components/exchanges/ExchangeNewItemsTable";
@@ -227,7 +228,8 @@ function ExchangeScreen({ session }) {
       // The money is the server's answer, not the screen's arithmetic: it knows which tenders the
       // original sale collected and how much of each was still refundable.
       toast.success(`تم الاستبدال ${res.new_receipt_number}. ${settlementSummary(res)}`, { duration: 12000 });
-      setPendingRefunds(res.awaiting_confirmation ?? []);
+      // Merge, never replace: an older card reversal may still be waiting for its terminal.
+      setPendingRefunds((prev) => mergePendingRefunds(prev, res?.awaiting_confirmation));
       intentRef.current = null;
       setDialog(null);
       await qc.invalidateQueries({ queryKey: ["cashier"] });
@@ -286,7 +288,7 @@ function ExchangeScreen({ session }) {
       <PendingRefundsPanel
         pending={pendingRefunds}
         onConfirmed={(res) =>
-          setPendingRefunds((prev) => prev.filter((row) => row.refund_id !== res.refund_id))
+          setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))
         }
       />
       <ExchangeInvoiceSearch

@@ -1354,7 +1354,7 @@ class OrderService:
                         .where(
                             Refund.tenant_id == tenant_id,
                             Refund.payment_id == payment.id,
-                            Refund.status != "rejected",
+                            Refund.status.in_(CONFIRMED_REFUND_STATES),
                         )
                     )
                 ).scalar_one()
@@ -1847,13 +1847,15 @@ class OrderService:
         collected_binds = ", ".join(
             f":collected_{i}" for i in range(len(COLLECTED_PAYMENT_STATUSES))
         )
+        confirmed_binds = ", ".join(f":confirmed_{i}" for i in range(len(CONFIRMED_REFUND_STATES)))
         params: dict[str, object] = {
             "t": tenant_id,
             "oid": order_id,
-            # A REJECTED refund asserts no money went back; every other state
-            # (pending / approved / processed) is money the merchant has given
-            # up — same rule as `_settled_and_refunded`.
-            "rejected": "rejected",
+            # Only a CONFIRMED refund is money the merchant has given up. A pending reversal is a
+            # promise waiting on the terminal: counting it here lowered the customer's value (and
+            # `_settled_and_refunded`/`refund_position`) for money that had not left the card yet.
+            # Same vocabulary as `_settled_and_refunded` and `money.refund_state` (ADR-047).
+            **{f"confirmed_{i}": status for i, status in enumerate(CONFIRMED_REFUND_STATES)},
         }
         params.update(
             {f"collected_{i}": status for i, status in enumerate(COLLECTED_PAYMENT_STATUSES)}
@@ -1872,7 +1874,8 @@ class OrderService:
                 "            JOIN orders o ON o.id = p.order_id "
                 "            WHERE o.customer_id = c.id "
                 "              AND o.tenant_id = :t AND p.tenant_id = :t "
-                "              AND r.tenant_id = :t AND r.status <> :rejected"
+                "              AND r.tenant_id = :t "
+                f"              AND r.status IN ({confirmed_binds})"
                 "), 0) "
                 ", 0), "
                 "    updated_at = now() "
@@ -1915,7 +1918,7 @@ class OrderService:
                     Refund.tenant_id == tenant_id,
                     OrderPayment.tenant_id == tenant_id,
                     OrderPayment.order_id == order.id,
-                    Refund.status != "rejected",
+                    Refund.status.in_(CONFIRMED_REFUND_STATES),
                 )
             )
         ).scalar_one()

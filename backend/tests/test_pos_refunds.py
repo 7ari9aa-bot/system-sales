@@ -246,7 +246,10 @@ async def test_split_tender_return_is_split_across_the_original_methods(db, tena
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
     # The third piece: the cash tender is exhausted, so 100 goes back on the card.
-    assert second["refund_by_method"] == {"card": "100.00"}
+    # A pending reversal is not money returned: it is named as awaiting, not as refunded.
+    assert second["refund_by_method"] == {}
+    assert second["awaiting_confirmation"][0]["method"] == "card"
+    assert second["awaiting_confirmation"][0]["amount"] == "100.00"
     assert second["refund_mode"] == "tender"
 
     summary = await PosService.drawer_summary(db, tenant_ctx.tenant_id, shift.id)
@@ -326,7 +329,8 @@ async def test_a_card_refund_waits_for_the_terminal_reference(db, tenant_ctx):
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
-    assert result["refund_by_method"] == {"card": "100.00"}
+    assert result["refund_by_method"] == {}
+    assert result["awaiting_confirmation"][0]["method"] == "card"
     assert result["awaiting_confirmation"] == [
         {
             "refund_id": result["awaiting_confirmation"][0]["refund_id"],
@@ -433,7 +437,11 @@ async def test_a_cash_only_shop_reports_the_card_reversal_instead_of_recording_i
     assert result["refund_mode"] == "cash_only"
     assert result["refunded"] == "0.00"
     assert result["terminal_only"] == [{"method": "card", "amount": "100.00"}]
-    assert await _refund_rows(db, tenant_ctx) == []
+    # Recorded as a pending manual reversal: described AND provable, still not money returned.
+    (row,) = await _refund_rows(db, tenant_ctx)
+    assert row.status == "pending"
+    assert Decimal(str(row.amount)) == Decimal("100.00")
+    assert result["awaiting_confirmation"][0]["refund_id"] == str(row.id)
 
 
 async def test_a_second_return_cannot_refund_the_same_piece_twice(db, tenant_ctx):
@@ -1599,8 +1607,9 @@ async def test_cash_only_shop_is_told_this_refunds_card_part_not_the_whole_card(
     assert out["refund_mode"] == "cash_only"
     assert out["terminal_only"] == [{"method": "card", "amount": "30.00"}]
     assert out["refunded"] == "0.00"
-    assert out["awaiting_confirmation"] == []
-    assert await _refund_rows(db, tenant_ctx) == []
+    (row,) = await _refund_rows(db, tenant_ctx)
+    assert row.status == "pending"
+    assert out["awaiting_confirmation"][0]["refund_id"] == str(row.id)
 
 
 @pytest.mark.asyncio
@@ -1665,3 +1674,194 @@ async def test_a_void_reports_the_card_reversal_it_left_pending(db, tenant_ctx) 
     assert pending["method"] == "card"
     assert pending["amount"] == "100.00"
     assert out["terminal_only"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_pending_reversal_does_not_lower_the_customer_value(db, tenant_ctx) -> None:
+    """The report's blocker 1: pending was subtracted from the customer's value as if it went back.
+
+    1,000 on card, a 300 return the machine has not confirmed: the customer still paid 1,000 and
+    ``refund_position`` must not call the invoice refunded.
+    """
+    from app.modules.orders.service import OrderService
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=10,
+        payments=[{"method": "card", "amount": "1000.00", "reference": "AUTH-1"}],
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("1000.00")
+
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 3}],
+    )
+    assert out["refunded"] == "0.00"
+    assert len(out["awaiting_confirmation"]) == 1
+
+    # Nothing moved: the promise is not the payment.
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("1000.00")
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("0.00")
+    assert position["refund_state"] != "refunded"
+
+    # Confirming the terminal's reference is what makes it money returned.
+    await PosService.confirm_refund(
+        db,
+        tenant_ctx.tenant_id,
+        uuid.UUID(out["awaiting_confirmation"][0]["refund_id"]),
+        "RRN-300",
+    )
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("700.00")
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("300.00")
+
+
+@pytest.mark.asyncio
+async def test_cash_only_records_the_manual_reversal_as_a_pending_row(db, tenant_ctx) -> None:
+    """The report's blocker 3: terminal_only was described in the answer and recorded nowhere."""
+    from app.modules.orders.service import OrderService
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-2"}],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "30.00"}],
+    )
+    assert out["refund_mode"] == "cash_only"
+    assert out["terminal_only"] == [{"method": "card", "amount": "30.00"}]
+    assert out["refunded"] == "0.00"
+    # The proof exists before the cashier touches the terminal, and it is not money returned yet.
+    (row,) = await _refund_rows(db, tenant_ctx)
+    assert row.status == "pending"
+    assert Decimal(str(row.amount)) == Decimal("30.00")
+    assert out["awaiting_confirmation"][0]["refund_id"] == str(row.id)
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("100.00")
+
+    await PosService.confirm_refund(db, tenant_ctx.tenant_id, row.id, "RRN-30")
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("70.00")
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("30.00")
+
+
+@pytest.mark.asyncio
+async def test_a_declined_reversal_is_rejected_and_the_room_comes_back(db, tenant_ctx) -> None:
+    """The report's follow-up: a declined card had no way out, and its hold blocked a retry."""
+    from app.modules.errors import ConflictError
+    from app.modules.orders.service import OrderService
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "card", "amount": "200.00", "reference": "AUTH-4"}],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    refund_id = uuid.UUID(out["awaiting_confirmation"][0]["refund_id"])
+
+    rejected = await PosService.reject_refund(
+        db, tenant_ctx.tenant_id, refund_id, "الماكينة رفضت العملية"
+    )
+    assert rejected["status"] == "rejected"
+    assert await PosService.list_pending_refunds(db, tenant_ctx.tenant_id) == []
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("0.00")
+
+    # The reservation is released: the same money can be refunded again, once.
+    again = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert len(again["awaiting_confirmation"]) == 1
+
+    with pytest.raises(ConflictError):
+        await PosService.reject_refund(db, tenant_ctx.tenant_id, refund_id, "تاني")
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_reversal_can_be_refunded_on_another_tender(db, tenant_ctx) -> None:
+    """Cash instead of the declined card: a new row, never a second claim on the same money."""
+    from app.modules.orders.service import OrderService
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=10,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "900.00", "reference": "AUTH-5"},
+        ],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "100.00"}],
+    )
+    refund_id = uuid.UUID(out["awaiting_confirmation"][0]["refund_id"])
+    result = await PosService.reject_refund(
+        db,
+        tenant_ctx.tenant_id,
+        refund_id,
+        "الماكينة مش متصلة",
+        replacement_method="cash",
+    )
+    assert result["replacement"]["method"] == "cash"
+    assert result["replacement"]["status"] == "processed"
+    assert Decimal(str(result["replacement"]["amount"])) == Decimal("100.00")
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("100.00")

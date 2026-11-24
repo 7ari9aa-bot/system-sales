@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, or_, select
@@ -4126,7 +4127,7 @@ class PosService(PosReceiptReads):
         if cash_only:
             # A shop that starts cash-only must not have the till claim a card reversal it cannot
             # perform. The non-cash tenders are named for the cashier to reverse on the terminal
-            # by hand, and no Refund row is written for them.
+            # by hand.
             #
             # The figure to reverse is the part of THIS refund that a refund-to-source would have
             # put on a non-cash tender — never the tender's whole remaining balance. A 30 return
@@ -4146,6 +4147,48 @@ class PosService(PosReceiptReads):
                 {"method": method, "amount": str(to_money(amount_, method))}
                 for method, amount_ in non_cash.items()
             ]
+            # The manual reversal is a financial operation, so it is a row: amount, method, who
+            # took it, when, and — after the cashier types the terminal's reference — the proof.
+            # Describing it in the response alone left the shop with no evidence that the money
+            # went back, and no way to compute its effect (the report's third blocker).
+            manual_rows: list[Refund] = []
+            for tender in tenders:
+                share = non_cash.get(tender.method)
+                if not share or tender.payment_id is None:
+                    continue
+                manual_rows.append(
+                    Refund(
+                        tenant_id=tenant_id,
+                        payment_id=tender.payment_id,
+                        amount=to_money(share, tender.method),
+                        reason=f"{reason or 'refund'} (manual terminal reversal)",
+                        status="pending",
+                        created_by_user_id=actor_user_id,
+                    )
+                )
+            for row in manual_rows:
+                session.add(row)
+            if manual_rows:
+                await session.flush()
+            awaiting_manual = [
+                {
+                    "refund_id": str(row.id),
+                    "method": method_name,
+                    "amount": str(row.amount),
+                    "order_id": str(order.id),
+                    "order_number": getattr(order, "number", None),
+                    "manual": True,
+                }
+                for row, method_name in zip(
+                    manual_rows,
+                    [
+                        tender.method
+                        for tender in tenders
+                        if non_cash.get(tender.method) and tender.payment_id is not None
+                    ],
+                    strict=False,
+                )
+            ]
             cash_part = to_money(value - sum(non_cash.values(), ZERO), "cash part")
             cash_tenders = [tender for tender in tenders if tender.method == CASH]
             if cash_part <= ZERO or not cash_tenders:
@@ -4155,6 +4198,13 @@ class PosService(PosReceiptReads):
                     "mode": "cash_only",
                     "uncollected": to_money(0, "uncollected"),
                     "terminal_only": terminal_only,
+                    "awaiting_confirmation": awaiting_manual,
+                    "slices": [
+                        SimpleNamespace(
+                            payment_id=row.payment_id, method=method_name, amount=row.amount
+                        )
+                        for row, method_name in zip(manual_rows, non_cash.keys(), strict=False)
+                    ],
                 }
             tenders = cash_tenders
             value = cash_part
@@ -4223,14 +4273,126 @@ class PosService(PosReceiptReads):
             for row, slice_ in zip(written, plan.slices, strict=True)
             if row.status == "pending"
         ]
+        # "refunded" is money that LEFT THE SHOP, so only the rows the terminal (or the drawer) has
+        # settled count. The planned total used to be reported here, which told the screen and the
+        # outbox that a pending card reversal had already gone back — the report's blocker 1 on the
+        # reporting side. What is still promised is in ``awaiting_confirmation``, by amount.
+        settled_rows = [
+            (row, slice_)
+            for row, slice_ in zip(written, plan.slices, strict=True)
+            if row.status == "processed"
+        ]
+        settled_total = to_money(
+            sum((to_money(row.amount, "refund") for row, _slice in settled_rows), ZERO),
+            "refunded",
+        )
+        settled_by_method: dict[str, Decimal] = {}
+        for row, slice_ in settled_rows:
+            settled_by_method[slice_.method] = settled_by_method.get(slice_.method, ZERO) + (
+                to_money(row.amount, slice_.method)
+            )
         return {
             "mode": "tender",
-            "refunded": plan.refunded,
+            "refunded": settled_total,
             "uncollected": plan.uncollected,
-            "by_method": plan.by_method,
+            "by_method": settled_by_method,
             "slices": list(plan.slices),
             "awaiting_confirmation": awaiting,
             "terminal_only": terminal_only,
+        }
+
+    @staticmethod
+    async def reject_refund(
+        session: AsyncSession,
+        tenant_id: UUID,
+        refund_id: UUID,
+        reason: object,
+        *,
+        replacement_method: str | None = None,
+        external_reference: object | None = None,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """The terminal refused: record why, and free the reservation.
+
+        Until this existed a pending reversal could only be confirmed, so a card the machine
+        declined stayed ``pending`` forever — reserved money (``REFUND_COUNTED_STATES``) the
+        customer never received, and impossible to refund another way without risking a double
+        refund. Rejecting writes ``rejected`` with the reason: that state is outside the reserved
+        vocabulary, so the room comes back exactly once and a second refund on the same money is
+        refused by the arithmetic, not by a flag.
+
+        ``replacement_method`` refunds the same amount on another tender of the sale (cash when the
+        terminal is down). It is a NEW row, because it is a different reversal; the rejected one
+        keeps its place in history.
+        """
+        from app.modules.errors import ConflictError
+        from app.modules.orders.models import OrderPayment, Refund
+
+        text_reason = str(reason or "").strip()
+        if not text_reason:
+            raise ValidationError("rejecting a refund needs a reason")
+        if len(text_reason) > 255:
+            raise ValidationError("the rejection reason must be at most 255 characters")
+        row = (
+            await session.execute(
+                select(Refund).where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise ValidationError("no such refund")
+        if row.status != "pending":
+            raise ConflictError(f"refund {refund_id} is already {row.status}")
+        payment = (
+            await session.execute(
+                select(OrderPayment).where(
+                    OrderPayment.tenant_id == tenant_id, OrderPayment.id == row.payment_id
+                )
+            )
+        ).scalar_one_or_none()
+        if payment is None:
+            raise ValidationError("the refunded payment no longer exists")
+
+        row.status = "rejected"
+        row.reason = f"{row.reason or 'refund'} — rejected: {text_reason}"[:255]
+        row.processed_at = datetime.now(UTC)
+        await session.flush()
+
+        replacement = None
+        if replacement_method:
+            method = str(replacement_method).strip()
+            tenders, _payments = await PosService._refundable_tenders(
+                session, tenant_id, payment.order_id
+            )
+            tender = next((t for t in tenders if t.method == method and t.room > 0), None)
+            if tender is None:
+                raise ValidationError(
+                    f"no room left on {method} for this sale, so it cannot take the replacement"
+                )
+            reference = str(external_reference or "").strip()
+            confirmed = method == CASH or bool(reference)
+            new_row = Refund(
+                tenant_id=tenant_id,
+                payment_id=tender.payment_id,
+                amount=to_money(min(to_money(row.amount, "refund"), tender.room), method),
+                reason=f"replacement for rejected refund {refund_id}: {text_reason}"[:255],
+                status="processed" if confirmed else "pending",
+                external_reference=reference or None,
+                processed_at=datetime.now(UTC) if confirmed else None,
+                created_by_user_id=actor_user_id,
+            )
+            session.add(new_row)
+            await session.flush()
+            replacement = {
+                "refund_id": str(new_row.id),
+                "method": method,
+                "amount": str(new_row.amount),
+                "status": new_row.status,
+            }
+        return {
+            "refund_id": str(row.id),
+            "status": row.status,
+            "reason": text_reason,
+            "replacement": replacement,
         }
 
     @staticmethod

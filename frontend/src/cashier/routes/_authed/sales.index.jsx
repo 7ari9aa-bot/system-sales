@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Download, FilePlus2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/cashier/components/ui/button";
 import SalesLogFilters from "@/cashier/components/sales/SalesLogFilters";
@@ -15,6 +15,7 @@ import { useShifts } from "@/cashier/api/useShifts";
 import { useShiftSales } from "@/cashier/api/usePosSale";
 import { useWorkingSession } from "@/cashier/api/useShifts";
 import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
+import { mergePendingRefunds, withoutPendingRefund } from "@/cashier/api/pendingRefunds";
 import { posApi, newIntent } from "@/cashier/api/posApi";
 import { filterRows, totalsOf } from "@/cashier/api/salesLog";
 import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/cashier/lib/format";
@@ -38,6 +39,8 @@ export default function SalesLogPage() {
   const [voidError, setVoidError] = useState(null);
   // A void refunds through the same settlement as a return, so its card reversal is pending too.
   const [pendingRefunds, setPendingRefunds] = useState([]);
+  // A void refunds through the same settlement, so its card reversal is owed after a reload too.
+  const [manualReversals, setManualReversals] = useState([]);
   const [voidPending, setVoidPending] = useState(false);
 
   const { user } = useAuth();
@@ -54,6 +57,19 @@ export default function SalesLogPage() {
   const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}?shift=${encodeURIComponent(shiftId)}`);
 
   // الإلغاء بيرد الفلوس من درج الوردية المفتوحة، فلازم نعرف الوردية المفتوحة الحالية.
+  useEffect(() => {
+    let alive = true;
+    posApi
+      .listPendingRefunds()
+      .then((rows) => {
+        if (alive) setPendingRefunds((prev) => mergePendingRefunds(prev, rows));
+      })
+      .catch(() => {}); // a read failure must not block the till
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const working = useWorkingSession();
   async function confirmVoid({ orderId, reason }) {
     if (voidPending) return;
@@ -67,7 +83,8 @@ export default function SalesLogPage() {
     try {
       const res = await posApi.voidSale(sessionId, { orderId, reason }, newIntent());
       toast.success(`اتلغت الفاتورة ${voidInvoice?.number ?? ""} — مستند الإلغاء ${res?.void_receipt_number ?? ""}`.trim());
-      setPendingRefunds(res?.awaiting_confirmation ?? []);
+      setPendingRefunds((prev) => mergePendingRefunds(prev, res?.awaiting_confirmation));
+      setManualReversals(res?.terminal_only ?? []);
       setVoidInvoice(null);
       await salesQuery.refetch();
     } catch (e) {
@@ -134,10 +151,21 @@ export default function SalesLogPage() {
     <div className="-mx-2 -my-2 min-h-[calc(100vh-1rem)] bg-[#FAF7F2] px-4 pb-12 pt-6 text-[#0F172A] sm:-mx-3 sm:px-8 lg:px-10 lg:pt-9">
       <PendingRefundsPanel
         pending={pendingRefunds}
-        onConfirmed={(res) =>
-          setPendingRefunds((prev) => prev.filter((row) => row.refund_id !== res.refund_id))
-        }
+        onConfirmed={(res) => setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))}
+        onRejected={(res) => setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))}
       />
+      {manualReversals.length ? (
+        <div
+          className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+          data-testid="manual-reversals"
+        >
+          <span className="font-bold">لازم ترد المبلغ ده يدويًا على الماكينة: </span>
+          {manualReversals
+            .map((row) => `${row.method === "card" ? "بطاقة" : row.method === "wallet" ? "محفظة" : row.method} ${row.amount}`)
+            .join(" · ")}
+          {" — بعد ما تعكس المبلغ على الجهاز سجّل رقم المرجع في لوحة الردود المعلقة."}
+        </div>
+      ) : null}
       <div className="mb-[22px] flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-[26px] font-extrabold leading-[1.2] tracking-[-.03em] sm:text-[32px]">سجل المبيعات</h1>

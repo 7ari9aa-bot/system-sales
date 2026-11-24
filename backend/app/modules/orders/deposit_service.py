@@ -27,7 +27,7 @@ from app.modules.orders.deposit import (
 )
 from app.modules.orders.models import DepositPolicy, OrderPayment, Refund
 from app.modules.orders.money import COLLECTED_PAYMENT_STATUSES, net_collected
-from app.modules.orders.service import OrderService
+from app.modules.orders.service import CONFIRMED_REFUND_STATES, OrderService
 
 __all__ = ["DepositService"]
 
@@ -225,7 +225,7 @@ class DepositService:
                 Refund.tenant_id == tenant_id,
                 OrderPayment.tenant_id == tenant_id,
                 OrderPayment.order_id == order.id,
-                Refund.status != "rejected",
+                Refund.status.in_(CONFIRMED_REFUND_STATES),
             )
             .scalar_subquery()
         )

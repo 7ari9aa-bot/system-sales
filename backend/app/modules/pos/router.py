@@ -1131,6 +1131,36 @@ async def list_pending_refunds(ctx: PosReadCtx) -> list[dict]:
     return await PosService.list_pending_refunds(ctx.session, ctx.tenant_id)
 
 
+class RejectRefundRequest(BaseModel):
+    """The terminal refused: why, and (optionally) where the money went instead."""
+
+    reason: str = Field(min_length=1, max_length=255)
+    replacement_method: str | None = Field(default=None, max_length=31)
+    external_reference: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/refunds/{refund_id}/reject")
+async def reject_refund(
+    refund_id: UUID, body: RejectRefundRequest, ctx: PosWriteCtx, override: OverrideDep
+):
+    """Record a failed card/wallet reversal and release the money it was holding.
+
+    Without this a declined reversal stayed pending forever: counted as reserved, so the sale could
+    not be refunded another way, and the customer's money had not come back either. Rejecting frees
+    the reservation exactly once; ``replacement_method`` refunds the same amount on another tender
+    as a NEW row, so the rejected attempt stays in history.
+    """
+    return await PosService.reject_refund(
+        ctx.session,
+        ctx.tenant_id,
+        refund_id,
+        body.reason,
+        replacement_method=body.replacement_method,
+        external_reference=body.external_reference,
+        actor_user_id=ctx.user.id,
+    )
+
+
 @router.post("/refunds/{refund_id}/confirm")
 async def confirm_refund(
     refund_id: UUID, body: ConfirmRefundRequest, ctx: PosWriteCtx, override: OverrideDep
