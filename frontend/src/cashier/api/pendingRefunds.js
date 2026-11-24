@@ -20,3 +20,16 @@ export function mergePendingRefunds(previous = [], incoming = []) {
 export function withoutPendingRefund(rows = [], refundId) {
   return (rows ?? []).filter((row) => row.refund_id !== refundId);
 }
+
+/**
+ * The list after the machine REFUSED a reversal.
+ *
+ * The refused row is gone (it is not pending any more), but the money is still owed: the answer
+ * carries an ``outstanding`` row and it has to appear on the screen in the same update, or the
+ * cashier closes the sale believing the customer was paid. Both the returns and the exchanges
+ * screen use this, so the two can never drift.
+ */
+export function applyRejectedRefund(rows = [], result = {}) {
+  const remaining = withoutPendingRefund(rows, result?.refund_id);
+  return result?.outstanding ? mergePendingRefunds(remaining, [result.outstanding]) : remaining;
+}

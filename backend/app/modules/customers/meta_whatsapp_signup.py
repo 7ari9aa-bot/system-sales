@@ -718,6 +718,10 @@ async def _prepare_number(
     onboarding_mode, coexistence_status = _resolve_onboarding_mode(platform_facts, requested_mode)
     registration_pin: str | None = None
     if onboarding_mode == "coexistence":
+        # A coexistence number is already registered inside the Business app, and
+        # _resolve_onboarding_mode refuses every number that is not coexistence — so this is the
+        # only branch a connect can take. The register branch below is kept for the day a
+        # Cloud-API-only number is allowed back in; today it cannot be reached from this route.
         logger.info(
             "whatsapp.coexistence_number_left_registered phone_number_id=%s", phone_number_id
         )

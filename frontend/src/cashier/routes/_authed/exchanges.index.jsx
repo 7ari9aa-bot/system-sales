@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
 import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
 import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
-import { mergePendingRefunds, withoutPendingRefund } from "@/cashier/api/pendingRefunds";
+import { applyRejectedRefund, mergePendingRefunds, withoutPendingRefund } from "@/cashier/api/pendingRefunds";
 import ReturnOriginalTable from "@/cashier/components/returns/ReturnOriginalTable";
 import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
 import ExchangeNewItemsTable from "@/cashier/components/exchanges/ExchangeNewItemsTable";
@@ -291,15 +291,9 @@ function ExchangeScreen({ session }) {
         onConfirmed={(res) =>
           setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))
         }
-        onRejected={(res) =>
-          setPendingRefunds((prev) =>
-            // The attempt is rejected but the customer was not paid: the follow-up row is the money
-            // still owed, and it stays on this screen until someone settles it.
-            res?.outstanding
-              ? mergePendingRefunds(withoutPendingRefund(prev, res.refund_id), [res.outstanding])
-              : withoutPendingRefund(prev, res.refund_id),
-          )
-        }
+        // The attempt is rejected but the customer was not paid: the follow-up row is the money
+        // still owed, and it appears on this screen in the same update.
+        onRejected={(res) => setPendingRefunds((prev) => applyRejectedRefund(prev, res))}
       />
       <ExchangeInvoiceSearch
         term={invoiceTerm}

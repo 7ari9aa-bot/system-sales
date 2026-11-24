@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergePendingRefunds, withoutPendingRefund } from "./pendingRefunds";
+import { applyRejectedRefund, mergePendingRefunds, withoutPendingRefund } from "./pendingRefunds";
 
 describe("the pending-refund list", () => {
   it("keeps an older promise when a new operation returns its own", () => {
@@ -30,5 +30,35 @@ describe("the pending-refund list", () => {
   it("drops a row once it is settled", () => {
     const rows = [{ refund_id: "r1" }, { refund_id: "r2" }];
     expect(withoutPendingRefund(rows, "r1").map((r) => r.refund_id)).toEqual(["r2"]);
+  });
+
+  it("keeps the money on screen when the machine refuses the reversal", () => {
+    // Blocker 6: the row was dropped with the refusal, so the cashier saw an empty panel while the
+    // customer was still owed the amount. The outstanding row must appear in the same update.
+    const pending = [
+      { refund_id: "r1", method: "card", amount: "100.00", order_number: "INV-1" },
+      { refund_id: "r2", method: "card", amount: "40.00", order_number: "INV-2" },
+    ];
+    const next = applyRejectedRefund(pending, {
+      refund_id: "r1",
+      status: "rejected",
+      outstanding: { refund_id: "r9", method: "card", amount: "100.00", order_number: "INV-1", manual: true },
+    });
+
+    expect(next.map((r) => r.refund_id)).toEqual(["r2", "r9"]);
+    expect(next.find((r) => r.refund_id === "r9")).toMatchObject({
+      amount: "100.00",
+      order_number: "INV-1",
+      manual: true,
+    });
+  });
+
+  it("drops the row when the refusal leaves nothing owed", () => {
+    const next = applyRejectedRefund([{ refund_id: "r1", amount: "10.00" }], {
+      refund_id: "r1",
+      status: "rejected",
+      outstanding: null,
+    });
+    expect(next).toEqual([]);
   });
 });
