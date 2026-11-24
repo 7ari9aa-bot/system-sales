@@ -466,3 +466,10 @@ async def test_history_webhook_decline_marks_run_not_shared(session) -> None:
     )
     assert run.state == "not_shared"
     assert "declined" in run.error
+
+
+def test_an_ambiguous_dispatching_reservation_is_never_sent_twice() -> None:
+    run = _run(state="dispatching")
+    allowed, reason = sync.may_request(run, NOW, sync.deadline_from(NOW))
+    assert not allowed
+    assert "outcome is unknown" in reason
