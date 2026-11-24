@@ -57,10 +57,10 @@ def test_meta_saying_the_number_is_on_the_app_makes_it_coexistence() -> None:
     assert (mode, status) == ("coexistence", signup.COEXISTENCE_VERIFIED)
 
 
-def test_a_number_that_is_not_on_the_app_is_cloud_api_and_says_so() -> None:
-    """No silent fallback: the refusal is a recorded status, not a missing field."""
-    mode, status = signup._resolve_onboarding_mode(_API_ONLY, "coexistence")
-    assert (mode, status) == ("cloud_api", signup.COEXISTENCE_NOT_ON_APP)
+def test_a_number_that_is_not_on_the_app_is_rejected_for_this_product() -> None:
+    """FIHRIST targets existing WhatsApp Business app numbers; no Cloud API fallback."""
+    with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
+        signup._resolve_onboarding_mode(_API_ONLY, "coexistence")
 
 
 def test_an_unexpected_platform_is_refused_rather_than_guessed() -> None:
