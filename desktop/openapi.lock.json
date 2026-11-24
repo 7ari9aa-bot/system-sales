@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 663,
-    "sha256": "802726389b70246c8e860411679012a7922b4d5d50937a1666e173924046825c",
+    "sha256": "2d76c738d9e6ea8edff0971cb3ab87a4e0c4636152301452568e21eebe03b653",
     "typed_operations": 358
   },
   "spec": {
@@ -25838,6 +25838,18 @@
             "sync_state": {
               "title": "Sync State",
               "type": "string"
+            },
+            "throughput": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Throughput"
             }
           },
           "required": [

@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import ChannelIcon from "@/components/dashboard/ChannelIcon";
+import WhatsAppSyncCard from "@/components/settings/WhatsAppSyncCard";
 import { Badge } from "@/components/dashboard/ui";
 
 // WhatsApp is deliberately absent: it has no credential form, because a pasted token cannot
@@ -1088,9 +1089,16 @@ export default function ChannelsSettings() {
                             data-testid="whatsapp-coexistence-note"
                           >
                             {isAr
-                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده."
-                              : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path."}
+                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده. المجموعات والمكالمات والكتالوج مش بيوصلوا لفهرست — دي حدود واجهة Meta نفسها مش نقص في الربط."
+                              : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path. Groups, calls and the catalog do not reach FIHRIST: that is Meta's API, not a gap in the link."}
                           </p>
+                        )}
+
+                        {/* The live half of the link: what Meta is still sending, a reservation it
+                            never answered, and how close the number is to its 20/s cap. Read from
+                            the status endpoint, not from the state captured at link time. */}
+                        {channel.id === "whatsapp" && isConnected && (
+                          <WhatsAppSyncCard lang={isAr ? "ar" : "en"} />
                         )}
 
                         {/* Instagram can be linked two ways and the merchant's account decides which

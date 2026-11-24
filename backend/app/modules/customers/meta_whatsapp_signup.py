@@ -1009,6 +1009,8 @@ class WhatsAppCoexistenceStatusOut(BaseModel):
     disconnect_reason: str | None = None
     deadline_at: str | None = None
     needs_attention: bool = False
+    #: How much of the number's 20-per-second send budget is in use, and what 130429 means.
+    throughput: dict | None = None
     contacts: WhatsAppSyncRunOut | None = None
     history: WhatsAppSyncRunOut | None = None
 
@@ -1049,6 +1051,9 @@ async def whatsapp_coexistence_status(
         offboarded=bool(removed),
     )
     connection = config.get("_connection") if isinstance(config.get("_connection"), dict) else {}
+    from app.modules.conversations.gateway import whatsapp_throughput
+
+    throughput = await whatsapp_throughput.usage(str(config.get("phone_number_id") or ""))
     return WhatsAppCoexistenceStatusOut(
         connected=integration.status in ("active", "connected"),
         status=integration.status,
@@ -1066,6 +1071,7 @@ async def whatsapp_coexistence_status(
         disconnect_reason=(removed.get("reason") or None) if removed else None,
         deadline_at=snapshot["deadline_at"],
         needs_attention=snapshot["needs_attention"],
+        throughput=throughput,
         contacts=snapshot["contacts"],
         history=snapshot["history"],
     )
