@@ -105,8 +105,8 @@ def may_request(run: WhatsAppSyncRun | None, now: datetime, deadline: datetime) 
         return True, ""
     if run.request_id:
         return False, "this connection already asked Meta for this sync"
-    if run.state in {"pending", "dispatching"}:
-        return False, "the previous request outcome is unknown; re-link before another one-shot request"
+    if run.state in {"pending", "dispatching", "in_progress", "completed", "requested"}:
+        return False, "this connection already has a sync reservation or webhook activity; do not resend"
     if run.state == "expired":
         return False, "the 24-hour window Meta allows for the first sync request has closed"
     if run.state == "failed":
