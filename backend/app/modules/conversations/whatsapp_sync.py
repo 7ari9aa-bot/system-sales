@@ -555,6 +555,25 @@ async def request_all(
     return out
 
 
+def contacts_settled_by_deadline(run: WhatsAppSyncRun, now: datetime | None = None) -> bool:
+    """Whether the contact sync's 24-hour window has closed without an explicit completion.
+
+    Meta never says "this is the whole contact list" on the coexistence field: the same
+    ``smb_app_state_sync`` carries the initial snapshot AND every later add/update/remove. Waiting
+    for a signal that does not exist would leave the channel "syncing" forever, so the deadline is
+    the honest end — it means "we have everything Meta sent us in the window", never "the list is
+    complete". The two are kept apart on purpose: the state word still says only that the initial
+    contacts were received.
+    """
+    if run.deadline_at is None:
+        return False
+    moment = now or datetime.now(UTC)
+    deadline = run.deadline_at
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    return moment >= deadline
+
+
 def channel_sync_state(
     contacts: WhatsAppSyncRun | None,
     history: WhatsAppSyncRun | None,
@@ -576,11 +595,12 @@ def channel_sync_state(
         if run is not None and run.state in ("failed", "expired"):
             return STATE_SYNC_FAILED
     if contacts is not None and contacts.state not in ("completed", "not_shared"):
-        return (
-            STATE_CONTACTS_SYNC_IN_PROGRESS
-            if contacts.state == "in_progress"
-            else STATE_CONTACTS_SYNC_PENDING
-        )
+        if not contacts_settled_by_deadline(contacts, now):
+            return (
+                STATE_CONTACTS_SYNC_IN_PROGRESS
+                if contacts.state == "in_progress"
+                else STATE_CONTACTS_SYNC_PENDING
+            )
     if history is not None and history.state == "not_shared":
         return STATE_HISTORY_NOT_SHARED
     if history is not None and history.state != "completed":
@@ -674,9 +694,19 @@ async def record_chunk(
         run.error = str(error or "the merchant chose not to share chat history")[:2000]
         run.completed_at = run.completed_at or datetime.now(UTC)
     elif sync_type == WHATSAPP_SYNC_CONTACTS and contacts_snapshot_received:
-        run.state = "completed"
-        run.progress = 100
-        run.completed_at = run.completed_at or datetime.now(UTC)
+        # The first smb_app_state_sync proves the list STARTED arriving, not that it finished: the
+        # same field carries later add/update/remove deltas, so "a contact batch arrived" and "the
+        # list is complete" are different facts. The snapshot is recorded as such and the run stays
+        # open — it is completed only by an explicit progress=100 from Meta, or by the 24-hour
+        # window closing (see channel_sync_state).
+        phases["contacts_snapshot_received_at"] = (
+            phases.get("contacts_snapshot_received_at") or datetime.now(UTC).isoformat()
+        )
+        if (run.progress or 0) >= 100:
+            run.state = "completed"
+            run.completed_at = run.completed_at or datetime.now(UTC)
+        elif run.state != "completed":
+            run.state = "in_progress"
     elif run.state == "not_shared":
         # A decline is terminal too: a late/duplicate history chunk cannot reopen it.
         pass
@@ -757,9 +787,14 @@ def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
     """
     if run is None:
         return None
+    phases = run.phases if isinstance(run.phases, dict) else {}
     return {
         "sync_type": run.sync_type,
         "state": run.state,
+        # The initial contact snapshot is its own fact, so the screen can say "we have the first
+        # list, still listening" instead of calling it a finished sync.
+        "snapshot_received_at": phases.get("contacts_snapshot_received_at"),
+        "settled_by": "deadline" if contacts_settled_by_deadline(run) else None,
         "progress": int(run.progress or 0),
         "messages_stored": int(run.messages_stored or 0),
         "chunks": int(run.chunks_seen or 0),

@@ -160,3 +160,62 @@ def test_the_status_route_is_published_and_typed() -> None:
     operation = schema["paths"][path]["get"]
     ok = operation["responses"]["200"]["content"]["application/json"]["schema"]
     assert ok.get("$ref", "").endswith("WhatsAppCoexistenceStatusOut")
+
+
+# ── when the contact sync is finished (and when it only looks finished) ─────────────────────────
+
+
+def test_a_running_contact_sync_blocks_ready_while_its_window_is_open() -> None:
+    contacts = _run(sync_type="contacts", state="in_progress", deadline_at=NOW + timedelta(hours=3))
+    history = _run(state="completed")
+
+    assert (
+        sync.channel_sync_state(contacts, history, now=NOW) == sync.STATE_CONTACTS_SYNC_IN_PROGRESS
+    )
+    assert not sync.is_ready(sync.channel_sync_state(contacts, history, now=NOW))
+
+
+def test_the_contact_window_closing_settles_it_without_claiming_the_list_was_complete() -> None:
+    """Meta never says "that was the whole list" on smb_app_state_sync: the window is the end.
+
+    Before the deadline the channel is still syncing; after it, nothing is owed to Meta — but the
+    state word still only claims the INITIAL contacts were received.
+    """
+    contacts = _run(
+        sync_type="contacts", state="in_progress", deadline_at=NOW - timedelta(minutes=1)
+    )
+    history = _run(state="completed")
+
+    assert sync.contacts_settled_by_deadline(contacts, NOW) is True
+    assert sync.channel_sync_state(contacts, history, now=NOW) == sync.STATE_READY
+    # And the screen's sentence for contacts never claims a complete list.
+    assert "complete" not in sync.STATE_COPY[sync.STATE_CONTACTS_SYNC_COMPLETED]["en"].lower()
+
+
+def test_a_history_decline_still_needs_the_contacts_window_to_close() -> None:
+    contacts = _run(sync_type="contacts", state="in_progress", deadline_at=NOW + timedelta(hours=1))
+    history = _run(state="not_shared")
+
+    assert (
+        sync.channel_sync_state(contacts, history, now=NOW) == sync.STATE_CONTACTS_SYNC_IN_PROGRESS
+    )
+    contacts.deadline_at = NOW - timedelta(seconds=1)
+    assert sync.channel_sync_state(contacts, history, now=NOW) == sync.STATE_HISTORY_NOT_SHARED
+
+
+def test_the_snapshot_says_which_fact_it_is_reporting() -> None:
+    received = _run(
+        sync_type="contacts",
+        state="in_progress",
+        deadline_at=datetime.now(UTC) - timedelta(minutes=5),
+        phases={"contacts_snapshot_received_at": "2026-11-24T09:00:00+00:00"},
+    )
+    snapshot = sync.run_snapshot(received)
+
+    assert snapshot["state"] == "in_progress"
+    assert snapshot["snapshot_received_at"] == "2026-11-24T09:00:00+00:00"
+    assert snapshot["settled_by"] == "deadline"
+
+    # A run still inside its window reports no settlement at all.
+    open_run = _run(sync_type="contacts", state="in_progress", deadline_at=NOW + timedelta(hours=1))
+    assert sync.run_snapshot(open_run)["settled_by"] is None
