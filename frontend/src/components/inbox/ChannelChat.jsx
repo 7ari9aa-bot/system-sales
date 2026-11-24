@@ -38,6 +38,8 @@ import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import ImageViewer from "./whatsapp/ImageViewer";
 import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
+import MessageSource from "./whatsapp/MessageSource";
+import CoexistenceBanner from "./whatsapp/CoexistenceBanner";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
@@ -497,6 +499,10 @@ export default function ChannelChat({
           )}
         </div>
       )}
+
+      {/* The link to the merchant's own phone app is a channel fact, not a conversation one:
+          a thread that quietly stops updating needs to say why, right where it stopped. */}
+      {isWhatsApp && <CoexistenceBanner lang={lang} />}
 
       {/* Messages Scroll Area */}
       <div
@@ -1349,6 +1355,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null,
     const time = (
       <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
         <span>{m.time}</span>
+        <MessageSource m={m} lang={_lang} />
         {out && <MessageStatus status={m.status} lang={_lang} />}
       </div>
     );
@@ -1458,16 +1465,91 @@ function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null,
 }
 
 // Voice Note Player inside message bubble
-function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, checkColor: _checkColor }) {
+/** Format seconds as m:ss — the length the audio element actually reports. */
+export function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  const total = Math.round(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A voice note, played for real.
+ *
+ * This used to be a decoration: a toggle that flipped an icon, a hardcoded "0:14" and a wave that
+ * lit up by index. The audio was never fetched, so a customer's voice note — the most common
+ * message on a coexistence number — could not be heard at all.
+ *
+ * Now it is an <audio> element over the message's real media URL: play/pause, the real duration,
+ * a progress bar bound to playback, and an explicit state when the file cannot be loaded (an
+ * expired provider link is common) instead of a bubble that looks playable and does nothing.
+ */
+export function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, checkColor: _checkColor }) {
+  const audioRef = React.useRef(null);
   const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const src = m.mediaUrl || "";
+
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio || failed) return;
+    if (audio.paused) {
+      // play() rejects when the browser blocks it or the source is gone; either way the bubble
+      // must stop pretending it is playing.
+      audio.play().then(() => setPlaying(true)).catch(() => setFailed(true));
+    } else {
+      audio.pause();
+      setPlaying(false);
+    }
+  };
+
+  const seek = (event) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * duration;
+    setPosition(audio.currentTime);
+  };
+
+  const ratio = duration ? Math.min(1, position / duration) : 0;
+  const shown = failed
+    ? (isWhatsApp ? "تعذر تشغيل الرسالة الصوتية" : "This voice note could not be loaded")
+    : playing || position
+      ? formatDuration(position)
+      : formatDuration(duration) || m.duration || "0:00";
 
   return (
     <div className="flex items-center gap-3 py-1 min-w-[210px] sm:min-w-[250px]">
+      {src && (
+        <audio
+          ref={audioRef}
+          src={src}
+          preload="metadata"
+          data-testid="voice-audio"
+          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
+          onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime || 0)}
+          onEnded={() => {
+            setPlaying(false);
+            setPosition(0);
+          }}
+          onError={() => {
+            setFailed(true);
+            setPlaying(false);
+          }}
+          className="hidden"
+        />
+      )}
       <button
         type="button"
-        onClick={() => setPlaying(!playing)}
+        onClick={toggle}
+        disabled={!src || failed}
+        aria-label={playing ? "Pause voice note" : "Play voice note"}
+        data-testid="voice-toggle"
         className={cn(
           "h-9 w-9 rounded-full flex items-center justify-center shrink-0 shadow-xs transition-transform hover:scale-105",
+          (!src || failed) && "opacity-50",
           isWhatsApp
             ? "bg-[#00a884] text-white"
             : out
@@ -1479,14 +1561,19 @@ function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, che
       </button>
 
       <div className="flex-1 space-y-1">
-        {/* Animated / styled sound wave */}
-        <div className="flex items-center gap-0.5 h-5">
-          {[8, 14, 18, 12, 22, 16, 20, 10, 14, 18, 12, 16, 20, 14, 10, 18, 14, 12, 8].map((h, i) => (
+        {/* The wave is the progress bar: bars fill up to where playback actually is. */}
+        <div
+          className="flex items-center gap-0.5 h-5 cursor-pointer"
+          onClick={seek}
+          data-testid="voice-progress"
+          role="presentation"
+        >
+          {[8, 14, 18, 12, 22, 16, 20, 10, 14, 18, 12, 16, 20, 14, 10, 18, 14, 12, 8].map((h, i, all) => (
             <span
               key={i}
               className={cn(
                 "w-1 rounded-full transition-colors",
-                playing && i < 11
+                i / all.length <= ratio
                   ? isWhatsApp ? "bg-[var(--wa-green)]" : "bg-primary"
                   : isWhatsApp ? "bg-[var(--wa-text-faint)]" : out ? "bg-white/60" : "bg-black/30"
               )}
@@ -1495,7 +1582,7 @@ function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, che
           ))}
         </div>
         <div className="flex items-center justify-between text-[10.5px] opacity-80 tabular-nums">
-          <span>{m.duration || "0:14"}</span>
+          <span data-testid="voice-duration" dir={failed ? "auto" : "ltr"}>{shown}</span>
           <span dir="ltr" className="flex items-center gap-1">
             <span>{time}</span>
             {out && checkmarks && (
@@ -1509,7 +1596,6 @@ function VoiceBubble({ m, out, time, status, checkmarks, isWhatsApp = false, che
     </div>
   );
 }
-
 function getMessageDayKey(iso) {
   if (!iso) return "";
   const d = new Date(iso);

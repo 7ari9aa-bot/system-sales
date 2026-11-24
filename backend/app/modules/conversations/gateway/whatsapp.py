@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 
 import httpx
 
@@ -23,12 +22,14 @@ from app.modules.conversations.gateway.base import (
     StatusUpdate,
     parse_provider_body,
 )
-from app.modules.conversations.gateway.whatsapp_flows import (
-    flow_reply_text,
-    parse_flow_reply,
+from app.modules.conversations.gateway.whatsapp_coexistence import (
+    extract_content,
+    parse_history_batches,
+    parse_message_echoes,
+    parse_state_sync_batches,
+    parse_unsupported_notices,
 )
 from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
-from app.modules.conversations.gateway.whatsapp_order import order_summary, parse_order
 from app.modules.conversations.gateway.whatsapp_templates import build_send_components
 from app.modules.conversations.policy import template_language
 
@@ -156,6 +157,12 @@ class WhatsAppAdapter:
     )
     #: `account_update` events that mean Meta has limited or switched off the account.
     RESTRICTING_EVENTS = frozenset({"ACCOUNT_RESTRICTION", "DISABLED_UPDATE", "ACCOUNT_VIOLATION"})
+    #: `account_update` events that mean the PARTNER was taken off the account: our app is no
+    #: longer allowed to send or receive for this number, so the channel has to go disconnected
+    #: instead of looking healthy while every send fails.
+    PARTNER_REMOVED_EVENTS = frozenset({"PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"})
+    #: The account came back: the number has to be verified again before anything is sent.
+    PARTNER_RECONNECTED_EVENTS = frozenset({"ACCOUNT_RECONNECTED"})
 
     def resolve_template_account(self, payload: dict) -> str | None:
         """The business account id when this envelope is only account-level news.
@@ -174,7 +181,17 @@ class WhatsAppAdapter:
                 for c in changes
             ):
                 return None
-            account = str(entry.get("id") or "").strip()
+            # A coexistence `account_update` names the business account inside `waba_info`;
+            # `entry.id` is not guaranteed to be the WABA (it can be the phone number), and
+            # routing by it put the event on a channel that does not exist.
+            account = ""
+            for change in changes:
+                value = change.get("value") if isinstance(change.get("value"), dict) else {}
+                waba = (value.get("waba_info") or {}).get("waba_id")
+                if waba:
+                    account = str(waba).strip()
+                    break
+            account = account or str(entry.get("id") or "").strip()
             if not account:
                 return None
             accounts.add(account)
@@ -215,7 +232,36 @@ class WhatsAppAdapter:
                 value = value if isinstance(value, dict) else {}
                 field = change.get("field")
                 event = _short(value.get("event"))
-                if field == self.ACCOUNT_UPDATE_FIELD and event in self.RESTRICTING_EVENTS:
+                waba_info = (
+                    value.get("waba_info") if isinstance(value.get("waba_info"), dict) else {}
+                )
+                if field == self.ACCOUNT_UPDATE_FIELD and event in self.PARTNER_REMOVED_EVENTS:
+                    # The merchant removed our app from their account (or Meta offboarded it).
+                    # Nothing can be sent any more, and pretending otherwise is how a dead channel
+                    # keeps collecting replies nobody receives.
+                    signals.append(
+                        {
+                            "kind": "offboarded",
+                            "event": event,
+                            "waba_id": _short(waba_info.get("waba_id")),
+                            "reason": _short(
+                                value.get("reason")
+                                or (value.get("offboarding_info") or {}).get("reason")
+                                or (value.get("partner_removal") or {}).get("reason")
+                            ),
+                        }
+                    )
+                elif (
+                    field == self.ACCOUNT_UPDATE_FIELD and event in self.PARTNER_RECONNECTED_EVENTS
+                ):
+                    signals.append(
+                        {
+                            "kind": "reconnected",
+                            "event": event,
+                            "waba_id": _short(waba_info.get("waba_id")),
+                        }
+                    )
+                elif field == self.ACCOUNT_UPDATE_FIELD and event in self.RESTRICTING_EVENTS:
                     signals.append(
                         {
                             "kind": "restriction",
@@ -246,17 +292,32 @@ class WhatsAppAdapter:
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-                contacts = {c.get("wa_id"): c for c in value.get("contacts", [])}
+                # A contact is keyed by its phone number OR by its Business-Scoped User ID: a
+                # person who shares no number arrives with `user_id` only, and looking them up by
+                # `wa_id` alone left their name (and their whole identity) blank.
+                contacts: dict[str, dict] = {}
+                for contact in value.get("contacts", []) or []:
+                    for key in (contact.get("wa_id"), contact.get("user_id")):
+                        if key:
+                            contacts[str(key)] = contact
                 for msg in value.get("messages", []):
-                    wa_id = msg.get("from")
-                    contact = contacts.get(wa_id, {})
+                    wa_id = str(msg.get("from") or "").strip()
+                    bsuid = str(msg.get("from_user_id") or "").strip()
+                    # The phone is the ordinary handle; the BSUID is what a number-less customer
+                    # has instead. Empty means the provider told us nobody — refused at ingest
+                    # rather than collapsed into one blank identity shared by every such message.
+                    customer_ref = wa_id or bsuid
+                    contact = contacts.get(customer_ref, {})
                     profile_name = (contact.get("profile") or {}).get("name")
                     body, media_url, media_type, content_type = self._extract_content(msg)
                     messages.append(
                         InboundMessage(
                             channel=self.name,
                             channel_message_id=msg.get("id"),
-                            customer_ref=wa_id or "",
+                            customer_ref=customer_ref,
+                            identity_type=("phone" if wa_id else ("bsuid" if bsuid else "unknown")),
+                            username=(contact.get("username") or None),
+                            parent_ref=(str(msg.get("from_parent_user_id") or "").strip() or None),
                             customer_name=profile_name,
                             body=body,
                             media_url=media_url,
@@ -266,7 +327,10 @@ class WhatsAppAdapter:
                             raw=msg,
                         )
                     )
-        return messages
+        # A message with no phone and no BSUID names nobody. Storing it would put every such
+        # message on ONE blank identity — two different customers in one thread. It is dropped
+        # here, and ingest refuses an empty ref as a second line of defence.
+        return [m for m in messages if m.customer_ref]
 
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
         updates: list[StatusUpdate] = []
@@ -299,78 +363,58 @@ class WhatsAppAdapter:
                     )
         return updates
 
-    def _extract_content(self, msg: dict) -> tuple[str | None, str | None, str | None, str]:
-        """Normalize one provider message.
+    # ---------- coexistence (WhatsApp Business app on the same number) ----------
 
-        Returns (body, media_url, media_type, canonical content_type). The
-        content type is §155's whole point: a voice note is `voice`, a document
-        is `file`, a button tap is `buttons` — never degraded to plain text.
+    #: Webhook fields that exist only for a coexistence number. Deliberately separate from
+    #: ``messages``: these payloads carry DATA TO IMPORT (the app's contacts, up to 180 days of
+    #: history, the merchant's own replies), never a live customer turn, so they must not be fed to
+    #: ``parse_inbound`` — a thousand imported messages would each start an AI answer.
+    HISTORY_FIELD = "history"
+    APP_STATE_SYNC_FIELD = "smb_app_state_sync"
+    MESSAGE_ECHOES_FIELD = "smb_message_echoes"
+    #: Every field a coexistence number must be subscribed to.
+    COEXISTENCE_FIELDS = (HISTORY_FIELD, APP_STATE_SYNC_FIELD, MESSAGE_ECHOES_FIELD)
+
+    def parse_history_sync(self, payload: dict) -> list[dict]:
+        """History chunks with their phase, chunk_order and progress, and their messages."""
+        return parse_history_batches(payload)
+
+    def parse_app_state_sync(self, payload: dict) -> list[dict]:
+        """The WhatsApp Business app's contact list, and later changes to it."""
+        return parse_state_sync_batches(payload)
+
+    def parse_app_echoes(self, payload: dict) -> list[dict]:
+        """Messages the merchant typed in the app on the phone — outbound, and human."""
+        return parse_message_echoes(payload)
+
+    def parse_unsupported_notices(self, payload: dict) -> list[dict]:
+        """Messages Meta could not hand over (131060) — a known gap, not a broken channel."""
+        return parse_unsupported_notices(payload)
+
+    def has_coexistence_payload(self, payload: dict) -> bool:
+        """True when the envelope carries any of the three coexistence fields."""
+        return any(
+            isinstance(change, dict) and change.get("field") in self.COEXISTENCE_FIELDS
+            for entry in payload.get("entry", []) or []
+            if isinstance(entry, dict)
+            for change in entry.get("changes", []) or []
+        )
+
+    def _extract_content(self, msg: dict) -> tuple[str | None, str | None, str | None, str]:
+        """Normalize one provider message (body, media_url, media_type, canonical content_type).
+
+        The rules live in ``whatsapp_coexistence.extract_content`` because the history import and
+        the Business App echoes must read a voice note exactly the way the live path does — two
+        readers drifting apart would show the same message in two shapes in one thread.
         """
-        msg_type = msg.get("type")
-        if msg_type == "text":
-            return msg.get("text", {}).get("body"), None, None, "text"
-        if msg_type in _CANONICAL_MEDIA_CONTENT:
-            media = msg.get(msg_type, {})
-            return (
-                msg.get("caption"),
-                media.get("link") or media.get("id"),
-                msg_type,
-                _CANONICAL_MEDIA_CONTENT[msg_type],
-            )
-        if msg_type == "location":
-            loc = msg.get("location", {})
-            return (
-                f"📍 {loc.get('name') or ''} {loc.get('address') or ''}".strip(),
-                None,
-                None,
-                "location",
-            )
-        if msg_type == "contacts":
-            return self._contact_body(msg.get("contacts")), None, None, "contact"
-        if msg_type == "button":
-            # A tap on a template quick-reply button.
-            return msg.get("button", {}).get("text"), None, None, "buttons"
-        if msg_type == "interactive":
-            interactive = msg.get("interactive", {})
-            button_reply = interactive.get("button_reply")
-            if button_reply is not None:
-                return button_reply.get("title"), None, None, "buttons"
-            list_reply = interactive.get("list_reply")
-            if list_reply is not None:
-                return list_reply.get("title"), None, None, "list"
-            if str(interactive.get("type") or "") == "nfm_reply":
-                # A filled WhatsApp Flow. The answers are in response_json (a JSON string);
-                # the raw webhook keeps them structured, and the thread gets one line each.
-                reply = parse_flow_reply(interactive)
-                return flow_reply_text(reply), None, None, "flow"
-            return None, None, None, "unsupported"
-        if msg_type == "reaction":
-            # WhatsApp removes a reaction by sending an EMPTY emoji. A message
-            # row needs a body, so a removal is stored as an explicit marker
-            # rather than "" (which add_message rejects, failing the webhook).
-            emoji = (msg.get("reaction", {}).get("emoji") or "").strip()
-            return emoji or REACTION_REMOVED, None, None, "reaction"
-        if msg_type == "order":
-            # A cart sent from our catalog. Shown as a readable list, never as the raw webhook.
-            # One with no readable product at all falls through to "unsupported" below.
-            cart = parse_order(msg)
-            if cart is not None:
-                return order_summary(cart), None, None, "order"
-        # A type this adapter does not know (an order with nothing readable, system, referral,
-        # ...): the raw JSON is kept as the body for forensics, and the canonical type is
-        # honest about it instead of claiming "text".
-        return (json.dumps(msg)[:500] if msg else None, None, None, "unsupported")
+        return extract_content(msg)
 
     @staticmethod
     def _contact_body(contacts: list | None) -> str | None:
         """First shared contact as a short human-readable body (§155)."""
-        first = contacts[0] if contacts else None
-        if not isinstance(first, dict):
-            return "[contacts]"
-        name = (first.get("name") or {}).get("formatted_name")
-        phones = first.get("phones") or []
-        phone = (phones[0] or {}).get("phone") if phones else None
-        return " ".join(part for part in (name, phone) if part) or "[contacts]"
+        from app.modules.conversations.gateway.whatsapp_coexistence import contact_body
+
+        return contact_body(contacts)
 
     @staticmethod
     def _reply_context(msg: dict) -> str | None:
@@ -398,6 +442,13 @@ class WhatsAppAdapter:
         token = credentials.get("access_token")
         if not phone_number_id or not token:
             raise ExternalProviderError("whatsapp integration missing credentials")
+
+        # Meta allows 20 messages a second for ONE number, shared by every worker process. The
+        # slot is taken here, before the provider call, so a burst paces itself instead of
+        # collecting 130429s that look like failures to the merchant.
+        from app.modules.conversations.gateway import whatsapp_throughput
+
+        await whatsapp_throughput.acquire(str(phone_number_id))
 
         body_payload = self._build_send_payload(message)
 

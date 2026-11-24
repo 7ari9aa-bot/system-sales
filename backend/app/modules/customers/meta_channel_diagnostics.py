@@ -90,6 +90,12 @@ DASHBOARD_FIELDS = {
         "account_update",
         "phone_number_quality_update",
         "message_template_status_update",
+        # Coexistence. A number that runs the WhatsApp Business app sends its contacts, its chat
+        # history and the merchant's own replies on these three fields; untick any of them and the
+        # data never arrives while the channel still looks healthy.
+        "history",
+        "smb_app_state_sync",
+        "smb_message_echoes",
     ),
 }
 
@@ -98,10 +104,24 @@ DASHBOARD_FIELDS = {
 #: holds, so "one message arrived" is not evidence that the rest are ticked. Rare-but-harmless
 #: fields (story_insights, live_comments) stay out: a shop that never posts a story must not see a
 #: warning it can do nothing about.
+#: The webhook fields a WhatsApp number needs. A coexistence number is not finished with
+#: ``messages``: the app's contacts, its chat history and the merchant's own replies arrive on three
+#: fields of their own, and a subscription missing any of them drops that data silently — the
+#: channel looks healthy while the inbox never sees the app. Meta configures these on the App
+#: Dashboard (the WABA subscription is app-level, not per field), so this diagnostic is the only
+#: thing that can tell the owner one is missing.
+WHATSAPP_WEBHOOK_FIELDS = (
+    "messages",
+    "message_template_status_update",
+    "history",
+    "smb_app_state_sync",
+    "smb_message_echoes",
+)
+
 REQUIRED_FIELDS = {
     "page": ("messages", "message_echoes", "messaging_handovers"),
     "instagram": ("messages", "comments"),
-    "whatsapp_business_account": ("messages", "message_template_status_update"),
+    "whatsapp_business_account": WHATSAPP_WEBHOOK_FIELDS,
 }
 
 #: The Graph host an Instagram Login token belongs to. The Facebook host rejects it.
@@ -352,7 +372,11 @@ def build_report(
         checks.append(_check("server_webhook", OK, "The server can verify Meta's webhook."))
 
     # 4. The asset (Page / business account) subscription, asked of Meta live.
-    wanted = subscribed_fields(provider).split(",") if provider != "whatsapp" else ["messages"]
+    wanted = (
+        list(WHATSAPP_WEBHOOK_FIELDS)
+        if provider == "whatsapp"
+        else subscribed_fields(provider).split(",")
+    )
     if subscription is None:
         pass
     elif subscription.get("state") == OK:

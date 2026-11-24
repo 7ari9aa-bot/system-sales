@@ -61,6 +61,14 @@ class InboundMessage:
     # §155: threaded reply — the provider's message id this message replies to.
     reply_to_message_id: str | None = None
     conversation_ref: str | None = None  # channel-side thread id when separate
+    # What the provider actually identified the customer BY. WhatsApp sends a phone number for
+    # most people, but a Business-Scoped User ID (BSUID) for those who have no number to share —
+    # and the same human can be both, so the two are kept apart instead of being flattened into
+    # one handle.
+    identity_type: str = "phone"  # phone | bsuid | username
+    username: str | None = None
+    #: The BSUID of the business account this identity belongs to, when the provider sends one.
+    parent_ref: str | None = None
     raw: dict = field(default_factory=dict)
 
 

@@ -21,6 +21,7 @@ from sqlalchemy import case, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.models import Conversation, Message
@@ -145,6 +146,14 @@ class IngestService:
         idempotency_scope: str,
     ) -> uuid.UUID | None:
         """Persist one inbound message; returns conversation_id or None on dup."""
+        # A message that names no customer is not a customer turn: storing it would put every
+        # such message on one blank identity, so two different people would share one thread.
+        # The adapters drop them at parse time; this is the invariant behind that.
+        if not str(message.customer_ref or "").strip():
+            raise ValidationError(
+                f"{message.channel} message without a customer identity cannot be stored"
+            )
+
         # S3: the dedupe scope MUST carry the tenant. A channel-wide scope let
         # an attacker pre-register another tenant's client_message_id; the
         # first writer wins, so the victim's real message was then silently
@@ -159,6 +168,7 @@ class IngestService:
             channel=message.channel,
             external_id=message.customer_ref,
             name=message.customer_name,
+            identity_extra=cls._identity_extra(message),
         )
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=message.channel
@@ -277,6 +287,21 @@ class IngestService:
             aggregate_version=1,
         )
         return conversation.id
+
+    @staticmethod
+    def _identity_extra(message: InboundMessage) -> dict:
+        """What the provider says about this handle, for the identity row (empty when nothing)."""
+        extra: dict = {}
+        identity_type = getattr(message, "identity_type", "") or ""
+        if identity_type and identity_type != "phone":
+            # A BSUID is worth recording: it is the only handle a number-less customer has, and
+            # support needs to know that this thread is not tied to a phone at all.
+            extra["identity_type"] = identity_type
+        if getattr(message, "username", None):
+            extra["username"] = message.username
+        if getattr(message, "parent_ref", None):
+            extra["parent_ref"] = message.parent_ref
+        return extra
 
     # ------------------------------------------------- who the customer is --
 
@@ -403,6 +428,275 @@ class IngestService:
             )
             stored += 1
         return stored
+
+    # ------------------------------------------------- coexistence backfill --
+
+    @staticmethod
+    async def _store_imported_message(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        channel: str,
+        item: dict,
+        *,
+        direction: str,
+        sender_type: str,
+        source: str,
+        status: str,
+    ) -> int:
+        """Write one already-sent message from the app's history or echoes, at its real time.
+
+        Deliberately NOT ``ConversationService.add_message``: that path applies the outbound
+        policy (a historical outbound message would be refused outside the 24-hour window, which
+        is nonsense — it was sent months ago) and stamps ``last_customer_message_at = now()``,
+        which would open a fake service window from the moment of import. Here the timestamps come
+        from Meta, the unread counter does not move, and the window only moves FORWARD to a real
+        historical inbound time, never to "now".
+        """
+        mid = item.get("channel_message_id")
+        if not mid:
+            return 0
+        already = (
+            await session.execute(
+                select(Message.id)
+                .where(Message.tenant_id == tenant_id, Message.channel_message_id == mid)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if already is not None:
+            # A duplicate webhook, or the same message arriving in history and live: the first
+            # copy wins and nothing is written twice.
+            return 0
+        customer = await CustomerService.get_or_create_by_identity(
+            session,
+            tenant_id,
+            channel=channel,
+            external_id=item["customer_ref"],
+            name=None,
+        )
+        conversation = await ConversationService.get_or_create(
+            session, tenant_id, customer_id=customer.id, channel=channel
+        )
+        when = item.get("occurred_at") or datetime.now(UTC)
+        session.add(
+            Message(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                channel=channel,
+                direction=direction,
+                sender_type=sender_type,
+                body=item.get("body"),
+                media_url=item.get("media_url"),
+                media_type=item.get("media_type"),
+                content_type=item.get("content_type") or "text",
+                channel_message_id=mid,
+                status=status,
+                payload={"raw": item.get("raw") or {}, "imported_from": source},
+                provider_metadata={"imported_from": source},
+                created_at=when,
+            )
+        )
+        if conversation.last_message_at is None or when > conversation.last_message_at:
+            conversation.last_message_at = when
+        if direction == "inbound" and (
+            conversation.last_customer_message_at is None
+            or when > conversation.last_customer_message_at
+        ):
+            # The customer's real last message time, not the import time: the service window is
+            # whatever it honestly is.
+            conversation.last_customer_message_at = when
+        return 1
+
+    @staticmethod
+    async def apply_history(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        channel: str,
+        batches: list[dict],
+        *,
+        epoch: str | None = None,
+    ) -> int:
+        """Import the app's chat history: stored in place, at its own time, and never answered.
+
+        No outbox event is emitted, so the AI never runs on a historical message — a backfill of
+        thousands of old messages must not produce thousands of replies.
+        """
+        from app.modules.conversations import whatsapp_sync
+
+        if epoch is None:
+            first_number = batches[0].get("phone_number_id") if batches else None
+            epoch = await whatsapp_sync.channel_epoch(
+                session, tenant_id, phone_number_id=first_number or None
+            )
+        stored = 0
+        for batch in batches:
+            batch_stored = 0
+            for item in batch.get("messages") or []:
+                batch_stored += await IngestService._store_imported_message(
+                    session,
+                    tenant_id,
+                    channel,
+                    item,
+                    direction=item["direction"],
+                    sender_type="customer" if item["direction"] == "inbound" else "agent",
+                    source="whatsapp_history",
+                    status="received" if item["direction"] == "inbound" else "sent",
+                )
+            stored += batch_stored
+            if epoch:
+                # Progress is folded in AFTER the rows are written, so a crash mid-chunk leaves the
+                # run behind reality (retryable) instead of ahead of it (a lie).
+                await whatsapp_sync.record_chunk(
+                    session,
+                    tenant_id,
+                    phone_number_id=str(batch.get("phone_number_id") or ""),
+                    epoch=epoch,
+                    sync_type=whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+                    request_id=batch.get("request_id"),
+                    phase=batch.get("phase"),
+                    chunk_order=batch.get("chunk_order"),
+                    progress=batch.get("progress"),
+                    messages_stored=batch_stored,
+                )
+        return stored
+
+    @staticmethod
+    async def apply_app_state_sync(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        channel: str,
+        batches: list[dict],
+        *,
+        epoch: str | None = None,
+    ) -> int:
+        """Turn the app's contact list into customers — no conversations, no AI.
+
+        A contact update is not a message: it must not open a conversation, page anyone or start an
+        agent run. A removal is recorded as nothing at all on purpose: the customer may have open
+        conversations and their history is still theirs.
+        """
+        from app.modules.conversations import whatsapp_sync
+
+        if epoch is None:
+            first_number = batches[0].get("phone_number_id") if batches else None
+            epoch = await whatsapp_sync.channel_epoch(
+                session, tenant_id, phone_number_id=first_number or None
+            )
+        stored = 0
+        for batch in batches:
+            if epoch:
+                await whatsapp_sync.record_chunk(
+                    session,
+                    tenant_id,
+                    phone_number_id=str(batch.get("phone_number_id") or ""),
+                    epoch=epoch,
+                    sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS,
+                    request_id=batch.get("request_id"),
+                    messages_stored=0,
+                )
+            for contact in batch.get("contacts") or []:
+                if contact.get("action") == "remove":
+                    continue
+                customer = await CustomerService.get_or_create_by_identity(
+                    session,
+                    tenant_id,
+                    channel=channel,
+                    external_id=contact["phone"],
+                    name=contact.get("name"),
+                )
+                if contact.get("name") and not customer.name:
+                    customer.name = contact["name"]
+                stored += 1
+        return stored
+
+    @staticmethod
+    async def apply_app_echoes(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, echoes: list[dict]
+    ) -> int:
+        """Store what the merchant typed in the WhatsApp Business app on their phone.
+
+        This is the promise coexistence makes: the same thread, from the app and from FIHRIST. An
+        echo becomes a real outbound message from a HUMAN, it may start a conversation the merchant
+        began from their phone, and it takes the thread away from the AI — otherwise the agent,
+        which never saw the reply, answers the customer a second time with a different answer.
+        """
+        stored = 0
+        for echo in echoes:
+            wrote = await IngestService._store_imported_message(
+                session,
+                tenant_id,
+                channel,
+                echo,
+                direction="outbound",
+                sender_type="agent",
+                source="whatsapp_business_app",
+                status="sent",
+            )
+            if not wrote:
+                continue
+            stored += 1
+            customer = await CustomerService.find_by_identity(
+                session, tenant_id, channel, echo["customer_ref"]
+            )
+            if customer is None:
+                continue
+            conversation = await IngestService._open_conversation(
+                session, tenant_id, channel, customer.id
+            )
+            if conversation is None:
+                continue
+            from app.modules.ai.handover import request_human_takeover
+
+            try:
+                await request_human_takeover(
+                    session,
+                    tenant_id,
+                    conversation_id=conversation.id,
+                    reason="whatsapp_business_app_reply",
+                    note="replied from the WhatsApp Business app on the phone",
+                )
+            except Exception:  # noqa: BLE001 - the reply is stored; handover is best effort
+                logger.warning(
+                    "whatsapp.app_echo_handover_failed tenant=%s conversation=%s",
+                    tenant_id,
+                    conversation.id,
+                    exc_info=True,
+                )
+        return stored
+
+    @staticmethod
+    async def apply_unsupported_notices(
+        session: AsyncSession, tenant_id: uuid.UUID, channel: str, notices: list[dict]
+    ) -> int:
+        """Record a message Meta could not hand over, without degrading the whole channel.
+
+        On a coexistence number this is usually a first message after the link or one from an
+        unsupported companion device: the message exists in the merchant's app and will never
+        reach FIHRIST, so it is written as a system note on the conversation (or on a fresh one) and
+        nothing else changes.
+        """
+        recorded = 0
+        for notice in notices:
+            mid = notice.get("channel_message_id")
+            if not mid:
+                continue
+            already = (
+                await session.execute(
+                    select(Message.id)
+                    .where(Message.tenant_id == tenant_id, Message.channel_message_id == mid)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if already is not None:
+                continue
+            logger.info(
+                "whatsapp.unsupported_message tenant=%s channel=%s message_id=%s detail=%s",
+                tenant_id,
+                channel,
+                mid,
+                notice.get("details"),
+            )
+            recorded += 1
+        return recorded
 
     @staticmethod
     async def apply_edits(
@@ -606,6 +900,57 @@ class IngestService:
                         "facebook.feed_activity",
                         extra={"tenant_id": str(tenant_id), "channel": channel, **noted},
                     )
+            # Coexistence: the WhatsApp Business app's OWN data. These three fields exist only
+            # for a number that runs the app and the Cloud API together, and none of them is a
+            # live customer turn — so they are handled here, apart from parse_inbound, and none of
+            # the history import emits an outbox event. Thousands of imported messages must not
+            # become thousands of AI answers.
+            parse_history = getattr(adapter, "parse_history_sync", None)
+            if callable(parse_history):
+                history_batches = parse_history(payload)
+                if history_batches:
+                    imported = await IngestService.apply_history(
+                        session, tenant_id, channel, history_batches
+                    )
+                    logger.info(
+                        "whatsapp.history_imported",
+                        extra={
+                            "tenant_id": str(tenant_id),
+                            "channel": channel,
+                            "messages": imported,
+                            "chunks": len(history_batches),
+                        },
+                    )
+            parse_state_sync = getattr(adapter, "parse_app_state_sync", None)
+            if callable(parse_state_sync):
+                state_batches = parse_state_sync(payload)
+                if state_batches:
+                    contacts = await IngestService.apply_app_state_sync(
+                        session, tenant_id, channel, state_batches
+                    )
+                    logger.info(
+                        "whatsapp.contacts_synced",
+                        extra={
+                            "tenant_id": str(tenant_id),
+                            "channel": channel,
+                            "contacts": contacts,
+                        },
+                    )
+            # What the merchant typed in the app on the phone. Without this the agent never sees
+            # the human reply and answers the same customer a second time.
+            parse_app_echoes = getattr(adapter, "parse_app_echoes", None)
+            if callable(parse_app_echoes):
+                app_echoes = parse_app_echoes(payload)
+                if app_echoes:
+                    accepted += await IngestService.apply_app_echoes(
+                        session, tenant_id, channel, app_echoes
+                    )
+            # A message Meta could not hand over (131060): explainable, not a broken channel.
+            parse_unsupported = getattr(adapter, "parse_unsupported_notices", None)
+            if callable(parse_unsupported):
+                await IngestService.apply_unsupported_notices(
+                    session, tenant_id, channel, parse_unsupported(payload)
+                )
             # An edited message: Meta sends the mid and the new text. The old body is kept in
             # provider_metadata so the thread can show that it changed.
             parse_edits = getattr(adapter, "parse_edits", None)
@@ -1009,7 +1354,29 @@ async def _apply_account_signals(
         health = dict(integration.webhook_health or {})
         now = datetime.now(UTC).isoformat()
         for signal in signals:
-            if signal.get("kind") == "restriction":
+            if signal.get("kind") == "offboarded":
+                # The merchant removed our app from the account, or Meta took it off. The channel
+                # cannot send, so it must not look connected: `disconnected` stops the sender and
+                # tells the owner to link again, and the reason is kept for the screen.
+                health["partner_removed"] = {
+                    "event": signal.get("event") or "",
+                    "reason": signal.get("reason") or "",
+                    "waba_id": signal.get("waba_id") or "",
+                    "at": now,
+                }
+                if integration.status in ("active", "connected", "restricted", "reauth_required"):
+                    integration.status = "disconnected"
+            elif signal.get("kind") == "reconnected":
+                # Coming back is not proof the number is usable: it has to be verified again, so
+                # the channel waits for a connect instead of resuming sends on a stale token.
+                health["partner_reconnected"] = {
+                    "event": signal.get("event") or "",
+                    "waba_id": signal.get("waba_id") or "",
+                    "at": now,
+                }
+                if integration.status == "disconnected":
+                    integration.status = "reauth_required"
+            elif signal.get("kind") == "restriction":
                 health["account_restriction"] = {
                     "event": signal.get("event") or "",
                     "detail": signal.get("detail") or "",

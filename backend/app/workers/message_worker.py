@@ -710,6 +710,15 @@ class MessageWorker(StreamWorker):
             )
         ).scalar_one_or_none()
 
+        # A channel that is not connected must not send. Meta's PARTNER_REMOVED (the merchant took
+        # our app off their account) and the owner's own disconnect both land here: without this
+        # gate the message went to the provider anyway, so a dead channel kept "answering" people
+        # who could never receive it, and the inbox showed no reason.
+        if integration is not None and integration.status not in ("active", "connected"):
+            message.status = "failed"
+            message.error = f"channel {integration.status}"
+            raise PermanentError(f"channel not connected: {integration.status}")
+
         adapter = get_adapter(conversation.channel)
         if adapter is None:
             message.status = "failed"
