@@ -25,6 +25,11 @@ from typing import Any
 # importing back would be circular, and a shared vocabulary of nine strings is not worth one.
 ACCOUNT_INELIGIBLE = "account_ineligible"
 AVAILABLE = "available"
+#: The owner never asked Meta for this (a Cloud API number did not request coexistence). Not a
+#: refusal: nobody has been told no.
+NOT_REQUESTED = "not_requested"
+#: Asked, or could be asked, but Meta has not said whether this number qualifies.
+ELIGIBILITY_UNKNOWN = "eligibility_unknown"
 NEEDS_APP_REVIEW = "needs_app_review"
 NOT_IMPLEMENTED = "not_implemented"
 REGION_RESTRICTED = "region_restricted"
@@ -34,7 +39,8 @@ REGION_RESTRICTED = "region_restricted"
 ROADMAP: dict[str, dict[str, Any]] = {
     "coexistence": {
         "title": "تشغيل تطبيق واتساب بزنس مع Cloud API على نفس الرقم",
-        "state": ACCOUNT_INELIGIBLE,
+        # Declared state is "nobody asked": an ineligible verdict needs Meta's own refusal.
+        "state": NOT_REQUESTED,
         "eligibility": "Meta decides per number; the signup finishes with "
         "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
         "evidence": "Meta, 'WhatsApp Business app coexistence' — available per number, not per app",
@@ -69,8 +75,35 @@ ROADMAP: dict[str, dict[str, Any]] = {
 
 #: States a gated feature may legitimately report, so a UI badge never shows an unknown word.
 ROADMAP_STATES = frozenset(
-    {AVAILABLE, ACCOUNT_INELIGIBLE, REGION_RESTRICTED, NEEDS_APP_REVIEW, NOT_IMPLEMENTED}
+    {
+        AVAILABLE,
+        NOT_REQUESTED,
+        ELIGIBILITY_UNKNOWN,
+        ACCOUNT_INELIGIBLE,
+        REGION_RESTRICTED,
+        NEEDS_APP_REVIEW,
+        NOT_IMPLEMENTED,
+    }
 )
+
+
+def coexistence_state(config: dict[str, Any] | None, *, connected: bool = True) -> str:
+    """Coexistence for one WhatsApp connection, from what the connection recorded.
+
+    * ``available``: the number was connected through coexistence, so Meta already allowed it.
+    * ``account_ineligible``: Meta REFUSED it (the signup recorded a coexistence refusal).
+    * ``eligibility_unknown``: coexistence was asked for but Meta has not answered either way.
+    * ``not_requested``: a plain Cloud API connection. Nobody asked, so nobody said no.
+    """
+    config = config if isinstance(config, dict) else {}
+    mode = str(config.get("onboarding_mode") or "cloud_api")
+    if config.get("coexistence_refused"):
+        return ACCOUNT_INELIGIBLE
+    if mode == "coexistence":
+        return AVAILABLE if connected else ELIGIBILITY_UNKNOWN
+    if config.get("coexistence_requested"):
+        return ELIGIBILITY_UNKNOWN
+    return NOT_REQUESTED
 
 
 def roadmap() -> list[dict[str, Any]]:

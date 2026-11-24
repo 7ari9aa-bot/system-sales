@@ -295,7 +295,7 @@ async def test_changing_a_level_is_wired_to_inventory_write_on_the_live_route():
 
 
 async def test_one_level_for_the_whole_model_reaches_every_size(db, tenant_ctx):
-    """A shop restocks a size run, not a size: one action must set every size of a model."""
+    """A clothing shop restocks a size run, not a size: one action sets every size of a model."""
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title="قميص كتان", slug=f"p-{uuid.uuid4().hex[:10]}"

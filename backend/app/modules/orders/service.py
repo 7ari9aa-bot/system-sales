@@ -1708,6 +1708,69 @@ class OrderService:
         return order
 
     @staticmethod
+    async def apply_refunded_payment_states(
+        session: AsyncSession, tenant_id: UUID, order, payment_ids: list[UUID]
+    ) -> None:
+        """Mark the tenders a refund was taken off, then the derived writes that follow.
+
+        The till refunds through its own settlement (cash out of the drawer, card reversed on the
+        terminal) but the ORDER has to end up in the same state the shared refund path leaves it
+        in: the payment rows marked refunded/partially_refunded, a fully refunded sale no longer
+        "completed", and the customer's lifetime value lowered. Without this a till refund left the
+        sale looking fully paid and the customer worth more than they had actually spent - two
+        reports that then disagreed with the drawer.
+
+        Lives here, not in ``pos``, because it is the orders module's own rule: the till calls it
+        instead of reaching into these tables itself.
+        """
+        if not payment_ids:
+            return
+        payments = (
+            (
+                await session.execute(
+                    select(OrderPayment).where(
+                        OrderPayment.tenant_id == tenant_id,
+                        OrderPayment.order_id == order.id,
+                        OrderPayment.id.in_(payment_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        fully_refunded = bool(payments)
+        for payment in payments:
+            refunded_total = Decimal(
+                str(
+                    (
+                        await session.execute(
+                            select(func.coalesce(func.sum(Refund.amount), 0))
+                            .select_from(Refund)
+                            .where(
+                                Refund.tenant_id == tenant_id,
+                                Refund.payment_id == payment.id,
+                                Refund.status != "rejected",
+                            )
+                        )
+                    ).scalar_one()
+                )
+            )
+            payment_total = to_money(payment.amount, "captured amount")
+            payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
+            if payment.status != "refunded":
+                fully_refunded = False
+        await session.flush()
+
+        # A fully refunded sale must not stay "completed": dashboards and analytics would keep
+        # counting refunded money as revenue. Same rule and same transition as the shared path.
+        if fully_refunded and getattr(order, "status", None) == "completed":
+            await OrderService._transition(
+                session, tenant_id, order, "refunded", note="fully refunded at the till"
+            )
+
+        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
+
+    @staticmethod
     async def _recompute_lifetime_value(
         session: AsyncSession, tenant_id: UUID, order_id: UUID
     ) -> None:

@@ -3801,7 +3801,7 @@ class PosService(PosReceiptReads):
         no single meaning. Finish it as a return instead.
         """
         from app.core.events.writer import add_outbox_event
-        from app.modules.inventory.service import InventoryService
+        from app.modules.inventory.stock_view import VoidGateway
         from app.modules.orders.models import Order, OrderItem
 
         reason_text = str(reason or "").strip()
@@ -3878,50 +3878,16 @@ class PosService(PosReceiptReads):
             .scalars()
             .all()
         )
-        from app.modules.inventory.models import InventoryMovement
-        from app.modules.inventory.services.valuation import ValuationService
-
-        for item in items:
-            await InventoryService.move(
-                session,
-                tenant_id,
-                item.variant_id,
-                register.warehouse_id,
-                direction="in",
-                quantity=item.quantity,
-                reason="void",
-                reference_type="order",
-                reference_id=order_id,
-                actor_user_id=actor_user_id,
-            )
-            # The sale CONSUMED a cost layer for this piece; putting the quantity back without the
-            # cost would leave the shelf holding stock worth nothing, and the next sale would book
-            # a cost of zero. The sale's own movement carries what it cost, so the layer comes back
-            # at that unit cost (value-correct; a fresh layer dated now keeps FIFO order sane).
-            sold = (
-                await session.execute(
-                    select(InventoryMovement.cost_value).where(
-                        InventoryMovement.tenant_id == tenant_id,
-                        InventoryMovement.variant_id == item.variant_id,
-                        InventoryMovement.reference_type == "order",
-                        InventoryMovement.reference_id == order_id,
-                        InventoryMovement.direction == "out",
-                        InventoryMovement.reason == "sale",
-                    )
-                )
-            ).first()
-            sold_cost = Decimal(str(sold[0])) if sold is not None and sold[0] is not None else None
-            if sold_cost is not None and item.quantity:
-                await ValuationService.create_cost_layer(
-                    session,
-                    tenant_id,
-                    variant_id=item.variant_id,
-                    warehouse_id=register.warehouse_id,
-                    quantity=int(item.quantity),
-                    unit_cost=(sold_cost / Decimal(int(item.quantity))).quantize(Decimal("0.0001")),
-                    source_type="void",
-                    source_id=order_id,
-                )
+        # Back on the shelf, each piece at the cost the sale booked for it. Inventory owns both
+        # rules (the movement and the restored cost layer), so the till asks its gateway.
+        await VoidGateway.restore_sold_stock(
+            session,
+            tenant_id,
+            order_id=order_id,
+            warehouse_id=register.warehouse_id,
+            lines=[(item.variant_id, int(item.quantity)) for item in items],
+            actor_user_id=actor_user_id,
+        )
 
         # The order is no longer a sale: every report that reads order status must drop it, and a
         # second void must find it already reversed.
@@ -4152,9 +4118,11 @@ class PosService(PosReceiptReads):
         # sale still reading "captured" on the order and the customer still worth money the shop
         # had already given back — so lifetime value, segments and the payment's own state
         # disagreed with the refunds that caused them.
-        touched = {slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None}
+        touched = [slice_.payment_id for slice_ in plan.slices if slice_.payment_id is not None]
         if touched:
-            await PosService._apply_refunded_payment_states(session, tenant_id, order, touched)
+            from app.modules.orders.service import OrderService
+
+            await OrderService.apply_refunded_payment_states(session, tenant_id, order, touched)
 
         return {
             "mode": "tender",
@@ -4163,68 +4131,6 @@ class PosService(PosReceiptReads):
             "by_method": plan.by_method,
             "slices": list(plan.slices),
         }
-
-    @staticmethod
-    async def _apply_refunded_payment_states(
-        session: AsyncSession, tenant_id: UUID, order: object, payment_ids: set[UUID]
-    ) -> None:
-        """Mark the reversed payments ``partially_refunded``/``refunded`` and lower the customer.
-
-        Both writes are derived from the ``refunds`` rows just written, never from this call's
-        amount: a second refund on the same tender must land on the same status the shared path
-        would give it, and the customer's worth is recomputed from the ledger (see
-        ``OrderService._recompute_lifetime_value``) rather than nudged.
-
-        A VOIDED order is left alone: its status is already ``cancelled``, which is the stronger
-        statement, and a full refund must not overwrite it.
-        """
-        from app.modules.orders.models import OrderPayment, Refund
-        from app.modules.orders.service import OrderService
-
-        payments = (
-            (
-                await session.execute(
-                    select(OrderPayment).where(
-                        OrderPayment.tenant_id == tenant_id,
-                        OrderPayment.order_id == order.id,
-                        OrderPayment.id.in_(payment_ids),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        fully_refunded = bool(payments)
-        for payment in payments:
-            refunded_total = Decimal(
-                str(
-                    (
-                        await session.execute(
-                            select(func.coalesce(func.sum(Refund.amount), 0))
-                            .select_from(Refund)
-                            .where(
-                                Refund.tenant_id == tenant_id,
-                                Refund.payment_id == payment.id,
-                                Refund.status != "rejected",
-                            )
-                        )
-                    ).scalar_one()
-                )
-            )
-            payment_total = to_money(payment.amount, "captured amount")
-            payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
-            if payment.status != "refunded":
-                fully_refunded = False
-        await session.flush()
-
-        # A fully refunded sale must not stay "completed": dashboards and analytics would keep
-        # counting refunded money as revenue. Same rule and same transition as the shared path.
-        if fully_refunded and getattr(order, "status", None) == "completed":
-            await OrderService._transition(
-                session, tenant_id, order, "refunded", note="fully refunded at the till"
-            )
-
-        await OrderService._recompute_lifetime_value(session, tenant_id, order.id)
 
     # ----------------------------------------------------------- exchanges ----
 

@@ -235,6 +235,7 @@ async def test_voiding_a_cash_expense_puts_the_money_back(db, tenant_ctx) -> Non
     """A correction is a reversing row, never a deleted one."""
     shift = await _open_shift(db, tenant_ctx)
     cat = await _category(db, tenant_ctx)
+    await _drawer(db, tenant_ctx, shift.id)
     expense = await ExpenseService.create(
         db,
         tenant_ctx.tenant_id,

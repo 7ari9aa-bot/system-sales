@@ -23,9 +23,11 @@ describe("ChannelChat on Messenger", () => {
   test("the time is not printed inside the bubble", () => {
     const html = render([msg("m1", { text: "اهلا", time: "٠١:٣٣" })]);
     expect(html).toContain("اهلا");
-    // the time appears once, in the centred divider, and as the hover title; never as bubble text
-    expect(html.match(/٠١:٣٣/g)?.length).toBe(2);
-    expect(html).toContain('data-testid="messenger-time-divider"');
+    // the centred divider prints the 12-hour time with the day period; the old 24-hour string
+    // survives only as the hover title and never as bubble text
+    const divider = html.slice(html.indexOf('data-testid="messenger-time-divider"'));
+    expect(divider.slice(0, divider.indexOf("</div>"))).toMatch(/[١1]:[٣3][٣3] [صم]/);
+    expect(html.match(/٠١:٣٣/g)?.length).toBe(1);
   });
 
   test("a second message a minute later gets no divider of its own", () => {
@@ -249,4 +251,14 @@ describe("ChannelChat on Messenger", () => {
     const html = render([]);
     expect(html).toMatch(/role="status"[^>]*data-testid="messenger-empty"|data-testid="messenger-empty"[^>]*role="status"/);
   });
+
+  test("a photo opens the full-screen viewer on Messenger too, and the header opens details from the keyboard", async () => {
+    // Static markup cannot click, so read the component source for the two wirings that were missing.
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./ChannelChat.jsx", import.meta.url), "utf8");
+    expect(src).toMatch(/viewerId && \(isWhatsApp \|\| isInstagram \|\| isMessenger\)/);
+    const header = src.slice(src.indexOf("Customer Header clickable section"), src.indexOf("Customer Header clickable section") + 600);
+    expect(header).toContain("onKeyDown");
+  });
 });
+

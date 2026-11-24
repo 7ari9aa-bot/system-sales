@@ -17,6 +17,8 @@ export const STATE_LABELS = {
   needs_advanced_access: ["محتاج Advanced Access", "Needs Advanced Access"],
   needs_app_review: ["محتاج App Review", "Needs App Review"],
   account_ineligible: ["الحساب غير مؤهل", "Account ineligible"],
+  not_requested: ["لسه ما طلبتوش", "Not requested"],
+  eligibility_unknown: ["الأهلية لسه مجهولة", "Eligibility unknown"],
   region_restricted: ["ممنوع في بلدك", "Region restricted"],
   unsupported_by_api: ["ميتا مش بتدعمه", "Not supported by Meta"],
   not_implemented: ["لسه مش منفَّذ عندنا", "Not built yet"],

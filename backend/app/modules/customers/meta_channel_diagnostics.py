@@ -63,15 +63,23 @@ DASHBOARD_FIELDS = {
     ),
     # Instagram's own fields live on the `instagram` object in the App Dashboard, not on the
     # Page subscription. Naming them here is what the setup screen tells the owner to tick.
+    # The names are Meta's own for the Instagram messaging webhook (Webhooks for Instagram
+    # Messaging and the Instagram webhook examples): `message_reactions`, `messaging_seen`,
+    # `message_edit`. They are NOT the Page names: `messaging_handovers`, `message_reads` and
+    # `message_edits` belong to the Page object and do not exist for Instagram, so asking the
+    # owner to tick them sent them looking for a checkbox that is not there. A hand-off between
+    # Meta apps reaches Instagram inside `messages` (`message.admin_text` / `handoff_reason`), so
+    # it needs no field of its own.
     "instagram": (
         "messages",
         "messaging_postbacks",
+        "messaging_seen",
+        "message_reactions",
+        "message_edit",
         "comments",
         "mentions",
         "live_comments",
         "story_insights",
-        "messaging_handovers",
-        "message_edit",
     ),
     "whatsapp_business_account": (
         "messages",
@@ -92,9 +100,19 @@ DASHBOARD_FIELDS = {
 #: warning it can do nothing about.
 REQUIRED_FIELDS = {
     "page": ("messages", "message_echoes", "messaging_handovers"),
-    "instagram": ("messages", "comments", "messaging_handovers"),
+    "instagram": ("messages", "comments"),
     "whatsapp_business_account": ("messages", "message_template_status_update"),
 }
+
+#: The Graph host an Instagram Login token belongs to. The Facebook host rejects it.
+INSTAGRAM_LOGIN_GRAPH = "https://graph.instagram.com"
+
+#: Instagram Login scopes the diagnostics hold the connection to. Not one `pages_*` scope: this
+#: grant never touches a Page.
+INSTAGRAM_LOGIN_REQUIRED_SCOPES = (
+    "instagram_business_basic",
+    "instagram_business_manage_messages",
+)
 
 #: Past this long without any webhook a connected channel is worth a second look. A quiet shop is
 #: not a broken one, so it is a warning and only after the channel has been connected that long.
@@ -130,7 +148,12 @@ def _meta_error(response: httpx.Response) -> dict[str, Any]:
 
 
 async def probe_subscription(
-    http: httpx.AsyncClient, *, asset_id: str, token: str, app_id: str | None
+    http: httpx.AsyncClient,
+    *,
+    asset_id: str,
+    token: str,
+    app_id: str | None,
+    graph: str | None = None,
 ) -> dict[str, Any]:
     """Is OUR app subscribed on this Page / business account, and to which fields?
 
@@ -139,7 +162,8 @@ async def probe_subscription(
     """
     try:
         response = await http.get(
-            f"{_GRAPH}/{asset_id}/subscribed_apps", headers={"Authorization": f"Bearer {token}"}
+            f"{graph or _GRAPH}/{asset_id}/subscribed_apps",
+            headers={"Authorization": f"Bearer {token}"},
         )
     except httpx.RequestError:
         return {"state": UNKNOWN, "reason": "meta_unreachable"}
@@ -164,11 +188,13 @@ async def probe_subscription(
     return {"state": OK, "fields": sorted(set(fields))}
 
 
-async def probe_permissions(http: httpx.AsyncClient, *, token: str) -> dict[str, Any]:
+async def probe_permissions(
+    http: httpx.AsyncClient, *, token: str, graph: str | None = None
+) -> dict[str, Any]:
     """The permissions Meta says this token holds right now (not what we recorded at link time)."""
     try:
         response = await http.get(
-            f"{_GRAPH}/me/permissions", headers={"Authorization": f"Bearer {token}"}
+            f"{graph or _GRAPH}/me/permissions", headers={"Authorization": f"Bearer {token}"}
         )
     except httpx.RequestError:
         return {"state": UNKNOWN, "reason": "meta_unreachable"}
@@ -189,10 +215,20 @@ async def probe_permissions(http: httpx.AsyncClient, *, token: str) -> dict[str,
 # --------------------------------------------------------------------------- the report
 
 
-def _required_scopes(provider: str) -> tuple[str, ...]:
+def _is_instagram_login(config: dict | None) -> bool:
+    """A standalone Instagram Login connection: its token belongs to graph.instagram.com."""
+    return isinstance(config, dict) and str(config.get("login") or "") == "instagram"
+
+
+def _required_scopes(provider: str, config: dict | None = None) -> tuple[str, ...]:
+    # Facebook Management never sends or receives a message, so it must not demand the Messenger
+    # permission: asking for `pages_messaging` made a healthy Facebook-only Page look broken.
     if provider == "facebook":
-        return tuple(MESSENGER_SCOPES.split(",")) + tuple(FACEBOOK_PAGE_SCOPES)
+        return tuple(FACEBOOK_PAGE_SCOPES)
     if provider == "instagram":
+        if _is_instagram_login(config):
+            # The Instagram Login family. No Page permission is part of this grant.
+            return tuple(INSTAGRAM_LOGIN_REQUIRED_SCOPES)
         return tuple(INSTAGRAM_REQUIRED_SCOPES) + ("pages_messaging",)
     if provider == "messenger":
         return tuple(MESSENGER_SCOPES.split(","))
@@ -272,7 +308,7 @@ def build_report(
         checks.append(_check("connection", OK, "The channel is connected."))
 
     # 2. Permissions: what Meta says the token holds now, falling back to what we recorded.
-    required = _required_scopes(provider)
+    required = _required_scopes(provider, config)
     if required:
         live = permissions if isinstance(permissions, dict) else None
         if live and live.get("state") == OK:

@@ -11,6 +11,7 @@ together: putting it here would close an inventory <-> purchasing import cycle.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select, text
@@ -173,3 +174,67 @@ class StocktakeGateway:
         from app.modules.inventory.services import StocktakeService
 
         await StocktakeService.cancel(session, tenant_id, stocktake_id, user_id=user_id)
+
+
+class VoidGateway:
+    """What `pos` may do with the stock of a VOIDED sale, behind the one inventory file it imports.
+
+    A void puts the goods back on the shelf. Putting the quantity back without its cost would leave
+    the shelf holding stock worth nothing and make the next sale book a cost of zero, so the sale's
+    own movement is read for what it cost and a fresh layer is created at that unit cost. Both are
+    inventory's rules, so the till asks for them here instead of importing the tables.
+    """
+
+    @staticmethod
+    async def restore_sold_stock(
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        order_id: UUID,
+        warehouse_id: UUID,
+        lines: list[tuple[UUID, int]],
+        actor_user_id: UUID | None = None,
+    ) -> None:
+        """(variant_id, quantity) pairs back on the shelf, each at the cost the sale booked."""
+        from app.modules.inventory.models import InventoryMovement
+        from app.modules.inventory.service import InventoryService
+        from app.modules.inventory.services.valuation import ValuationService
+
+        for variant_id, quantity in lines:
+            await InventoryService.move(
+                session,
+                tenant_id,
+                variant_id,
+                warehouse_id,
+                direction="in",
+                quantity=quantity,
+                reason="void",
+                reference_type="order",
+                reference_id=order_id,
+                actor_user_id=actor_user_id,
+            )
+            sold = (
+                await session.execute(
+                    select(InventoryMovement.cost_value).where(
+                        InventoryMovement.tenant_id == tenant_id,
+                        InventoryMovement.variant_id == variant_id,
+                        InventoryMovement.reference_type == "order",
+                        InventoryMovement.reference_id == order_id,
+                        InventoryMovement.direction == "out",
+                        InventoryMovement.reason == "sale",
+                    )
+                )
+            ).first()
+            sold_cost = Decimal(str(sold[0])) if sold is not None and sold[0] is not None else None
+            if sold_cost is None or not quantity:
+                continue
+            await ValuationService.create_cost_layer(
+                session,
+                tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                quantity=int(quantity),
+                unit_cost=(sold_cost / Decimal(int(quantity))).quantize(Decimal("0.0001")),
+                source_type="void",
+                source_id=order_id,
+            )

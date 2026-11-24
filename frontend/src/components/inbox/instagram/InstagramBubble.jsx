@@ -9,11 +9,14 @@ const SEEN = { en: "Seen", ar: "تمت المشاهدة" };
 const HEART = "\u2764\ufe0f";
 
 // Instagram draws an outgoing "Seen" once, under the newest message we sent, never a tick on each.
-export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage, onReact, onReply }) {
+export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenImage, onReact, onReply, group = null, peerName = "" }) {
   const out = m.side === "out";
   const kind = instagramKind(m);
   const bare = kind === "heart" || kind === "sticker"; // these float with no bubble around them
   const radius = th?.bubbleRadius ?? 18;
+  // A run of bubbles from one person sits 2px apart; the last one carries Instagram's small tail.
+  const grouped = Boolean(group) && !group.alone;
+  const tail = grouped && group.last;
   const text = String(m.text || "").trim();
   const caption = kind === "text" || kind === "deleted" || kind === "unsupported" || kind === "heart" || kind === "sticker" ? "" : text;
 
@@ -31,28 +34,62 @@ export function InstagramBubble({ m, th, lang = "ar", showSeen = false, onOpenIm
     body = <CardBody card={m.card} kind={kind} lang={lang} preview={preview} />;
   } else body = <span dir="auto" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{text}</span>;
 
+  // Instagram quotes the message you answer inside the new bubble: the sender's name, then one
+  // line of the original. The heart and a sticker have no bubble to sit in, so they keep a pill.
+  const quoteName = m.replyTo
+    ? m.replyTo.direction === "outbound"
+      ? (lang === "ar" ? "أنت" : "You")
+      : (peerName || (lang === "ar" ? "العميل" : "Customer"))
+    : "";
+  const quoteBody = m.replyTo
+    ? m.replyTo.available === false
+      ? (lang === "ar" ? "الرسالة غير متاحة" : "Message unavailable")
+      : m.replyTo.body || m.replyTo.text || "…"
+    : "";
+  const inlineQuote = Boolean(m.replyTo) && !bare && kind !== "image" && kind !== "video";
+  const quoteBlock = m.replyTo ? (
+    <div
+      data-testid="ig-quote"
+      dir="auto"
+      className="mb-1.5 pe-1"
+      style={{ borderInlineStartWidth: 2, borderInlineStartStyle: "solid", borderInlineStartColor: out ? "rgba(255,255,255,0.55)" : "rgba(12,16,20,0.25)", paddingInlineStart: 8 }}
+    >
+      <div className={cn("truncate text-[12px] font-semibold", out ? "text-white/90" : "text-[#6a717a]")}>{quoteName}</div>
+      <div className={cn("truncate text-[13px] leading-4", out ? "text-white/80" : "text-[#6a717a]")}>{quoteBody}</div>
+    </div>
+  ) : null;
+
   const reactions = Array.isArray(m.reactions) ? m.reactions.filter(Boolean) : [];
   const liked = m.myReaction === HEART;
   const canHeart = Boolean(onReact) && !out && !bare && kind !== "deleted" && kind !== "unsupported";
+  // Instagram reacts to a double click (double tap on a phone) with the heart, the one reaction its
+  // Send API can post. A second double click takes it back, the way a double tap toggles a like.
+  const onDoubleClick = canHeart ? () => onReact(liked ? "" : HEART) : undefined;
   // Instagram lets you quote any message, yours or theirs (Send API `reply_to`), so the
   // affordance sits on both sides and on every kind except the bare heart/sticker.
   const canReply = Boolean(onReply) && !bare && kind !== "deleted";
   return (
-    <div className={cn("flex flex-col", out ? "items-end" : "items-start")}>
-      {m.replyTo && (
+    <div className={cn("flex flex-col", out ? "items-end" : "items-start", group && !group.first ? "mt-0.5" : "mt-3")}>
+      {m.replyTo && !inlineQuote && (
         <div data-testid="ig-quote" className="mb-0.5 max-w-[76%] truncate rounded-xl bg-black/5 px-3 py-1 text-[12px] text-[#6a717a]" dir="auto">
-          {m.replyTo.available === false ? "…" : m.replyTo.body || m.replyTo.text || "…"}
+          {quoteBody}
         </div>
       )}
       <div className={cn("group relative flex max-w-[82%] items-center gap-1 sm:max-w-[76%]", reactions.length && "mb-3")}>
         <div
           data-testid="ig-bubble"
           className={cn("text-[15px] leading-5", bare ? "" : "px-3 py-2", kind === "image" || kind === "video" ? "overflow-hidden !p-1" : "")}
-          style={bare ? undefined : { background: out ? th?.out || "#4a5df9" : th?.in || "#f3f5f7", color: out ? th?.outText || "#fff" : th?.inText || "#0c1014", borderRadius: radius }}
+          title={m.time || undefined}
+          onDoubleClick={onDoubleClick}
+          style={bare ? undefined : { background: out ? th?.out || "#4a5df9" : th?.in || "#f3f5f7", color: out ? th?.outText || "#fff" : th?.inText || "#0c1014", borderRadius: radius, ...(tail ? (out ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }) : {}) }}
         >
+          {inlineQuote && quoteBlock}
           {body}
           {caption && <div dir="auto" className="mt-1.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{caption}</div>}
         </div>
+        {!bare && m.time && (
+          <span data-testid="ig-time" dir="ltr" className="shrink-0 select-none text-[10.5px] text-[#8e8e8e] opacity-0 transition-opacity duration-150 group-hover:opacity-100">{m.time}</span>
+        )}
         {canReply && (
           <button type="button" data-testid="ig-reply" aria-label={lang === "ar" ? "الرد على الرسالة" : "Reply to message"}
             onClick={() => onReply(m)}

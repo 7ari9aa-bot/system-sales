@@ -29,7 +29,7 @@ import { MESSENGER_CHAT_THEMES } from "@/lib/channels";
 // The six emoji Messenger's reaction picker offers, in its order. The Send API refuses any other,
 // so the picker offers exactly these.
 const MESSENGER_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
-import { messengerBubbleBackground, messengerBubbleCorners, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
+import { messengerBubbleBackground, messengerBubbleCorners, messengerClockTime, messengerGroup, messengerLinkHost, messengerLinkParts, messengerMessageShape, messengerQuoteText, messengerReactionSummary, messengerSeenMessageId, messengerStatusLine, messengerTimeDivider } from "./messengerChat";
 import ChannelContactDrawer from "@/components/inbox/ChannelContactDrawer";
 import ChannelEmojiStickerPicker from "@/components/inbox/ChannelEmojiStickerPicker";
 import ChannelAttachmentMenu from "@/components/inbox/ChannelAttachmentMenu";
@@ -56,6 +56,7 @@ import { uploadMedia } from "@/lib/inboxSend";
 import { ChoiceBody, ContactBody, DocumentBody, InteractiveBody, LocationBody, OrderBody, PhotoBody, StickerBody, UnsupportedBody, VideoBody } from "./whatsapp/MessageBodies";
 import { InstagramBubble } from "./instagram/InstagramBubble";
 import { instagramQuoteText } from "./instagram/messageKind";
+import { instagramGroup } from "./instagram/igGroup";
 import IgAvatar from "@/components/instagram/IgAvatar";
 import { IgBack, IgInfo, IgVerified } from "@/components/instagram/igIcons";
 import { displayBody, looksLikeFileName, messageKind } from "./whatsapp/messageKind";
@@ -276,15 +277,19 @@ export default function ChannelChat({
     if (!attachment || uploading || !conversation) return;
     setUploading(true);
     setAttachError("");
+    // An Instagram file carries no caption in the Send API, so the caption goes out as its own
+    // message right after the file, the way Instagram's own preview posts it.
+    const captionText = isInstagram ? String(caption || "").trim() : String(caption || "");
     const up = await uploadMedia(conversation.id, attachment.file, { asSticker: attachment.asSticker, mimeOf: isMessenger || isTelegram ? mimeOfChannelFile : null });
     if (!up.ok) { setUploading(false); setAttachError(up.error); return; }
-    const sent = await onSend?.(conversation.id, caption, {
+    const sent = await onSend?.(conversation.id, isInstagram ? "" : caption, {
       mediaId: up.media.media_id,
       mediaKind: up.media.kind,
       filename: up.media.filename,
       previewFile: attachment.file,
       replyTo: replyingTo || undefined,
     });
+    if (sent !== false && isInstagram && captionText) await onSend?.(conversation.id, captionText);
     setUploading(false);
     if (sent === false) { setAttachError(lang === "ar" ? "تم رفع الملف لكن تعذّر إرساله. حاول مرة أخرى." : "The file was uploaded but could not be sent. Try again."); return; }
     setAttachment(null);
@@ -371,6 +376,7 @@ export default function ChannelChat({
           role="button"
           tabIndex={0}
           onClick={() => setContactDrawerOpen(true)}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setContactDrawerOpen(true); } }}
           className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none hover:opacity-90 transition-opacity"
           title={lang === "ar" ? "عرض تفاصيل جهة الاتصال" : "View contact details"}
         >
@@ -499,7 +505,7 @@ export default function ChannelChat({
         className={cn(
           "flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-3",
           // Messenger spaces its own bubbles (2px inside a run, 8px between runs), so it takes no blanket gap.
-          !isMessenger && "space-y-2",
+          !isMessenger && !isInstagram && "space-y-2",
           isWhatsApp && "px-5 py-4 space-y-2",
           isTelegram && "px-4 py-3 space-y-1.5 sm:px-6 sm:py-4 telegram-transient-scrollbar",
           isTelegram && telegramMessagesScrolling && "is-scrolling"
@@ -546,13 +552,15 @@ export default function ChannelChat({
           const previousDayKey = (isWhatsApp || isInstagram || isMessenger || isTelegram) && index > 0 ? getMessageDayKey(visibleMessages[index - 1].createdAt) : "";
           // A run of bubbles from one person is one visual group in Messenger.
           const messengerRow = isMessenger ? messengerGroup(visibleMessages, index) : null;
+          // Instagram stacks a run of bubbles from one person 2px apart, like its own thread.
+          const instagramRow = isInstagram ? instagramGroup(visibleMessages, index) : null;
           return (
             <React.Fragment key={m.id}>
               {isMessenger ? (
                 messengerTimeDivider(visibleMessages, index) && (
                   <div data-testid="messenger-time-divider" className="flex justify-center py-3">
                     <span dir="auto" className="text-[12px] font-medium text-[#65676b]">
-                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${m.time}` : m.time}
+                      {dayKey !== previousDayKey ? `${formatWhatsAppDay(m.createdAt, lang, t)} ${messengerClockTime(m.createdAt, lang) || m.time}` : messengerClockTime(m.createdAt, lang) || m.time}
                     </span>
                   </div>
                 )
@@ -579,6 +587,7 @@ export default function ChannelChat({
                 onOpenImage={setViewerId}
                 showSeen={isInstagram && m.status === "read" && m.id === lastSentId}
                 messengerRow={messengerRow}
+                instagramRow={instagramRow}
                 messengerTheme={messengerTheme}
                 showSeenAvatar={isMessenger && m.id === messengerSeenId}
                 showIncomingAvatar={isMessenger && m.side !== "out" && (index === visibleMessages.length - 1 || visibleMessages[index + 1]?.side === "out")}
@@ -711,7 +720,7 @@ export default function ChannelChat({
           busy={uploading}
           error={attachError}
           lang={lang}
-          onSend={() => { void sendAttachment(""); }}
+          onSend={(caption) => { void sendAttachment(caption); }}
           onCancel={() => { setAttachment(null); setAttachError(""); }}
         />
       )}
@@ -820,6 +829,16 @@ export default function ChannelChat({
             )}
           </div>
         ) : isInstagram ? (
+          isRecordingVoice ? (
+            <MessengerVoiceRecorder
+              lang={lang}
+              accent="#0095f6"
+              provider="Instagram"
+              onCancel={() => setIsRecordingVoice(false)}
+              onError={(message) => setAttachError(message)}
+              onDone={(file) => { setIsRecordingVoice(false); setAttachError(""); setAttachment({ file, kind: "audio", asSticker: false }); }}
+            />
+          ) : (
           <>
           {replyingTo && (
             <div data-testid="ig-reply-bar" dir={lang === "ar" ? "rtl" : "ltr"} className="mb-1 flex items-center gap-2 rounded-xl bg-[#f5f5f5] px-3 py-1.5">
@@ -867,6 +886,17 @@ export default function ChannelChat({
                 </button>
                 <button
                   type="button"
+                  data-testid="ig-send-voice"
+                  onClick={() => { setAttachError(""); setIsRecordingVoice(true); }}
+                  disabled={sending || uploading}
+                  aria-label={lang === "ar" ? "تسجيل رسالة صوتية" : "Record a voice message"}
+                  title={lang === "ar" ? "تسجيل رسالة صوتية" : "Record a voice message"}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#262626] hover:bg-[#f5f5f5] transition-colors disabled:opacity-50"
+                >
+                  <Mic className="h-[19px] w-[19px]" />
+                </button>
+                <button
+                  type="button"
                   data-testid="ig-send-heart"
                   onClick={() => { void onSend?.(conversation.id, "", { heart: true }); }}
                   disabled={sending}
@@ -902,6 +932,7 @@ export default function ChannelChat({
             )}
           </div>
           </>
+          )
         ) : isMessenger ? (
           <>
           {replyingTo && (
@@ -1119,7 +1150,7 @@ export default function ChannelChat({
           onClose={() => setCustomer360Record(null)}
         />
       )}
-      {viewerId && (isWhatsApp || isInstagram) && (
+      {viewerId && (isWhatsApp || isInstagram || isMessenger) && (
         <ImageViewer gallery={galleryOf(allMessages)} startId={viewerId} lang={lang} onClose={() => setViewerId(null)} />
       )}
     </div>
@@ -1293,7 +1324,7 @@ function MessengerBubble({ m, messengerRow, showSeenAvatar, showIncomingAvatar, 
   );
 }
 
-function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
+function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null, showSeenAvatar = false, messengerTheme = null, isApp: _isApp, isWhatsApp, isInstagram: _isInstagram, isMessenger, isTelegram, lang: _lang, th, conversation: _conversation, showIncomingAvatar: _showIncomingAvatar, onReply, onReact, onOpenImage }) {
   const out = m.side === "out";
   const isAudio = m.mediaType === "audio" || String(m.text || "").startsWith("🎤");
   const mediaUrl = m.mediaUrl;
@@ -1367,7 +1398,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, showSeenAvatar = fal
   }
 
   if (_isInstagram) {
-    return <InstagramBubble m={m} th={th} lang={_lang} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
+    return <InstagramBubble m={m} th={th} lang={_lang} group={instagramRow} peerName={_conversation?.customer || ""} showSeen={showSeen} onOpenImage={onOpenImage} onReply={onReply && !m.unsaved ? onReply : undefined} onReact={onReact && !m.unsaved ? (emoji) => { void onReact(_conversation.id, m.id, emoji, m.myReaction || ""); } : undefined} />;
   }
 
   if (isTelegram) {

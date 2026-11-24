@@ -37,6 +37,20 @@ const ATTENTION_STATES = new Set(["reauth_required", "restricted", "disconnected
 /** Channels that use Meta OAuth popup flow (Instagram, Messenger, Facebook). */
 const META_OAUTH_CHANNELS = new Set(["messenger", "instagram", "facebook"]);
 
+/**
+ * The `provider` the server's Meta OAuth start route expects for a channel.
+ *
+ * Instagram has two separate grants and the merchant's account decides which one works:
+ * - "instagram_login": Instagram Login. No Facebook Page needed, its own Graph host. This is the
+ *   default because most shops only have an Instagram professional account.
+ * - "instagram": Facebook Login. The account must be linked to a Facebook Page.
+ * Every other channel sends its own id unchanged.
+ */
+export function metaOauthProvider(channelId, instagramMethod) {
+  if (channelId === "instagram" && instagramMethod !== "facebook") return "instagram_login";
+  return channelId;
+}
+
 /** WhatsApp Embedded Signup event type from Meta's JS SDK. */
 const WA_SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
 
@@ -350,6 +364,8 @@ export default function ChannelsSettings() {
   const [metaConnecting, setMetaConnecting] = React.useState("");
   // Opt-in, off by default: coexistence only applies to a number already on the WhatsApp Business app.
   const [waCoexistence, setWaCoexistence] = React.useState(false);
+  // How the merchant links Instagram: "login" (Instagram Login) or "facebook" (via a Page).
+  const [instagramMethod, setInstagramMethod] = React.useState("login");
   const [connectingMs, setConnectingMs] = React.useState(0);
   React.useEffect(() => {
     if (!metaConnecting) { setConnectingMs(0); return undefined; }
@@ -697,7 +713,7 @@ export default function ChannelsSettings() {
     setNotice("");
     try {
       const { authorize_url: authorizeUrl } = await withTimeout(
-        api(`/integrations/meta/oauth/start?provider=${encodeURIComponent(channel.id)}`),
+        api(`/integrations/meta/oauth/start?provider=${encodeURIComponent(metaOauthProvider(channel.id, instagramMethod))}`),
         30_000,
         isAr ? "استغرق تجهيز نافذة الربط وقتًا أطول من المتوقع. أعد المحاولة." : "Preparing the connect window took too long. Please retry."
       );
@@ -1049,6 +1065,43 @@ export default function ChannelsSettings() {
                               ? "الرقم شغال على تطبيق WhatsApp Business (تشغيل متزامن)"
                               : "The number also runs the WhatsApp Business app (coexistence)"}
                           </label>
+                        )}
+
+                        {/* Instagram can be linked two ways and the merchant's account decides which
+                            one works, so it is an explicit choice rather than a silent default. */}
+                        {channel.id === "instagram" && !isConnected && (
+                          <fieldset
+                            className="flex flex-col gap-1 text-[11px] text-slate-600"
+                            data-testid="instagram-method"
+                          >
+                            <legend className="sr-only">
+                              {isAr ? "طريقة ربط إنستجرام" : "How to connect Instagram"}
+                            </legend>
+                            <label className="flex items-center gap-1.5">
+                              <input
+                                type="radio"
+                                name="instagram-method"
+                                value="login"
+                                checked={instagramMethod === "login"}
+                                onChange={() => setInstagramMethod("login")}
+                              />
+                              {isAr
+                                ? "تسجيل الدخول عبر إنستجرام (بدون صفحة فيسبوك)"
+                                : "Instagram Login (no Facebook Page needed)"}
+                            </label>
+                            <label className="flex items-center gap-1.5">
+                              <input
+                                type="radio"
+                                name="instagram-method"
+                                value="facebook"
+                                checked={instagramMethod === "facebook"}
+                                onChange={() => setInstagramMethod("facebook")}
+                              />
+                              {isAr
+                                ? "عبر فيسبوك (الحساب مرتبط بصفحة فيسبوك)"
+                                : "Facebook Login (account linked to a Facebook Page)"}
+                            </label>
+                          </fieldset>
                         )}
 
                         {/* ═══ Single green "ربط" / "Connect" button ═══ */}

@@ -31,6 +31,7 @@ CHANNEL_TENANT_ROUTING_MIGRATION = (
     VERSIONS_DIR / "c0a2026f0199_provider_specific_channel_tenant_routing.py"
 )
 FACEBOOK_PAGE_IDENTITY_MIGRATION = VERSIONS_DIR / "fe2026112302_facebook_page_identity.py"
+PAGE_TWO_CAPABILITIES_MIGRATION = VERSIONS_DIR / "fe2026112308_page_one_tenant_two_capabilities.py"
 
 
 class _RecordingOp:
@@ -822,15 +823,69 @@ def test_facebook_page_identity_migration_keys_the_page_not_just_the_provider() 
     assert "COALESCE(config->>'page_id', config->>'account_id')" in page_index
 
 
-def test_the_model_carries_both_identity_indexes() -> None:
+def test_one_workspace_may_run_facebook_and_messenger_on_the_same_page() -> None:
+    pglast = pytest.importorskip("pglast", reason="pglast is a dev-only parser")
+    module, captured = _load_migration(PAGE_TWO_CAPABILITIES_MIGRATION)
+    module.upgrade()
+    for sql in captured:
+        pglast.parser.parse_sql(sql)
+
+    joined = "\n".join(captured)
+    # The Page-alone index is what made the second capability impossible: it is gone.
+    assert "DROP INDEX IF EXISTS public.uq_integrations_active_page_identity" in joined
+    index = next(sql for sql in captured if "CREATE UNIQUE INDEX" in sql)
+    # Keyed on (provider, Page): a Page cannot carry the same function twice, but may carry two.
+    assert "uq_integrations_active_page_provider" in index
+    assert "ON public.integrations (provider," in index
+    assert "COALESCE(config->>'page_id', config->>'account_id')" in index
+
+
+def test_a_page_still_belongs_to_one_workspace_only() -> None:
+    """The index no longer says it, so the trigger must: a SECOND workspace is refused."""
+    module, captured = _load_migration(PAGE_TWO_CAPABILITIES_MIGRATION)
+    module.upgrade()
+    function = next(sql for sql in captured if "RETURNS trigger" in sql)
+    assert "other.tenant_id <> NEW.tenant_id" in function
+    assert "ERRCODE = '23505'" in function
+    # Two workspaces linking at once must serialise on the Page, or both would pass the check.
+    assert "pg_advisory_xact_lock" in function
+    trigger = next(sql for sql in captured if "CREATE TRIGGER" in sql)
+    assert "BEFORE INSERT OR UPDATE" in trigger
+
+
+def test_the_model_declares_the_page_provider_index_not_the_page_alone_index() -> None:
     from app.modules.platform.models import Integration
 
     by_name = {index.name: index for index in Integration.__table__.indexes}
+    assert "uq_integrations_active_page_identity" not in by_name
     identity = str(by_name["uq_integrations_active_channel_identity"].expressions[1])
     assert "WHEN provider = 'facebook' THEN config->>'page_id'" in identity
 
-    page = by_name["uq_integrations_active_page_identity"]
-    assert "provider IN ('messenger', 'facebook')" in str(page.expressions[0])
-    assert "COALESCE(config->>'page_id', config->>'account_id')" in str(
-        page.dialect_options["postgresql"]["where"]
-    )
+    page = by_name["uq_integrations_active_page_provider"]
+    assert str(page.expressions[0]).endswith("provider")
+    assert "COALESCE(config->>'page_id', config->>'account_id')" in str(page.expressions[1])
+
+
+def test_the_migration_chain_has_one_head_and_no_duplicate_revision_ids() -> None:
+    """Two files sharing a revision id make Alembic silently run only one of them.
+
+    That is how a migration that creates a table could be skipped on a fresh database while every
+    test stayed green. One head, and every revision id declared exactly once.
+    """
+    import re
+
+    declared: dict[str, list[str]] = {}
+    for path in sorted(VERSIONS_DIR.glob("*.py")):
+        match = re.search(r'^revision\s*(?::[^=]+)?=\s*"([^"]+)"', path.read_text(), re.M)
+        if match:
+            declared.setdefault(match.group(1), []).append(path.name)
+    duplicated = {rev: files for rev, files in declared.items() if len(files) > 1}
+    assert not duplicated, f"revision ids declared more than once: {duplicated}"
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(VERSIONS_DIR.parent.parent / "alembic.ini"))
+    config.set_main_option("script_location", str(VERSIONS_DIR.parent))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    assert len(heads) == 1, f"the migration chain has several heads: {heads}"

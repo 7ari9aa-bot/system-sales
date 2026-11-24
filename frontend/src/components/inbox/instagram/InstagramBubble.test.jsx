@@ -115,3 +115,76 @@ describe("reply-to (Send API reply_to)", () => {
     expect(instagramQuoteText(msg({ text: "سلام" }), "ar")).toBe("سلام");
   });
 });
+
+describe("InstagramBubble reply quote", () => {
+  const quoted = (over = {}, props = {}) => html({ text: "بكرة", replyTo: { id: "q1", direction: "inbound", body: "السعر كام؟" }, ...over }, props);
+
+  test("the quote sits inside the bubble, named after who wrote it", () => {
+    const out = quoted({}, { peerName: "Nour" });
+    const quote = out.indexOf('data-testid="ig-quote"');
+    const bubble = out.indexOf('data-testid="ig-bubble"');
+    const text = out.indexOf("بكرة");
+    expect(quote).toBeGreaterThan(bubble);
+    expect(quote).toBeLessThan(text);
+    expect(out).toContain("Nour");
+    expect(out).toContain("السعر كام؟");
+  });
+
+  test("quoting our own message says You, and falls back to the customer name", () => {
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "outbound", body: "أهلاً" } })).toContain("You");
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "inbound", body: "أهلاً" } }, { lang: "ar" })).toContain("العميل");
+  });
+
+  test("an unavailable original is said, not left blank", () => {
+    expect(html({ text: "hi", replyTo: { id: "q", direction: "inbound", available: false } })).toContain("Message unavailable");
+  });
+
+  test("a photo reply keeps the quote as a pill above it", () => {
+    const out = html({ contentType: "image", mediaUrl: "https://c/a.jpg", replyTo: { id: "q", direction: "inbound", body: "شوف" } });
+    expect(out.indexOf('data-testid="ig-quote"')).toBeLessThan(out.indexOf('data-testid="ig-bubble"'));
+  });
+});
+
+// Instagram reacts with the heart on a double click, so the bubble itself carries the handler.
+// Static markup cannot show a handler, so the element tree is walked here instead.
+function bubbleElement(props) {
+  const tree = InstagramBubble({ th, lang: "en", ...props });
+  let found = null;
+  const walk = (node) => {
+    if (!node || typeof node !== "object" || found) return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (node.props) {
+      if (node.props["data-testid"] === "ig-bubble") { found = node; return; }
+      walk(node.props.children);
+    }
+  };
+  walk(tree);
+  return found;
+}
+
+describe("double click to heart", () => {
+  test("a received message gets the heart on a double click", () => {
+    const calls = [];
+    const bubble = bubbleElement({ m: msg({ text: "hi" }), onReact: (v) => calls.push(v) });
+    expect(typeof bubble.props.onDoubleClick).toBe("function");
+    bubble.props.onDoubleClick();
+    expect(calls).toEqual(["❤️"]);
+  });
+
+  test("a second double click takes the heart back", () => {
+    const calls = [];
+    const bubble = bubbleElement({ m: msg({ text: "hi", myReaction: "❤️" }), onReact: (v) => calls.push(v) });
+    bubble.props.onDoubleClick();
+    expect(calls).toEqual([""]);
+  });
+
+  test("your own message has no double-click heart, like Instagram", () => {
+    const bubble = bubbleElement({ m: msg({ text: "mine", side: "out" }), onReact: () => {} });
+    expect(bubble.props.onDoubleClick).toBeUndefined();
+  });
+
+  test("the bare heart and sticker carry no second heart", () => {
+    const bubble = bubbleElement({ m: msg({ contentType: "sticker", text: "❤️" }), onReact: () => {} });
+    expect(bubble.props.onDoubleClick).toBeUndefined();
+  });
+});
