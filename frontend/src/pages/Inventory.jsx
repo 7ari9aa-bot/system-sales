@@ -1,3 +1,10 @@
+/**
+ * سلاسل الإمداد — وعاء الشاشة، واسم الملف تاريخي.
+ *
+ * الملف اسمه Inventory لكنه **مش** شاشة المخزون: شاشة المخزون هي
+ * cashier/routes/_authed/inventory.index.jsx على /cashier/inventory. ده وعاء /cashier/supply-chain
+ * اللي بيجمع 7 وحدات، وكل وحدة بقت صفحة ومكوّن مستقل في src/pages/supply-chain.
+ */
 import React, { useEffect, useState } from "react";
 import {
   Boxes,
