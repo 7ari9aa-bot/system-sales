@@ -621,6 +621,9 @@ async def record_chunk(
         run.state = "completed"
         run.progress = 100
         run.completed_at = run.completed_at or datetime.now(UTC)
+    elif run.state == "not_shared":
+        # A decline is terminal too: a late/duplicate history chunk cannot reopen it.
+        pass
     elif (run.progress or 0) >= 100:
         run.state = "completed"
         run.completed_at = run.completed_at or datetime.now(UTC)
