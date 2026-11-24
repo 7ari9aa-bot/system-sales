@@ -3,6 +3,11 @@
 The owner pastes a permanent Cloud API token + the phone number id. The live
 verification reads the number back from Graph and REJECTS when the id does not
 match the token, so a copy/paste slip can never connect somebody else's number.
+
+The same read asks for the two fields Meta documents as proof that a number runs
+on the WhatsApp Business app AND the Cloud API together (`is_on_biz_app` +
+`platform_type: CLOUD_API`). They are recorded as facts on the connection, so
+the coexistence flow never has to trust what a browser told it.
 """
 
 from __future__ import annotations
@@ -21,6 +26,34 @@ from app.modules.platform.channel_specs.base import (
     numeric_id,
     required_text,
 )
+
+#: Everything one Graph GET on a phone number id must return: the identity we store, the label the
+#: settings screen shows, and Meta's own coexistence evidence.
+NUMBER_FIELDS = "id,display_phone_number,verified_name,is_on_biz_app,platform_type"
+
+#: `platform_type` a coexistence number reports. Together with `is_on_biz_app: true` this is the
+#: documented proof that the app and the API are live on the same number.
+COEXISTENCE_PLATFORM = "CLOUD_API"
+
+
+def number_platform_facts(payload: dict[str, Any]) -> dict[str, Any]:
+    """The coexistence facts in a phone-number payload, typed, with unknown left as None.
+
+    A missing field stays ``None`` on purpose: "Meta did not say" is not "no", and a caller that
+    turns it into ``False`` would connect a Business App number as if it were Cloud-API-only.
+    """
+    raw_on_app = payload.get("is_on_biz_app")
+    raw_platform = payload.get("platform_type")
+    platform = str(raw_platform).strip().upper() if raw_platform else None
+    return {
+        "is_on_biz_app": raw_on_app if isinstance(raw_on_app, bool) else None,
+        "platform_type": platform or None,
+    }
+
+
+def coexistence_evidence(facts: dict[str, Any]) -> bool:
+    """True only on Meta's documented pair: on the app AND on the Cloud API."""
+    return facts.get("is_on_biz_app") is True and facts.get("platform_type") == COEXISTENCE_PLATFORM
 
 
 class WhatsAppConnectionSpec(ConnectionSpec):
@@ -63,7 +96,7 @@ class WhatsAppConnectionSpec(ConnectionSpec):
                 provider_label="WhatsApp",
                 url=f"{GRAPH_BASE}/{phone_number_id}",
                 token=token,
-                params={"fields": "id,display_phone_number,verified_name"},
+                params={"fields": NUMBER_FIELDS},
             )
         finally:
             if owns_client:
@@ -73,8 +106,16 @@ class WhatsAppConnectionSpec(ConnectionSpec):
             # The token belongs to a DIFFERENT number: fail rather than store
             # credentials that can never send from the pasted id.
             raise ValidationError("The WhatsApp phone number ID does not match the token.")
+        identity_config: dict[str, str] = {"phone_number_id": identity}
+        facts = number_platform_facts(data)
+        # Recorded as text because the config column is non-secret JSON of plain strings. Only
+        # what Meta actually answered is written — an absent field stays absent.
+        if facts["is_on_biz_app"] is not None:
+            identity_config["is_on_biz_app"] = "true" if facts["is_on_biz_app"] else "false"
+        if facts["platform_type"]:
+            identity_config["platform_type"] = str(facts["platform_type"])
         return VerifiedChannel(
-            {"phone_number_id": identity},
+            identity_config,
             str(data.get("verified_name") or data.get("display_phone_number") or "") or None,
         )
 

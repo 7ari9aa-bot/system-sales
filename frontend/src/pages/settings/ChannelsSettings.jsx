@@ -197,6 +197,29 @@ export function extractWhatsAppSignupIds(session) {
   };
 }
 
+/** What to tell the shop after a WhatsApp connect, from what Meta said about the number.
+ *
+ * The server decides `onboarding_mode` from `is_on_biz_app` + `platform_type`; this only turns that
+ * answer into one honest sentence. `not_on_business_app` is NOT an error — the channel is connected
+ * and works — but the shop has to know that replies typed in the phone app will not appear here,
+ * because that is the one promise coexistence makes and Cloud API alone cannot keep.
+ */
+export function whatsappConnectedNotice(result, isAr) {
+  const mode = String(result?.onboarding_mode || "");
+  const status = String(result?.coexistence_status || "");
+  if (mode === "coexistence" || status === "verified") {
+    return isAr
+      ? "تم ربط رقم واتساب. التطبيق على الموبايل شغال زي ما هو، وردودك من الموبايل هتظهر هنا كرسائل بشرية."
+      : "The WhatsApp number is connected. The phone app keeps working, and replies you type there appear here as human messages.";
+  }
+  if (status === "not_on_business_app") {
+    return isAr
+      ? "تم ربط الرقم عبر Cloud API. Meta بتقول إن الرقم مش مسجل على تطبيق WhatsApp Business، فمفيش ردود من الموبايل هتظهر هنا — اربط الرقم من تطبيق WhatsApp Business لو عايز الاتنين مع بعض."
+      : "The number is connected over the Cloud API. Meta reports it is not on the WhatsApp Business app, so replies from the phone will not appear here. Link it from the WhatsApp Business app if you want both together.";
+  }
+  return isAr ? "تم ربط رقم واتساب بنجاح." : "The WhatsApp number is connected.";
+}
+
 /** Map the marker the OAuth callback appended onto a sentence the operator can act on. */
 export function friendlyMetaError(raw, isAr) {
   const detail = String(raw || "");
@@ -362,8 +385,6 @@ export default function ChannelsSettings() {
   const [saving, setSaving] = React.useState(false);
   const [verifyingId, setVerifyingId] = React.useState("");
   const [metaConnecting, setMetaConnecting] = React.useState("");
-  // Opt-in, off by default: coexistence only applies to a number already on the WhatsApp Business app.
-  const [waCoexistence, setWaCoexistence] = React.useState(false);
   // How the merchant links Instagram: "login" (Instagram Login) or "facebook" (via a Page).
   const [instagramMethod, setInstagramMethod] = React.useState("login");
   const [connectingMs, setConnectingMs] = React.useState(0);
@@ -565,12 +586,17 @@ export default function ChannelsSettings() {
 
   /** Connect WhatsApp via Embedded Signup (JS SDK popup).
    *
-   * `coexistence` is the shop's own choice: a number that is already on the WhatsApp Business app
-   * can be onboarded in coexistence mode, where the app and the Cloud API both keep working.
-   * Asking for it is opt-in — Meta refuses it for a number it considers ineligible, and that
-   * refusal is shown as Meta worded it.
+   * The channel's journey is the merchant's EXISTING WhatsApp Business app number, so the popup
+   * always asks Meta for the Business App onboarding flow (`whatsapp_business_app_onboarding`).
+   * Under Embedded Signup v5 that feature is ON unless we switch it off, and switching it off was
+   * how a Business App number silently became a Cloud-API-only channel.
+   *
+   * What the number really is gets decided by Meta and comes back in `coexistence_status`:
+   * `verified` means the app and FIHRIST both work on the number, `not_on_business_app` means the
+   * number is Cloud API only. The notice says which one happened instead of implying that replies
+   * typed in the app are mirrored when they are not.
    */
-  async function connectWhatsApp(channel, { coexistence = false } = {}) {
+  async function connectWhatsApp(channel) {
     if (metaConnecting) return;
     const prepared = whatsappSignupRef.current;
     if (!prepared) {
@@ -661,7 +687,7 @@ export default function ChannelsSettings() {
             extras: {
               setup: {},
               version: "v5",
-              features: [{ name: "whatsapp_business_app_onboarding", enabled: coexistence }],
+              features: [{ name: "whatsapp_business_app_onboarding", enabled: true }],
             },
           }
         );
@@ -682,11 +708,18 @@ export default function ChannelsSettings() {
             : "Finish creating the WhatsApp number inside the Facebook window, then retry."
         );
       }
-      await api("/integrations/whatsapp/embedded-signup/complete", {
+      // The popup's own report is only a hint for the server, which re-reads the number from
+      // Meta: FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING means Meta said the app is on this number.
+      const result = await api("/integrations/whatsapp/embedded-signup/complete", {
         method: "POST",
-        body: { code: authCode, waba_id: wabaId, phone_number_id: phoneNumberId },
+        body: {
+          code: authCode,
+          waba_id: wabaId,
+          phone_number_id: phoneNumberId,
+          onboarding_mode: session?.coexistence ? "coexistence" : "cloud_api",
+        },
       });
-      setNotice(isAr ? "تم ربط رقم واتساب بنجاح." : "The WhatsApp number is connected.");
+      setNotice(whatsappConnectedNotice(result, isAr));
       setMetaConnecting("");
       await reload().catch(() => {});
     } catch (connectError) {
@@ -768,7 +801,7 @@ export default function ChannelsSettings() {
   /** Unified connect handler — routes to the right flow per channel type. */
   function handleConnect(channel) {
     if (channel.id === "whatsapp") {
-      connectWhatsApp(channel, { coexistence: waCoexistence });
+      connectWhatsApp(channel);
     } else if (META_OAUTH_CHANNELS.has(channel.id)) {
       if (metaConnecting) return;
       const popup = openCenteredPopup("about:blank", "meta_oauth_popup");
@@ -1050,21 +1083,18 @@ export default function ChannelsSettings() {
                           </button>
                         )}
 
-                        {/* A number that already runs the WhatsApp Business app can be onboarded
-                            in coexistence mode (app + Cloud API together). It is a choice, never
-                            the default: Meta decides eligibility and its refusal is shown. */}
+                        {/* Not a choice: the journey IS the merchant's existing WhatsApp Business
+                            app number, so the popup always asks Meta for that flow. What the line
+                            warns about is what Meta does to the devices around that number. */}
                         {channel.id === "whatsapp" && !isConnected && (
-                          <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={waCoexistence}
-                              onChange={(e) => setWaCoexistence(e.target.checked)}
-                              className="h-3.5 w-3.5 rounded border-slate-300"
-                            />
+                          <p
+                            className="max-w-md text-[11px] leading-5 text-slate-600"
+                            data-testid="whatsapp-coexistence-note"
+                          >
                             {isAr
-                              ? "الرقم شغال على تطبيق WhatsApp Business (تشغيل متزامن)"
-                              : "The number also runs the WhatsApp Business app (coexistence)"}
-                          </label>
+                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده."
+                              : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path."}
+                          </p>
                         )}
 
                         {/* Instagram can be linked two ways and the merchant's account decides which

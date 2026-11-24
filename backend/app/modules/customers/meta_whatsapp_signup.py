@@ -35,6 +35,10 @@ from app.core.config import get_settings
 from app.core.errors import ConflictError, ExternalProviderError, ValidationError
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
+from app.modules.platform.channel_specs.whatsapp import (
+    COEXISTENCE_PLATFORM,
+    coexistence_evidence,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +70,10 @@ class WhatsAppSignupCompleteBody(BaseModel):
     code: str = Field(min_length=8, max_length=4096)
     waba_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
     phone_number_id: str = Field(min_length=1, max_length=32, pattern=r"^[0-9]+$")
-    onboarding_mode: str = Field(default="cloud_api", pattern=r"^(cloud_api|coexistence)$")
+    # What the BROWSER asked for. The popup always asks Meta for the WhatsApp Business app flow,
+    # so coexistence is the default; the stored mode is still decided from Meta's own answer about
+    # the number (see _resolve_onboarding_mode), never from this field alone.
+    onboarding_mode: str = Field(default="coexistence", pattern=r"^(cloud_api|coexistence)$")
 
 
 class WhatsAppSignupCompleteOut(BaseModel):
@@ -78,7 +85,12 @@ class WhatsAppSignupCompleteOut(BaseModel):
     display_name: str | None = None
     phone_number_id: str
     waba_id: str
-    onboarding_mode: str = "cloud_api"
+    onboarding_mode: str = "coexistence"
+    #: What Meta said about the number: ``verified`` (app + Cloud API together),
+    #: ``not_on_business_app`` (Cloud API only) or ``unexpected_platform`` (refused).
+    coexistence_status: str = "unknown"
+    is_on_biz_app: bool | None = None
+    platform_type: str | None = None
 
 
 def _whatsapp_config() -> tuple[str, str, str]:
@@ -306,6 +318,84 @@ async def _phone_status(http: httpx.AsyncClient, *, phone_number_id: str, token:
     return str(status).upper() if status else None
 
 
+#: What we record (and show the owner) about Meta's answer on coexistence.
+COEXISTENCE_VERIFIED = "verified"
+COEXISTENCE_NOT_ON_APP = "not_on_business_app"
+
+
+async def _number_platform_facts(
+    http: httpx.AsyncClient, *, phone_number_id: str, token: str
+) -> dict:
+    """Meta's own answer about WHERE this number runs — or a loud failure, never a guess.
+
+    ``is_on_biz_app`` + ``platform_type`` are the only documented proof that a number runs on the
+    WhatsApp Business app and the Cloud API at the same time. A connect that cannot read them must
+    not record a mode: assuming ``cloud_api`` is what made every Business App number look like a
+    plain API number, and assuming coexistence would skip a registration the number still needs.
+    """
+    from app.modules.platform.channel_specs.whatsapp import number_platform_facts
+
+    try:
+        response = await http.get(
+            f"{_GRAPH}/{phone_number_id}",
+            params={"fields": "is_on_biz_app,platform_type"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    except httpx.RequestError:
+        raise ExternalProviderError(
+            "Could not read this WhatsApp number's state from Meta. Press connect again.",
+            retryable=True,
+        ) from None
+    if response.status_code == 429 or response.status_code >= 500:
+        raise ExternalProviderError(
+            "Meta is temporarily unavailable while checking the WhatsApp number.",
+            retryable=True,
+        )
+    try:
+        payload = response.json()
+    except ValueError:
+        raise ExternalProviderError(
+            "Meta returned an invalid response for this WhatsApp number.", retryable=True
+        ) from None
+    if not response.is_success or not isinstance(payload, dict) or payload.get("error"):
+        raise ValidationError(
+            "Meta could not report whether this number runs on the WhatsApp Business app. "
+            "Reopen the connect window and try again."
+        )
+    facts = number_platform_facts(payload)
+    if facts["is_on_biz_app"] is None:
+        raise ExternalProviderError(
+            "Meta did not report whether this WhatsApp number runs on the WhatsApp Business app. "
+            "Press connect again.",
+            retryable=True,
+        )
+    return facts
+
+
+def _resolve_onboarding_mode(facts: dict, requested: str) -> tuple[str, str]:
+    """The mode to STORE, from Meta's answer — plus the status the settings screen shows.
+
+    ``requested`` is only a hint for the log: the popup can report a mode for a number that never
+    entered the Business App flow, and it cannot know what Meta will say about the number.
+    """
+    if coexistence_evidence(facts):
+        return "coexistence", COEXISTENCE_VERIFIED
+    if facts.get("is_on_biz_app") is True:
+        platform = facts.get("platform_type") or "unknown"
+        raise ValidationError(
+            "Meta reports this WhatsApp number is on the WhatsApp Business app, but its platform "
+            f"is {platform} instead of {COEXISTENCE_PLATFORM}. That is not the documented "
+            "coexistence state, so nothing was connected. Connect the number again from the "
+            "WhatsApp Business app, or move it to the Cloud API first."
+        )
+    logger.info(
+        "whatsapp.signup_not_on_business_app requested=%s platform=%s",
+        requested,
+        facts.get("platform_type"),
+    )
+    return "cloud_api", COEXISTENCE_NOT_ON_APP
+
+
 def _register_error(response: httpx.Response) -> ExternalProviderError:
     """What to tell the owner when Meta refuses to register the number, by Meta's own error.
 
@@ -484,6 +574,45 @@ async def _forget_pending_pin(phone_number_id: str) -> None:
         pass
 
 
+async def _prepare_number(
+    http: httpx.AsyncClient,
+    *,
+    waba_id: str,
+    phone_number_id: str,
+    token: str,
+    requested_mode: str,
+) -> tuple[str, str, dict, str | None]:
+    """Settle the number's real mode, register it only when it needs it, subscribe the app.
+
+    Returns ``(onboarding_mode, coexistence_status, platform_facts, registration_pin)``.
+
+    The order matters and is Meta's, not ours: a number that already lives on the WhatsApp
+    Business app is registered there and must NOT be registered again (a second register spends
+    one of the 10 attempts Meta allows per 72 hours, can lock the number with 133016, and invents
+    a two-step PIN the app owner never set). A Cloud-API-only number still has to be registered,
+    and that is the step Meta can refuse — so it happens BEFORE the subscription, which would
+    otherwise leave an orphaned webhook subscription on the customer's WABA every time it fails.
+    """
+    platform_facts = await _number_platform_facts(
+        http, phone_number_id=phone_number_id, token=token
+    )
+    onboarding_mode, coexistence_status = _resolve_onboarding_mode(platform_facts, requested_mode)
+    registration_pin: str | None = None
+    if onboarding_mode == "coexistence":
+        logger.info(
+            "whatsapp.coexistence_number_left_registered phone_number_id=%s", phone_number_id
+        )
+    else:
+        registration_pin = await _register_phone_number(
+            http,
+            phone_number_id=phone_number_id,
+            token=token,
+            pin=await _take_pending_pin(phone_number_id),
+        )
+    await _subscribe_app_to_waba(http, waba_id=waba_id, token=token)
+    return onboarding_mode, coexistence_status, platform_facts, registration_pin
+
+
 @whatsapp_signup_router.post(
     "/integrations/whatsapp/embedded-signup/complete",
     response_model=WhatsAppSignupCompleteOut,
@@ -550,16 +679,14 @@ async def whatsapp_signup_complete(
             {"phone_number_id": body.phone_number_id},
             client=http,
         )
-        # Register the number FIRST, then subscribe. Registering is the step Meta can refuse
-        # (unverified number, 133016 lock-out); subscribing first would leave an orphaned
-        # webhook subscription on the customer's WABA every time it does.
-        registration_pin = await _register_phone_number(
+        prepared = await _prepare_number(
             http,
+            waba_id=body.waba_id,
             phone_number_id=body.phone_number_id,
             token=token,
-            pin=await _take_pending_pin(body.phone_number_id),
+            requested_mode=body.onboarding_mode,
         )
-        await _subscribe_app_to_waba(http, waba_id=body.waba_id, token=token)
+        onboarding_mode, coexistence_status, platform_facts, registration_pin = prepared
 
     verified_at = datetime.now(UTC).isoformat()
     integration_config = {
@@ -567,14 +694,25 @@ async def whatsapp_signup_complete(
         # The WABA id is not used for tenant resolution (phone_number_id is),
         # but it is what future template/quality calls address.
         "waba_id": body.waba_id,
-        # Which way the customer connected. Kept because coexistence means the WhatsApp Business
-        # app keeps working on this number alongside the API, which changes what a screen should
-        # say about replies typed there.
-        "onboarding_mode": body.onboarding_mode,
+        # Which way the number really runs, as Meta reported it. Coexistence means the WhatsApp
+        # Business app keeps working on this number alongside the API, which changes what a screen
+        # says about replies typed there, and which lifecycle events to expect.
+        "onboarding_mode": onboarding_mode,
+        # What the browser asked for, kept for support: a mismatch with onboarding_mode is the
+        # difference between "the popup asked for the app flow" and "Meta said the number is on
+        # the app". Only the second one is a fact.
+        "onboarding_mode_requested": body.onboarding_mode,
+        "coexistence_status": coexistence_status,
+        "is_on_biz_app": platform_facts["is_on_biz_app"],
+        "platform_type": platform_facts["platform_type"],
         "_connection": _verification_metadata(
             verified_at=verified_at, display_name=display_name or verified.display_name
         ),
     }
+    if coexistence_status == COEXISTENCE_VERIFIED:
+        # The clock Meta's 24-hour sync window runs from (contacts + history requests must be
+        # sent inside it), recorded once at the moment the number proved it runs both ways.
+        integration_config["coexistence_verified_at"] = verified_at
     secrets_to_store = {"access_token": token}
     secrets_to_store["_meta"] = {
         "expires_at": token_expires_at,
@@ -623,6 +761,8 @@ async def whatsapp_signup_complete(
             "via": "embedded_signup",
             "phone_number_id": body.phone_number_id,
             "waba_id": body.waba_id,
+            "onboarding_mode": onboarding_mode,
+            "coexistence_status": coexistence_status,
         },
     )
 
@@ -639,7 +779,10 @@ async def whatsapp_signup_complete(
         "display_name": display_name or verified.display_name,
         "phone_number_id": body.phone_number_id,
         "waba_id": body.waba_id,
-        "onboarding_mode": body.onboarding_mode,
+        "onboarding_mode": onboarding_mode,
+        "coexistence_status": coexistence_status,
+        "is_on_biz_app": platform_facts["is_on_biz_app"],
+        "platform_type": platform_facts["platform_type"],
     }
 
 
@@ -661,6 +804,11 @@ def _connected_result(integration, body: WhatsAppSignupCompleteBody) -> dict:
     config = integration.config if isinstance(integration.config, dict) else {}
     connection = config.get("_connection")
     display_name = connection.get("display_name") if isinstance(connection, dict) else None
+    # The mode comes from what was STORED, not from this request: a replay of a coexistence
+    # connect must not answer "cloud_api" and hide the app from every screen afterwards.
+    stored_mode = str(config.get("onboarding_mode") or body.onboarding_mode)
+    stored_status = str(config.get("coexistence_status") or "unknown")
+    stored_on_app = config.get("is_on_biz_app")
     return {
         "id": str(integration.id),
         "provider": "whatsapp",
@@ -668,6 +816,10 @@ def _connected_result(integration, body: WhatsAppSignupCompleteBody) -> dict:
         "display_name": display_name,
         "phone_number_id": body.phone_number_id,
         "waba_id": body.waba_id,
+        "onboarding_mode": stored_mode,
+        "coexistence_status": stored_status,
+        "is_on_biz_app": stored_on_app if isinstance(stored_on_app, bool) else None,
+        "platform_type": config.get("platform_type") or None,
     }
 
 
