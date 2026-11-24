@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 656,
-    "sha256": "f50ba6f886a5c80bd81d231680d99af7b0e3faa6fe884bac275126ef8bb14d68",
+    "operations": 659,
+    "sha256": "cd79b16c8a0920eda235a229fa5d320386d7e3037fe046aa4ab1cd0421b7db40",
     "typed_operations": 355
   },
   "spec": {
@@ -4099,7 +4099,7 @@
         },
         "CloseSessionRequest": {
           "additionalProperties": false,
-          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.",
+          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.\n\nA shop that takes card, wallet or transfer counts those too: ``counted_methods`` carries what\nwas actually in each terminal, and the close stores one reconciliation row per method. The\nserver refuses a missing method when the shop asked to settle methods at close.",
           "properties": {
             "counted_cash": {
               "anyOf": [
@@ -4112,6 +4112,20 @@
                 }
               ],
               "title": "Counted Cash"
+            },
+            "counted_methods": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Methods"
             },
             "variance_reason": {
               "anyOf": [
@@ -8275,6 +8289,18 @@
         },
         "ExchangeLine": {
           "properties": {
+            "condition": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition"
+            },
             "quantity": {
               "maximum": 100000.0,
               "minimum": 1.0,
@@ -8318,7 +8344,7 @@
           "type": "object"
         },
         "ExchangeRequest": {
-          "description": "The one-transaction exchange: return lines and their replacement sale are recorded\ntogether. No payment fields exist: the cashier layer does not move money.",
+          "description": "The one-transaction exchange: return lines, their replacement sale, and the difference.\n\nA replacement that costs more needs ``payments`` covering the difference; one that costs less\nis refunded across the original tenders (or per ``refund`` / ``refund_method``); an equal swap\nmoves nothing and says so.",
           "properties": {
             "new_lines": {
               "items": {
@@ -8332,6 +8358,47 @@
               "format": "uuid",
               "title": "Order Id",
               "type": "string"
+            },
+            "payments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payments"
+            },
+            "refund": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RefundLine"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund"
+            },
+            "refund_method": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund Method"
             },
             "restock": {
               "anyOf": [
@@ -10080,11 +10147,36 @@
         },
         "HandoverRequest": {
           "additionalProperties": false,
+          "description": "The hand-off. A drawer that takes payments is COUNTED before it changes hands.\n\nWithout the count the day's shortage can never be pinned on the shift it happened in: the\nsession keeps running and every later figure belongs to whoever holds it last.",
           "properties": {
+            "counted_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Cash"
+            },
             "new_cashier_id": {
               "format": "uuid",
               "title": "New Cashier Id",
               "type": "string"
+            },
+            "variance_reason": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variance Reason"
             }
           },
           "required": [
@@ -17449,6 +17541,37 @@
           "title": "RefundCreateRequest",
           "type": "object"
         },
+        "RefundLine": {
+          "description": "One tender to give money back on: the method and how much of the return it covers.",
+          "properties": {
+            "amount": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Amount"
+            },
+            "method": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Method",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "amount"
+          ],
+          "title": "RefundLine",
+          "type": "object"
+        },
         "RegisterRequest": {
           "description": "email + password only is the minimal signup contract; the tenant\nname/slug and display name are derived server-side when omitted.",
           "properties": {
@@ -18164,6 +18287,18 @@
         },
         "ReturnLine": {
           "properties": {
+            "condition": {
+              "anyOf": [
+                {
+                  "maxLength": 15,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition"
+            },
             "quantity": {
               "maximum": 100000.0,
               "minimum": 1.0,
@@ -20888,9 +21023,16 @@
         "StocktakeCountLineIn": {
           "properties": {
             "counted_quantity": {
-              "minimum": 0.0,
-              "title": "Counted Quantity",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Quantity"
             },
             "variant_id": {
               "format": "uuid",
@@ -20899,8 +21041,7 @@
             }
           },
           "required": [
-            "variant_id",
-            "counted_quantity"
+            "variant_id"
           ],
           "title": "StocktakeCountLineIn",
           "type": "object"
@@ -24835,6 +24976,28 @@
           "title": "VoidRequest",
           "type": "object"
         },
+        "VoidSaleRequest": {
+          "description": "Reverse a confirmed sale. The reason is required and the caller needs a manager override.",
+          "properties": {
+            "order_id": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            },
+            "reason": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "order_id",
+            "reason"
+          ],
+          "title": "VoidSaleRequest",
+          "type": "object"
+        },
         "WebchatInbound": {
           "properties": {
             "body": {
@@ -25521,7 +25684,7 @@
               "type": "string"
             },
             "onboarding_mode": {
-              "default": "cloud_api",
+              "default": "coexistence",
               "pattern": "^(cloud_api|coexistence)$",
               "title": "Onboarding Mode",
               "type": "string"
@@ -25552,6 +25715,11 @@
         "WhatsAppSignupCompleteOut": {
           "description": "Details of the newly configured WhatsApp channel integration.",
           "properties": {
+            "coexistence_status": {
+              "default": "unknown",
+              "title": "Coexistence Status",
+              "type": "string"
+            },
             "display_name": {
               "anyOf": [
                 {
@@ -25567,14 +25735,36 @@
               "title": "Id",
               "type": "string"
             },
+            "is_on_biz_app": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is On Biz App"
+            },
             "onboarding_mode": {
-              "default": "cloud_api",
+              "default": "coexistence",
               "title": "Onboarding Mode",
               "type": "string"
             },
             "phone_number_id": {
               "title": "Phone Number Id",
               "type": "string"
+            },
+            "platform_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform Type"
             },
             "provider": {
               "title": "Provider",
@@ -25583,6 +25773,17 @@
             "status": {
               "title": "Status",
               "type": "string"
+            },
+            "sync_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sync State"
             },
             "waba_id": {
               "title": "Waba Id",
@@ -26375,7 +26576,7 @@
           "type": "object"
         },
         "app__modules__pos__router__ReturnRequest": {
-          "description": "A line-level return of a POS sale (ERPNext's POS return document).",
+          "description": "A line-level return of a POS sale (ERPNext's POS return document) AND its refund.\n\nThe money goes back across the tenders the sale actually collected: cash first, then the rest\nin the order they were taken. ``refund`` overrides that with explicit per-method amounts (give\nthe notes back even though the card was charged); ``refund_method`` refunds the whole return on\none method. Send neither to use the shop's policy.",
           "properties": {
             "lines": {
               "items": {
@@ -26389,6 +26590,32 @@
               "format": "uuid",
               "title": "Order Id",
               "type": "string"
+            },
+            "refund": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/RefundLine"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund"
+            },
+            "refund_method": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund Method"
             },
             "restock": {
               "anyOf": [
@@ -56683,7 +56910,7 @@
               "schema": {
                 "anyOf": [
                   {
-                    "pattern": "^(?:adjustment|damage|opening_stock|purchase|reservation|reservation_release|return|return_reversal|sale|supplier_return|supplier_return_reversal|transfer_in|transfer_out)$",
+                    "pattern": "^(?:adjustment|damage|opening_stock|purchase|reservation|reservation_release|return|return_reversal|sale|supplier_return|supplier_return_reversal|transfer_in|transfer_out|void)$",
                     "type": "string"
                   },
                   {
@@ -77507,7 +77734,7 @@
       },
       "/api/v1/pos/sessions/{session_id}/exchanges": {
         "post": {
-          "description": "One-transaction exchange: record the returned goods and the replacement sale. No money\nmoves; the value difference is only reported. Two receipts, one commit.",
+          "description": "One-transaction exchange: the returned goods, the replacement sale, and the difference.\nA dearer replacement collects it, a cheaper one refunds it, an even swap moves nothing.\nTwo receipts, one commit.",
           "operationId": "exchange_api_v1_pos_sessions__session_id__exchanges_post",
           "parameters": [
             {
@@ -78764,6 +78991,122 @@
           ]
         }
       },
+      "/api/v1/pos/sessions/{session_id}/voids": {
+        "post": {
+          "description": "Reverse a confirmed POS sale: stock back, money back, a POS-VOID- document, an audit trail.\n\nNothing is deleted — the original receipt, its payments and its stock movements all stay, and\nthe void adds the reversing ones. Needs a manager override and a reason.",
+          "operationId": "void_sale_api_v1_pos_sessions__session_id__voids_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoidSaleRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Void Sale",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/stock": {
         "get": {
           "description": "One joined row per active variant: names, options, barcode, price, cost, on-hand, level.",
@@ -78986,6 +79329,320 @@
             }
           },
           "summary": "List Stock",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/stock/count": {
+        "get": {
+          "description": "How many variants match the same filters as GET /stock.\n\nThe grid shows \"من N\" from this, so a page that happens to be full is never mistaken for the\nwhole set — the reason a printed sheet or an export could come out short.",
+          "operationId": "count_stock_api_v1_pos_stock_count_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "term",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Term"
+              }
+            },
+            {
+              "in": "query",
+              "name": "category_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "brand_id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand Id"
+              }
+            },
+            {
+              "in": "query",
+              "name": "season",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Season"
+              }
+            },
+            {
+              "in": "query",
+              "name": "material",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "maxLength": 60,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
+              }
+            },
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "pattern": "^(in|low|out)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Count Stock",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/stock/products/{product_id}/reorder-level": {
+        "put": {
+          "description": "Set ONE reorder level for every active size of a model.\n\nA clothing shop restocks a size run, not a size. Setting eight sizes one by one is how a model\nends up with no low-stock alert at all.",
+          "operationId": "set_product_reorder_level_api_v1_pos_stock_products__product_id__reorder_level_put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "product_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderLevelRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Product Reorder Level",
           "tags": [
             "pos"
           ]
