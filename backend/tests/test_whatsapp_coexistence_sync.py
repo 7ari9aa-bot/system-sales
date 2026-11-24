@@ -411,7 +411,7 @@ def test_the_sync_table_is_tenant_isolated_in_the_migration() -> None:
 
 
 async def test_replayed_chunk_key_does_not_double_count_progress_or_messages(session) -> None:
-    run = _run()
+    run = _run(tenant_id=TENANT)
     session.rows.append(run)
     kwargs = {
         "phone_number_id": "456",
@@ -433,7 +433,7 @@ async def test_replayed_chunk_key_does_not_double_count_progress_or_messages(ses
 
 
 async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress(session) -> None:
-    run = _run(sync_type=sync.WHATSAPP_SYNC_CONTACTS)
+    run = _run(tenant_id=TENANT, sync_type=sync.WHATSAPP_SYNC_CONTACTS)
     session.rows.append(run)
     await sync.record_chunk(
         session,
@@ -451,7 +451,7 @@ async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress
 
 
 async def test_history_webhook_decline_marks_run_not_shared(session) -> None:
-    run = _run(sync_type=sync.WHATSAPP_SYNC_HISTORY)
+    run = _run(tenant_id=TENANT, sync_type=sync.WHATSAPP_SYNC_HISTORY)
     session.rows.append(run)
     await sync.record_chunk(
         session,
