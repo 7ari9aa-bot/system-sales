@@ -708,15 +708,15 @@ export default function ChannelsSettings() {
             : "Finish creating the WhatsApp number inside the Facebook window, then retry."
         );
       }
-      // The popup's own report is only a hint for the server, which re-reads the number from
-      // Meta: FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING means Meta said the app is on this number.
+      // This product connects an existing WhatsApp Business app number only. The server
+      // independently verifies the number with Meta; this value never overrides that proof.
       const result = await api("/integrations/whatsapp/embedded-signup/complete", {
         method: "POST",
         body: {
           code: authCode,
           waba_id: wabaId,
           phone_number_id: phoneNumberId,
-          onboarding_mode: session?.coexistence ? "coexistence" : "cloud_api",
+          onboarding_mode: "coexistence",
         },
       });
       setNotice(whatsappConnectedNotice(result, isAr));
