@@ -157,6 +157,12 @@ class WhatsAppAdapter:
     )
     #: `account_update` events that mean Meta has limited or switched off the account.
     RESTRICTING_EVENTS = frozenset({"ACCOUNT_RESTRICTION", "DISABLED_UPDATE", "ACCOUNT_VIOLATION"})
+    #: `account_update` events that mean the PARTNER was taken off the account: our app is no
+    #: longer allowed to send or receive for this number, so the channel has to go disconnected
+    #: instead of looking healthy while every send fails.
+    PARTNER_REMOVED_EVENTS = frozenset({"PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"})
+    #: The account came back: the number has to be verified again before anything is sent.
+    PARTNER_RECONNECTED_EVENTS = frozenset({"ACCOUNT_RECONNECTED"})
 
     def resolve_template_account(self, payload: dict) -> str | None:
         """The business account id when this envelope is only account-level news.
@@ -175,7 +181,17 @@ class WhatsAppAdapter:
                 for c in changes
             ):
                 return None
-            account = str(entry.get("id") or "").strip()
+            # A coexistence `account_update` names the business account inside `waba_info`;
+            # `entry.id` is not guaranteed to be the WABA (it can be the phone number), and
+            # routing by it put the event on a channel that does not exist.
+            account = ""
+            for change in changes:
+                value = change.get("value") if isinstance(change.get("value"), dict) else {}
+                waba = (value.get("waba_info") or {}).get("waba_id")
+                if waba:
+                    account = str(waba).strip()
+                    break
+            account = account or str(entry.get("id") or "").strip()
             if not account:
                 return None
             accounts.add(account)
@@ -216,7 +232,36 @@ class WhatsAppAdapter:
                 value = value if isinstance(value, dict) else {}
                 field = change.get("field")
                 event = _short(value.get("event"))
-                if field == self.ACCOUNT_UPDATE_FIELD and event in self.RESTRICTING_EVENTS:
+                waba_info = (
+                    value.get("waba_info") if isinstance(value.get("waba_info"), dict) else {}
+                )
+                if field == self.ACCOUNT_UPDATE_FIELD and event in self.PARTNER_REMOVED_EVENTS:
+                    # The merchant removed our app from their account (or Meta offboarded it).
+                    # Nothing can be sent any more, and pretending otherwise is how a dead channel
+                    # keeps collecting replies nobody receives.
+                    signals.append(
+                        {
+                            "kind": "offboarded",
+                            "event": event,
+                            "waba_id": _short(waba_info.get("waba_id")),
+                            "reason": _short(
+                                value.get("reason")
+                                or (value.get("offboarding_info") or {}).get("reason")
+                                or (value.get("partner_removal") or {}).get("reason")
+                            ),
+                        }
+                    )
+                elif (
+                    field == self.ACCOUNT_UPDATE_FIELD and event in self.PARTNER_RECONNECTED_EVENTS
+                ):
+                    signals.append(
+                        {
+                            "kind": "reconnected",
+                            "event": event,
+                            "waba_id": _short(waba_info.get("waba_id")),
+                        }
+                    )
+                elif field == self.ACCOUNT_UPDATE_FIELD and event in self.RESTRICTING_EVENTS:
                     signals.append(
                         {
                             "kind": "restriction",
@@ -247,17 +292,32 @@ class WhatsAppAdapter:
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-                contacts = {c.get("wa_id"): c for c in value.get("contacts", [])}
+                # A contact is keyed by its phone number OR by its Business-Scoped User ID: a
+                # person who shares no number arrives with `user_id` only, and looking them up by
+                # `wa_id` alone left their name (and their whole identity) blank.
+                contacts: dict[str, dict] = {}
+                for contact in value.get("contacts", []) or []:
+                    for key in (contact.get("wa_id"), contact.get("user_id")):
+                        if key:
+                            contacts[str(key)] = contact
                 for msg in value.get("messages", []):
-                    wa_id = msg.get("from")
-                    contact = contacts.get(wa_id, {})
+                    wa_id = str(msg.get("from") or "").strip()
+                    bsuid = str(msg.get("from_user_id") or "").strip()
+                    # The phone is the ordinary handle; the BSUID is what a number-less customer
+                    # has instead. Empty means the provider told us nobody — refused at ingest
+                    # rather than collapsed into one blank identity shared by every such message.
+                    customer_ref = wa_id or bsuid
+                    contact = contacts.get(customer_ref, {})
                     profile_name = (contact.get("profile") or {}).get("name")
                     body, media_url, media_type, content_type = self._extract_content(msg)
                     messages.append(
                         InboundMessage(
                             channel=self.name,
                             channel_message_id=msg.get("id"),
-                            customer_ref=wa_id or "",
+                            customer_ref=customer_ref,
+                            identity_type=("phone" if wa_id else ("bsuid" if bsuid else "unknown")),
+                            username=(contact.get("username") or None),
+                            parent_ref=(str(msg.get("from_parent_user_id") or "").strip() or None),
                             customer_name=profile_name,
                             body=body,
                             media_url=media_url,
@@ -267,7 +327,10 @@ class WhatsAppAdapter:
                             raw=msg,
                         )
                     )
-        return messages
+        # A message with no phone and no BSUID names nobody. Storing it would put every such
+        # message on ONE blank identity — two different customers in one thread. It is dropped
+        # here, and ingest refuses an empty ref as a second line of defence.
+        return [m for m in messages if m.customer_ref]
 
     def parse_status_updates(self, payload: dict) -> list[StatusUpdate]:
         updates: list[StatusUpdate] = []

@@ -21,6 +21,7 @@ from sqlalchemy import case, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
 from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.models import Conversation, Message
@@ -145,6 +146,14 @@ class IngestService:
         idempotency_scope: str,
     ) -> uuid.UUID | None:
         """Persist one inbound message; returns conversation_id or None on dup."""
+        # A message that names no customer is not a customer turn: storing it would put every
+        # such message on one blank identity, so two different people would share one thread.
+        # The adapters drop them at parse time; this is the invariant behind that.
+        if not str(message.customer_ref or "").strip():
+            raise ValidationError(
+                f"{message.channel} message without a customer identity cannot be stored"
+            )
+
         # S3: the dedupe scope MUST carry the tenant. A channel-wide scope let
         # an attacker pre-register another tenant's client_message_id; the
         # first writer wins, so the victim's real message was then silently
@@ -159,6 +168,7 @@ class IngestService:
             channel=message.channel,
             external_id=message.customer_ref,
             name=message.customer_name,
+            identity_extra=cls._identity_extra(message),
         )
         conversation = await ConversationService.get_or_create(
             session, tenant_id, customer_id=customer.id, channel=message.channel
@@ -277,6 +287,21 @@ class IngestService:
             aggregate_version=1,
         )
         return conversation.id
+
+    @staticmethod
+    def _identity_extra(message: InboundMessage) -> dict:
+        """What the provider says about this handle, for the identity row (empty when nothing)."""
+        extra: dict = {}
+        identity_type = getattr(message, "identity_type", "") or ""
+        if identity_type and identity_type != "phone":
+            # A BSUID is worth recording: it is the only handle a number-less customer has, and
+            # support needs to know that this thread is not tied to a phone at all.
+            extra["identity_type"] = identity_type
+        if getattr(message, "username", None):
+            extra["username"] = message.username
+        if getattr(message, "parent_ref", None):
+            extra["parent_ref"] = message.parent_ref
+        return extra
 
     # ------------------------------------------------- who the customer is --
 
@@ -1329,7 +1354,29 @@ async def _apply_account_signals(
         health = dict(integration.webhook_health or {})
         now = datetime.now(UTC).isoformat()
         for signal in signals:
-            if signal.get("kind") == "restriction":
+            if signal.get("kind") == "offboarded":
+                # The merchant removed our app from the account, or Meta took it off. The channel
+                # cannot send, so it must not look connected: `disconnected` stops the sender and
+                # tells the owner to link again, and the reason is kept for the screen.
+                health["partner_removed"] = {
+                    "event": signal.get("event") or "",
+                    "reason": signal.get("reason") or "",
+                    "waba_id": signal.get("waba_id") or "",
+                    "at": now,
+                }
+                if integration.status in ("active", "connected", "restricted", "reauth_required"):
+                    integration.status = "disconnected"
+            elif signal.get("kind") == "reconnected":
+                # Coming back is not proof the number is usable: it has to be verified again, so
+                # the channel waits for a connect instead of resuming sends on a stale token.
+                health["partner_reconnected"] = {
+                    "event": signal.get("event") or "",
+                    "waba_id": signal.get("waba_id") or "",
+                    "at": now,
+                }
+                if integration.status == "disconnected":
+                    integration.status = "reauth_required"
+            elif signal.get("kind") == "restriction":
                 health["account_restriction"] = {
                     "event": signal.get("event") or "",
                     "detail": signal.get("detail") or "",

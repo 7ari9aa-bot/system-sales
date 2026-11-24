@@ -585,6 +585,7 @@ class CustomerService:
         name: str | None = None,
         phone: str | None = None,
         email: str | None = None,
+        identity_extra: dict | None = None,
     ) -> Customer:
         """Resolve a channel handle to a customer, creating the cheapest match.
 
@@ -606,6 +607,15 @@ class CustomerService:
                 session, tenant_id, channel, external_id
             )
             if customer is not None:
+                if identity_extra:
+                    # What the channel says about this handle (a WhatsApp BSUID, a username) lives
+                    # on the IDENTITY, not the customer: the same human is a different handle on
+                    # every channel, and a phone number may not even exist for a BSUID-only one.
+                    identity = await CustomerService.channel_identity(
+                        session, tenant_id, customer.id, channel
+                    )
+                    if identity is not None and identity.external_id == external_id:
+                        identity.extra = {**(identity.extra or {}), **identity_extra}
                 CustomerService._touch(customer, name)
                 return customer
 
@@ -625,6 +635,7 @@ class CustomerService:
                                 customer_id=contact_customer.id,
                                 channel=channel,
                                 external_id=external_id,
+                                extra=dict(identity_extra or {}),
                             )
                         )
                         await session.flush()
@@ -649,6 +660,7 @@ class CustomerService:
                             customer_id=customer.id,
                             channel=channel,
                             external_id=external_id,
+                            extra=dict(identity_extra or {}),
                         )
                     )
                     await session.flush()
