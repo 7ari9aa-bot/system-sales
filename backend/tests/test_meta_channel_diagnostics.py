@@ -192,9 +192,21 @@ def test_a_channel_that_was_not_probed_has_no_subscription_check() -> None:
     assert "asset_subscription" not in _by_key(_report(subscription=None))
 
 
-def test_whatsapp_only_needs_messages() -> None:
-    report = _report("whatsapp", subscription={"state": "ok", "fields": ["messages"]})
-    assert _by_key(report)["asset_subscription"]["status"] == d.OK
+def test_whatsapp_needs_the_coexistence_fields_as_well_as_messages() -> None:
+    """A Business App number sends its data on three fields of its own.
+
+    Declaring `messages` enough was the false green: the channel looked healthy while the app's
+    contacts, its history and the merchant's own replies were dropped at the dashboard.
+    """
+    partial = _report("whatsapp", subscription={"state": "ok", "fields": ["messages"]})
+    check = _by_key(partial)["asset_subscription"]
+    assert check["status"] == d.WARNING
+    assert "smb_message_echoes" in check["detail"]["missing_fields"]
+    complete = _report(
+        "whatsapp",
+        subscription={"state": "ok", "fields": list(d.WHATSAPP_WEBHOOK_FIELDS)},
+    )
+    assert _by_key(complete)["asset_subscription"]["status"] == d.OK
 
 
 # ------------------------------------------------------------------ the dashboard webhook

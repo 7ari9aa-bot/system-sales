@@ -43,13 +43,16 @@ def _fake_meta(*, status: str, seen: list[tuple[str, str]], register_ok: bool = 
             return httpx.Response(200, json={"success": True})
         if request.method == "GET" and "status" in request.url.params.get("fields", ""):
             return httpx.Response(200, json={"status": status})
-        # display name + the verifier's own read of the number
+        # display name + the verifier's own read of the number, including the two fields the
+        # connect requires: this number is Cloud API only, so it still has to be registered.
         return httpx.Response(
             200,
             json={
                 "id": "777",
                 "display_phone_number": "+20 100 000 0000",
                 "verified_name": "Fihrist Shop",
+                "is_on_biz_app": False,
+                "platform_type": "CLOUD_API",
             },
         )
 

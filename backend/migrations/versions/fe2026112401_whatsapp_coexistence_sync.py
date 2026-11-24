@@ -26,6 +26,10 @@ down_revision: str | None = "fe2026112308"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+# Canonical tenant guard (same shape as c156cc156cc1 / provision.py): the NULLIF keeps an
+# UNSET app.tenant_id from casting '' to uuid, so an unbound session matches ZERO rows.
+_TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+
 
 def upgrade() -> None:
     op.create_table(
@@ -84,8 +88,31 @@ def upgrade() -> None:
     )
     op.create_index("ix_whatsapp_sync_runs_tenant_id", "whatsapp_sync_runs", ["tenant_id"])
 
+    # Tenant isolation is defence in depth: the app scopes every query AND Postgres refuses
+    # rows outside app.tenant_id. FORCE makes it hold for the table owner too, so a service
+    # that forgets bind_tenant cannot read another shop's sync runs.
+    op.execute("ALTER TABLE public.whatsapp_sync_runs ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE public.whatsapp_sync_runs FORCE ROW LEVEL SECURITY")
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies
+                WHERE tablename = 'whatsapp_sync_runs' AND policyname = 'tenant_isolation'
+            ) THEN
+                CREATE POLICY tenant_isolation ON public.whatsapp_sync_runs
+                USING (tenant_id = {_TENANT_GUARD})
+                WITH CHECK (tenant_id = {_TENANT_GUARD});
+            END IF;
+        END
+        $$;
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute("DROP POLICY IF EXISTS tenant_isolation ON public.whatsapp_sync_runs")
     op.drop_index("ix_whatsapp_sync_runs_tenant_id", table_name="whatsapp_sync_runs")
     op.drop_index("ix_whatsapp_sync_runs_tenant_number", table_name="whatsapp_sync_runs")
     op.drop_table("whatsapp_sync_runs")

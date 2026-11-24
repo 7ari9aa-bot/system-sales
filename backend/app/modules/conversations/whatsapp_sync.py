@@ -216,6 +216,33 @@ async def _get_run(
     ).scalar_one_or_none()
 
 
+async def channel_epoch(
+    session: AsyncSession, tenant_id: uuid.UUID, *, phone_number_id: str | None = None
+) -> str | None:
+    """The epoch of this tenant's live WhatsApp connection, or None when there is no channel.
+
+    A webhook does not carry the epoch — it carries the phone number id — so the run row has to be
+    found through the connection it belongs to.
+    """
+    from app.modules.platform.models import Integration
+
+    row = (
+        await session.execute(
+            select(Integration).where(
+                Integration.tenant_id == tenant_id,
+                Integration.provider == "whatsapp",
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    config = row.config if isinstance(row.config, dict) else {}
+    if phone_number_id and str(config.get("phone_number_id") or "") not in ("", phone_number_id):
+        # A webhook for a number this workspace no longer owns: do not attribute its data.
+        return None
+    return epoch_for(config)
+
+
 async def request_sync(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -417,6 +444,8 @@ async def record_chunk(
     chunk_order: int | None = None,
     progress: int | None = None,
     messages_stored: int = 0,
+    request_id: str | None = None,
+    waba_id: str | None = None,
 ) -> WhatsAppSyncRun | None:
     """Fold one webhook batch into the run's progress.
 
@@ -428,10 +457,32 @@ async def record_chunk(
         session, tenant_id, phone_number_id=phone_number_id, sync_type=sync_type, epoch=epoch
     )
     if run is None:
-        return None
-    run.state = "completed" if (progress or 0) >= 100 else "in_progress"
+        if not phone_number_id:
+            return None
+        # The data arrived before the run row did — a request whose recording was lost with its
+        # transaction, or a chunk that beat the flush. Creating the row keeps the progress (and
+        # Meta's request id) visible instead of dropping the evidence on the floor.
+        run = WhatsAppSyncRun(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            phone_number_id=phone_number_id,
+            waba_id=waba_id,
+            sync_type=sync_type,
+            onboarding_epoch=epoch,
+            state="in_progress",
+            request_id=request_id,
+        )
+        session.add(run)
+        await session.flush()
+    if request_id and not run.request_id:
+        run.request_id = request_id
     if progress is not None:
         run.progress = max(run.progress or 0, min(100, int(progress)))
+    # A chunk that arrives late must never walk a finished transfer backwards.
+    if (run.progress or 0) >= 100:
+        run.state = "completed"
+    elif run.state != "completed":
+        run.state = "in_progress"
     phases = dict(run.phases or {})
     if phase is not None:
         bucket = dict(phases.get(str(phase)) or {})

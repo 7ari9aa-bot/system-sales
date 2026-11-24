@@ -13,7 +13,9 @@ tests CI runs; everything decided here is pure and runs everywhere.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -240,3 +242,169 @@ def test_is_ready_accepts_a_declined_history() -> None:
     assert sync.is_ready("READY") is True
     assert sync.is_ready("HISTORY_NOT_SHARED") is True
     assert sync.is_ready("CONTACTS_SYNC_PENDING") is False
+
+
+# ---------- the request path: sent once, and the row says so ----------
+#
+# These run the REAL ``request_sync`` against a session stub instead of Postgres, so the rules that
+# matter most (one request per connection, request_id kept, the row written before the call) are
+# checked on every machine, not only where a database happens to be configured.
+
+
+class _FakeSession:
+    """Enough of an AsyncSession for the request path: add + flush, no database."""
+
+    def __init__(self) -> None:
+        self.rows: list[WhatsAppSyncRun] = []
+        self.flushes = 0
+
+    def add(self, obj: object) -> None:
+        self.rows.append(obj)  # type: ignore[arg-type]
+
+    async def flush(self) -> None:
+        self.flushes += 1
+
+
+TENANT = uuid.uuid4()
+EPOCH = "2026-11-24T00:00:00+00:00"
+ONBOARDED = NOW - timedelta(minutes=30)
+
+
+@pytest.fixture
+def session(monkeypatch) -> _FakeSession:
+    """The request path's session, with row lookup answered from memory."""
+    fake = _FakeSession()
+
+    async def _get_run(_session, tenant_id, *, phone_number_id, sync_type, epoch):
+        for row in fake.rows:
+            if (
+                row.tenant_id == tenant_id
+                and row.phone_number_id == phone_number_id
+                and row.sync_type == sync_type
+                and row.onboarding_epoch == epoch
+            ):
+                return row
+        return None
+
+    monkeypatch.setattr(sync, "_get_run", _get_run)
+    return fake
+
+
+def _ask(session, client, **overrides):
+    kwargs = {
+        "phone_number_id": "456",
+        "waba_id": "999",
+        "epoch": EPOCH,
+        "onboarding_completed_at": ONBOARDED,
+        "sync_type": sync.WHATSAPP_SYNC_HISTORY,
+        "token": "t",
+        "http": client,
+        "now": NOW,
+    }
+    kwargs.update(overrides)
+    return sync.request_sync(session, TENANT, **kwargs)
+
+
+async def test_the_row_is_written_before_meta_is_called(session) -> None:
+    """A crash between "sent" and "answered" must leave evidence, not a clean slate."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.extend(row.state for row in session.rows)
+        return httpx.Response(200, json={"request_id": "req-1"})
+
+    async with _client(handler) as client:
+        await _ask(session, client)
+
+    assert seen == ["pending"], "the run row must exist (and be flushed) before the request"
+
+
+async def test_the_request_id_and_instant_are_persisted(session) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"request_id": "req-1"})
+
+    async with _client(handler) as client:
+        run = await _ask(session, client)
+
+    assert run.request_id == "req-1"
+    assert run.state == "requested"
+    assert run.requested_at == NOW
+    assert run.attempts == 1
+    assert run.deadline_at == ONBOARDED + timedelta(hours=24)
+
+
+async def test_a_second_request_sends_nothing_and_keeps_the_first_id(session) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={"request_id": f"req-{len(calls)}"})
+
+    async with _client(handler) as client:
+        first = await _ask(session, client)
+        second = await _ask(session, client)
+
+    assert calls == [calls[0]], "Meta allows ONE request per connection; a retry must not send"
+    assert second.request_id == first.request_id == "req-1"
+    assert len(session.rows) == 1, "a retry must hit the same row, never a second one"
+
+
+async def test_past_the_window_nothing_is_sent(session) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={"request_id": "req-1"})
+
+    async with _client(handler) as client:
+        with pytest.raises(ValidationError, match="24-hour window"):
+            await _ask(session, client, onboarding_completed_at=NOW - timedelta(hours=25))
+
+    assert calls == []
+    assert session.rows == []
+
+
+async def test_a_refusal_is_recorded_as_failed_without_a_request_id(session) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"code": 100, "message": "nope"}})
+
+    async with _client(handler) as client:
+        with pytest.raises(ExternalProviderError):
+            await _ask(session, client)
+
+    (run,) = session.rows
+    assert run.state == "failed"
+    assert run.request_id is None
+    assert "refused" in (run.error or "")
+
+
+async def test_a_declined_history_is_recorded_as_not_shared(session) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"code": 2593109, "message": "declined"}})
+
+    async with _client(handler) as client:
+        run = await _ask(session, client)
+
+    assert run.state == "not_shared"
+    assert run.request_id is None
+    assert sync.channel_sync_state(None, run) == sync.STATE_HISTORY_NOT_SHARED
+
+
+# ---------- the migration has to carry tenant isolation ----------
+
+SYNC_MIGRATION = (
+    Path(__file__).resolve().parent.parent
+    / "migrations"
+    / "versions"
+    / "fe2026112401_whatsapp_coexistence_sync.py"
+)
+
+
+def test_the_sync_table_is_tenant_isolated_in_the_migration() -> None:
+    """RLS is defence in depth; provision.py sweeps it too, but the migration must not lag."""
+    ddl = SYNC_MIGRATION.read_text()
+    assert "ENABLE ROW LEVEL SECURITY" in ddl
+    assert "FORCE ROW LEVEL SECURITY" in ddl
+    assert "tenant_isolation" in ddl
+    assert "app.tenant_id" in ddl
+    assert "DROP POLICY IF EXISTS tenant_isolation ON public.whatsapp_sync_runs" in ddl
