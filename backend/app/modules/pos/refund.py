@@ -129,7 +129,10 @@ def allocate(amount: object, tenders: Sequence[Tender]) -> RefundPlan:
 
 
 def allocate_by_method(
-    requested: Sequence[tuple[str, object]], tenders: Sequence[Tender]
+    requested: Sequence[tuple[str, object]],
+    tenders: Sequence[Tender],
+    *,
+    total: object | None = None,
 ) -> RefundPlan:
     """Split a refund the way the cashier asked for it: ``(method, amount)`` pairs.
 
@@ -173,8 +176,11 @@ def allocate_by_method(
         rooms[method] = to_money(room - amount, method)
 
     refunded = to_money(sum((s.amount for s in slices), ZERO), "refunded")
-    total_room = to_money(sum((t.room for t in tenders), ZERO), "room")
-    uncollected = to_money(total_room - refunded, "uncollected")
+    # What THIS refund could not put back on a tender — the value the sale never collected — and
+    # never the room left on the other tenders, which belongs to the rest of the sale. Counting
+    # that room as uncollected used to write off debt the return had not touched.
+    value = to_money(total, "refund total") if total is not None else refunded
+    uncollected = to_money(value - refunded, "uncollected")
     return RefundPlan(tuple(slices), refunded, max(uncollected, ZERO))
 
 
@@ -186,5 +192,5 @@ def plan_for(
 ) -> RefundPlan:
     """The one entry point the services call: requested methods when given, else the policy."""
     if requested:
-        return allocate_by_method(requested, tenders)
+        return allocate_by_method(requested, tenders, total=amount)
     return allocate(amount, tenders)

@@ -208,6 +208,15 @@ function ReturnScreen({ session }) {
         onConfirmed={(res) =>
           setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))
         }
+        onRejected={(res) =>
+          setPendingRefunds((prev) =>
+            // The attempt is rejected but the customer was not paid: the follow-up row is the money
+            // still owed, and it stays on this screen until someone settles it.
+            res?.outstanding
+              ? mergePendingRefunds(withoutPendingRefund(prev, res.refund_id), [res.outstanding])
+              : withoutPendingRefund(prev, res.refund_id),
+          )
+        }
       />
       <ExchangeInvoiceSearch
         term={term}

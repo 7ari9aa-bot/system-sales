@@ -2035,3 +2035,177 @@ async def test_confirm_and_reject_both_lock_the_refund_row(db, tenant_ctx) -> No
 
     for fn in (PosService.confirm_refund, PosService.reject_refund):
         assert "with_for_update()" in inspect.getsource(fn), fn.__name__
+
+
+# ------------------------------- the unpaid part of a sale that comes back ----
+#
+# A credit sale puts the unpaid part on the customer's account. When the clothes come back that
+# debt has to go with them — and only the debt of THAT invoice, never another one's.
+
+
+def test_a_manual_refund_reports_only_its_own_uncovered_part() -> None:
+    """A 30 return refunded on the card of a 200-cash + 100-card sale uncovered nothing.
+
+    The old arithmetic subtracted the refund from the room left on every tender (270) and called
+    that "uncollected", so the ledger wrote off 270 of debt for a 30 return.
+    """
+    cash = Tender(uuid.uuid4(), "cash", Decimal("200.00"))
+    card = Tender(uuid.uuid4(), "card", Decimal("100.00"))
+    plan = allocate_by_method([("card", "30.00")], [cash, card], total="30.00")
+    assert plan.refunded == Decimal("30.00")
+    assert plan.uncollected == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_a_fully_unpaid_sale_stops_being_owed_when_the_goods_come_back(
+    db, tenant_ctx
+) -> None:
+    from app.modules.customer_accounts.service import CustomerAccountService as Accounts
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.allow_sale_on_account", True)
+    await Accounts.open_account(db, tenant_ctx.tenant_id, customer.id, credit_limit="100000")
+
+    sold = await PosService.record_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.register_id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        customer_id=customer.id,
+        payments=[],
+        on_account=True,
+        idempotency_key=f"credit-{uuid.uuid4().hex[:8]}",
+    )
+    assert await Accounts.balance(db, tenant_ctx.tenant_id, customer.id) == Decimal("100.00")
+
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    # Nothing was collected, so no money moves — but the debt goes with the goods.
+    assert out["mode"] == "nothing_collected", out.get("mode")
+    assert await Accounts.balance(db, tenant_ctx.tenant_id, customer.id) == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_the_credit_cancels_only_the_invoice_that_came_back(db, tenant_ctx) -> None:
+    """Two credit invoices for one customer: returning the first must not pay off the second."""
+    from app.modules.customer_accounts.service import CustomerAccountService as Accounts
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.allow_sale_on_account", True)
+    await Accounts.open_account(db, tenant_ctx.tenant_id, customer.id, credit_limit="100000")
+
+    first = await PosService.record_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.register_id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        customer_id=customer.id,
+        payments=[],
+        on_account=True,
+        idempotency_key=f"credit-a-{uuid.uuid4().hex[:8]}",
+    )
+    await PosService.record_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.register_id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        customer_id=customer.id,
+        payments=[],
+        on_account=True,
+        idempotency_key=f"credit-b-{uuid.uuid4().hex[:8]}",
+    )
+    assert await Accounts.balance(db, tenant_ctx.tenant_id, customer.id) == Decimal("200.00")
+
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=first["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    # 100 came back, 100 is still owed on the second invoice.
+    assert await Accounts.balance(db, tenant_ctx.tenant_id, customer.id) == Decimal("100.00")
+
+
+# ----------------------------------- who may pay a refund out of whose drawer --
+
+
+def _app(ctx):
+    from app.main import create_app
+    from app.modules.identity.deps import get_db, get_tenant_ctx
+    from app.core.middleware import IdempotencyMiddleware, RateLimitMiddleware
+
+    app = create_app()
+    app.user_middleware = [
+        m for m in app.user_middleware if m.cls not in {IdempotencyMiddleware, RateLimitMiddleware}
+    ]
+    app.middleware_stack = None
+
+    async def _session():
+        yield ctx.session
+
+    app.dependency_overrides[get_tenant_ctx] = lambda: ctx
+    app.dependency_overrides[get_db] = _session
+    return app
+
+
+@pytest.mark.asyncio
+async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_ctx) -> None:
+    """The endpoint used to hand the service the whole override GRANT, which is truthy even when
+    it says "no", so any cashier could pay a refund out of a drawer that was not theirs."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.modules.pos.service import PosService
+    from tests._pos_helpers import ctx_for
+
+    owner_ctx = await ctx_for(db, tenant_ctx, "owner")
+    staff_ctx = await ctx_for(db, tenant_ctx, "staff")
+    assert "pos:override" not in (staff_ctx.permission_codes or set())
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    # The drawer belongs to somebody else: the sale and its return are recorded by another actor.
+    other_actor = uuid.uuid4()
+    sold = await PosService.record_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.register_id,
+        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        customer_id=customer.id,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-9"}],
+        actor_user_id=other_actor,
+        idempotency_key=f"drawer-{uuid.uuid4().hex[:8]}",
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        actor_user_id=other_actor,
+    )
+    refund_id = out["awaiting_confirmation"][0]["refund_id"]
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(staff_ctx)), base_url="http://test", timeout=20
+    ) as client:
+        refused = await client.post(
+            f"/api/v1/pos/refunds/{refund_id}/reject", json={"reason": "الماكينة رفضت"}
+        )
+    assert refused.status_code in (403, 409), refused.text
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(owner_ctx)), base_url="http://test", timeout=20
+    ) as client:
+        allowed = await client.post(
+            f"/api/v1/pos/refunds/{refund_id}/reject", json={"reason": "الماكينة رفضت"}
+        )
+    assert allowed.status_code == 200, allowed.text

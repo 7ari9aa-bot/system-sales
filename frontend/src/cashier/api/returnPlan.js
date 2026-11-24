@@ -183,9 +183,9 @@ export function returnSettlementSummary(result) {
   } else if (result?.refund_mode === "nothing_collected") {
     parts.push("الفاتورة الأصلية ما حصّلتش المبلغ ده، فمفيش مبلغ يترد");
   } else {
-    // Only the CONFIRMED part is money returned. The pending card slice and the manual reversal
-    // are stated as what they are: still owed.
-    const confirmed = Math.max(refunded - pending, 0);
+    // ``refunded`` from the server is already the money that actually went back; the pending card
+    // slice is reported separately below, so subtracting it here counted it twice and showed zero.
+    const confirmed = refunded;
     parts.push(withPending(withManual(`اترد ${confirmed.toFixed(2)} ج.م`)));
   }
   const methods = Object.entries(byMethod)

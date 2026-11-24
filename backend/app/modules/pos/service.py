@@ -4117,8 +4117,10 @@ class PosService(PosReceiptReads):
             return record_only
         tenders, _payments = await PosService._refundable_tenders(session, tenant_id, order.id)
         if not tenders:
-            # A sale that collected nothing has no tender to give back to. The value is reported as
-            # uncollected so the caller can tell the customer what actually happened.
+            # A sale that collected nothing has no tender to give back to — a full credit sale, or
+            # one covered entirely by a deposit. The goods coming back still cancel what that
+            # invoice owes, so the ledger follows the goods even though no money moves.
+            await PosService._reverse_uncollected(session, tenant_id, order, value, actor_user_id)
             return {**record_only, "mode": "nothing_collected"}
         cash_only = bool(
             await PosService._setting(session, tenant_id, "pos.refund_cash_only", pos_session)

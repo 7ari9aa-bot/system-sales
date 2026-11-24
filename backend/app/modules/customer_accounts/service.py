@@ -366,18 +366,49 @@ class CustomerAccountService:
         current = await CustomerAccountService.balance(session, tenant_id, customer_id)
         if current <= 0:
             return None
-        value = min(CustomerAccountService._positive(amount), current)
+        owed = await CustomerAccountService.unpaid_on_order(
+            session, tenant_id, customer_id, order_id
+        )
+        if owed <= 0:
+            # The invoice itself is settled: a return must not eat another invoice's debt.
+            return None
+        value = min(CustomerAccountService._positive(amount), current, owed)
         return await CustomerAccountService._post(
             session,
             tenant_id,
             customer_id,
-            "reversal",
+            "adjustment",
             -value,
             order_id=order_id,
             reason=reason,
             actor_user_id=actor_user_id,
             current=current,
         )
+
+    @staticmethod
+    async def unpaid_on_order(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        order_id: uuid.UUID | None,
+    ) -> Decimal:
+        """What this one invoice still owes on the customer's account.
+
+        Capping a return by the whole balance let a return on one invoice eat another invoice's
+        debt; the ledger is read per order so only the goods coming back cancel their own sale.
+        """
+        if order_id is None:
+            return await CustomerAccountService.balance(session, tenant_id, customer_id)
+        total = (
+            await session.execute(
+                select(func.coalesce(func.sum(CustomerLedgerEntry.amount), 0)).where(
+                    CustomerLedgerEntry.tenant_id == tenant_id,
+                    CustomerLedgerEntry.customer_id == customer_id,
+                    CustomerLedgerEntry.order_id == order_id,
+                )
+            )
+        ).scalar_one()
+        return max(money(total), Decimal("0.00"))
 
     @staticmethod
     def _positive(amount: object) -> Decimal:

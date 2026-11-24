@@ -299,6 +299,8 @@ describe("what the message says about money not yet returned", () => {
   it("names the pending card slice as still waiting for the terminal", () => {
     const text = returnSettlementSummary({
       ...base,
+      refunded: "0.00",
+      refund_by_method: {},
       awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
     });
     expect(text).toContain("اترد 0.00");
@@ -308,7 +310,7 @@ describe("what the message says about money not yet returned", () => {
   it("counts only the confirmed part as refunded when it is split", () => {
     const text = returnSettlementSummary({
       ...base,
-      refunded: "100.00",
+      refunded: "40.00",
       refund_by_method: { cash: "40.00", card: "60.00" },
       awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "60.00" }],
     });
@@ -326,5 +328,32 @@ describe("what the message says about money not yet returned", () => {
     });
     expect(text).toContain("30.00");
     expect(text).toContain("يدويًا");
+  });
+});
+
+describe("returnSettlementSummary — the confirmed money", () => {
+  const result = (over = {}) => ({
+    refund_mode: "refund",
+    refund_total: "100.00",
+    refunded: "50.00",
+    refund_uncollected: "0.00",
+    refund_by_method: { cash: "50.00", card: "50.00" },
+    awaiting_confirmation: [{ refund_id: "r2", method: "card", amount: "50.00" }],
+    ...over,
+  });
+
+  it("counts what left the drawer as returned even while a card slice is pending", () => {
+    // 50 cash went back, 50 card is still on the terminal: the summary must say 50 returned,
+    // not zero. Subtracting the pending slice from `refunded` again showed zero.
+    const text = returnSettlementSummary(result());
+    expect(text).toContain("اترد 50.00");
+    expect(text).not.toContain("اترد 0.00");
+  });
+
+  it("still says nothing was returned when the whole refund is pending", () => {
+    const text = returnSettlementSummary(
+      result({ refunded: "0.00", refund_by_method: {}, awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }] }),
+    );
+    expect(text).toContain("اترد 0.00");
   });
 });
