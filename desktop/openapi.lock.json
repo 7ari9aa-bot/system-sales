@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 661,
-    "sha256": "3831d75220fc87e4063604a7b42e7b209cc14eee9bb00712d15bfb0685e01fb7",
-    "typed_operations": 356
+    "operations": 662,
+    "sha256": "0429c96b56ffd55ec030d8f1c6b7dfff213e9e3631f51307e20f4c820c483b67",
+    "typed_operations": 357
   },
   "spec": {
     "components": {
@@ -76261,6 +76261,109 @@
             }
           },
           "summary": "Email Receipt",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/refunds/pending": {
+        "get": {
+          "description": "The card/wallet reversals still waiting for their terminal reference.\n\nRead on mount by the cashier screens: the promise outlives the page that made it, so a reload\nmust show the cashier what is still owed to the customer.",
+          "operationId": "list_pending_refunds_api_v1_pos_refunds_pending_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Response List Pending Refunds Api V1 Pos Refunds Pending Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Pending Refunds",
           "tags": [
             "pos"
           ]
