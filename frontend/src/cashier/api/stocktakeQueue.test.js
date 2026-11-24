@@ -138,12 +138,127 @@ describe("the stocktake scan queue", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("disposing on unmount cancels the pending save", async () => {
+  it("disposing on unmount saves the queued scan instead of dropping it", async () => {
+    // Leaving the screen used to be `cancel`, so a scan taken in the last two seconds never
+    // reached the sheet at all.
     const { queue, tick, saved } = makeQueue();
     queue.push("v1", 1);
-    queue.dispose();
+    await queue.dispose();
+    tick();
+    await flushMicrotasks();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toEqual([{ variant_id: "v1", counted_qty: 1 }]);
+  });
+
+  it("flushing waits for the save already on the wire before approving", async () => {
+    // The race the report found: scan, the debounce fires and starts a request, then the cashier
+    // presses approve. `drain()` cancelled the timer but returned immediately, so approval could
+    // reach the server before the count did.
+    let release;
+    const order = [];
+    const { queue, tick, saved } = makeQueue({
+      onSave: (counts) => {
+        order.push("start");
+        saved.push(counts);
+        return new Promise((resolve) => {
+          release = () => {
+            order.push("saved");
+            resolve();
+          };
+        });
+      },
+    });
+    queue.push("v1", 1);
+    tick();
+    await flushMicrotasks();
+    expect(queue.saving).toBe(true);
+
+    const flushed = queue.flushAndWait();
+    let done = false;
+    flushed.then(() => {
+      done = true;
+    });
+    await flushMicrotasks();
+    expect(done).toBe(false);
+    expect(order).toEqual(["start"]);
+
+    release();
+    expect(await flushed).toBe(true);
+    expect(order).toEqual(["start", "saved"]);
+    expect(saved).toHaveLength(1);
+  });
+
+  it("flushing sends the queued scans once the in-flight save lands", async () => {
+    let release;
+    const { queue, tick, saved } = makeQueue({
+      onSave: (counts) => {
+        saved.push(counts);
+        if (saved.length === 1) {
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return Promise.resolve();
+      },
+    });
+    queue.push("v1", 1);
+    tick();
+    await flushMicrotasks();
+    queue.push("v2", 4);
+
+    const flushed = queue.flushAndWait();
+    await flushMicrotasks();
+    release();
+    expect(await flushed).toBe(true);
+    expect(saved).toEqual([
+      [{ variant_id: "v1", counted_qty: 1 }],
+      [{ variant_id: "v2", counted_qty: 4 }],
+    ]);
+  });
+
+  it("a closed sheet refuses a queued save", async () => {
+    const { queue, tick, saved } = makeQueue();
+    queue.push("v1", 1);
+    queue.close();
     tick();
     await flushMicrotasks();
     expect(saved).toHaveLength(0);
+    expect(await queue.flushAndWait()).toBe(false);
+    queue.push("v2", 9);
+    expect(await queue.flushAndWait()).toBe(false);
+    expect(saved).toHaveLength(0);
+  });
+
+  it("reports a failed flush so approval can be refused", async () => {
+    const onError = vi.fn();
+    const { queue, tick } = makeQueue({
+      onSave: () => Promise.reject(new Error("offline")),
+    });
+    queue.push("v1", 1);
+    tick();
+    await flushMicrotasks();
+    queue.push("v2", 2);
+    expect(await queue.flushAndWait()).toBe(false);
+  });
+
+  it("a save that is still in flight when approve is pressed is awaited, not skipped", async () => {
+    let release;
+    const { queue, tick, saved } = makeQueue({
+      onSave: (counts) => {
+        saved.push(counts);
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+    queue.push("v1", 2);
+    tick();
+    await flushMicrotasks();
+    const flushed = queue.flushAndWait();
+    await flushMicrotasks();
+    expect(saved).toHaveLength(1);
+    release();
+    expect(await flushed).toBe(true);
+    expect(saved).toHaveLength(1);
   });
 });

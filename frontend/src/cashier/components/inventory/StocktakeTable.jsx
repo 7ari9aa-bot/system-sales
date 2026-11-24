@@ -67,27 +67,26 @@ export default function StocktakeTable({ sheet, known = [] }) {
     });
   }
 
-  /** Take everything the scanner queued, so nothing can fire after a manual save or an approve. */
-  const drainQueue = () => queue.current.drain();
-
-  const saveNow = () =>
-    new Promise((resolve) => {
-      if (bad.size) {
-        toast.error("صحّح الكميات المحددة بالأحمر أولًا");
-        return resolve(false);
-      }
-      // Take the pending scans FIRST: after this point no timer can fire, so the same line cannot
-      // be sent twice.
-      const counts = drainQueue();
-      if (counts.length === 0) return resolve(true);
-      save.mutate(counts, {
-        onSuccess: () => resolve(true),
-        onError: (e) => {
-          toast.error(stocktakeErrorMessage(e));
-          resolve(false);
-        },
-      });
-    });
+  /**
+   * Save everything that is waiting, INCLUDING the request a scan already started.
+   *
+   * `drain()` alone emptied the queue and returned at once, so pressing Save or Approve while a
+   * scan-triggered request was still on the wire could reach the server first, and the count it
+   * depended on landed afterwards against a sheet that had already been closed. `flushAndWait`
+   * awaits the in-flight save, then sends what is still queued, and says whether it all landed.
+   */
+  const saveNow = async () => {
+    if (bad.size) {
+      toast.error("صحّح الكميات المحددة بالأحمر أولًا");
+      return false;
+    }
+    if (!open) {
+      toast.error("هذه الجردة معتمدة أو ملغاة، لا يمكن حفظ عدّ جديد");
+      return false;
+    }
+    // A failure is reported by the queue's own onError, once, with the server's message.
+    return queue.current.flushAndWait();
+  };
 
   function queueSave(variantId, qty) {
     if (!open) return; // an approved or cancelled sheet takes no counts
@@ -108,8 +107,13 @@ export default function StocktakeTable({ sheet, known = [] }) {
   }
 
   // Leaving the screen must not leave a timer behind that fires into a component that no longer
-  // shows the sheet.
+  // shows the sheet, and must not drop a count the cashier already took: `dispose` now flushes.
   useEffect(() => () => queue.current?.dispose(), []);
+
+  // An approved or cancelled sheet refuses further counts at the queue itself, not only in the UI.
+  useEffect(() => {
+    if (!open) queue.current?.close();
+  }, [open]);
 
   // A scanner types the code and presses Enter: the line is found by barcode, SKU, or a unique
   // partial match, and its count goes up by one from whatever is already there.
@@ -128,7 +132,8 @@ export default function StocktakeTable({ sheet, known = [] }) {
   }
 
   async function onSave() {
-    if (pending.length === 0) return toast.info("لا توجد تغييرات للحفظ");
+    const idle = pending.length === 0 && !queue.current.scheduled && !queue.current.saving;
+    if (idle) return toast.info("لا توجد تغييرات للحفظ");
     if (await saveNow()) toast.success("تم حفظ الجرد، يمكن متابعته لاحقًا");
   }
 

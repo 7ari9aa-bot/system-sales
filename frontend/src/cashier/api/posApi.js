@@ -110,6 +110,17 @@ export const posApi = {
     ),
   /* Reverse a CONFIRMED sale. Not a return: the sale never happened, so stock, money and the
      reports all go back. Needs a reason, and the server checks pos:override for another's shift. */
+  /**
+   * Record the terminal's own proof that a card/wallet reversal happened.
+   *
+   * A non-cash refund is written `pending`: the money leaves the shop's terminal, not this
+   * database, so until the cashier types the reference the till does not claim the customer was
+   * paid back. This is the other half of that promise.
+   */
+  confirmRefund: async (refundId, externalReference) =>
+    post(`/pos/refunds/${seg(refundId)}/confirm`, {
+      external_reference: String(externalReference ?? "").trim(),
+    }),
   voidSale: async (id, { orderId, reason }, intent) =>
     post(
       `/pos/sessions/${seg(id)}/voids`,

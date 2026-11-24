@@ -8,11 +8,13 @@ import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoic
 import ReturnOriginalTable from "@/cashier/components/returns/ReturnOriginalTable";
 import ReturnItemsTable from "@/cashier/components/returns/ReturnItemsTable";
 import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
+import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
 import ReturnSettlementBar from "@/cashier/components/returns/ReturnSettlementBar";
 import ReturnActionsBar from "@/cashier/components/returns/ReturnActionsBar";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fmtMoney } from "@/cashier/lib/format";
+import { fingerprint as fingerprintOf } from "@/cashier/api/intentStore";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales } from "@/cashier/api/usePosSale";
@@ -52,6 +54,9 @@ function ReturnScreen({ session }) {
   const policy = useReturnPolicy(session.id).data;
   const restock = restockChoice ?? policy?.restock_default ?? true;
   const [busy, setBusy] = useState(false);
+  // The card/wallet part of the refund that the terminal still has to confirm. Kept after the draft
+  // resets, because the cashier has to walk to the machine and come back with the reference.
+  const [pendingRefunds, setPendingRefunds] = useState([]);
   const [cancelOpen, setCancelOpen] = useState(false);
   const intentRef = useRef(null); // one intent per deliberate return: a retry after a network drop replays, never double-refunds
   const intentFor = useRef("");
@@ -80,15 +85,25 @@ function ReturnScreen({ session }) {
   const hasDraft = !!invoice || pickedLines.length > 0;
   const canComplete = !!invoice && pickedLines.length > 0 && !busy;
 
-  // A return with other quantities (or the restock switch flipped) is another return: it must never
-  // reuse the key of an earlier, failed attempt, or the server would replay that attempt's answer.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty, l.restock]), restockChoice, reason]);
-  useEffect(() => {
-    if (intentFor.current !== fingerprint) {
-      intentRef.current = null;
-      intentFor.current = fingerprint;
+  // The key follows the EXACT body that will be sent, not a hand-picked list of fields. The list
+  // used to leave out the piece condition, so a cashier who picked "damaged" after a refusal kept
+  // the old key and the server answered 409 for reusing it with a different body — a refusal the
+  // user could never get out of. Building it from the body means a new field can never be missed.
+  const request = useMemo(() => {
+    if (!invoice) return null;
+    try {
+      return returnRequest(invoice.detail, lines, { restock: restockChoice ?? undefined, reason });
+    } catch {
+      return null; // nothing picked yet: there is no request to fingerprint
     }
-  }, [fingerprint]);
+  }, [invoice, lines, restockChoice, reason]);
+  const requestPrint = request ? fingerprintOf(request) : "";
+  useEffect(() => {
+    if (intentFor.current !== requestPrint) {
+      intentRef.current = null;
+      intentFor.current = requestPrint;
+    }
+  }, [requestPrint]);
 
   function selectInvoice(inv) {
     setInvoice(inv);
@@ -129,10 +144,11 @@ function ReturnScreen({ session }) {
     if (!canComplete || busy) return;
     setBusy(true);
     try {
-      const req = returnRequest(invoice.detail, lines, { restock: restockChoice ?? undefined, reason });
+      const req = request ?? returnRequest(invoice.detail, lines, { restock: restockChoice ?? undefined, reason });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.returnSale(session.id, req, intentRef.current));
       toast.success(`تم تسجيل المرتجع ${res.receipt_number}. ${returnSettlementSummary(res)}`, { duration: 12000 });
+      setPendingRefunds(res.awaiting_confirmation ?? []);
       intentRef.current = null;
       await Promise.all([qc.invalidateQueries({ queryKey: ["cashier"] })]);
       resetDraft();
@@ -170,6 +186,12 @@ function ReturnScreen({ session }) {
   return (
     <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <ReturnHeaderBar employee={user?.full_name || user?.email || ""} />
+      <PendingRefundsPanel
+        pending={pendingRefunds}
+        onConfirmed={(res) =>
+          setPendingRefunds((prev) => prev.filter((row) => row.refund_id !== res.refund_id))
+        }
+      />
       <ExchangeInvoiceSearch
         term={term}
         onTermChange={(v) => { setTerm(v); setError(""); }}

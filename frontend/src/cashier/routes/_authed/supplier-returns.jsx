@@ -15,9 +15,11 @@ import { sumMoney } from "@/cashier/api/money";
 import {
   RETURN_STATUS_LABEL,
   SETTLEMENT_LABEL,
+  buildReturnAcceptance,
   purchasingErrorMessage,
   returnsSummary,
 } from "@/cashier/api/purchasingAdapter";
+import { useWorkingSession } from "@/cashier/api/useShifts";
 import { useCatalog } from "@/cashier/api/usePosSale";
 import {
   useAcceptSupplierReturn,

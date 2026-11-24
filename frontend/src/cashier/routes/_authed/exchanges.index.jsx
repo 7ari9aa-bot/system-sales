@@ -13,6 +13,7 @@ import ExchangeActionsBar from "@/cashier/components/exchanges/ExchangeActionsBa
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import useFillRowCount from "@/cashier/hooks/use-fill-row-count";
 import { fromMinor, toMinor } from "@/cashier/api/money";
+import { fingerprint as fingerprintOf } from "@/cashier/api/intentStore";
 import { newIntent, posApi } from "@/cashier/api/posApi";
 import WorkingSessionGate from "@/cashier/components/pos/WorkingSessionGate";
 import { RECEIPT_SEARCH_MIN, useReceiptSearch, useReturnPolicy, useReturnableSales, useSessionCatalog } from "@/cashier/api/usePosSale";
@@ -104,14 +105,32 @@ function ExchangeScreen({ session }) {
   const canComplete =
     !!invoice && backTotals.pieces > 0 && newLines.length > 0 && quoteReady && !busy && tenderPlan.ok;
 
-  // A new draft (different lines / quantities) must never reuse the intent of an earlier attempt.
-  const fingerprint = JSON.stringify([invoice?.id, lines.map((l) => [l.variantId, l.returnQty, l.restock]), newLines.map((l) => [l.variantId, l.qty]), restockChoice, reason]);
-  useEffect(() => {
-    if (intentFor.current !== fingerprint) {
-      intentRef.current = null;
-      intentFor.current = fingerprint;
+  // The key follows the EXACT body that will be sent, not a hand-picked list of fields. The list
+  // used to leave out the piece condition, the tender lines and the refund method, so a cashier who
+  // corrected any of them after a refusal kept the old key and got 409 for reusing it with a
+  // different body. Deriving it from the body means a new field can never be forgotten again.
+  const request = useMemo(() => {
+    if (!invoice) return null;
+    try {
+      return exchangeRequest(invoice.detail, lines, newLines, {
+        restock: restockChoice ?? undefined,
+        reason,
+        rules,
+        differenceMinor: diffMinor,
+        tenderLines,
+        refundMethod: refundMethod || null,
+      });
+    } catch {
+      return null; // incomplete draft: there is no request to fingerprint
     }
-  }, [fingerprint]);
+  }, [invoice, lines, newLines, restockChoice, reason, rules, diffMinor, tenderLines, refundMethod]);
+  const requestPrint = request ? fingerprintOf(request) : "";
+  useEffect(() => {
+    if (intentFor.current !== requestPrint) {
+      intentRef.current = null;
+      intentFor.current = requestPrint;
+    }
+  }, [requestPrint]);
 
   // When the difference changes (a line added, a quantity moved) the tender that covered the old
   // amount is meaningless: refill it with the new amount owed, on the till's first method.
@@ -189,14 +208,16 @@ function ExchangeScreen({ session }) {
     if (busy) return;
     setBusy(true);
     try {
-      const req = exchangeRequest(invoice.detail, lines, newLines, {
-        restock: restockChoice ?? undefined,
-        reason,
-        rules,
-        differenceMinor: diffMinor,
-        tenderLines,
-        refundMethod: refundMethod || null,
-      });
+      const req =
+        request ??
+        exchangeRequest(invoice.detail, lines, newLines, {
+          restock: restockChoice ?? undefined,
+          reason,
+          rules,
+          differenceMinor: diffMinor,
+          tenderLines,
+          refundMethod: refundMethod || null,
+        });
       intentRef.current ??= newIntent();
       const res = await sendReturn(() => posApi.exchange(session.id, req, intentRef.current)); // same intent re-sent while the first is still running -> wait, then replay
       // The money is the server's answer, not the screen's arithmetic: it knows which tenders the

@@ -30,7 +30,12 @@ export function createCountQueue({
 }) {
   let queued = {};
   let timer = null;
-  let saving = false;
+  // An approved or cancelled sheet takes no more counts, and says so, instead of the till
+  // reporting a save the server will never accept.
+  let closed = false;
+  // The request currently in flight, so a manual save or an APPROVE can wait for it instead of
+  // racing it. `saving` is only the fast guard; this is the thing worth awaiting.
+  let inFlight = null;
 
   function cancel() {
     if (timer !== null) {
@@ -47,39 +52,102 @@ export function createCountQueue({
     return merge(waiting);
   }
 
+  /** Send one batch and keep the promise, so anyone may await the money landing. */
+  function send(counts) {
+    inFlight = Promise.resolve()
+      .then(() => onSave(counts))
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
+  }
+
   function run() {
     timer = null;
     // One save at a time: a second request would land on the sheet the first is about to replace.
-    if (saving) {
+    if (inFlight) {
       timer = timers.set(run, retryDelay);
       return;
     }
     const counts = drain();
     if (!counts.length) return;
-    saving = true;
-    Promise.resolve()
-      .then(() => onSave(counts))
-      .catch(onError)
-      .finally(() => {
-        saving = false;
-      });
+    send(counts).catch(onError);
+  }
+
+  /**
+   * The real flush: cancel the timer, WAIT for the request already on the wire, then send
+   * everything still queued and wait for that too.
+   *
+   * ``drain()`` alone was not enough. It cancelled the timer and handed back the queue, but the
+   * request a scan had already started was still running, so an approve could land first and the
+   * count it depended on arrived afterwards — against a sheet the server had already closed.
+   * Resolves true only when every pending count is confirmed saved.
+   */
+  async function flushAndWait() {
+    cancel();
+    if (closed) return false;
+    if (inFlight) {
+      try {
+        await inFlight;
+      } catch {
+        // The in-flight save reported itself through onError; the caller still must not approve.
+        return false;
+      }
+    }
+    const counts = drain();
+    if (!counts.length) return true;
+    try {
+      await send(counts);
+      return true;
+    } catch (error) {
+      onError(error);
+      return false;
+    }
+  }
+
+  /**
+   * Leaving the screen: save what is waiting instead of dropping it.
+   *
+   * ``dispose`` used to be ``cancel``, so a scan taken in the last two seconds of the page's life
+   * was silently lost — the count simply never reached the sheet. It now sends that batch; a
+   * failure is reported through ``onError`` rather than swallowed.
+   */
+  function dispose() {
+    cancel();
+    const counts = drain();
+    if (!counts.length) return null;
+    const pendingSave = send(counts);
+    pendingSave.catch(onError);
+    return pendingSave;
   }
 
   return {
     /** Record a scan and (re)start the gathering window. */
     push(variantId, countedQty) {
+      if (closed) return;
       queued[variantId] = countedQty;
       cancel();
       timer = timers.set(run, delay);
     },
+    /** The sheet was approved or cancelled: no count may be sent after this. */
+    close() {
+      closed = true;
+      cancel();
+      queued = {};
+    },
     /** Used by a manual save and by approve: nothing may fire after this returns. */
     drain,
-    dispose: cancel,
+    /** Await everything, including the request already in flight. */
+    flushAndWait,
+    dispose,
     get pending() {
       return { ...queued };
     },
     get scheduled() {
       return timer !== null;
+    },
+    get saving() {
+      return inFlight !== null;
     },
   };
 }

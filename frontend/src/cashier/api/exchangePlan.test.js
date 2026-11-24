@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
 import { newIntent, posApi } from "./posApi";
+import { fingerprint } from "./intentStore";
 import { setQty, returnableLines } from "./returnPlan";
 import { differenceMinor, exchangeErrorMessage, exchangeRequest, sendExchange, settlementKind, settlementPrompt, settlementSummary } from "./exchangePlan";
 
@@ -155,5 +156,56 @@ describe("what the screen says about the settlement", () => {
     expect(
       settlementSummary({ settlement: "refunded", settled_amount: "20.00", uncollected: "30.00" }),
     ).toContain("لم تُحصَّل أصلًا");
+  });
+});
+
+describe("the idempotency key follows the whole body", () => {
+  // The screen used to fingerprint a hand-picked list, so correcting the condition, a tender line or
+  // the refund method after a refusal kept the old key and the server answered 409 for reusing it
+  // with a different body.
+  const rules = {
+    take_payments: true,
+    methods: ["cash", "card"],
+    reference_required: [],
+    split_allowed: true,
+  };
+  const withCondition = (condition) => {
+    const lines = setQty(returnableLines(sale), "v1", 1).map((l) => ({ ...l, condition }));
+    return lines;
+  };
+  const print = (req) => fingerprint(req);
+
+  it("a changed piece condition is a different request", () => {
+    const base = exchangeRequest(sale, withCondition("sellable"), repl, { restock: true, rules });
+    const damaged = exchangeRequest(sale, withCondition("damaged"), repl, { restock: true, rules });
+    expect(print(base)).not.toBe(print(damaged));
+  });
+
+  it("a changed tender line or refund method is a different request", () => {
+    const cash = exchangeRequest(sale, back(1), repl, {
+      rules,
+      differenceMinor: 1000,
+      tenderLines: [{ method: "cash", amount: "10.00" }],
+    });
+    const card = exchangeRequest(sale, back(1), repl, {
+      rules,
+      differenceMinor: 1000,
+      tenderLines: [{ method: "card", amount: "10.00" }],
+    });
+    expect(print(cash)).not.toBe(print(card));
+
+    const auto = exchangeRequest(sale, back(1), repl, { rules, differenceMinor: -1000 });
+    const chosen = exchangeRequest(sale, back(1), repl, {
+      rules,
+      differenceMinor: -1000,
+      refundMethod: "card",
+    });
+    expect(print(auto)).not.toBe(print(chosen));
+  });
+
+  it("an identical resend keeps the key, so a lost response replays instead of repeating", () => {
+    const a = exchangeRequest(sale, back(1), repl, { restock: true, rules, differenceMinor: 1000, tenderLines: [{ method: "cash", amount: "10.00" }] });
+    const b = exchangeRequest(sale, back(1), repl, { restock: true, rules, differenceMinor: 1000, tenderLines: [{ method: "cash", amount: "10.00" }] });
+    expect(print(a)).toBe(print(b));
   });
 });

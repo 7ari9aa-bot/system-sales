@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { fingerprint } from "./intentStore";
 import { newIntent, posApi } from "./posApi";
 
 vi.mock("@/lib/api", () => ({ api: vi.fn(async () => ({ ok: true })) }));
@@ -258,5 +259,30 @@ describe("what the server did with the money", () => {
   it("a record-only till says the money was only recorded", () => {
     expect(returnSettlementSummary({ refund_mode: "record_only", refunded: "0.00", refund_by_method: {}, refund_uncollected: "40.00" }))
       .toContain("مش بيسجّل مدفوعات");
+  });
+});
+
+describe("the return key follows the whole body", () => {
+  // The screen fingerprinted a hand-picked list that left out the piece condition, so fixing the
+  // condition after a refusal reused the old key and the server answered 409 for a different body.
+  const sale = {
+    order: { id: "o1" },
+    lines: [{ variant_id: "v1", title: "قميص", sku: "SH", quantity: 2, unit_price: "100.00", returned_qty: 0 }],
+  };
+  const line = (condition) => {
+    const picked = setQty(returnableLines(sale), "v1", 1);
+    return picked.map((l) => ({ ...l, condition }));
+  };
+
+  it("a changed condition is a different intention", () => {
+    const a = fingerprint(returnRequest(sale, line("sellable"), { restock: true }));
+    const b = fingerprint(returnRequest(sale, line("damaged"), { restock: true }));
+    expect(a).not.toBe(b);
+  });
+
+  it("an identical resend keeps the key", () => {
+    const a = fingerprint(returnRequest(sale, line("sellable"), { restock: true }));
+    const b = fingerprint(returnRequest(sale, line("sellable"), { restock: true }));
+    expect(a).toBe(b);
   });
 });
