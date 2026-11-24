@@ -22,10 +22,9 @@ decides**, the evidence, and what the owner would have to do.
   nothing in signup handled the coexistence step at all. It now reports `account_ineligible` with
   Meta's rule as the reason, and only a connection that recorded `onboarding_mode=coexistence`
   reports `available` — because Meta already allowed it for that number.
-* **A silent choice.** `WhatsAppSignupCompleteBody` now takes `onboarding_mode` (`cloud_api` by
-  default, `coexistence` accepted, anything else refused) and stores it on the integration, so a
-  screen can tell a coexisting number from a Cloud-API-only one. Choosing coexistence is not a
-  failed connection, and the code no longer treats it as one.
+* **A silent choice.** Embedded Signup now always requests the Business App coexistence flow,
+  and the server verifies `is_on_biz_app` + `platform_type` from Meta before accepting the link.
+  Cloud API-only numbers are refused rather than silently connected as a different product.
 
 The state words are literals in the roadmap module rather than imported from `capability_states`,
 because `capability_states` reads the registry while it is being defined; importing back would be a
@@ -36,5 +35,5 @@ circular import.
 `tests/test_whatsapp_roadmap_and_coexistence.py` — every gated feature carries evidence and an
 action, none claims to be available out of the box, the capability report carries the roadmap states
 (and still reports `flows` and `catalog_messages` as available), a measured state only replaces a
-known one, an unknown feature is a `KeyError`, signup records coexistence, defaults to `cloud_api`
-and refuses a made-up mode.
+known one, an unknown feature is a `KeyError`, signup records coexistence, defaults to coexistence
+and refuses Cloud API-only and made-up modes.
