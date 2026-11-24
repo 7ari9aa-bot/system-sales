@@ -367,8 +367,12 @@ def parse_history_batches(payload: dict) -> list[dict]:
                 "chunk_key": chunk_key,
                 "request_id": _request_id(value),
                 "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
-                "chunk_order": _int_or_none(sync_metadata.get("chunk_order", value.get("chunk_order"))),
-                "progress": _int_or_none(sync_metadata.get("progress", value.get("progress"))),
+                "chunk_order": _int_or_none(
+                    sync_metadata.get("chunk_order", value.get("chunk_order"))
+                ),
+                "progress": _int_or_none(
+                    sync_metadata.get("progress", value.get("progress"))
+                ),
                 "not_shared": bool(errors),
                 "error": next(
                     (
