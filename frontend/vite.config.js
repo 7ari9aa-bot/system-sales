@@ -86,6 +86,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      allowedHosts: ['sb-1z5ia6othf2b.vercel.run'],
       proxy: apiProxy,
     },
     // Keep API calls same-origin in browser checks against the built app too.
