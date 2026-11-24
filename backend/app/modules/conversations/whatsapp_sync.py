@@ -658,8 +658,8 @@ STATE_COPY: dict[str, dict[str, str]] = {
         "ar": "بنجيب جهات اتصال واتساب",
     },
     STATE_CONTACTS_SYNC_COMPLETED: {
-        "en": "Contacts imported",
-        "ar": "جهات الاتصال اتجابت",
+        "en": "Initial WhatsApp contacts received",
+        "ar": "وصلت بيانات جهات الاتصال الأولية من واتساب",
     },
     STATE_HISTORY_SYNC_PENDING: {
         "en": "Waiting for Meta to send your chat history",
