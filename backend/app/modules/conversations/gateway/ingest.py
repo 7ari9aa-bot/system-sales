@@ -28,7 +28,6 @@ from app.modules.conversations.gateway.base import InboundMessage
 from app.modules.conversations.models import Conversation, Message
 from app.modules.conversations.service import ConversationService
 from app.modules.customers.service import CustomerService
-from app.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import IdempotencyKey, Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
