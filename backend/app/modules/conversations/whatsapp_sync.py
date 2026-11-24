@@ -958,7 +958,7 @@ async def reconcile_run(
     return run
 
 
-def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
+def run_snapshot(run: WhatsAppSyncRun | None, now: datetime | None = None) -> dict | None:
     """One sync row as the screen reads it: a word, a percentage, a count, a deadline.
 
     No request id and no raw Meta error: the id is internal bookkeeping and the error text is
@@ -968,14 +968,14 @@ def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
     if run is None:
         return None
     phases = run.phases if isinstance(run.phases, dict) else {}
-    attention = run_attention(run)
+    attention = run_attention(run, now)
     return {
         "sync_type": run.sync_type,
         "state": run.state,
         # The initial contact snapshot is its own fact, so the screen can say "we have the first
         # list, still listening" instead of calling it a finished sync.
         "snapshot_received_at": phases.get("contacts_snapshot_received_at"),
-        "settled_by": "deadline" if contacts_settled_by_deadline(run) else None,
+        "settled_by": "deadline" if contacts_settled_by_deadline(run, now) else None,
         "progress": int(run.progress or 0),
         "messages_stored": int(run.messages_stored or 0),
         "chunks": int(run.chunks_seen or 0),

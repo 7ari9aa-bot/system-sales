@@ -207,10 +207,10 @@ def test_the_snapshot_says_which_fact_it_is_reporting() -> None:
     received = _run(
         sync_type="contacts",
         state="in_progress",
-        deadline_at=datetime.now(UTC) - timedelta(minutes=5),
+        deadline_at=NOW - timedelta(minutes=5),
         phases={"contacts_snapshot_received_at": "2026-11-24T09:00:00+00:00"},
     )
-    snapshot = sync.run_snapshot(received)
+    snapshot = sync.run_snapshot(received, NOW)
 
     assert snapshot["state"] == "in_progress"
     assert snapshot["snapshot_received_at"] == "2026-11-24T09:00:00+00:00"
@@ -218,7 +218,7 @@ def test_the_snapshot_says_which_fact_it_is_reporting() -> None:
 
     # A run still inside its window reports no settlement at all.
     open_run = _run(sync_type="contacts", state="in_progress", deadline_at=NOW + timedelta(hours=1))
-    assert sync.run_snapshot(open_run)["settled_by"] is None
+    assert sync.run_snapshot(open_run, NOW)["settled_by"] is None
 
 
 # ── a reservation whose answer never arrived ─────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ def _stuck(**overrides) -> WhatsAppSyncRun:
 def test_a_fresh_reservation_is_just_slow_and_says_nothing() -> None:
     fresh = _stuck(created_at=NOW - timedelta(minutes=1))
     assert sync.run_attention(fresh, NOW) is None
-    assert sync.run_snapshot(fresh)["needs_attention"] is False
+    assert sync.run_snapshot(fresh, NOW)["needs_attention"] is False
 
 
 def test_a_reservation_past_the_grace_period_needs_a_person() -> None:

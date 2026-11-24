@@ -32,6 +32,27 @@ from app.modules.platform.models import IdempotencyKey, Integration, WebhookEven
 logger = logging.getLogger(__name__)
 
 
+def _as_moment(value: object) -> datetime | None:
+    """Meta sends the app-contact timestamp as a STRING (or as epoch seconds). Everything that
+    compares it, or writes it with ``isoformat``, needs a datetime — a string either crashes the
+    comparison or is stored in the wrong shape."""
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=UTC)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromtimestamp(float(text), tz=UTC)
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 async def _channel_credentials(session, tenant_id, channel) -> dict | None:
     """A connected channel's decrypted settings. The one place this file reaches the platform
     module for them, so the cross-module import is counted once."""
@@ -658,7 +679,7 @@ class IngestService:
                 ).strip()
                 if not identity_ref:
                     continue
-                action_at = contact.get("timestamp") or batch.get("timestamp")
+                action_at = _as_moment(contact.get("timestamp") or batch.get("timestamp"))
                 existing_customer = await CustomerService.find_by_identity(
                     session, tenant_id, channel, identity_ref
                 )

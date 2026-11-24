@@ -185,7 +185,8 @@ async def test_late_chunks_land_and_never_walk_the_transfer_backwards(tenant_ctx
     ).scalar_one()
     assert run.state == "completed"
     assert run.progress == 100
-    assert set(run.phases) == {"0", "2"}
+    # ``_seen_chunk_keys`` is internal bookkeeping kept beside the per-chunk progress.
+    assert {k for k in run.phases if not k.startswith("_")} == {"0", "2"}
     assert run.chunks_seen == 2
 
 
@@ -291,6 +292,17 @@ async def test_our_own_send_echoed_back_does_not_take_the_thread(tenant_ctx) -> 
     )
     conversation = await ConversationService.get_or_create(
         session, tenant_id, customer_id=customer.id, channel="whatsapp"
+    )
+    # The agent is answering a customer who just wrote: without an inbound message the 24h
+    # window is shut and the policy refuses the reply before the echo is ever applied.
+    await ConversationService.add_message(
+        session,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        body="سؤال",
+        channel_message_id="wamid.IN",
     )
     await ConversationService.add_message(
         session,
@@ -663,8 +675,9 @@ async def test_an_unsupported_notice_is_recorded_without_touching_the_channel(te
     event = (
         await session.execute(
             select(OutboxEvent).where(
-                OutboxEvent.tenant_id == tenant_id,
-                OutboxEvent.event_type == "message.received",
+                # outbox_events carries no tenant_id; the event names the message it announces.
+                OutboxEvent.aggregate_type == "message",
+                OutboxEvent.aggregate_id == notice.id,
             )
         )
     ).scalar_one()
