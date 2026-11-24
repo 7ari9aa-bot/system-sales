@@ -484,6 +484,21 @@ class IngestService:
             session, tenant_id, customer_id=customer.id, channel=channel
         )
         when = item.get("occurred_at") or datetime.now(UTC)
+        # §155 threading, same rule as the live path: the provider names its target by wamid, so
+        # resolve it inside THIS conversation only, and keep the provider id in metadata when the
+        # parent is not stored yet — an imported reply must not lose its quote just because the
+        # message it answers arrived in a later chunk.
+        reply_ref = item.get("reply_to_message_id")
+        reply_to_uuid = (
+            await IngestService._resolve_reply_target(
+                session, tenant_id, conversation.id, reply_ref
+            )
+            if reply_ref
+            else None
+        )
+        provider_metadata = {"imported_from": source}
+        if reply_ref:
+            provider_metadata["reply_to_provider_id"] = reply_ref
         session.add(
             Message(
                 tenant_id=tenant_id,
@@ -497,8 +512,9 @@ class IngestService:
                 content_type=item.get("content_type") or "text",
                 channel_message_id=mid,
                 status=status,
+                reply_to_message_id=reply_to_uuid,
                 payload={"raw": item.get("raw") or {}, "imported_from": source},
-                provider_metadata={"imported_from": source},
+                provider_metadata=provider_metadata,
                 created_at=when,
             )
         )

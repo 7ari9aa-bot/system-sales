@@ -366,6 +366,52 @@ async def test_a_replayed_echo_is_stored_once(tenant_ctx) -> None:
     assert await _count(session, Message, tenant_id=tenant_id) == 1
 
 
+# ------------------------------------------------------------ reply context
+
+
+async def test_an_imported_reply_keeps_its_quote(tenant_ctx) -> None:
+    """History carries reply_to_message_id and the import used to drop it.
+
+    A backfilled conversation read as a wall of unrelated messages. The provider id is kept in
+    metadata even when the parent has not arrived, so a later chunk can still link it.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
+
+    await IngestService.apply_history(
+        session, tenant_id, "whatsapp", [_chunk(_message("wamid.PARENT"))]
+    )
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.CHILD", reply_to_message_id="wamid.PARENT"))],
+    )
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.ORPHAN", reply_to_message_id="wamid.NEVER"))],
+    )
+
+    parent = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.PARENT"))
+    ).scalar_one()
+    child = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.CHILD"))
+    ).scalar_one()
+    orphan = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.ORPHAN"))
+    ).scalar_one()
+
+    assert child.reply_to_message_id == parent.id
+    assert child.provider_metadata.get("reply_to_provider_id") == "wamid.PARENT"
+    # The parent is not stored yet: the provider id survives so the UI can still quote it.
+    assert orphan.reply_to_message_id is None
+    assert orphan.provider_metadata.get("reply_to_provider_id") == "wamid.NEVER"
+
+
 # ----------------------------------------------------- attribution (stale chunks)
 
 
