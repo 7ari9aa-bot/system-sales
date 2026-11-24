@@ -286,6 +286,7 @@ function ExchangeScreen({ session }) {
     <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <ReturnHeaderBar title="تسجيل استبدال" numberLabel="رقم الاستبدال" employee={user?.full_name || user?.email || ""} />
       <PendingRefundsPanel
+        sessionId={shift?.id ?? working?.id ?? null}
         pending={pendingRefunds}
         onConfirmed={(res) =>
           setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))

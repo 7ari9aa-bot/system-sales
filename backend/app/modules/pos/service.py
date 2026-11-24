@@ -4124,6 +4124,7 @@ class PosService(PosReceiptReads):
             await PosService._setting(session, tenant_id, "pos.refund_cash_only", pos_session)
         )
         terminal_only: list[dict] = []
+        awaiting_manual: list[dict] = []
         if cash_only:
             # A shop that starts cash-only must not have the till claim a card reversal it cannot
             # perform. The non-cash tenders are named for the cashier to reverse on the terminal
@@ -4150,44 +4151,38 @@ class PosService(PosReceiptReads):
             # The manual reversal is a financial operation, so it is a row: amount, method, who
             # took it, when, and — after the cashier types the terminal's reference — the proof.
             # Describing it in the response alone left the shop with no evidence that the money
-            # went back, and no way to compute its effect (the report's third blocker).
-            manual_rows: list[Refund] = []
-            for tender in tenders:
-                share = non_cash.get(tender.method)
-                if not share or tender.payment_id is None:
+            # went back, and no way to compute its effect.
+            #
+            # The rows come from the PLAN'S SLICES, not from a per-method total. Two card payments
+            # of 100 each with 30 to give back produced one 30 row per PAYMENT when the code read
+            # the method total and repeated it for every tender of that method: 60 recorded for a
+            # 30 refund. A slice is one payment's exact share, so the sum is the amount asked for.
+            manual_rows: list[tuple[Refund, str]] = []
+            for slice_ in source_plan.slices:
+                if slice_.method == CASH or slice_.amount <= ZERO or slice_.payment_id is None:
                     continue
-                manual_rows.append(
-                    Refund(
-                        tenant_id=tenant_id,
-                        payment_id=tender.payment_id,
-                        amount=to_money(share, tender.method),
-                        reason=f"{reason or 'refund'} (manual terminal reversal)",
-                        status="pending",
-                        created_by_user_id=actor_user_id,
-                    )
+                row = Refund(
+                    tenant_id=tenant_id,
+                    payment_id=slice_.payment_id,
+                    amount=to_money(slice_.amount, slice_.method),
+                    reason=f"{reason or 'refund'} (manual terminal reversal)",
+                    status="pending",
+                    created_by_user_id=actor_user_id,
                 )
-            for row in manual_rows:
                 session.add(row)
+                manual_rows.append((row, slice_.method))
             if manual_rows:
                 await session.flush()
             awaiting_manual = [
                 {
                     "refund_id": str(row.id),
-                    "method": method_name,
+                    "method": method,
                     "amount": str(row.amount),
                     "order_id": str(order.id),
                     "order_number": getattr(order, "number", None),
                     "manual": True,
                 }
-                for row, method_name in zip(
-                    manual_rows,
-                    [
-                        tender.method
-                        for tender in tenders
-                        if non_cash.get(tender.method) and tender.payment_id is not None
-                    ],
-                    strict=False,
-                )
+                for row, method in manual_rows
             ]
             cash_part = to_money(value - sum(non_cash.values(), ZERO), "cash part")
             cash_tenders = [tender for tender in tenders if tender.method == CASH]
@@ -4203,7 +4198,7 @@ class PosService(PosReceiptReads):
                         SimpleNamespace(
                             payment_id=row.payment_id, method=method_name, amount=row.amount
                         )
-                        for row, method_name in zip(manual_rows, non_cash.keys(), strict=False)
+                        for row, method_name in manual_rows
                     ],
                 }
             tenders = cash_tenders
@@ -4297,7 +4292,7 @@ class PosService(PosReceiptReads):
             "uncollected": plan.uncollected,
             "by_method": settled_by_method,
             "slices": list(plan.slices),
-            "awaiting_confirmation": awaiting,
+            "awaiting_confirmation": awaiting_manual + awaiting,
             "terminal_only": terminal_only,
         }
 
@@ -4311,6 +4306,7 @@ class PosService(PosReceiptReads):
         replacement_method: str | None = None,
         external_reference: object | None = None,
         actor_user_id: UUID | None = None,
+        session_id: UUID | None = None,
     ) -> dict:
         """The terminal refused: record why, and free the reservation.
 
@@ -4333,9 +4329,15 @@ class PosService(PosReceiptReads):
             raise ValidationError("rejecting a refund needs a reason")
         if len(text_reason) > 255:
             raise ValidationError("the rejection reason must be at most 255 characters")
+        # FOR UPDATE, and the same lock in ``confirm_refund``: confirm and reject can arrive in the
+        # same second from the same counter, and a plain read let both see ``pending`` and both win
+        # — leaving the refund row and the payment's state disagreeing about money. The row is
+        # locked for the rest of the transaction, so exactly one transition can happen.
         row = (
             await session.execute(
-                select(Refund).where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+                select(Refund)
+                .where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if row is None:
@@ -4352,13 +4354,11 @@ class PosService(PosReceiptReads):
         if payment is None:
             raise ValidationError("the refunded payment no longer exists")
 
-        row.status = "rejected"
-        row.reason = f"{row.reason or 'refund'} — rejected: {text_reason}"[:255]
-        row.processed_at = datetime.now(UTC)
-        await session.flush()
-
         replacement = None
         if replacement_method:
+            # Everything a cash replacement needs is checked BEFORE the rejection is written: a
+            # half-done pair (old attempt rejected, new one short) is money the shop owes with
+            # nothing pointing at it.
             method = str(replacement_method).strip()
             tenders, _payments = await PosService._refundable_tenders(
                 session, tenant_id, payment.order_id
@@ -4368,12 +4368,33 @@ class PosService(PosReceiptReads):
                 raise ValidationError(
                     f"no room left on {method} for this sale, so it cannot take the replacement"
                 )
+            wanted = to_money(row.amount, "refund")
+            if tender.room < wanted:
+                # Refused whole, never part-recorded: 60 of 100 "done" is a 40 the customer never
+                # gets and nobody is chasing. The cashier refunds the rest by another route first.
+                raise ValidationError(
+                    f"{method} can only give back {tender.room}, and this refund is {wanted}: "
+                    "refund the remainder another way before rejecting this one"
+                )
             reference = str(external_reference or "").strip()
             confirmed = method == CASH or bool(reference)
+            open_session = None
+            if method == CASH:
+                # Cash leaves the drawer, so the drawer has to know: without a movement the close
+                # arithmetic still counts money the cashier has already handed over.
+                if session_id is None:
+                    raise ValidationError(
+                        "a cash replacement needs the open drawer (session_id) it is paid from"
+                    )
+                open_session = await PosService._get_session(
+                    session, tenant_id, session_id, lock=True
+                )
+                if open_session.status != "OPEN":
+                    raise ConflictError("the drawer is closed: open a shift to pay cash out")
             new_row = Refund(
                 tenant_id=tenant_id,
                 payment_id=tender.payment_id,
-                amount=to_money(min(to_money(row.amount, "refund"), tender.room), method),
+                amount=wanted,
                 reason=f"replacement for rejected refund {refund_id}: {text_reason}"[:255],
                 status="processed" if confirmed else "pending",
                 external_reference=reference or None,
@@ -4382,12 +4403,50 @@ class PosService(PosReceiptReads):
             )
             session.add(new_row)
             await session.flush()
+            if open_session is not None:
+                session.add(
+                    PosCashMovement(
+                        tenant_id=tenant_id,
+                        session_id=open_session.id,
+                        direction="out",
+                        reason="cash_refund",
+                        amount=wanted,
+                        reference_type="order",
+                        reference_id=payment.order_id,
+                        notes=(f"replacement for rejected refund {refund_id}"[:255]),
+                        created_by_user_id=actor_user_id,
+                    )
+                )
+            if confirmed:
+                from app.modules.orders.models import Order
+                from app.modules.orders.service import OrderService
+
+                order = (
+                    await session.execute(
+                        select(Order).where(
+                            Order.tenant_id == tenant_id, Order.id == payment.order_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if order is not None:
+                    # Same rule as every other refund: the payment's state and the customer's value
+                    # follow the money that actually went back.
+                    await OrderService.apply_refunded_payment_states(
+                        session, tenant_id, order, [tender.payment_id]
+                    )
+            await session.flush()
             replacement = {
                 "refund_id": str(new_row.id),
                 "method": method,
                 "amount": str(new_row.amount),
                 "status": new_row.status,
             }
+
+        row.status = "rejected"
+        row.reason = f"{row.reason or 'refund'} — rejected: {text_reason}"[:255]
+        row.processed_at = datetime.now(UTC)
+        await session.flush()
+
         return {
             "refund_id": str(row.id),
             "status": row.status,
@@ -4469,7 +4528,9 @@ class PosService(PosReceiptReads):
             raise ValidationError("a card or wallet reversal needs the terminal's reference")
         row = (
             await session.execute(
-                select(Refund).where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+                select(Refund)
+                .where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if row is None:

@@ -1857,6 +1857,7 @@ async def test_a_rejected_reversal_can_be_refunded_on_another_tender(db, tenant_
         refund_id,
         "الماكينة مش متصلة",
         replacement_method="cash",
+        session_id=shift.id,
     )
     assert result["replacement"]["method"] == "cash"
     assert result["replacement"]["status"] == "processed"
@@ -1865,3 +1866,169 @@ async def test_a_rejected_reversal_can_be_refunded_on_another_tender(db, tenant_
         db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
     )
     assert Decimal(str(position["refunded"])) == Decimal("100.00")
+
+
+async def _cash_out(db, tenant_ctx, session_id):
+    from app.modules.pos.models import PosCashMovement
+
+    await db.flush()
+    return (
+        (
+            await db.execute(
+                sa.select(PosCashMovement).where(
+                    PosCashMovement.tenant_id == tenant_ctx.tenant_id,
+                    PosCashMovement.session_id == session_id,
+                    PosCashMovement.direction == "out",
+                    PosCashMovement.reason == "cash_refund",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cash_replacement_leaves_the_drawer_and_moves_the_payment(db, tenant_ctx) -> None:
+    """Blocker 1: the replacement was ``processed`` on paper only: no movement, no derived state."""
+    from app.modules.orders.models import OrderPayment
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "100.00", "reference": "AUTH-6"},
+        ],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "100.00"}],
+    )
+    refund_id = uuid.UUID(out["awaiting_confirmation"][0]["refund_id"])
+    result = await PosService.reject_refund(
+        db,
+        tenant_ctx.tenant_id,
+        refund_id,
+        "الماكينة مش متصلة",
+        replacement_method="cash",
+        session_id=shift.id,
+    )
+    assert result["replacement"]["status"] == "processed"
+    (movement,) = await _cash_out(db, tenant_ctx, shift.id)
+    assert Decimal(str(movement.amount)) == Decimal("100.00")
+    await db.flush()
+    card = (
+        await db.execute(
+            sa.select(OrderPayment).where(
+                OrderPayment.tenant_id == tenant_ctx.tenant_id,
+                OrderPayment.method == "card",
+            )
+        )
+    ).scalar_one()
+    assert card.status == "captured"
+    assert await _customer_worth(db, tenant_ctx, customer.id) == Decimal("100.00")
+
+
+@pytest.mark.asyncio
+async def test_a_replacement_that_cannot_cover_the_whole_amount_is_refused(db, tenant_ctx) -> None:
+    """Blocker 1b: 60 of 100 recorded as done left a 40 nobody was chasing."""
+    from app.modules.errors import ValidationError
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=3,
+        payments=[
+            {"method": "cash", "amount": "60.00"},
+            {"method": "card", "amount": "240.00", "reference": "AUTH-7"},
+        ],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "100.00"}],
+    )
+    refund_id = uuid.UUID(out["awaiting_confirmation"][0]["refund_id"])
+    with pytest.raises(ValidationError):
+        await PosService.reject_refund(
+            db,
+            tenant_ctx.tenant_id,
+            refund_id,
+            "الماكينة مش متصلة",
+            replacement_method="cash",
+            session_id=shift.id,
+        )
+    pending = await PosService.list_pending_refunds(db, tenant_ctx.tenant_id)
+    assert [row["refund_id"] for row in pending] == [str(refund_id)]
+    assert await _cash_out(db, tenant_ctx, shift.id) == []
+
+
+@pytest.mark.asyncio
+async def test_cash_only_on_two_card_payments_records_the_amount_once(db, tenant_ctx) -> None:
+    """Blocker 2: the method total was repeated per payment, so 30 was recorded twice as 60."""
+    from app.modules.orders.service import OrderService
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[
+            {"method": "card", "amount": "100.00", "reference": "AUTH-8"},
+            {"method": "card", "amount": "100.00", "reference": "AUTH-9"},
+        ],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "30.00"}],
+    )
+    rows = await _refund_rows(db, tenant_ctx)
+    assert len(rows) == 1
+    assert sum(Decimal(str(row.amount)) for row in rows) == Decimal("30.00")
+    assert sum(Decimal(str(row["amount"])) for row in out["awaiting_confirmation"]) == Decimal(
+        "30.00"
+    )
+    position = await OrderService.refund_position(
+        db, tenant_ctx.tenant_id, uuid.UUID(str(sold["order_id"]))
+    )
+    assert Decimal(str(position["refunded"])) == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_confirm_and_reject_both_lock_the_refund_row(db, tenant_ctx) -> None:
+    """Blocker 3: a plain read let confirm and reject both see ``pending`` and both win."""
+    import inspect
+
+    from app.modules.pos.service import PosService
+
+    for fn in (PosService.confirm_refund, PosService.reject_refund):
+        assert "with_for_update()" in inspect.getsource(fn), fn.__name__

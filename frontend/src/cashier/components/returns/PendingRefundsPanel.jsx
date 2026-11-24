@@ -11,7 +11,7 @@ const METHOD_LABEL = { cash: "نقدي", card: "بطاقة", transfer: "تحوي
  * الخادم بيسجّل الجزء ده `pending` وبيقول للمتصفح إنه مستني تأكيد. الشاشة لازم تعرضه وتاخد رقم
  * المرجع من الماكينة، وإلا كان النظام بيدّعي إن الفلوس رجعت والعميل لسه مستنيها.
  */
-export default function PendingRefundsPanel({ pending = [], onConfirmed, onRejected }) {
+export default function PendingRefundsPanel({ pending = [], sessionId, onConfirmed, onRejected }) {
   const [references, setReferences] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [done, setDone] = useState({});
@@ -52,9 +52,13 @@ export default function PendingRefundsPanel({ pending = [], onConfirmed, onRejec
     if (!reason) return toast.error("اكتب سبب رفض الماكينة قبل التسجيل");
     setBusyId(row.refund_id);
     try {
+      if (replacementMethod === "cash" && !sessionId) {
+        return toast.error("افتح الوردية الأول عشان الرد النقدي يتسجل على الدرج");
+      }
       const res = await posApi.rejectRefund(row.refund_id, {
         reason,
         replacement_method: replacementMethod || undefined,
+        session_id: replacementMethod === "cash" ? sessionId : undefined,
       });
       setDone((prev) => ({ ...prev, [row.refund_id]: res }));
       toast.success(

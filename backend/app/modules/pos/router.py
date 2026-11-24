@@ -1137,6 +1137,8 @@ class RejectRefundRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=255)
     replacement_method: str | None = Field(default=None, max_length=31)
     external_reference: str | None = Field(default=None, max_length=64)
+    # The open drawer a cash replacement is paid out of; required for money from the till.
+    session_id: UUID | None = None
 
 
 @router.post("/refunds/{refund_id}/reject")
@@ -1158,6 +1160,7 @@ async def reject_refund(
         replacement_method=body.replacement_method,
         external_reference=body.external_reference,
         actor_user_id=ctx.user.id,
+        session_id=body.session_id,
     )
 
 
