@@ -61,9 +61,9 @@ def extract_content(msg: dict) -> tuple[str | None, str | None, str | None, str]
         )
     if msg_type == "media_placeholder":
         placeholder = msg.get("media_placeholder") or {}
-        media_type = str(
-            placeholder.get("type") or placeholder.get("media_type") or ""
-        ).strip() or None
+        media_type = (
+            str(placeholder.get("type") or placeholder.get("media_type") or "").strip() or None
+        )
         return (
             "[Media attachment unavailable in imported history]",
             None,
@@ -289,106 +289,124 @@ def _history_error_code(item: dict) -> int | None:
 
 
 def parse_history_batches(payload: dict) -> list[dict]:
-    """Normalize Meta history batches, including metadata nested under `history[]`.
+    """Normalize Meta history batches: ONE batch per ``history[]`` element.
 
-    Meta may deliver a final refusal (2593109) as a history webhook after the
-    request itself returned a request_id. Empty chunks are preserved because
-    they may carry either refusal or completion state.
+    Each element carries its own phase/chunk_order/progress, so folding a whole webhook into a
+    single batch was wrong in two ways: two chunks with different metadata shared one progress
+    record (the later progress overwrote the earlier), and they shared one chunk key, so the
+    second one deduped away as a replay and its messages were dropped. The flat shape — no
+    ``history[]``, metadata on the change itself — is still exactly one batch.
+
+    Meta may deliver a final refusal (2593109) as a history webhook after the request itself
+    returned a request_id. Empty chunks are preserved because they may carry either refusal or
+    completion state.
     """
     batches: list[dict] = []
     for value in _changes(payload, "history"):
         top_metadata = value.get("metadata") or {}
         history_items = _history_items(value)
-        metadata_sources = [
-            item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-            for item in history_items
-        ] or [top_metadata]
-        # The documented shape puts phase/chunk_order/progress on history[].metadata.
-        sync_metadata = next(
-            (
-                item
-                for item in metadata_sources
-                if any(k in item for k in ("phase", "chunk_order", "progress"))
-            ),
-            top_metadata,
-        )
-        business_number = str(
-            top_metadata.get("display_phone_number")
-            or sync_metadata.get("display_phone_number")
-            or ""
-        ).strip()
-        messages: list[dict] = []
-        for thread in _threads(value):
-            context = thread.get("context") if isinstance(thread.get("context"), dict) else {}
-            bsuid = str(context.get("user_id") or context.get("from_user_id") or "").strip()
-            thread_id = str(bsuid or thread.get("id") or thread.get("wa_id") or "").strip()
-            if not thread_id:
-                continue
-            identity_type = "bsuid" if bsuid else "phone"
-            parent_ref = (
-                str(
-                    context.get("parent_user_id") or context.get("parent_ref") or ""
-                ).strip()
-                or None
-            )
-            for msg in thread.get("messages") or []:
-                normalized = _normalize_thread_message(
-                    msg,
-                    thread_id,
-                    business_number,
-                    identity_type=identity_type,
-                    parent_ref=parent_ref,
+        if not history_items:
+            batches.append(_history_batch(value, top_metadata, {}, 0, use_value_threads=True))
+            continue
+        for index, item in enumerate(history_items):
+            # Threads live on the element when Meta splits a webhook; on the change itself for the
+            # flat shape. Reading the change's threads for every element would store the same
+            # messages once per element.
+            batches.append(
+                _history_batch(
+                    value,
+                    top_metadata,
+                    item,
+                    index,
+                    use_value_threads=len(history_items) == 1 or bool(item.get("threads")),
                 )
-                if normalized is not None:
-                    messages.append(normalized)
-        errors = [item for item in history_items if _history_error_code(item) == 2593109]
-        chunk_material = json.dumps(
-            {
-                "request_id": _request_id(value),
-                "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
-                "chunk_order": _int_or_none(
-                    sync_metadata.get("chunk_order", value.get("chunk_order"))
-                ),
-                "progress": _int_or_none(sync_metadata.get("progress", value.get("progress"))),
-                "message_ids": sorted(
-                    str(message.get("channel_message_id") or "")
-                    for message in messages
-                    if message.get("channel_message_id")
-                ),
-                "not_shared": bool(errors),
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        chunk_key = hashlib.sha256(chunk_material.encode("utf-8")).hexdigest()
-        batches.append(
-            {
-                "phone_number_id": _phone_number_id(value),
-                "chunk_key": chunk_key,
-                "request_id": _request_id(value),
-                "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
-                "chunk_order": _int_or_none(
-                    sync_metadata.get("chunk_order", value.get("chunk_order"))
-                ),
-                "progress": _int_or_none(
-                    sync_metadata.get("progress", value.get("progress"))
-                ),
-                "not_shared": bool(errors),
-                "error": next(
-                    (
-                        str(
-                            error.get("message") or error.get("title") or "history not shared"
-                        )[:500]
-                        for item in errors
-                        for error in item.get("errors") or []
-                        if isinstance(error, dict) and _int_or_none(error.get("code")) == 2593109
-                    ),
-                    None,
-                ),
-                "messages": messages,
-            }
-        )
+            )
     return batches
+
+
+def _history_batch(
+    value: dict,
+    top_metadata: dict,
+    item: dict,
+    index: int,
+    *,
+    use_value_threads: bool,
+) -> dict:
+    """One ``history[]`` element, normalized with its own metadata and its own chunk key."""
+    item_metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    # The documented shape puts phase/chunk_order/progress on history[].metadata; the change-level
+    # keys are the fallback for the flat shape and for payloads that only half-nest.
+    sync_metadata = {**top_metadata, **item_metadata}
+    phase = _int_or_none(sync_metadata.get("phase", value.get("phase")))
+    chunk_order = _int_or_none(sync_metadata.get("chunk_order", value.get("chunk_order")))
+    progress = _int_or_none(sync_metadata.get("progress", value.get("progress")))
+    business_number = str(
+        top_metadata.get("display_phone_number") or item_metadata.get("display_phone_number") or ""
+    ).strip()
+
+    if item.get("threads"):
+        threads = _threads(item)
+    else:
+        threads = _threads(value) if use_value_threads else []
+    messages: list[dict] = []
+    for thread in threads:
+        context = thread.get("context") if isinstance(thread.get("context"), dict) else {}
+        bsuid = str(context.get("user_id") or context.get("from_user_id") or "").strip()
+        thread_id = str(bsuid or thread.get("id") or thread.get("wa_id") or "").strip()
+        if not thread_id:
+            continue
+        identity_type = "bsuid" if bsuid else "phone"
+        parent_ref = (
+            str(context.get("parent_user_id") or context.get("parent_ref") or "").strip() or None
+        )
+        for msg in thread.get("messages") or []:
+            normalized = _normalize_thread_message(
+                msg,
+                thread_id,
+                business_number,
+                identity_type=identity_type,
+                parent_ref=parent_ref,
+            )
+            if normalized is not None:
+                messages.append(normalized)
+
+    error_code = _history_error_code(item)
+    not_shared = error_code == 2593109
+    chunk_material = json.dumps(
+        {
+            "request_id": _request_id(value),
+            "index": index,
+            "phase": phase,
+            "chunk_order": chunk_order,
+            "progress": progress,
+            "message_ids": sorted(
+                str(message.get("channel_message_id") or "")
+                for message in messages
+                if message.get("channel_message_id")
+            ),
+            "not_shared": not_shared,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return {
+        "phone_number_id": _phone_number_id(value),
+        "chunk_key": hashlib.sha256(chunk_material.encode("utf-8")).hexdigest(),
+        "request_id": _request_id(value),
+        "phase": phase,
+        "chunk_order": chunk_order,
+        "progress": progress,
+        "not_shared": not_shared,
+        "error": next(
+            (
+                str(error.get("message") or error.get("title") or "history not shared")[:500]
+                for error in item.get("errors") or []
+                if isinstance(error, dict) and _int_or_none(error.get("code")) == 2593109
+            ),
+            None,
+        ),
+        "messages": messages,
+    }
 
 
 # ---------- contacts ----------
@@ -396,9 +414,12 @@ def parse_history_batches(payload: dict) -> list[dict]:
 
 def _contact_record(item: dict, *, batch_timestamp: object = None) -> dict | None:
     contact = item.get("contact") if isinstance(item.get("contact"), dict) else item
-    phone = str(
-        contact.get("phone_number") or contact.get("wa_id") or contact.get("phone") or ""
-    ).strip() or None
+    phone = (
+        str(
+            contact.get("phone_number") or contact.get("wa_id") or contact.get("phone") or ""
+        ).strip()
+        or None
+    )
     user_id = str(contact.get("user_id") or item.get("user_id") or "").strip() or None
     identity_ref = phone or user_id
     if not identity_ref:
@@ -421,9 +442,8 @@ def _contact_record(item: dict, *, batch_timestamp: object = None) -> dict | Non
         "action": action if action in ("add", "update", "remove") else "add",
         "username": str(contact.get("username") or item.get("username") or "").strip() or None,
         "user_id": user_id,
-        "parent_ref": str(
-            contact.get("parent_user_id") or contact.get("parent_ref") or ""
-        ).strip() or None,
+        "parent_ref": str(contact.get("parent_user_id") or contact.get("parent_ref") or "").strip()
+        or None,
         "timestamp": occurred_at(
             contact.get("timestamp") or item.get("timestamp") or batch_timestamp
         ),
@@ -564,7 +584,8 @@ def parse_unsupported_notices(payload: dict) -> list[dict]:
                                 or status.get("recipient")
                                 or status.get("to")
                                 or ""
-                            ).strip() or None,
+                            ).strip()
+                            or None,
                         }
                     )
     return notices

@@ -57,6 +57,54 @@ def test_a_history_chunk_keeps_its_place_in_the_transfer() -> None:
     assert batch["phone_number_id"] == "456"
 
 
+def test_two_history_elements_are_two_batches_with_their_own_progress() -> None:
+    """One webhook can carry two history[] elements with different places in the transfer.
+
+    Folding them into one batch meant one progress record and one chunk key: the second element
+    looked like a replay of the first, so its messages were dropped and its progress never landed.
+    """
+    value = _history_value(messages=[], phase=0, chunk_order=1, progress=20)
+    value["history"].append(
+        {
+            "metadata": {"phase": 1, "chunk_order": 2, "progress": 80},
+            "threads": [
+                {
+                    "id": "201222222222",
+                    "messages": [
+                        {
+                            "id": "wamid.TWO",
+                            "from": "201222222222",
+                            "timestamp": "1700000200",
+                            "type": "text",
+                            "text": {"body": "الرسالة التانية"},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    batches = wa.parse_history_batches(_envelope("history", value))
+
+    assert len(batches) == 2
+    assert [(b["phase"], b["chunk_order"], b["progress"]) for b in batches] == [
+        (0, 1, 20),
+        (1, 2, 80),
+    ]
+    # Each element keeps its own messages, and the keys differ so neither is deduped away.
+    assert [len(b["messages"]) for b in batches] == [0, 1]
+    assert batches[0]["chunk_key"] != batches[1]["chunk_key"]
+    assert batches[1]["messages"][0]["customer_ref"] == "201222222222"
+
+
+def test_the_same_webhook_parses_to_the_same_chunk_keys() -> None:
+    """Replay safety: identical payloads must produce identical keys, or dedupe stops working."""
+    value = _history_value(messages=[], phase=3, chunk_order=4, progress=50)
+    first = wa.parse_history_batches(_envelope("history", value))
+    second = wa.parse_history_batches(_envelope("history", value))
+    assert [b["chunk_key"] for b in first] == [b["chunk_key"] for b in second]
+
+
 def test_direction_comes_from_the_thread_not_from_the_payload_order() -> None:
     value = _history_value(
         messages=[
