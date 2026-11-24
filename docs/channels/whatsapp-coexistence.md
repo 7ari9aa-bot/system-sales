@@ -62,10 +62,11 @@ six-month-old conversation.
 
 ## Error codes that are not failures
 
-* **2593109** — the merchant chose not to share history. That is an answer, not an error: the run
-  ends `HISTORY_NOT_SHARED` and the channel still reaches `READY`.
-* **131060** — Meta received a message type we do not render. It is stored as a notice so the thread
-  shows "unsupported message" instead of a gap.
+* **2593109** — the merchant chose not to share history. That is an answer, not an error: both
+  the immediate API refusal and the documented history webhook form end the run as
+  `HISTORY_NOT_SHARED`; the channel can still reach `READY` once the contacts snapshot is received.
+* **131060** — Meta received a message type we do not render. FIHRIST stores a system message in
+  the affected recipient's inbox thread explaining why the customer message is missing.
 
 ## Identity: phone, BSUID, or nobody
 
