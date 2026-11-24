@@ -290,9 +290,20 @@ async def test_an_unsupported_notice_is_recorded_without_touching_the_channel(te
                 "title": "Unsupported message",
                 "details": "companion device",
                 "channel_message_id": "wamid.U1",
+                "recipient_ref": CUSTOMER,
             }
         ],
     )
     assert recorded == 1
-    assert await _count(session, Message, tenant_id=tenant_id) == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 1
+    notice = (
+        await session.execute(
+            select(Message).where(
+                Message.tenant_id == tenant_id,
+                Message.channel_message_id == "unsupported:wamid.U1",
+            )
+        )
+    ).scalar_one()
+    assert notice.sender_type == "system"
+    assert notice.content_type == "unsupported"
     assert integration.status == "active"
