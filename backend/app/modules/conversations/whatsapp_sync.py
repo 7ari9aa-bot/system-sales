@@ -105,6 +105,8 @@ def may_request(run: WhatsAppSyncRun | None, now: datetime, deadline: datetime) 
         return True, ""
     if run.request_id:
         return False, "this connection already asked Meta for this sync"
+    if run.state in {"pending", "dispatching"}:
+        return False, "the previous request outcome is unknown; re-link before another one-shot request"
     if run.state == "expired":
         return False, "the 24-hour window Meta allows for the first sync request has closed"
     if run.state == "failed":
@@ -243,6 +245,109 @@ async def channel_epoch(
     return epoch_for(config)
 
 
+async def _request_sync_durable(
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    waba_id: str | None,
+    epoch: str,
+    onboarding_completed_at: datetime,
+    sync_type: str,
+    token: str,
+    http: httpx.AsyncClient,
+    now: datetime,
+) -> WhatsAppSyncRun:
+    """Persist the one-shot reservation in its own committed transaction before calling Meta.
+
+    The HTTP request transaction may later roll back. This independent transaction makes the
+    reservation survive that rollback, so a process crash cannot silently erase evidence that
+    Meta may already have accepted the one-time request.
+    """
+    from app.core.db import SessionLocal, bind_tenant
+
+    deadline = deadline_from(onboarding_completed_at)
+    async with SessionLocal() as durable:
+        async with durable.begin():
+            await bind_tenant(durable, tenant_id)
+            run = await _get_run(
+                durable,
+                tenant_id,
+                phone_number_id=phone_number_id,
+                sync_type=sync_type,
+                epoch=epoch,
+            )
+            allowed, reason = may_request(run, now, deadline)
+            if not allowed:
+                if run is None:
+                    raise ValidationError(f"Could not start the WhatsApp {sync_type} sync: {reason}.")
+                return run
+            run = WhatsAppSyncRun(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                phone_number_id=phone_number_id,
+                waba_id=waba_id,
+                sync_type=sync_type,
+                onboarding_epoch=epoch,
+                state="dispatching",
+                attempts=1,
+                deadline_at=deadline,
+            )
+            durable.add(run)
+            await durable.flush()
+        # Reservation is committed here, before any network side effect.
+
+    try:
+        request_id = await post_sync_request(
+            http, phone_number_id=phone_number_id, token=token, sync_type=sync_type
+        )
+    except HistoryNotShared:
+        async with SessionLocal() as durable:
+            async with durable.begin():
+                await bind_tenant(durable, tenant_id)
+                run = await _get_run(
+                    durable, tenant_id, phone_number_id=phone_number_id,
+                    sync_type=sync_type, epoch=epoch
+                )
+                if run is not None:
+                    run.state = "not_shared"
+                    run.error = "the merchant chose not to share chat history"
+                    run.requested_at = now
+                    run.completed_at = datetime.now(UTC)
+            return run
+    except ExternalProviderError as exc:
+        async with SessionLocal() as durable:
+            async with durable.begin():
+                await bind_tenant(durable, tenant_id)
+                run = await _get_run(
+                    durable, tenant_id, phone_number_id=phone_number_id,
+                    sync_type=sync_type, epoch=epoch
+                )
+                if run is not None:
+                    # Network failures may be ambiguous: keep the reservation non-retryable.
+                    run.state = "dispatching" if exc.retryable else "failed"
+                    run.error = str(exc)[:2000]
+            raise
+    except Exception:
+        # Unknown transport outcome: leave the durable dispatching reservation in place.
+        raise
+
+    async with SessionLocal() as durable:
+        async with durable.begin():
+            await bind_tenant(durable, tenant_id)
+            run = await _get_run(
+                durable, tenant_id, phone_number_id=phone_number_id,
+                sync_type=sync_type, epoch=epoch
+            )
+            if run is None:
+                raise ExternalProviderError(
+                    "WhatsApp sync reservation disappeared after Meta accepted the request."
+                )
+            run.request_id = request_id
+            run.state = "requested"
+            run.requested_at = now
+        return run
+
+
 async def request_sync(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -262,6 +367,18 @@ async def request_sync(
     evidence that a request may exist instead of a clean slate that invites a second one.
     """
     now = now or datetime.now(UTC)
+    if isinstance(session, AsyncSession):
+        return await _request_sync_durable(
+            tenant_id,
+            phone_number_id=phone_number_id,
+            waba_id=waba_id,
+            epoch=epoch,
+            onboarding_completed_at=onboarding_completed_at,
+            sync_type=sync_type,
+            token=token,
+            http=http,
+            now=now,
+        )
     deadline = deadline_from(onboarding_completed_at)
     run = await _get_run(
         session,
