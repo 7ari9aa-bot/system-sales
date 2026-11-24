@@ -446,6 +446,8 @@ async def record_chunk(
     messages_stored: int = 0,
     request_id: str | None = None,
     waba_id: str | None = None,
+    chunk_key: str | None = None,
+    contacts_snapshot_received: bool = False,
 ) -> WhatsAppSyncRun | None:
     """Fold one webhook batch into the run's progress.
 
