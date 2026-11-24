@@ -12,6 +12,16 @@ import { api } from "@/lib/api";
  */
 export const STATUS_PATH = "/integrations/whatsapp/coexistence-status";
 
+/**
+ * Only a real status object counts. A fallback or error response (an empty array, a string) is not
+ * a channel state, and treating it as one drew a "syncing" strip with no numbers on it — which also
+ * covered the chat wallpaper and broke the inbox fidelity check.
+ */
+export function normalizeStatus(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  return payload;
+}
+
 /** A settled state means there is nothing left to wait for. */
 export function isSettled(status) {
   if (!status) return false;
@@ -33,9 +43,9 @@ export function useCoexistenceStatus({ enabled = true, pollMs = 15000 } = {}) {
     let timer = null;
     const load = async () => {
       try {
-        const payload = await api(STATUS_PATH);
+        const payload = normalizeStatus(await api(STATUS_PATH));
         if (!alive.current) return;
-        setStatus(payload || null);
+        setStatus(payload);
         setFailed(false);
         if (!isSettled(payload)) timer = setTimeout(load, pollMs);
       } catch {

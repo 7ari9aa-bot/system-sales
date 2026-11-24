@@ -68,7 +68,13 @@ for (const order of ["finish-first", "code-first"]) {
     const calls = await open(page, { sdk: sdkWith, arg: order });
     await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
     await expect.poll(() => calls.length, { timeout: 8000 }).toBe(1);
-    expect(calls[0]).toEqual({ code: "AUTHCODE12345", waba_id: "WB1", phone_number_id: "PN1" });
+    // The popup always asks Meta for the coexistence flow, so the mode travels with the code.
+    expect(calls[0]).toMatchObject({
+      code: "AUTHCODE12345",
+      waba_id: "WB1",
+      phone_number_id: "PN1",
+      onboarding_mode: "coexistence",
+    });
     await expect(page.getByText(/WhatsApp number is connected|تم ربط رقم واتساب/).first()).toBeVisible();
   });
 }
@@ -113,7 +119,12 @@ test("a report that arrives within the wait still connects, however late", async
   await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
   await page.clock.fastForward(3 * 60 * 1000 + 1000);
   await expect.poll(() => calls.length, { timeout: 8000 }).toBe(1);
-  expect(calls[0]).toEqual({ code: "AUTHCODE12345", waba_id: "WB1", phone_number_id: "PN1" });
+  expect(calls[0]).toMatchObject({
+    code: "AUTHCODE12345",
+    waba_id: "WB1",
+    phone_number_id: "PN1",
+    onboarding_mode: "coexistence",
+  });
 });
 
 test("a cancelled WhatsApp popup is reported and nothing is sent", async ({ page }) => {
