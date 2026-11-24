@@ -408,3 +408,61 @@ def test_the_sync_table_is_tenant_isolated_in_the_migration() -> None:
     assert "tenant_isolation" in ddl
     assert "app.tenant_id" in ddl
     assert "DROP POLICY IF EXISTS tenant_isolation ON public.whatsapp_sync_runs" in ddl
+
+
+async def test_replayed_chunk_key_does_not_double_count_progress_or_messages(session) -> None:
+    run = _run()
+    session.rows.append(run)
+    kwargs = {
+        "phone_number_id": "456",
+        "epoch": EPOCH,
+        "sync_type": sync.WHATSAPP_SYNC_HISTORY,
+        "phase": 1,
+        "chunk_order": 4,
+        "progress": 45,
+        "messages_stored": 3,
+        "request_id": "req-1",
+        "chunk_key": "chunk-stable-key",
+    }
+    first = await sync.record_chunk(session, TENANT, **kwargs)
+    second = await sync.record_chunk(session, TENANT, **kwargs)
+    assert first is second is run
+    assert run.chunks_seen == 1
+    assert run.messages_stored == 3
+    assert run.progress == 45
+
+
+async def test_initial_contacts_snapshot_settles_without_inventing_meta_progress(session) -> None:
+    run = _run(sync_type=sync.WHATSAPP_SYNC_CONTACTS)
+    session.rows.append(run)
+    await sync.record_chunk(
+        session,
+        TENANT,
+        phone_number_id="456",
+        epoch=EPOCH,
+        sync_type=sync.WHATSAPP_SYNC_CONTACTS,
+        request_id="req-contacts",
+        chunk_key="contacts-snapshot",
+        contacts_snapshot_received=True,
+    )
+    assert run.state == "completed"
+    assert run.progress == 100
+    assert sync.channel_sync_state(run, _history("completed")) == sync.STATE_READY
+
+
+async def test_history_webhook_decline_marks_run_not_shared(session) -> None:
+    run = _run(sync_type=sync.WHATSAPP_SYNC_HISTORY)
+    session.rows.append(run)
+    await sync.record_chunk(
+        session,
+        TENANT,
+        phone_number_id="456",
+        epoch=EPOCH,
+        sync_type=sync.WHATSAPP_SYNC_HISTORY,
+        request_id="req-history",
+        chunk_key="declined-history",
+        not_shared=True,
+        error="User declined history",
+    )
+    assert run.state == "not_shared"
+    assert "declined" in run.error
