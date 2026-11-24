@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 662,
-    "sha256": "0429c96b56ffd55ec030d8f1c6b7dfff213e9e3631f51307e20f4c820c483b67",
-    "typed_operations": 357
+    "operations": 663,
+    "sha256": "2d76c738d9e6ea8edff0971cb3ab87a4e0c4636152301452568e21eebe03b653",
+    "typed_operations": 358
   },
   "spec": {
     "components": {
@@ -25764,6 +25764,11 @@
               ],
               "title": "Is On Biz App"
             },
+            "needs_attention": {
+              "default": false,
+              "title": "Needs Attention",
+              "type": "boolean"
+            },
             "offboarded": {
               "default": false,
               "title": "Offboarded",
@@ -25833,6 +25838,18 @@
             "sync_state": {
               "title": "Sync State",
               "type": "string"
+            },
+            "throughput": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Throughput"
             }
           },
           "required": [
@@ -26020,9 +26037,46 @@
           "title": "WhatsAppSignupStartOut",
           "type": "object"
         },
+        "WhatsAppSyncReconcileIn": {
+          "description": "Which half to close, and what the operator concluded.",
+          "properties": {
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sync_type": {
+              "title": "Sync Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sync_type"
+          ],
+          "title": "WhatsAppSyncReconcileIn",
+          "type": "object"
+        },
         "WhatsAppSyncRunOut": {
           "description": "One half of the data sync as the screen shows it: a word, a bar, a count.",
           "properties": {
+            "attention": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attention"
+            },
             "chunks": {
               "default": 0,
               "title": "Chunks",
@@ -26065,6 +26119,11 @@
               "default": 0,
               "title": "Messages Stored",
               "type": "integer"
+            },
+            "needs_attention": {
+              "default": false,
+              "title": "Needs Attention",
+              "type": "boolean"
             },
             "progress": {
               "default": 0,
@@ -54723,6 +54782,114 @@
             }
           },
           "summary": "Meta Oauth Start",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/whatsapp/coexistence-reconcile": {
+        "post": {
+          "description": "Close a stuck sync reservation, then return the fresh picture.\n\nDeliberately local: Meta allows ONE request per sync kind, so \"try again\" is never an option\nhere. The operator decides the outcome is unknown, the run is marked failed with their note,\nand the channel tells the merchant to re-link instead of silently waiting forever.",
+          "operationId": "whatsapp_coexistence_reconcile_api_v1_integrations_whatsapp_coexistence_reconcile_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatsAppSyncReconcileIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WhatsAppCoexistenceStatusOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Whatsapp Coexistence Reconcile",
           "tags": [
             "platform"
           ]

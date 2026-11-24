@@ -5,8 +5,8 @@ The review's P0 gaps 1-5, one test each:
 * the popup no longer asks Meta to switch the WhatsApp Business app flow off, and the body
   defaults to coexistence instead of cloud_api;
 * the mode is derived from ``is_on_biz_app`` + ``platform_type`` read back from Graph;
-* a coexistence number is never registered again (that spends one of Meta's 10 attempts and can
-  lock the number for 72 hours), while a Cloud-API-only number still is;
+* a coexistence number is never registered again, and Cloud-API-only numbers are rejected for
+  this product rather than being silently connected through a different onboarding mode;
 * an unreadable or unexpected answer fails the connect instead of recording a mode nobody proved;
 * a replayed connect answers with the mode that was STORED, not the one the retry guessed.
 """
@@ -57,10 +57,10 @@ def test_meta_saying_the_number_is_on_the_app_makes_it_coexistence() -> None:
     assert (mode, status) == ("coexistence", signup.COEXISTENCE_VERIFIED)
 
 
-def test_a_number_that_is_not_on_the_app_is_cloud_api_and_says_so() -> None:
-    """No silent fallback: the refusal is a recorded status, not a missing field."""
-    mode, status = signup._resolve_onboarding_mode(_API_ONLY, "coexistence")
-    assert (mode, status) == ("cloud_api", signup.COEXISTENCE_NOT_ON_APP)
+def test_a_number_that_is_not_on_the_app_is_rejected_for_this_product() -> None:
+    """FIHRIST targets existing WhatsApp Business app numbers; no Cloud API fallback."""
+    with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
+        signup._resolve_onboarding_mode(_API_ONLY, "coexistence")
 
 
 def test_an_unexpected_platform_is_refused_rather_than_guessed() -> None:
@@ -137,7 +137,9 @@ async def test_a_coexistence_number_is_never_registered(monkeypatch) -> None:
     assert facts["is_on_biz_app"] is True
 
 
-async def test_a_cloud_api_number_is_still_registered_then_subscribed(monkeypatch) -> None:
+async def test_a_cloud_api_only_number_is_rejected_without_register_or_subscribe(
+    monkeypatch,
+) -> None:
     calls: list[str] = []
 
     async def fake_register(http, *, phone_number_id, token, pin=None):
@@ -151,34 +153,12 @@ async def test_a_cloud_api_number_is_still_registered_then_subscribed(monkeypatc
     monkeypatch.setattr(signup, "_subscribe_app_to_waba", fake_subscribe)
 
     async with _client(lambda request: httpx.Response(200, json=_API_ONLY)) as client:
-        mode, status, _facts, pin = await signup._prepare_number(
-            client, waba_id="1", phone_number_id="456", token="t", requested_mode="coexistence"
-        )
-
-    assert calls == ["register", "subscribe"]
-    assert (mode, status, pin) == ("cloud_api", signup.COEXISTENCE_NOT_ON_APP, "654321")
-
-
-async def test_a_failed_registration_never_subscribes(monkeypatch) -> None:
-    """Registering is the step Meta refuses; subscribing first would orphan a subscription."""
-    calls: list[str] = []
-
-    async def fake_register(http, *, phone_number_id, token, pin=None):
-        calls.append("register")
-        raise ExternalProviderError("refused", retryable=False)
-
-    async def fake_subscribe(http, *, waba_id, token):
-        calls.append("subscribe")
-
-    monkeypatch.setattr(signup, "_register_phone_number", fake_register)
-    monkeypatch.setattr(signup, "_subscribe_app_to_waba", fake_subscribe)
-
-    async with _client(lambda request: httpx.Response(200, json=_API_ONLY)) as client:
-        with pytest.raises(ExternalProviderError):
+        with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
             await signup._prepare_number(
                 client, waba_id="1", phone_number_id="456", token="t", requested_mode="coexistence"
             )
-    assert calls == ["register"]
+
+    assert calls == []
 
 
 # ---------- the connection spec ----------
@@ -241,3 +221,21 @@ def test_a_replayed_connect_answers_with_the_stored_mode() -> None:
     assert result["coexistence_status"] == "verified"
     assert result["is_on_biz_app"] is True
     assert json.dumps(result)  # plain JSON, nothing unserialisable leaks out
+
+
+async def test_manual_token_verification_rejects_cloud_api_only_numbers() -> None:
+    async with _client(
+        lambda request: httpx.Response(200, json={"id": "456", **_API_ONLY})
+    ) as client:
+        with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
+            await whatsapp_spec.whatsapp_connection_spec.verify(
+                {"access_token": "t"}, {"phone_number_id": "456"}, client=client
+            )
+
+
+async def test_manual_token_verification_rejects_missing_coexistence_evidence() -> None:
+    async with _client(lambda request: httpx.Response(200, json={"id": "456"})) as client:
+        with pytest.raises(ValidationError, match="Meta did not verify"):
+            await whatsapp_spec.whatsapp_connection_spec.verify(
+                {"access_token": "t"}, {"phone_number_id": "456"}, client=client
+            )

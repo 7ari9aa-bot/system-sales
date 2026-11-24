@@ -203,15 +203,26 @@ async def _do_auto_reply(
         # shape, whose aggregate_id was an APPROVAL id — it resolves to nothing
         # and falls through, instead of answering a message that does not exist.
         if named is not None and named.conversation_id == conversation_id:
-            if named.direction == "inbound":
-                last_inbound = named
-            else:
+            if named.direction != "inbound":
                 logger.info(
                     "auto-reply skipped conversation=%s message=%s is outbound",
                     conversation_id,
                     inbound_message_id,
                 )
                 return
+            if (named.sender_type or "customer") != "customer":
+                # A system note is not a customer turn: the 131060 "could not be delivered"
+                # notice is inbound on the thread so the merchant sees it, but the message it
+                # describes lives in their own app — answering it would be the AI talking to
+                # itself about a message nobody sent us.
+                logger.info(
+                    "auto-reply skipped conversation=%s message=%s sender=%s",
+                    conversation_id,
+                    inbound_message_id,
+                    named.sender_type,
+                )
+                return
+            last_inbound = named
 
     if last_inbound is None:
         # No usable id: an approval resume (re-evaluate the current context), or

@@ -56,11 +56,15 @@ def test_an_offboarded_account_is_the_same_thing() -> None:
     assert signals[0]["kind"] == "offboarded"
 
 
-def test_the_reason_meta_gave_is_kept_for_the_screen() -> None:
+def test_the_official_disconnection_info_is_kept_for_the_screen() -> None:
     signals = WhatsAppAdapter().parse_account_signals(
-        _account_update("PARTNER_REMOVED", reason="merchant unlinked the partner")
+        _account_update(
+            "PARTNER_REMOVED",
+            disconnection_info={"reason": "merchant_unlinked", "initiated_by": "BUSINESS"},
+        )
     )
-    assert "unlinked" in signals[0]["reason"]
+    assert signals[0]["reason"] == "merchant_unlinked"
+    assert signals[0]["initiated_by"] == "BUSINESS"
 
 
 def test_a_reconnected_account_is_read_as_reconnected() -> None:

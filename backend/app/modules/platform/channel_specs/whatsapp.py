@@ -1,13 +1,9 @@
-"""WhatsApp Cloud API — connection spec.
+"""WhatsApp Business App Coexistence — connection verification.
 
-The owner pastes a permanent Cloud API token + the phone number id. The live
-verification reads the number back from Graph and REJECTS when the id does not
-match the token, so a copy/paste slip can never connect somebody else's number.
-
-The same read asks for the two fields Meta documents as proof that a number runs
-on the WhatsApp Business app AND the Cloud API together (`is_on_biz_app` +
-`platform_type: CLOUD_API`). They are recorded as facts on the connection, so
-the coexistence flow never has to trust what a browser told it.
+The token and phone number id originate from Meta Embedded Signup. Verification reads the
+number back from Graph, checks that the id belongs to the token, and fails closed unless
+Meta confirms the same number is active in both WhatsApp Business app and Cloud API.
+No Cloud API-only number can be connected through this spec.
 """
 
 from __future__ import annotations
@@ -59,7 +55,7 @@ def coexistence_evidence(facts: dict[str, Any]) -> bool:
 class WhatsAppConnectionSpec(ConnectionSpec):
     name = "whatsapp"
     display_name = "واتساب"
-    description = "ربط رقم واتساب للأعمال عبر WhatsApp Cloud API"
+    description = "ربط رقم WhatsApp Business الحالي مع FIHRIST عبر Coexistence"
     credential_fields = [
         FieldSpec(
             key="access_token",
@@ -108,6 +104,12 @@ class WhatsAppConnectionSpec(ConnectionSpec):
             raise ValidationError("The WhatsApp phone number ID does not match the token.")
         identity_config: dict[str, str] = {"phone_number_id": identity}
         facts = number_platform_facts(data)
+        if not coexistence_evidence(facts):
+            raise ValidationError(
+                "FIHRIST connects existing WhatsApp Business app numbers only. "
+                "Meta did not verify that this number is active in both the Business app "
+                "and Cloud API, so the connection was refused."
+            )
         # Recorded as text because the config column is non-secret JSON of plain strings. Only
         # what Meta actually answered is written — an absent field stays absent.
         if facts["is_on_biz_app"] is not None:

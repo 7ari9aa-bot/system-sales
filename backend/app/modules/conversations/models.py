@@ -600,6 +600,34 @@ WHATSAPP_SYNC_STATES = frozenset(
 )
 
 
+class WhatsAppContactTombstone(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
+    """A contact removal Meta told us about, kept even when we never held that contact.
+
+    ``smb_app_state_sync`` carries the initial snapshot and every later add/update/remove, and
+    batches arrive out of order. A removal that arrives before the add it refers to used to be
+    dropped ("no such customer"), so the add then created a contact the merchant had already
+    deleted — and the merchant's next message went to someone who had been removed from their
+    address book. One row per (tenant, number, handle) is the smallest thing that makes a removal
+    durable: an add older than ``removed_at`` is ignored, a newer add clears the row.
+    """
+
+    __tablename__ = "whatsapp_contact_tombstones"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "phone_number_id",
+            "external_id",
+            name="uq_whatsapp_contact_tombstones_tenant_number_handle",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    phone_number_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: The phone or BSUID the removal named, as Meta sent it.
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    removed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class WhatsAppSyncRun(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
     """One WhatsApp Business App data-sync request: contacts or chat history.
 

@@ -246,8 +246,12 @@ class WhatsAppAdapter:
                             "waba_id": _short(waba_info.get("waba_id")),
                             "reason": _short(
                                 value.get("reason")
+                                or (value.get("disconnection_info") or {}).get("reason")
                                 or (value.get("offboarding_info") or {}).get("reason")
                                 or (value.get("partner_removal") or {}).get("reason")
+                            ),
+                            "initiated_by": _short(
+                                (value.get("disconnection_info") or {}).get("initiated_by")
                             ),
                         }
                     )

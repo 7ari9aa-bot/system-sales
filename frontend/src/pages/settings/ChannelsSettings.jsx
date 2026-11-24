@@ -8,13 +8,13 @@ import { api } from "@/lib/api";
 import { useRealChannels } from "@/hooks/useRealData";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import ChannelIcon from "@/components/dashboard/ChannelIcon";
+import WhatsAppSyncCard from "@/components/settings/WhatsAppSyncCard";
 import { Badge } from "@/components/dashboard/ui";
 
+// WhatsApp is deliberately absent: it has no credential form, because a pasted token cannot
+// create a working WhatsApp channel. Meta's Embedded Signup is the only door, and the backend
+// refuses WhatsApp on the generic connect route for the same reason.
 const CONNECTION_FIELDS = {
-  whatsapp: [
-    { name: "phone_number_id", type: "text", label: ["معرّف رقم الهاتف", "Phone number ID"] },
-    { name: "access_token", type: "password", label: ["رمز الوصول", "Access token"] },
-  ],
   facebook: [
     { name: "page_id", type: "text", label: ["معرّف الصفحة", "Page ID"] },
     { name: "page_access_token", type: "password", label: ["رمز وصول الصفحة", "Page access token"] },
@@ -708,15 +708,15 @@ export default function ChannelsSettings() {
             : "Finish creating the WhatsApp number inside the Facebook window, then retry."
         );
       }
-      // The popup's own report is only a hint for the server, which re-reads the number from
-      // Meta: FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING means Meta said the app is on this number.
+      // This product connects an existing WhatsApp Business app number only. The server
+      // independently verifies the number with Meta; this value never overrides that proof.
       const result = await api("/integrations/whatsapp/embedded-signup/complete", {
         method: "POST",
         body: {
           code: authCode,
           waba_id: wabaId,
           phone_number_id: phoneNumberId,
-          onboarding_mode: session?.coexistence ? "coexistence" : "cloud_api",
+          onboarding_mode: "coexistence",
         },
       });
       setNotice(whatsappConnectedNotice(result, isAr));
@@ -844,10 +844,7 @@ export default function ChannelsSettings() {
 
     const channelConfig = {};
     const credentials = {};
-    if (editing.id === "whatsapp") {
-      channelConfig.phone_number_id = String(values.phone_number_id || "").trim();
-      credentials.access_token = String(values.access_token || "").trim();
-    } else if (editing.id === "facebook") {
+    if (editing.id === "facebook") {
       channelConfig.page_id = String(values.page_id || "").trim();
       credentials.page_access_token = String(values.page_access_token || "").trim();
     } else if (editing.id === "instagram") {
@@ -1092,9 +1089,16 @@ export default function ChannelsSettings() {
                             data-testid="whatsapp-coexistence-note"
                           >
                             {isAr
-                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده."
-                              : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path."}
+                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده. المجموعات والمكالمات والكتالوج مش بيوصلوا لفهرست — دي حدود واجهة Meta نفسها مش نقص في الربط."
+                              : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path. Groups, calls and the catalog do not reach FIHRIST: that is Meta's API, not a gap in the link."}
                           </p>
+                        )}
+
+                        {/* The live half of the link: what Meta is still sending, a reservation it
+                            never answered, and how close the number is to its 20/s cap. Read from
+                            the status endpoint, not from the state captured at link time. */}
+                        {channel.id === "whatsapp" && isConnected && (
+                          <WhatsAppSyncCard lang={isAr ? "ar" : "en"} />
                         )}
 
                         {/* Instagram can be linked two ways and the merchant's account decides which

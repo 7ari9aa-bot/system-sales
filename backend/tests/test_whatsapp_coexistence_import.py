@@ -19,8 +19,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
+from app.modules.conversations import whatsapp_sync
 from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.models import Conversation, Message, WhatsAppSyncRun
+from app.modules.conversations.models import (
+    Conversation,
+    Message,
+    WhatsAppContactTombstone,
+    WhatsAppSyncRun,
+)
+from app.modules.customers.models import Customer
+from app.modules.customers.service import CustomerService
 from app.modules.platform.models import Integration, OutboxEvent
 
 pytestmark = pytest.mark.asyncio
@@ -68,15 +76,42 @@ def _message(mid: str, *, when: datetime | None = None, direction="inbound", **o
     return item
 
 
-def _chunk(*messages: dict, phase=0, chunk_order=0, progress=0) -> dict:
+def _chunk(*messages: dict, phase=0, chunk_order=0, progress=0, request_id="req-1") -> dict:
     return {
         "phone_number_id": NUMBER,
-        "request_id": "req-1",
+        "request_id": request_id,
         "phase": phase,
         "chunk_order": chunk_order,
         "progress": progress,
         "messages": list(messages),
     }
+
+
+async def _run(
+    session,
+    tenant_id,
+    *,
+    sync_type: str = whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+    request_id: str = "req-1",
+) -> WhatsAppSyncRun:
+    """The run the durable reservation commits BEFORE Meta is asked for data.
+
+    Every import in production lands on a run that already exists, so the tests create it too —
+    a chunk that matches no run is stale by definition, and must not be folded in.
+    """
+    run = WhatsAppSyncRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        phone_number_id=NUMBER,
+        waba_id="1001",
+        sync_type=sync_type,
+        onboarding_epoch=EPOCH,
+        state="in_progress",
+        request_id=request_id,
+    )
+    session.add(run)
+    await session.flush()
+    return run
 
 
 async def _count(session, model, **filters) -> int:
@@ -92,6 +127,7 @@ async def _count(session, model, **filters) -> int:
 async def test_history_is_stored_at_its_own_time_and_never_answered(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
     long_ago = datetime.now(UTC) - timedelta(days=40)
     before_events = await _count(session, OutboxEvent)
 
@@ -121,6 +157,7 @@ async def test_history_is_stored_at_its_own_time_and_never_answered(tenant_ctx) 
 async def test_a_replayed_chunk_adds_nothing(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
     chunk = _chunk(_message("wamid.H2"))
 
     assert await IngestService.apply_history(session, tenant_id, "whatsapp", [chunk]) == 1
@@ -131,6 +168,7 @@ async def test_a_replayed_chunk_adds_nothing(tenant_ctx) -> None:
 async def test_late_chunks_land_and_never_walk_the_transfer_backwards(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
 
     # Phase 2 arrives first (out of order) and reports the transfer complete.
     await IngestService.apply_history(
@@ -154,6 +192,7 @@ async def test_late_chunks_land_and_never_walk_the_transfer_backwards(tenant_ctx
 async def test_history_records_its_request_id_and_completion(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id, request_id="req-1")
     await IngestService.apply_history(
         session, tenant_id, "whatsapp", [_chunk(_message("wamid.H3"), progress=100)]
     )
@@ -207,6 +246,101 @@ async def test_an_app_echo_is_a_human_outbound_reply_that_takes_the_thread(tenan
     assert conversation.status == "waiting_human"
 
 
+async def test_an_echo_already_imported_by_history_still_takes_the_thread(tenant_ctx) -> None:
+    """The launch blocker: history sync stores the merchant's own reply first.
+
+    The echo that follows finds the wamid already stored, so nothing new is written — but the
+    conversation MUST still leave the agent's hands. Coupling the handover to "did we write a row"
+    left the AI free to answer a customer the merchant had already answered from the phone.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
+    long_ago = datetime.now(UTC) - timedelta(days=3)
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.E9", when=long_ago, direction="outbound"))],
+    )
+
+    assert (
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E9")])
+        == 0
+    )
+
+    assert await _count(session, Message, tenant_id=tenant_id) == 1
+    conversation = (
+        await session.execute(select(Conversation).where(Conversation.tenant_id == tenant_id))
+    ).scalar_one()
+    assert conversation.status == "waiting_human"
+
+
+async def test_our_own_send_echoed_back_does_not_take_the_thread(tenant_ctx) -> None:
+    """The opposite case, and the reason the handover is not unconditional.
+
+    Meta echoes messages this system sent too. If a duplicate echo took the thread every time, the
+    agent would silence itself with its own reply.
+    """
+    from app.modules.conversations.service import ConversationService
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    customer = await CustomerService.get_or_create_by_identity(
+        session, tenant_id, channel="whatsapp", external_id=CUSTOMER, name=None, phone=CUSTOMER
+    )
+    conversation = await ConversationService.get_or_create(
+        session, tenant_id, customer_id=customer.id, channel="whatsapp"
+    )
+    await ConversationService.add_message(
+        session,
+        tenant_id,
+        conversation_id=conversation.id,
+        direction="outbound",
+        sender_type="agent",
+        body="رد من فهرست",
+        channel_message_id="wamid.OWN",
+        payload={"source": "fihrist"},
+    )
+
+    assert (
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.OWN")])
+        == 0
+    )
+    await session.refresh(conversation)
+    assert conversation.status != "waiting_human"
+
+
+async def test_a_replayed_echo_creates_one_handover(tenant_ctx) -> None:
+    from app.modules.ai.models import AIHandover
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E7")])
+    await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E7")])
+
+    assert await _count(session, AIHandover, tenant_id=tenant_id) == 1
+
+
+async def test_a_handover_failure_fails_the_batch_so_it_is_retried(tenant_ctx, monkeypatch) -> None:  # noqa: ANN001
+    """Swallowing the failure left the agent answering over the merchant.
+
+    Raising fails the webhook event, which Meta retries; the retry is safe because the message row
+    is already deduped by wamid.
+    """
+    import app.modules.ai.handover as handover
+
+    async def explode(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("handover store unavailable")
+
+    monkeypatch.setattr(handover, "request_human_takeover", explode)
+
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    with pytest.raises(RuntimeError):
+        await IngestService.apply_app_echoes(session, tenant_id, "whatsapp", [_echo("wamid.E8")])
+
+
 async def test_a_media_only_echo_is_stored(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
@@ -237,12 +371,131 @@ async def test_a_replayed_echo_is_stored_once(tenant_ctx) -> None:
     assert await _count(session, Message, tenant_id=tenant_id) == 1
 
 
+# ------------------------------------------------------------ reply context
+
+
+async def test_an_imported_reply_keeps_its_quote(tenant_ctx) -> None:
+    """History carries reply_to_message_id and the import used to drop it.
+
+    A backfilled conversation read as a wall of unrelated messages. The provider id is kept in
+    metadata even when the parent has not arrived, so a later chunk can still link it.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(session, tenant_id)
+
+    await IngestService.apply_history(
+        session, tenant_id, "whatsapp", [_chunk(_message("wamid.PARENT"))]
+    )
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.CHILD", reply_to_message_id="wamid.PARENT"))],
+    )
+    await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.ORPHAN", reply_to_message_id="wamid.NEVER"))],
+    )
+
+    parent = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.PARENT"))
+    ).scalar_one()
+    child = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.CHILD"))
+    ).scalar_one()
+    orphan = (
+        await session.execute(select(Message).where(Message.channel_message_id == "wamid.ORPHAN"))
+    ).scalar_one()
+
+    assert child.reply_to_message_id == parent.id
+    assert child.provider_metadata.get("reply_to_provider_id") == "wamid.PARENT"
+    # The parent is not stored yet: the provider id survives so the UI can still quote it.
+    assert orphan.reply_to_message_id is None
+    assert orphan.provider_metadata.get("reply_to_provider_id") == "wamid.NEVER"
+
+
+# ----------------------------------------------------- attribution (stale chunks)
+
+
+async def test_a_stale_chunk_from_an_older_link_is_ignored(tenant_ctx) -> None:
+    """A re-link starts a new epoch and a new run; the old link's chunks keep arriving.
+
+    They must not land: not one message, not one percent of progress, not a completion. Otherwise
+    the current transfer looks finished while the customer's real history was never imported.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    run = await _run(session, tenant_id, request_id="req-new")
+
+    stored = await IngestService.apply_history(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_chunk(_message("wamid.S1"), request_id="req-old", progress=100)],
+    )
+
+    assert stored == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 0
+    await session.refresh(run)
+    assert (run.progress, run.state, run.messages_stored) == (0, "in_progress", 0)
+
+
+async def test_a_chunk_with_no_run_is_dropped_instead_of_becoming_one(tenant_ctx) -> None:
+    """record_chunk used to invent a run "to keep the evidence".
+
+    That is how a stale chunk after a re-link turned into progress on a transfer nobody asked
+    for. The reservation commits the run before Meta is called, so a chunk with no run is stale.
+    """
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+
+    stored = await IngestService.apply_history(
+        session, tenant_id, "whatsapp", [_chunk(_message("wamid.S2"))]
+    )
+
+    assert stored == 0
+    assert await _count(session, WhatsAppSyncRun, tenant_id=tenant_id) == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 0
+
+
+async def test_a_stale_contact_batch_creates_no_customers(tenant_ctx) -> None:
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    run = await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-new"
+    )
+
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [
+            {
+                "phone_number_id": NUMBER,
+                "request_id": "req-old",
+                "contacts": [{"phone": CUSTOMER, "name": "قديم", "action": "add"}],
+            }
+        ],
+    )
+
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+    await session.refresh(run)
+    assert (run.state, run.chunks_seen or 0) == ("in_progress", 0)
+
+
 # --------------------------------------------------------------- contacts
 
 
 async def test_contacts_become_customers_without_opening_conversations(tenant_ctx) -> None:
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
 
     stored = await IngestService.apply_app_state_sync(
         session,
@@ -273,6 +526,100 @@ async def test_contacts_become_customers_without_opening_conversations(tenant_ct
     assert run.chunks_seen == 1
 
 
+# ------------------------------------------------------------- removal tombstones
+
+
+def _contact_batch(*, action: str, phone: str, when: str | None = None) -> dict:
+    contact: dict = {"phone": phone, "name": "اتشال", "action": action}
+    if when:
+        contact["timestamp"] = when
+    return {
+        "phone_number_id": NUMBER,
+        "request_id": "req-2",
+        "contacts": [contact],
+    }
+
+
+async def test_a_removal_for_an_unknown_contact_still_leaves_a_tombstone(tenant_ctx) -> None:
+    """Remove-before-add: the removal used to be dropped because no customer matched."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201444444444", when="2026-11-24T10:00:00+00:00")],
+    )
+
+    assert await _count(session, WhatsAppContactTombstone, tenant_id=tenant_id) == 1
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+
+    # The add it referred to arrives afterwards and must NOT resurrect the contact.
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201444444444", when="2026-11-24T09:59:00+00:00")],
+    )
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+
+
+async def test_a_genuinely_newer_add_wins_and_clears_the_tombstone(tenant_ctx) -> None:
+    """The merchant put the contact back: the newer add is the truth, and the row goes away."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201555555555", when="2026-11-24T09:00:00+00:00")],
+    )
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201555555555", when="2026-11-24T11:00:00+00:00")],
+    )
+
+    assert stored == 1
+    assert await _count(session, Customer, tenant_id=tenant_id) == 1
+    assert await _count(session, WhatsAppContactTombstone, tenant_id=tenant_id) == 0
+
+
+async def test_an_add_without_a_timestamp_never_beats_a_removal(tenant_ctx) -> None:
+    """Meta sometimes omits the timestamp: an add that cannot prove it is newer keeps it."""
+    session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
+    await _connected_channel(session, tenant_id)
+    await _run(
+        session, tenant_id, sync_type=whatsapp_sync.WHATSAPP_SYNC_CONTACTS, request_id="req-2"
+    )
+
+    await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="remove", phone="201666666666", when="2026-11-24T09:00:00+00:00")],
+    )
+    stored = await IngestService.apply_app_state_sync(
+        session,
+        tenant_id,
+        "whatsapp",
+        [_contact_batch(action="add", phone="201666666666")],
+    )
+
+    assert stored == 0
+    assert await _count(session, Customer, tenant_id=tenant_id) == 0
+
+
 # --------------------------------------------------------------- unsupported messages
 
 
@@ -290,9 +637,37 @@ async def test_an_unsupported_notice_is_recorded_without_touching_the_channel(te
                 "title": "Unsupported message",
                 "details": "companion device",
                 "channel_message_id": "wamid.U1",
+                "recipient_ref": CUSTOMER,
             }
         ],
     )
     assert recorded == 1
-    assert await _count(session, Message, tenant_id=tenant_id) == 0
+    assert await _count(session, Message, tenant_id=tenant_id) == 1
+    notice = (
+        await session.execute(
+            select(Message).where(
+                Message.tenant_id == tenant_id,
+                Message.channel_message_id == "unsupported:wamid.U1",
+            )
+        )
+    ).scalar_one()
+    assert notice.sender_type == "system"
+    assert notice.content_type == "unsupported"
     assert integration.status == "active"
+    # The merchant has to SEE it: the notice moves the unread counter and publishes the same event
+    # the inbox listens to. Without them the conversation looked quiet while the customer waited.
+    conversation = (
+        await session.execute(select(Conversation).where(Conversation.tenant_id == tenant_id))
+    ).scalar_one()
+    assert conversation.unread_count == 1
+    event = (
+        await session.execute(
+            select(OutboxEvent).where(
+                OutboxEvent.tenant_id == tenant_id,
+                OutboxEvent.event_type == "message.received",
+            )
+        )
+    ).scalar_one()
+    assert event.payload["message_id"] == str(notice.id)
+    # ...and the AI stays out of it: the message lives in the merchant's own app.
+    assert event.payload["agent_should_reply"] is False

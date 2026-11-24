@@ -57,6 +57,115 @@ def test_a_history_chunk_keeps_its_place_in_the_transfer() -> None:
     assert batch["phone_number_id"] == "456"
 
 
+def test_two_history_elements_are_two_batches_with_their_own_progress() -> None:
+    """One webhook can carry two history[] elements with different places in the transfer.
+
+    Folding them into one batch meant one progress record and one chunk key: the second element
+    looked like a replay of the first, so its messages were dropped and its progress never landed.
+    """
+    value = _history_value(messages=[], phase=0, chunk_order=1, progress=20)
+    value["history"].append(
+        {
+            "metadata": {"phase": 1, "chunk_order": 2, "progress": 80},
+            "threads": [
+                {
+                    "id": "201222222222",
+                    "messages": [
+                        {
+                            "id": "wamid.TWO",
+                            "from": "201222222222",
+                            "timestamp": "1700000200",
+                            "type": "text",
+                            "text": {"body": "الرسالة التانية"},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    batches = wa.parse_history_batches(_envelope("history", value))
+
+    assert len(batches) == 2
+    assert [(b["phase"], b["chunk_order"], b["progress"]) for b in batches] == [
+        (0, 1, 20),
+        (1, 2, 80),
+    ]
+    # Each element keeps its own messages, and the keys differ so neither is deduped away.
+    assert [len(b["messages"]) for b in batches] == [0, 1]
+    assert batches[0]["chunk_key"] != batches[1]["chunk_key"]
+    assert batches[1]["messages"][0]["customer_ref"] == "201222222222"
+
+
+def _identity_value(*, thread_id: str | None, bsuid: str | None, message: dict) -> dict:
+    thread: dict = {"messages": [message]}
+    if thread_id:
+        thread["id"] = thread_id
+    if bsuid:
+        thread["context"] = {"user_id": bsuid}
+    value = _history_value(messages=[])
+    value["history"] = [{"metadata": {"phase": 0}, "threads": [thread]}]
+    return value
+
+
+def test_a_customer_with_a_phone_and_a_bsuid_stays_one_customer() -> None:
+    """The phone is the identity everywhere else, so it has to be the identity here too.
+
+    Preferring the BSUID split one person into two customers: their history under the BSUID and
+    everything after the link under their number.
+    """
+    value = _identity_value(
+        thread_id="201111111111",
+        bsuid="EG.BSUID.1",
+        message={
+            "id": "wamid.ID1",
+            "from_user_id": "EG.BSUID.1",
+            "timestamp": "1700000000",
+            "type": "text",
+            "text": {"body": "أهلاً"},
+        },
+    )
+
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+
+    assert message["customer_ref"] == "201111111111"
+    assert message["identity_type"] == "phone"
+    assert message["phone"] == "201111111111"
+    # The BSUID is kept as the alias, not thrown away.
+    assert message["bsuid"] == "EG.BSUID.1"
+    # And the customer's own message is still INBOUND even though it names the BSUID.
+    assert message["direction"] == "inbound"
+
+
+def test_a_customer_without_a_phone_keeps_the_bsuid_as_identity() -> None:
+    value = _identity_value(
+        thread_id=None,
+        bsuid="EG.BSUID.2",
+        message={
+            "id": "wamid.ID2",
+            "from_user_id": "EG.BSUID.2",
+            "timestamp": "1700000000",
+            "type": "text",
+            "text": {"body": "بدون رقم"},
+        },
+    )
+
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+
+    assert message["customer_ref"] == "EG.BSUID.2"
+    assert message["identity_type"] == "bsuid"
+    assert message["phone"] is None
+    assert message["direction"] == "inbound"
+
+
+def test_the_same_webhook_parses_to_the_same_chunk_keys() -> None:
+    """Replay safety: identical payloads must produce identical keys, or dedupe stops working."""
+    value = _history_value(messages=[], phase=3, chunk_order=4, progress=50)
+    first = wa.parse_history_batches(_envelope("history", value))
+    second = wa.parse_history_batches(_envelope("history", value))
+    assert [b["chunk_key"] for b in first] == [b["chunk_key"] for b in second]
+
+
 def test_direction_comes_from_the_thread_not_from_the_payload_order() -> None:
     value = _history_value(
         messages=[
@@ -323,3 +432,129 @@ def test_other_delivery_errors_are_not_unsupported_message_notices() -> None:
         {"statuses": [{"id": "wamid.K", "status": "failed", "errors": [{"code": 131047}]}]},
     )
     assert wa.parse_unsupported_notices(payload) == []
+
+
+# ---------- official Meta coexistence payload regressions ----------
+
+
+def test_official_history_metadata_is_read_from_nested_history_metadata() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "history": [
+            {
+                "metadata": {"phase": 2, "chunk_order": 7, "progress": 100},
+                "threads": [],
+            }
+        ],
+    }
+    batch = wa.parse_history_batches(_envelope("history", value))[0]
+    assert (batch["phase"], batch["chunk_order"], batch["progress"]) == (2, 7, 100)
+
+
+def test_history_declined_webhook_2593109_is_explicit_not_shared() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "request_id": "req-declined",
+        "history": [
+            {
+                "metadata": {"phase": 0, "chunk_order": 0, "progress": 0},
+                "errors": [{"code": 2593109, "message": "User declined history"}],
+                "threads": [],
+            }
+        ],
+    }
+    batch = wa.parse_history_batches(_envelope("history", value))[0]
+    assert batch["not_shared"] is True
+    assert "declined" in batch["error"].lower()
+    assert batch["messages"] == []
+
+
+def test_bsuid_only_history_thread_and_sender_are_preserved() -> None:
+    value = {
+        "metadata": {"phone_number_id": "456"},
+        "history": [
+            {
+                "metadata": {"phase": 1, "chunk_order": 2, "progress": 50},
+                "threads": [
+                    {
+                        "context": {"user_id": "bsuid-customer-1", "parent_user_id": "parent-1"},
+                        "messages": [
+                            {
+                                "id": "wamid.BSUID",
+                                "from_user_id": "bsuid-customer-1",
+                                "timestamp": "1700000000",
+                                "type": "text",
+                                "text": {"body": "مرحبا"},
+                                "history_context": {"status": "read"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+    assert message["customer_ref"] == "bsuid-customer-1"
+    assert message["identity_type"] == "bsuid"
+    assert message["parent_ref"] == "parent-1"
+    assert message["direction"] == "inbound"
+    assert message["status"] == "read"
+
+
+def test_media_placeholder_is_an_explicit_unavailable_media_message() -> None:
+    value = _history_value(
+        messages=[
+            {
+                "id": "wamid.PLACEHOLDER",
+                "from": "201111111111",
+                "timestamp": "1700000000",
+                "type": "media_placeholder",
+                "media_placeholder": {"type": "image"},
+            }
+        ]
+    )
+    message = wa.parse_history_batches(_envelope("history", value))[0]["messages"][0]
+    assert message["content_type"] == "unsupported"
+    assert "unavailable" in message["body"].lower()
+    assert message["media_url"] is None
+
+
+def test_app_state_sync_preserves_bsuid_and_provider_timestamp() -> None:
+    payload = _envelope(
+        "smb_app_state_sync",
+        {
+            "metadata": {"phone_number_id": "456", "timestamp": "1700000000"},
+            "state_sync": [
+                {
+                    "type": "contact",
+                    "action": "add",
+                    "contact": {"user_id": "bsuid-contact", "full_name": "مستخدم بلا رقم"},
+                }
+            ],
+        },
+    )
+    contact = wa.parse_state_sync_batches(payload)[0]["contacts"][0]
+    assert contact["identity_ref"] == "bsuid-contact"
+    assert contact["identity_type"] == "bsuid"
+    assert contact["phone"] is None
+    assert contact["timestamp"] == datetime.fromtimestamp(1700000000, tz=UTC)
+
+
+def test_echo_recipient_can_be_bsuid_only() -> None:
+    echoes = wa.parse_message_echoes(
+        _envelope(
+            "smb_message_echoes",
+            _echo_value(
+                {
+                    "id": "wamid.ECHO-BSUID",
+                    "to_user_id": "bsuid-recipient",
+                    "timestamp": "1700000000",
+                    "type": "text",
+                    "text": {"body": "وصلت"},
+                }
+            ),
+        )
+    )
+    assert len(echoes) == 1
+    assert echoes[0]["customer_ref"] == "bsuid-recipient"
+    assert echoes[0]["identity_type"] == "bsuid"

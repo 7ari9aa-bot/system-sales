@@ -13,12 +13,12 @@ away again. Everything below exists because of that.
 
 | Area | Rule |
 |---|---|
-| Onboarding | `is_on_biz_app` + `platform_type` decide the mode. A Business App number is never recorded as `cloud_api`. |
+| Onboarding | `is_on_biz_app` + `platform_type` decide the mode. A Business App number is never recorded as `cloud_api`; a Cloud API-only number is rejected for this product. |
 | Registration | `_register_phone_number` is **never** called on the coexistence path; the app is still subscribed to the WABA. |
-| Sync | Contacts (`smb_app_state_sync`) and history (`history`) are requested **once** per onboarding epoch, inside Meta's 24-hour window, with `request_id` persisted. |
-| History | Stored at Meta's own timestamp, **no AI answer**, and no fake 24-hour service window. |
+| Sync | Contacts (`smb_app_state_sync`) and history (`history`) are requested **once** per onboarding epoch, inside Meta's 24-hour window. A separate committed reservation is written before either Meta request; ambiguous outcomes are never resent automatically. |
+| History | Nested phase/chunk/progress metadata, 2593109 decline webhooks, BSUID threads and message statuses are parsed. Messages are stored at Meta's timestamp, **no AI answer**, and no fake 24-hour service window. |
 | Echoes | A message the merchant sends from the phone lands as a **human** outbound message and pulls the thread to `waiting_human`, so the agent cannot answer the same customer twice. |
-| Identity | The phone when there is one, the **BSUID** when there is not. A message naming nobody is refused. |
+| Identity | The phone when there is one, the **BSUID** when there is not, including history, contacts and app echoes. A message naming nobody is refused. |
 | Lifecycle | `PARTNER_REMOVED` / `ACCOUNT_OFFBOARDED` disconnect the channel and stop sending; `ACCOUNT_RECONNECTED` requires the number to be verified again. |
 | Throughput | 20 messages a second **per phone number**, paced in Redis so every worker shares the budget. |
 
@@ -38,8 +38,14 @@ any → OFFBOARDED
   `request_id`, so a retried connect replays instead of asking Meta twice.
 * The 24-hour deadline is Meta's, not ours: a request after it cannot be made, and the run records
   `deadline_expired` rather than pretending it is still coming.
-* `READY` requires either a completed history transfer **or** an explicit refusal (2593109). A
-  silent timeout is `SYNC_FAILED`, never `READY`.
+* `READY` requires **both** halves settled, exactly as `channel_sync_state` computes it:
+  * **contacts** — completed (an explicit `progress: 100` from Meta) **or** settled by the 24-hour
+    window closing. The window closing is reported as `settled_by: "deadline"`, never as a
+    complete list: `smb_app_state_sync` carries the first snapshot *and* every later
+    add/update/remove, so no webhook proves the list ended;
+  * **history** — completed, or an explicit refusal (2593109). A silent timeout is `SYNC_FAILED`,
+    never `READY`.
+  A run still inside its window blocks `READY` even when history is done.
 * Progress arrives out of order (`phase`, `chunk_order`, `progress`). Each chunk is stored
   idempotently, and a late chunk folds into progress without walking a completed transfer backwards.
 
@@ -56,16 +62,18 @@ six-month-old conversation.
 | Field | Parser | Effect |
 |---|---|---|
 | `history` | `parse_history` | messages stored with `imported_from=whatsapp_history`, no outbox event |
-| `smb_app_state_sync` | `parse_app_state_sync` | contacts become customers; **no** conversation is opened; a removal is not a deletion |
+| `smb_app_state_sync` | `parse_app_state_sync` | phone- and BSUID-keyed contacts reconcile to customers; timestamped removals mark the app-contact relation inactive without deleting customer history; **no** conversation is opened |
 | `smb_message_echoes` | `parse_app_echoes` | outbound human message + `request_human_takeover` |
-| `messages` (131060) | `parse_unsupported_notice` | recorded as a notice; does not degrade the channel |
+| `messages` (131060) | `parse_unsupported_notice` | a visible system notice is stored in the recipient's inbox thread; does not degrade the channel |
 
 ## Error codes that are not failures
 
-* **2593109** — the merchant chose not to share history. That is an answer, not an error: the run
-  ends `HISTORY_NOT_SHARED` and the channel still reaches `READY`.
-* **131060** — Meta received a message type we do not render. It is stored as a notice so the thread
-  shows "unsupported message" instead of a gap.
+* **2593109** — the merchant chose not to share history. That is an answer, not an error: both
+  the immediate API refusal and the documented history webhook form end the run as
+  `HISTORY_NOT_SHARED`; the channel can still reach `READY` once the contacts half has settled
+  (completed, or its 24-hour window closed).
+* **131060** — Meta received a message type we do not render. FIHRIST stores a system message in
+  the affected recipient's inbox thread explaining why the customer message is missing.
 
 ## Identity: phone, BSUID, or nobody
 

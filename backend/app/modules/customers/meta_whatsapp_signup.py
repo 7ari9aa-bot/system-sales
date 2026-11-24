@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.errors import ConflictError, ExternalProviderError, ValidationError
+from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.channel_specs.whatsapp import (
@@ -391,11 +391,16 @@ def _resolve_onboarding_mode(facts: dict, requested: str) -> tuple[str, str]:
             "WhatsApp Business app, or move it to the Cloud API first."
         )
     logger.info(
-        "whatsapp.signup_not_on_business_app requested=%s platform=%s",
+        "whatsapp.signup_not_on_business_app_rejected requested=%s platform=%s",
         requested,
         facts.get("platform_type"),
     )
-    return "cloud_api", COEXISTENCE_NOT_ON_APP
+    raise ValidationError(
+        "This FIHRIST connection is for an existing WhatsApp Business app number. "
+        "Meta reports that this number is not currently on the WhatsApp Business app, "
+        "so it was not connected. Open WhatsApp Business on the phone and start the "
+        "Business App coexistence signup again."
+    )
 
 
 def _register_error(response: httpx.Response) -> ExternalProviderError:
@@ -602,8 +607,18 @@ async def _start_coexistence_sync(
     so it is sent at the end of the connect instead of waiting for a worker that may never run.
     A failure is recorded on the channel (``sync_error``) and retried by the next connect attempt;
     it never turns a connected number into a failed connect, because the number IS connected.
+
+    Order matters and used to be wrong: the channel row is COMMITTED before Meta is asked. Meta
+    answers the request immediately and starts pushing ``history`` / ``smb_app_state_sync``
+    webhooks within seconds, and a webhook for a number whose channel is still only flushed in an
+    open transaction cannot be routed: those messages would be dropped with nothing to retry them.
     """
     from app.modules.conversations import whatsapp_sync
+
+    # The channel must exist for the webhook that is about to arrive, not for the next request.
+    commit = getattr(session, "commit", None)
+    if callable(commit):
+        await commit()
 
     config = dict(integration.config or {})
     epoch = whatsapp_sync.epoch_for(config)
@@ -974,6 +989,9 @@ class WhatsAppSyncRunOut(BaseModel):
     deadline_at: str | None = None
     completed_at: str | None = None
     error: str | None = None
+    #: A reservation whose answer never arrived: visible, and reconcilable without a second request.
+    needs_attention: bool = False
+    attention: dict | None = None
 
 
 class WhatsAppCoexistenceStatusOut(BaseModel):
@@ -1000,6 +1018,9 @@ class WhatsAppCoexistenceStatusOut(BaseModel):
     disconnect_event: str | None = None
     disconnect_reason: str | None = None
     deadline_at: str | None = None
+    needs_attention: bool = False
+    #: How much of the number's 20-per-second send budget is in use, and what 130429 means.
+    throughput: dict | None = None
     contacts: WhatsAppSyncRunOut | None = None
     history: WhatsAppSyncRunOut | None = None
 
@@ -1040,6 +1061,9 @@ async def whatsapp_coexistence_status(
         offboarded=bool(removed),
     )
     connection = config.get("_connection") if isinstance(config.get("_connection"), dict) else {}
+    from app.modules.conversations.gateway import whatsapp_throughput
+
+    throughput = await whatsapp_throughput.usage(str(config.get("phone_number_id") or ""))
     return WhatsAppCoexistenceStatusOut(
         connected=integration.status in ("active", "connected"),
         status=integration.status,
@@ -1056,6 +1080,55 @@ async def whatsapp_coexistence_status(
         disconnect_event=(removed.get("event") or None) if removed else None,
         disconnect_reason=(removed.get("reason") or None) if removed else None,
         deadline_at=snapshot["deadline_at"],
+        needs_attention=snapshot["needs_attention"],
+        throughput=throughput,
         contacts=snapshot["contacts"],
         history=snapshot["history"],
     )
+
+
+class WhatsAppSyncReconcileIn(BaseModel):
+    """Which half to close, and what the operator concluded."""
+
+    sync_type: str
+    note: str | None = None
+
+
+@whatsapp_signup_router.post(
+    "/integrations/whatsapp/coexistence-reconcile",
+    response_model=WhatsAppCoexistenceStatusOut,
+)
+async def whatsapp_coexistence_reconcile(
+    payload: WhatsAppSyncReconcileIn,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Close a stuck sync reservation, then return the fresh picture.
+
+    Deliberately local: Meta allows ONE request per sync kind, so "try again" is never an option
+    here. The operator decides the outcome is unknown, the run is marked failed with their note,
+    and the channel tells the merchant to re-link instead of silently waiting forever.
+    """
+    from app.modules.conversations import whatsapp_sync
+
+    if payload.sync_type not in (
+        whatsapp_sync.WHATSAPP_SYNC_CONTACTS,
+        whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+    ):
+        raise ValidationError(f"Unknown WhatsApp sync type: {payload.sync_type}")
+
+    integration = (
+        await ctx.session.execute(_select_integration(ctx.tenant_id, "whatsapp"))
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("This workspace has no WhatsApp channel to reconcile.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    await whatsapp_sync.reconcile_run(
+        ctx.session,
+        ctx.tenant_id,
+        phone_number_id=str(config.get("phone_number_id") or ""),
+        sync_type=payload.sync_type,
+        epoch=whatsapp_sync.epoch_for(config),
+        note=payload.note,
+    )
+    return await whatsapp_coexistence_status(ctx)

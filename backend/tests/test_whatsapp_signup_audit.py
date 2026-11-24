@@ -68,10 +68,11 @@ def harness(monkeypatch):
         return types.SimpleNamespace(identity_config={"account_id": "2002"}, display_name="Shop")
 
     async def platform_facts(*_a, **_k):
-        # A Cloud API number: the connect path registers it, which is what this test stubs above.
-        # Meta's own answer about the number is a separate read, stubbed so the flow never leaves
-        # the process.
-        return {"is_on_biz_app": False, "platform_type": "CLOUD_API"}
+        # The only state this connect accepts: Meta reports the number is on the WhatsApp Business
+        # app AND on the Cloud API, which is the documented coexistence pair. A number that is not
+        # on the Business app is refused outright, so stubbing False here would test the refusal
+        # instead of the audit row.
+        return {"is_on_biz_app": True, "platform_type": "CLOUD_API"}
 
     monkeypatch.setattr(signup, "_exchange_code_for_token", exchange)
     monkeypatch.setattr(signup, "_verify_phone_belongs_to_waba", ok)
@@ -80,6 +81,11 @@ def harness(monkeypatch):
     monkeypatch.setattr(signup, "_subscribe_app_to_waba", ok)
     monkeypatch.setattr(signup, "_take_pending_pin", pin)
     monkeypatch.setattr(signup, "_number_platform_facts", platform_facts)
+
+    async def no_sync(*_a, **_k):
+        return {}
+
+    monkeypatch.setattr("app.modules.conversations.whatsapp_sync.request_all", no_sync)
     monkeypatch.setattr(
         "app.modules.platform.integration_verifier.verify_channel_credentials", verify
     )
