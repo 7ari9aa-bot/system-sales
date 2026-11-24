@@ -219,3 +219,105 @@ def test_the_snapshot_says_which_fact_it_is_reporting() -> None:
     # A run still inside its window reports no settlement at all.
     open_run = _run(sync_type="contacts", state="in_progress", deadline_at=NOW + timedelta(hours=1))
     assert sync.run_snapshot(open_run)["settled_by"] is None
+
+
+# ── a reservation whose answer never arrived ─────────────────────────────────────────────────────
+
+
+def _stuck(**overrides) -> WhatsAppSyncRun:
+    """A `dispatching` row reserved a while ago, with no answer from Meta."""
+    fields = {
+        "sync_type": "history",
+        "state": "dispatching",
+        "created_at": NOW - timedelta(minutes=40),
+    }
+    fields.update(overrides)
+    return _run(**fields)
+
+
+def test_a_fresh_reservation_is_just_slow_and_says_nothing() -> None:
+    fresh = _stuck(created_at=NOW - timedelta(minutes=1))
+    assert sync.run_attention(fresh, NOW) is None
+    assert sync.run_snapshot(fresh)["needs_attention"] is False
+
+
+def test_a_reservation_past_the_grace_period_needs_a_person() -> None:
+    attention = sync.run_attention(_stuck(), NOW)
+    assert attention is not None
+    assert attention["age_seconds"] >= 15 * 60
+    assert attention["reserved_at"].startswith("2026-11-24T11:20")
+    # The one thing an operator needs to search for.
+    assert "request_id" in attention
+    assert "second request" in attention["reason"]
+
+
+def test_a_settled_run_never_asks_for_attention() -> None:
+    assert sync.run_attention(_stuck(state="completed"), NOW) is None
+    assert sync.run_attention(None, NOW) is None
+
+
+async def test_reconciling_closes_the_run_without_asking_meta(monkeypatch) -> None:
+    """The reconcile path must not own an HTTP client: a second POST burns the only request."""
+    from app.modules.conversations import whatsapp_sync
+
+    run = _stuck()
+    seen: dict = {}
+
+    async def _get_run(_session, tenant_id, *, phone_number_id, sync_type, epoch):
+        seen["looked_up"] = (phone_number_id, sync_type)
+        return run
+
+    def _boom(*_args, **_kwargs):  # pragma: no cover - it must never be reached
+        raise AssertionError("reconcile tried to reach Meta")
+
+    monkeypatch.setattr(whatsapp_sync, "_get_run", _get_run)
+    monkeypatch.setattr(whatsapp_sync, "post_sync_request", _boom)
+
+    closed = await whatsapp_sync.reconcile_run(
+        object(),
+        uuid.uuid4(),
+        phone_number_id="456",
+        sync_type="history",
+        epoch="2026-11-24T00:00:00+00:00",
+        note="operator confirmed with Meta support: nothing was transferred",
+    )
+
+    assert closed is run
+    assert seen["looked_up"] == ("456", "history")
+    assert run.state == "failed"
+    assert "nothing was transferred" in run.error
+    # And the snapshot now shows a failed sync instead of an endless wait.
+    assert sync.run_attention(run, NOW) is None
+
+
+async def test_reconciling_a_settled_run_changes_nothing() -> None:
+    from app.modules.conversations import whatsapp_sync
+
+    run = _stuck(state="in_progress", request_id="req-1")
+
+    async def _get_run(_session, tenant_id, **kwargs):
+        return run
+
+    original = whatsapp_sync._get_run
+    whatsapp_sync._get_run = _get_run
+    try:
+        result = await whatsapp_sync.reconcile_run(
+            object(), uuid.uuid4(), phone_number_id="456", sync_type="history", epoch="e"
+        )
+    finally:
+        whatsapp_sync._get_run = original
+
+    assert result is run
+    assert run.state == "in_progress"
+    assert run.request_id == "req-1"
+
+
+def test_the_reconcile_route_is_published_and_typed() -> None:
+    from app.main import create_app
+
+    schema = create_app().openapi()
+    path = "/api/v1/integrations/whatsapp/coexistence-reconcile"
+    assert path in schema["paths"], sorted(p for p in schema["paths"] if "whatsapp" in p)
+    operation = schema["paths"][path]["post"]
+    ok = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert ok.get("$ref", "").endswith("WhatsAppCoexistenceStatusOut")

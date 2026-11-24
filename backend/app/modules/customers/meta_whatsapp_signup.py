@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.errors import ConflictError, ExternalProviderError, ValidationError
+from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.modules.identity.deps import DbSession, TenantContext, require_permission
 from app.modules.platform.channel_specs.whatsapp import (
@@ -979,6 +979,9 @@ class WhatsAppSyncRunOut(BaseModel):
     deadline_at: str | None = None
     completed_at: str | None = None
     error: str | None = None
+    #: A reservation whose answer never arrived: visible, and reconcilable without a second request.
+    needs_attention: bool = False
+    attention: dict | None = None
 
 
 class WhatsAppCoexistenceStatusOut(BaseModel):
@@ -1005,6 +1008,7 @@ class WhatsAppCoexistenceStatusOut(BaseModel):
     disconnect_event: str | None = None
     disconnect_reason: str | None = None
     deadline_at: str | None = None
+    needs_attention: bool = False
     contacts: WhatsAppSyncRunOut | None = None
     history: WhatsAppSyncRunOut | None = None
 
@@ -1061,6 +1065,54 @@ async def whatsapp_coexistence_status(
         disconnect_event=(removed.get("event") or None) if removed else None,
         disconnect_reason=(removed.get("reason") or None) if removed else None,
         deadline_at=snapshot["deadline_at"],
+        needs_attention=snapshot["needs_attention"],
         contacts=snapshot["contacts"],
         history=snapshot["history"],
     )
+
+
+class WhatsAppSyncReconcileIn(BaseModel):
+    """Which half to close, and what the operator concluded."""
+
+    sync_type: str
+    note: str | None = None
+
+
+@whatsapp_signup_router.post(
+    "/integrations/whatsapp/coexistence-reconcile",
+    response_model=WhatsAppCoexistenceStatusOut,
+)
+async def whatsapp_coexistence_reconcile(
+    payload: WhatsAppSyncReconcileIn,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    """Close a stuck sync reservation, then return the fresh picture.
+
+    Deliberately local: Meta allows ONE request per sync kind, so "try again" is never an option
+    here. The operator decides the outcome is unknown, the run is marked failed with their note,
+    and the channel tells the merchant to re-link instead of silently waiting forever.
+    """
+    from app.modules.conversations import whatsapp_sync
+
+    if payload.sync_type not in (
+        whatsapp_sync.WHATSAPP_SYNC_CONTACTS,
+        whatsapp_sync.WHATSAPP_SYNC_HISTORY,
+    ):
+        raise ValidationError(f"Unknown WhatsApp sync type: {payload.sync_type}")
+
+    integration = (
+        await ctx.session.execute(_select_integration(ctx.tenant_id, "whatsapp"))
+    ).scalar_one_or_none()
+    if integration is None:
+        raise NotFoundError("This workspace has no WhatsApp channel to reconcile.")
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    await whatsapp_sync.reconcile_run(
+        ctx.session,
+        ctx.tenant_id,
+        phone_number_id=str(config.get("phone_number_id") or ""),
+        sync_type=payload.sync_type,
+        epoch=whatsapp_sync.epoch_for(config),
+        note=payload.note,
+    )
+    return await whatsapp_coexistence_status(ctx)

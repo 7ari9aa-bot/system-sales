@@ -880,6 +880,84 @@ STATE_COPY: dict[str, dict[str, str]] = {
 }
 
 
+#: How long a `dispatching` reservation may sit before a human is told about it. Meta answers in
+#: seconds; a reservation older than this means the answer was lost, not that it is coming.
+ATTENTION_AFTER = timedelta(minutes=15)
+
+
+def run_attention(run: WhatsAppSyncRun | None, now: datetime | None = None) -> dict | None:
+    """Why this run needs a human, or None when it is simply doing its job.
+
+    The one state nobody could see was ``dispatching``: the reservation is committed before Meta is
+    called, so a crash between the call and the answer leaves a row that blocks every retry — by
+    design, because a second request burns the merchant's only allowance. Without a diagnostic that
+    row is indistinguishable from a slow sync, and support has nothing to act on.
+    """
+    if run is None or run.state != "dispatching":
+        return None
+    moment = now or datetime.now(UTC)
+    reserved_at = run.created_at or run.updated_at
+    if reserved_at is None:
+        return None
+    if reserved_at.tzinfo is None:
+        reserved_at = reserved_at.replace(tzinfo=UTC)
+    age = moment - reserved_at
+    if age < ATTENTION_AFTER:
+        return None
+    return {
+        "reason": (
+            "The request was reserved but Meta's answer never arrived. It may have been accepted "
+            "(in which case data will still arrive) or refused. A second request would use up the "
+            "one Meta allows, so this needs a person, not a retry."
+        ),
+        "request_id": run.request_id,
+        "reserved_at": reserved_at.isoformat(),
+        "age_seconds": int(age.total_seconds()),
+        "last_error": (run.error or None) and str(run.error)[:280],
+    }
+
+
+async def reconcile_run(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    phone_number_id: str,
+    sync_type: str,
+    epoch: str,
+    note: str | None = None,
+) -> WhatsAppSyncRun | None:
+    """Close a stuck ``dispatching`` reservation WITHOUT asking Meta again.
+
+    Reconciliation is deliberately local: the only safe question is "do we keep waiting, or do we
+    tell the merchant to re-link?", and neither answer needs the wire. A second
+    ``POST /smb_app_data`` would consume the one-shot allowance and could duplicate a transfer that
+    is already running, so this function never has an HTTP client at all.
+    """
+    run = await _get_run(
+        session,
+        tenant_id,
+        phone_number_id=phone_number_id,
+        sync_type=sync_type,
+        epoch=epoch,
+    )
+    if run is None:
+        return None
+    if run.state != "dispatching":
+        # Already settled (a webhook arrived, or Meta answered late): nothing to reconcile.
+        return run
+    run.state = "failed"
+    run.error = (note or "reconciled by an operator: the request outcome was never confirmed")[
+        :2000
+    ]
+    logger.info(
+        "whatsapp.sync_run_reconciled tenant=%s phone_number_id=%s type=%s",
+        tenant_id,
+        phone_number_id,
+        sync_type,
+    )
+    return run
+
+
 def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
     """One sync row as the screen reads it: a word, a percentage, a count, a deadline.
 
@@ -890,6 +968,7 @@ def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
     if run is None:
         return None
     phases = run.phases if isinstance(run.phases, dict) else {}
+    attention = run_attention(run)
     return {
         "sync_type": run.sync_type,
         "state": run.state,
@@ -904,6 +983,9 @@ def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
         "deadline_at": run.deadline_at.isoformat() if run.deadline_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "error": (run.error or None) and str(run.error)[:280],
+        # A stuck reservation is visible instead of looking like a slow sync.
+        "needs_attention": attention is not None,
+        "attention": attention,
     }
 
 
@@ -949,4 +1031,6 @@ async def sync_snapshot(
         "deadline_at": deadline.isoformat() if deadline else None,
         "contacts": run_snapshot(contacts),
         "history": run_snapshot(history),
+        # Top level too, so a settings card can show one warning without digging into both halves.
+        "needs_attention": bool(run_attention(contacts, now) or run_attention(history, now)),
     }
