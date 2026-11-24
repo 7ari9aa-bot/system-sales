@@ -72,3 +72,4 @@ Kept for context. They describe a moment, not the current system: [reports/](rep
 | [reviews/](reviews/) | Review notes from earlier waves. |
 | [superpowers/](superpowers/) | Implementation plans. |
 - [WhatsApp coexistence: the manual end-to-end check](channels/whatsapp-coexistence-manual-check.md) — the part fixtures cannot prove, with the expected result per step
+- [WhatsApp coexistence: launch readiness](channels/whatsapp-coexistence-launch-readiness.md) — every report item, its commit and its evidence, and what still needs a real number
