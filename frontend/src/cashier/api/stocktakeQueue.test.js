@@ -229,6 +229,43 @@ describe("the stocktake scan queue", () => {
     expect(saved).toHaveLength(0);
   });
 
+  it("leaving the page waits for the running save instead of racing it", async () => {
+    // The report's fourth blocker: dispose() sent the last batch straight away, replacing the
+    // in-flight reference, so count 1 and count 2 could be on the wire together and the older one
+    // could land last — writing the stale figure over the newer one.
+    const order = [];
+    const releases = [];
+    const { queue, tick } = makeQueue({
+      onSave: (counts) => {
+        order.push({ start: counts[0].counted_qty, overlap: order.some((o) => !o.done) });
+        const entry = order.at(-1);
+        return new Promise((resolve) => {
+          releases.push(() => {
+            entry.done = true;
+            resolve();
+          });
+        });
+      },
+    });
+    queue.push("v1", 1);
+    tick();
+    await flushMicrotasks(); // the first save is now on the wire
+    queue.push("v1", 2); // a second scan while it is still running
+
+    const disposed = queue.dispose();
+    await flushMicrotasks();
+    // Only the first request exists so far: leaving did not jump the queue.
+    expect(order).toHaveLength(1);
+
+    releases[0]();
+    await flushMicrotasks();
+    expect(order).toHaveLength(2);
+    expect(order[1]).toMatchObject({ start: 2, overlap: false });
+
+    releases[1]();
+    await disposed;
+  });
+
   it("reports a failed flush so approval can be refused", async () => {
     const onError = vi.fn();
     const { queue, tick } = makeQueue({

@@ -1121,6 +1121,16 @@ class ConfirmRefundRequest(BaseModel):
     external_reference: str = Field(min_length=1, max_length=64)
 
 
+@router.get("/refunds/pending")
+async def list_pending_refunds(ctx: PosReadCtx) -> list[dict]:
+    """The card/wallet reversals still waiting for their terminal reference.
+
+    Read on mount by the cashier screens: the promise outlives the page that made it, so a reload
+    must show the cashier what is still owed to the customer.
+    """
+    return await PosService.list_pending_refunds(ctx.session, ctx.tenant_id)
+
+
 @router.post("/refunds/{refund_id}/confirm")
 async def confirm_refund(
     refund_id: UUID, body: ConfirmRefundRequest, ctx: PosWriteCtx, override: OverrideDep

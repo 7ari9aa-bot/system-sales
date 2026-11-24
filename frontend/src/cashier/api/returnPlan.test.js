@@ -286,3 +286,45 @@ describe("the return key follows the whole body", () => {
     expect(a).toBe(b);
   });
 });
+
+describe("what the message says about money not yet returned", () => {
+  // The report's blocker 2: a pending card reversal was announced as refunded.
+  const base = {
+    refund_mode: "tender",
+    refunded: "100.00",
+    refund_by_method: { card: "100.00" },
+    refund_uncollected: "0.00",
+  };
+
+  it("names the pending card slice as still waiting for the terminal", () => {
+    const text = returnSettlementSummary({
+      ...base,
+      awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
+    });
+    expect(text).toContain("اترد 0.00");
+    expect(text).toContain("لسه مستنية تأكيد الماكينة");
+  });
+
+  it("counts only the confirmed part as refunded when it is split", () => {
+    const text = returnSettlementSummary({
+      ...base,
+      refunded: "100.00",
+      refund_by_method: { cash: "40.00", card: "60.00" },
+      awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "60.00" }],
+    });
+    expect(text).toContain("اترد 40.00");
+    expect(text).toContain("60.00");
+  });
+
+  it("tells the cashier the manual amount for a cash-only shop", () => {
+    const text = returnSettlementSummary({
+      refund_mode: "cash_only",
+      refunded: "0.00",
+      refund_by_method: {},
+      refund_uncollected: "0.00",
+      terminal_only: [{ method: "card", amount: "30.00" }],
+    });
+    expect(text).toContain("30.00");
+    expect(text).toContain("يدويًا");
+  });
+});

@@ -49,6 +49,7 @@ from app.modules.pos.receipt_reads import PosReceiptReads
 from app.modules.pos.refund import (
     REFUND_COUNTED_STATES,
     REFUNDABLE_PAYMENT_STATES,
+    ZERO,
     Tender,
     plan_for,
 )
@@ -3959,6 +3960,11 @@ class PosService(PosReceiptReads):
             "refunded": str(settlement["refunded"]),
             "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "uncollected": str(settlement["uncollected"]),
+            # A void refunds through the same settlement, so a card reversal it created is just as
+            # pending as a return's. Without these two the screen could not tell the cashier to
+            # reverse it on the terminal, and the sale looked settled.
+            "awaiting_confirmation": settlement.get("awaiting_confirmation", []),
+            "terminal_only": settlement.get("terminal_only", []),
             "restocked": True,
         }
 
@@ -4121,23 +4127,37 @@ class PosService(PosReceiptReads):
             # A shop that starts cash-only must not have the till claim a card reversal it cannot
             # perform. The non-cash tenders are named for the cashier to reverse on the terminal
             # by hand, and no Refund row is written for them.
-            kept = [tender for tender in tenders if tender.method == CASH]
-            dropped: dict[str, Decimal] = {}
-            for tender in tenders:
-                if tender.method != CASH and tender.room > 0:
-                    dropped[tender.method] = dropped.get(tender.method, Decimal("0")) + tender.room
-            tenders = kept
+            #
+            # The figure to reverse is the part of THIS refund that a refund-to-source would have
+            # put on a non-cash tender — never the tender's whole remaining balance. A 30 return
+            # on a 100 card sale asks the cashier for 30, not 100; the old arithmetic used the
+            # room, so the screen told them to reverse money nobody had asked back.
+            source_plan = (
+                plan_for(value, tenders, requested=[(single_method, value)])
+                if single_method
+                else plan_for(value, tenders, requested=requested)
+            )
+            non_cash = {
+                method: amount_
+                for method, amount_ in source_plan.by_method.items()
+                if method != CASH and amount_ > 0
+            }
             terminal_only = [
                 {"method": method, "amount": str(to_money(amount_, method))}
-                for method, amount_ in dropped.items()
+                for method, amount_ in non_cash.items()
             ]
-            if not tenders:
+            cash_part = to_money(value - sum(non_cash.values(), ZERO), "cash part")
+            cash_tenders = [tender for tender in tenders if tender.method == CASH]
+            if cash_part <= ZERO or not cash_tenders:
+                # Nothing for the drawer: the whole refund is the cashier's manual reversal.
                 return {
                     **record_only,
                     "mode": "cash_only",
                     "uncollected": to_money(0, "uncollected"),
                     "terminal_only": terminal_only,
                 }
+            tenders = cash_tenders
+            value = cash_part
         if single_method:
             plan = plan_for(value, tenders, requested=[(single_method, value)])
         else:
@@ -4212,6 +4232,51 @@ class PosService(PosReceiptReads):
             "awaiting_confirmation": awaiting,
             "terminal_only": terminal_only,
         }
+
+    @staticmethod
+    async def list_pending_refunds(
+        session: AsyncSession, tenant_id: UUID, *, limit: int = 50
+    ) -> list[dict]:
+        """Every reversal still waiting for the terminal, so a reload does not lose it.
+
+        A card reversal is promised when the return is taken and proven later, at the machine. The
+        screen used to keep that promise in a ``useState``, so a refresh (or leaving the page) made
+        the money disappear from the cashier's view while the customer was still waiting for it.
+        The promise is a row in the database; this reads it back.
+        """
+        from app.modules.orders.models import Order, OrderPayment, Refund
+
+        rows = (
+            await session.execute(
+                select(
+                    Refund.id,
+                    Refund.amount,
+                    Refund.created_at,
+                    OrderPayment.method,
+                    Order.id,
+                    Order.number,
+                )
+                .join(OrderPayment, OrderPayment.id == Refund.payment_id)
+                .join(Order, Order.id == OrderPayment.order_id)
+                .where(
+                    Refund.tenant_id == tenant_id,
+                    Refund.status == "pending",
+                )
+                .order_by(Refund.created_at.asc(), Refund.id.asc())
+                .limit(limit)
+            )
+        ).all()
+        return [
+            {
+                "refund_id": str(row.id),
+                "method": row.method,
+                "amount": str(to_money(row.amount, "refund")),
+                "order_id": str(row[4]),
+                "order_number": row[5],
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
 
     @staticmethod
     async def confirm_refund(

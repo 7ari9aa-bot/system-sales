@@ -1495,3 +1495,173 @@ async def test_the_confirm_route_records_the_terminal_reference(db, tenant_ctx) 
     assert out["external_reference"] == "RRN-4242"
     # The whole tender came back, so the payment is fully refunded, not partially.
     assert out["payment_status"] == "refunded"
+
+
+@pytest.mark.asyncio
+async def test_a_partly_refunded_sale_is_not_marked_fully_refunded(db, tenant_ctx) -> None:
+    """The report's blocker 1: the state was read off the touched tenders, not the whole sale.
+
+    A 1,000 sale (100 cash + 900 card) whose 100 cash comes back still holds 900. Calling the sale
+    "refunded" dropped it out of revenue with the card money unaccounted for.
+    """
+    from app.modules.orders.models import Order, OrderPayment, Refund
+    from app.modules.orders.service import OrderService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=10,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "900.00", "reference": "AUTH-9"},
+        ],
+    )
+    order = (
+        await db.execute(sa.select(Order).where(Order.id == uuid.UUID(str(sold["order_id"]))))
+    ).scalar_one()
+    # A completed sale is the case the rule protects: it must not flip while money is still held.
+    order.status = "completed"
+    payments = {
+        row.method: row
+        for row in (
+            await db.execute(sa.select(OrderPayment).where(OrderPayment.order_id == order.id))
+        )
+        .scalars()
+        .all()
+    }
+    cash, card = payments["cash"], payments["card"]
+
+    db.add(
+        Refund(
+            tenant_id=tenant_ctx.tenant_id,
+            payment_id=cash.id,
+            amount=Decimal("100.00"),
+            reason="مرتجع جزئي",
+            status="processed",
+        )
+    )
+    await db.flush()
+    await OrderService.apply_refunded_payment_states(db, tenant_ctx.tenant_id, order, [cash.id])
+    await db.refresh(order)
+    assert order.status == "completed", "900 card is still paid and never returned"
+    assert cash.status == "refunded"
+    assert card.status == "captured"
+
+    # Now the card comes back too: only then is the sale refunded.
+    db.add(
+        Refund(
+            tenant_id=tenant_ctx.tenant_id,
+            payment_id=card.id,
+            amount=Decimal("900.00"),
+            reason="مرتجع جزئي",
+            status="processed",
+        )
+    )
+    await db.flush()
+    await OrderService.apply_refunded_payment_states(db, tenant_ctx.tenant_id, order, [card.id])
+    await db.refresh(order)
+    assert order.status == "refunded"
+
+
+@pytest.mark.asyncio
+async def test_cash_only_shop_is_told_this_refunds_card_part_not_the_whole_card(
+    db, tenant_ctx
+) -> None:
+    """The report's blocker 3: terminal_only was the tender's whole room, not this refund's share.
+
+    100 on card, a 30 return: the cashier has to reverse 30 on the machine, not 100.
+    """
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-3"}],
+    )
+    out = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund=[{"method": "card", "amount": "30.00"}],
+    )
+    assert out["refund_mode"] == "cash_only"
+    assert out["terminal_only"] == [{"method": "card", "amount": "30.00"}]
+    assert out["refunded"] == "0.00"
+    assert out["awaiting_confirmation"] == []
+    assert await _refund_rows(db, tenant_ctx) == []
+
+
+@pytest.mark.asyncio
+async def test_a_pending_reversal_survives_a_page_reload(db, tenant_ctx) -> None:
+    """The report's blocker 2: the promise lived in useState, so a refresh lost the money."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-7"}],
+    )
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    pending = await PosService.list_pending_refunds(db, tenant_ctx.tenant_id)
+    assert len(pending) == 1
+    assert pending[0]["method"] == "card"
+    assert pending[0]["amount"] == "100.00"
+    assert pending[0]["order_id"] == str(sold["order_id"])
+    assert pending[0]["order_number"], "the cashier has to know which invoice is owed"
+
+    await PosService.confirm_refund(
+        db, tenant_ctx.tenant_id, uuid.UUID(pending[0]["refund_id"]), "RRN-5150"
+    )
+    # Once confirmed it is no longer owed, so it leaves the list.
+    assert await PosService.list_pending_refunds(db, tenant_ctx.tenant_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_void_reports_the_card_reversal_it_left_pending(db, tenant_ctx) -> None:
+    """The report's blocker 2, void path: the answer did not carry awaiting_confirmation."""
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-8"}],
+    )
+    out = await PosService.void_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        reason="رن على الصنف الغلط",
+        actor_user_id=tenant_ctx.user.id,
+        shift_override=True,
+    )
+    (pending,) = out["awaiting_confirmation"]
+    assert pending["method"] == "card"
+    assert pending["amount"] == "100.00"
+    assert out["terminal_only"] == []

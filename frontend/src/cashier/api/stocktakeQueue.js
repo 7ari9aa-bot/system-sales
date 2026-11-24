@@ -112,8 +112,18 @@ export function createCountQueue({
    * was silently lost — the count simply never reached the sheet. It now sends that batch; a
    * failure is reported through ``onError`` rather than swallowed.
    */
-  function dispose() {
+  async function dispose() {
     cancel();
+    // Wait for the request already on the wire BEFORE sending the last batch. Sending straight
+    // away replaced the in-flight reference, so two saves for the same line could be running at
+    // once — count 1 then count 2 — and whichever finished last won, which could be the older one.
+    if (inFlight) {
+      try {
+        await inFlight;
+      } catch {
+        // Reported through onError by whoever started it; the batch below still has to go.
+      }
+    }
     const counts = drain();
     if (!counts.length) return null;
     const pendingSave = send(counts);

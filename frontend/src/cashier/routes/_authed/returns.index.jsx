@@ -172,6 +172,20 @@ function ReturnScreen({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceParam, sales, paramSearch.data, paramSearch.isLoading, salesQuery.isLoading]);
 
+  // The promise outlives the page: a card reversal taken before a reload is still owed.
+  useEffect(() => {
+    let alive = true;
+    posApi
+      .listPendingRefunds()
+      .then((rows) => {
+        if (alive) setPendingRefunds(rows ?? []);
+      })
+      .catch(() => {}); // a read failure must not block the till
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     function onKey(e) {
       if (e.key === "F2" && canComplete) {

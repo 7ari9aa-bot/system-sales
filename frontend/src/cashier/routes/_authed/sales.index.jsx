@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useShifts } from "@/cashier/api/useShifts";
 import { useShiftSales } from "@/cashier/api/usePosSale";
 import { useWorkingSession } from "@/cashier/api/useShifts";
+import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
 import { posApi, newIntent } from "@/cashier/api/posApi";
 import { filterRows, totalsOf } from "@/cashier/api/salesLog";
 import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/cashier/lib/format";
@@ -35,6 +36,8 @@ export default function SalesLogPage() {
   const [receipt, setReceipt] = useState(null);
   const [voidInvoice, setVoidInvoice] = useState(null);
   const [voidError, setVoidError] = useState(null);
+  // A void refunds through the same settlement as a return, so its card reversal is pending too.
+  const [pendingRefunds, setPendingRefunds] = useState([]);
   const [voidPending, setVoidPending] = useState(false);
 
   const { user } = useAuth();
@@ -64,6 +67,7 @@ export default function SalesLogPage() {
     try {
       const res = await posApi.voidSale(sessionId, { orderId, reason }, newIntent());
       toast.success(`اتلغت الفاتورة ${voidInvoice?.number ?? ""} — مستند الإلغاء ${res?.void_receipt_number ?? ""}`.trim());
+      setPendingRefunds(res?.awaiting_confirmation ?? []);
       setVoidInvoice(null);
       await salesQuery.refetch();
     } catch (e) {
@@ -128,6 +132,12 @@ export default function SalesLogPage() {
 
   return (
     <div className="-mx-2 -my-2 min-h-[calc(100vh-1rem)] bg-[#FAF7F2] px-4 pb-12 pt-6 text-[#0F172A] sm:-mx-3 sm:px-8 lg:px-10 lg:pt-9">
+      <PendingRefundsPanel
+        pending={pendingRefunds}
+        onConfirmed={(res) =>
+          setPendingRefunds((prev) => prev.filter((row) => row.refund_id !== res.refund_id))
+        }
+      />
       <div className="mb-[22px] flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-[26px] font-extrabold leading-[1.2] tracking-[-.03em] sm:text-[32px]">سجل المبيعات</h1>

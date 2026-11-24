@@ -117,6 +117,7 @@ export const posApi = {
    * database, so until the cashier types the reference the till does not claim the customer was
    * paid back. This is the other half of that promise.
    */
+  listPendingRefunds: () => api("/pos/refunds/pending"),
   confirmRefund: async (refundId, externalReference) =>
     post(`/pos/refunds/${seg(refundId)}/confirm`, {
       external_reference: String(externalReference ?? "").trim(),

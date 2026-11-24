@@ -1745,7 +1745,6 @@ class OrderService:
             .scalars()
             .all()
         )
-        fully_refunded = bool(payments)
         for payment in payments:
             refunded_total = Decimal(
                 str(
@@ -1770,9 +1769,49 @@ class OrderService:
                 fully_refunded = False
                 continue
             payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
-            if payment.status != "refunded":
-                fully_refunded = False
         await session.flush()
+
+        # Is the SALE refunded, or only the tender this refund happened to touch?
+        #
+        # The answer used to be read off the payments in ``payment_ids`` alone, so a 1,000 sale
+        # (100 cash + 900 card) whose 100 cash came back looked fully refunded while 900 was still
+        # paid and never returned: the order flipped to "refunded" and dropped out of revenue with
+        # the card money unaccounted for. The question is about the order, so it is asked of the
+        # order: nothing collected may be left holding money.
+        # Money still held = what the order collected minus what has actually been CONFIRMED back.
+        # ``refunded`` is in the collected vocabulary, so the amounts alone cannot answer this: a
+        # fully refunded tender would count as money in. Pending reversals are excluded for the
+        # same reason a pending refund never moved the tender's own state.
+        all_payments = (
+            await session.execute(
+                select(OrderPayment.id, OrderPayment.amount).where(
+                    OrderPayment.tenant_id == tenant_id,
+                    OrderPayment.order_id == order.id,
+                    OrderPayment.status.in_(COLLECTED_PAYMENT_STATUSES),
+                )
+            )
+        ).all()
+        collected_total = to_money(
+            sum((to_money(row.amount, "collected") for row in all_payments), Decimal("0")),
+            "collected",
+        )
+        confirmed_back = Decimal("0")
+        if all_payments:
+            confirmed_back = Decimal(
+                str(
+                    (
+                        await session.execute(
+                            select(func.coalesce(func.sum(Refund.amount), 0)).where(
+                                Refund.tenant_id == tenant_id,
+                                Refund.payment_id.in_([row.id for row in all_payments]),
+                                Refund.status.in_(CONFIRMED_REFUND_STATES),
+                            )
+                        )
+                    ).scalar_one()
+                )
+            )
+        still_held = to_money(collected_total - confirmed_back, "still held")
+        fully_refunded = still_held <= 0
 
         # A fully refunded sale must not stay "completed": dashboards and analytics would keep
         # counting refunded money as revenue. Same rule and same transition as the shared path.

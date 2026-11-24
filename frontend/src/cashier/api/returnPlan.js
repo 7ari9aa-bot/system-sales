@@ -156,6 +156,25 @@ const METHOD_LABEL = { cash: "نقدي", card: "بطاقة", transfer: "تحوي
  */
 export function returnSettlementSummary(result) {
   const refunded = Number(result?.refunded ?? 0);
+  // A card reversal is promised at the counter and proven at the machine. Saying "اترد" about it
+  // before the cashier confirms the reference tells the customer they were paid back when they
+  // were not, so the pending part is named separately.
+  const pending = (result?.awaiting_confirmation ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  );
+  const manual = (result?.terminal_only ?? []).reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  );
+  const withPending = (text) =>
+    pending > 0
+      ? `${text} — منها ${pending.toFixed(2)} ج.م على البطاقة/المحفظة لسه مستنية تأكيد الماكينة`
+      : text;
+  const withManual = (text) =>
+    manual > 0
+      ? `${text} — ${manual.toFixed(2)} ج.م يترد يدويًا على الماكينة ويُسجَّل رقم المرجع`
+      : text;
   const uncollected = Number(result?.refund_uncollected ?? 0);
   const byMethod = result?.refund_by_method ?? {};
   const parts = [];
@@ -164,7 +183,10 @@ export function returnSettlementSummary(result) {
   } else if (result?.refund_mode === "nothing_collected") {
     parts.push("الفاتورة الأصلية ما حصّلتش المبلغ ده، فمفيش مبلغ يترد");
   } else {
-    parts.push(`اترد ${refunded.toFixed(2)} ج.م`);
+    // Only the CONFIRMED part is money returned. The pending card slice and the manual reversal
+    // are stated as what they are: still owed.
+    const confirmed = Math.max(refunded - pending, 0);
+    parts.push(withPending(withManual(`اترد ${confirmed.toFixed(2)} ج.م`)));
   }
   const methods = Object.entries(byMethod)
     .map(([method, value]) => `${METHOD_LABEL[method] ?? method} ${value}`)

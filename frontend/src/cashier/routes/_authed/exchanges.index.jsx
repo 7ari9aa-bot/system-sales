@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/AuthContext";
 import ReturnHeaderBar from "@/cashier/components/returns/ReturnHeaderBar";
 import ExchangeInvoiceSearch from "@/cashier/components/exchanges/ExchangeInvoiceSearch";
+import PendingRefundsPanel from "@/cashier/components/returns/PendingRefundsPanel";
 import ReturnOriginalTable from "@/cashier/components/returns/ReturnOriginalTable";
 import ReturnTotalsBar from "@/cashier/components/returns/ReturnTotalsBar";
 import ExchangeNewItemsTable from "@/cashier/components/exchanges/ExchangeNewItemsTable";
@@ -63,6 +64,9 @@ function ExchangeScreen({ session }) {
   const policy = useReturnPolicy(session.id).data;
   const restock = restockChoice ?? policy?.restock_default ?? true;
   const [busy, setBusy] = useState(false);
+  // Card reversals the terminal still has to confirm. Loaded on mount so a reload does not lose a
+  // promise made before it, and appended from the exchange's own answer.
+  const [pendingRefunds, setPendingRefunds] = useState([]);
   const [dialog, setDialog] = useState(null); // cancel
   const intentRef = useRef(null); // one intent per deliberate exchange (+ its payment): a retry replays, never double-charges
   const intentFor = useRef("");
@@ -223,6 +227,7 @@ function ExchangeScreen({ session }) {
       // The money is the server's answer, not the screen's arithmetic: it knows which tenders the
       // original sale collected and how much of each was still refundable.
       toast.success(`تم الاستبدال ${res.new_receipt_number}. ${settlementSummary(res)}`, { duration: 12000 });
+      setPendingRefunds(res.awaiting_confirmation ?? []);
       intentRef.current = null;
       setDialog(null);
       await qc.invalidateQueries({ queryKey: ["cashier"] });
@@ -250,6 +255,20 @@ function ExchangeScreen({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceParam, sales, paramSearch.data, paramSearch.isLoading, salesQuery.isLoading]);
 
+  // The promise outlives the page: a card reversal taken before a reload is still owed.
+  useEffect(() => {
+    let alive = true;
+    posApi
+      .listPendingRefunds()
+      .then((rows) => {
+        if (alive) setPendingRefunds(rows ?? []);
+      })
+      .catch(() => {}); // a read failure must not block the till
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     function onKey(e) {
       if (e.key === "F2" && canComplete && dialog === null) {
@@ -264,6 +283,12 @@ function ExchangeScreen({ session }) {
   return (
     <div className="animate-fade-up flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <ReturnHeaderBar title="تسجيل استبدال" numberLabel="رقم الاستبدال" employee={user?.full_name || user?.email || ""} />
+      <PendingRefundsPanel
+        pending={pendingRefunds}
+        onConfirmed={(res) =>
+          setPendingRefunds((prev) => prev.filter((row) => row.refund_id !== res.refund_id))
+        }
+      />
       <ExchangeInvoiceSearch
         term={invoiceTerm}
         onTermChange={(v) => { setInvoiceTerm(v); setError(""); }}
