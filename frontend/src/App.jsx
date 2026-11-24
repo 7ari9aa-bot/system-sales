@@ -39,10 +39,11 @@ const FacebookReelsPage = lazy(() => import('@/pages/facebook/FacebookReelsPage'
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const CashierApp = lazy(() => import('@/cashier/CashierApp'));
+const DashboardPreview = lazy(() => import('@/pages/DashboardPreview'));
 
-// وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
-// vite.config.js يمنع البناء تماماً لو اتفعّل مع بيئة الإنتاج، فلا يمكن أن يصل لمستخدمين حقيقيين.
+// These preview-only routes render synthetic data and never use the authenticated API.
 const CASHIER_PREVIEW = import.meta.env.VITE_CASHIER_PREVIEW === '1';
+const DASHBOARD_PREVIEW = import.meta.env.VITE_DASHBOARD_PREVIEW === '1';
 const AI = lazy(() => import('@/pages/AI'));
 const SalesAssistant = lazy(() => import('@/pages/SalesAssistant'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
@@ -201,26 +202,46 @@ function LegacyProductEditRedirect() {
 }
 
 function App() {
-  // الـRouter لازم يكون بره AuthProvider — لأن المصادقة بتستخدم
-  // useNavigate جواها، وuseNavigate بتشتغل بس جوه سياق Router.
+  // The router must wrap AuthProvider because authentication uses useNavigate.
   return (
     <Router>
-      <AuthProvider>
-        <ThemeProvider>
-          <I18nProvider>
-            <RegionalProvider>
-              <QueryClientProvider client={queryClientInstance}>
-                <ScrollToTop />
-                <Suspense fallback={<div role="status" className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">Loading…</div>}>
-                  <PathRouter />
-                </Suspense>
-                <Toaster />
-              </QueryClientProvider>
-            </RegionalProvider>
-          </I18nProvider>
-        </ThemeProvider>
-      </AuthProvider>
+      <AppContent />
     </Router>
+  )
+}
+
+function AppContent() {
+  const location = useLocation();
+  const isSyntheticDashboardPreview = DASHBOARD_PREVIEW && location.pathname === '/dashboard';
+
+  if (isSyntheticDashboardPreview) {
+    return (
+      <ThemeProvider>
+        <I18nProvider>
+          <Suspense fallback={<div role="status" className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">Loading…</div>}>
+            <DashboardPreview />
+          </Suspense>
+        </I18nProvider>
+      </ThemeProvider>
+    );
+  }
+
+  return (
+    <AuthProvider>
+      <ThemeProvider>
+        <I18nProvider>
+          <RegionalProvider>
+            <QueryClientProvider client={queryClientInstance}>
+              <ScrollToTop />
+              <Suspense fallback={<div role="status" className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">Loading…</div>}>
+                <PathRouter />
+              </Suspense>
+              <Toaster />
+            </QueryClientProvider>
+          </RegionalProvider>
+        </I18nProvider>
+      </ThemeProvider>
+    </AuthProvider>
   )
 }
 
