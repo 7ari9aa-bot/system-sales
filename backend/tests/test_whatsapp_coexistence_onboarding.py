@@ -219,3 +219,19 @@ def test_a_replayed_connect_answers_with_the_stored_mode() -> None:
     assert result["coexistence_status"] == "verified"
     assert result["is_on_biz_app"] is True
     assert json.dumps(result)  # plain JSON, nothing unserialisable leaks out
+
+
+async def test_manual_token_verification_rejects_cloud_api_only_numbers() -> None:
+    async with _client(lambda request: httpx.Response(200, json={"id": "456", **_API_ONLY})) as client:
+        with pytest.raises(ValidationError, match="existing WhatsApp Business app"):
+            await whatsapp_spec.whatsapp_connection_spec.verify(
+                {"access_token": "t"}, {"phone_number_id": "456"}, client=client
+            )
+
+
+async def test_manual_token_verification_rejects_missing_coexistence_evidence() -> None:
+    async with _client(lambda request: httpx.Response(200, json={"id": "456"})) as client:
+        with pytest.raises(ValidationError, match="Meta did not verify"):
+            await whatsapp_spec.whatsapp_connection_spec.verify(
+                {"access_token": "t"}, {"phone_number_id": "456"}, client=client
+            )
