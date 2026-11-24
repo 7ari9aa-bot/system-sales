@@ -46,7 +46,12 @@ from app.modules.pos.models import (
 )
 from app.modules.pos.profiles import PAYMENT_METHODS, PosProfileService
 from app.modules.pos.receipt_reads import PosReceiptReads
-from app.modules.pos.refund import Tender, plan_for
+from app.modules.pos.refund import (
+    REFUND_COUNTED_STATES,
+    REFUNDABLE_PAYMENT_STATES,
+    Tender,
+    plan_for,
+)
 from app.modules.pos.tender import (
     CASH,
     check_close_variance,
@@ -3330,6 +3335,7 @@ class PosService(PosReceiptReads):
         restock: bool | None = None,
         refund: object = None,
         refund_method: str | None = None,
+        refund_references: dict[str, str] | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -3569,6 +3575,7 @@ class PosService(PosReceiptReads):
             single_method=refund_method,
             reason=PosService._refund_reason(refund_lines),
             actor_user_id=actor_user_id,
+            references=refund_references,
         )
 
         restocked = False
@@ -3649,6 +3656,11 @@ class PosService(PosReceiptReads):
             "refunded": str(settlement["refunded"]),
             "refund_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "refund_uncollected": str(settlement["uncollected"]),
+            # A card/wallet slice is promised, not yet proven: the cashier reverses it on the
+            # terminal and confirms it with the reference. Until then nothing derived has moved.
+            "awaiting_confirmation": settlement.get("awaiting_confirmation", []),
+            # A cash-only shop never records a non-cash reversal; this is what to reverse by hand.
+            "terminal_only": settlement.get("terminal_only", []),
             "refunds": [
                 {
                     "payment_id": str(slice_.payment_id) if slice_.payment_id else None,
@@ -3986,11 +3998,18 @@ class PosService(PosReceiptReads):
     async def _refundable_tenders(
         session: AsyncSession, tenant_id: UUID, order_id: UUID
     ) -> tuple[list[Tender], list]:
-        """The sale's captured tenders and how much of each has already gone back.
+        """The tenders that took money and how much of each has already gone back.
 
-        Only ``captured`` rows count: a pending or failed payment never put money in the till, so
-        there is nothing to give back. Refunds already made are summed per payment, which is what
-        caps the next one — no separate counter to drift.
+        A payment that MONEY ARRIVED ON counts, whatever its later state: ``captured``, but also
+        ``partially_refunded`` and ``refunded``, because the first partial refund flips the row to
+        ``partially_refunded`` and the second return on the same invoice must still find its tender.
+        Filtering on ``captured`` alone made the second partial refund of one tender impossible (it
+        reported the value as never collected and paid nothing out).
+
+        What did NOT take money stays out: pending, failed, cancelled. Refunds already made are
+        summed per payment, which is what caps the next one — no separate counter to drift — and a
+        pending (unconfirmed) refund is counted there too, so a customer cannot be paid twice while
+        the terminal reversal is still unconfirmed.
         """
         from app.modules.orders.models import OrderPayment, Refund
 
@@ -4001,7 +4020,7 @@ class PosService(PosReceiptReads):
                     .where(
                         OrderPayment.tenant_id == tenant_id,
                         OrderPayment.order_id == order_id,
-                        OrderPayment.status == "captured",
+                        OrderPayment.status.in_(REFUNDABLE_PAYMENT_STATES),
                     )
                     .order_by(OrderPayment.paid_at.asc().nullsfirst(), OrderPayment.id)
                 )
@@ -4018,7 +4037,7 @@ class PosService(PosReceiptReads):
                     .where(
                         Refund.tenant_id == tenant_id,
                         Refund.payment_id.in_([payment.id for payment in payments]),
-                        Refund.status.in_(("approved", "processed")),
+                        Refund.status.in_(REFUND_COUNTED_STATES),
                     )
                     .group_by(Refund.payment_id)
                 )
@@ -4047,6 +4066,7 @@ class PosService(PosReceiptReads):
         single_method: str | None = None,
         reason: str | None = None,
         actor_user_id: UUID | None = None,
+        references: dict[str, str] | None = None,
     ) -> dict:
         """Give the money back, across the tenders the sale collected.
 
@@ -4058,8 +4078,19 @@ class PosService(PosReceiptReads):
         * one ``out`` row on the drawer ledger for the cash part (``cash_refund``), which is what
           makes the close arithmetic show the money that left the drawer.
 
+        Cash is finished here: the notes leave the drawer in front of the customer. A CARD or
+        WALLET reversal is not finished here, because the reversal happens on the shop's terminal,
+        not in this database. Such a slice is written ``pending`` and named in
+        ``awaiting_confirmation`` until the cashier records the terminal's reference through
+        :meth:`confirm_refund`. ``references`` ({method: terminal reference}) records the ones the
+        cashier already has, so a shop that types the RRN up front never leaves a pending row.
+        Reporting the money as returned before the terminal confirmed it is exactly the bug this
+        prevents: the books said refunded while the customer's card still held the money.
+
         Nothing is written for a till with ``pos.take_payments`` off, nor for value the sale never
         collected. Both cases are reported, never silently dropped: ``mode`` says which happened.
+        A shop that refunds cash only (``pos.refund_cash_only``) never writes a non-cash slice at
+        all; that value comes back in ``terminal_only`` for the cashier to reverse by hand.
         """
         from app.modules.orders.models import Refund
 
@@ -4070,6 +4101,8 @@ class PosService(PosReceiptReads):
             "uncollected": value,
             "by_method": {},
             "slices": [],
+            "awaiting_confirmation": [],
+            "terminal_only": [],
         }
         if not bool(
             await PosService._setting(session, tenant_id, "pos.take_payments", pos_session)
@@ -4080,23 +4113,58 @@ class PosService(PosReceiptReads):
             # A sale that collected nothing has no tender to give back to. The value is reported as
             # uncollected so the caller can tell the customer what actually happened.
             return {**record_only, "mode": "nothing_collected"}
+        cash_only = bool(
+            await PosService._setting(session, tenant_id, "pos.refund_cash_only", pos_session)
+        )
+        terminal_only: list[dict] = []
+        if cash_only:
+            # A shop that starts cash-only must not have the till claim a card reversal it cannot
+            # perform. The non-cash tenders are named for the cashier to reverse on the terminal
+            # by hand, and no Refund row is written for them.
+            kept = [tender for tender in tenders if tender.method == CASH]
+            dropped: dict[str, Decimal] = {}
+            for tender in tenders:
+                if tender.method != CASH and tender.room > 0:
+                    dropped[tender.method] = dropped.get(tender.method, Decimal("0")) + tender.room
+            tenders = kept
+            terminal_only = [
+                {"method": method, "amount": str(to_money(amount_, method))}
+                for method, amount_ in dropped.items()
+            ]
+            if not tenders:
+                return {
+                    **record_only,
+                    "mode": "cash_only",
+                    "uncollected": to_money(0, "uncollected"),
+                    "terminal_only": terminal_only,
+                }
         if single_method:
             plan = plan_for(value, tenders, requested=[(single_method, value)])
         else:
             plan = plan_for(value, tenders, requested=requested)
         now = datetime.now(UTC)
+        references = {
+            str(method): str(reference).strip()
+            for method, reference in (references or {}).items()
+            if str(reference).strip()
+        }
+        written: list[Refund] = []
         for slice_ in plan.slices:
-            session.add(
-                Refund(
-                    tenant_id=tenant_id,
-                    payment_id=slice_.payment_id,
-                    amount=slice_.amount,
-                    reason=reason,
-                    status="processed",
-                    processed_at=now,
-                    created_by_user_id=actor_user_id,
-                )
+            # Cash is done the moment it is handed over. Anything else waits for the terminal's
+            # own confirmation, which is the reference below.
+            confirmed = slice_.method == CASH or slice_.method in references
+            row = Refund(
+                tenant_id=tenant_id,
+                payment_id=slice_.payment_id,
+                amount=slice_.amount,
+                reason=reason,
+                status="processed" if confirmed else "pending",
+                processed_at=now if confirmed else None,
+                external_reference=references.get(slice_.method),
+                created_by_user_id=actor_user_id,
             )
+            session.add(row)
+            written.append(row)
         if plan.cash > 0:
             session.add(
                 PosCashMovement(
@@ -4124,12 +4192,94 @@ class PosService(PosReceiptReads):
 
             await OrderService.apply_refunded_payment_states(session, tenant_id, order, touched)
 
+        # What the terminal still has to confirm, one entry per pending slice. The method lives on
+        # the slice, so the two are zipped rather than re-derived from the payment row.
+        awaiting = [
+            {
+                "refund_id": str(row.id),
+                "method": slice_.method,
+                "amount": str(to_money(row.amount, "refund")),
+            }
+            for row, slice_ in zip(written, plan.slices, strict=True)
+            if row.status == "pending"
+        ]
         return {
             "mode": "tender",
             "refunded": plan.refunded,
             "uncollected": plan.uncollected,
             "by_method": plan.by_method,
             "slices": list(plan.slices),
+            "awaiting_confirmation": awaiting,
+            "terminal_only": terminal_only,
+        }
+
+    @staticmethod
+    async def confirm_refund(
+        session: AsyncSession,
+        tenant_id: UUID,
+        refund_id: UUID,
+        external_reference: object,
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> dict:
+        """The cashier's confirmation that a card/wallet reversal really happened.
+
+        A non-cash refund is written ``pending`` because the money leaves the shop's terminal, not
+        this database. This is the other half of that promise: the cashier reverses it on the
+        terminal, types the terminal's own reference (RRN, approval code, transfer number), and
+        only then does the refund become ``processed`` — and only then do the derived facts move
+        (payment state, lifetime value), through the same rule the shared refund path uses.
+
+        Confirming the same refund twice is refused rather than silently accepted: the second
+        confirmation is a different reversal, and it must be a new refund.
+        """
+        from app.modules.errors import ConflictError
+        from app.modules.orders.models import Order, OrderPayment, Refund
+        from app.modules.orders.service import OrderService
+
+        reference = str(external_reference or "").strip()
+        if not reference:
+            raise ValidationError("a card or wallet reversal needs the terminal's reference")
+        row = (
+            await session.execute(
+                select(Refund).where(Refund.tenant_id == tenant_id, Refund.id == refund_id)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise ValidationError("no such refund")
+        if row.status != "pending":
+            raise ConflictError(f"refund {refund_id} is already {row.status}")
+        payment = (
+            await session.execute(
+                select(OrderPayment).where(
+                    OrderPayment.tenant_id == tenant_id, OrderPayment.id == row.payment_id
+                )
+            )
+        ).scalar_one_or_none()
+        if payment is None:
+            raise ValidationError("the refunded payment no longer exists")
+        order = (
+            await session.execute(
+                select(Order).where(Order.tenant_id == tenant_id, Order.id == payment.order_id)
+            )
+        ).scalar_one_or_none()
+        if order is None:
+            raise ValidationError("the refunded order no longer exists")
+
+        row.status = "processed"
+        row.processed_at = datetime.now(UTC)
+        row.external_reference = reference[:64]
+        await session.flush()
+        await OrderService.apply_refunded_payment_states(session, tenant_id, order, [payment.id])
+        await session.flush()
+        return {
+            "refund_id": str(row.id),
+            "order_id": str(order.id),
+            "method": str(payment.method),
+            "amount": str(to_money(row.amount, "refund")),
+            "status": row.status,
+            "external_reference": row.external_reference,
+            "payment_status": payment.status,
         }
 
     # ----------------------------------------------------------- exchanges ----
@@ -4147,6 +4297,7 @@ class PosService(PosReceiptReads):
         payments: object = None,
         refund: object = None,
         refund_method: str | None = None,
+        refund_references: dict[str, str] | None = None,
         actor_user_id: UUID | None = None,
         shift_override: bool = False,
     ) -> dict:
@@ -4425,6 +4576,8 @@ class PosService(PosReceiptReads):
             "amount": to_money(0, "amount"),
             "by_method": {},
             "slices": [],
+            "awaiting_confirmation": [],
+            "terminal_only": [],
         }
         if take_payments and net > 0:
             allowed = set(profile.allowed_payment_methods or []) if profile is not None else set()
@@ -4487,6 +4640,7 @@ class PosService(PosReceiptReads):
                     single_method=refund_method,
                     reason="POS exchange: cheaper replacement",
                     actor_user_id=actor_user_id,
+                    references=refund_references,
                 ),
                 "direction": "refunded",
                 "amount": to_money(-net, "amount"),
@@ -4581,5 +4735,10 @@ class PosService(PosReceiptReads):
             "settled_amount": str(settlement["amount"]),
             "settled_by_method": {m: str(a) for m, a in settlement["by_method"].items()},
             "uncollected": str(settlement.get("uncollected", "0.00")),
+            # The card/wallet part of the difference is promised, not proven: the cashier
+            # reverses it on the terminal and confirms it with the reference. `terminal_only` is
+            # the same thing for a cash-only shop, which never records a non-cash reversal.
+            "awaiting_confirmation": settlement.get("awaiting_confirmation", []),
+            "terminal_only": settlement.get("terminal_only", []),
             "restocked": bool(shelved),
         }

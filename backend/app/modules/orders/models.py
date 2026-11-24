@@ -187,6 +187,10 @@ class Refund(TenantMixin, TimestampMixin, WorkspaceScopeMixin, VersionMixin, Bas
     # allowed: pending | approved | processed | rejected
     status: Mapped[str] = mapped_column(String(15), server_default="pending")
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The terminal's own proof for a card/wallet reversal (RRN, approval code, transfer number).
+    # Required before such a refund counts as done: the money leaves the shop's terminal, not this
+    # database, so without a reference "refunded" is only a hope.
+    external_reference: Mapped[str | None] = mapped_column(String(64))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )

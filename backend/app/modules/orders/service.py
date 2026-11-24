@@ -254,6 +254,13 @@ class _TaxPlan:
     taxes: list
 
 
+# Refund states that mean the money actually went back. `pending` is deliberately absent: a card
+# reversal the till has not confirmed with its terminal reference must not mark the payment
+# refunded or lower the customer's worth, or the books would show money returned while the
+# customer's card still holds it.
+CONFIRMED_REFUND_STATES = ("approved", "processed")
+
+
 class OrderService:
     """All order business rules; static methods taking (session, tenant_id)."""
 
@@ -1749,13 +1756,19 @@ class OrderService:
                             .where(
                                 Refund.tenant_id == tenant_id,
                                 Refund.payment_id == payment.id,
-                                Refund.status != "rejected",
+                                Refund.status.in_(CONFIRMED_REFUND_STATES),
                             )
                         )
                     ).scalar_one()
                 )
             )
             payment_total = to_money(payment.amount, "captured amount")
+            if refunded_total <= 0:
+                # Nothing CONFIRMED yet - a card reversal still pending at the terminal - so the
+                # tender still holds its money and its state must not move. Marking it
+                # partially_refunded here is what made the books claim a reversal nobody performed.
+                fully_refunded = False
+                continue
             payment.status = "refunded" if refunded_total >= payment_total else "partially_refunded"
             if payment.status != "refunded":
                 fully_refunded = False

@@ -200,6 +200,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "pos.return_max_days",  # pos/service.py::return_sale
         "pos.exchange_max_days",  # pos/service.py::exchange
         "pos.return_restock_default",  # pos/service.py::return_sale, exchange
+        "pos.refund_cash_only",  # pos/service.py::_settle_refund
         "pos.return_reasons",  # pos/service.py::_clean_return_reason
         "purchasing.allow_over_receipt",  # purchasing/service.py::GoodsReceiptService.create
         "pos.require_customer",  # pos/service.py::_resolve_customer
@@ -835,6 +836,26 @@ _reg(
         label_en="Restock Returned Items by Default",
         description_ar="القيمة الابتدائية لخيار إرجاع القطعة المرتجعة للمخزون. يغيّرها الكاشير.",
         description_en="The starting choice for putting a returned item back on the shelf.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pos.refund_cash_only",
+        domain="pos",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="رد الفلوس نقدي فقط",
+        label_en="Refund Cash Only",
+        description_ar=(
+            "لما يكون مفتوح، الكاشير مبيعلنش رد بطاقة أو محفظة من النظام: المبلغ بيظهر كتنبيه "
+            "يرده على الماكينة بإيده، ومفيش سطر استرداد بيتسجل. مناسب للمحلات اللي بتبدأ نقدي."
+        ),
+        description_en=(
+            "When on, the till never records a card/wallet reversal: that amount is reported for "
+            "the cashier to reverse on the terminal by hand. Right for shops starting cash-only."
+        ),
     )
 )
 _reg(

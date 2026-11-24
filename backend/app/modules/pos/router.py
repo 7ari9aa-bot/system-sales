@@ -368,6 +368,10 @@ class ReturnRequest(BaseModel):
     refund: list[RefundLine] | None = None
     # Refund the whole return on this one method. Mutually exclusive with ``refund``.
     refund_method: str | None = Field(default=None, max_length=31)
+    # {method: terminal reference} for a card/wallet reversal the cashier already made. Without
+    # one, that part of the refund is written `pending` and the response says so in
+    # `awaiting_confirmation`: the money is promised, not yet proven.
+    refund_references: dict[str, str] | None = None
 
 
 class ExchangeLine(BaseModel):
@@ -397,6 +401,8 @@ class ExchangeRequest(BaseModel):
     # How the difference goes back when the replacement costs less.
     refund: list[RefundLine] | None = None
     refund_method: str | None = Field(default=None, max_length=31)
+    # As on ReturnRequest: the terminal's reference for a card/wallet reversal of the difference.
+    refund_references: dict[str, str] | None = None
 
 
 def _session_out(pos_session, inflow=None, outflow=None, expected_now=None) -> dict:
@@ -1058,6 +1064,7 @@ async def return_sale(
         restock=body.restock,
         refund=[line.model_dump() for line in body.refund] if body.refund else None,
         refund_method=body.refund_method,
+        refund_references=body.refund_references,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
     )
@@ -1097,6 +1104,7 @@ async def exchange(
         payments=body.payments,
         refund=[line.model_dump() for line in body.refund] if body.refund else None,
         refund_method=body.refund_method,
+        refund_references=body.refund_references,
         actor_user_id=ctx.user.id,
         shift_override=override.active,
     )
@@ -1105,6 +1113,31 @@ async def exchange(
         "return_receipt_id": str(result["return_receipt_id"]),
         "new_receipt_id": str(result["new_receipt_id"]),
     }
+
+
+class ConfirmRefundRequest(BaseModel):
+    """The terminal's own proof that a card/wallet reversal happened."""
+
+    external_reference: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/refunds/{refund_id}/confirm")
+async def confirm_refund(
+    refund_id: UUID, body: ConfirmRefundRequest, ctx: PosWriteCtx, override: OverrideDep
+):
+    """Record the terminal reference for a pending card/wallet refund.
+
+    Until this lands the refund is `pending` and nothing derived has moved: the payment is not
+    marked refunded and the customer is not lowered. A reversal that never confirms stays visibly
+    outstanding instead of quietly counting as money returned.
+    """
+    return await PosService.confirm_refund(
+        ctx.session,
+        ctx.tenant_id,
+        refund_id,
+        body.external_reference,
+        actor_user_id=ctx.user.id,
+    )
 
 
 class VoidSaleRequest(BaseModel):

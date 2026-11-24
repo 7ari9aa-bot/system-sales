@@ -256,6 +256,186 @@ async def test_split_tender_return_is_split_across_the_original_methods(db, tena
     assert summary["by_method"] == {"cash": "200.00", "card": "300.00"}
 
 
+async def test_successive_partial_refunds_on_one_tender_keep_working(db, tenant_ctx):
+    """The report's own scenario: 1,000 cash, 200 back, then 300 back.
+
+    The first partial refund flips the payment to ``partially_refunded``. While the lookup matched
+    ``captured`` only, the second return found no tender and reported the money as never collected.
+    """
+    from app.modules.orders.models import OrderPayment
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=10,
+        payments=[{"method": "cash", "amount": "1000.00"}],
+    )
+    first = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 2}],
+    )
+    assert Decimal(first["refunded"]) == Decimal("200.00")
+    payment = (
+        await db.execute(sa.select(OrderPayment).where(OrderPayment.order_id == sold["order_id"]))
+    ).scalar_one()
+    assert payment.status == "partially_refunded"
+
+    second = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 3}],
+    )
+    assert Decimal(second["refunded"]) == Decimal("300.00")
+    assert second["refund_by_method"] == {"cash": "300.00"}
+    assert second["refund_mode"] == "tender"
+
+    summary = await PosService.drawer_summary(db, tenant_ctx.tenant_id, shift.id)
+    assert Decimal(summary["expected_cash"]) == Decimal("500.00")
+    assert len(await _refund_rows(db, tenant_ctx)) == 2
+
+
+async def test_a_card_refund_waits_for_the_terminal_reference(db, tenant_ctx):
+    """A card reversal happens on the terminal, so writing the row is not the money going back."""
+    from app.modules.orders.models import OrderPayment
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        quantity=2,
+        payments=[{"method": "card", "amount": "200.00", "reference": "AUTH-9"}],
+    )
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert result["refund_by_method"] == {"card": "100.00"}
+    assert result["awaiting_confirmation"] == [
+        {
+            "refund_id": result["awaiting_confirmation"][0]["refund_id"],
+            "method": "card",
+            "amount": "100.00",
+        }
+    ]
+
+    rows = await _refund_rows(db, tenant_ctx)
+    assert len(rows) == 1
+    assert rows[0].status == "pending"
+    assert rows[0].external_reference is None
+    assert rows[0].processed_at is None
+    # Nothing derived has moved yet: the card still holds the money.
+    payment = (
+        await db.execute(sa.select(OrderPayment).where(OrderPayment.order_id == sold["order_id"]))
+    ).scalar_one()
+    assert payment.status == "captured"
+
+    confirmed = await PosService.confirm_refund(db, tenant_ctx.tenant_id, rows[0].id, "RRN-778812")
+    assert confirmed["status"] == "processed"
+    assert confirmed["external_reference"] == "RRN-778812"
+    assert confirmed["payment_status"] == "partially_refunded"
+    await db.refresh(rows[0])
+    assert rows[0].external_reference == "RRN-778812"
+    assert rows[0].processed_at is not None
+
+
+async def test_a_reference_typed_up_front_never_leaves_a_pending_row(db, tenant_ctx):
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-1"}],
+    )
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+        refund_references={"card": "RRN-000111"},
+    )
+    assert result["awaiting_confirmation"] == []
+    rows = await _refund_rows(db, tenant_ctx)
+    assert [(row.status, row.external_reference) for row in rows] == [("processed", "RRN-000111")]
+
+
+async def test_confirming_a_refund_needs_a_reference_and_happens_once(db, tenant_ctx):
+    from app.modules.errors import ConflictError, ValidationError
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-2"}],
+    )
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    refund = (await _refund_rows(db, tenant_ctx))[0]
+    with pytest.raises(ValidationError):
+        await PosService.confirm_refund(db, tenant_ctx.tenant_id, refund.id, "   ")
+    await PosService.confirm_refund(db, tenant_ctx.tenant_id, refund.id, "RRN-1")
+    with pytest.raises(ConflictError):
+        await PosService.confirm_refund(db, tenant_ctx.tenant_id, refund.id, "RRN-2")
+
+
+async def test_a_cash_only_shop_reports_the_card_reversal_instead_of_recording_it(db, tenant_ctx):
+    """A shop that starts cash-only cannot reverse a card, so the till must not pretend it did."""
+    from app.modules.pos.service import PosService
+    from app.modules.settings.service import SettingsService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-3"}],
+    )
+    result = await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    assert result["refund_mode"] == "cash_only"
+    assert result["refunded"] == "0.00"
+    assert result["terminal_only"] == [{"method": "card", "amount": "100.00"}]
+    assert await _refund_rows(db, tenant_ctx) == []
+
+
 async def test_a_second_return_cannot_refund_the_same_piece_twice(db, tenant_ctx):
     from app.modules.errors import ConflictError
     from app.modules.pos.service import PosService
@@ -1266,3 +1446,52 @@ async def _sellable_variant_of(db, tenant_ctx, *, price, stock):
     from tests.test_pos_returns import _sellable_variant
 
     return await _sellable_variant(db, tenant_ctx, price=price, stock=stock)
+
+
+@pytest.mark.asyncio
+async def test_the_confirm_route_records_the_terminal_reference(db, tenant_ctx) -> None:
+    """The endpoint the returns screen calls after the cashier reverses on the machine."""
+    from pydantic import ValidationError as ModelValidationError
+
+    from app.modules.pos.router import ConfirmRefundRequest, confirm_refund
+    from app.modules.pos.service import PosService
+
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    sold = await _sale(
+        db,
+        tenant_ctx,
+        shift,
+        variant,
+        customer,
+        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-4"}],
+    )
+    await PosService.return_sale(
+        db,
+        tenant_ctx.tenant_id,
+        shift.id,
+        order_id=sold["order_id"],
+        lines=[{"variant_id": str(variant.id), "quantity": 1}],
+    )
+    refund = (await _refund_rows(db, tenant_ctx))[0]
+
+    class Ctx:
+        session = db
+        tenant_id = tenant_ctx.tenant_id
+
+        class user:
+            id = tenant_ctx.user.id
+
+    class Override:
+        active = True
+
+    with pytest.raises(ModelValidationError):
+        # The route model refuses an empty reference before the service is even reached.
+        ConfirmRefundRequest(external_reference="")
+
+    out = await confirm_refund(
+        refund.id, ConfirmRefundRequest(external_reference="RRN-4242"), Ctx(), Override()
+    )
+    assert out["status"] == "processed"
+    assert out["external_reference"] == "RRN-4242"
+    # The whole tender came back, so the payment is fully refunded, not partially.
+    assert out["payment_status"] == "refunded"

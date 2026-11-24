@@ -38,6 +38,16 @@ from app.modules.pos.tender import CASH, to_money
 
 ZERO = Decimal("0.00")
 
+# Payment states that mean money ACTUALLY ARRIVED, so the tender can give some back. The first
+# partial refund flips a payment to `partially_refunded`; leaving that state out of the lookup made
+# the second return on one invoice unable to find the tender it must refund from.
+REFUNDABLE_PAYMENT_STATES = ("captured", "partially_refunded", "refunded")
+
+# Refund rows that already count against a tender's room. `pending` is included on purpose: a
+# card/wallet reversal the cashier has not yet confirmed with its terminal reference is money
+# promised to the customer, and paying it again before it is confirmed would be a double refund.
+REFUND_COUNTED_STATES = ("pending", "approved", "processed")
+
 
 @dataclass(frozen=True, slots=True)
 class Tender:
