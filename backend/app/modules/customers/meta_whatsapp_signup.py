@@ -607,8 +607,18 @@ async def _start_coexistence_sync(
     so it is sent at the end of the connect instead of waiting for a worker that may never run.
     A failure is recorded on the channel (``sync_error``) and retried by the next connect attempt;
     it never turns a connected number into a failed connect, because the number IS connected.
+
+    Order matters and used to be wrong: the channel row is COMMITTED before Meta is asked. Meta
+    answers the request immediately and starts pushing ``history`` / ``smb_app_state_sync``
+    webhooks within seconds, and a webhook for a number whose channel is still only flushed in an
+    open transaction cannot be routed: those messages would be dropped with nothing to retry them.
     """
     from app.modules.conversations import whatsapp_sync
+
+    # The channel must exist for the webhook that is about to arrive, not for the next request.
+    commit = getattr(session, "commit", None)
+    if callable(commit):
+        await commit()
 
     config = dict(integration.config or {})
     epoch = whatsapp_sync.epoch_for(config)
