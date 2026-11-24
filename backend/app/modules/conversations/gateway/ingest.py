@@ -607,7 +607,9 @@ class IngestService:
                     contacts_snapshot_received=True,
                 )
             for contact in batch.get("contacts") or []:
-                identity_ref = str(contact.get("identity_ref") or contact.get("phone") or "").strip()
+                identity_ref = str(
+                    contact.get("identity_ref") or contact.get("phone") or ""
+                ).strip()
                 if not identity_ref:
                     continue
                 action_at = contact.get("timestamp") or batch.get("timestamp")
@@ -622,7 +624,9 @@ class IngestService:
                     else None
                 )
                 previous_extra = (
-                    existing_identity.extra if existing_identity and isinstance(existing_identity.extra, dict) else {}
+                    existing_identity.extra
+                    if existing_identity and isinstance(existing_identity.extra, dict)
+                    else {}
                 )
                 previous_at = previous_extra.get("whatsapp_app_contact_updated_at")
                 if action_at and previous_at:
@@ -760,7 +764,10 @@ class IngestService:
             recipient_ref = str(notice.get("recipient_ref") or "").strip()
             if not recipient_ref:
                 logger.warning(
-                    "whatsapp.unsupported_message_without_recipient tenant=%s channel=%s message_id=%s",
+                    (
+                        "whatsapp.unsupported_message_without_recipient "
+                        "tenant=%s channel=%s message_id=%s"
+                    ),
                     tenant_id,
                     channel,
                     mid,
