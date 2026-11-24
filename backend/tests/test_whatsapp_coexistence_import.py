@@ -555,3 +555,20 @@ async def test_an_unsupported_notice_is_recorded_without_touching_the_channel(te
     assert notice.sender_type == "system"
     assert notice.content_type == "unsupported"
     assert integration.status == "active"
+    # The merchant has to SEE it: the notice moves the unread counter and publishes the same event
+    # the inbox listens to. Without them the conversation looked quiet while the customer waited.
+    conversation = (
+        await session.execute(select(Conversation).where(Conversation.tenant_id == tenant_id))
+    ).scalar_one()
+    assert conversation.unread_count == 1
+    event = (
+        await session.execute(
+            select(OutboxEvent).where(
+                OutboxEvent.tenant_id == tenant_id,
+                OutboxEvent.event_type == "message.received",
+            )
+        )
+    ).scalar_one()
+    assert event.payload["message_id"] == str(notice.id)
+    # ...and the AI stays out of it: the message lives in the merchant's own app.
+    assert event.payload["agent_should_reply"] is False

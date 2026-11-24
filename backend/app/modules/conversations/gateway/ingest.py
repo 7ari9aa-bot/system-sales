@@ -859,26 +859,52 @@ class IngestService:
                 session, tenant_id, customer_id=customer.id, channel=channel
             )
             detail = str(notice.get("details") or notice.get("title") or "").strip()
-            session.add(
-                Message(
-                    tenant_id=tenant_id,
-                    conversation_id=conversation.id,
-                    channel=channel,
-                    direction="inbound",
-                    sender_type="system",
-                    body=(
-                        "A WhatsApp message could not be delivered to FIHRIST because it came "
-                        "from an unsupported device or message type."
-                        + (f" Meta: {detail}" if detail else "")
-                    ),
-                    content_type="unsupported",
-                    channel_message_id=f"unsupported:{mid}",
-                    status="received",
-                    payload={"notice_code": 131060, "provider_message_id": mid},
-                    provider_metadata={"imported_from": "whatsapp_unsupported_notice"},
-                )
+            body = (
+                "A WhatsApp message could not be delivered to FIHRIST because it came "
+                "from an unsupported device or message type."
+                + (f" Meta: {detail}" if detail else "")
             )
-            conversation.last_message_at = datetime.now(UTC)
+            note = Message(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                channel=channel,
+                direction="inbound",
+                sender_type="system",
+                body=body,
+                content_type="unsupported",
+                channel_message_id=f"unsupported:{mid}",
+                status="received",
+                payload={"notice_code": 131060, "provider_message_id": mid},
+                provider_metadata={"imported_from": "whatsapp_unsupported_notice"},
+            )
+            session.add(note)
+            await session.flush()
+            now = datetime.now(UTC)
+            conversation.last_message_at = now
+            # The notice is a message the merchant must SEE: without the counter and the event an
+            # open inbox never learns that something arrived and could not be handed over, and the
+            # conversation looked quiet while the customer was waiting for an answer.
+            conversation.unread_count += 1
+            await add_outbox_event(
+                session,
+                aggregate_type="message",
+                aggregate_id=note.id,
+                event_type="message.received",
+                tenant_id=tenant_id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "message_id": str(note.id),
+                    "customer_id": str(customer.id),
+                    "channel": channel,
+                    "body": body,
+                    "content_type": "unsupported",
+                    # Not a customer turn: the AI hook reads this and stays out of it. The merchant
+                    # has to answer from their own app, which is where the message actually lives.
+                    "sender_type": "system",
+                    "agent_should_reply": False,
+                },
+                aggregate_version=1,
+            )
             recorded += 1
         return recorded
 
