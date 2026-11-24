@@ -1,7 +1,7 @@
 {
   "measured": {
-    "operations": 660,
-    "sha256": "368d0b2daf0471c121c238886886d2b654aa45021ef960d7cb3449444a6f4a73",
+    "operations": 661,
+    "sha256": "3831d75220fc87e4063604a7b42e7b209cc14eee9bb00712d15bfb0685e01fb7",
     "typed_operations": 356
   },
   "spec": {
@@ -4257,6 +4257,22 @@
           "title": "CompleteSetupBody",
           "type": "object"
         },
+        "ConfirmRefundRequest": {
+          "description": "The terminal's own proof that a card/wallet reversal happened.",
+          "properties": {
+            "external_reference": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "External Reference",
+              "type": "string"
+            }
+          },
+          "required": [
+            "external_reference"
+          ],
+          "title": "ConfirmRefundRequest",
+          "type": "object"
+        },
         "ConsentGrant": {
           "properties": {
             "channel": {
@@ -8399,6 +8415,20 @@
                 }
               ],
               "title": "Refund Method"
+            },
+            "refund_references": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund References"
             },
             "restock": {
               "anyOf": [
@@ -26860,6 +26890,20 @@
                 }
               ],
               "title": "Refund Method"
+            },
+            "refund_references": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refund References"
             },
             "restock": {
               "anyOf": [
@@ -76217,6 +76261,122 @@
             }
           },
           "summary": "Email Receipt",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
+      "/api/v1/pos/refunds/{refund_id}/confirm": {
+        "post": {
+          "description": "Record the terminal reference for a pending card/wallet refund.\n\nUntil this lands the refund is `pending` and nothing derived has moved: the payment is not\nmarked refunded and the customer is not lowered. A reversal that never confirms stays visibly\noutstanding instead of quietly counting as money returned.",
+          "operationId": "confirm_refund_api_v1_pos_refunds__refund_id__confirm_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "refund_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Refund Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmRefundRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Confirm Refund",
           "tags": [
             "pos"
           ]
