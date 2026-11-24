@@ -33,18 +33,47 @@ export const navGroups = [
     ],
   },
   {
-    title: "المنتجات والمخزون",
-    titleKey: "nav.productsAndStock",
+    title: "المنتجات",
+    titleKey: "nav.products",
     items: [
       { to: "/products", label: "المنتجات", icon: Shirt },
       { to: "/products/new", label: "إضافة منتج", icon: Plus },
       { to: "/labels", label: "طباعة باركود", icon: Printer },
-      { to: "/inventory", label: "المخزون", icon: Boxes },
-      { to: "/supply-chain", label: "سلاسل الإمداد", icon: Truck },
     ],
   },
   {
-    title: "الموردون والمشتريات والمصروفات",
+    title: "المخزون",
+    titleKey: "nav.stock",
+    items: [
+      {
+        to: "/inventory",
+        label: "المخزون",
+        icon: Boxes,
+        // كل واحدة صفحة مستقلة بمسارها بدل تبويبات في صفحة واحدة.
+        children: [
+          { to: "/inventory/movements", label: "حركة الأصناف", icon: ClipboardList },
+          { to: "/inventory/stocktake", label: "الجرد الفعلي", icon: List },
+          { to: "/inventory/import", label: "استيراد الأصناف", icon: RefreshCw },
+        ],
+      },
+      {
+        to: "/supply-chain",
+        label: "سلاسل الإمداد",
+        icon: Truck,
+        children: [
+          { to: "/supply-chain/receipts", label: "أذونات الاستلام والجودة", icon: ClipboardList },
+          { to: "/supply-chain/transfers", label: "التحويلات بين المستودعات", icon: RefreshCw },
+          { to: "/supply-chain/replenishment", label: "محرك التجديد", icon: Plus },
+          { to: "/supply-chain/locations", label: "المواقع والرفوف", icon: Boxes },
+          { to: "/supply-chain/valuation", label: "التقييم والتكاليف", icon: Wallet },
+          { to: "/supply-chain/traceability", label: "التتبع والدفعات", icon: ScanBarcode },
+          { to: "/supply-chain/allocations", label: "تخصيص القنوات", icon: Truck },
+        ],
+      },
+    ],
+  },
+  {
+    title: "الموردون والمشتريات",
     titleKey: "nav.suppliersAndPurchases",
     items: [
       { to: "/suppliers", label: "الموردون", icon: Truck },

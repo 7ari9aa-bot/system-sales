@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function Sidebar({ open, onClose, collapsed = false, onToggleCollapse }) {
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const t = useT();
   const { lang, setLang } = useI18n();
@@ -162,7 +162,6 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                 {group.items.map((item) => {
                   const active = item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`) || [].concat(item.also || []).some((base) => pathname === base || pathname.startsWith(`${base}/`));
                   const Icon = item.icon;
-                  const section = new URLSearchParams(search).get("s");
                   return (
                     <React.Fragment key={item.to}>
                       <Link
@@ -198,12 +197,12 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
                       {!collapsed && item.children && active ? (
                         <div className="ms-5 mt-0.5 mb-1 space-y-0.5 border-s border-sidebar-border ps-2">
                           {item.children.map((child) => {
-                            const childActive = section === child.key;
+                            const childActive = pathname === child.to;
                             const ChildIcon = child.icon;
                             return (
                               <Link
-                                key={child.key}
-                                to={`${item.to}?s=${child.key}`}
+                                key={child.to}
+                                to={child.to}
                                 onClick={onClose}
                                 className={cn(
                                   "group flex items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
