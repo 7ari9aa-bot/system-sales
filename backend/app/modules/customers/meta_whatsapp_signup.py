@@ -391,11 +391,16 @@ def _resolve_onboarding_mode(facts: dict, requested: str) -> tuple[str, str]:
             "WhatsApp Business app, or move it to the Cloud API first."
         )
     logger.info(
-        "whatsapp.signup_not_on_business_app requested=%s platform=%s",
+        "whatsapp.signup_not_on_business_app_rejected requested=%s platform=%s",
         requested,
         facts.get("platform_type"),
     )
-    return "cloud_api", COEXISTENCE_NOT_ON_APP
+    raise ValidationError(
+        "This FIHRIST connection is for an existing WhatsApp Business app number. "
+        "Meta reports that this number is not currently on the WhatsApp Business app, "
+        "so it was not connected. Open WhatsApp Business on the phone and start the "
+        "Business App coexistence signup again."
+    )
 
 
 def _register_error(response: httpx.Response) -> ExternalProviderError:
