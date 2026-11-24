@@ -2088,7 +2088,7 @@ async def test_a_fully_unpaid_sale_stops_being_owed_when_the_goods_come_back(
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
     )
     # Nothing was collected, so no money moves — but the debt goes with the goods.
-    assert out["mode"] == "nothing_collected", out.get("mode")
+    assert out["refund_mode"] == "nothing_collected", out.get("refund_mode")
     assert await Accounts.balance(db, tenant_ctx.tenant_id, customer.id) == Decimal("0.00")
 
 
@@ -2140,9 +2140,10 @@ async def test_the_credit_cancels_only_the_invoice_that_came_back(db, tenant_ctx
 
 
 def _app(ctx):
+    from app.core.idempotency import IdempotencyMiddleware
+    from app.core.middleware import RateLimitMiddleware
     from app.main import create_app
     from app.modules.identity.deps import get_db, get_tenant_ctx
-    from app.core.middleware import IdempotencyMiddleware, RateLimitMiddleware
 
     app = create_app()
     app.user_middleware = [
@@ -2164,24 +2165,62 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
     it says "no", so any cashier could pay a refund out of a drawer that was not theirs."""
     from httpx import ASGITransport, AsyncClient
 
+    from app.core.security import hash_password
+    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.modules.identity.models import Role, TenantUser, User
     from app.modules.pos.service import PosService
     from tests._pos_helpers import ctx_for
 
     owner_ctx = await ctx_for(db, tenant_ctx, "owner")
     staff_ctx = await ctx_for(db, tenant_ctx, "staff")
+    staff_role = (
+        await db.execute(sa.select(Role).where(Role.code == "staff"))
+    ).scalar_one()
+    other = User(
+        email=f"staff-{uuid.uuid4().hex[:8]}@test.local",
+        password_hash=hash_password("x" * 12),
+        full_name="موظف تاني",
+    )
+    db.add(other)
+    await db.flush()
+    db.add(
+        TenantUser(
+            tenant_id=tenant_ctx.tenant_id,
+            user_id=other.id,
+            role_id=staff_role.id,
+        )
+    )
+    await db.flush()
+    staff_ctx = TenantContext(
+        session=db,
+        user=AuthedUser(
+            id=other.id,
+            tenant_id=tenant_ctx.tenant_id,
+            role_code="staff",
+            is_platform_admin=False,
+        ),
+        tenant_id=tenant_ctx.tenant_id,
+        role_code="staff",
+        permission_codes=staff_ctx.permission_codes,
+    )
     assert "pos:override" not in (staff_ctx.permission_codes or set())
 
-    shift, variant, customer = await _paid_till(db, tenant_ctx)
-    # The drawer belongs to somebody else: the sale and its return are recorded by another actor.
-    other_actor = uuid.uuid4()
+    shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
+    # The drawer is the owner's; the staff member is standing at it without pos:override.
+    shift.cashier_user_id = owner_ctx.user.id
+    await db.flush()
+
     sold = await PosService.record_sale(
         db,
         tenant_ctx.tenant_id,
         shift.register_id,
-        items=[{"variant_id": str(variant.id), "quantity": 1}],
+        items=[{"variant_id": str(variant.id), "quantity": 2}],
         customer_id=customer.id,
-        payments=[{"method": "card", "amount": "100.00", "reference": "AUTH-9"}],
-        actor_user_id=other_actor,
+        payments=[
+            {"method": "cash", "amount": "100.00"},
+            {"method": "card", "amount": "100.00", "reference": "AUTH-9"},
+        ],
+        actor_user_id=owner_ctx.user.id,
         idempotency_key=f"drawer-{uuid.uuid4().hex[:8]}",
     )
     out = await PosService.return_sale(
@@ -2190,7 +2229,9 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
         shift.id,
         order_id=sold["order_id"],
         lines=[{"variant_id": str(variant.id), "quantity": 1}],
-        actor_user_id=other_actor,
+        # Card chosen, so cash room stays open and a cash replacement is possible.
+        refund_method="card",
+        actor_user_id=owner_ctx.user.id,
     )
     refund_id = out["awaiting_confirmation"][0]["refund_id"]
 
@@ -2198,7 +2239,12 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
         transport=ASGITransport(app=_app(staff_ctx)), base_url="http://test", timeout=20
     ) as client:
         refused = await client.post(
-            f"/api/v1/pos/refunds/{refund_id}/reject", json={"reason": "الماكينة رفضت"}
+            f"/api/v1/pos/refunds/{refund_id}/reject",
+            json={
+                "reason": "الماكينة رفضت",
+                "replacement_method": "cash",
+                "session_id": str(shift.id),
+            },
         )
     assert refused.status_code in (403, 409), refused.text
 
@@ -2206,6 +2252,11 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
         transport=ASGITransport(app=_app(owner_ctx)), base_url="http://test", timeout=20
     ) as client:
         allowed = await client.post(
-            f"/api/v1/pos/refunds/{refund_id}/reject", json={"reason": "الماكينة رفضت"}
+            f"/api/v1/pos/refunds/{refund_id}/reject",
+            json={
+                "reason": "الماكينة رفضت",
+                "replacement_method": "cash",
+                "session_id": str(shift.id),
+            },
         )
     assert allowed.status_code == 200, allowed.text
