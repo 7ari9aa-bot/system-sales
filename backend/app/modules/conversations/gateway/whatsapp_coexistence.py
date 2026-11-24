@@ -305,11 +305,17 @@ def parse_history_batches(payload: dict) -> list[dict]:
         ] or [top_metadata]
         # The documented shape puts phase/chunk_order/progress on history[].metadata.
         sync_metadata = next(
-            (item for item in metadata_sources if any(k in item for k in ("phase", "chunk_order", "progress"))),
+            (
+                item
+                for item in metadata_sources
+                if any(k in item for k in ("phase", "chunk_order", "progress"))
+            ),
             top_metadata,
         )
         business_number = str(
-            top_metadata.get("display_phone_number") or sync_metadata.get("display_phone_number") or ""
+            top_metadata.get("display_phone_number")
+            or sync_metadata.get("display_phone_number")
+            or ""
         ).strip()
         messages: list[dict] = []
         for thread in _threads(value):
@@ -320,7 +326,10 @@ def parse_history_batches(payload: dict) -> list[dict]:
                 continue
             identity_type = "bsuid" if bsuid else "phone"
             parent_ref = (
-                str(context.get("parent_user_id") or context.get("parent_ref") or "").strip() or None
+                str(
+                    context.get("parent_user_id") or context.get("parent_ref") or ""
+                ).strip()
+                or None
             )
             for msg in thread.get("messages") or []:
                 normalized = _normalize_thread_message(
@@ -337,7 +346,9 @@ def parse_history_batches(payload: dict) -> list[dict]:
             {
                 "request_id": _request_id(value),
                 "phase": _int_or_none(sync_metadata.get("phase", value.get("phase"))),
-                "chunk_order": _int_or_none(sync_metadata.get("chunk_order", value.get("chunk_order"))),
+                "chunk_order": _int_or_none(
+                    sync_metadata.get("chunk_order", value.get("chunk_order"))
+                ),
                 "progress": _int_or_none(sync_metadata.get("progress", value.get("progress"))),
                 "message_ids": sorted(
                     str(message.get("channel_message_id") or "")
@@ -361,7 +372,9 @@ def parse_history_batches(payload: dict) -> list[dict]:
                 "not_shared": bool(errors),
                 "error": next(
                     (
-                        str(error.get("message") or error.get("title") or "history not shared")[:500]
+                        str(
+                            error.get("message") or error.get("title") or "history not shared"
+                        )[:500]
                         for item in errors
                         for error in item.get("errors") or []
                         if isinstance(error, dict) and _int_or_none(error.get("code")) == 2593109
