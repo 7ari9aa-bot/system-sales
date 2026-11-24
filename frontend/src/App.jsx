@@ -52,6 +52,7 @@ const Usage = lazy(() => import('@/pages/Usage'));
 const Websites = lazy(() => import('@/pages/Websites'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
+const SettingsOverview = lazy(() => import('@/pages/settings/SettingsOverview'));
 const WorkspaceSettings = lazy(() => import('@/pages/settings/WorkspaceSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
 const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
@@ -175,6 +176,7 @@ const DashboardRoutes = () => (
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<SettingsLayout />}>
+          <Route path="/settings/overview" element={<SettingsOverview />} />
           <Route path="/settings" element={<ProfileSettings />} />
           <Route path="/settings/workspace" element={<WorkspaceSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />

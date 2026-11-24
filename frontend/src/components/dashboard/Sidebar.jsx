@@ -110,6 +110,10 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         { to: "/website", label: t("nav.website"), icon: Globe },
       ],
     },
+    {
+      section: t("nav.manage"),
+      items: [{ to: "/settings/overview", label: t("nav.settings"), icon: Settings }],
+    },
   ];
 
   return (
