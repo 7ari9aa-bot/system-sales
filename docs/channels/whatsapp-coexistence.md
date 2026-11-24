@@ -110,6 +110,35 @@ A voice note is an `<audio>` element on the message's real media URL: play/pause
 seekable progress bar, and an explicit failure state for an expired link. It used to be a toggle
 over a hardcoded `0:14` with no audio at all.
 
+### Who wrote an outbound message
+
+Three writers share one thread on a coexistence number: the AI, a person replying in FIHRIST, and
+the merchant typing in the WhatsApp Business app on their phone. Every imported message keeps its
+origin in `provider_metadata.imported_from` (`whatsapp_business_app` for an echo,
+`whatsapp_history` for the app's own log), the messages payload exposes it as `source`, and the
+bubble footer labels it — **Business App**, **AI** or **FIHRIST**. Inbound messages carry no label
+because the customer is the only sender on that side, and a deleted message shows its tombstone
+instead. Without this, a reply the owner typed on their phone is drawn exactly like an AI reply,
+which is the one confusion a coexistence launch cannot afford.
+
+### The strip above the thread
+
+`GET /api/v1/integrations/whatsapp/coexistence-status` (typed, in the OpenAPI lock) answers from
+FIHRIST's own rows, never from Meta:
+
+* `sync_state` is recomputed from `whatsapp_sync_runs` on every read — the cached
+  `config["sync_state"]` written at connect time goes stale the moment a history chunk lands;
+* `contacts` and `history` carry state, percentage, imported count, deadline and (clipped) error;
+* `offboarded`, `disconnect_event` and `disconnect_reason` come from the `partner_removed` mark the
+  lifecycle handler writes, so a `PARTNER_REMOVED` channel says so and links back to settings.
+
+`CoexistenceBanner` renders it at the top of a WhatsApp thread: a progress bar with the running
+half's real percentage and message count while the transfer is going, Meta's reason plus a
+reconnect link when the number is disconnected, a plain statement (not a failure) when the merchant
+declined history, and nothing at all once the state is `READY`. The hook polls only while the state
+is unsettled, so an idle inbox makes no requests, and a failed read hides the strip instead of
+breaking the thread.
+
 ## Tests
 
 | File | Covers |
@@ -121,15 +150,17 @@ over a hardcoded `0:14` with no audio at all.
 | `tests/test_whatsapp_bsuid_identity.py` | BSUID-only customers, empty ref refused |
 | `tests/test_whatsapp_coexistence_lifecycle.py` | `waba_info.waba_id` routing, offboarding, reconnect, restriction |
 | `tests/test_whatsapp_throughput.py` | 20/s per number, pacing, per-number isolation |
+| `tests/test_whatsapp_coexistence_status.py` | the snapshot, copy for every state, `source` on the payload, the status route is typed |
 | `src/components/inbox/ChannelChat.voice.test.jsx` | real audio, duration, failure state |
+| `src/components/inbox/whatsapp/MessageSource.test.jsx` | Business App / AI / FIHRIST labels, no label inbound or deleted |
+| `src/components/inbox/whatsapp/CoexistenceBanner.test.jsx` | syncing percentage, READY silence, disconnect with reason, declined history, failed sync |
 
 The DB-backed ones need Postgres (`DATABASE_URL_APP`) and skip without it; the throughput pacing
 test uses Redis and skips when it is not running.
 
 ## Still open
 
-* Source labels in the inbox (Business App / FIHRIST / AI / human) and on-screen sync progress: the
-  data is stored (`provider_metadata.imported_from`, `whatsapp_sync_runs`) but the bubble does not
-  draw it yet.
 * Throughput visibility: the cap is enforced and a 130429 is reported, but no gauge shows a number's
   current rate.
+* The settings card still shows the connect-time `sync_state`; the live picture lives in the inbox
+  strip and in the status endpoint.

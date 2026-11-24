@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 659,
-    "sha256": "cd79b16c8a0920eda235a229fa5d320386d7e3037fe046aa4ab1cd0421b7db40",
-    "typed_operations": 355
+    "operations": 660,
+    "sha256": "368d0b2daf0471c121c238886886d2b654aa45021ef960d7cb3449444a6f4a73",
+    "typed_operations": 356
   },
   "spec": {
     "components": {
@@ -25646,6 +25646,172 @@
           "title": "WebsiteOrderOut",
           "type": "object"
         },
+        "WhatsAppCoexistenceStatusOut": {
+          "description": "Whether the app and FIHRIST are actually sharing this number, and how far the data got.\n\n``sync_state`` is recomputed from the sync rows on every read, so a history chunk that landed\na second ago is already reflected. ``offboarded`` carries Meta's own reason for a removal —\nthe one thing that tells the owner the number needs linking again rather than waiting.",
+          "properties": {
+            "coexistence_status": {
+              "default": "unknown",
+              "title": "Coexistence Status",
+              "type": "string"
+            },
+            "connected": {
+              "default": false,
+              "title": "Connected",
+              "type": "boolean"
+            },
+            "contacts": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WhatsAppSyncRunOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "deadline_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline At"
+            },
+            "disconnect_event": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disconnect Event"
+            },
+            "disconnect_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disconnect Reason"
+            },
+            "display_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Display Name"
+            },
+            "history": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WhatsAppSyncRunOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "is_on_biz_app": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is On Biz App"
+            },
+            "offboarded": {
+              "default": false,
+              "title": "Offboarded",
+              "type": "boolean"
+            },
+            "onboarding_mode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Onboarding Mode"
+            },
+            "phone_number_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone Number Id"
+            },
+            "platform_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform Type"
+            },
+            "provider": {
+              "default": "whatsapp",
+              "title": "Provider",
+              "type": "string"
+            },
+            "ready": {
+              "default": false,
+              "title": "Ready",
+              "type": "boolean"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "sync_label": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "title": "Sync Label",
+              "type": "object"
+            },
+            "sync_state": {
+              "title": "Sync State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sync_state",
+            "sync_label"
+          ],
+          "title": "WhatsAppCoexistenceStatusOut",
+          "type": "object"
+        },
         "WhatsAppRoadmapOut": {
           "description": "GET /integrations/{id}/whatsapp-roadmap: the features Meta gates, each with its state.",
           "properties": {
@@ -25822,6 +25988,84 @@
             "graph_version"
           ],
           "title": "WhatsAppSignupStartOut",
+          "type": "object"
+        },
+        "WhatsAppSyncRunOut": {
+          "description": "One half of the data sync as the screen shows it: a word, a bar, a count.",
+          "properties": {
+            "chunks": {
+              "default": 0,
+              "title": "Chunks",
+              "type": "integer"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "deadline_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "messages_stored": {
+              "default": 0,
+              "title": "Messages Stored",
+              "type": "integer"
+            },
+            "progress": {
+              "default": 0,
+              "title": "Progress",
+              "type": "integer"
+            },
+            "requested_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Requested At"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "sync_type": {
+              "title": "Sync Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sync_type",
+            "state"
+          ],
+          "title": "WhatsAppSyncRunOut",
           "type": "object"
         },
         "WorkflowCreate": {
@@ -54435,6 +54679,104 @@
             }
           },
           "summary": "Meta Oauth Start",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
+      "/api/v1/integrations/whatsapp/coexistence-status": {
+        "get": {
+          "description": "The live state of the WhatsApp Business app link, for the inbox and the settings card.\n\nRead-only and cheap: it answers from our own rows, never from Meta. A workspace with no\nWhatsApp channel gets ``connected: false`` and the neutral \"about to sync\" state instead of a\n404, because the inbox asks this on every open and a missing channel is not an error.",
+          "operationId": "whatsapp_coexistence_status_api_v1_integrations_whatsapp_coexistence_status_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WhatsAppCoexistenceStatusOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Whatsapp Coexistence Status",
           "tags": [
             "platform"
           ]

@@ -497,3 +497,118 @@ async def record_chunk(
         run.completed_at = datetime.now(UTC)
     await session.flush()
     return run
+
+
+#: What each state means to a person, in the two languages the inbox speaks. The screen never
+#: invents a sentence of its own: one word per state, so "connected" can never read as "synced".
+STATE_COPY: dict[str, dict[str, str]] = {
+    STATE_ONBOARDING: {"en": "Finishing the link with Meta", "ar": "بيكمّل الربط مع Meta"},
+    STATE_CONNECTED_PENDING_SYNC: {
+        "en": "Connected. Contacts and history are about to sync",
+        "ar": "اتوصل. جهات الاتصال والمحادثات هتتزامن حالاً",
+    },
+    STATE_CONTACTS_SYNC_PENDING: {
+        "en": "Waiting for Meta to send your WhatsApp contacts",
+        "ar": "مستنيين Meta تبعت جهات اتصال واتساب",
+    },
+    STATE_CONTACTS_SYNC_IN_PROGRESS: {
+        "en": "Importing your WhatsApp contacts",
+        "ar": "بنجيب جهات اتصال واتساب",
+    },
+    STATE_CONTACTS_SYNC_COMPLETED: {
+        "en": "Contacts imported",
+        "ar": "جهات الاتصال اتجابت",
+    },
+    STATE_HISTORY_SYNC_PENDING: {
+        "en": "Waiting for Meta to send your chat history",
+        "ar": "مستنيين Meta تبعت سجل المحادثات",
+    },
+    STATE_HISTORY_SYNC_IN_PROGRESS: {
+        "en": "Importing your chat history",
+        "ar": "بنجيب سجل المحادثات",
+    },
+    STATE_HISTORY_SYNC_COMPLETED: {
+        "en": "Chat history imported",
+        "ar": "سجل المحادثات اتجاب",
+    },
+    STATE_HISTORY_NOT_SHARED: {
+        "en": "You chose not to share chat history. The app and FIHRIST both work",
+        "ar": "اخترت إنك ما تشاركش سجل المحادثات. التطبيق وفهرست شغالين",
+    },
+    STATE_READY: {"en": "Contacts and history are synced", "ar": "جهات الاتصال والسجل اتزامنوا"},
+    STATE_SYNC_FAILED: {
+        "en": "Meta stopped the data sync. Re-link the number to try again",
+        "ar": "Meta وقفت مزامنة البيانات. اربط الرقم تاني للمحاولة",
+    },
+    STATE_OFFBOARDED: {
+        "en": "This number was removed from FIHRIST",
+        "ar": "الرقم ده اتشال من فهرست",
+    },
+}
+
+
+def run_snapshot(run: WhatsAppSyncRun | None) -> dict | None:
+    """One sync row as the screen reads it: a word, a percentage, a count, a deadline.
+
+    No request id and no raw Meta error: the id is internal bookkeeping and the error text is
+    Meta's, not the shop's. ``progress`` is None when nothing was requested yet — an empty bar
+    reads as "nothing happened", which is the honest picture.
+    """
+    if run is None:
+        return None
+    return {
+        "sync_type": run.sync_type,
+        "state": run.state,
+        "progress": int(run.progress or 0),
+        "messages_stored": int(run.messages_stored or 0),
+        "chunks": int(run.chunks_seen or 0),
+        "requested_at": run.requested_at.isoformat() if run.requested_at else None,
+        "deadline_at": run.deadline_at.isoformat() if run.deadline_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "error": (run.error or None) and str(run.error)[:280],
+    }
+
+
+async def sync_snapshot(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    config: dict,
+    offboarded: bool = False,
+    now: datetime | None = None,
+) -> dict:
+    """The whole coexistence picture for one connection, computed from the run rows.
+
+    Stored ``config["sync_state"]`` is only a cache written at connect time; it goes stale the
+    moment a history chunk lands. This recomputes from Postgres, so the inbox banner and the
+    settings card tell the same story as the webhook that just arrived.
+    """
+    now = now or datetime.now(UTC)
+    phone_number_id = str(config.get("phone_number_id") or "")
+    epoch = epoch_for(config)
+    runs = (
+        await load_runs(session, tenant_id, phone_number_id=phone_number_id, epoch=epoch)
+        if phone_number_id
+        else {WHATSAPP_SYNC_CONTACTS: None, WHATSAPP_SYNC_HISTORY: None}
+    )
+    contacts = runs.get(WHATSAPP_SYNC_CONTACTS)
+    history = runs.get(WHATSAPP_SYNC_HISTORY)
+    state = channel_sync_state(contacts, history, offboarded=offboarded, now=now)
+    copy = STATE_COPY.get(state) or STATE_COPY[STATE_CONNECTED_PENDING_SYNC]
+    deadlines = [r.deadline_at for r in (contacts, history) if r is not None and r.deadline_at]
+    deadline = min(deadlines) if deadlines else None
+    return {
+        "onboarding_mode": config.get("onboarding_mode") or None,
+        "coexistence_status": config.get("coexistence_status") or "unknown",
+        "is_on_biz_app": config.get("is_on_biz_app")
+        if isinstance(config.get("is_on_biz_app"), bool)
+        else None,
+        "platform_type": config.get("platform_type") or None,
+        "sync_state": state,
+        "sync_label": copy,
+        "ready": is_ready(state),
+        "offboarded": bool(offboarded),
+        "deadline_at": deadline.isoformat() if deadline else None,
+        "contacts": run_snapshot(contacts),
+        "history": run_snapshot(history),
+    }

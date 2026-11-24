@@ -38,6 +38,8 @@ import CustomerDrawer from "@/components/customers/CustomerDrawer";
 import ImageViewer from "./whatsapp/ImageViewer";
 import { galleryOf } from "./whatsapp/mediaGallery";
 import WhatsAppBubble, { WHATSAPP_FONT } from "./whatsapp/WhatsAppBubble";
+import MessageSource from "./whatsapp/MessageSource";
+import CoexistenceBanner from "./whatsapp/CoexistenceBanner";
 import ContactInfoPanel from "./whatsapp/ContactInfoPanel";
 import ChatHeader from "./whatsapp/ChatHeader";
 import Composer from "./whatsapp/Composer";
@@ -497,6 +499,10 @@ export default function ChannelChat({
           )}
         </div>
       )}
+
+      {/* The link to the merchant's own phone app is a channel fact, not a conversation one:
+          a thread that quietly stops updating needs to say why, right where it stopped. */}
+      {isWhatsApp && <CoexistenceBanner lang={lang} />}
 
       {/* Messages Scroll Area */}
       <div
@@ -1349,6 +1355,7 @@ function Bubble({ m, showSeen = false, messengerRow = null, instagramRow = null,
     const time = (
       <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-[#667781]" dir="ltr">
         <span>{m.time}</span>
+        <MessageSource m={m} lang={_lang} />
         {out && <MessageStatus status={m.status} lang={_lang} />}
       </div>
     );

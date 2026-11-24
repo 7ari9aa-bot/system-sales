@@ -960,3 +960,102 @@ def _select_integration(tenant_id, provider: str):
         Integration.provider == provider,
         Integration.kind == "channel",
     )
+
+
+class WhatsAppSyncRunOut(BaseModel):
+    """One half of the data sync as the screen shows it: a word, a bar, a count."""
+
+    sync_type: str
+    state: str
+    progress: int = 0
+    messages_stored: int = 0
+    chunks: int = 0
+    requested_at: str | None = None
+    deadline_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+
+
+class WhatsAppCoexistenceStatusOut(BaseModel):
+    """Whether the app and FIHRIST are actually sharing this number, and how far the data got.
+
+    ``sync_state`` is recomputed from the sync rows on every read, so a history chunk that landed
+    a second ago is already reflected. ``offboarded`` carries Meta's own reason for a removal —
+    the one thing that tells the owner the number needs linking again rather than waiting.
+    """
+
+    provider: str = "whatsapp"
+    connected: bool = False
+    status: str | None = None
+    display_name: str | None = None
+    phone_number_id: str | None = None
+    onboarding_mode: str | None = None
+    coexistence_status: str = "unknown"
+    is_on_biz_app: bool | None = None
+    platform_type: str | None = None
+    sync_state: str
+    sync_label: dict[str, str]
+    ready: bool = False
+    offboarded: bool = False
+    disconnect_event: str | None = None
+    disconnect_reason: str | None = None
+    deadline_at: str | None = None
+    contacts: WhatsAppSyncRunOut | None = None
+    history: WhatsAppSyncRunOut | None = None
+
+
+@whatsapp_signup_router.get(
+    "/integrations/whatsapp/coexistence-status",
+    response_model=WhatsAppCoexistenceStatusOut,
+)
+async def whatsapp_coexistence_status(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+):
+    """The live state of the WhatsApp Business app link, for the inbox and the settings card.
+
+    Read-only and cheap: it answers from our own rows, never from Meta. A workspace with no
+    WhatsApp channel gets ``connected: false`` and the neutral "about to sync" state instead of a
+    404, because the inbox asks this on every open and a missing channel is not an error.
+    """
+    from app.modules.conversations import whatsapp_sync
+
+    integration = (
+        await ctx.session.execute(_select_integration(ctx.tenant_id, "whatsapp"))
+    ).scalar_one_or_none()
+    if integration is None:
+        return WhatsAppCoexistenceStatusOut(
+            sync_state=whatsapp_sync.STATE_CONNECTED_PENDING_SYNC,
+            sync_label=whatsapp_sync.STATE_COPY[whatsapp_sync.STATE_CONNECTED_PENDING_SYNC],
+        )
+
+    config = integration.config if isinstance(integration.config, dict) else {}
+    health = integration.webhook_health if isinstance(integration.webhook_health, dict) else {}
+    removed = (
+        health.get("partner_removed") if isinstance(health.get("partner_removed"), dict) else {}
+    )
+    snapshot = await whatsapp_sync.sync_snapshot(
+        ctx.session,
+        ctx.tenant_id,
+        config=config,
+        offboarded=bool(removed),
+    )
+    connection = config.get("_connection") if isinstance(config.get("_connection"), dict) else {}
+    return WhatsAppCoexistenceStatusOut(
+        connected=integration.status in ("active", "connected"),
+        status=integration.status,
+        display_name=connection.get("display_name") or None,
+        phone_number_id=str(config.get("phone_number_id") or "") or None,
+        onboarding_mode=snapshot["onboarding_mode"],
+        coexistence_status=snapshot["coexistence_status"],
+        is_on_biz_app=snapshot["is_on_biz_app"],
+        platform_type=snapshot["platform_type"],
+        sync_state=snapshot["sync_state"],
+        sync_label=snapshot["sync_label"],
+        ready=snapshot["ready"],
+        offboarded=snapshot["offboarded"],
+        disconnect_event=(removed.get("event") or None) if removed else None,
+        disconnect_reason=(removed.get("reason") or None) if removed else None,
+        deadline_at=snapshot["deadline_at"],
+        contacts=snapshot["contacts"],
+        history=snapshot["history"],
+    )

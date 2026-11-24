@@ -61,6 +61,9 @@ function toMessage(message) {
     status: message.status,
     senderType: message.sender_type,
     ai: message.sender_type === "ai",
+    // Where an outbound message was written: the phone's WhatsApp Business app, the app's own
+    // imported history, or here. The bubble labels it (Business App / AI / FIHRIST).
+    source: message.source || null,
     mediaUrl: message.media_url,
     mediaType: message.media_type,
     contentType: message.content_type || "text",

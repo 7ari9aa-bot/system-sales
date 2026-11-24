@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
 import MessageMenu from "./MessageMenu";
 import MessageStatus from "./MessageStatus";
+import MessageSource from "./MessageSource";
 import { BlockedIcon, CameraIcon, FileIcon, MicIcon, ChevronDownIcon, PinIcon, UserIcon } from "./icons";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +65,8 @@ function Meta({ m, out, lang }) {
       {m.edited && !m.deleted && <span dir="auto">{w.edited}</span>}
       <span>{m.time}</span>
       {m.ai && <Sparkles className="h-3 w-3 text-amber-500" aria-hidden="true" />}
+      {/* Business App / AI / FIHRIST: who wrote this outbound message. */}
+      <MessageSource m={m} lang={lang} className="text-[10.5px] font-medium" />
       {out && <MessageStatus status={m.status} lang={lang} />}
     </span>
   );
