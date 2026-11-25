@@ -194,6 +194,12 @@ _DEFINITIONS: list[SettingDef] = []
 ENFORCED_KEYS: frozenset[str] = frozenset(
     {
         "imports.legacy_csv_endpoint",  # catalog/routers/imports.py::import_products_csv
+        # The shop's legal identity now reaches the receipt read model, so the four fields the
+        # owner types there are read instead of stored and forgotten (pos/receipt_settings.py).
+        "business.email",  # pos/receipt_settings.py::receipt_settings
+        "business.website",  # pos/receipt_settings.py::receipt_settings
+        "business.commercial_register",  # pos/receipt_settings.py::receipt_settings
+        "business.address.postal_code",  # pos/receipt_settings.py::receipt_settings
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
         "pos.allow_hold_cart",  # pos/service.py::hold_cart

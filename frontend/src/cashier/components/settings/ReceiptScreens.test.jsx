@@ -15,7 +15,7 @@ describe("the shop profile screen", () => {
   const defs = shown("business", SHOP_PROFILE_KEYS);
   it("offers every detail the receipt prints, in order, and nothing else", () => {
     expect(defs.map((d) => d.key)).toEqual(SHOP_PROFILE_KEYS);
-    expect(defs).toHaveLength(6);
+    expect(defs).toHaveLength(10);
   });
   it("does not offer the industry choice", () => {
     expect(defs.map((d) => d.key)).not.toContain("business.vertical");

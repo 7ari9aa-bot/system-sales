@@ -1,353 +1,353 @@
 [
- {
-  "key": "business.legal_name",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 255,
-  "label_ar": "الاسم القانوني",
-  "description_ar": "الاسم المسجّل رسمياً للمنشأة كما يظهر في الفواتير والمستندات الرسمية."
- },
- {
-  "key": "business.trade_name",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 255,
-  "label_ar": "الاسم التجاري",
-  "description_ar": "الاسم الذي يعرفه به العملاء إن اختلف عن الاسم القانوني."
- },
- {
-  "key": "business.tax_id",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 63,
-  "label_ar": "الرقم الضريبي",
-  "description_ar": "رقم التسجيل الضريبي للمنشأة."
- },
- {
-  "key": "business.commercial_register",
-  "domain": "business",
-  "type": "string",
-  "enforced": false,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 63,
-  "label_ar": "السجل التجاري",
-  "description_ar": "رقم السجل التجاري للمنشأة."
- },
- {
-  "key": "business.phone",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 31,
-  "label_ar": "رقم الهاتف",
-  "description_ar": "رقم هاتف المنشأة للتواصل."
- },
- {
-  "key": "business.email",
-  "domain": "business",
-  "type": "string",
-  "enforced": false,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 320,
-  "label_ar": "البريد الإلكتروني",
-  "description_ar": "البريد الإلكتروني الرسمي للمنشأة."
- },
- {
-  "key": "business.website",
-  "domain": "business",
-  "type": "string",
-  "enforced": false,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 255,
-  "label_ar": "الموقع الإلكتروني",
-  "description_ar": "عنوان موقع المنشأة على الإنترنت."
- },
- {
-  "key": "business.address.line1",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 255,
-  "label_ar": "العنوان",
-  "description_ar": "عنوان المنشأة: الشارع والمبنى."
- },
- {
-  "key": "business.address.city",
-  "domain": "business",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 127,
-  "label_ar": "المدينة",
-  "description_ar": "المدينة التي تقع فيها المنشأة."
- },
- {
-  "key": "business.address.postal_code",
-  "domain": "business",
-  "type": "string",
-  "enforced": false,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 15,
-  "label_ar": "الرمز البريدي",
-  "description_ar": "الرمز البريدي لعنوان المنشأة."
- },
- {
-  "key": "business.type",
-  "domain": "business",
-  "type": "enum",
-  "enforced": false,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": [
-   "retail",
-   "fnb",
-   "services",
-   "wholesale"
-  ],
-  "default": "retail",
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "نوع النشاط",
-  "description_ar": "نوع النشاط، ويحدد الإعدادات التي تظهر لك: تجزئة، مطاعم، خدمات، أو جملة."
- },
- {
-  "key": "business.vertical",
-  "domain": "business",
-  "type": "enum",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "workspace"
-  ],
-  "allowed_values": [
-   "general",
-   "apparel",
-   "pharmacy",
-   "restaurant"
-  ],
-  "default": "general",
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "قطاع النشاط",
-  "description_ar": "ملابس أو صيدلية أو مطعم أو عام. يحدد القدرات المفعّلة مبدئياً وتعدّل كل واحدة منها بنفسك."
- },
- {
-  "key": "print.paper_width",
-  "domain": "print",
-  "type": "enum",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "register"
-  ],
-  "allowed_values": [
-   "58mm",
-   "80mm",
-   "a4"
-  ],
-  "default": "80mm",
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "عرض الورق",
-  "description_ar": "عرض ورق الطباعة: 58 أو 80 مم أو A4."
- },
- {
-  "key": "print.show_logo",
-  "domain": "print",
-  "type": "bool",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "register"
-  ],
-  "allowed_values": null,
-  "default": true,
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "إظهار الشعار",
-  "description_ar": "إظهار شعار المنشأة أعلى الإيصال."
- },
- {
-  "key": "print.header_text",
-  "domain": "print",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 500,
-  "label_ar": "نص أعلى الإيصال",
-  "description_ar": "نص حر يُطبع أعلى الإيصال."
- },
- {
-  "key": "print.footer_text",
-  "domain": "print",
-  "type": "string",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 500,
-  "label_ar": "نص أسفل الإيصال",
-  "description_ar": "نص حر يُطبع أسفل الإيصال، مثل شكر العميل أو سياسة الاستبدال."
- },
- {
-  "key": "print.copies",
-  "domain": "print",
-  "type": "number",
-  "enforced": true,
-  "scopes": [
-   "tenant",
-   "register"
-  ],
-  "allowed_values": null,
-  "default": 1,
-  "min_value": 1.0,
-  "max_value": 5.0,
-  "max_length": null,
-  "label_ar": "عدد نسخ الطباعة",
-  "description_ar": "عدد النسخ المطبوعة من كل إيصال."
- },
- {
-  "key": "print.show_tax_detail",
-  "domain": "print",
-  "type": "bool",
-  "enforced": true,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": null,
-  "default": true,
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "تفصيل الضريبة على الإيصال",
-  "description_ar": "إظهار تفصيل الضريبة في الإيصال."
- },
- {
-  "key": "print.barcode_format",
-  "domain": "print",
-  "type": "enum",
-  "enforced": false,
-  "scopes": [
-   "tenant"
-  ],
-  "allowed_values": [
-   "code128",
-   "ean13",
-   "upc_a",
-   "qr"
-  ],
-  "default": "code128",
-  "min_value": null,
-  "max_value": null,
-  "max_length": null,
-  "label_ar": "صيغة الباركود",
-  "description_ar": "صيغة الباركود المطبوع على الإيصال والملصقات."
- },
- {
-  "key": "print.invoice_prefix",
-  "domain": "print",
-  "type": "string",
-  "enforced": false,
-  "scopes": [
-   "tenant",
-   "branch"
-  ],
-  "allowed_values": null,
-  "default": "INV",
-  "min_value": null,
-  "max_value": null,
-  "max_length": 15,
-  "label_ar": "بادئة رقم الفاتورة",
-  "description_ar": "حروف تسبق رقم الفاتورة، مثل INV."
- }
+  {
+    "key": "business.legal_name",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 255,
+    "label_ar": "الاسم القانوني",
+    "description_ar": "الاسم المسجّل رسمياً للمنشأة كما يظهر في الفواتير والمستندات الرسمية."
+  },
+  {
+    "key": "business.trade_name",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 255,
+    "label_ar": "الاسم التجاري",
+    "description_ar": "الاسم الذي يعرفه به العملاء إن اختلف عن الاسم القانوني."
+  },
+  {
+    "key": "business.tax_id",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 63,
+    "label_ar": "الرقم الضريبي",
+    "description_ar": "رقم التسجيل الضريبي للمنشأة."
+  },
+  {
+    "key": "business.commercial_register",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 63,
+    "label_ar": "السجل التجاري",
+    "description_ar": "رقم السجل التجاري للمنشأة."
+  },
+  {
+    "key": "business.phone",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 31,
+    "label_ar": "رقم الهاتف",
+    "description_ar": "رقم هاتف المنشأة للتواصل."
+  },
+  {
+    "key": "business.email",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 320,
+    "label_ar": "البريد الإلكتروني",
+    "description_ar": "البريد الإلكتروني الرسمي للمنشأة."
+  },
+  {
+    "key": "business.website",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 255,
+    "label_ar": "الموقع الإلكتروني",
+    "description_ar": "عنوان موقع المنشأة على الإنترنت."
+  },
+  {
+    "key": "business.address.line1",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 255,
+    "label_ar": "العنوان",
+    "description_ar": "عنوان المنشأة: الشارع والمبنى."
+  },
+  {
+    "key": "business.address.city",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 127,
+    "label_ar": "المدينة",
+    "description_ar": "المدينة التي تقع فيها المنشأة."
+  },
+  {
+    "key": "business.address.postal_code",
+    "domain": "business",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 15,
+    "label_ar": "الرمز البريدي",
+    "description_ar": "الرمز البريدي لعنوان المنشأة."
+  },
+  {
+    "key": "business.type",
+    "domain": "business",
+    "type": "enum",
+    "enforced": false,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": [
+      "retail",
+      "fnb",
+      "services",
+      "wholesale"
+    ],
+    "default": "retail",
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "نوع النشاط",
+    "description_ar": "نوع النشاط، ويحدد الإعدادات التي تظهر لك: تجزئة، مطاعم، خدمات، أو جملة."
+  },
+  {
+    "key": "business.vertical",
+    "domain": "business",
+    "type": "enum",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "workspace"
+    ],
+    "allowed_values": [
+      "general",
+      "apparel",
+      "pharmacy",
+      "restaurant"
+    ],
+    "default": "general",
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "قطاع النشاط",
+    "description_ar": "ملابس أو صيدلية أو مطعم أو عام. يحدد القدرات المفعّلة مبدئياً وتعدّل كل واحدة منها بنفسك."
+  },
+  {
+    "key": "print.paper_width",
+    "domain": "print",
+    "type": "enum",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "register"
+    ],
+    "allowed_values": [
+      "58mm",
+      "80mm",
+      "a4"
+    ],
+    "default": "80mm",
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "عرض الورق",
+    "description_ar": "عرض ورق الطباعة: 58 أو 80 مم أو A4."
+  },
+  {
+    "key": "print.show_logo",
+    "domain": "print",
+    "type": "bool",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "register"
+    ],
+    "allowed_values": null,
+    "default": true,
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "إظهار الشعار",
+    "description_ar": "إظهار شعار المنشأة أعلى الإيصال."
+  },
+  {
+    "key": "print.header_text",
+    "domain": "print",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 500,
+    "label_ar": "نص أعلى الإيصال",
+    "description_ar": "نص حر يُطبع أعلى الإيصال."
+  },
+  {
+    "key": "print.footer_text",
+    "domain": "print",
+    "type": "string",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 500,
+    "label_ar": "نص أسفل الإيصال",
+    "description_ar": "نص حر يُطبع أسفل الإيصال، مثل شكر العميل أو سياسة الاستبدال."
+  },
+  {
+    "key": "print.copies",
+    "domain": "print",
+    "type": "number",
+    "enforced": true,
+    "scopes": [
+      "tenant",
+      "register"
+    ],
+    "allowed_values": null,
+    "default": 1,
+    "min_value": 1.0,
+    "max_value": 5.0,
+    "max_length": null,
+    "label_ar": "عدد نسخ الطباعة",
+    "description_ar": "عدد النسخ المطبوعة من كل إيصال."
+  },
+  {
+    "key": "print.show_tax_detail",
+    "domain": "print",
+    "type": "bool",
+    "enforced": true,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": null,
+    "default": true,
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "تفصيل الضريبة على الإيصال",
+    "description_ar": "إظهار تفصيل الضريبة في الإيصال."
+  },
+  {
+    "key": "print.barcode_format",
+    "domain": "print",
+    "type": "enum",
+    "enforced": false,
+    "scopes": [
+      "tenant"
+    ],
+    "allowed_values": [
+      "code128",
+      "ean13",
+      "upc_a",
+      "qr"
+    ],
+    "default": "code128",
+    "min_value": null,
+    "max_value": null,
+    "max_length": null,
+    "label_ar": "صيغة الباركود",
+    "description_ar": "صيغة الباركود المطبوع على الإيصال والملصقات."
+  },
+  {
+    "key": "print.invoice_prefix",
+    "domain": "print",
+    "type": "string",
+    "enforced": false,
+    "scopes": [
+      "tenant",
+      "branch"
+    ],
+    "allowed_values": null,
+    "default": "INV",
+    "min_value": null,
+    "max_value": null,
+    "max_length": 15,
+    "label_ar": "بادئة رقم الفاتورة",
+    "description_ar": "حروف تسبق رقم الفاتورة، مثل INV."
+  }
 ]

@@ -183,3 +183,29 @@ async def test_a_stored_value_the_settings_no_longer_allow_still_prints(
     assert shop["copies"] == 1
     assert shop["show_logo"] is False
     assert shop["shop_name"] is None
+
+async def test_the_whole_legal_identity_is_readable_from_the_settings(db, tenant_ctx) -> None:
+    """A tax invoice needs more than a name: register number, postal code, email, website.
+
+    These four used to be saved-able in the registry but read by nobody, so the owner could type
+    them and nothing ever printed them. They now come back with the rest of the shop block.
+    """
+    shift, _ = await _receipt(db, tenant_ctx)
+    s = SettingsService(db, tenant_ctx.tenant_id)
+    await s.set("business.commercial_register", "CR-99887")
+    await s.set("business.email", "shop@example.com")
+    await s.set("business.website", "https://example.com")
+    await s.set("business.address.postal_code", "11511")
+    shop = await _shop_block(db, tenant_ctx, shift)
+    assert shop["commercial_register"] == "CR-99887"
+    assert shop["email"] == "shop@example.com"
+    assert shop["website"] == "https://example.com"
+    assert shop["postal_code"] == "11511"
+
+
+async def test_an_empty_identity_field_prints_nothing(db, tenant_ctx) -> None:
+    shift, _ = await _receipt(db, tenant_ctx)
+    await SettingsService(db, tenant_ctx.tenant_id).set("business.commercial_register", "   ")
+    shop = await _shop_block(db, tenant_ctx, shift)
+    assert shop["commercial_register"] is None
+    assert shop["email"] is None and shop["website"] is None and shop["postal_code"] is None
