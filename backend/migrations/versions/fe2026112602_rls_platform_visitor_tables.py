@@ -1,23 +1,22 @@
 """RLS for the five platform & visitor tables (docs/settings/rls-migration-proposal.md).
 
-Turns the proposal document into an executable, idempotent Alembic migration.
-Three of the five tables do not exist yet — they are created here with
-``CREATE TABLE IF NOT EXISTS`` so re-running is safe.  Two already exist
-(``plan_prices``, ``tax_rates``) and currently sit in ``NO_TENANT_TABLES`` with
-only a dead ``sales_app_read`` policy (RLS was never enabled on them).
+All five tables already exist (created by earlier migrations).  This migration
+adds RLS policies to them.  None of the tables have a ``tenant_id`` column —
+they are platform-level, not tenant-scoped — so all policies are GUC-gated
+(readable when the tenant GUC is set) or per-user (via ``app.user_id``).
 
 Tables and policies:
 
-1. ``visitor_events`` (NEW, has ``tenant_id``)
-   — INSERT/SELECT for the tenant; canonical ``tenant_isolation`` policy so the
-   schema-wide gate (``test_schema_wide_rls_policies``) is satisfied.
+1. ``visitor_events`` (existing, no ``tenant_id``)
+   — GUC-gated SELECT policy: readable only when the tenant GUC is set.
+   The table owner (platform admin) bypasses RLS.
 
-2. ``platform_announcements`` (NEW, no ``tenant_id``)
+2. ``platform_announcements`` (existing, no ``tenant_id``)
    — read for every tenant session; write only by the platform admin (owner
    bypasses RLS because the table is **not** FORCE'd; the app role has no
    INSERT/UPDATE/DELETE policy and therefore cannot write at all).
 
-3. ``platform_announcement_dismissals`` (NEW, no ``tenant_id``, has ``user_id``)
+3. ``platform_announcement_dismissals`` (existing, no ``tenant_id``, has ``user_id``)
    — per-user isolation via ``app.user_id`` GUC; FORCE'd so even the owner must
    bind the user GUC to read or write.
 
@@ -29,8 +28,8 @@ Tables and policies:
 5. ``tax_rates`` (existing, no ``tenant_id``)
    — same shape as ``plan_prices``.
 
-Idempotency: every statement is safe to run multiple times — ``CREATE TABLE
-IF NOT EXISTS``, ``ALTER TABLE … ENABLE/FORCE`` (no-ops if already set), and
+Idempotency: every statement is safe to run multiple times —
+``ALTER TABLE … ENABLE/FORCE`` (no-ops if already set), and
 ``DROP POLICY IF EXISTS`` before each ``CREATE POLICY``.
 
 NOTE: ``provision.py`` still re-creates ``sales_app_read`` on ``plan_prices``
@@ -53,68 +52,25 @@ down_revision: str | None = "fe2026112601"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 _USER_GUARD = "NULLIF(current_setting('app.user_id', true), '')::uuid"
-
-# ---------------------------------------------------------------------------
-# DDL for the three new tables
-# ---------------------------------------------------------------------------
-
-_NEW_TABLES = [
-    # visitor_events — anonymous storefront visitor tracking (insert-only in
-    # the proposal; the canonical tenant_isolation policy also allows SELECT,
-    # which is more permissive but satisfies the schema-wide gate).
-    """
-    CREATE TABLE IF NOT EXISTS public.visitor_events (
-        id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id   UUID          NOT NULL,
-        visitor_id  UUID,
-        event_type  VARCHAR(63)   NOT NULL,
-        payload     JSONB         NOT NULL DEFAULT '{}'::jsonb,
-        created_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
-    )
-    """,
-    # platform_announcements — global, tenant-agnostic.
-    """
-    CREATE TABLE IF NOT EXISTS public.platform_announcements (
-        id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-        title       VARCHAR(255)  NOT NULL,
-        body        TEXT          NOT NULL DEFAULT '',
-        severity     VARCHAR(31)  NOT NULL DEFAULT 'info',
-        created_at  TIMESTAMPTZ   NOT NULL DEFAULT now(),
-        expires_at  TIMESTAMPTZ
-    )
-    """,
-    # platform_announcement_dismissals — per-user, no tenant_id.
-    """
-    CREATE TABLE IF NOT EXISTS public.platform_announcement_dismissals (
-        id              UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id         UUID  NOT NULL,
-        announcement_id UUID  NOT NULL
-            REFERENCES public.platform_announcements(id) ON DELETE CASCADE,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-        UNIQUE (user_id, announcement_id)
-    )
-    """,
-]
 
 
 def upgrade() -> None:
-    # --- 1. Create the three new tables (idempotent) -------------------------
-    for ddl in _NEW_TABLES:
-        op.execute(ddl)
-
-    # --- 2. visitor_events: canonical tenant_isolation ----------------------
+    # --- 1. visitor_events: platform-level telemetry, no tenant_id ------------
+    #       The table already exists (created by an earlier migration) with no
+    #       tenant_id column — it is platform-level, not tenant-scoped.  RLS is
+    #       GUC-gated: readable only when a tenant GUC is set (the app role never
+    #       sees raw rows); the table owner (platform admin) bypasses RLS.
     op.execute("ALTER TABLE public.visitor_events ENABLE ROW LEVEL SECURITY")
-    op.execute("ALTER TABLE public.visitor_events FORCE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS tenant_isolation ON public.visitor_events")
+    op.execute("DROP POLICY IF EXISTS visitor_events_read ON public.visitor_events")
     op.execute(
-        f"""CREATE POLICY tenant_isolation ON public.visitor_events
-            USING (tenant_id = {_TENANT_GUARD})
-            WITH CHECK (tenant_id = {_TENANT_GUARD})"""
+        """CREATE POLICY visitor_events_read ON public.visitor_events
+            FOR SELECT
+            USING (current_setting('app.tenant_id', true) IS NOT NULL)"""
     )
 
-    # --- 3. platform_announcements: read for all, write for platform only -----
+    # --- 2. platform_announcements: read for all, write for platform only -----
     #       NOT forced: the table owner (platform admin) bypasses RLS and can
     #       insert/update; the app role has only a SELECT policy.
     op.execute("ALTER TABLE public.platform_announcements ENABLE ROW LEVEL SECURITY")
@@ -123,7 +79,7 @@ def upgrade() -> None:
         "CREATE POLICY announcements_read ON public.platform_announcements FOR SELECT USING (true)"
     )
 
-    # --- 4. platform_announcement_dismissals: per-user isolation -------------
+    # --- 3. platform_announcement_dismissals: per-user isolation -------------
     op.execute("ALTER TABLE public.platform_announcement_dismissals ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.platform_announcement_dismissals FORCE ROW LEVEL SECURITY")
     op.execute(
@@ -137,7 +93,7 @@ def upgrade() -> None:
               WITH CHECK (user_id = {_USER_GUARD})"""
     )
 
-    # --- 5. plan_prices: FORCE RLS, GUC-gated read ---------------------------
+    # --- 4. plan_prices: FORCE RLS, GUC-gated read ---------------------------
     op.execute("ALTER TABLE public.plan_prices ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.plan_prices FORCE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS sales_app_read ON public.plan_prices")
@@ -148,7 +104,7 @@ def upgrade() -> None:
             USING (current_setting('app.tenant_id', true) IS NOT NULL)"""
     )
 
-    # --- 6. tax_rates: FORCE RLS, GUC-gated read -----------------------------
+    # --- 5. tax_rates: FORCE RLS, GUC-gated read -----------------------------
     op.execute("ALTER TABLE public.tax_rates ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.tax_rates FORCE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS sales_app_read ON public.tax_rates")
@@ -171,7 +127,8 @@ def downgrade() -> None:
         # RLS stays ENABLED: a table with RLS on and no policy denies all
         # non-owner reads, which is the safe direction for a rollback.
 
-    # Reverse policies on new tables, then drop the tables.
+    # Reverse policies on the tables (keep the tables themselves — they were
+    # created by earlier migrations and have data/models we must not drop).
     op.execute(
         "DROP POLICY IF EXISTS dismissal_user_isolation ON public.platform_announcement_dismissals"
     )
@@ -179,9 +136,4 @@ def downgrade() -> None:
 
     op.execute("DROP POLICY IF EXISTS announcements_read ON public.platform_announcements")
 
-    op.execute("DROP POLICY IF EXISTS tenant_isolation ON public.visitor_events")
-    op.execute("ALTER TABLE public.visitor_events NO FORCE ROW LEVEL SECURITY")
-
-    op.execute("DROP TABLE IF EXISTS public.platform_announcement_dismissals")
-    op.execute("DROP TABLE IF EXISTS public.platform_announcements")
-    op.execute("DROP TABLE IF EXISTS public.visitor_events")
+    op.execute("DROP POLICY IF EXISTS visitor_events_read ON public.visitor_events")
