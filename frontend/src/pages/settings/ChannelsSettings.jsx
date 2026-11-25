@@ -1,5 +1,6 @@
 import React from "react";
 import { Copy, Loader2, LinkIcon, ShieldCheck, Unplug } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
 import { useI18n, useT } from "@/lib/i18n";
 import ChannelDiagnostics from "@/pages/settings/ChannelDiagnostics";
 import FacebookRelinkNotice, { facebookNeedsRelink } from "@/pages/settings/FacebookRelinkNotice";
@@ -379,7 +380,12 @@ export default function ChannelsSettings() {
   const t = useT();
   const { lang } = useI18n();
   const isAr = lang === "ar";
-  const { channels, loading, error, reload } = useRealChannels();
+  // كل قناة ليها صفحتها: /settings/channels/<id>. الصفحة الأم بتعرض القنوات كلها،
+  // وصفحة القناة بتعرض قناتها بس — نفس المكوّن ونفس الحالة، فالسلوك ما اتغيّرش.
+  const { channel: channelId } = useParams();
+  const { channels: allChannels, loading, error, reload } = useRealChannels();
+  const channels = channelId ? allChannels.filter((c) => c.id === channelId) : allChannels;
+  const unknownChannel = Boolean(channelId) && !loading && allChannels.length > 0 && channels.length === 0;
   const [editingId, setEditingId] = React.useState("");
   const [values, setValues] = React.useState({});
   const [saving, setSaving] = React.useState(false);
@@ -980,6 +986,19 @@ export default function ChannelsSettings() {
         />
       ) : null}
       <SettingCard>
+        {channelId && (
+          <Link
+            to="/settings/channels"
+            className="mb-3 inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+          >
+            {isAr ? "→ كل القنوات" : "→ All channels"}
+          </Link>
+        )}
+        {unknownChannel && (
+          <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+            {isAr ? "مفيش قناة بالاسم ده. ارجع لكل القنوات." : "No channel with that name. Go back to all channels."}
+          </div>
+        )}
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
         {formError && !editingId && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{formError}</div>}
         {notice && <div role="status" className="mb-3 text-[12px] text-primary">{notice}</div>}
@@ -1015,7 +1034,15 @@ export default function ChannelsSettings() {
                   <div className="flex flex-wrap items-center gap-3" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     <ChannelIcon channel={channel.id} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-medium">{localizedChannelName}</div>
+                      <div className="text-[13.5px] font-medium">
+                        {channelId ? (
+                          localizedChannelName
+                        ) : (
+                          <Link to={`/settings/channels/${channel.id}`} className="hover:underline">
+                            {localizedChannelName}
+                          </Link>
+                        )}
+                      </div>
                       <div className="text-[12px] text-muted-foreground">{status}</div>
                       {displayName && displayName !== localizedChannelName && <div className="text-[11px] text-muted-foreground">{displayName}</div>}
                       <FacebookRelinkNotice channel={channel} isAr={isAr} />
