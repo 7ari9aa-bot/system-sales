@@ -35,6 +35,35 @@ class SettingType(enum.StrEnum):
     LIST = "list"
 
 
+class ApplyMode(enum.StrEnum):
+    """How a setting change reaches the runtime (§27 Change Management).
+
+    * ``IMMEDIATE``: apply right after validation (UI prefs, display).
+    * ``VALIDATED``: domain validation required before the change is accepted
+      (inventory policies, POS rules, return windows).
+    * ``APPROVAL_REQUIRED``: a second person must approve before the change
+      is applied (sensitive cross-branch policies, high-risk financial caps).
+    """
+
+    IMMEDIATE = "immediate"
+    VALIDATED = "validated"
+    APPROVAL_REQUIRED = "approval_required"
+
+
+class Sensitivity(enum.StrEnum):
+    """Data sensitivity classification for a setting (§11, §76).
+
+    * ``NORMAL``: visible and editable through the standard settings UI.
+    * ``SENSITIVE``: access is restricted; value is masked in some views.
+    * ``SECRET``: stored in the secrets store, never in the settings table;
+      the UI shows only a connection status, never the value itself.
+    """
+
+    NORMAL = "normal"
+    SENSITIVE = "sensitive"
+    SECRET = "secret"
+
+
 class Scope(enum.StrEnum):
     TENANT = "tenant"
     WORKSPACE = "workspace"
@@ -110,6 +139,19 @@ class SettingDef:
     # Money rules, tax identity and anything that changes how stock is valued stay owner-only.
     branch_delegable: bool = False
     audit: bool = False
+    # How the change reaches the runtime (§27). Defaults to VALIDATED: most
+    # operational settings need domain checks before they are accepted. UI
+    # preferences override to IMMEDIATE; security-critical keys use APPROVAL_REQUIRED.
+    apply_mode: ApplyMode = ApplyMode.VALIDATED
+    # Data sensitivity (§11, §76). NORMAL for ordinary settings; SENSITIVE for
+    # restricted-access keys; SECRET for credentials stored in the secrets store.
+    sensitivity: Sensitivity = Sensitivity.NORMAL
+    # Entitlement/feature this setting belongs to (§72). When set, the
+    # entitlements service is consulted before the value is accepted.
+    feature_requirement: str | None = None
+    # Whether this setting supports rollback to a previous revision (§35).
+    # Most settings do; a few (channel credentials, SKU generation) do not.
+    rollback_supported: bool = True
     # Which business segments this setting applies to; () = all of them. Only narrows what the
     # settings screen shows: a hidden key still resolves to its default, so code that reads it
     # never has to know the segment.
@@ -1526,6 +1568,8 @@ _reg(
 
 # ======================== NOTIFICATIONS ===================================
 
+# ======================== NOTIFICATIONS ===================================
+
 _reg(
     SettingDef(
         key="notifications.low_stock_alert",
@@ -1555,9 +1599,191 @@ _reg(
     )
 )
 
-# ---------------------------------------------------------------------------
-# Build the lookup dict (frozen after module load).
-# ---------------------------------------------------------------------------
+# ======================== CUSTOMER AGENT (§49) ============================
+#
+# Customer Agent answers customer questions on WhatsApp, Messenger, web chat.
+# These settings control its identity, response rules, knowledge sources,
+# human handoff, and safety — NOT its tool capabilities (those are in the
+# agent's tool definitions, never in settings).
+
+_reg(
+    SettingDef(
+        key="customer_agent.enabled",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل وكيل خدمة العملاء",
+        label_en="Customer Agent Enabled",
+        description_ar="تفعيل الرد التلقائي على رسائل العملاء عبر القنوات.",
+        description_en="Enable automated replies to customer messages across channels.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.dialect",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="egyptian",
+        scopes=(Scope.TENANT,),
+        allowed_values=("msa", "egyptian", "gulf", "levantine"),
+        label_ar="لهجة الرد",
+        label_en="Response Dialect",
+        description_ar="اللهجة التي يستخدمها الوكيل في الرد على العملاء.",
+        description_en="The dialect the agent uses when replying to customers.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.formality",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="friendly",
+        scopes=(Scope.TENANT,),
+        allowed_values=("formal", "friendly", "casual"),
+        label_ar="درجة الرسمية",
+        label_en="Formality Level",
+        description_ar="مستوى الرسمية في ردود الوكيل.",
+        description_en="How formal the agent's replies are.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.response_language",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="ar",
+        scopes=(Scope.TENANT,),
+        allowed_values=("ar", "en", "auto"),
+        label_ar="لغة الرد",
+        label_en="Response Language",
+        description_ar="لغة الرد على العملاء: عربي، إنجليزي، أو تلقائي حسب رسالتهم.",
+        description_en=(
+            "Reply language: Arabic, English, or auto-detect from the customer's message."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.handoff_enabled",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="التحويل لموظف",
+        label_en="Human Handoff",
+        description_ar="السماح بتحويل المحادثة لموظف بشري عند الحاجة.",
+        description_en="Allow the agent to hand a conversation to a human staff member.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.max_turns_before_handoff",
+        domain="customer_agent",
+        type=SettingType.NUMBER,
+        default=5,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=50,
+        label_ar="أقصى عدد رسائل قبل التحويل",
+        label_en="Max Turns Before Handoff",
+        description_ar="بعد هذا العدد من تبادل الرسائل دون حل، يحوّل الوكيل المحادثة لموظف.",
+        description_en="After this many message exchanges without resolution, the agent hands off.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.show_prices",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار الأسعار",
+        label_en="Show Prices",
+        description_ar="هل يجيب الوكيل عن أسعار المنتجات عند السؤال عنها؟",
+        description_en="Whether the agent answers product price questions.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.show_stock",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار المخزون",
+        label_en="Show Stock",
+        description_ar="هل يجيب الوكيل عن توفر المنتجات في المخزون؟",
+        description_en="Whether the agent answers product availability questions.",
+    )
+)
+
+# ====================== ANALYTICS AGENT (§50) =============================
+#
+# Analytics Agent answers the owner's business questions (sales, margins,
+# inventory health). These settings control its data access, metrics, and
+# recommendation behaviour. The LLM explains numbers the engine computes;
+# it never invents calculations or runs free SQL.
+
+_reg(
+    SettingDef(
+        key="analytics_agent.enabled",
+        domain="analytics_agent",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل وكيل التحليلات",
+        label_en="Analytics Agent Enabled",
+        description_ar="تفعيل الإجابة على أسئلة المالك حول المبيعات والأداء.",
+        description_en="Enable answering the owner's questions about sales and performance.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.default_period",
+        domain="analytics_agent",
+        type=SettingType.ENUM,
+        default="30d",
+        scopes=(Scope.TENANT,),
+        allowed_values=("7d", "30d", "90d", "ytd", "all"),
+        label_ar="الفترة الافتراضية",
+        label_en="Default Period",
+        description_ar="الفترة الزمنية الافتراضية للتقارير عند عدم تحديدها.",
+        description_en="Default time range for reports when none is specified.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.include_branches",
+        domain="analytics_agent",
+        type=SettingType.LIST,
+        default=[],
+        scopes=(Scope.TENANT,),
+        label_ar="الفروع المشمولة",
+        label_en="Included Branches",
+        description_ar="قائمة معرفات الفروع التي يحق للوكيل تحليل بياناتها. فارغة = جميع الفروع.",
+        description_en="Branch IDs the agent may analyse. Empty = all branches.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.min_confidence",
+        domain="analytics_agent",
+        type=SettingType.NUMBER,
+        default=0.7,
+        scopes=(Scope.TENANT,),
+        min_value=0.0,
+        max_value=1.0,
+        label_ar="الحد الأدنى للثقة",
+        label_en="Minimum Confidence",
+        description_ar="أدنى مستوى ثقة لتقديم توصية. أقل من ذلك يُعرض كاقتراح فقط.",
+        description_en=(
+            "Minimum confidence to present a recommendation. Below this, it is a suggestion only."
+        ),
+    )
+)
+
+# ======================== NOTIFICATIONS (existing, continued) =============
 
 REGISTRY: dict[str, SettingDef] = {d.key: d for d in _DEFINITIONS}
 

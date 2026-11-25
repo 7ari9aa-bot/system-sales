@@ -35,6 +35,23 @@ from app.core.model_kit import (
     TimestampMixin,
 )
 
+# Change request lifecycle states (§28).
+# DRAFT → SUBMITTED → VALIDATING → PENDING_APPROVAL → APPROVED → APPLYING → APPLIED
+# Alternative terminal states: REJECTED, CANCELLED, FAILED, EXPIRED
+CHANGE_REQUEST_STATES: tuple[str, ...] = (
+    "draft",
+    "submitted",
+    "validating",
+    "pending_approval",
+    "approved",
+    "applying",
+    "applied",
+    "rejected",
+    "cancelled",
+    "failed",
+    "expired",
+)
+
 
 class TenantSetting(TenantMixin, TimestampMixin, IdMixin, Base):
     """One explicitly-set configuration value at a specific scope.
@@ -124,5 +141,63 @@ class TenantSettingHistory(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base)
             "ix_tenant_settings_history_tenant_time",
             "tenant_id",
             "created_at",
+        ),
+    )
+
+
+class SettingChangeRequest(TenantMixin, TimestampMixin, IdMixin, Base):
+    """A proposed batch of setting changes that may need approval (§28).
+
+    For settings whose ``apply_mode`` is ``APPROVAL_REQUIRED``, the change goes
+    through a lifecycle: draft → submitted → validating → pending_approval →
+    approved → applying → applied. The ``changes`` JSONB holds the proposed
+    ``{key: value}`` pairs; ``applied_changes`` records what was actually
+    written when the request is applied, so the audit trail is complete even
+    if the registry default shifted between submission and approval.
+
+    For ``VALIDATED`` settings, the request is created and immediately
+    validated+applied in one step (the lifecycle collapses). For
+    ``IMMEDIATE`` settings, no request is created at all.
+    """
+
+    __tablename__ = "setting_change_requests"
+
+    # The proposed changes: {key: value}
+    changes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # What was actually written when applied (filled at apply time)
+    applied_changes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Lifecycle state (see CHANGE_REQUEST_STATES)
+    status: Mapped[str] = mapped_column(String(31), nullable=False, default="draft")
+    # The scope the changes apply to
+    scope: Mapped[str] = mapped_column(String(31), nullable=False, default="tenant")
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Who submitted the request
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Who approved or rejected it
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Free-text reason from the submitter
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Reviewer's note on approval or rejection
+    review_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # When the review happened
+    reviewed_at: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,  # stored as a timestamp-like token
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_setting_change_requests_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_setting_change_requests_tenant_submitted",
+            "tenant_id",
+            "submitted_by",
         ),
     )

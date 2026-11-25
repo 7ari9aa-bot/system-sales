@@ -37,10 +37,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit_row
-from app.core.errors import ValidationError
-from app.modules.settings.models import TenantSetting, TenantSettingHistory
+from app.core.errors import ConflictError, ValidationError
+from app.core.events.writer import add_outbox_event
+from app.modules.settings.models import (
+    SettingChangeRequest,
+    TenantSetting,
+    TenantSettingHistory,
+)
 from app.modules.settings.policy import authorize_write
 from app.modules.settings.registry import (
+    ApplyMode,
     Scope,
     SettingDef,
     get_definition,
@@ -195,11 +201,17 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
+        expected_history_id: uuid.UUID | None = None,
     ) -> TenantSetting:
         """Set one setting at the given scope. Creates or updates the override.
 
         ``permissions`` is the caller's permission codes. ``None`` means an internal
         caller that already holds owner rights (presets applied at signup, workers).
+
+        ``expected_history_id`` implements optimistic concurrency (§81): the caller
+        passes the history id it last saw. If another write landed in between,
+        the history no longer matches and a ``ConflictError`` is raised instead of
+        silently overwriting the newer value.
         """
         defn = _definition(key)
         scope_enum = _scope(scope)
@@ -211,6 +223,15 @@ class SettingsService:
             )
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
         self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+
+        # Optimistic concurrency: check that no newer write landed since the caller
+        # last read (§81).
+        if expected_history_id is not None:
+            latest = await self._latest_history_id(key, scope_enum.value, scope_id)
+            if latest is not None and latest != expected_history_id:
+                raise ConflictError(
+                    f"{key}: settings changed by another user; reload and try again"
+                )
 
         validated = _validate(defn, value)
         new_value = {"v": validated}
@@ -384,6 +405,152 @@ class SettingsService:
         return list((await self._session.execute(stmt)).scalars().all())
 
     # ------------------------------------------------------------------
+    # CHANGE MANAGEMENT: create, approve, apply change requests (§27–§30)
+    # ------------------------------------------------------------------
+
+    async def create_change_request(
+        self,
+        changes: dict[str, Any],
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
+        reason: str | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> SettingChangeRequest:
+        """Create a change request for settings that need approval (§28).
+
+        For ``IMMEDIATE`` settings, the caller uses ``set`` directly — no
+        request is created. For ``VALIDATED`` settings, the request is
+        created and immediately validated+applied. For ``APPROVAL_REQUIRED``
+        settings, the request stays in ``pending_approval`` until a reviewer
+        approves it.
+        """
+        scope_enum = _scope(scope)
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+
+        # Validate all keys and values upfront.
+        needs_approval = False
+        for key, value in changes.items():
+            defn = _definition(key)
+            if not defn.scope_allowed(scope_enum):
+                raise ValidationError(f"{key}: scope {scope_enum.value!r} not allowed")
+            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+            _validate(defn, value)
+            if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+                needs_approval = True
+
+        request = SettingChangeRequest(
+            tenant_id=self._tenant_id,
+            changes=changes,
+            status="pending_approval" if needs_approval else "approved",
+            scope=scope_enum.value,
+            scope_id=scope_id,
+            submitted_by=user_id,
+            reason=reason,
+        )
+        self._session.add(request)
+        await self._session.flush()
+
+        # If no approval needed, apply immediately.
+        if not needs_approval:
+            await self._apply_change_request(request, user_id=user_id, permissions=permissions)
+
+        return request
+
+    async def approve_change_request(
+        self,
+        request_id: uuid.UUID,
+        *,
+        reviewer_id: uuid.UUID,
+        review_note: str | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> SettingChangeRequest:
+        """Approve a pending change request and apply it (§28)."""
+        stmt = select(SettingChangeRequest).where(
+            SettingChangeRequest.tenant_id == self._tenant_id,
+            SettingChangeRequest.id == request_id,
+        )
+        request = (await self._session.execute(stmt)).scalar_one_or_none()
+        if request is None:
+            raise ValidationError(f"change request {request_id} not found")
+        if request.status != "pending_approval":
+            raise ValidationError(f"change request is {request.status}, not pending_approval")
+
+        request.status = "approved"
+        request.reviewed_by = reviewer_id
+        request.review_note = review_note
+        await self._session.flush()
+
+        await self._apply_change_request(request, user_id=reviewer_id, permissions=permissions)
+        return request
+
+    async def reject_change_request(
+        self,
+        request_id: uuid.UUID,
+        *,
+        reviewer_id: uuid.UUID,
+        review_note: str | None = None,
+    ) -> SettingChangeRequest:
+        """Reject a pending change request (§28)."""
+        stmt = select(SettingChangeRequest).where(
+            SettingChangeRequest.tenant_id == self._tenant_id,
+            SettingChangeRequest.id == request_id,
+        )
+        request = (await self._session.execute(stmt)).scalar_one_or_none()
+        if request is None:
+            raise ValidationError(f"change request {request_id} not found")
+        if request.status != "pending_approval":
+            raise ValidationError(f"change request is {request.status}, not pending_approval")
+
+        request.status = "rejected"
+        request.reviewed_by = reviewer_id
+        request.review_note = review_note
+        await self._session.flush()
+        return request
+
+    async def list_change_requests(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[SettingChangeRequest]:
+        """List change requests, optionally filtered by status."""
+        stmt = select(SettingChangeRequest).where(SettingChangeRequest.tenant_id == self._tenant_id)
+        if status is not None:
+            stmt = stmt.where(SettingChangeRequest.status == status)
+        stmt = stmt.order_by(SettingChangeRequest.created_at.desc()).limit(limit)
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    async def _apply_change_request(
+        self,
+        request: SettingChangeRequest,
+        *,
+        user_id: uuid.UUID | None,
+        permissions: Collection[str] | None,
+    ) -> None:
+        """Apply the changes in a change request via ``bulk_set``."""
+        request.status = "applying"
+        await self._session.flush()
+        try:
+            rows = await self.bulk_set(
+                request.changes,
+                scope=Scope(request.scope),
+                scope_id=request.scope_id,
+                user_id=user_id,
+                reason=f"change_request:{request.id}",
+                permissions=permissions,
+            )
+            request.applied_changes = {
+                r.key: r.value.get("v") if isinstance(r.value, dict) else r.value for r in rows
+            }
+            request.status = "applied"
+        except Exception:
+            request.status = "failed"
+            raise
+        await self._session.flush()
+
+    # ------------------------------------------------------------------
     # PRESETS: apply a business-type preset
     # ------------------------------------------------------------------
 
@@ -447,26 +614,28 @@ class SettingsService:
         user_id: uuid.UUID | None,
         reason: str | None,
     ) -> None:
-        """Append to the settings history and, for audited keys, to ``audit_logs``."""
-        self._session.add(
-            TenantSettingHistory(
-                tenant_id=self._tenant_id,
-                setting_id=row_id,
-                key=defn.key,
-                scope=scope.value,
-                scope_id=scope_id,
-                old_value=old,
-                new_value=new,
-                action=action,
-                changed_by=user_id,
-                change_reason=reason,
-                # clock_timestamp(), not the column default now(): now() is frozen for the whole
-                # transaction, so a preset or a bulk save wrote every row with the same instant
-                # and the history came back in arbitrary order.
-                created_at=func.clock_timestamp(),
-            )
+        """Append to the settings history, audit logs, and outbox event.
+
+        The history row, audit row (if applicable), and outbox event all flush
+        within the caller's transaction — so a crash can never leave a changed
+        setting with no event, or an event with no setting (§38).
+        """
+        history_row = TenantSettingHistory(
+            tenant_id=self._tenant_id,
+            setting_id=row_id,
+            key=defn.key,
+            scope=scope.value,
+            scope_id=scope_id,
+            old_value=old,
+            new_value=new,
+            action=action,
+            changed_by=user_id,
+            change_reason=reason,
+            created_at=func.clock_timestamp(),
         )
+        self._session.add(history_row)
         await self._session.flush()
+
         if defn.audit:
             await write_audit_row(
                 self._session,
@@ -474,10 +643,7 @@ class SettingsService:
                 user_id,
                 f"settings.{action}",
                 "tenant_setting",
-                # audit_logs.resource_id is varchar(64): the row id, not "key@scope:uuid".
                 str(row_id),
-                # The key and scope travel in the payload so the row reads on its own,
-                # even after a reset deleted the setting it points at.
                 before={
                     "key": defn.key,
                     "scope": scope.value,
@@ -491,6 +657,110 @@ class SettingsService:
                     "value": new,
                 },
             )
+
+        # Stage the settings.changed event in the outbox (§36–§38).
+        # The history row's id is the stable revision identifier consumers
+        # use for idempotency.
+        await add_outbox_event(
+            self._session,
+            aggregate_type="settings",
+            aggregate_id=row_id,
+            event_type="settings.changed",
+            tenant_id=self._tenant_id,
+            producer="settings",
+            payload={
+                "key": defn.key,
+                "scope": scope.value,
+                "scope_id": _s(scope_id),
+                "revision": str(history_row.id),
+                "action": action,
+                "changed_by": _s(user_id),
+            },
+        )
+
+    async def rollback(
+        self,
+        history_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None = None,
+        reason: str | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> TenantSetting | None:
+        """Restore a setting to the value a previous revision held (§34).
+
+        Rollback does NOT delete history or undo the last change. It reads the
+        target revision's value, validates it against the current schema, and
+        writes a NEW override — so the audit trail is a forward-only chain and
+        every state is recoverable.
+
+        Returns the new ``TenantSetting`` row, or ``None`` if the target was a
+        reset (the override is deleted, reverting to inherited).
+        """
+        stmt = select(TenantSettingHistory).where(
+            TenantSettingHistory.tenant_id == self._tenant_id,
+            TenantSettingHistory.id == history_id,
+        )
+        target = (await self._session.execute(stmt)).scalar_one_or_none()
+        if target is None:
+            raise ValidationError(f"history revision {history_id} not found")
+
+        if not get_definition(target.key).rollback_supported:
+            raise ValidationError(f"{target.key}: rollback not supported for this setting")
+
+        # The target was a reset: delete the current override if any.
+        if target.action == "reset" and target.new_value is None:
+            existing = await self._find_override(
+                target.key, target.scope, target.scope_id, for_update=True
+            )
+            if existing is not None:
+                await self._record(
+                    get_definition(target.key),
+                    row_id=existing.id,
+                    scope=Scope(target.scope),
+                    scope_id=target.scope_id,
+                    old=existing.value,
+                    new=None,
+                    action="reset",
+                    user_id=user_id,
+                    reason=f"rollback:{history_id}",
+                )
+                await self._session.execute(
+                    delete(TenantSetting).where(TenantSetting.id == existing.id)
+                )
+                await self._session.flush()
+            return None
+
+        # The target was a set: restore its value.
+        restore_value = target.new_value.get("v") if target.new_value else None
+        return await self.set(
+            target.key,
+            restore_value,
+            scope=Scope(target.scope),
+            scope_id=target.scope_id,
+            user_id=user_id,
+            reason=reason or f"rollback:{history_id}",
+            permissions=permissions,
+        )
+
+    async def _latest_history_id(
+        self, key: str, scope: str, scope_id: uuid.UUID | None
+    ) -> uuid.UUID | None:
+        """The most recent history row id for this key+scope, or None."""
+        stmt = (
+            select(TenantSettingHistory.id)
+            .where(
+                TenantSettingHistory.tenant_id == self._tenant_id,
+                TenantSettingHistory.key == key,
+                TenantSettingHistory.scope == scope,
+            )
+            .order_by(TenantSettingHistory.created_at.desc())
+            .limit(1)
+        )
+        if scope_id is None:
+            stmt = stmt.where(TenantSettingHistory.scope_id.is_(None))
+        else:
+            stmt = stmt.where(TenantSettingHistory.scope_id == scope_id)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
 
     async def _load_overrides(
         self, keys: list[str], chain: list[ScopeLink]

@@ -27,8 +27,12 @@ from app.modules.settings.registry import (
 )
 from app.modules.settings.schemas import (
     BulkSetSettingsRequest,
+    ChangeRequestOut,
+    CreateChangeRequestInput,
     ResetSettingRequest,
     ResolvedSettingOut,
+    ReviewChangeRequestInput,
+    RollbackInput,
     SetSettingRequest,
     SettingDefOut,
     SettingHistoryOut,
@@ -75,6 +79,10 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         max_length=d.max_length,
         permission=d.permission,
         audit=d.audit,
+        apply_mode=d.apply_mode.value,
+        sensitivity=d.sensitivity.value,
+        feature_requirement=d.feature_requirement,
+        rollback_supported=d.rollback_supported,
         enforced=d.enforced,
         segments=list(d.segments),
         label_ar=d.label_ar,
@@ -224,6 +232,7 @@ async def set_setting(
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        expected_history_id=body.expected_history_id,
     )
     return TenantSettingOut(
         id=row.id,
@@ -349,3 +358,127 @@ async def get_settings_history(
         )
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Change Requests (§27–§30)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/change-requests", response_model=ChangeRequestOut)
+async def create_change_request(
+    body: CreateChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Create a change request for approval-gated settings."""
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.create_change_request(
+        body.changes,
+        scope=Scope(body.scope),
+        scope_id=body.scope_id,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    return _change_request_to_out(req)
+
+
+@router.get("/change-requests", response_model=list[ChangeRequestOut])
+async def list_change_requests(
+    ctx: SettingsReadCtx,
+    status: Annotated[str | None, Query()] = None,
+) -> list[ChangeRequestOut]:
+    """List change requests, optionally filtered by status."""
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    rows = await svc.list_change_requests(status=status)
+    return [_change_request_to_out(r) for r in rows]
+
+
+@router.post("/change-requests/{request_id}/approve", response_model=ChangeRequestOut)
+async def approve_change_request(
+    request_id: uuid.UUID,
+    body: ReviewChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Approve a pending change request and apply it."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("approving a change request requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.approve_change_request(
+        request_id,
+        reviewer_id=ctx.user.id,
+        review_note=body.review_note,
+        permissions=ctx.permission_codes,
+    )
+    return _change_request_to_out(req)
+
+
+@router.post("/change-requests/{request_id}/reject", response_model=ChangeRequestOut)
+async def reject_change_request(
+    request_id: uuid.UUID,
+    body: ReviewChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Reject a pending change request."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("rejecting a change request requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.reject_change_request(
+        request_id,
+        reviewer_id=ctx.user.id,
+        review_note=body.review_note,
+    )
+    return _change_request_to_out(req)
+
+
+# ---------------------------------------------------------------------------
+# Rollback (§34)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rollback", response_model=TenantSettingOut | None)
+async def rollback_setting(
+    body: RollbackInput,
+    ctx: SettingsWriteCtx,
+) -> dict | None:
+    """Roll back a setting to a previous revision's value.
+
+    Creates a NEW revision with the restored value — does not delete history.
+    """
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("rollback requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    row = await svc.rollback(
+        body.history_id,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    if row is None:
+        return {"deleted": True, "message": "Setting reverted to inherited value"}
+    return TenantSettingOut(
+        id=row.id,
+        key=row.key,
+        scope=row.scope,
+        scope_id=row.scope_id,
+        value=row.value.get("v"),
+        updated_by=row.updated_by,
+    )
+
+
+def _change_request_to_out(r) -> ChangeRequestOut:
+    """Convert a SettingChangeRequest ORM row to the API output schema."""
+    return ChangeRequestOut(
+        id=r.id,
+        changes=r.changes,
+        applied_changes=r.applied_changes,
+        status=r.status,
+        scope=r.scope,
+        scope_id=r.scope_id,
+        submitted_by=r.submitted_by,
+        reviewed_by=r.reviewed_by,
+        reason=r.reason,
+        review_note=r.review_note,
+        created_at=r.created_at.isoformat() if r.created_at else "",
+        updated_at=r.updated_at.isoformat() if r.updated_at else "",
+    )
