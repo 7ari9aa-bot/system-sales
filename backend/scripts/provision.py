@@ -332,8 +332,11 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE UPDATE, DELETE ON public.effect_ledger FROM sales_app",
     # audit_logs: UPDATE stays revoked (append-only — rows are never modified),
     # but DELETE is re-granted so the security.audit_retention_days sweep can
-    # purge rows past the retention window. The retention sweep is the ONLY
-    # code path that deletes audit rows, and it is gated by the tenant setting
+    # purge rows past the retention window. The RLS DELETE policy
+    # (audit_logs_tenant_delete, migration fe2026112503) constrains deletes to
+    # the same tenant AND rows older than 1 day — a safety net on top of the
+    # sweep's own retention-window check. The retention sweep is the ONLY code
+    # path that deletes audit rows, and it is gated by the tenant setting
     # (0 = no deletion). This is the same model as the analytics retention
     # worker, which deletes messages and ai_usage under a policy.
     "REVOKE UPDATE ON public.audit_logs FROM sales_app",

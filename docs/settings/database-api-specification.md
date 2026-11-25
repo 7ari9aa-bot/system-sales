@@ -134,6 +134,37 @@ The `app.tenant_id` session setting is bound by `bind_tenant` on every request. 
 `FORCE` keyword ensures the policy applies even to table owners. No query can read or write
 another tenant's rows, even with a SQL injection.
 
+### 3.1 Exception: `audit_logs` DELETE policy (append-only invariant)
+
+`audit_logs` is **append-only by design** (migration `fd2026100409`): `INSERT` and
+`SELECT` policies only, `UPDATE` revoked from `sales_app`. The
+`security.audit_retention_days` setting introduces a tenant-scoped sweep that purges
+old audit rows, which requires `DELETE`. To preserve the append-only invariant as
+closely as possible:
+
+- **`UPDATE` stays revoked.** Rows are never modified — only old ones are purged.
+- **`DELETE` is gated by an RLS policy with a 1-day age guard** (migration
+  `fe2026112503`):
+
+  ```sql
+  CREATE POLICY audit_logs_tenant_delete ON public.audit_logs
+      FOR DELETE
+      USING (
+          tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+          AND created_at < now() - interval '1 day'
+      );
+  ```
+
+  This is a **safety net** on top of the sweep's own retention-window check. Even a
+  buggy sweep can never delete rows younger than 24 hours. The `USING` clause also
+  enforces tenant isolation (same `app.tenant_id` check as every other policy).
+
+- **The sweep is the only code path that deletes audit rows**, and it is gated by the
+  tenant setting (`0` = no deletion). For tenants that leave the default (365 days) or
+  set `0`, the append-only invariant holds completely.
+
+This is the **only** exception to the append-only design of `audit_logs`.
+
 ---
 
 ## 4. Relationships
