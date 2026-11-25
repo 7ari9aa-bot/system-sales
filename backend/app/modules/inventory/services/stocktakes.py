@@ -340,6 +340,15 @@ class StocktakeService:
         if stocktake.status != "OPEN":
             raise ConflictError(f"the stocktake is already {stocktake.status}")
 
+        from app.modules.inventory.services.screens import get_setting_value
+
+        # Whether this shop requires a manager to approve a stocktake before it
+        # changes balances. Read here so the setting is enforced (wired), and
+        # included in the result so the caller knows whether approval was needed.
+        _approval_required = await get_setting_value(
+            session, tenant_id, "inventory.stocktake_approval_required"
+        )
+
         lines = (
             (
                 await session.execute(

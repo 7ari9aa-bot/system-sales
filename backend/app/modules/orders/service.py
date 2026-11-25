@@ -47,6 +47,7 @@ from app.modules.orders.money import (
     refund_state,
     to_money,
 )
+from app.modules.settings.service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ _RESERVATION_TTL = timedelta(minutes=15)
 
 async def reservation_ttl(session: AsyncSession, tenant_id: UUID) -> timedelta:
     """How long a hold lasts for this shop: the setting, defaulting to the 15 minutes above."""
-    from app.modules.settings.service import SettingsService
-
     minutes = await SettingsService(session, tenant_id).value("inventory.reserve_ttl_minutes")
     return timedelta(minutes=int(minutes))
 
@@ -651,10 +650,15 @@ class OrderService:
         # two concurrent orders holding the same variants in opposite orders
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
-        for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
-            await InventoryService.reserve(
-                session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
-            )
+        # When inventory.auto_reserve is off, the order proceeds without holding
+        # stock — the shop that chose this accepts the risk of overselling and
+        # relies on a later confirmation step to check availability.
+        auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
+        if auto_reserve:
+            for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
+                await InventoryService.reserve(
+                    session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
+                )
 
         # Subtotal stays the GROSS of the ladder prices; the per-line
         # discounts compose with the caller's order-level discount into one
@@ -717,7 +721,8 @@ class OrderService:
             # §139: the row is born with its stock already held (the reserve
             # loop above aborted the whole order if it could not), so recording
             # "created" here would be a claim the reservations contradict.
-            process_state="stock_reserved",
+            # When auto_reserve is off, the order starts in "created" instead.
+            process_state="stock_reserved" if auto_reserve else "created",
             currency=currency,
             **totals,
             tax_included=tax_plan.total,
@@ -735,17 +740,19 @@ class OrderService:
 
         # §140: durable reservation rows next to the balance hold — one per
         # line, expiring in 15 minutes unless the order completes.
-        expires_at = _now() + await reservation_ttl(session, tenant_id)
-        for variant, quantity, _price, _pct in prepared:
-            await InventoryService.create_reservation(
-                session,
-                tenant_id,
-                variant_id=variant.id,
-                warehouse_id=warehouse.id,
-                order_id=order.id,
-                quantity=quantity,
-                expires_at=expires_at,
-            )
+        # Only created when auto-reserve is on; otherwise there is no hold to track.
+        if auto_reserve:
+            expires_at = _now() + await reservation_ttl(session, tenant_id)
+            for variant, quantity, _price, _pct in prepared:
+                await InventoryService.create_reservation(
+                    session,
+                    tenant_id,
+                    variant_id=variant.id,
+                    warehouse_id=warehouse.id,
+                    order_id=order.id,
+                    quantity=quantity,
+                    expires_at=expires_at,
+                )
 
         # Line snapshots (title/sku frozen at purchase time).
         for position, (variant, quantity, price, pct) in enumerate(prepared):

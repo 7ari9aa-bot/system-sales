@@ -298,6 +298,15 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "print.footer_text",  # pos/receipt_settings.py::receipt_settings
         "print.copies",  # pos/receipt_settings.py::receipt_settings
         "print.show_tax_detail",  # pos/receipt_settings.py::receipt_settings
+        # Phase 4–5 wiring: settings now read by the services they govern.
+        "inventory.auto_reserve",  # orders/service.py::OrderService.checkout
+        "inventory.fifo_enabled",  # inventory/services/valuation.py::record_sale
+        "inventory.stocktake_approval_required",  # inventory/services/stocktakes.py::approve
+        "purchasing.approval_required",  # purchasing/service.py::PurchaseService.create
+        "purchasing.approval_threshold",  # purchasing/service.py::PurchaseService.create
+        "purchasing.centralized",  # purchasing/service.py::PurchaseService.create
+        "inventory.track_locations",  # inventory/services/locations.py::create_location
+        "inventory.quality_check_on_receipt",  # purchasing/service.py::PurchaseService.receive
     }
 )
 
@@ -1780,6 +1789,230 @@ _reg(
         description_en=(
             "Minimum confidence to present a recommendation. Below this, it is a suggestion only."
         ),
+    )
+)
+
+# ======================== ORGANIZATION (§47 Phase 4) ======================
+#
+# Organization-level settings that govern the account as a whole: its calendar, its branch
+# structure, and its defaults.  These are distinct from the tenant table columns (name,
+# currency, timezone, dialect, country) which remain the domain of ``TenantSettingsService``.
+# The settings here are configuration the tenant table does not carry.
+
+_reg(
+    SettingDef(
+        key="organization.fiscal_year_start_month",
+        domain="organization",
+        type=SettingType.NUMBER,
+        default=1,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=12,
+        label_ar="بداية السنة المالية (شهر)",
+        label_en="Fiscal Year Start Month",
+        description_ar="الشهر الذي تبدأ فيه السنة المالية (1–12). يُستخدم في التقارير السنوية.",
+        description_en="The month the fiscal year starts (1–12). Used in annual reports.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.multi_branch",
+        domain="organization",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تشغيل متعدد الفروع",
+        label_en="Multi-Branch Operations",
+        description_ar="تفعيل إدارة عدة فروع تحت نفس المنشأة. يفتح شاشات الفروع والتحويلات.",
+        description_en="Enable managing multiple branches under one account. Opens branch screens.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.max_branches",
+        domain="organization",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=1000,
+        label_ar="الحد الأقصى للفروع",
+        label_en="Maximum Branches",
+        description_ar="أقصى عدد فروع مسموح. صفر يعني بلا حد.",
+        description_en="The maximum number of branches allowed. Zero means no limit.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.default_language",
+        domain="organization",
+        type=SettingType.ENUM,
+        default="ar",
+        scopes=(Scope.TENANT,),
+        allowed_values=("ar", "en"),
+        label_ar="اللغة الافتراضية",
+        label_en="Default Language",
+        description_ar="اللغة الافتراضية لواجهة المنشأة للموظفين الجدد.",
+        description_en="The default UI language for new staff members.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.brand_color",
+        domain="organization",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=7,
+        label_ar="لون العلامة التجارية",
+        label_en="Brand Color",
+        description_ar="لون رئيسي للعلامة (كود HEX مثل #2563EB). يظهر في الواجهة والإيصالات.",
+        description_en="A primary brand color (HEX, e.g. #2563EB). Shown in the UI and receipts.",
+    )
+)
+
+# ============================== BRANCH (§47 Phase 4) ======================
+#
+# Branch-level operational settings. These let each branch run differently from the
+# tenant default without touching the tenant-level value. The scope_graph walks
+# branch → workspace → tenant, so a branch override only affects that one branch.
+
+_reg(
+    SettingDef(
+        key="branch.auto_close_shift",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="إغلاق الوردية تلقائياً",
+        label_en="Auto-Close Shift",
+        description_ar="إغلاق وردية الكاشير تلقائياً في نهاية اليوم إذا لم يُغلقها الكاشير.",
+        description_en="Auto-close the cashier shift at end of day if the cashier did not.",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.shift_end_time",
+        domain="branch",
+        type=SettingType.STRING,
+        default="23:59",
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        max_length=5,
+        branch_delegable=True,
+        label_ar="وقت نهاية الوردية",
+        label_en="Shift End Time",
+        description_ar="الوقت الذي تُغلق عنده الوردية تلقائياً (بصيغة 24 ساعة HH:MM).",
+        description_en="The time at which the shift auto-closes (24-hour format HH:MM).",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.notify_manager_on_variance",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="إشعار المدير بفرق الدرج",
+        label_en="Notify Manager on Drawer Variance",
+        description_ar="إرسال إشعار للمدير عند وجود فرق في درج الكاشير عند الإغلاق.",
+        description_en="Notify the manager when a drawer variance is found at close.",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.allow_independent_purchasing",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="شراء مستقل للفرع",
+        label_en="Independent Branch Purchasing",
+        description_ar="السماح للفرع بإنشاء أوامر شراء خاصة به دون الرجوع للإدارة المركزية.",
+        description_en="Allow a branch to create its own purchase orders without central approval.",
+    )
+)
+
+# ============================== CATALOG (§47 Phase 5) ======================
+#
+# Catalog-level settings that control how products are created, coded and displayed.
+# The catalog module reads these to decide SKU generation, barcode rules and defaults.
+
+_reg(
+    SettingDef(
+        key="catalog.sku_format",
+        domain="catalog",
+        type=SettingType.STRING,
+        default="{category}-{number}",
+        scopes=(Scope.TENANT,),
+        max_length=127,
+        label_ar="صيغة رمز المنتج (SKU)",
+        label_en="SKU Format",
+        description_ar=(
+            "نمط توليد رمز المنتج. {category} يُعوّض بتصنيف المنتج، و{number} برقم تسلسلي تلقائي."
+        ),
+        description_en=(
+            "Pattern for generating product codes. {category} is replaced by the product category, "
+            "{number} by an auto-incremented number."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.barcode_auto_generate",
+        domain="catalog",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="توليد الباركود تلقائياً",
+        label_en="Auto-Generate Barcodes",
+        description_ar="توليد باركود تلقائي للمنتجات التي لم يُدخل لها باركود يدوي.",
+        description_en="Auto-generate a barcode for products without a manually entered one.",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.default_tax_rate",
+        domain="catalog",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=100,
+        label_ar="نسبة الضريبة الافتراضية %",
+        label_en="Default Tax Rate %",
+        description_ar="نسبة الضريبة الافتراضية للمنتجات الجديدة (0 يعني لا ضريبة).",
+        description_en="The default tax rate for new products (0 means no tax).",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.show_out_of_stock",
+        domain="catalog",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار المنتجات غير المتوفرة",
+        label_en="Show Out-of-Stock Items",
+        description_ar="إظهار المنتجات التي رصيدها صفر في الكتالوج والكاشير.",
+        description_en="Show products with zero stock in the catalog and cashier.",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.max_variants_per_product",
+        domain="catalog",
+        type=SettingType.NUMBER,
+        default=100,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=10000,
+        label_ar="الحد الأقصى للمتغيرات لكل منتج",
+        label_en="Max Variants Per Product",
+        description_ar="أقصى عدد متغيرات (مقاس/لون) يمكن إضافتها لمنتج واحد.",
+        description_en="The maximum number of variants (size/colour) a single product can have.",
     )
 )
 
