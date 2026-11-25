@@ -36,9 +36,7 @@ async def visible_screens(session: AsyncSession, tenant_id: UUID) -> dict[str, b
     return decide({key: resolved[key].value for key in keys})
 
 
-async def get_setting_value(
-    session: AsyncSession, tenant_id: UUID, key: str
-) -> object:
+async def get_setting_value(session: AsyncSession, tenant_id: UUID, key: str) -> object:
     """Read one setting's effective value.
 
     A thin wrapper so other inventory services read a setting without each

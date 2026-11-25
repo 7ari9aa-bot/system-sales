@@ -184,6 +184,7 @@ async def test_a_stored_value_the_settings_no_longer_allow_still_prints(
     assert shop["show_logo"] is False
     assert shop["shop_name"] is None
 
+
 async def test_the_whole_legal_identity_is_readable_from_the_settings(db, tenant_ctx) -> None:
     """A tax invoice needs more than a name: register number, postal code, email, website.
 

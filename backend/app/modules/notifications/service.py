@@ -372,9 +372,7 @@ class NotificationService:
         # Look up the recipient address (RLS-scoped by tenant_id GUC).
         from app.modules.identity.models import User
 
-        user = (
-            await session.execute(select(User).where(User.id == user_id))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if user is None or not user.email:
             return
         await add_outbox_event(

@@ -196,9 +196,7 @@ async def get_current_user(
             if allowlist and request.client:
                 client_ip = request.client.host
                 if client_ip not in allowlist:
-                    raise PermissionDeniedError(
-                        "this IP address is not allowed for this workspace"
-                    )
+                    raise PermissionDeniedError("this IP address is not allowed for this workspace")
         return AuthedUser(
             id=user_id,
             tenant_id=tenant_id,

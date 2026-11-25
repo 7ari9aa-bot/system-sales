@@ -2173,9 +2173,7 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
 
     owner_ctx = await ctx_for(db, tenant_ctx, "owner")
     staff_ctx = await ctx_for(db, tenant_ctx, "staff")
-    staff_role = (
-        await db.execute(sa.select(Role).where(Role.code == "staff"))
-    ).scalar_one()
+    staff_role = (await db.execute(sa.select(Role).where(Role.code == "staff"))).scalar_one()
     other = User(
         email=f"staff-{uuid.uuid4().hex[:8]}@test.local",
         password_hash=hash_password("x" * 12),

@@ -69,9 +69,7 @@ class WarehouseLocationService:
         """Create a new bin, shelf, rack, zone, or functional area."""
         from app.modules.inventory.services.screens import get_setting_value
 
-        track_locations = await get_setting_value(
-            session, tenant_id, "inventory.track_locations"
-        )
+        track_locations = await get_setting_value(session, tenant_id, "inventory.track_locations")
         if not track_locations:
             raise ValidationError(
                 "warehouse location tracking is disabled; enable it in inventory settings first"

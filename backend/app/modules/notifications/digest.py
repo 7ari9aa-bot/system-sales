@@ -29,7 +29,6 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column

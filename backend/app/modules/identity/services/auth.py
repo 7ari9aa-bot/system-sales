@@ -817,9 +817,7 @@ class AuthService:
             return None
         from app.core.settings_read import resolve_setting
 
-        timeout_minutes = await resolve_setting(
-            session, tenant_id, "team.session_timeout_minutes"
-        )
+        timeout_minutes = await resolve_setting(session, tenant_id, "team.session_timeout_minutes")
         if timeout_minutes and timeout_minutes > 0:
             return timeout_minutes * 60
         return None

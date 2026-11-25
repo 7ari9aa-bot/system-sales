@@ -51,8 +51,10 @@ async def organization_config(session: AsyncSession, tenant_id: uuid.UUID) -> di
             values["default_language"] = value
         elif key == "organization.brand_color" and isinstance(value, str):
             values["brand_color"] = value
-        elif key == "organization.fiscal_year_start_month" and isinstance(
-            value, (int, float)
-        ) and not isinstance(value, bool):
+        elif (
+            key == "organization.fiscal_year_start_month"
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
             values["fiscal_year_start_month"] = max(1, min(12, int(value)))
     return values
