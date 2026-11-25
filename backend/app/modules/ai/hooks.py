@@ -177,6 +177,20 @@ async def _do_auto_reply(
         )
         return
 
+    # §settings: customer_agent.enabled is the shop's own switch — a plan that
+    # includes AI but a shop that turned the agent off should NOT reply. Unlike
+    # the entitlement gate, this is a preference, not a plan limitation, so the
+    # conversation simply waits for a human instead of creating a handover row.
+    from app.modules.settings.service import SettingsService
+
+    agent_enabled = await SettingsService(session, tenant_id).value("customer_agent.enabled")
+    if not agent_enabled:
+        logger.info(
+            "auto-reply skipped: customer_agent disabled conversation=%s",
+            conversation_id,
+        )
+        return
+
     agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
     if agent is None:
         # Entitled to AI, but the canonical customer agent is not provisioned:
@@ -482,6 +496,38 @@ async def _do_auto_reply(
     pre_turn_sent: set[str] = set(pre_turn_state.sent_media or []) if pre_turn_state else set()
 
     try:
+        # §settings: build the style directive from customer_agent settings
+        # (dialect, formality, response_language). These ride after the
+        # persona in the system prompt, colouring the reply's voice.
+        from app.modules.settings.service import SettingsService
+
+        _svc = SettingsService(session, tenant_id)
+        dialect = await _svc.value("customer_agent.dialect")
+        formality = await _svc.value("customer_agent.formality")
+        resp_lang = await _svc.value("customer_agent.response_language")
+        directive_parts: list[str] = []
+        _DIALECT_AR = {
+            "msa": "استخدم الفصحى",
+            "egyptian": "استخدم اللهجة المصرية",
+            "gulf": "استخدم اللهجة الخليجية",
+            "levantine": "استخدم اللهجة الشامية",
+        }
+        _FORMALITY_AR = {
+            "formal": "كن رسمياً",
+            "friendly": "كن ودوداً",
+            "casual": "كن غير رسمي",
+        }
+        if dialect and dialect in _DIALECT_AR:
+            directive_parts.append(_DIALECT_AR[dialect])
+        if formality and formality in _FORMALITY_AR:
+            directive_parts.append(_FORMALITY_AR[formality])
+        if resp_lang == "ar":
+            directive_parts.append("ردّ بالعربية دائماً")
+        elif resp_lang == "en":
+            directive_parts.append("Always reply in English")
+        # "auto" = no directive (model matches the customer's language)
+        style_directive = "، ".join(directive_parts) if directive_parts else None
+
         outcome = await run_customer_turn(
             session,
             TurnInput(
@@ -501,6 +547,7 @@ async def _do_auto_reply(
                 image_urls=image_urls,
                 audio_rides=audio_rides,
                 knowledge_context=knowledge_context,  # §132: separate from system prompt
+                style_directive=style_directive,
             ),
         )
     except AIBudgetExhaustedError as exc:
@@ -530,6 +577,19 @@ async def _do_auto_reply(
     if outcome.blocked_reason == "empty_turn":
         return
     if outcome.blocked_reason is not None:
+        # §settings: customer_agent.handoff_enabled gates non-critical
+        # handovers (guardrail, low_confidence, no-reply). Critical ones
+        # (budget, policy, no-agent) always proceed.
+        handoff_enabled = await SettingsService(session, tenant_id).value(
+            "customer_agent.handoff_enabled"
+        )
+        if not handoff_enabled:
+            logger.warning(
+                "ai.blocked_no_handover conversation=%s reason=%s — handoff disabled",
+                conversation_id,
+                outcome.blocked_reason,
+            )
+            return
         # §37: a reply withheld by the grounding re-check or the output
         # guardrail is a plain failure only when the run never looked at the
         # shop. A run that DID gather tool evidence (at least one tool call)

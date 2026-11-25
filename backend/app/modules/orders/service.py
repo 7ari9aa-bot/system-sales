@@ -650,15 +650,28 @@ class OrderService:
         # two concurrent orders holding the same variants in opposite orders
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
-        # When inventory.auto_reserve is off, the order proceeds without holding
-        # stock — the shop that chose this accepts the risk of overselling and
-        # relies on a later confirmation step to check availability.
+        # §183: orders.reserve_on controls WHEN stock is reserved — "create"
+        # (at order creation, the default) or "confirm" (at sale confirmation).
+        # inventory.auto_reserve stays as the master switch; reserve_on refines
+        # its timing. orders.allow_backorder (§140) lets the order proceed even
+        # when stock is insufficient — the shop accepts the oversell risk.
         auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
-        if auto_reserve:
+        reserve_on = await SettingsService(session, tenant_id).value("orders.reserve_on")
+        allow_backorder = await SettingsService(
+            session, tenant_id
+        ).value("orders.allow_backorder")
+        reserve_at_create = auto_reserve and reserve_on == "create"
+        if reserve_at_create:
             for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
-                await InventoryService.reserve(
-                    session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
-                )
+                try:
+                    await InventoryService.reserve(
+                        session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
+                    )
+                except ConflictError:
+                    if not allow_backorder:
+                        raise
+                    # Backorder: the order proceeds without the hold; stock will
+                    # be fulfilled later when the item is restocked.
 
         # Subtotal stays the GROSS of the ladder prices; the per-line
         # discounts compose with the caller's order-level discount into one
@@ -721,8 +734,8 @@ class OrderService:
             # §139: the row is born with its stock already held (the reserve
             # loop above aborted the whole order if it could not), so recording
             # "created" here would be a claim the reservations contradict.
-            # When auto_reserve is off, the order starts in "created" instead.
-            process_state="stock_reserved" if auto_reserve else "created",
+            # When reserve_at_create is off, the order starts in "created" instead.
+            process_state="stock_reserved" if reserve_at_create else "created",
             currency=currency,
             **totals,
             tax_included=tax_plan.total,
@@ -740,8 +753,9 @@ class OrderService:
 
         # §140: durable reservation rows next to the balance hold — one per
         # line, expiring in 15 minutes unless the order completes.
-        # Only created when auto-reserve is on; otherwise there is no hold to track.
-        if auto_reserve:
+        # Only created when reserve_at_create is on; otherwise there is no hold
+        # to track (the hold comes at confirmation when reserve_on == "confirm").
+        if reserve_at_create:
             expires_at = _now() + await reservation_ttl(session, tenant_id)
             for variant, quantity, _price, _pct in prepared:
                 await InventoryService.create_reservation(
@@ -1186,6 +1200,52 @@ class OrderService:
         )
         if order.status in ("cancelled", "refunded"):
             raise ConflictError(f"cannot confirm a {order.status} order")
+
+        # §183: when orders.reserve_on == "confirm", stock is reserved HERE
+        # (at confirmation) instead of at creation. The order was created
+        # without a hold; the confirm step acquires it now.
+        reserve_on = await SettingsService(session, tenant_id).value("orders.reserve_on")
+        auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
+        if auto_reserve and reserve_on == "confirm" and order.process_state == "created":
+            from app.modules.inventory.service import InventoryService
+
+            items = (
+                (
+                    await session.execute(
+                        select(OrderItem)
+                        .where(
+                            OrderItem.tenant_id == tenant_id,
+                            OrderItem.order_id == order.id,
+                        )
+                        .order_by(OrderItem.variant_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            wh_raw = order.extra.get("warehouse_id") if order.extra else None
+            warehouse_id = UUID(wh_raw) if wh_raw else None
+            if warehouse_id is not None:
+                for item in items:
+                    try:
+                        await InventoryService.reserve(
+                            session, tenant_id, item.variant_id, warehouse_id,
+                            item.quantity, channel=order.channel,
+                        )
+                        expires_at = _now() + await reservation_ttl(session, tenant_id)
+                        await InventoryService.create_reservation(
+                            session, tenant_id,
+                            variant_id=item.variant_id, warehouse_id=warehouse_id,
+                            order_id=order.id, quantity=item.quantity,
+                            expires_at=expires_at,
+                        )
+                    except ConflictError:
+                        allow_backorder = await SettingsService(
+                            session, tenant_id
+                        ).value("orders.allow_backorder")
+                        if not allow_backorder:
+                            raise
+            order.process_state = "stock_reserved"
 
         await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
         if order.status == "pending":

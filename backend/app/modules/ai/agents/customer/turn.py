@@ -197,6 +197,10 @@ class TurnInput:
     # line must NOT fire: the model is about to HEAR the customer, and telling
     # it the voice was unintelligible contradicts the bytes in its own payload.
     audio_rides: bool = False
+    # §settings: a server-chosen style directive from customer_agent settings
+    # (dialect, formality, response_language). Rides after the persona in the
+    # system prompt so it colours the reply without diluting the rules.
+    style_directive: str | None = None
 
 
 @dataclass(slots=True)
@@ -539,6 +543,7 @@ async def run_customer_turn(
             "classified_kind": (classified_kind.value if classified_kind is not None else None),
             "match": precomputed_match,
         },
+        style_directive=params.style_directive,
     )
 
     deadline_exceeded = (time.monotonic() - started) > deadline_seconds

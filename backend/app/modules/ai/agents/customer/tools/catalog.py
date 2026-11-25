@@ -321,8 +321,23 @@ async def _search_catalog(
             .limit(limit)
         )
     ).all()
-    availability = await _availability_map(session, tenant_id, [variant.id for variant, _ in rows])
-    prices = await _unit_prices(session, tenant_id, [variant for variant, _ in rows])
+    # §settings: customer_agent.show_prices / show_stock gate whether the
+    # agent may quote prices or stock to customers. Function-scope import
+    # keeps the module-boundary ratchet intact (settings is cross-cutting).
+    from app.modules.settings.service import SettingsService
+
+    show_prices = await SettingsService(session, tenant_id).value("customer_agent.show_prices")
+    show_stock = await SettingsService(session, tenant_id).value("customer_agent.show_stock")
+    availability = (
+        await _availability_map(session, tenant_id, [variant.id for variant, _ in rows])
+        if show_stock
+        else {}
+    )
+    prices = (
+        await _unit_prices(session, tenant_id, [variant for variant, _ in rows])
+        if show_prices
+        else {}
+    )
     result = {
         "total_matches": int(total_matches),
         "results": [
@@ -331,8 +346,8 @@ async def _search_catalog(
                 "product_id": str(variant.product_id),
                 "title": variant.title or product_title,
                 "sku": variant.sku,
-                "price": _money(prices[variant.id]),
-                "availability": availability.get(variant.id),
+                **({"price": _money(prices[variant.id])} if show_prices else {}),
+                **({"availability": availability.get(variant.id)} if show_stock else {}),
             }
             for variant, product_title in rows
         ],
@@ -380,9 +395,18 @@ async def _get_product_details(
         )
     ).scalars()
     variant_rows = list(variants.all())
+    # §settings: same show_prices / show_stock gating as search_catalog.
+    from app.modules.settings.service import SettingsService
+
+    show_prices = await SettingsService(session, tenant_id).value("customer_agent.show_prices")
+    show_stock = await SettingsService(session, tenant_id).value("customer_agent.show_stock")
     active = [v for v in variant_rows if v.is_active]
-    availability = await _availability_map(session, tenant_id, [v.id for v in active])
-    prices = await _unit_prices(session, tenant_id, variant_rows)
+    availability = (
+        await _availability_map(session, tenant_id, [v.id for v in active]) if show_stock else {}
+    )
+    prices = (
+        await _unit_prices(session, tenant_id, variant_rows) if show_prices else {}
+    )
     return {
         "product_id": str(product.id),
         "title": product.title,
@@ -393,10 +417,10 @@ async def _get_product_details(
                 "variant_id": str(variant.id),
                 "title": variant.title or product.title,
                 "sku": variant.sku,
-                "price": _money(prices[variant.id]),
+                **({"price": _money(prices[variant.id])} if show_prices else {}),
                 "is_active": variant.is_active,
                 "option_values": variant.option_values or {},
-                "availability": availability.get(variant.id),
+                **({"availability": availability.get(variant.id)} if show_stock else {}),
             }
             for variant in variant_rows
         ],
