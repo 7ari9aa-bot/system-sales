@@ -1,0 +1,553 @@
+import React from "react";
+import { Loader2, Plus, ScanLine, Trash2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
+import { api } from "@/lib/api";
+import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
+import { createProfileBody, updateProfileBody } from "../posProfileBody";
+
+/** أجهزة الكاشير والبروفايلات — قسم مستقل بمساره تحت /settings/pos/devices.
+ *
+ * كان جوّا صفحة إعدادات نقاط البيع (٦١٤ سطر). اتنقل هنا زي ما هو بدون حذف أي سطر،
+ * والصفحة الأم بقت غلاف بسيط بيختار القسم من المسار. */
+
+export default function DevicesSection() {
+  const t = useT();
+
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+
+  const [profiles, setProfiles] = React.useState([]);
+  const [registers, setRegisters] = React.useState([]);
+  const [warehouses, setWarehouses] = React.useState([]);
+  const [customers, setCustomers] = React.useState([]);
+  const [members, setMembers] = React.useState([]);
+
+  const [showProfileForm, setShowProfileForm] = React.useState(false);
+  const [editing, setEditing] = React.useState(null); // profile id under edit
+
+  const [profileForm, setProfileForm] = React.useState({
+    name: "",
+    code: "",
+    warehouse_id: "",
+    default_customer_id: "",
+    default_payment_method: "cash",
+    allowed_payment_methods: ["cash"],
+    require_customer: false,
+    max_discount_pct: "",
+  });
+  const [registerForm, setRegisterForm] = React.useState({
+    name: "",
+    code: "",
+    warehouse_id: "",
+    profile_id: "",
+  });
+  const [grantByProfile, setGrantByProfile] = React.useState({});
+  const [grantUser, setGrantUser] = React.useState({});
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [profiles, registers, warehouses, customers, members] = await Promise.all([
+        api("/pos/profiles"),
+        api("/pos/registers"),
+        api("/warehouses?limit=200"),
+        api("/customers?limit=100"),
+        api("/users"),
+      ]);
+      const profileRows = Array.isArray(profiles) ? profiles : [];
+      // المسموحين لكل بروفايل — بأسمائهم الحقيقية من نفس الـ endpoint.
+      const withGrantees = await Promise.all(
+        profileRows.map(async (row) => {
+          try {
+            const grantees = await api(`/pos/profiles/${row.id}/users`);
+            return { ...row, _grantees: Array.isArray(grantees) ? grantees : [] };
+          } catch {
+            return { ...row, _grantees: [] };
+          }
+        })
+      );
+      setProfiles(withGrantees);
+      setRegisters(Array.isArray(registers) ? registers : []);
+      setWarehouses(Array.isArray(warehouses) ? warehouses : []);
+      setCustomers(
+        Array.isArray(customers)
+          ? customers
+          : Array.isArray(customers?.items)
+            ? customers.items
+            : []
+      );
+      setMembers(Array.isArray(members) ? members : []);
+      setError("");
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.load", "Could not load the cashier settings."));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  function flash(message) {
+    setNotice(message);
+    setError("");
+  }
+
+  // ------------------------------------------------------------- profiles --
+
+  async function createProfile() {
+    try {
+      await api("/pos/profiles", {
+        method: "POST",
+        body: createProfileBody(profileForm),
+      });
+      setShowProfileForm(false);
+      setProfileForm({
+        name: "",
+        code: "",
+        warehouse_id: profileForm.warehouse_id,
+        default_customer_id: "",
+        default_payment_method: "cash",
+        allowed_payment_methods: ["cash"],
+        require_customer: false,
+        max_discount_pct: "",
+      });
+      await load();
+      flash(t("posSettings.created", "Profile created."));
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.save", "Could not save the profile."));
+    }
+  }
+
+  async function saveProfile(p) {
+    try {
+      await api(`/pos/profiles/${p.id}`, {
+        method: "PATCH",
+        body: updateProfileBody(p),
+      });
+      setEditing(null);
+      await load();
+      flash(t("posSettings.saved", "Profile updated."));
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.save", "Could not save the profile."));
+    }
+  }
+
+  // ------------------------------------------------------------ registers --
+
+  async function createRegister() {
+    try {
+      await api("/pos/registers", {
+        method: "POST",
+        body: {
+          name: registerForm.name,
+          code: registerForm.code,
+          warehouse_id: registerForm.warehouse_id,
+          profile_id: registerForm.profile_id || undefined,
+        },
+      });
+      setRegisterForm({ name: "", code: "", warehouse_id: registerForm.warehouse_id, profile_id: "" });
+      await load();
+      flash(t("posSettings.registerCreated", "Register created."));
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.register", "Could not create the register."));
+    }
+  }
+
+  // -------------------------------------------------------------- grantees --
+
+  async function grant(profile) {
+    const userId = grantUser[profile.id];
+    if (!userId) return;
+    try {
+      await api(`/pos/profiles/${profile.id}/users`, {
+        method: "POST",
+        body: { user_id: userId },
+      });
+      setGrantUser((prev) => ({ ...prev, [profile.id]: "" }));
+      await load();
+      flash(t("posSettings.granted", "Cashier granted."));
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.grant", "Could not grant the cashier."));
+    }
+  }
+
+  async function revoke(profile, userId) {
+    try {
+      await api(`/pos/profiles/${profile.id}/users/${userId}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e?.message || t("posSettings.err.revoke", "Could not revoke the cashier."));
+    }
+  }
+
+  const whName = (id) => warehouses.find((w) => w.id === id)?.name || "—";
+  const custName = (id) => customers.find((c) => c.id === id)?.name || "—";
+
+  return (
+    <SettingsShell>
+      {error && (
+        <div role="alert" className="mb-3 text-[13px] text-destructive">
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="mb-3 text-[13px] text-success">
+          {notice}
+        </div>
+      )}
+
+      {/* البروفايلات */}
+      <SettingCard
+        title={t("posSettings.profiles", "Cashier profiles")}
+        desc={t("posSettings.profilesDesc", "One profile preconfigures a till: warehouse, walk-in customer, payment methods.")}
+      >
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : (
+          <>
+            <div className="space-y-3">
+              {profiles.length === 0 && (
+                <p className="text-[13px] text-muted-foreground">
+                  {t("posSettings.noProfiles", "No profiles yet — create one below.")}
+                </p>
+              )}
+              {profiles.map((p) => {
+                const isEditing = editing === p.id;
+                return (
+                  <div key={p.id} className="space-y-2 border-b border-border py-3">
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            value={p.name}
+                            onChange={(e) =>
+                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, name: e.target.value } : row)))
+                            }
+                            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                          />
+                          <select
+                            value={p.warehouse_id}
+                            onChange={(e) =>
+                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, warehouse_id: e.target.value } : row)))
+                            }
+                            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                          >
+                            {warehouses.map((w) => (
+                              <option key={w.id} value={w.id}>
+                                {w.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={p.default_customer_id || ""}
+                            onChange={(e) =>
+                              setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, default_customer_id: e.target.value } : row)))
+                            }
+                            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                          >
+                            <option value="">{t("posSettings.noWalkIn", "No walk-in customer")}</option>
+                            {customers.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground sm:col-span-2">
+                            {t("posSettings.maxDiscount", "Highest discount a cashier may give (%)")}
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              inputMode="decimal"
+                              dir="ltr"
+                              value={p.max_discount_pct ?? ""}
+                              placeholder={t("posSettings.maxDiscountNone", "Empty = no limit")}
+                              onChange={(e) =>
+                                setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, max_discount_pct: e.target.value } : row)))
+                              }
+                              className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 text-[13px] sm:col-span-2">
+                            <input
+                              type="checkbox"
+                              checked={!!p.require_customer}
+                              onChange={(e) =>
+                                setProfiles((prev) => prev.map((row) => (row.id === p.id ? { ...row, require_customer: e.target.checked } : row)))
+                              }
+                              className="h-4 w-4 accent-primary"
+                            />
+                            {t("posSettings.requireCustomer", "A sale needs a customer")}
+                          </label>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveProfile(p)}
+                            className="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-[13px] font-medium"
+                          >
+                            {t("posSettings.save", "Save")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="h-9 px-4 rounded-xl border border-border text-[13px]"
+                          >
+                            {t("posSettings.cancel", "Cancel")}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[13.5px] font-medium">
+                              {p.name} <span className="text-muted-foreground" dir="ltr">({p.code})</span>
+                            </div>
+                            <div className="text-[12px] text-muted-foreground">
+                              {t("posSettings.warehouse", "Warehouse")}: {whName(p.warehouse_id)} ·{" "}
+                              {t("posSettings.walkIn", "Walk-in")}: {p.default_customer_id ? custName(p.default_customer_id) : t("posSettings.none", "none")} ·{" "}
+                              {t("posSettings.maxDiscountShort", "Max discount")}:{" "}
+                              {p.max_discount_pct == null ? t("posSettings.none", "None") : `${Number(p.max_discount_pct)}%`}
+                              {p.require_customer ? ` · ${t("posSettings.requireCustomerShort", "Customer required")}` : ""}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {!p.is_active && (
+                              <span className="text-[11.5px] text-muted-foreground">{t("posSettings.inactive", "inactive")}</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEditing(isEditing ? null : p.id)}
+                              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[12.5px] font-semibold text-foreground shadow-sm transition-colors hover:bg-surface hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isEditing ? t("posSettings.cancel", "Cancel") : t("posSettings.edit", "Edit")}
+                            </button>
+                          </div>
+                        </div>
+                        {/* الكاشيرين المسموحين */}
+                        <div className="text-[12px] text-muted-foreground">
+                          {t("posSettings.grantees", "Granted cashiers")}:
+                        </div>
+                        <ul className="flex flex-wrap gap-1.5">
+                          {(p._grantees || []).length === 0 && (
+                            <li className="text-[12px] text-muted-foreground">
+                              {t("posSettings.noGrantees", "Everyone with orders:write (no restriction)")}
+                            </li>
+                          )}
+                          {(p._grantees || []).map((g) => (
+                            <li key={g.user_id} className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-1 text-[11.5px]">
+                              {g.full_name || g.user_id.slice(0, 8)}
+                              <button
+                                type="button"
+                                aria-label={t("posSettings.revoke", "Revoke")}
+                                onClick={() => void revoke(p, g.user_id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="flex gap-2">
+                          <select
+                            value={grantUser[p.id] || ""}
+                            onChange={(e) => setGrantUser((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            className="h-9 flex-1 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                          >
+                            <option value="">{t("posSettings.pickMember", "Pick a team member…")}</option>
+                            {members
+                              .filter((m) => !(p._grantees || []).some((g) => g.user_id === m.id))
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.full_name || m.email} — {t(`posSettings.role.${m.role_code}`, m.role_code)}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => void grant(p)}
+                            disabled={!grantUser[p.id]}
+                            className="h-9 px-3 rounded-xl border border-border text-[12.5px] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            {t("posSettings.grant", "Grant")}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {!showProfileForm ? (
+              <button
+                type="button"
+                onClick={() => setShowProfileForm(true)}
+                className="mt-3 h-9 px-4 rounded-xl border border-border text-[13px] font-medium inline-flex items-center gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                {t("posSettings.newProfile", "New profile")}
+              </button>
+            ) : (
+              <div className="mt-3 space-y-2 border-t border-border pt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder={t("posSettings.name", "Name")}
+                    className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                  />
+                  <input
+                    value={profileForm.code}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, code: e.target.value }))}
+                    placeholder={t("posSettings.code", "Code (e.g. MAIN)")}
+                    dir="ltr"
+                    className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                  />
+                  <select
+                    value={profileForm.warehouse_id}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, warehouse_id: e.target.value }))}
+                    className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                  >
+                    <option value="">{t("posSettings.pickWarehouse", "Pick a warehouse…")}</option>
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={profileForm.default_customer_id}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, default_customer_id: e.target.value }))}
+                    className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+                  >
+                    <option value="">{t("posSettings.noWalkIn", "No walk-in customer")}</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
+                    {t("posSettings.maxDiscount", "Highest discount a cashier may give (%)")}
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      inputMode="decimal"
+                      dir="ltr"
+                      value={profileForm.max_discount_pct}
+                      placeholder={t("posSettings.maxDiscountNone", "Empty = no limit")}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, max_discount_pct: e.target.value }))}
+                      className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px] text-foreground"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.require_customer}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, require_customer: e.target.checked }))}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    {t("posSettings.requireCustomer", "A sale needs a customer")}
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void createProfile()}
+                  disabled={!profileForm.name || !profileForm.code || !profileForm.warehouse_id}
+                  className="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-[13px] font-medium disabled:opacity-50"
+                >
+                  {t("posSettings.create", "Create profile")}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </SettingCard>
+
+      {/* الكاشيرات */}
+      <SettingCard
+        title={t("posSettings.registers", "Registers")}
+        desc={t("posSettings.registersDesc", "The physical tills. Each sells from one warehouse, optionally under a profile.")}
+      >
+        <ul className="space-y-1.5 mb-3">
+          {registers.length === 0 && (
+            <li className="text-[13px] text-muted-foreground">
+              {t("posSettings.noRegisters", "No registers yet — create one below.")}
+            </li>
+          )}
+          {registers.map((r) => (
+            <li key={r.id} className="flex items-center justify-between border-b border-border py-2 text-[13px]">
+              <span>
+                {r.name} <span className="text-muted-foreground" dir="ltr">({r.code})</span>
+              </span>
+              <span className="text-[12px] text-muted-foreground">
+                {whName(r.warehouse_id)}
+                {r.profile_id ? ` · ${profiles.find((x) => x.id === r.profile_id)?.name || ""}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <input
+            value={registerForm.name}
+            onChange={(e) => setRegisterForm((prev) => ({ ...prev, name: e.target.value }))}
+            placeholder={t("posSettings.name", "Name")}
+            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+          />
+          <input
+            value={registerForm.code}
+            onChange={(e) => setRegisterForm((prev) => ({ ...prev, code: e.target.value }))}
+            placeholder={t("posSettings.code", "Code (e.g. T1)")}
+            dir="ltr"
+            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+          />
+          <select
+            value={registerForm.warehouse_id}
+            onChange={(e) => setRegisterForm((prev) => ({ ...prev, warehouse_id: e.target.value }))}
+            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+          >
+            <option value="">{t("posSettings.pickWarehouse", "Pick a warehouse…")}</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={registerForm.profile_id}
+            onChange={(e) => setRegisterForm((prev) => ({ ...prev, profile_id: e.target.value }))}
+            className="h-9 rounded-xl border border-border bg-surface px-3 text-[13px]"
+          >
+            <option value="">{t("posSettings.pickProfile", "No profile")}</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={() => void createRegister()}
+          disabled={!registerForm.name || !registerForm.code || !registerForm.warehouse_id}
+          className="mt-2 h-9 px-4 rounded-xl bg-primary text-primary-foreground text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
+        >
+          <ScanLine className="h-4 w-4" />
+          {t("posSettings.createRegister", "Create register")}
+        </button>
+      </SettingCard>
+    </SettingsShell>
+  );
+}
+
+// قسم إعدادات واحد للنظام: إعدادات الكاشير (بيانات المحل، الطباعة، الفئات، المستخدمون،

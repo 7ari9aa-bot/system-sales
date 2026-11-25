@@ -181,6 +181,7 @@ const DashboardRoutes = () => (
           <Route path="/settings/ai" element={<AI />} />
           <Route path="/settings/usage" element={<Usage />} />
           <Route path="/settings/pos" element={<PosSettings />} />
+          <Route path="/settings/pos/:section" element={<PosSettings />} />
           <Route path="/settings/policies" element={<PoliciesSettings />} />
           <Route path="/settings/billing" element={<BillingSettings />} />
           <Route path="/settings/members" element={<MembersSettings />} />
