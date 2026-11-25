@@ -657,9 +657,7 @@ class OrderService:
         # when stock is insufficient — the shop accepts the oversell risk.
         auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
         reserve_on = await SettingsService(session, tenant_id).value("orders.reserve_on")
-        allow_backorder = await SettingsService(
-            session, tenant_id
-        ).value("orders.allow_backorder")
+        allow_backorder = await SettingsService(session, tenant_id).value("orders.allow_backorder")
         reserve_at_create = auto_reserve and reserve_on == "create"
         if reserve_at_create:
             for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
@@ -826,6 +824,41 @@ class OrderService:
             # §153: the row's real version (VersionMixin) — never a literal.
             aggregate_version=order.version,
         )
+
+        # §settings: notifications.order_received — notify owners when a new
+        # order arrives, if the setting is enabled.
+        notify_order = await SettingsService(session, tenant_id).value(
+            "notifications.order_received"
+        )
+        if notify_order:
+            from app.modules.notifications.service import NotificationService
+
+            owner_ids = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT tu.user_id FROM tenant_users tu "
+                            "JOIN roles r ON r.id = tu.role_id "
+                            "WHERE tu.tenant_id = :tid AND r.code = 'owner'"
+                        ),
+                        {"tid": str(tenant_id)},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for uid in owner_ids:
+                await NotificationService.create(
+                    session,
+                    tenant_id,
+                    uid,
+                    kind="order_received",
+                    title=f"New order {order.number}",
+                    body=f"Order {order.number} has been received.",
+                    payload={"order_id": str(order.id), "number": order.number},
+                    dedup_key=f"order_received:{order.id}",
+                )
+
         return order
 
     @staticmethod
@@ -1229,20 +1262,27 @@ class OrderService:
                 for item in items:
                     try:
                         await InventoryService.reserve(
-                            session, tenant_id, item.variant_id, warehouse_id,
-                            item.quantity, channel=order.channel,
+                            session,
+                            tenant_id,
+                            item.variant_id,
+                            warehouse_id,
+                            item.quantity,
+                            channel=order.channel,
                         )
                         expires_at = _now() + await reservation_ttl(session, tenant_id)
                         await InventoryService.create_reservation(
-                            session, tenant_id,
-                            variant_id=item.variant_id, warehouse_id=warehouse_id,
-                            order_id=order.id, quantity=item.quantity,
+                            session,
+                            tenant_id,
+                            variant_id=item.variant_id,
+                            warehouse_id=warehouse_id,
+                            order_id=order.id,
+                            quantity=item.quantity,
                             expires_at=expires_at,
                         )
                     except ConflictError:
-                        allow_backorder = await SettingsService(
-                            session, tenant_id
-                        ).value("orders.allow_backorder")
+                        allow_backorder = await SettingsService(session, tenant_id).value(
+                            "orders.allow_backorder"
+                        )
                         if not allow_backorder:
                             raise
             order.process_state = "stock_reserved"

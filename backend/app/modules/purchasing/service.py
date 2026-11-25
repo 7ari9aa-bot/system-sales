@@ -507,6 +507,16 @@ class PurchaseService:
             # The PO is marked as centrally managed via the note field.
             order.note = (order.note or "") + " [centralized]"
             await session.flush()
+            # §settings: branch.allow_independent_purchasing — even under
+            # centralized purchasing, a branch with this override may create
+            # its own POs. Without it, the PO stays centralized.
+            allow_independent = await SettingsService(session, tenant_id).value(
+                "branch.allow_independent_purchasing"
+            )
+            if not allow_independent:
+                order.note = (order.note or "").replace(
+                    " [centralized]", ""
+                ) + " [requires HQ approval]"
         if not approval_required and (threshold == 0 or order.total < threshold):
             order.status = "approved"
             order.approved_at = datetime.now(UTC)

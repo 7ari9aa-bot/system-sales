@@ -900,3 +900,114 @@ async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("einvoice.eta_deliver", _handle_eta_deliver)
+
+
+async def _handle_low_stock_alerts(session, tenant_id, payload: dict) -> dict:
+    """§settings: notifications.low_stock_alert — check for low stock and notify owners.
+
+    Gated by the setting: if disabled, this is a no-op. When enabled, finds
+    variants at or below their min_stock policy and creates one notification
+    per owner (deduped per variant+warehouse per day so a persistent shortage
+    reminds once, not every sweep).
+    """
+    from app.modules.inventory.services.reporting import InventoryReportingService
+    from app.modules.notifications.service import NotificationService
+    from app.modules.settings.service import SettingsService
+
+    enabled = await SettingsService(session, tenant_id).value("notifications.low_stock_alert")
+    if not enabled:
+        return {"skipped": True, "reason": "low_stock_alert disabled"}
+
+    alerts = await InventoryReportingService.low_stock_alerts(session, tenant_id)
+    if not alerts:
+        return {"alerts": 0}
+
+    owner_ids = await _tenant_owner_ids(session, tenant_id)
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    created = 0
+    for alert in alerts:
+        dedup = f"low_stock:{alert['variant_id']}:{alert['warehouse_id']}:{today}"
+        for uid in owner_ids:
+            await NotificationService.create(
+                session,
+                tenant_id,
+                uid,
+                kind="low_stock",
+                title="Low stock alert",
+                body=(
+                    f"Variant {alert['variant_id']} in warehouse "
+                    f"{alert['warehouse_id']} is at {alert['available']} "
+                    f"(min: {alert['min_stock']})."
+                ),
+                payload=alert,
+                dedup_key=dedup,
+            )
+            created += 1
+    return {"alerts": len(alerts), "notifications": created}
+
+
+register_job_handler("inventory.low_stock_alerts", _handle_low_stock_alerts)
+
+
+async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
+    """§settings: branch.auto_close_shift — auto-close POS sessions past shift_end_time.
+
+    Finds OPEN pos_sessions whose opened_at is older than today's shift_end_time
+    and closes them (record-only close, no counted cash). Gated by the tenant's
+    ``branch.auto_close_shift`` setting; ``branch.shift_end_time`` sets the cutoff.
+    """
+    from app.modules.settings.service import SettingsService
+
+    auto_close = await SettingsService(session, tenant_id).value("branch.auto_close_shift")
+    if not auto_close:
+        return {"skipped": True, "reason": "auto_close_shift disabled"}
+
+    shift_end = await SettingsService(session, tenant_id).value("branch.shift_end_time")
+    shift_end = str(shift_end or "23:59")
+
+    from sqlalchemy import select
+
+    from app.modules.pos.models import PosSession
+
+    now = datetime.now(UTC)
+    # Build today's cutoff timestamp from shift_end_time (HH:MM).
+    try:
+        hh, mm = shift_end.split(":")
+        cutoff = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    except (ValueError, AttributeError):
+        cutoff = now
+
+    if now < cutoff:
+        return {"skipped": True, "reason": "before shift_end_time"}
+
+    open_sessions = (
+        (
+            await session.execute(
+                select(PosSession.id).where(
+                    PosSession.tenant_id == tenant_id,
+                    PosSession.status == "OPEN",
+                    PosSession.opened_at < cutoff,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not open_sessions:
+        return {"closed": 0}
+
+    from app.modules.pos.service import PosService
+
+    closed = 0
+    for sid in open_sessions:
+        try:
+            async with session.begin_nested():
+                await PosService.close_session(session, tenant_id, sid, shift_override=True)
+                closed += 1
+        except Exception:  # noqa: BLE001 — one stuck session must not block the rest
+            pass
+    return {"closed": closed, "shift_end_time": shift_end}
+
+
+register_job_handler("pos.auto_close_shifts", _handle_auto_close_shifts)

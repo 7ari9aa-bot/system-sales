@@ -452,6 +452,19 @@ async def run_sales_analysis(
     from app.modules.ai.gateway import AIGateway
     from app.modules.ai.runtime import AgentRunner
 
+    # §settings: analytics_agent.enabled gates whether the agent runs at all.
+    from app.modules.settings.service import SettingsService
+
+    _settings = SettingsService(session, tenant_id)
+    agent_enabled = await _settings.value("analytics_agent.enabled")
+    if not agent_enabled:
+        return AnalysisResult(
+            outcome=Outcome.UNSUPPORTED_ANALYSIS,
+            answer="The analytics agent is disabled in settings.",
+            findings=[],
+            run_id=None,
+        )
+
     # The merchant zone is the one every fact's period is stamped through —
     # caller → tenant → deployment → UTC (analytics timekit, §6.5/P1-19). This
     # query used to COALESCE a hardcoded 'Africa/Cairo' over a NULL
@@ -471,6 +484,17 @@ async def run_sales_analysis(
     style_directive = _system_directive_for(
         tenant_row[1] if tenant_row else None, merchant_currency, tenant_id, merchant_tz
     )
+    # §settings: analytics_agent.default_period — append to the system directive
+    # so the model knows the preferred default period when the question omits one.
+    default_period = await _settings.value("analytics_agent.default_period")
+    if default_period:
+        _period_hint = (
+            f"Default reporting period: {default_period}."
+            " Use this when the question does not specify a time range."
+        )
+        style_directive = (
+            f"{style_directive}\n\n{_period_hint}" if style_directive else _period_hint
+        )
 
     # Attach any tool the agent row does not have yet. Only the old /ai/sales route used to do
     # this, so an agent created before a tool existed never received it on the chat path: in
@@ -552,6 +576,13 @@ async def run_sales_analysis(
     run_id = result.run_id
     evidence = _rebuild_evidence(result.tool_calls_made)
     evidence["recorded_days"] = await _recorded_days(session, tenant_id)
+
+    # §settings: analytics_agent.min_confidence — filter findings below the
+    # tenant's confidence threshold so low-certainty suggestions are excluded.
+    min_confidence = await _settings.value("analytics_agent.min_confidence")
+    if min_confidence is None:
+        min_confidence = 0.7
+
     payloads = evidence["facts"]
     facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
 
@@ -569,6 +600,10 @@ async def run_sales_analysis(
         else EvidenceStore()
     )
     findings = build_findings(store) if facts_contracts else []
+    # §settings: analytics_agent.min_confidence — filter findings below threshold.
+    _conf_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    _min_level = 3 if min_confidence >= 0.8 else (2 if min_confidence >= 0.5 else 1)
+    findings = [f for f in findings if _conf_order.get(f.confidence, 0) >= _min_level]
     allowed = allowed_numbers_from_facts(evidence, findings)
     evidence_hash = None
     pack = None
