@@ -481,6 +481,12 @@ class PosService(PosReceiptReads):
         )
 
         amt = _positive_amount(amount, "amount")
+        # The shop may cap a single drawer movement: a pay-out is how cash leaves the drawer
+        # without a sale, so an uncapped one is the quiet way to empty it.
+        limit = await PosService._setting(
+            session, tenant_id, "pos.cash_movement_limit", pos_session
+        )
+        PosService._assert_within_cash_movement_limit(amt, limit)
         movement = PosCashMovement(
             tenant_id=tenant_id,
             session_id=session_id,
@@ -923,6 +929,21 @@ class PosService(PosReceiptReads):
             "discount_total": str(totals["discount_total"]),
             "grand_total": str(totals["grand_total"]),
         }
+
+    @staticmethod
+    def _assert_within_cash_movement_limit(amount: Decimal, limit: object) -> None:
+        """Refuse a single drawer movement above the limit the shop set.
+
+        Zero or unset means "no cap": a shop that never chose a limit must not be blocked by a
+        default nobody picked, so only a positive limit refuses anything.
+        """
+        if limit in (None, ""):
+            return
+        cap = Decimal(str(limit))
+        if cap > 0 and amount > cap:
+            raise ValidationError(
+                f"amount {amount} is above the shop's cash movement limit of {cap}"
+            )
 
     @staticmethod
     async def _setting(

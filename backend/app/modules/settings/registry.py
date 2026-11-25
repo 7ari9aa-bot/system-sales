@@ -201,6 +201,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "business.commercial_register",  # pos/receipt_settings.py::receipt_settings
         "business.address.postal_code",  # pos/receipt_settings.py::receipt_settings
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
+        "pos.cash_movement_limit",  # pos/service.py::add_cash_movement
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
         "pos.allow_hold_cart",  # pos/service.py::hold_cart
         "pos.return_max_days",  # pos/service.py::return_sale
@@ -764,6 +765,27 @@ _reg(
         description_en="Branch building number as registered.",
     )
 )
+_reg(
+    SettingDef(
+        key="pos.cash_movement_limit",
+        domain="pos",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        min_value=0,
+        max_value=1_000_000,
+        label_ar="سقف حركة النقدية",
+        label_en="Cash movement limit",
+        description_ar=(
+            "أقصى مبلغ مسموح في حركة واحدة على الدرج (إيداع أو سحب). صفر يعني بلا سقف."
+        ),
+        description_en=(
+            "The largest single drawer movement (pay-in or pay-out) a cashier may record. "
+            "Zero means no limit."
+        ),
+    )
+)
+
 _reg(
     SettingDef(
         key="pos.max_discount_pct",

@@ -16,6 +16,18 @@ describe("policyDefinitions", () => {
   it("copes with nothing loaded yet", () => {
     expect(policyDefinitions(undefined)).toEqual([]);
   });
+  it("shows the drawer movement cap once the shop is allowed to set it", () => {
+    // The cap is a number setting like any other policy: as soon as the registry calls it
+    // enforced it appears in the policy screen with no extra wiring.
+    const defs = [
+      def({ key: "pos.cash_movement_limit", type: "number", default: 0, max_value: 1000000 }),
+      def({ key: "pos.max_discount_pct", type: "number" }),
+    ];
+    expect(policyDefinitions(defs).map((d) => d.key)).toEqual([
+      "pos.cash_movement_limit",
+      "pos.max_discount_pct",
+    ]);
+  });
 });
 
 describe("startingValues and changedValues", () => {
