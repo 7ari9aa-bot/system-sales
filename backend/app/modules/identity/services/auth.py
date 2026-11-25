@@ -92,9 +92,9 @@ async def _tenant_strong_passwords_required(session, tenant_id: uuid.UUID | None
     tenant is available (e.g. registration, before the tenant is created).
     """
     if tenant_id is None:
-        from app.modules.settings.registry import get_definition
+        from app.core.settings_read import get_default
 
-        return bool(get_definition("security.require_strong_passwords").default)
+        return bool(get_default("security.require_strong_passwords"))
     from app.core.settings_read import setting_bool
 
     return await setting_bool(session, tenant_id, "security.require_strong_passwords")

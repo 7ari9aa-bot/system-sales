@@ -75,6 +75,17 @@ async def setting_bool(
     return bool(value)
 
 
+def get_default(key: str) -> Any:
+    """Return the registry default for a setting key (no tenant needed).
+
+    Use this when you need the default value before a tenant exists (e.g. at
+    registration).  Lives in ``app.core`` so callers in ``identity`` and other
+    cycle-adjacent modules can read the default without importing
+    ``app.modules.settings`` directly.
+    """
+    return get_definition(key).default
+
+
 # -----------------------------------------------------------------------
 # Internal helpers — mirror SettingsService._pick / _load_overrides
 # but kept self-contained so this module has no dependency on the

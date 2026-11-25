@@ -21,6 +21,7 @@ const json = (route, data, status = 200) => route.fulfill({ status, json: data }
 
 async function setup(page, { onBulk } = {}) {
   await page.context().addCookies([{ name: "csrf_token", value: "ui-test", url: new URL(process.env.BASE_URL || "http://127.0.0.1:4173").origin }]);
+  await page.addInitScript((l) => localStorage.setItem("salesos.lang", l), "ar");
   await page.route("**/api/v1/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/v1/auth/me") return json(route, { id: "u", email: "t@e.com", full_name: "T", is_active: true, tenants: [{ id: "tenant", name: "Shop", role_code: "owner" }] });

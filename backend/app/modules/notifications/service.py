@@ -367,13 +367,18 @@ class NotificationService:
         via ``auth_email_delivery_configured``; when it is not configured the
         email is silently skipped — the in-app notification still lands.
         """
+        from sqlalchemy import text as _text
+
         from app.core.events.writer import add_outbox_event
 
-        # Look up the recipient address (RLS-scoped by tenant_id GUC).
-        from app.modules.identity.models import User
-
-        user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-        if user is None or not user.email:
+        # Look up the recipient address (RLS-scoped by tenant_id GUC) — raw SQL
+        # to avoid a cross-module import into identity.models.
+        row = (
+            await session.execute(
+                _text("SELECT email FROM users WHERE id = :uid"), {"uid": user_id}
+            )
+        ).first()
+        if row is None or not row[0]:
             return
         await add_outbox_event(
             session,
@@ -383,7 +388,7 @@ class NotificationService:
             tenant_id=tenant_id,
             producer="notifications",
             payload={
-                "to": user.email,
+                "to": row[0],
                 "subject": title,
                 "body": body,
                 "user_id": str(user_id),

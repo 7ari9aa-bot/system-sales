@@ -57,6 +57,8 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [RISK_REGISTER.md](RISK_REGISTER.md) | Known risks. | live |
 | [GAP_REGISTER.md](GAP_REGISTER.md) | Full-system critique audit. | live |
 | [SETTINGS_MASTER_SPECIFICATION.md](SETTINGS_MASTER_SPECIFICATION.md) | Every setting in FIHRIST: keys, types, defaults, scopes, enforcement status, and the roadmap from code to UI. | live |
+| [settings/domain-specification.md](settings/domain-specification.md) | Settings domain architecture: scope hierarchy, types, sensitivity, apply modes, storage, read/write paths, change management, events. | live |
+| [settings/registry-specification.md](settings/registry-specification.md) | Settings registry: every key with type, default, scopes, sensitivity, apply mode, bounds, allowed values, segments, and storage. | live |
 | [CONTRACT_AUDIT.md](CONTRACT_AUDIT.md) | "Defined, then bypassed" audit. | history |
 | [ROADMAP_TO_90.md](ROADMAP_TO_90.md), [PATH_BREAKDOWN.md](PATH_BREAKDOWN.md) | Plan and work-package split. | history |
 
