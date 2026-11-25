@@ -93,6 +93,19 @@ class ProductServiceMixin:
         if duplicate is not None:
             raise ConflictError(f"product slug '{slug}' already exists")
 
+        # §settings: catalog.default_tax_rate — stamp the tenant's default tax
+        # rate onto the product's attributes so order tax calculation can read
+        # it when no explicit tax class is assigned.
+        merged_attrs = attributes or {}
+        if "default_tax_rate" not in merged_attrs:
+            from app.modules.settings.service import SettingsService
+
+            default_tax = await SettingsService(session, tenant_id).value(
+                "catalog.default_tax_rate"
+            )
+            if default_tax and default_tax > 0:
+                merged_attrs = {**merged_attrs, "default_tax_rate": default_tax}
+
         product = Product(
             tenant_id=tenant_id,
             title=title,
@@ -100,7 +113,7 @@ class ProductServiceMixin:
             description=description,
             brand_id=brand_id,
             category_id=category_id,
-            attributes=attributes or {},
+            attributes=merged_attrs,
             season=_clean_season(season),
             material=_clean_material(material),
         )

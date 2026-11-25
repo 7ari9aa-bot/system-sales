@@ -1181,8 +1181,12 @@ class OrderService:
         await session.flush()
 
         # §140: a captured payment converts the order's stock reservations
-        # into a sale (ACTIVE -> CONVERTED).
-        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
+        # into a sale (ACTIVE -> CONVERTED) — but only when the shop deducts
+        # stock at confirmation. When deduct_stock_on is "ship" or "deliver"
+        # the conversion (the real on_hand decrease) is deferred to that step.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "confirm":
+            await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
 
         # §139: money really arrived, so the saga says so.
         if OrderService._saga_move(order, "paid"):
@@ -1287,7 +1291,11 @@ class OrderService:
                             raise
             order.process_state = "stock_reserved"
 
-        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
+        # §140: convert reservations to a sale now, unless the shop defers the
+        # stock deduction to ship or deliver time.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "confirm":
+            await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
         if order.status == "pending":
             await OrderService._transition(
                 session, tenant_id, order, "confirmed", note="sale recorded"
@@ -1569,6 +1577,13 @@ class OrderService:
         )
         session.add(shipment)
         await session.flush()
+
+        # §settings: orders.deduct_stock_on — when set to "ship", the actual
+        # stock deduction (reservation -> sale) happens HERE, not at confirm.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "ship":
+            await OrderService._convert_reservations(session, tenant_id, order.id, by_user_id)
+
         return shipment
 
     @staticmethod
@@ -1662,6 +1677,15 @@ class OrderService:
                     by_user_id=by_user_id,
                     note="carrier delivery confirmed",
                 )
+                # §settings: orders.deduct_stock_on — when set to "deliver",
+                # the actual stock deduction happens HERE, at delivery.
+                deduct_on = await SettingsService(session, tenant_id).value(
+                    "orders.deduct_stock_on"
+                )
+                if deduct_on == "deliver":
+                    await OrderService._convert_reservations(
+                        session, tenant_id, order.id, by_user_id
+                    )
         elif new_status in ("returned", "failed"):
             # The carrier says the goods are back, so the return process runs:
             # restock what left, then close the order (ADR-052, which supersedes

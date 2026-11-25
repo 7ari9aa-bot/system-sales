@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -527,6 +527,54 @@ async def _do_auto_reply(
             directive_parts.append("Always reply in English")
         # "auto" = no directive (model matches the customer's language)
         style_directive = "، ".join(directive_parts) if directive_parts else None
+
+        # §settings: customer_agent.max_turns_before_handoff — after this many
+        # customer-AI exchanges without resolution, hand off to a human staff
+        # member instead of continuing the loop. Count outbound AI replies as
+        # a proxy for completed exchanges.
+        max_turns = await SettingsService(session, tenant_id).value(
+            "customer_agent.max_turns_before_handoff"
+        )
+        if max_turns and max_turns > 0:
+            from app.modules.conversations.models import Message
+
+            ai_reply_count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.tenant_id == tenant_id,
+                        Message.conversation_id == conversation_id,
+                        Message.direction == "outbound",
+                        Message.sender_type == "ai",
+                    )
+                )
+            ).scalar_one()
+            if ai_reply_count >= max_turns:
+                handoff_enabled = await SettingsService(session, tenant_id).value(
+                    "customer_agent.handoff_enabled"
+                )
+                if handoff_enabled:
+                    created = await handover(
+                        "max_turns",
+                        f"reached {max_turns} turns without resolution",
+                        None,
+                    )
+                    logger.info(
+                        "ai.max_turns_handover conversation=%s turns=%s max=%s handover=%s",
+                        conversation_id,
+                        ai_reply_count,
+                        max_turns,
+                        created,
+                    )
+                    return
+                logger.warning(
+                    "ai.max_turns_reached_no_handover conversation=%s turns=%s max=%s",
+                    conversation_id,
+                    ai_reply_count,
+                    max_turns,
+                )
+                return
 
         outcome = await run_customer_turn(
             session,

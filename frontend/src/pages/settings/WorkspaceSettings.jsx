@@ -8,6 +8,7 @@ import { activeTenant, activeTenantId } from "@/lib/activeTenant";
 import { useRegional, formatCurrency, formatDate } from "@/lib/regional";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
 import OrganizationBranchCard from "@/components/settings/OrganizationBranchCard";
+import BrandColorCard from "@/components/settings/BrandColorCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -233,6 +234,7 @@ export default function WorkspaceSettings() {
 
       <div className="mt-6">
         <OrganizationBranchCard />
+        <BrandColorCard />
       </div>
     </SettingsShell>
   );

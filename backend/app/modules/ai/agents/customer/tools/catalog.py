@@ -328,11 +328,21 @@ async def _search_catalog(
 
     show_prices = await SettingsService(session, tenant_id).value("customer_agent.show_prices")
     show_stock = await SettingsService(session, tenant_id).value("customer_agent.show_stock")
+
+    # §settings: catalog.show_out_of_stock — when False, drop variants with
+    # zero stock from the results the customer sees.
+    show_out_of_stock = await SettingsService(session, tenant_id).value("catalog.show_out_of_stock")
     availability = (
         await _availability_map(session, tenant_id, [variant.id for variant, _ in rows])
         if show_stock
         else {}
     )
+    if not show_out_of_stock and availability:
+        rows = [
+            (variant, title)
+            for variant, title in rows
+            if availability.get(variant.id, {}).get("on_hand", 0) > 0
+        ]
     prices = (
         await _unit_prices(session, tenant_id, [variant for variant, _ in rows])
         if show_prices
@@ -404,9 +414,7 @@ async def _get_product_details(
     availability = (
         await _availability_map(session, tenant_id, [v.id for v in active]) if show_stock else {}
     )
-    prices = (
-        await _unit_prices(session, tenant_id, variant_rows) if show_prices else {}
-    )
+    prices = await _unit_prices(session, tenant_id, variant_rows) if show_prices else {}
     return {
         "product_id": str(product.id),
         "title": product.title,

@@ -496,6 +496,20 @@ async def run_sales_analysis(
             f"{style_directive}\n\n{_period_hint}" if style_directive else _period_hint
         )
 
+    # §settings: analytics_agent.include_branches — scope the analysis to the
+    # specified branch IDs. Empty = all branches. Passed as a directive so the
+    # model focuses its queries and reasoning on the allowed branches only.
+    include_branches = await _settings.value("analytics_agent.include_branches")
+    if include_branches:
+        branch_ids = ", ".join(str(b) for b in include_branches)
+        _branch_hint = (
+            f"Scope: analyse only these branch IDs: {branch_ids}."
+            " Exclude data from any branch not in this list."
+        )
+        style_directive = (
+            f"{style_directive}\n\n{_branch_hint}" if style_directive else _branch_hint
+        )
+
     # Attach any tool the agent row does not have yet. Only the old /ai/sales route used to do
     # this, so an agent created before a tool existed never received it on the chat path: in
     # production 11 of 12 agents held three tools and answered "no stock data" with the stock tool
