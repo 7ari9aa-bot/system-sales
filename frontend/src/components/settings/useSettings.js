@@ -17,6 +17,7 @@ export function useSettings(opts = {}) {
   const [defs, setDefs] = useState(null);
   const [values, setValues] = useState({});
   const [original, setOriginal] = useState({});
+  const [historyIds, setHistoryIds] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -54,11 +55,14 @@ export function useSettings(opts = {}) {
         const list = Array.isArray(defList) ? defList : [];
         setDefs(list);
         const v = {};
+        const hids = {};
         for (const [key, resolved] of Object.entries(eff || {})) {
           v[key] = resolved.value;
+          if (resolved.latest_history_id) hids[key] = resolved.latest_history_id;
         }
         setValues(v);
         setOriginal(v);
+        setHistoryIds(hids);
         setLoading(false);
       })
       .catch((err) => {
@@ -103,9 +107,20 @@ export function useSettings(opts = {}) {
         if (v !== original[k]) changes[k] = v;
       }
       if (Object.keys(changes).length > 0) {
+        // Pass expected_history_ids for optimistic-concurrency checks (§81).
+        const expectedIds = {};
+        for (const k of Object.keys(changes)) {
+          if (historyIds[k]) expectedIds[k] = historyIds[k];
+        }
         await api("/settings/bulk", {
           method: "POST",
-          body: { scope: "tenant", settings: changes },
+          body: {
+            scope: "tenant",
+            settings: changes,
+            ...(Object.keys(expectedIds).length > 0
+              ? { expected_history_ids: expectedIds }
+              : {}),
+          },
         });
       }
       setOriginal({ ...values });
@@ -115,7 +130,7 @@ export function useSettings(opts = {}) {
     } finally {
       setSaving(false);
     }
-  }, [values, original]);
+  }, [values, original, historyIds]);
 
   const reset = useCallback(() => {
     setValues({ ...original });

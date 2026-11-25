@@ -497,11 +497,28 @@ EXTRA_PERMISSIONS = [
     # supplier balances to every manager. They start owner-only; the owner grants them on.
     ("finance", "read", "finance:read"),
     ("purchasing", "read", "purchasing:read"),
+    # Sensitive settings (team.require_2fa, security.*, billing.*) are masked in
+    # read/history/override endpoints unless the caller holds this. Owner-only
+    # by default so a manager with settings:read still sees the key but not the value.
+    ("settings", "read_sensitive", "settings:read_sensitive"),
+    # Emergency bypass for the approval flow on rollback / restore / apply_preset.
+    # Without it those operations route APPROVAL_REQUIRED settings through a change
+    # request. With it an owner may bypass in a documented emergency; an independent
+    # audit row records every bypass.
+    ("settings", "emergency_bypass", "settings:emergency_bypass"),
 ]
 
 ROLE_MATRIX: dict[str, list[str]] = {
     "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS]
-    + ["ai:approve", "pos:override", "finance:read", "purchasing:read", "settings:branch_write"],
+    + [
+        "ai:approve",
+        "pos:override",
+        "finance:read",
+        "purchasing:read",
+        "settings:branch_write",
+        "settings:read_sensitive",
+        "settings:emergency_bypass",
+    ],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES

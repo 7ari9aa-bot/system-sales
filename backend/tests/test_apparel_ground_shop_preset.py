@@ -97,8 +97,9 @@ def test_no_other_preset_turns_on_payments_so_a_shop_that_does_not_pick_this_is_
 @pytest.mark.asyncio
 async def test_applying_it_writes_every_value_and_an_owner_may_do_it(db, tenant_ctx) -> None:
     svc = SettingsService(db, tenant_ctx.tenant_id)
-    rows = await svc.apply_preset(NAME, user_id=tenant_ctx.user.id, permissions=OWNER)
-    assert len(rows) == len(PRESETS[NAME])
+    result = await svc.apply_preset(NAME, user_id=tenant_ctx.user.id, permissions=OWNER)
+    assert len(result["applied"]) == len(PRESETS[NAME])
+    assert result["pending_approval"] == []
     for key, value in PRESETS[NAME].items():
         assert (await svc.resolve(key)).value == value, key
 
