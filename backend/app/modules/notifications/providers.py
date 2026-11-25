@@ -108,3 +108,55 @@ class FakePushProvider:
 
     async def send(self, *, token: str, title: str, body: str) -> None:
         self.sent.append({"token": token, "title": title, "body": body})
+
+
+# ──────────────────────────────────────────────────────────────────────
+# FCM push adapter (production)
+# ──────────────────────────────────────────────────────────────────────
+
+_FCM_URL = "https://fcm.googleapis.com/fcm/send"
+
+
+class FCMPushProvider:
+    """Minimal Firebase Cloud Messaging adapter for push notifications.
+
+    Mirrors the shape of ``ResendEmailProvider``: no real API key is stored in
+    the class; the server key comes from ``settings.fcm_server_key`` at call
+    time.  When FCM is not configured the call is a no-op so the worker can
+    still drain the outbox without errors.
+    """
+
+    def __init__(self, client_factory: type[httpx.AsyncClient] | None = None) -> None:
+        self._client_factory = client_factory or httpx.AsyncClient
+
+    async def send(self, *, token: str, title: str, body: str) -> None:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if not settings.fcm_server_key.strip():
+            logger.debug("fcm.not_configured — skipping push to %s", token)
+            return
+        payload: dict[str, Any] = {
+            "to": token,
+            "notification": {"title": title, "body": body},
+        }
+        try:
+            async with self._client_factory(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+                response = await client.post(
+                    _FCM_URL,
+                    headers={
+                        "Authorization": f"key={settings.fcm_server_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+        except httpx.HTTPError as exc:
+            raise RuntimeError("fcm network error") from exc
+        if not response.is_success:
+            raise RuntimeError(f"fcm rejected delivery (http {response.status_code})")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fake push provider (tests) — kept after FCM so the import order in tests
+# that reference both is stable.
+# ──────────────────────────────────────────────────────────────────────

@@ -60,6 +60,8 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [SETTINGS_MASTER_SPECIFICATION.md](SETTINGS_MASTER_SPECIFICATION.md) | Every setting in FIHRIST: keys, types, defaults, scopes, enforcement status, and the roadmap from code to UI. | live |
 | [settings/domain-specification.md](settings/domain-specification.md) | Settings domain architecture: scope hierarchy, types, sensitivity, apply modes, storage, read/write paths, change management, events. | live |
 | [settings/registry-specification.md](settings/registry-specification.md) | Settings registry: every key with type, default, scopes, sensitivity, apply mode, bounds, allowed values, segments, and storage. | live |
+| [settings/frontend-specification.md](settings/frontend-specification.md) | Settings frontend: screen map, navigation by P1–P3, `/settings/effective` consumption, per-screen implementation status. | live |
+| [settings/runtime-testing-specification.md](settings/runtime-testing-specification.md) | Settings runtime: workers, outbox, scheduler, settings→runtime wiring map, testing strategy, CI checks, run commands. | live |
 | [CONTRACT_AUDIT.md](CONTRACT_AUDIT.md) | "Defined, then bypassed" audit. | history |
 | [ROADMAP_TO_90.md](ROADMAP_TO_90.md), [PATH_BREAKDOWN.md](PATH_BREAKDOWN.md) | Plan and work-package split. | history |
 

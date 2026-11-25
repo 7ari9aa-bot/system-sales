@@ -3,10 +3,11 @@
 The setting controls how long a secret (API key, provider credential) may live
 before the system flags it as due for rotation.  Zero means "no forced rotation".
 
-This module reads the tenant-level setting via direct SQL (same pattern as
-``app.core.settings_read``) and compares it against a ``SecretReference.rotated_at``
-timestamp.  It is the consumer that makes ``security.api_key_rotation_days``
-*enforced* — without it the setting is a switch wired to nothing.
+This module reads the tenant-level setting via ``app.core.settings_read`` (the
+read-only resolver that avoids the settings ↔ identity cyclic import) and
+compares it against a ``SecretReference.rotated_at`` timestamp.  It is the
+consumer that makes ``security.api_key_rotation_days`` *enforced* — without it
+the setting is a switch wired to nothing.
 """
 
 from __future__ import annotations
@@ -43,22 +44,20 @@ def is_rotation_due(
 
 
 async def resolve_rotation_days(session: AsyncSession, tenant_id: uuid.UUID) -> int:
-    """Read ``security.api_key_rotation_days`` at tenant scope via direct SQL.
+    """Read ``security.api_key_rotation_days`` at tenant scope via the settings_read resolver.
 
-    Returns the registry default (90) when no override exists.
+    Uses ``app.core.settings_read.resolve_setting`` — the same inheritance walk
+    and type coercion as ``SettingsService.resolve`` — instead of direct SQL.
+    This keeps a single read path for settings consumption and avoids divergence
+    between this module and the registry's coercion logic.
     """
-    row = (
-        await session.execute(
-            text(
-                "SELECT value->'v' FROM tenant_settings "
-                "WHERE tenant_id = :t AND key = 'security.api_key_rotation_days' "
-                "AND scope = 'tenant'"
-            ),
-            {"t": tenant_id},
-        )
-    ).scalar_one_or_none()
-    if isinstance(row, (int, float)) and not isinstance(row, bool):
-        return int(row)
+    from app.core.settings_read import resolve_setting
+
+    value = await resolve_setting(session, tenant_id, "security.api_key_rotation_days")
+    if isinstance(value, bool):
+        return 90
+    if isinstance(value, (int, float)):
+        return int(value)
     return 90
 
 

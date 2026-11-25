@@ -14,6 +14,8 @@ read and a P0–P4 progress report derived from the actual code.
 | [domain-specification.md](domain-specification.md) | Architecture, scope hierarchy, types, sensitivity, apply modes, read paths | You need to understand how settings resolve and why the system is built this way |
 | [registry-specification.md](registry-specification.md) | Every setting key: type, default, scopes, constraints, segments, enforced status | You need the full table of 127 keys (auto-generated from `registry.py`) |
 | [database-api-specification.md](database-api-specification.md) | Tables, columns, constraints, RLS, HTTP endpoints, request/response shapes, errors | You are building a client or touching the database schema |
+| [frontend-specification.md](frontend-specification.md) | Settings screens, navigation by P1–P3, `/settings/effective` consumption, per-screen status | You are changing a settings screen or migrating to the unified API |
+| [runtime-testing-specification.md](runtime-testing-specification.md) | Workers, outbox, event bus, scheduler, settings→runtime wiring map, testing strategy, CI checks, run commands | You are debugging a worker, adding a scheduler job, or writing a settings test |
 
 > The code is the contract. If any document and the code disagree, the code wins.
 
@@ -115,7 +117,7 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | `team.allow_member_invites` → invite gate | ✅ | `identity/services/tenant.py::TenantService.invite`; enforced |
 | Security settings (passwords, API rotation, audit retention, IP allowlist) | ✅ registered | `registry.py` — `security.*` (4 keys) |
 | `security.require_strong_passwords` → auth validation | ✅ | `identity/services/auth.py` — direct SQL read; enforced |
-| `security.api_key_rotation_days` → secrets rotation | ✅ | `core/api_key_rotation.py` — `is_rotation_due`, `check_secret_rotation`, `due_secret_references`; enforced |
+| `security.api_key_rotation_days` → secrets rotation | ✅ | `core/api_key_rotation.py` — reads via `settings_read` resolver; `scheduler_worker._handle_secret_rotation_sweep` calls `due_secret_references` and notifies owners; enforced |
 | `security.audit_retention_days` → retention worker | ❌ | Defined in registry; not read by any worker |
 | `security.ip_allowlist` → middleware gate | ✅ | `identity/deps.py` `get_current_user`; enforced |
 | Notification settings (low stock, order received, quiet hours, digest) | ✅ registered | `registry.py` — `notifications.*` (7 keys) |
@@ -209,9 +211,9 @@ changes `registry.py` without regenerating the spec fails CI.
 | Area | What is left | Priority |
 |---|---|---|
 | Unwired keys | `security.audit_retention_days` | P3 |
-| Notification delivery worker | Consumes `notification.email` / `notification.push` from outbox; Resend email adapter + fake providers for tests | P3 |
-| API key rotation | `core/api_key_rotation.py` — `is_rotation_due`, `check_secret_rotation`, `due_secret_references` | P3 |
-| Frontend | Unified consumption of `/settings/effective` across all settings screens | P3 |
+| Notification delivery worker | Consumes `notification.email` / `notification.push` from outbox; Resend email adapter + FCM push adapter + fake providers for tests | P3 |
+| API key rotation | `core/api_key_rotation.py` reads via `settings_read` resolver; `scheduler_worker._handle_secret_rotation_sweep` sweeps per tenant every 24h and notifies owners | ✅ P3 |
+| Frontend | Unified consumption of `/settings/effective` across all settings screens (see [frontend-specification.md](frontend-specification.md)) | P3 |
 | Config migrations | Versioned settings schema migration framework | P4 |
 | Tenant restore | §164 tenant-scoped restore from backup | P4 |
 | SLO framework | §168 SLO monitoring for settings | P4 |

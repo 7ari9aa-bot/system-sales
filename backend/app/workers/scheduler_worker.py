@@ -95,6 +95,17 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # reach the authority in issue order and inside a legal window, so this cannot wait for a
     # daily sweep; it is a no-op for a store with no configured Egyptian till.
     "einvoice.eta_deliver": (timedelta(minutes=1), {}),
+    # §69: secrets past their rotation window surface as a notification to the
+    # owner. The sweep reads `security.api_key_rotation_days` via the settings
+    # resolver, finds `SecretReference` rows that have outlived it, and
+    # notifies the owner once per day per overdue key.
+    "secret_rotation_sweep": (timedelta(hours=24), {}),
+    # Settings-driven sweeps: low-stock alerts and POS auto-close. These
+    # handlers were registered without a recurring-job producer, so the
+    # deployment-declaration guard flagged them as orphans. Both are
+    # tenant-scoped and read their gating setting at execution time.
+    "inventory.low_stock_alerts": (timedelta(hours=6), {}),
+    "pos.auto_close_shifts": (timedelta(hours=1), {}),
 }
 
 
@@ -900,6 +911,59 @@ async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("einvoice.eta_deliver", _handle_eta_deliver)
+
+
+async def _handle_secret_rotation_sweep(session, tenant_id, payload: dict) -> dict:
+    """§69: flag secrets past their rotation window and notify the owner.
+
+    Reads ``security.api_key_rotation_days`` through the settings_read resolver
+    (the single settings read path), finds active ``SecretReference`` rows whose
+    ``rotated_at`` exceeds the window, and creates one notification per owner
+    per overdue key (deduped per day so a persistent overdue reminds once).
+    """
+    from app.core.api_key_rotation import due_secret_references
+    from app.modules.notifications.service import NotificationService
+
+    due = await due_secret_references(session, tenant_id)
+    if not due:
+        return {"due": 0}
+
+    owner_ids = await _tenant_owner_ids(session, tenant_id)
+    if not owner_ids:
+        return {"due": len(due), "notifications": 0}
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    created = 0
+    for ref in due:
+        dedup = f"secret_rotation:{ref['id']}:{today}"
+        # JSONB-safe copy: UUIDs and datetimes are not JSON-serializable.
+        safe_payload = {
+            "id": str(ref["id"]),
+            "provider": ref["provider"],
+            "vault_key": ref["vault_key"],
+            "rotated_at": ref["rotated_at"].isoformat() if ref["rotated_at"] else None,
+            "version": ref["version"],
+        }
+        for uid in owner_ids:
+            await NotificationService.create(
+                session,
+                tenant_id,
+                uid,
+                kind="security",
+                title="API key rotation due",
+                body=(
+                    f"The key for {ref['provider']} "
+                    f"(vault: {ref['vault_key']}, version {ref['version']}) "
+                    f"is past its rotation window and should be rotated."
+                ),
+                payload=safe_payload,
+                dedup_key=dedup,
+            )
+            created += 1
+    return {"due": len(due), "notifications": created}
+
+
+register_job_handler("secret_rotation_sweep", _handle_secret_rotation_sweep)
 
 
 async def _handle_low_stock_alerts(session, tenant_id, payload: dict) -> dict:

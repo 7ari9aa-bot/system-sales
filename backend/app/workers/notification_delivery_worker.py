@@ -11,7 +11,7 @@ not send a stale message.
 Provider selection:
 
 * Email: ``ResendEmailProvider`` (production) or ``FakeEmailProvider`` (tests).
-* Push: ``FakePushProvider`` for now — a real push adapter plugs in the same way.
+* Push: ``FCMPushProvider`` (production) or ``FakePushProvider`` (tests).
 
 The worker subscribes to the ``notification.events`` stream (same stream the
 existing ``NotificationWorker`` uses for ``notification.queued``) with its own
@@ -32,6 +32,7 @@ from app.core.events.schemas import deserialize_event
 from app.core.settings_read import setting_bool
 from app.modules.notifications.providers import (
     EmailProvider,
+    FCMPushProvider,
     PushProvider,
     ResendEmailProvider,
 )
@@ -69,7 +70,7 @@ class NotificationDeliveryWorker(StreamWorker):
     ) -> None:
         super().__init__(bus)
         self._email_provider = email_provider or ResendEmailProvider()
-        self._push_provider = push_provider
+        self._push_provider = push_provider or FCMPushProvider()
         self._settings_checker = settings_checker or _default_email_enabled
 
     async def handle(self, event: Event) -> None:

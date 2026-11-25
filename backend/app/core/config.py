@@ -70,9 +70,12 @@ class Settings(BaseSettings):
     owner_probe_urls: str = ""
 
     # Account recovery email. Delivery stays disabled until the operator has
-    # verified a sending domain and configured these server-only values.
+    # verified a sending domain and configured these server-side values.
     resend_api_key: str = ""
     email_from: str = ""
+    # Firebase Cloud Messaging (push notifications). Empty = FCM not
+    # configured, so push delivery is a no-op (the in-app bell still lands).
+    fcm_server_key: str = ""
     frontend_public_url: str = ""
     email_delivery_enabled: bool = False
     # Soft-launch escape hatch: a secure-environment deployment may boot with
