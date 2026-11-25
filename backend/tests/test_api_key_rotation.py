@@ -100,7 +100,11 @@ class TestResolveRotationDays:
         )
         await db.flush()
         svc = SettingsService(db, tenant.id)
-        await svc.set("security.api_key_rotation_days", 30, scope=Scope.TENANT)
+        # Approval-gated (§172): the write a reviewer-approved change request performs is
+        # `bypass_approval=True`. This test is about the READ path, not the gate.
+        await svc.set(
+            "security.api_key_rotation_days", 30, scope=Scope.TENANT, bypass_approval=True
+        )
         await db.flush()
         days = await resolve_rotation_days(db, tenant.id)
         assert days == 30
@@ -135,7 +139,7 @@ class TestResolveRotationDays:
 
         # Set to 0 → disabled.
         svc = SettingsService(db, tenant.id)
-        await svc.set("security.api_key_rotation_days", 0, scope=Scope.TENANT)
+        await svc.set("security.api_key_rotation_days", 0, scope=Scope.TENANT, bypass_approval=True)
         await db.flush()
         assert (
             await check_secret_rotation(db, tenant.id, rotated_at=now - timedelta(days=365))

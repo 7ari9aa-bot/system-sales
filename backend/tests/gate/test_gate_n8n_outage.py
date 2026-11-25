@@ -22,7 +22,7 @@ async def test_gate_automation_outage_core_still_works(db, tenant_ctx):
     # Simulate the workflow/automation engine being down: every call to the
     # workflow service raises, as if n8n or the internal engine is unreachable.
     with patch(
-        "app.modules.workflows.service.WorkflowService.trigger",
+        "app.modules.automation.service.WorkflowService.execute_for_event",
         new=AsyncMock(side_effect=RuntimeError("workflow engine unavailable")),
     ):
         # Conversation message ingestion must not depend on workflows.
@@ -39,7 +39,7 @@ async def test_gate_automation_outage_core_still_works(db, tenant_ctx):
     # After the outage clears, the workflow service is callable again.
     mock_trigger = AsyncMock(return_value=None)
     with patch(
-        "app.modules.workflows.service.WorkflowService.trigger",
+        "app.modules.automation.service.WorkflowService.execute_for_event",
         new=mock_trigger,
     ):
         await mock_trigger("test_event", {})

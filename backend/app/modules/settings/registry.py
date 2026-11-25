@@ -1674,7 +1674,10 @@ _reg(
         key="customer_agent.enabled",
         domain="customer_agent",
         type=SettingType.BOOL,
-        default=False,
+        # ON for a shop that never chose: the customer agent IS the product, and
+        # registration seeds no settings row, so a False default meant every new
+        # tenant's messages went unanswered until someone found this switch.
+        default=True,
         scopes=(Scope.TENANT,),
         label_ar="تفعيل وكيل خدمة العملاء",
         label_en="Customer Agent Enabled",
@@ -2018,7 +2021,11 @@ _reg(
         key="catalog.barcode_auto_generate",
         domain="catalog",
         type=SettingType.BOOL,
-        default=True,
+        # OFF by default: the auto path writes a UUID-derived code that is not an
+        # EAN-13, so the label printer refuses it (ValidationError) and the barcode
+        # endpoint reports the variant as already labelled. A shop opts in only if
+        # it wants that placeholder; POST /products/{id}/barcodes is the real path.
+        default=False,
         scopes=(Scope.TENANT,),
         label_ar="توليد الباركود تلقائياً",
         label_en="Auto-Generate Barcodes",
