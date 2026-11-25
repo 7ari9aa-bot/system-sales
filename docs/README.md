@@ -56,6 +56,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [PII_DATA_MAP.md](PII_DATA_MAP.md) | Personal-data lifecycle. | live |
 | [RISK_REGISTER.md](RISK_REGISTER.md) | Known risks. | live |
 | [GAP_REGISTER.md](GAP_REGISTER.md) | Full-system critique audit. | live |
+| [SETTINGS_MASTER_SPECIFICATION.md](SETTINGS_MASTER_SPECIFICATION.md) | Every setting in FIHRIST: keys, types, defaults, scopes, enforcement status, and the roadmap from code to UI. | live |
 | [CONTRACT_AUDIT.md](CONTRACT_AUDIT.md) | "Defined, then bypassed" audit. | history |
 | [ROADMAP_TO_90.md](ROADMAP_TO_90.md), [PATH_BREAKDOWN.md](PATH_BREAKDOWN.md) | Plan and work-package split. | history |
 
