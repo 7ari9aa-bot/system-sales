@@ -43,6 +43,26 @@ async def _create_tenant(db: AsyncSession, slug: str = "appr"):
     return user, tenant
 
 
+async def _create_second_admin(db: AsyncSession, tenant, slug: str = "rev"):
+    """Add a second admin (owner role) to an existing tenant."""
+    from sqlalchemy import select
+
+    from app.core.security import hash_password
+    from app.modules.identity.models import Role, TenantUser, User
+
+    user = User(
+        email=f"{slug}-{_uuid_hex()}@test.local",
+        password_hash=hash_password("strong-password-1"),
+        full_name="Reviewer",
+    )
+    db.add(user)
+    await db.flush()
+    role = (await db.execute(select(Role).where(Role.code == "owner"))).scalar_one()
+    db.add(TenantUser(tenant_id=tenant.id, user_id=user.id, role_id=role.id, is_default=False))
+    await db.flush()
+    return user
+
+
 # ---------------------------------------------------------------------------
 # Registry: security.* and billing.* are APPROVAL_REQUIRED
 # ---------------------------------------------------------------------------
@@ -161,20 +181,8 @@ class TestChangeRequestFlow:
             await svc.approve_change_request(req.id, reviewer_id=user.id)
 
     async def test_second_admin_approves_and_applies(self, db) -> None:
-        from app.modules.identity.service import AuthService
-
         submitter, tenant = await _create_tenant(db, "appr2")
-        # Create a second admin in the same tenant.
-        reviewer = await AuthService.register(
-            db,
-            tenant_name=tenant.name,
-            tenant_slug=tenant.slug,
-            email=f"rev-{_uuid_hex()}@test.local",
-            password="strong-password-1",
-            full_name="Reviewer",
-            tenant_id=tenant.id,
-        )
-        await db.flush()
+        reviewer = await _create_second_admin(db, tenant, "rev")
         svc = SettingsService(db, tenant.id)
         req = await svc.create_change_request(
             {"security.require_strong_passwords": False},
@@ -192,19 +200,8 @@ class TestChangeRequestFlow:
         assert row.value is False
 
     async def test_rejection_does_not_apply(self, db) -> None:
-        from app.modules.identity.service import AuthService
-
         submitter, tenant = await _create_tenant(db, "rej")
-        reviewer = await AuthService.register(
-            db,
-            tenant_name=tenant.name,
-            tenant_slug=tenant.slug,
-            email=f"rj-{_uuid_hex()}@test.local",
-            password="strong-password-1",
-            full_name="Reviewer",
-            tenant_id=tenant.id,
-        )
-        await db.flush()
+        reviewer = await _create_second_admin(db, tenant, "rj")
         svc = SettingsService(db, tenant.id)
         req = await svc.create_change_request(
             {"billing.currency": "USD"},
@@ -230,19 +227,8 @@ class TestChangeRequestFlow:
             await svc.reject_change_request(req.id, reviewer_id=user.id)
 
     async def test_approve_non_pending_fails(self, db) -> None:
-        from app.modules.identity.service import AuthService
-
         submitter, tenant = await _create_tenant(db, "dbl")
-        reviewer = await AuthService.register(
-            db,
-            tenant_name=tenant.name,
-            tenant_slug=tenant.slug,
-            email=f"dbl-{_uuid_hex()}@test.local",
-            password="strong-password-1",
-            full_name="Reviewer",
-            tenant_id=tenant.id,
-        )
-        await db.flush()
+        reviewer = await _create_second_admin(db, tenant, "dbl")
         svc = SettingsService(db, tenant.id)
         req = await svc.create_change_request(
             {"security.require_strong_passwords": False},
@@ -255,19 +241,8 @@ class TestChangeRequestFlow:
     async def test_approval_audited(self, db) -> None:
         from sqlalchemy import text
 
-        from app.modules.identity.service import AuthService
-
         submitter, tenant = await _create_tenant(db, "aud")
-        reviewer = await AuthService.register(
-            db,
-            tenant_name=tenant.name,
-            tenant_slug=tenant.slug,
-            email=f"aud-{_uuid_hex()}@test.local",
-            password="strong-password-1",
-            full_name="Reviewer",
-            tenant_id=tenant.id,
-        )
-        await db.flush()
+        reviewer = await _create_second_admin(db, tenant, "aud")
         svc = SettingsService(db, tenant.id)
         req = await svc.create_change_request(
             {"security.require_strong_passwords": False},
@@ -289,19 +264,8 @@ class TestChangeRequestFlow:
     async def test_rejection_audited(self, db) -> None:
         from sqlalchemy import text
 
-        from app.modules.identity.service import AuthService
-
         submitter, tenant = await _create_tenant(db, "raud")
-        reviewer = await AuthService.register(
-            db,
-            tenant_name=tenant.name,
-            tenant_slug=tenant.slug,
-            email=f"raud-{_uuid_hex()}@test.local",
-            password="strong-password-1",
-            full_name="Reviewer",
-            tenant_id=tenant.id,
-        )
-        await db.flush()
+        reviewer = await _create_second_admin(db, tenant, "raud")
         svc = SettingsService(db, tenant.id)
         req = await svc.create_change_request(
             {"security.require_strong_passwords": False},
