@@ -344,6 +344,22 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "notifications.quiet_hours_start",  # notifications/digest.py::should_send_immediately
         "notifications.quiet_hours_end",  # notifications/digest.py::should_send_immediately
         "notifications.digest_mode",  # notifications/digest.py::should_send_immediately
+        # Phase 8 wiring — keys read by their consumers but not yet listed.
+        "print.barcode_format",  # pos/receipt_settings.py::receipt_settings
+        "print.invoice_prefix",  # pos/receipt_settings.py::receipt_settings
+        "organization.fiscal_year_start_month",  # core/organization_settings.py
+        "organization.brand_color",  # core/organization_settings.py
+        "organization.default_language",  # core/organization_settings.py
+        "billing.currency",  # billing/services/trial_expiry.py::_tenant_billing_config
+        "billing.notify_before_renewal_days",  # billing/services/trial_expiry.py
+        "security.api_key_rotation_days",  # core/api_key_rotation.py
+        "security.ip_allowlist",  # identity/deps.py get_current_user
+        "security.require_strong_passwords",  # identity/services/auth.py
+        "team.session_timeout_minutes",  # identity/services/auth.py::_resolve_access_ttl
+        "team.allow_member_invites",  # identity/services/tenant.py::TenantService.invite
+        "team.default_role",  # identity/services/tenant.py::TenantService.invite
+        "notifications.email_enabled",  # notifications/service.py::dispatch + delivery worker
+        "notifications.push_enabled",  # notifications/service.py::dispatch + delivery worker
     }
 )
 

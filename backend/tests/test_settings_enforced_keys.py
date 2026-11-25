@@ -47,4 +47,4 @@ def test_the_flag_reaches_the_definition() -> None:
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["pos.max_discount_pct"].enforced
     assert by_key["print.copies"].enforced
-    assert not by_key["print.invoice_prefix"].enforced
+    assert by_key["print.invoice_prefix"].enforced

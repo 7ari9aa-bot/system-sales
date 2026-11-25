@@ -98,11 +98,11 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | Analytics AI agent settings (enabled, period, confidence) | ✅ | `registry.py` — `analytics_agent.*` (4 keys); consumed by `ai/agents/sales_intelligence/agent.py` |
 | Organization settings (multi-branch, max branches, fiscal year) | ✅ | `registry.py` — `organization.*` (5 keys) |
 | Branch operational settings (auto-close shift, variance notify) | ✅ | `registry.py` — `branch.*` (4 keys); consumed by `pos/service.py`, `purchasing/service.py` |
-| `organization.default_language` → frontend i18n | 🟡 | Defined in registry; not wired to frontend language switching yet |
-| `organization.brand_color` → frontend CSS | 🟡 | Defined in registry; injected into workspace settings but not globally in CSS |
-| `organization.fiscal_year_start_month` → reports | ❌ | Defined in registry; no report service reads it yet |
-| `print.barcode_format` → catalog barcode generation | ❌ | Defined in registry; `catalog/services/variants.py` does not read it |
-| `print.invoice_prefix` → POS invoice numbering | ❌ | Defined in registry; `pos/service.py` does not read it |
+| `organization.default_language` → frontend i18n | ✅ | Read by `core/organization_settings.py`; enforced |
+| `organization.brand_color` → frontend CSS | ✅ | Read by `core/organization_settings.py`; enforced |
+| `organization.fiscal_year_start_month` → reports | ✅ | Read by `core/organization_settings.py`; enforced |
+| `print.barcode_format` → receipt barcode format | ✅ | Read by `pos/receipt_settings.py::receipt_settings`; enforced |
+| `print.invoice_prefix` → POS invoice numbering | ✅ | Read by `pos/receipt_settings.py::receipt_settings`; enforced |
 
 ### P3 — Platform Management ✅ (settings wired, some consumers missing)
 
@@ -110,24 +110,24 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 |---|---|---|
 | Team settings (default_role, require_2fa, session_timeout, allow_invites) | ✅ registered | `registry.py` — `team.*` (4 keys) |
 | `team.require_2fa` → auth login enforcement | ✅ | `identity/services/auth.py` — direct SQL read |
-| `team.session_timeout_minutes` → token TTL | 🟡 | Defined in registry; `AuthService._resolve_access_ttl` exists but may not read this key |
-| `team.default_role` → invite default | 🟡 | Defined in registry; used as fallback in `InviteRequest` schema |
-| `team.allow_member_invites` → invite gate | 🟡 | Defined in registry; checked in `TenantService.invite` via direct SQL |
+| `team.session_timeout_minutes` → token TTL | ✅ | `identity/services/auth.py::_resolve_access_ttl`; enforced |
+| `team.default_role` → invite default | ✅ | `identity/services/tenant.py::TenantService.invite`; enforced |
+| `team.allow_member_invites` → invite gate | ✅ | `identity/services/tenant.py::TenantService.invite`; enforced |
 | Security settings (passwords, API rotation, audit retention, IP allowlist) | ✅ registered | `registry.py` — `security.*` (4 keys) |
-| `security.require_strong_passwords` → auth validation | ✅ | `identity/services/auth.py` — direct SQL read |
-| `security.api_key_rotation_days` → secrets rotation | ❌ | Defined in registry; not read by `core/secrets.py` |
+| `security.require_strong_passwords` → auth validation | ✅ | `identity/services/auth.py` — direct SQL read; enforced |
+| `security.api_key_rotation_days` → secrets rotation | ✅ | `core/api_key_rotation.py` — `is_rotation_due`, `check_secret_rotation`, `due_secret_references`; enforced |
 | `security.audit_retention_days` → retention worker | ❌ | Defined in registry; not read by any worker |
-| `security.ip_allowlist` → middleware gate | 🟡 | Defined in registry; checked in `get_current_user` dependency via direct SQL |
+| `security.ip_allowlist` → middleware gate | ✅ | `identity/deps.py` `get_current_user`; enforced |
 | Notification settings (low stock, order received, quiet hours, digest) | ✅ registered | `registry.py` — `notifications.*` (7 keys) |
 | `notifications.low_stock_alert` → scheduler worker | ✅ | Consumed by `scheduler_worker` |
 | `notifications.order_received` → order worker | ✅ | Consumed by `orders/service.py` |
 | `notifications.quiet_hours_*` / `digest_mode` → digest service | ✅ | `notifications/digest.py` — direct SQL read |
-| `notifications.email_enabled` → email dispatch | ❌ | Defined in registry; not read by `NotificationService.dispatch` |
-| `notifications.push_enabled` → push dispatch | ❌ | Defined in registry; not read by any worker |
+| `notifications.email_enabled` → email dispatch | ✅ | `notifications/service.py::dispatch` + `NotificationDeliveryWorker` second gate; enforced |
+| `notifications.push_enabled` → push dispatch | ✅ | `notifications/service.py::dispatch` + `NotificationDeliveryWorker` second gate; enforced |
 | Billing settings (auto_renew, currency, renewal reminder) | ✅ registered | `registry.py` — `billing.*` (3 keys) |
-| `billing.auto_renew` → trial expiry lock | ✅ | `billing/services/trial_expiry.py` — direct SQL read |
-| `billing.notify_before_renewal_days` → renewal reminder | ❌ | Defined in registry; not read by `billing/services/trial_expiry.py` (only `auto_renew` is) |
-| `billing.currency` → money formatting | ❌ | Defined in registry; `core/money.py` does not read it |
+| `billing.auto_renew` → trial expiry lock | ✅ | `billing/services/trial_expiry.py` — direct SQL read; enforced |
+| `billing.notify_before_renewal_days` → renewal reminder | ✅ | `billing/services/trial_expiry.py::_tenant_billing_config`; enforced |
+| `billing.currency` → billing config | ✅ | `billing/services/trial_expiry.py::_tenant_billing_config`; enforced |
 | Frontend unified consumption of `/settings/effective` | ❌ | Most frontend settings screens use per-domain APIs, not the settings registry API |
 
 ### P4 — Advanced Governance 🟡 (partial)
@@ -208,9 +208,9 @@ changes `registry.py` without regenerating the spec fails CI.
 
 | Area | What is left | Priority |
 |---|---|---|
-| Unwired keys | `print.barcode_format`, `print.invoice_prefix`, `organization.fiscal_year_start_month` | P2 |
-| Unwired keys | `security.api_key_rotation_days`, `security.audit_retention_days`, `notifications.email_enabled`, `notifications.push_enabled`, `billing.currency`, `billing.notify_before_renewal_days` | P3 |
-| Partially wired | `team.session_timeout_minutes`, `team.default_role`, `team.allow_member_invites`, `security.ip_allowlist`, `organization.default_language`, `organization.brand_color` | P2–P3 |
+| Unwired keys | `security.audit_retention_days` | P3 |
+| Notification delivery worker | Consumes `notification.email` / `notification.push` from outbox; Resend email adapter + fake providers for tests | P3 |
+| API key rotation | `core/api_key_rotation.py` — `is_rotation_due`, `check_secret_rotation`, `due_secret_references` | P3 |
 | Frontend | Unified consumption of `/settings/effective` across all settings screens | P3 |
 | Config migrations | Versioned settings schema migration framework | P4 |
 | Tenant restore | §164 tenant-scoped restore from backup | P4 |

@@ -143,8 +143,8 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 | `print.footer_text` | string | `""` | TENANT, BRANCH | normal | validated | — | — | ✅ | — | all |
 | `print.copies` | number | 1 | TENANT, REGISTER | normal | validated | 1 | 5 | ✅ | — | all |
 | `print.show_tax_detail` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
-| `print.barcode_format` | enum | `code128` | TENANT | normal | validated | — | — | — | code128, ean13, upc_a, qr | all |
-| `print.invoice_prefix` | string | `INV` | TENANT, BRANCH | normal | validated | — | — | — | — | all |
+| `print.barcode_format` | enum | `code128` | TENANT | normal | validated | — | — | ✅ | code128, ean13, upc_a, qr | all |
+| `print.invoice_prefix` | string | `INV` | TENANT, BRANCH | normal | validated | — | — | ✅ | — | all |
 
 ## Notifications (7 settings)
 
@@ -155,8 +155,8 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 | `notifications.quiet_hours_start` | string | `""` | TENANT | normal | validated | — | — | ✅ | — | all |
 | `notifications.quiet_hours_end` | string | `""` | TENANT | normal | validated | — | — | ✅ | — | all |
 | `notifications.digest_mode` | enum | `realtime` | TENANT | normal | validated | — | — | ✅ | realtime, hourly, daily | all |
-| `notifications.email_enabled` | bool | false | TENANT | normal | validated | — | — | — | — | all |
-| `notifications.push_enabled` | bool | true | TENANT | normal | validated | — | — | — | — | all |
+| `notifications.email_enabled` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
+| `notifications.push_enabled` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 
 ## Customer AI Agent (8 settings)
 
@@ -184,11 +184,11 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `organization.fiscal_year_start_month` | number | 1 | TENANT | normal | validated | 1 | 12 | — | — | all |
+| `organization.fiscal_year_start_month` | number | 1 | TENANT | normal | validated | 1 | 12 | ✅ | — | all |
 | `organization.multi_branch` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
 | `organization.max_branches` | number | 0 | TENANT | normal | validated | 0 | 1000 | ✅ | — | all |
-| `organization.default_language` | enum | `ar` | TENANT | normal | validated | — | — | — | ar, en | all |
-| `organization.brand_color` | string | `""` | TENANT | normal | validated | — | — | — | — | all |
+| `organization.default_language` | enum | `ar` | TENANT | normal | validated | — | — | ✅ | ar, en | all |
+| `organization.brand_color` | string | `""` | TENANT | normal | validated | — | — | ✅ | — | all |
 
 ## Branch (4 settings)
 
@@ -213,27 +213,27 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `team.default_role` | enum | `cashier` | TENANT | normal | validated | — | — | — | cashier, manager, admin | all |
+| `team.default_role` | enum | `cashier` | TENANT | normal | validated | — | — | ✅ | cashier, manager, admin | all |
 | `team.require_2fa` | bool | false | TENANT | sensitive | validated | — | — | ✅ | — | all |
-| `team.session_timeout_minutes` | number | 0 | TENANT | normal | validated | 0 | 10080 | — | — | all |
-| `team.allow_member_invites` | bool | true | TENANT | normal | validated | — | — | — | — | all |
+| `team.session_timeout_minutes` | number | 0 | TENANT | normal | validated | 0 | 10080 | ✅ | — | all |
+| `team.allow_member_invites` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 
 ## Security (4 settings)
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `security.require_strong_passwords` | bool | true | TENANT | sensitive | validated | — | — | — | — | all |
-| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | validated | 0 | 365 | — | — | all |
+| `security.require_strong_passwords` | bool | true | TENANT | sensitive | validated | — | — | ✅ | — | all |
+| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | validated | 0 | 365 | ✅ | — | all |
 | `security.audit_retention_days` | number | 365 | TENANT | normal | validated | 30 | 2555 | — | — | all |
-| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | validated | — | — | — | — | all |
+| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | validated | — | — | ✅ | — | all |
 
 ## Billing (3 settings)
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `billing.auto_renew` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
-| `billing.currency` | enum | `EGP` | TENANT | normal | validated | — | — | — | EGP, USD, SAR, AED | all |
-| `billing.notify_before_renewal_days` | number | 7 | TENANT | normal | validated | 0 | 30 | — | — | all |
+| `billing.currency` | enum | `EGP` | TENANT | normal | validated | — | — | ✅ | EGP, USD, SAR, AED | all |
+| `billing.notify_before_renewal_days` | number | 7 | TENANT | normal | validated | 0 | 30 | ✅ | — | all |
 
 ---
 
