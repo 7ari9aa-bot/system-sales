@@ -16,7 +16,7 @@ import {
   ChevronDown,
   Loader2,
 } from "lucide-react";
-import { navGroups } from "@/cashier/components/layout/navItems";
+import { toCashierNav } from "@/cashier/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";
@@ -90,13 +90,11 @@ export default function Sidebar({ open, onClose, collapsed = false, onToggleColl
         { to: "/customers", label: t("nav.customers"), icon: Users },
       ],
     },
-    ...navGroups.map((group) => ({
+    ...toCashierNav().map((group) => ({
       section: t(group.titleKey, group.title),
       items: group.items.map((item) => ({
-        to: `/cashier${item.to}`,
-        label: item.label,
-        icon: item.icon,
-        badge: item.to === "/inventory" ? stockIssues : undefined,
+        ...item,
+        badge: item.to === "/cashier/inventory" ? stockIssues : item.badge,
       })),
     })),
     {

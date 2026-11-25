@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cashierNavItems, navGroups, pageTitle } from "./navItems";
+import { cashierNavItems, navGroups, pageTitle, toCashierNav } from "./navItems";
 
 /** كل مسار في السايدبار، الأب والأبناء، مرة واحدة. */
 function allItems() {
@@ -45,5 +45,20 @@ describe("the cashier sidebar", () => {
 
   it("keeps the flat list in step with the groups", () => {
     expect(cashierNavItems).toHaveLength(navGroups.reduce((n, g) => n + g.items.length, 0));
+  });
+
+  it("carries the child routes through the sidebar mapping", () => {
+    // العيب اللي اتصاد هنا: السايدبار كان بيعيد بناء البنود فيضيّع children.
+    const nav = toCashierNav();
+    const stock = nav.flatMap((g) => g.items).find((i) => i.to === "/cashier/inventory");
+    const chain = nav.flatMap((g) => g.items).find((i) => i.to === "/cashier/supply-chain");
+    expect(stock.children.map((c) => c.to)).toEqual([
+      "/cashier/inventory/movements",
+      "/cashier/inventory/stocktake",
+      "/cashier/inventory/import",
+    ]);
+    expect(chain.children).toHaveLength(7);
+    expect(chain.children.every((c) => c.to.startsWith("/cashier/supply-chain/"))).toBe(true);
+    expect(nav.flatMap((g) => g.items).every((i) => i.to.startsWith("/cashier/"))).toBe(true);
   });
 });

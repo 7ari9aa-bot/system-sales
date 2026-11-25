@@ -92,6 +92,32 @@ export const navGroups = [
   },
 ];
 
+
+/**
+ * يحوّل بنود الكاشير لبنود السايدبار تحت /cashier مع أبنائها.
+ *
+ * كان السايدبار بيعيد بناء البنود يدويًا (to/label/icon/badge) فيضيّع children، فبند المخزون
+ * وسلاسل الإمداد كانوا بيوصلوا للشاشة من غير تفريع. الدالة دي مسؤولة عن التحويل لوحدها
+ * ومغطاة باختبار.
+ */
+export function toCashierNav(groups = navGroups, { badge } = {}) {
+  return groups.map((group) => ({
+    titleKey: group.titleKey,
+    title: group.title,
+    items: group.items.map((item) => ({
+      to: `/cashier${item.to}`,
+      label: item.label,
+      icon: item.icon,
+      badge: badge ? badge(item) : undefined,
+      children: (item.children || []).map((child) => ({
+        to: `/cashier${child.to}`,
+        label: child.label,
+        icon: child.icon,
+      })),
+    })),
+  }));
+}
+
 export const flatNav = navGroups.flatMap((g) => g.items);
 
 export function pageTitle(pathname) {
