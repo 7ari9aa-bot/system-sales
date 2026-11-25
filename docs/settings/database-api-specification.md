@@ -630,3 +630,67 @@ Two patterns for reading settings, chosen to avoid circular imports:
 2. **Direct SQL read** (`app.core.settings_read.resolve_settings`) — used in modules where
    importing `SettingsService` would create a cycle (identity → settings, billing → settings).
    Reads `tenant_settings` directly without importing the settings service.
+
+---
+
+## 12. Config Migration Framework (P4)
+
+### `setting_migration_log` — idempotent per-tenant migration log
+
+Each row records that a named config migration (key rename, value transform) has been
+applied to this tenant. The runner checks this log before applying, so re-running is a
+no-op. The highest `migration_id` applied is the tenant's effective settings schema version.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id` | UUID FK→tenants | CASCADE on delete |
+| `migration_id` | VARCHAR(127) | unique per tenant |
+| `description` | VARCHAR(255) | human-readable |
+| `applied_by` | UUID FK→users | SET NULL on delete |
+| `created_at` | TIMESTAMPTZ | append-only |
+
+**RLS**: tenant-isolated (`app.tenant_id` check). **Grants**: INSERT + SELECT only —
+UPDATE and DELETE are revoked from `sales_app` (append-only).
+
+### Endpoints
+
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `GET` | `/settings/migrations` | `settings:read` | List applied migrations for this tenant |
+| `POST` | `/settings/migrations/run` | `settings:write` | Run all pending migrations (idempotent) |
+
+### Adding a migration
+
+1. Define a `ConfigMigration` with a new, higher `id` in `config_migrations.py`.
+2. Append it to `MIGRATIONS`.
+3. The next `run_pending` call applies it to every tenant that hasn't seen it.
+
+---
+
+## 13. Tenant-Scoped Restore (§164)
+
+### Endpoint
+
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `POST` | `/settings/restore` | `settings:write` | Restore all tenant-level settings to their state before a timestamp |
+
+**Payload**: `{ "snapshot_before": "<ISO 8601>", "reason": "..." }`
+
+### How it works
+
+1. Reconstructs the target state from `tenant_settings_history`: for each (key, scope,
+   scope_id), finds the latest history row before `snapshot_before`. Its action tells the
+   state: `set`/`bulk_set` → override with that value; `reset` → no override.
+2. Compares the target state with the current overrides.
+3. Writes forward-only changes (new history rows) — does NOT delete history.
+4. Removes overrides that didn't exist at the snapshot (added after).
+5. Writes an audit log entry (`settings.restore` action).
+6. Keys no longer in the registry are skipped.
+
+### Isolation
+
+- Tenant-scoped by RLS: the service only queries `tenant_settings_history` and
+  `tenant_settings` for `self._tenant_id`. The RLS policy enforces this at the DB level.
+- The endpoint requires `settings:write` permission.

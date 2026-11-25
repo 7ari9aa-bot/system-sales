@@ -139,8 +139,8 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | Change requests (approval-gated settings) | ✅ | `models.py` — `SettingChangeRequest`; `service.py` — `create_change_request`, `approve`, `reject`; `router.py` — 4 endpoints |
 | Change request lifecycle (draft → applied) | ✅ | `models.py` — `CHANGE_REQUEST_STATES` (11 states); `service.py` — full lifecycle |
 | `reviewed_at` column in change requests | ✅ | `models.py` — `TIMESTAMP(timezone=True)` column; set by `approve_change_request` and `reject_change_request` |
-| Config migration framework | ❌ | No mechanism for versioned settings migrations between schema versions |
-| Tenant-scoped restore (§164) | ❌ | No restore-from-backup functionality |
+| Config migration framework | ✅ | `config_migrations.py` — `ConfigMigration`, `MIGRATIONS`, `run_pending` (idempotent); `models.py` — `SettingMigrationLog`; `router.py` — `GET /settings/migrations`, `POST /settings/migrations/run` |
+| Tenant-scoped restore (§164) | ✅ | `service.py` — `restore_to_snapshot`; `router.py` — `POST /settings/restore` (admin-gated, audit-logged, RLS-isolated) |
 | SLO framework (§168) | ❌ | No SLO monitoring or alerting for settings |
 | Extended/dynamic presets | ❌ | Presets are static in `presets.py`; no runtime preset creation |
 | SecretStore integration for `sensitivity=secret` settings | ✅ | `core/secrets.py` — `EnvelopeSecretStore` + rotation; no setting uses `secret` sensitivity yet |

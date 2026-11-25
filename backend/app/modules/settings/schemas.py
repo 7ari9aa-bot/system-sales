@@ -148,3 +148,30 @@ class RollbackInput(BaseModel):
 
     history_id: uuid.UUID
     reason: str | None = Field(default=None, max_length=255)
+
+
+class RestoreSnapshotInput(BaseModel):
+    """Payload to restore all tenant settings to a point in time (§164)."""
+
+    snapshot_before: str = Field(
+        ...,
+        description="ISO 8601 timestamp — settings are restored to their state before this moment",
+    )
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class MigrationLogOut(BaseModel):
+    """One applied config migration for this tenant."""
+
+    id: uuid.UUID
+    migration_id: str
+    description: str
+    applied_by: uuid.UUID | None = None
+    created_at: str
+
+
+class RunMigrationsOut(BaseModel):
+    """Result of running pending config migrations."""
+
+    applied: list[str]
+    current_version: str

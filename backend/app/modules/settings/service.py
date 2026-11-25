@@ -30,6 +30,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -780,6 +781,166 @@ class SettingsService:
         # Keep only rows that sit exactly on the chain: a branch override for a
         # DIFFERENT branch must never leak into this branch's answer.
         return {(r.key, r.scope, r.scope_id): r for r in rows if (r.scope, r.scope_id) in wanted}
+
+    async def restore_to_snapshot(
+        self,
+        snapshot_before: datetime,
+        *,
+        user_id: uuid.UUID | None = None,
+        reason: str | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> dict[str, int]:
+        """Restore ALL tenant-level settings to their state before ``snapshot_before``.
+
+        Reads the settings history to reconstruct what each tenant-level override
+        looked like at the snapshot point, then writes forward-only changes
+        (new history rows with ``action="restore"``) to bring the current state
+        back in line. Settings that didn't exist at the snapshot are reset
+        (override deleted). Keys no longer in the registry are skipped.
+
+        Returns ``{"restored": N, "reset": M, "skipped": K}``.
+        """
+        from sqlalchemy import func as sa_func
+
+        # 1. Reconstruct the target state from history.
+        #    For each (key, scope='tenant', scope_id=None), find the latest
+        #    history row before snapshot_before.  Its action tells us the state:
+        #      set  → override with new_value
+        #      reset → no override
+        #      bulk_set → override with new_value
+        latest_before = (
+            select(
+                TenantSettingHistory.key,
+                TenantSettingHistory.scope,
+                TenantSettingHistory.scope_id,
+                TenantSettingHistory.action,
+                TenantSettingHistory.new_value,
+                TenantSettingHistory.created_at,
+            )
+            .where(
+                TenantSettingHistory.tenant_id == self._tenant_id,
+                TenantSettingHistory.created_at < snapshot_before,
+            )
+            .order_by(TenantSettingHistory.created_at.desc())
+        ).subquery()
+
+        ranked = (
+            select(
+                latest_before.c.key,
+                latest_before.c.scope,
+                latest_before.c.scope_id,
+                latest_before.c.action,
+                latest_before.c.new_value,
+                sa_func.row_number()
+                .over(
+                    partition_by=(
+                        latest_before.c.key,
+                        latest_before.c.scope,
+                        latest_before.c.scope_id,
+                    ),
+                    order_by=latest_before.c.created_at.desc(),
+                )
+                .label("rn"),
+            )
+        ).subquery()
+
+        rows = (await self._session.execute(select(ranked).where(ranked.c.rn == 1))).all()
+
+        target: dict[tuple[str, str, uuid.UUID | None], dict | None] = {}
+        for r in rows:
+            key, scope, scope_id, action, new_value = r[0], r[1], r[2], r[3], r[4]
+            if action in ("set", "bulk_set") and new_value is not None:
+                target[(key, scope, scope_id)] = new_value
+            else:
+                target[(key, scope, scope_id)] = None
+
+        # 2. Load ALL overrides (including ones not in the history before the
+        #    snapshot, which were added after and need to be removed).
+        all_overrides = (
+            (
+                await self._session.execute(
+                    select(TenantSetting).where(TenantSetting.tenant_id == self._tenant_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        current_map: dict[tuple[str, str, uuid.UUID | None], TenantSetting] = {
+            (r.key, r.scope, r.scope_id): r for r in all_overrides
+        }
+
+        restored = 0
+        reset = 0
+        skipped = 0
+
+        # 3. For each target, apply the change if different from current.
+        for (key, scope, scope_id), target_value in target.items():
+            try:
+                get_definition(key)
+            except KeyError:
+                skipped += 1
+                continue
+
+            scope_enum = _scope(scope)
+            current = current_map.get((key, scope, scope_id))
+
+            if target_value is not None:
+                # Target is an override with a value.
+                restore_val = (
+                    target_value.get("v") if isinstance(target_value, dict) else target_value
+                )
+                if current is not None:
+                    current_val = (
+                        current.value.get("v") if isinstance(current.value, dict) else current.value
+                    )
+                    if current_val == restore_val:
+                        continue  # Already matches
+                # Write the restored value.
+                await self.set(
+                    key,
+                    restore_val,
+                    scope=scope_enum,
+                    scope_id=scope_id,
+                    user_id=user_id,
+                    reason=reason or f"restore:{snapshot_before.isoformat()}",
+                    permissions=permissions,
+                )
+                restored += 1
+            else:
+                # Target is no override (was reset at snapshot time).
+                if current is None:
+                    continue  # Already matches
+                await self.reset(
+                    key,
+                    scope=scope_enum,
+                    scope_id=scope_id,
+                    user_id=user_id,
+                    reason=reason or f"restore:{snapshot_before.isoformat()}",
+                    permissions=permissions,
+                )
+                reset += 1
+
+        # 4. Remove overrides that didn't exist at the snapshot (added after).
+        target_keys = set(target.keys())
+        for (key, scope, scope_id), _row in current_map.items():
+            if (key, scope, scope_id) not in target_keys:
+                try:
+                    get_definition(key)
+                except KeyError:
+                    skipped += 1
+                    continue
+                await self.reset(
+                    key,
+                    scope=_scope(scope),
+                    scope_id=scope_id,
+                    user_id=user_id,
+                    reason=reason or f"restore:{snapshot_before.isoformat()}",
+                    permissions=permissions,
+                )
+                reset += 1
+
+        return {"restored": restored, "reset": reset, "skipped": skipped}
 
     async def _find_override(
         self, key: str, scope: str, scope_id: uuid.UUID | None, *, for_update: bool = False

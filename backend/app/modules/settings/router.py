@@ -10,7 +10,9 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 
+from app.core.audit import write_audit_row
 from app.modules.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.capabilities import shop_capabilities
@@ -29,10 +31,13 @@ from app.modules.settings.schemas import (
     BulkSetSettingsRequest,
     ChangeRequestOut,
     CreateChangeRequestInput,
+    MigrationLogOut,
     ResetSettingRequest,
     ResolvedSettingOut,
+    RestoreSnapshotInput,
     ReviewChangeRequestInput,
     RollbackInput,
+    RunMigrationsOut,
     SetSettingRequest,
     SettingDefOut,
     SettingHistoryOut,
@@ -464,6 +469,105 @@ async def rollback_setting(
         value=row.value.get("v"),
         updated_by=row.updated_by,
     )
+
+
+# ---------------------------------------------------------------------------
+# Config Migrations (P4)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/migrations", response_model=list[MigrationLogOut])
+async def list_config_migrations(
+    ctx: SettingsReadCtx,
+) -> list[MigrationLogOut]:
+    """List config migrations already applied to this tenant."""
+    from app.modules.settings.models import SettingMigrationLog
+
+    rows = (
+        (
+            await ctx.session.execute(
+                select(SettingMigrationLog)
+                .where(SettingMigrationLog.tenant_id == ctx.tenant_id)
+                .order_by(SettingMigrationLog.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        MigrationLogOut(
+            id=r.id,
+            migration_id=r.migration_id,
+            description=r.description,
+            applied_by=r.applied_by,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        )
+        for r in rows
+    ]
+
+
+@router.post("/migrations/run", response_model=RunMigrationsOut)
+async def run_config_migrations(
+    ctx: SettingsWriteCtx,
+) -> RunMigrationsOut:
+    """Run all pending config migrations for this tenant. Idempotent."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("running config migrations requires settings:write")
+    from app.modules.settings.config_migrations import run_pending
+
+    applied = await run_pending(ctx.session, ctx.tenant_id, applied_by=ctx.user.id)
+    from app.modules.settings.config_migrations import latest_version
+
+    return RunMigrationsOut(applied=applied, current_version=latest_version())
+
+
+# ---------------------------------------------------------------------------
+# Tenant-Scoped Restore (§164)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/restore")
+async def restore_snapshot(
+    body: RestoreSnapshotInput,
+    ctx: SettingsWriteCtx,
+) -> dict[str, int]:
+    """Restore all tenant-level settings to their state before a timestamp (§164).
+
+    Requires ``settings:write``. Tenant-scoped by RLS — only touches this
+    tenant's overrides. Each change is recorded in history with a restore
+    reason, and an audit log entry is written.
+    """
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("restore requires settings:write")
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    try:
+        snapshot_before = dt.fromisoformat(body.snapshot_before)
+        if snapshot_before.tzinfo is None:
+            snapshot_before = snapshot_before.replace(tzinfo=UTC)
+    except ValueError:
+        raise ValidationError(f"invalid ISO timestamp: {body.snapshot_before!r}") from None
+
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    result = await svc.restore_to_snapshot(
+        snapshot_before,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    # Audit the restore operation itself.
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "settings.restore",
+        "tenant_settings",
+        str(ctx.tenant_id),
+        before={"snapshot_before": body.snapshot_before},
+        after=result,
+    )
+    return result
 
 
 def _change_request_to_out(r) -> ChangeRequestOut:

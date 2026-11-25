@@ -342,6 +342,9 @@ PRIVILEGE_REFREEZE: tuple[str, ...] = (
     "REVOKE UPDATE ON public.audit_logs FROM sales_app",
     "GRANT DELETE ON public.audit_logs TO sales_app",
     "REVOKE UPDATE, DELETE ON public.security_events FROM sales_app",
+    # setting_migration_log: append-only — the config migration runner only
+    # INSERTs log rows and SELECTs to check what's applied. No UPDATE or DELETE.
+    "REVOKE UPDATE, DELETE ON public.setting_migration_log FROM sales_app",
     # Auth-plane isolation (fd2026100410): the RBAC reference plane and the ops
     # table are SELECT-only for the runtime role — the blanket ALL above hands
     # the writes straight back on every provision run, same mechanism as the

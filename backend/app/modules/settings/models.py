@@ -36,9 +36,46 @@ from app.core.model_kit import (
     TimestampMixin,
 )
 
+
 # Change request lifecycle states (§28).
 # DRAFT → SUBMITTED → VALIDATING → PENDING_APPROVAL → APPROVED → APPLYING → APPLIED
 # Alternative terminal states: REJECTED, CANCELLED, FAILED, EXPIRED
+class SettingMigrationLog(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
+    """Idempotent log of applied config migrations per tenant.
+
+    Each row records that a named migration (rename a key, transform a value,
+    etc.) has been applied to this tenant's settings. The runner checks this
+    log before applying, so migrations are idempotent: re-running is a no-op.
+
+    The highest ``migration_id`` applied is the tenant's effective settings
+    ``schema_version`` — analogous to Alembic's ``alembic_version`` table,
+    but scoped per tenant because each tenant's settings evolve independently.
+    """
+
+    __tablename__ = "setting_migration_log"
+
+    migration_id: Mapped[str] = mapped_column(String(127), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    applied_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "migration_id",
+            name="uq_setting_migration_log_tenant_migration",
+        ),
+        Index(
+            "ix_setting_migration_log_tenant",
+            "tenant_id",
+            "created_at",
+        ),
+    )
+
+
 CHANGE_REQUEST_STATES: tuple[str, ...] = (
     "draft",
     "submitted",
