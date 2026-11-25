@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { DatabaseBackup, FileCheck2, ScrollText, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
 import { Toaster } from "@/cashier/components/ui/sonner";
+import { useI18n, useT } from "@/lib/i18n";
 import "@/cashier/cashier.css";
 import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
 import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
@@ -24,15 +25,15 @@ import DevicesSection from "./pos/DevicesSection";
 
 // ترتيب الأقسام هو ترتيب شريط التبويبات، وكل واحد ليه slug ثابت في المسار.
 const SECTIONS = [
-  { value: "shop", label: "بيانات المحل", icon: Store, render: () => <ShopProfileForm /> },
-  { value: "policy", label: "سياسة المحل", icon: Undo2, render: () => <ShopPolicySettings /> },
-  { value: "einvoice", label: "الضرائب والإيصال الإلكتروني", icon: FileCheck2, render: () => <TaxSettings /> },
-  { value: "receipts", label: "متابعة الإيصالات", icon: ScrollText, render: () => <ReceiptTracking /> },
-  { value: "print", label: "الطباعة والباركود", icon: Printer, render: () => <PrintAndBarcodeSettings /> },
-  { value: "lists", label: "الفئات", icon: Tags, render: () => <CategoriesSettings /> },
+  { value: "shop", labelKey: "settings.pos.shop", icon: Store, render: () => <ShopProfileForm /> },
+  { value: "policy", labelKey: "settings.pos.policy", icon: Undo2, render: () => <ShopPolicySettings /> },
+  { value: "einvoice", labelKey: "settings.pos.einvoice", icon: FileCheck2, render: () => <TaxSettings /> },
+  { value: "receipts", labelKey: "settings.pos.receipts", icon: ScrollText, render: () => <ReceiptTracking /> },
+  { value: "print", labelKey: "settings.pos.print", icon: Printer, render: () => <PrintAndBarcodeSettings /> },
+  { value: "lists", labelKey: "settings.pos.lists", icon: Tags, render: () => <CategoriesSettings /> },
   {
     value: "users",
-    label: "المستخدمون",
+    labelKey: "settings.pos.users",
     icon: Users,
     render: () => (
       <>
@@ -41,8 +42,8 @@ const SECTIONS = [
       </>
     ),
   },
-  { value: "backup", label: "النسخ الاحتياطي", icon: DatabaseBackup, render: () => <BackupTab /> },
-  { value: "devices", label: "الأجهزة والبروفايلات", icon: MonitorSmartphone, render: () => <DevicesSection /> },
+  { value: "backup", labelKey: "settings.pos.backup", icon: DatabaseBackup, render: () => <BackupTab /> },
+  { value: "devices", labelKey: "settings.pos.devices", icon: MonitorSmartphone, render: () => <DevicesSection /> },
 ];
 
 export const POS_SECTION_SLUGS = SECTIONS.map((s) => s.value);
@@ -55,12 +56,15 @@ export function resolvePosSection(slug) {
 export default function PosSettings() {
   const { section } = useParams();
   const navigate = useNavigate();
+  const t = useT();
+  const { lang } = useI18n();
+  const isAr = lang === "ar";
   const active = resolvePosSection(section);
 
   return (
-    <div className="cashier-root" dir="rtl">
+    <div className="cashier-root" dir={isAr ? "rtl" : "ltr"}>
       <nav
-        aria-label="أقسام إعدادات نقاط البيع"
+        aria-label={t("settings.pos.sectionLabel")}
         className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-border bg-transparent p-0"
       >
         {SECTIONS.map((item) => {
@@ -77,7 +81,7 @@ export default function PosSettings() {
               }`}
             >
               <Icon className="h-4 w-4" />
-              {item.label}
+              {t(item.labelKey)}
             </button>
           );
         })}
@@ -85,7 +89,7 @@ export default function PosSettings() {
       <div className="mt-4" data-section={active.value}>
         {active.render()}
       </div>
-      <Toaster position="top-center" dir="rtl" />
+      <Toaster position="top-center" dir={isAr ? "rtl" : "ltr"} />
     </div>
   );
 }

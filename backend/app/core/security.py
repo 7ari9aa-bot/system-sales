@@ -98,9 +98,22 @@ def _create_token(subject: str, ttl_seconds: int, token_type: str, claims: dict[
     )
 
 
-def create_access_token(user_id: str, claims: dict[str, Any] | None = None) -> str:
+def create_access_token(
+    user_id: str,
+    claims: dict[str, Any] | None = None,
+    *,
+    ttl_seconds: int | None = None,
+) -> str:
+    """Issue an access token.
+
+    ``ttl_seconds`` overrides the deployment default — used by the
+    ``team.session_timeout_minutes`` tenant setting to shorten per-tenant
+    sessions without redeploying.
+    """
     settings = get_settings()
-    return _create_token(user_id, settings.access_token_ttl_seconds, "access", claims or {})
+    return _create_token(
+        user_id, ttl_seconds or settings.access_token_ttl_seconds, "access", claims or {}
+    )
 
 
 def create_oauth_state_token(

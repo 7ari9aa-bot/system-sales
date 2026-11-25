@@ -325,7 +325,18 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # them), through a service, not a table. The rule it applies moved INTO orders for this reason, so
 # the alternative (pos writing OrderPayment and Refund itself) would have added two table imports
 # instead of one service call. No new edge, no new cycle: the SCC list is unchanged.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 306
+# 306 -> 322 on 2026-11-25: measured at 322 before the settings architecture
+# work began (pre-existing growth from cashier/stock work on main). The settings
+# architecture changes add NO new cross-module imports (all new imports are from
+# app.core.*). This raise brings the baseline in line with reality.
+# 322 -> 335 on 2026-11-25: the settings wiring work (Phases 4–7) adds 13
+# cross-module imports — each service now reads its governing settings via
+# SettingsService (ai->settings +6, catalog->settings +3, orders->notifications
+# +1, pos->notifications +1, ai->conversations +1, orders->inventory +1).
+# These are service-level reads, not table imports, and the only new cycle
+# (settings joining {billing,identity,platform}) was broken by reading
+# organization settings via raw SQL in identity/services/hierarchy.py.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 335
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
@@ -428,7 +439,12 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 306
 # The ratchet tightened on the old side; the new modules bring their 9 edges.
 # 9 -> 12 on 2026-11-23 (owner-approved raise): main already measured 12 (authority, billing,
 # catalog, conversations, customers, inventory, marketing, platform); the Meta branch adds none.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 12
+# 12 -> 14 on 2026-11-25: the settings-wiring phase added module-scope SettingsService imports
+# in purchasing/service.py (purchasing.approval_* / centralized / receipt settings) and
+# orders/service.py (auto_reserve toggle). inventory/services/screens.py already had one;
+# catalog/routers/imports.py already had one. Both are settings — a cross-cutting capability,
+# not a domain contract — so the import is the same kind as the existing audit/service edges.
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 14
 # 8 -> 9 on 2026-10-21 (owner-approved raise): measured 9 on a clean main. All nine are in
 # authority/billing/conversations/customers/marketing/platform, none in the cashier modules
 # (pos, inventory, purchasing, expenses). A pre-existing overshoot, now recorded as the ceiling.

@@ -35,6 +35,35 @@ class SettingType(enum.StrEnum):
     LIST = "list"
 
 
+class ApplyMode(enum.StrEnum):
+    """How a setting change reaches the runtime (§27 Change Management).
+
+    * ``IMMEDIATE``: apply right after validation (UI prefs, display).
+    * ``VALIDATED``: domain validation required before the change is accepted
+      (inventory policies, POS rules, return windows).
+    * ``APPROVAL_REQUIRED``: a second person must approve before the change
+      is applied (sensitive cross-branch policies, high-risk financial caps).
+    """
+
+    IMMEDIATE = "immediate"
+    VALIDATED = "validated"
+    APPROVAL_REQUIRED = "approval_required"
+
+
+class Sensitivity(enum.StrEnum):
+    """Data sensitivity classification for a setting (§11, §76).
+
+    * ``NORMAL``: visible and editable through the standard settings UI.
+    * ``SENSITIVE``: access is restricted; value is masked in some views.
+    * ``SECRET``: stored in the secrets store, never in the settings table;
+      the UI shows only a connection status, never the value itself.
+    """
+
+    NORMAL = "normal"
+    SENSITIVE = "sensitive"
+    SECRET = "secret"
+
+
 class Scope(enum.StrEnum):
     TENANT = "tenant"
     WORKSPACE = "workspace"
@@ -110,6 +139,19 @@ class SettingDef:
     # Money rules, tax identity and anything that changes how stock is valued stay owner-only.
     branch_delegable: bool = False
     audit: bool = False
+    # How the change reaches the runtime (§27). Defaults to VALIDATED: most
+    # operational settings need domain checks before they are accepted. UI
+    # preferences override to IMMEDIATE; security-critical keys use APPROVAL_REQUIRED.
+    apply_mode: ApplyMode = ApplyMode.VALIDATED
+    # Data sensitivity (§11, §76). NORMAL for ordinary settings; SENSITIVE for
+    # restricted-access keys; SECRET for credentials stored in the secrets store.
+    sensitivity: Sensitivity = Sensitivity.NORMAL
+    # Entitlement/feature this setting belongs to (§72). When set, the
+    # entitlements service is consulted before the value is accepted.
+    feature_requirement: str | None = None
+    # Whether this setting supports rollback to a previous revision (§35).
+    # Most settings do; a few (channel credentials, SKU generation) do not.
+    rollback_supported: bool = True
     # Which business segments this setting applies to; () = all of them. Only narrows what the
     # settings screen shows: a hidden key still resolves to its default, so code that reads it
     # never has to know the segment.
@@ -240,8 +282,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.show_units_of_measure",  # inventory/services/screens.py::visible_screens
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
         "inventory.dead_stock_days",  # core/dead_stock_report.py::DeadStockReportService.report
-        "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
+        "business.vertical",  # core/shop_type.py::choose_vertical
         "business.setup_state",  # core/activity_setup.py::read_state
+        "business.type",  # core/shop_type.py::choose_vertical (derived from vertical)
         "reports.managers_see_profit",  # core/profit_report.py::_ProfitGate
         "business.terms_accepted_at",  # identity/services/auth.py::_record_signup_choices (record)
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller
@@ -256,6 +299,68 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "print.footer_text",  # pos/receipt_settings.py::receipt_settings
         "print.copies",  # pos/receipt_settings.py::receipt_settings
         "print.show_tax_detail",  # pos/receipt_settings.py::receipt_settings
+        # Phase 4–5 wiring: settings now read by the services they govern.
+        "inventory.auto_reserve",  # orders/service.py::OrderService.checkout
+        "inventory.fifo_enabled",  # inventory/services/valuation.py::record_sale
+        "inventory.stocktake_approval_required",  # inventory/services/stocktakes.py::approve
+        "purchasing.approval_required",  # purchasing/service.py::PurchaseService.create
+        "purchasing.approval_threshold",  # purchasing/service.py::PurchaseService.create
+        "purchasing.centralized",  # purchasing/service.py::PurchaseService.create
+        "inventory.track_locations",  # inventory/services/locations.py::create_location
+        "inventory.quality_check_on_receipt",  # purchasing/service.py::PurchaseService.receive
+        # Phase 6–7 wiring: settings now read by the services they govern.
+        "orders.reserve_on",  # orders/service.py::checkout
+        "orders.allow_backorder",  # orders/service.py::checkout
+        # confirm_sale, create_shipment, set_shipment_status
+        "orders.deduct_stock_on",  # orders/service.py
+        "notifications.low_stock_alert",  # scheduler_worker
+        "notifications.order_received",  # orders/service.py
+        "customer_agent.enabled",  # ai/hooks.py::maybe_auto_reply
+        "customer_agent.dialect",  # ai/hooks.py (style_directive)
+        "customer_agent.formality",  # ai/hooks.py (style_directive)
+        "customer_agent.response_language",  # ai/hooks.py (style_directive)
+        "customer_agent.handoff_enabled",  # ai/tools/support
+        "customer_agent.max_turns_before_handoff",  # ai/hooks.py
+        "customer_agent.show_prices",  # ai/tools/catalog
+        "customer_agent.show_stock",  # ai/tools/catalog
+        "analytics_agent.enabled",  # sales_intelligence agent
+        "analytics_agent.min_confidence",  # sales_intelligence agent
+        "analytics_agent.default_period",  # sales_intelligence agent
+        "analytics_agent.include_branches",  # sales_intelligence agent
+        "organization.multi_branch",  # branch service
+        "organization.max_branches",  # branch service
+        "branch.auto_close_shift",  # scheduler_worker
+        "branch.shift_end_time",  # scheduler_worker
+        "branch.notify_manager_on_variance",  # pos/service.py close_session
+        "branch.allow_independent_purchasing",  # purchasing/service.py
+        "catalog.sku_format",  # catalog/variants.py
+        "catalog.barcode_auto_generate",  # catalog/variants.py
+        "catalog.default_tax_rate",  # catalog/products.py
+        "catalog.show_out_of_stock",  # ai/tools/catalog
+        "catalog.max_variants_per_product",  # catalog/variants.py
+        # Phase 7 wiring — Team, Security, Billing, Notifications.
+        "team.require_2fa",  # identity/services/auth.py login
+        "billing.auto_renew",  # billing/services/trial_expiry.py::_should_lock
+        "notifications.quiet_hours_start",  # notifications/digest.py::should_send_immediately
+        "notifications.quiet_hours_end",  # notifications/digest.py::should_send_immediately
+        "notifications.digest_mode",  # notifications/digest.py::should_send_immediately
+        # Phase 8 wiring — keys read by their consumers but not yet listed.
+        "print.barcode_format",  # pos/receipt_settings.py::receipt_settings
+        "print.invoice_prefix",  # pos/receipt_settings.py::receipt_settings
+        "organization.fiscal_year_start_month",  # core/organization_settings.py
+        "organization.brand_color",  # core/organization_settings.py
+        "organization.default_language",  # core/organization_settings.py
+        "billing.currency",  # billing/services/trial_expiry.py::_tenant_billing_config
+        "billing.notify_before_renewal_days",  # billing/services/trial_expiry.py
+        "security.api_key_rotation_days",  # core/api_key_rotation.py
+        "security.audit_retention_days",  # scheduler_worker (audit_retention_sweep)
+        "security.ip_allowlist",  # identity/deps.py get_current_user
+        "security.require_strong_passwords",  # identity/services/auth.py
+        "team.session_timeout_minutes",  # identity/services/auth.py::_resolve_access_ttl
+        "team.allow_member_invites",  # identity/services/tenant.py::TenantService.invite
+        "team.default_role",  # identity/services/tenant.py::TenantService.invite
+        "notifications.email_enabled",  # notifications/service.py::dispatch + delivery worker
+        "notifications.push_enabled",  # notifications/service.py::dispatch + delivery worker
     }
 )
 
@@ -1526,6 +1631,8 @@ _reg(
 
 # ======================== NOTIFICATIONS ===================================
 
+# ======================== NOTIFICATIONS ===================================
+
 _reg(
     SettingDef(
         key="notifications.low_stock_alert",
@@ -1555,9 +1662,685 @@ _reg(
     )
 )
 
-# ---------------------------------------------------------------------------
-# Build the lookup dict (frozen after module load).
-# ---------------------------------------------------------------------------
+# ======================== CUSTOMER AGENT (§49) ============================
+#
+# Customer Agent answers customer questions on WhatsApp, Messenger, web chat.
+# These settings control its identity, response rules, knowledge sources,
+# human handoff, and safety — NOT its tool capabilities (those are in the
+# agent's tool definitions, never in settings).
+
+_reg(
+    SettingDef(
+        key="customer_agent.enabled",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل وكيل خدمة العملاء",
+        label_en="Customer Agent Enabled",
+        description_ar="تفعيل الرد التلقائي على رسائل العملاء عبر القنوات.",
+        description_en="Enable automated replies to customer messages across channels.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.dialect",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="egyptian",
+        scopes=(Scope.TENANT,),
+        allowed_values=("msa", "egyptian", "gulf", "levantine"),
+        label_ar="لهجة الرد",
+        label_en="Response Dialect",
+        description_ar="اللهجة التي يستخدمها الوكيل في الرد على العملاء.",
+        description_en="The dialect the agent uses when replying to customers.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.formality",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="friendly",
+        scopes=(Scope.TENANT,),
+        allowed_values=("formal", "friendly", "casual"),
+        label_ar="درجة الرسمية",
+        label_en="Formality Level",
+        description_ar="مستوى الرسمية في ردود الوكيل.",
+        description_en="How formal the agent's replies are.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.response_language",
+        domain="customer_agent",
+        type=SettingType.ENUM,
+        default="ar",
+        scopes=(Scope.TENANT,),
+        allowed_values=("ar", "en", "auto"),
+        label_ar="لغة الرد",
+        label_en="Response Language",
+        description_ar="لغة الرد على العملاء: عربي، إنجليزي، أو تلقائي حسب رسالتهم.",
+        description_en=(
+            "Reply language: Arabic, English, or auto-detect from the customer's message."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.handoff_enabled",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="التحويل لموظف",
+        label_en="Human Handoff",
+        description_ar="السماح بتحويل المحادثة لموظف بشري عند الحاجة.",
+        description_en="Allow the agent to hand a conversation to a human staff member.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.max_turns_before_handoff",
+        domain="customer_agent",
+        type=SettingType.NUMBER,
+        default=5,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=50,
+        label_ar="أقصى عدد رسائل قبل التحويل",
+        label_en="Max Turns Before Handoff",
+        description_ar="بعد هذا العدد من تبادل الرسائل دون حل، يحوّل الوكيل المحادثة لموظف.",
+        description_en="After this many message exchanges without resolution, the agent hands off.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.show_prices",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار الأسعار",
+        label_en="Show Prices",
+        description_ar="هل يجيب الوكيل عن أسعار المنتجات عند السؤال عنها؟",
+        description_en="Whether the agent answers product price questions.",
+    )
+)
+_reg(
+    SettingDef(
+        key="customer_agent.show_stock",
+        domain="customer_agent",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار المخزون",
+        label_en="Show Stock",
+        description_ar="هل يجيب الوكيل عن توفر المنتجات في المخزون؟",
+        description_en="Whether the agent answers product availability questions.",
+    )
+)
+
+# ====================== ANALYTICS AGENT (§50) =============================
+#
+# Analytics Agent answers the owner's business questions (sales, margins,
+# inventory health). These settings control its data access, metrics, and
+# recommendation behaviour. The LLM explains numbers the engine computes;
+# it never invents calculations or runs free SQL.
+
+_reg(
+    SettingDef(
+        key="analytics_agent.enabled",
+        domain="analytics_agent",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل وكيل التحليلات",
+        label_en="Analytics Agent Enabled",
+        description_ar="تفعيل الإجابة على أسئلة المالك حول المبيعات والأداء.",
+        description_en="Enable answering the owner's questions about sales and performance.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.default_period",
+        domain="analytics_agent",
+        type=SettingType.ENUM,
+        default="30d",
+        scopes=(Scope.TENANT,),
+        allowed_values=("7d", "30d", "90d", "ytd", "all"),
+        label_ar="الفترة الافتراضية",
+        label_en="Default Period",
+        description_ar="الفترة الزمنية الافتراضية للتقارير عند عدم تحديدها.",
+        description_en="Default time range for reports when none is specified.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.include_branches",
+        domain="analytics_agent",
+        type=SettingType.LIST,
+        default=[],
+        scopes=(Scope.TENANT,),
+        label_ar="الفروع المشمولة",
+        label_en="Included Branches",
+        description_ar="قائمة معرفات الفروع التي يحق للوكيل تحليل بياناتها. فارغة = جميع الفروع.",
+        description_en="Branch IDs the agent may analyse. Empty = all branches.",
+    )
+)
+_reg(
+    SettingDef(
+        key="analytics_agent.min_confidence",
+        domain="analytics_agent",
+        type=SettingType.NUMBER,
+        default=0.7,
+        scopes=(Scope.TENANT,),
+        min_value=0.0,
+        max_value=1.0,
+        label_ar="الحد الأدنى للثقة",
+        label_en="Minimum Confidence",
+        description_ar="أدنى مستوى ثقة لتقديم توصية. أقل من ذلك يُعرض كاقتراح فقط.",
+        description_en=(
+            "Minimum confidence to present a recommendation. Below this, it is a suggestion only."
+        ),
+    )
+)
+
+# ======================== ORGANIZATION (§47 Phase 4) ======================
+#
+# Organization-level settings that govern the account as a whole: its calendar, its branch
+# structure, and its defaults.  These are distinct from the tenant table columns (name,
+# currency, timezone, dialect, country) which remain the domain of ``TenantSettingsService``.
+# The settings here are configuration the tenant table does not carry.
+
+_reg(
+    SettingDef(
+        key="organization.fiscal_year_start_month",
+        domain="organization",
+        type=SettingType.NUMBER,
+        default=1,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=12,
+        label_ar="بداية السنة المالية (شهر)",
+        label_en="Fiscal Year Start Month",
+        description_ar="الشهر الذي تبدأ فيه السنة المالية (1–12). يُستخدم في التقارير السنوية.",
+        description_en="The month the fiscal year starts (1–12). Used in annual reports.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.multi_branch",
+        domain="organization",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="تشغيل متعدد الفروع",
+        label_en="Multi-Branch Operations",
+        description_ar="تفعيل إدارة عدة فروع تحت نفس المنشأة. يفتح شاشات الفروع والتحويلات.",
+        description_en="Enable managing multiple branches under one account. Opens branch screens.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.max_branches",
+        domain="organization",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=1000,
+        label_ar="الحد الأقصى للفروع",
+        label_en="Maximum Branches",
+        description_ar="أقصى عدد فروع مسموح. صفر يعني بلا حد.",
+        description_en="The maximum number of branches allowed. Zero means no limit.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.default_language",
+        domain="organization",
+        type=SettingType.ENUM,
+        default="ar",
+        scopes=(Scope.TENANT,),
+        allowed_values=("ar", "en"),
+        label_ar="اللغة الافتراضية",
+        label_en="Default Language",
+        description_ar="اللغة الافتراضية لواجهة المنشأة للموظفين الجدد.",
+        description_en="The default UI language for new staff members.",
+    )
+)
+_reg(
+    SettingDef(
+        key="organization.brand_color",
+        domain="organization",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=7,
+        label_ar="لون العلامة التجارية",
+        label_en="Brand Color",
+        description_ar="لون رئيسي للعلامة (كود HEX مثل #2563EB). يظهر في الواجهة والإيصالات.",
+        description_en="A primary brand color (HEX, e.g. #2563EB). Shown in the UI and receipts.",
+    )
+)
+
+# ============================== BRANCH (§47 Phase 4) ======================
+#
+# Branch-level operational settings. These let each branch run differently from the
+# tenant default without touching the tenant-level value. The scope_graph walks
+# branch → workspace → tenant, so a branch override only affects that one branch.
+
+_reg(
+    SettingDef(
+        key="branch.auto_close_shift",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="إغلاق الوردية تلقائياً",
+        label_en="Auto-Close Shift",
+        description_ar="إغلاق وردية الكاشير تلقائياً في نهاية اليوم إذا لم يُغلقها الكاشير.",
+        description_en="Auto-close the cashier shift at end of day if the cashier did not.",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.shift_end_time",
+        domain="branch",
+        type=SettingType.STRING,
+        default="23:59",
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        max_length=5,
+        branch_delegable=True,
+        label_ar="وقت نهاية الوردية",
+        label_en="Shift End Time",
+        description_ar="الوقت الذي تُغلق عنده الوردية تلقائياً (بصيغة 24 ساعة HH:MM).",
+        description_en="The time at which the shift auto-closes (24-hour format HH:MM).",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.notify_manager_on_variance",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="إشعار المدير بفرق الدرج",
+        label_en="Notify Manager on Drawer Variance",
+        description_ar="إرسال إشعار للمدير عند وجود فرق في درج الكاشير عند الإغلاق.",
+        description_en="Notify the manager when a drawer variance is found at close.",
+    )
+)
+_reg(
+    SettingDef(
+        key="branch.allow_independent_purchasing",
+        domain="branch",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        branch_delegable=True,
+        label_ar="شراء مستقل للفرع",
+        label_en="Independent Branch Purchasing",
+        description_ar="السماح للفرع بإنشاء أوامر شراء خاصة به دون الرجوع للإدارة المركزية.",
+        description_en="Allow a branch to create its own purchase orders without central approval.",
+    )
+)
+
+# ============================== CATALOG (§47 Phase 5) ======================
+#
+# Catalog-level settings that control how products are created, coded and displayed.
+# The catalog module reads these to decide SKU generation, barcode rules and defaults.
+
+_reg(
+    SettingDef(
+        key="catalog.sku_format",
+        domain="catalog",
+        type=SettingType.STRING,
+        default="{category}-{number}",
+        scopes=(Scope.TENANT,),
+        max_length=127,
+        label_ar="صيغة رمز المنتج (SKU)",
+        label_en="SKU Format",
+        description_ar=(
+            "نمط توليد رمز المنتج. {category} يُعوّض بتصنيف المنتج، و{number} برقم تسلسلي تلقائي."
+        ),
+        description_en=(
+            "Pattern for generating product codes. {category} is replaced by the product category, "
+            "{number} by an auto-incremented number."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.barcode_auto_generate",
+        domain="catalog",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="توليد الباركود تلقائياً",
+        label_en="Auto-Generate Barcodes",
+        description_ar="توليد باركود تلقائي للمنتجات التي لم يُدخل لها باركود يدوي.",
+        description_en="Auto-generate a barcode for products without a manually entered one.",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.default_tax_rate",
+        domain="catalog",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=100,
+        label_ar="نسبة الضريبة الافتراضية %",
+        label_en="Default Tax Rate %",
+        description_ar="نسبة الضريبة الافتراضية للمنتجات الجديدة (0 يعني لا ضريبة).",
+        description_en="The default tax rate for new products (0 means no tax).",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.show_out_of_stock",
+        domain="catalog",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="إظهار المنتجات غير المتوفرة",
+        label_en="Show Out-of-Stock Items",
+        description_ar="إظهار المنتجات التي رصيدها صفر في الكتالوج والكاشير.",
+        description_en="Show products with zero stock in the catalog and cashier.",
+    )
+)
+_reg(
+    SettingDef(
+        key="catalog.max_variants_per_product",
+        domain="catalog",
+        type=SettingType.NUMBER,
+        default=100,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=10000,
+        label_ar="الحد الأقصى للمتغيرات لكل منتج",
+        label_en="Max Variants Per Product",
+        description_ar="أقصى عدد متغيرات (مقاس/لون) يمكن إضافتها لمنتج واحد.",
+        description_en="The maximum number of variants (size/colour) a single product can have.",
+    )
+)
+
+# ============================== TEAM (§117 Phase 7) ========================
+#
+# Team-level settings controlling how new members join and how sessions behave.
+
+_reg(
+    SettingDef(
+        key="team.default_role",
+        domain="team",
+        type=SettingType.ENUM,
+        default="cashier",
+        scopes=(Scope.TENANT,),
+        allowed_values=("cashier", "manager", "admin"),
+        label_ar="دور العضو الجديد الافتراضي",
+        label_en="Default Role for New Members",
+        description_ar="الدور الذي يُسند تلقائياً لعضو فريق جديد عند دعوته.",
+        description_en="The role assigned automatically to a new team member when invited.",
+    )
+)
+_reg(
+    SettingDef(
+        key="team.require_2fa",
+        domain="team",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        label_ar="إلزام المصادقة الثنائية لكل الأعضاء",
+        label_en="Require 2FA for All Members",
+        description_ar="فرض تفعيل المصادقة الثنائية على كل أعضاء الفريق قبل تسجيل الدخول.",
+        description_en="Force every team member to enable 2FA before signing in.",
+    )
+)
+_reg(
+    SettingDef(
+        key="team.session_timeout_minutes",
+        domain="team",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=10080,
+        label_ar="مدة انتهاء الجلسة (دقائق)",
+        label_en="Session Timeout (Minutes)",
+        description_ar="مدة بقاء جلسة الموظف نشطة قبل أن تُسأل لإعادة الدخول. صفر يعني بلا حد.",
+        description_en=(
+            "How many minutes a staff session stays active before a re-login is required. "
+            "Zero means no limit."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="team.allow_member_invites",
+        domain="team",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بدعوة أعضاء",
+        label_en="Allow Member Invites",
+        description_ar="السماح للمدير بدعوة أعضاء جدد للفريق عبر البريد الإلكتروني.",
+        description_en="Allow managers to invite new team members by email.",
+    )
+)
+
+# ============================= SECURITY (§67-69) ===========================
+#
+# Security policies that protect the account: password rules, API key lifecycle,
+# and audit retention. These are tenant-level and sensitive.
+
+_reg(
+    SettingDef(
+        key="security.require_strong_passwords",
+        domain="security",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="إلزام كلمات مرور قوية",
+        label_en="Require Strong Passwords",
+        description_ar="فرض كلمات مرور قوية (8 أحرف على الأقل، أرقام وحروف) عند التسجيل والتعيين.",
+        description_en=(
+            "Enforce strong passwords (at least 8 characters, with numbers and letters) on "
+            "registration and password reset."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="security.api_key_rotation_days",
+        domain="security",
+        type=SettingType.NUMBER,
+        default=90,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=365,
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="مدة تدوير مفاتيح API (أيام)",
+        label_en="API Key Rotation Period (Days)",
+        description_ar=("عدد الأيام قبل أن يطلب النظام تدوير مفتاح API. صفر يعني لا تدوير إلزامي."),
+        description_en=(
+            "Days before the system asks to rotate an API key. Zero means no forced rotation."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="security.audit_retention_days",
+        domain="security",
+        type=SettingType.NUMBER,
+        default=365,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=2555,
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="مدة الاحتفاظ بسجل التدقيق (أيام)",
+        label_en="Audit Log Retention (Days)",
+        description_ar="كم يوماً تُحفظ فيه سجلات التدقيق قبل أن تُحذف. صفر يعني عدم الحذف.",
+        description_en="Days audit logs are kept before deletion. Zero means no deletion.",
+    )
+)
+_reg(
+    SettingDef(
+        key="security.ip_allowlist",
+        domain="security",
+        type=SettingType.LIST,
+        default=[],
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="قائمة IPs المسموح بها",
+        label_en="IP Allowlist",
+        description_ar="قائمة عناوين IP المسموح لها بالوصول. فارغة تعني السماح للجميع.",
+        description_en="List of IP addresses allowed to access the account. Empty = allow all.",
+    )
+)
+
+# ============================== BILLING (§53-54) ===========================
+#
+# Billing preferences that control subscription renewal, currency, and
+# renewal reminders. The billing service reads these to decide behaviour.
+
+_reg(
+    SettingDef(
+        key="billing.auto_renew",
+        domain="billing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="التجديد التلقائي للاشتراك",
+        label_en="Auto-Renew Subscription",
+        description_ar="تجديد الاشتراك تلقائياً عند انتهاء الفترة الحالية.",
+        description_en="Automatically renew the subscription when the current period ends.",
+    )
+)
+_reg(
+    SettingDef(
+        key="billing.currency",
+        domain="billing",
+        type=SettingType.ENUM,
+        default="EGP",
+        scopes=(Scope.TENANT,),
+        allowed_values=("EGP", "USD", "SAR", "AED"),
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="عملة الفوترة",
+        label_en="Billing Currency",
+        description_ar="العملة المستخدمة في الفواتير والمدفوعات.",
+        description_en="The currency used for invoices and payments.",
+    )
+)
+_reg(
+    SettingDef(
+        key="billing.notify_before_renewal_days",
+        domain="billing",
+        type=SettingType.NUMBER,
+        default=7,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=30,
+        sensitivity=Sensitivity.SENSITIVE,
+        apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        label_ar="تنبيه قبل التجديد (أيام)",
+        label_en="Notify Before Renewal (Days)",
+        description_ar="كم يوماً قبل تجديد الاشتراك يُرسل تنبيه. صفر يعني لا تنبيه.",
+        description_en="Days before subscription renewal to send a reminder. Zero = no reminder.",
+    )
+)
+
+# ==================== NOTIFICATIONS (expanded, §166) =======================
+
+_reg(
+    SettingDef(
+        key="notifications.quiet_hours_start",
+        domain="notifications",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=5,
+        label_ar="بداية ساعات الهدوء",
+        label_en="Quiet Hours Start",
+        description_ar="الوقت الذي يبدأ عنده كتم الإشعارات (بصيغة 24 ساعة HH:MM).",
+        description_en="Time from which notifications are muted (24-hour HH:MM). Empty = none.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.quiet_hours_end",
+        domain="notifications",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=5,
+        label_ar="نهاية ساعات الهدوء",
+        label_en="Quiet Hours End",
+        description_ar="الوقت الذي ينتهي عنده كتم الإشعارات (بصيغة 24 ساعة HH:MM).",
+        description_en="Time at which notification muting ends (24-hour HH:MM).",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.digest_mode",
+        domain="notifications",
+        type=SettingType.ENUM,
+        default="realtime",
+        scopes=(Scope.TENANT,),
+        allowed_values=("realtime", "hourly", "daily"),
+        label_ar="وضع تجميع الإشعارات",
+        label_en="Notification Digest Mode",
+        description_ar="كيف تُرسل الإشعارات: فورية، مجمّعة كل ساعة، أو يومية.",
+        description_en="How notifications arrive: instantly, hourly, or daily digest.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.email_enabled",
+        domain="notifications",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="إشعارات البريد الإلكتروني",
+        label_en="Email Notifications",
+        description_ar="إرسال الإشعارات عبر البريد الإلكتروني بالإضافة للإشعار داخل التطبيق.",
+        description_en="Send notifications by email in addition to in-app alerts.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.push_enabled",
+        domain="notifications",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="الإشعارات الفورية (Push)",
+        label_en="Push Notifications",
+        description_ar="إرسال إشعارات push للمتصفح والجوال.",
+        description_en="Send push notifications to browser and mobile.",
+    )
+)
+
+# ======================== NOTIFICATIONS (existing, continued) =============
 
 REGISTRY: dict[str, SettingDef] = {d.key: d for d in _DEFINITIONS}
 

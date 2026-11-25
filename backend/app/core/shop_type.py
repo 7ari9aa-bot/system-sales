@@ -36,6 +36,17 @@ STARTER_TREES: dict[str, dict[str, tuple[str, ...]]] = {
 }
 APPAREL_STARTER_TREE = STARTER_TREES["apparel"]
 
+# Map each vertical to its broad business segment (business.type).
+# The segment decides which segment-specific settings the shop sees; the
+# vertical decides which capabilities are on. They are two axes: a pharmacy
+# is "retail" segment with "pharmacy" vertical.
+VERTICAL_TO_SEGMENT: dict[str, str] = {
+    "general": "retail",
+    "apparel": "retail",
+    "pharmacy": "retail",
+    "restaurant": "fnb",
+}
+
 
 def _settings(session: AsyncSession, tenant_id: UUID) -> SettingsService:
     return SettingsService(session, tenant_id)
@@ -73,6 +84,10 @@ async def choose_vertical(
             {"k": f"choose_vertical:{tenant_id}"},
         )
         await _settings(session, tenant_id).set("business.vertical", vertical, user_id=user_id)
+        # Derive the broad business segment from the vertical so segment-
+        # specific settings show or hide without a second manual step.
+        segment = VERTICAL_TO_SEGMENT.get(vertical, "retail")
+        await _settings(session, tenant_id).set("business.type", segment, user_id=user_id)
         tree = STARTER_TREES.get(vertical)
         if tree and not await _has_categories(session, tenant_id):
             for branch, children in tree.items():
@@ -83,13 +98,18 @@ async def choose_vertical(
                         session, tenant_id, name=child, parent_id=parent.id
                     )
                     created += 1
-    return {"vertical": vertical, "categories_created": created}
+    return {"vertical": vertical, "business_type": segment, "categories_created": created}
 
 
 async def current_vertical(session: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
-    """The vertical the shop runs now and the ones it may choose."""
-    resolved = await _settings(session, tenant_id).resolve("business.vertical")
-    return {"current": resolved.value, "choices": list(CHOOSABLE_VERTICALS)}
+    """The vertical and business segment the shop runs now, and the vertical choices."""
+    resolved_v = await _settings(session, tenant_id).resolve("business.vertical")
+    resolved_t = await _settings(session, tenant_id).resolve("business.type")
+    return {
+        "current": resolved_v.value,
+        "business_type": resolved_t.value,
+        "choices": list(CHOOSABLE_VERTICALS),
+    }
 
 
 # ── The routes ─────────────────────────────────────────────────────────────────────────────────

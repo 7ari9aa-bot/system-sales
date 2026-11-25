@@ -1,11 +1,14 @@
 import React from "react";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { activeTenant, activeTenantId } from "@/lib/activeTenant";
 import { useRegional, formatCurrency, formatDate } from "@/lib/regional";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
+import OrganizationBranchCard from "@/components/settings/OrganizationBranchCard";
+import BrandColorCard from "@/components/settings/BrandColorCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -152,8 +155,17 @@ export default function WorkspaceSettings() {
                 {tenant?.slug || "—"}
               </span>
             </SettingRow>
-            <SettingRow label={t("workspace.role")} last>
+            <SettingRow label={t("workspace.role")}>
               <span className="text-[13px] font-medium">{tenant?.role_code || "—"}</span>
+            </SettingRow>
+            <SettingRow label={t("dialect.title")} desc={t("dialect.desc")} last>
+              <Link
+                to="/settings/ai"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t("settings.nav.ai")}
+              </Link>
             </SettingRow>
           </div>
         </SettingCard>
@@ -218,6 +230,11 @@ export default function WorkspaceSettings() {
             </Button>
           </div>
         </SettingCard>
+      </div>
+
+      <div className="mt-6">
+        <OrganizationBranchCard />
+        <BrandColorCard />
       </div>
     </SettingsShell>
   );

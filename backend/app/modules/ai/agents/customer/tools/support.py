@@ -242,6 +242,21 @@ async def _handover_to_human(
     if conversation_id is None:
         raise DomainError("no conversation bound to this tool call")
 
+    # §settings: customer_agent.handoff_enabled gates the MODEL's decision to
+    # hand over. Failure-path handovers (run limit, budget, delivery) are NOT
+    # gated — they protect the customer from silence and must always fire.
+    from app.modules.settings.service import SettingsService
+
+    handoff_enabled = await SettingsService(session, tenant_id).value(
+        "customer_agent.handoff_enabled"
+    )
+    if not handoff_enabled:
+        return {
+            "status": "handover_disabled",
+            "reason": reason,
+            "message": "Handover to human staff is disabled in settings.",
+        }
+
     from app.modules.ai.handover import request_human_takeover
 
     await request_human_takeover(

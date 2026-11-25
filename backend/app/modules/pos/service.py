@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1918,6 +1919,51 @@ class PosService(PosReceiptReads):
             )
         if counted is not None or method_counts:
             await session.flush()
+
+        # §settings: branch.notify_manager_on_variance — notify the branch
+        # manager when a drawer variance is found at close.
+        if counted is not None and expected is not None:
+            _variance_amount = variance(counted=counted, expected=expected)
+            if _variance_amount != 0:
+                notify_manager = await PosService._setting(
+                    session, tenant_id, "branch.notify_manager_on_variance", pos_session
+                )
+                if notify_manager:
+                    from app.modules.notifications.service import NotificationService
+
+                    owner_ids = (
+                        (
+                            await session.execute(
+                                sa_text(
+                                    "SELECT tu.user_id FROM tenant_users tu "
+                                    "JOIN roles r ON r.id = tu.role_id "
+                                    "WHERE tu.tenant_id = :tid "
+                                    "AND r.code IN ('owner', 'manager')"
+                                ),
+                                {"tid": str(tenant_id)},
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    for uid in owner_ids:
+                        await NotificationService.create(
+                            session,
+                            tenant_id,
+                            uid,
+                            kind="pos_variance",
+                            title="Drawer variance at close",
+                            body=(
+                                f"Shift close for session {pos_session.id} "
+                                f"recorded a cash variance of {_variance_amount}."
+                            ),
+                            payload={
+                                "session_id": str(pos_session.id),
+                                "variance": str(_variance_amount),
+                            },
+                            dedup_key=f"pos_variance:{pos_session.id}",
+                        )
+
         return pos_session
 
     @staticmethod

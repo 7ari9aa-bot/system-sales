@@ -95,6 +95,20 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # reach the authority in issue order and inside a legal window, so this cannot wait for a
     # daily sweep; it is a no-op for a store with no configured Egyptian till.
     "einvoice.eta_deliver": (timedelta(minutes=1), {}),
+    # §69: secrets past their rotation window surface as a notification to the
+    # owner. The sweep reads `security.api_key_rotation_days` via the settings
+    # resolver, finds `SecretReference` rows that have outlived it, and
+    # notifies the owner once per day per overdue key.
+    "secret_rotation_sweep": (timedelta(hours=24), {}),
+    # Settings-driven sweeps: low-stock alerts and POS auto-close. These
+    # handlers were registered without a recurring-job producer, so the
+    # deployment-declaration guard flagged them as orphans. Both are
+    # tenant-scoped and read their gating setting at execution time.
+    "inventory.low_stock_alerts": (timedelta(hours=6), {}),
+    "pos.auto_close_shifts": (timedelta(hours=1), {}),
+    # §settings: security.audit_retention_days — a daily sweep that deletes
+    # audit_logs older than the retention window. 0 means skip (no deletion).
+    "audit_retention_sweep": (timedelta(hours=24), {}),
 }
 
 
@@ -900,3 +914,200 @@ async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("einvoice.eta_deliver", _handle_eta_deliver)
+
+
+async def _handle_secret_rotation_sweep(session, tenant_id, payload: dict) -> dict:
+    """§69: flag secrets past their rotation window and notify the owner.
+
+    Reads ``security.api_key_rotation_days`` through the settings_read resolver
+    (the single settings read path), finds active ``SecretReference`` rows whose
+    ``rotated_at`` exceeds the window, and creates one notification per owner
+    per overdue key (deduped per day so a persistent overdue reminds once).
+    """
+    from app.core.api_key_rotation import due_secret_references
+    from app.modules.notifications.service import NotificationService
+
+    due = await due_secret_references(session, tenant_id)
+    if not due:
+        return {"due": 0}
+
+    owner_ids = await _tenant_owner_ids(session, tenant_id)
+    if not owner_ids:
+        return {"due": len(due), "notifications": 0}
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    created = 0
+    for ref in due:
+        dedup = f"secret_rotation:{ref['id']}:{today}"
+        # JSONB-safe copy: UUIDs and datetimes are not JSON-serializable.
+        safe_payload = {
+            "id": str(ref["id"]),
+            "provider": ref["provider"],
+            "vault_key": ref["vault_key"],
+            "rotated_at": ref["rotated_at"].isoformat() if ref["rotated_at"] else None,
+            "version": ref["version"],
+        }
+        for uid in owner_ids:
+            await NotificationService.create(
+                session,
+                tenant_id,
+                uid,
+                kind="security",
+                title="API key rotation due",
+                body=(
+                    f"The key for {ref['provider']} "
+                    f"(vault: {ref['vault_key']}, version {ref['version']}) "
+                    f"is past its rotation window and should be rotated."
+                ),
+                payload=safe_payload,
+                dedup_key=dedup,
+            )
+            created += 1
+    return {"due": len(due), "notifications": created}
+
+
+register_job_handler("secret_rotation_sweep", _handle_secret_rotation_sweep)
+
+
+async def _handle_low_stock_alerts(session, tenant_id, payload: dict) -> dict:
+    """§settings: notifications.low_stock_alert — check for low stock and notify owners.
+
+    Gated by the setting: if disabled, this is a no-op. When enabled, finds
+    variants at or below their min_stock policy and creates one notification
+    per owner (deduped per variant+warehouse per day so a persistent shortage
+    reminds once, not every sweep).
+    """
+    from app.modules.inventory.services.reporting import InventoryReportingService
+    from app.modules.notifications.service import NotificationService
+    from app.modules.settings.service import SettingsService
+
+    enabled = await SettingsService(session, tenant_id).value("notifications.low_stock_alert")
+    if not enabled:
+        return {"skipped": True, "reason": "low_stock_alert disabled"}
+
+    alerts = await InventoryReportingService.low_stock_alerts(session, tenant_id)
+    if not alerts:
+        return {"alerts": 0}
+
+    owner_ids = await _tenant_owner_ids(session, tenant_id)
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    created = 0
+    for alert in alerts:
+        dedup = f"low_stock:{alert['variant_id']}:{alert['warehouse_id']}:{today}"
+        for uid in owner_ids:
+            await NotificationService.create(
+                session,
+                tenant_id,
+                uid,
+                kind="low_stock",
+                title="Low stock alert",
+                body=(
+                    f"Variant {alert['variant_id']} in warehouse "
+                    f"{alert['warehouse_id']} is at {alert['available']} "
+                    f"(min: {alert['min_stock']})."
+                ),
+                payload=alert,
+                dedup_key=dedup,
+            )
+            created += 1
+    return {"alerts": len(alerts), "notifications": created}
+
+
+register_job_handler("inventory.low_stock_alerts", _handle_low_stock_alerts)
+
+
+async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
+    """§settings: branch.auto_close_shift — auto-close POS sessions past shift_end_time.
+
+    Finds OPEN pos_sessions whose opened_at is older than today's shift_end_time
+    and closes them (record-only close, no counted cash). Gated by the tenant's
+    ``branch.auto_close_shift`` setting; ``branch.shift_end_time`` sets the cutoff.
+    """
+    from app.modules.settings.service import SettingsService
+
+    auto_close = await SettingsService(session, tenant_id).value("branch.auto_close_shift")
+    if not auto_close:
+        return {"skipped": True, "reason": "auto_close_shift disabled"}
+
+    shift_end = await SettingsService(session, tenant_id).value("branch.shift_end_time")
+    shift_end = str(shift_end or "23:59")
+
+    from sqlalchemy import select
+
+    from app.modules.pos.models import PosSession
+
+    now = datetime.now(UTC)
+    # Build today's cutoff timestamp from shift_end_time (HH:MM).
+    try:
+        hh, mm = shift_end.split(":")
+        cutoff = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    except (ValueError, AttributeError):
+        cutoff = now
+
+    if now < cutoff:
+        return {"skipped": True, "reason": "before shift_end_time"}
+
+    open_sessions = (
+        (
+            await session.execute(
+                select(PosSession.id).where(
+                    PosSession.tenant_id == tenant_id,
+                    PosSession.status == "OPEN",
+                    PosSession.opened_at < cutoff,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not open_sessions:
+        return {"closed": 0}
+
+    from app.modules.pos.service import PosService
+
+    closed = 0
+    for sid in open_sessions:
+        try:
+            async with session.begin_nested():
+                await PosService.close_session(session, tenant_id, sid, shift_override=True)
+                closed += 1
+        except Exception:  # noqa: BLE001 — one stuck session must not block the rest
+            pass
+    return {"closed": closed, "shift_end_time": shift_end}
+
+
+register_job_handler("pos.auto_close_shifts", _handle_auto_close_shifts)
+
+
+async def _handle_audit_retention_sweep(session, tenant_id, payload: dict) -> dict:
+    """§settings: security.audit_retention_days — delete audit logs older than the window.
+
+    Reads the tenant-level setting; ``0`` means no deletion (skip). Otherwise
+    deletes ``audit_logs`` rows for THIS tenant whose ``created_at`` is older
+    than ``now - retention_days``. Tenant-scoped by construction: the scheduler
+    binds the tenant GUC before calling this handler, so the DELETE only
+    touches this tenant's rows even without an explicit tenant_id filter (the
+    filter is kept for clarity and for tests that run without RLS).
+    """
+    from app.modules.settings.service import SettingsService
+
+    days = await SettingsService(session, tenant_id).value("security.audit_retention_days")
+    if not days or int(days) <= 0:
+        return {"skipped": True, "reason": "retention disabled (0 days)"}
+
+    from sqlalchemy import delete
+
+    from app.modules.platform.models import AuditLog
+
+    cutoff = datetime.now(UTC) - timedelta(days=int(days))
+    result = await session.execute(
+        delete(AuditLog).where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.created_at < cutoff,
+        )
+    )
+    return {"deleted": result.rowcount, "retention_days": int(days)}
+
+
+register_job_handler("audit_retention_sweep", _handle_audit_retention_sweep)

@@ -63,7 +63,35 @@ class VariantServiceMixin:
         if not product_checked:
             await CatalogService.get_product(session, tenant_id, product_id)
         unit_price = _positive_decimal(price, "price")
+
+        # Enforce the per-product variant limit (catalog.max_variants_per_product).
+        from app.modules.settings.service import SettingsService
+
+        max_variants = await SettingsService(session, tenant_id).value(
+            "catalog.max_variants_per_product"
+        )
+        if max_variants and max_variants > 0:
+            current = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(ProductVariant)
+                    .where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.product_id == product_id,
+                    )
+                )
+            ).scalar_one()
+            if current >= max_variants:
+                raise ValidationError(
+                    f"this product already has the maximum of {max_variants} variants"
+                )
+
         sku = sku or None
+        # §settings: catalog.sku_format — when no SKU is provided, generate one
+        # from the tenant's format pattern (e.g. "{category}-{number}").
+        if sku is None:
+            sku = await VariantServiceMixin._generate_sku(session, tenant_id, product_id)
+
         if sku is not None and not sku_checked:
             duplicate = (
                 await session.execute(
@@ -96,7 +124,79 @@ class VariantServiceMixin:
         await CatalogService._sync_variant_option_links(
             session, tenant_id, variant.id, product_id, option_values or {}
         )
+
+        # §settings: catalog.barcode_auto_generate — auto-generate a barcode
+        # identifier for variants that don't have a manually entered one.
+        auto_barcode = await SettingsService(session, tenant_id).value(
+            "catalog.barcode_auto_generate"
+        )
+        if auto_barcode:
+            from app.modules.catalog.models import ProductIdentifier
+
+            existing = (
+                await session.execute(
+                    select(ProductIdentifier.id).where(
+                        ProductIdentifier.tenant_id == tenant_id,
+                        ProductIdentifier.variant_id == variant.id,
+                        ProductIdentifier.type.in_(("barcode", "ean", "gtin", "upc")),
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                # Use the variant's UUID-based short hash as a barcode value.
+                barcode_val = str(variant.id.int & 0xFFFFFFFFFFFFF)
+                session.add(
+                    ProductIdentifier(
+                        tenant_id=tenant_id,
+                        variant_id=variant.id,
+                        type="barcode",
+                        value=barcode_val,
+                    )
+                )
+                await session.flush()
+
         return variant
+
+    @staticmethod
+    async def _generate_sku(session: AsyncSession, tenant_id: UUID, product_id: UUID) -> str | None:
+        """Generate a SKU from the tenant's ``catalog.sku_format`` pattern.
+
+        ``{category}`` is replaced by the product's category name (or ``GEN`` when
+        it has none) and ``{number}`` by a per-tenant auto-incremented counter.
+        Returns ``None`` when the pattern is empty or would collide.
+        """
+        from app.modules.catalog.models import Product
+        from app.modules.settings.service import SettingsService
+
+        fmt = await SettingsService(session, tenant_id).value("catalog.sku_format")
+        if not fmt:
+            return None
+
+        # Resolve the product's category name.
+        product = (
+            await session.execute(
+                select(Product).where(Product.id == product_id, Product.tenant_id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        category_name = "GEN"
+        if product is not None and product.category_id is not None:
+            from app.modules.catalog.models import Category
+
+            cat = (
+                await session.execute(
+                    select(Category.name).where(Category.id == product.category_id)
+                )
+            ).scalar_one_or_none()
+            if cat:
+                category_name = cat.upper().replace(" ", "-")[:20]
+
+        # Allocate the next sequential number.
+        number = await VariantServiceMixin.allocate_sku_base(session, tenant_id)
+        # allocate_sku_base returns "SKU-NNNN"; extract the number part.
+        number = number.replace("SKU-", "")
+
+        sku = fmt.replace("{category}", category_name).replace("{number}", number)
+        return sku.strip() or None
 
     @staticmethod
     async def update_variant(

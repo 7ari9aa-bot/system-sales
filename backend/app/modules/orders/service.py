@@ -47,6 +47,7 @@ from app.modules.orders.money import (
     refund_state,
     to_money,
 )
+from app.modules.settings.service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ _RESERVATION_TTL = timedelta(minutes=15)
 
 async def reservation_ttl(session: AsyncSession, tenant_id: UUID) -> timedelta:
     """How long a hold lasts for this shop: the setting, defaulting to the 15 minutes above."""
-    from app.modules.settings.service import SettingsService
-
     minutes = await SettingsService(session, tenant_id).value("inventory.reserve_ttl_minutes")
     return timedelta(minutes=int(minutes))
 
@@ -651,10 +650,26 @@ class OrderService:
         # two concurrent orders holding the same variants in opposite orders
         # otherwise deadlock on the FOR UPDATE row locks. The customer's line
         # order is data; the lock order must be a global rule.
-        for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
-            await InventoryService.reserve(
-                session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
-            )
+        # §183: orders.reserve_on controls WHEN stock is reserved — "create"
+        # (at order creation, the default) or "confirm" (at sale confirmation).
+        # inventory.auto_reserve stays as the master switch; reserve_on refines
+        # its timing. orders.allow_backorder (§140) lets the order proceed even
+        # when stock is insufficient — the shop accepts the oversell risk.
+        auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
+        reserve_on = await SettingsService(session, tenant_id).value("orders.reserve_on")
+        allow_backorder = await SettingsService(session, tenant_id).value("orders.allow_backorder")
+        reserve_at_create = auto_reserve and reserve_on == "create"
+        if reserve_at_create:
+            for variant, quantity, _price, _pct in sorted(prepared, key=lambda item: item[0].id):
+                try:
+                    await InventoryService.reserve(
+                        session, tenant_id, variant.id, warehouse.id, quantity, channel=channel
+                    )
+                except ConflictError:
+                    if not allow_backorder:
+                        raise
+                    # Backorder: the order proceeds without the hold; stock will
+                    # be fulfilled later when the item is restocked.
 
         # Subtotal stays the GROSS of the ladder prices; the per-line
         # discounts compose with the caller's order-level discount into one
@@ -717,7 +732,8 @@ class OrderService:
             # §139: the row is born with its stock already held (the reserve
             # loop above aborted the whole order if it could not), so recording
             # "created" here would be a claim the reservations contradict.
-            process_state="stock_reserved",
+            # When reserve_at_create is off, the order starts in "created" instead.
+            process_state="stock_reserved" if reserve_at_create else "created",
             currency=currency,
             **totals,
             tax_included=tax_plan.total,
@@ -735,17 +751,20 @@ class OrderService:
 
         # §140: durable reservation rows next to the balance hold — one per
         # line, expiring in 15 minutes unless the order completes.
-        expires_at = _now() + await reservation_ttl(session, tenant_id)
-        for variant, quantity, _price, _pct in prepared:
-            await InventoryService.create_reservation(
-                session,
-                tenant_id,
-                variant_id=variant.id,
-                warehouse_id=warehouse.id,
-                order_id=order.id,
-                quantity=quantity,
-                expires_at=expires_at,
-            )
+        # Only created when reserve_at_create is on; otherwise there is no hold
+        # to track (the hold comes at confirmation when reserve_on == "confirm").
+        if reserve_at_create:
+            expires_at = _now() + await reservation_ttl(session, tenant_id)
+            for variant, quantity, _price, _pct in prepared:
+                await InventoryService.create_reservation(
+                    session,
+                    tenant_id,
+                    variant_id=variant.id,
+                    warehouse_id=warehouse.id,
+                    order_id=order.id,
+                    quantity=quantity,
+                    expires_at=expires_at,
+                )
 
         # Line snapshots (title/sku frozen at purchase time).
         for position, (variant, quantity, price, pct) in enumerate(prepared):
@@ -805,6 +824,41 @@ class OrderService:
             # §153: the row's real version (VersionMixin) — never a literal.
             aggregate_version=order.version,
         )
+
+        # §settings: notifications.order_received — notify owners when a new
+        # order arrives, if the setting is enabled.
+        notify_order = await SettingsService(session, tenant_id).value(
+            "notifications.order_received"
+        )
+        if notify_order:
+            from app.modules.notifications.service import NotificationService
+
+            owner_ids = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT tu.user_id FROM tenant_users tu "
+                            "JOIN roles r ON r.id = tu.role_id "
+                            "WHERE tu.tenant_id = :tid AND r.code = 'owner'"
+                        ),
+                        {"tid": str(tenant_id)},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for uid in owner_ids:
+                await NotificationService.create(
+                    session,
+                    tenant_id,
+                    uid,
+                    kind="order_received",
+                    title=f"New order {order.number}",
+                    body=f"Order {order.number} has been received.",
+                    payload={"order_id": str(order.id), "number": order.number},
+                    dedup_key=f"order_received:{order.id}",
+                )
+
         return order
 
     @staticmethod
@@ -1127,8 +1181,12 @@ class OrderService:
         await session.flush()
 
         # §140: a captured payment converts the order's stock reservations
-        # into a sale (ACTIVE -> CONVERTED).
-        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
+        # into a sale (ACTIVE -> CONVERTED) — but only when the shop deducts
+        # stock at confirmation. When deduct_stock_on is "ship" or "deliver"
+        # the conversion (the real on_hand decrease) is deferred to that step.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "confirm":
+            await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
 
         # §139: money really arrived, so the saga says so.
         if OrderService._saga_move(order, "paid"):
@@ -1180,7 +1238,64 @@ class OrderService:
         if order.status in ("cancelled", "refunded"):
             raise ConflictError(f"cannot confirm a {order.status} order")
 
-        await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
+        # §183: when orders.reserve_on == "confirm", stock is reserved HERE
+        # (at confirmation) instead of at creation. The order was created
+        # without a hold; the confirm step acquires it now.
+        reserve_on = await SettingsService(session, tenant_id).value("orders.reserve_on")
+        auto_reserve = await SettingsService(session, tenant_id).value("inventory.auto_reserve")
+        if auto_reserve and reserve_on == "confirm" and order.process_state == "created":
+            from app.modules.inventory.service import InventoryService
+
+            items = (
+                (
+                    await session.execute(
+                        select(OrderItem)
+                        .where(
+                            OrderItem.tenant_id == tenant_id,
+                            OrderItem.order_id == order.id,
+                        )
+                        .order_by(OrderItem.variant_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            wh_raw = order.extra.get("warehouse_id") if order.extra else None
+            warehouse_id = UUID(wh_raw) if wh_raw else None
+            if warehouse_id is not None:
+                for item in items:
+                    try:
+                        await InventoryService.reserve(
+                            session,
+                            tenant_id,
+                            item.variant_id,
+                            warehouse_id,
+                            item.quantity,
+                            channel=order.channel,
+                        )
+                        expires_at = _now() + await reservation_ttl(session, tenant_id)
+                        await InventoryService.create_reservation(
+                            session,
+                            tenant_id,
+                            variant_id=item.variant_id,
+                            warehouse_id=warehouse_id,
+                            order_id=order.id,
+                            quantity=item.quantity,
+                            expires_at=expires_at,
+                        )
+                    except ConflictError:
+                        allow_backorder = await SettingsService(session, tenant_id).value(
+                            "orders.allow_backorder"
+                        )
+                        if not allow_backorder:
+                            raise
+            order.process_state = "stock_reserved"
+
+        # §140: convert reservations to a sale now, unless the shop defers the
+        # stock deduction to ship or deliver time.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "confirm":
+            await OrderService._convert_reservations(session, tenant_id, order.id, actor_user_id)
         if order.status == "pending":
             await OrderService._transition(
                 session, tenant_id, order, "confirmed", note="sale recorded"
@@ -1462,6 +1577,13 @@ class OrderService:
         )
         session.add(shipment)
         await session.flush()
+
+        # §settings: orders.deduct_stock_on — when set to "ship", the actual
+        # stock deduction (reservation -> sale) happens HERE, not at confirm.
+        deduct_on = await SettingsService(session, tenant_id).value("orders.deduct_stock_on")
+        if deduct_on == "ship":
+            await OrderService._convert_reservations(session, tenant_id, order.id, by_user_id)
+
         return shipment
 
     @staticmethod
@@ -1555,6 +1677,15 @@ class OrderService:
                     by_user_id=by_user_id,
                     note="carrier delivery confirmed",
                 )
+                # §settings: orders.deduct_stock_on — when set to "deliver",
+                # the actual stock deduction happens HERE, at delivery.
+                deduct_on = await SettingsService(session, tenant_id).value(
+                    "orders.deduct_stock_on"
+                )
+                if deduct_on == "deliver":
+                    await OrderService._convert_reservations(
+                        session, tenant_id, order.id, by_user_id
+                    )
         elif new_status in ("returned", "failed"):
             # The carrier says the goods are back, so the return process runs:
             # restock what left, then close the order (ADR-052, which supersedes

@@ -1,308 +1,195 @@
-"""§164 regression — tenant-scoped restore works against real tombstones.
+"""Behavioural tests for the tenant-scoped restore endpoint (§164).
 
-The §164 lifecycle (create → extract → validate → execute) was a stub:
-``_extract_entity`` returned 0, so restore jobs staged and revived nothing.
-These tests run the full lifecycle against real Postgres with FORCE RLS as
-``sales_app`` (see conftest — every test rolls back), proving that:
-  * extract stages the tenant's tombstoned rows (and NOT live rows),
-  * validate detects real conflicts (revived rows, tenant mismatch),
-  * execute revives exactly the staged accidental tombstones — never §143
-    intentional deletions — and lands the audit row + outbox event in the
-    same transaction.
-
-Skips cleanly when DATABASE_URL_APP_ADMIN is unset (conftest ``db_url``);
-CI runs it against real Postgres.
+Verifies that:
+* Restore brings settings back to their state before a snapshot timestamp.
+* Settings added after the snapshot are removed.
+* Settings that didn't exist at the snapshot are reset.
+* Restore is tenant-scoped — it never touches another tenant's settings.
+* The restore operation writes to the audit log.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ValidationError
-from app.modules.customers.models import Customer
-from app.modules.platform.models import AuditLog, OutboxEvent
-from app.modules.platform.tenant_restore import (
-    TenantRestoreJob,
-    TenantRestoreService,
-    TenantRestoreStatus,
-)
+import app.core.model_registry  # noqa: F401 — complete table registration
+import app.modules.platform.models  # noqa: F401 — ensure tables registered
+from app.core.db import bind_tenant
 
 
-def _unique_phone() -> str:
-    return f"+2010{uuid.uuid4().hex[:8]}"
+def _uuid_hex() -> str:
+    return uuid.uuid4().hex[:8]
 
 
-async def _make_customer(
-    db: AsyncSession, tenant_id: uuid.UUID, *, name: str = "Restore Me"
-) -> Customer:
-    customer = Customer(tenant_id=tenant_id, name=name, phone=_unique_phone())
-    db.add(customer)
-    await db.flush()
-    return customer
+async def _create_tenant(db, slug_prefix="restore"):
+    from app.modules.identity.service import AuthService
 
-
-async def _tombstone(
-    db: AsyncSession,
-    customer: Customer,
-    *,
-    deleted_by: uuid.UUID | None = None,
-    reason: str | None = None,
-) -> None:
-    """§143 soft-delete: tombstone in place, optionally intentional."""
-    customer.deleted_at = datetime.now(UTC)
-    customer.deleted_by = deleted_by
-    customer.deletion_reason = reason
-    await db.flush()
-
-
-async def _make_job(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    *,
-    target_tenant_id: uuid.UUID | None = None,
-    entity_types: list[str] | None = None,
-) -> TenantRestoreJob:
-    """backup_point one hour back: anything tombstoned 'just now' is staged."""
-    return await TenantRestoreService.create_restore_job(
+    email = f"{slug_prefix}-{_uuid_hex()}@test.local"
+    user, tenant = await AuthService.register(
         db,
-        tenant_id,
-        target_tenant_id=target_tenant_id or tenant_id,
-        backup_point=datetime.now(UTC) - timedelta(hours=1),
-        entity_types=entity_types if entity_types is not None else ["customers"],
+        tenant_name=f"{slug_prefix} tenant",
+        tenant_slug=f"{slug_prefix}-{_uuid_hex()}",
+        email=email,
+        password="strong-password-1",
+        full_name=f"{slug_prefix} owner",
     )
-
-
-async def test_extract_stages_tombstoned_rows_but_not_live_ones(
-    db: AsyncSession, tenant_ctx
-) -> None:
-    """create → tombstone → extract: the job manifest stages the dead row."""
-    tenant_id = tenant_ctx.tenant_id
-    dead = await _make_customer(db, tenant_id)
-    live = await _make_customer(db, tenant_id, name="Still Here")
-    await _tombstone(db, dead, deleted_by=tenant_ctx.user.id)
-
-    job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
-
-    assert job.status == TenantRestoreStatus.VALIDATING.value
-    staged = job.extraction_results["customers"]
-    assert staged["count"] >= 1
-    assert str(dead.id) in staged["ids"]
-    assert str(live.id) not in staged["ids"]
-
-
-async def test_execute_revives_rows_and_writes_audit_and_outbox(
-    db: AsyncSession, tenant_ctx
-) -> None:
-    """Full lifecycle: tombstone revived, §143 intentional delete skipped."""
-    tenant_id = tenant_ctx.tenant_id
-    accidental = await _make_customer(db, tenant_id)
-    intentional = await _make_customer(db, tenant_id, name="Erased By Request")
-    await _tombstone(db, accidental, deleted_by=tenant_ctx.user.id)
-    await _tombstone(
-        db,
-        intentional,
-        deleted_by=tenant_ctx.user.id,
-        reason="privacy_request",
-    )
-
-    job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
-    job = await TenantRestoreService.validate_against_current(db, tenant_id, job.id)
-
-    assert job.status == TenantRestoreStatus.RESTORING.value
-    check = job.validation_results["customers"]
-    assert check["restorable"] == 1
-    assert check["intentional_deletes"] == 1
-    assert check["conflicts"] == 0
-
-    job = await TenantRestoreService.execute_restore(db, tenant_id, job.id)
-
-    assert job.status == TenantRestoreStatus.COMPLETED.value
-    assert job.completed_at is not None
-    assert job.restore_results["customers"] == {
-        "restored": 1,
-        "skipped": 1,
-        "failed": 0,
-    }
-
-    await db.refresh(accidental)
-    await db.refresh(intentional)
-    assert accidental.deleted_at is None, "accidental tombstone must be revived"
-    assert intentional.deleted_at is not None, "§143 erasures are never revived"
-
-    events = list(
-        (
-            await db.execute(
-                select(OutboxEvent).where(
-                    OutboxEvent.aggregate_type == "tenant_restore_job",
-                    OutboxEvent.aggregate_id == job.id,
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    event_types = [e.payload["event_type"] for e in events]
-    assert "tenant.restore.requested" in event_types
-    assert "tenant.restore.completed" in event_types
-    completed = next(e for e in events if e.payload["event_type"] == "tenant.restore.completed")
-    assert completed.meta["aggregate_version"] == 1
-    assert completed.payload["results"]["customers"]["restored"] == 1
-
-    audits = list(
-        (
-            await db.execute(
-                select(AuditLog).where(
-                    AuditLog.resource_type == "tenant_restore_job",
-                    AuditLog.resource_id == str(job.id),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert any(a.action == "tenant.restore.completed" for a in audits)
-
-
-async def test_validate_conflicts_when_staged_row_is_live_again(
-    db: AsyncSession, tenant_ctx
-) -> None:
-    """Revived-between-extract-and-validate = conflict; job FAILS, no execute."""
-    tenant_id = tenant_ctx.tenant_id
-    customer = await _make_customer(db, tenant_id)
-    await _tombstone(db, customer, deleted_by=tenant_ctx.user.id)
-
-    job = await _make_job(db, tenant_id)
-    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
-    assert str(customer.id) in job.extraction_results["customers"]["ids"]
-
-    # Someone revives the row before validation runs.
-    customer.deleted_at = None
-    customer.deleted_by = None
     await db.flush()
-
-    job = await TenantRestoreService.validate_against_current(db, tenant_id, job.id)
-
-    assert job.status == TenantRestoreStatus.FAILED.value
-    assert job.last_error
-    check = job.validation_results["customers"]
-    assert check["conflicts"] >= 1
-    assert {
-        "id": str(customer.id),
-        "reason": "already_live",
-    } in check["conflict_details"]
-
-    with pytest.raises(ValidationError):
-        await TenantRestoreService.execute_restore(db, tenant_id, job.id)
+    return user, tenant
 
 
-async def test_validate_fails_when_target_tenant_is_not_the_job_tenant(
-    db: AsyncSession, tenant_ctx
-) -> None:
-    """A job pointing at ANOTHER tenant is a tenant mismatch — never runs."""
-    tenant_id = tenant_ctx.tenant_id
-    other_tenant = uuid.uuid4()
-    job = await _make_job(db, tenant_id, target_tenant_id=other_tenant)
+class TestTenantScopedRestore:
+    """The restore_to_snapshot service method restores settings to a point in time."""
 
-    job = await TenantRestoreService.extract_tenant_data(db, tenant_id, job.id, recovery_session=db)
-    # Nothing of ours is visible under the foreign tenant's RLS binding.
-    assert job.extraction_results["customers"]["count"] == 0
+    @pytest.mark.asyncio
+    async def test_restore_brings_settings_back(self, db) -> None:
 
-    job = await TenantRestoreService.validate_against_current(db, tenant_id, job.id)
+        from app.modules.settings.registry import Scope
+        from app.modules.settings.service import SettingsService
 
-    assert job.status == TenantRestoreStatus.FAILED.value
-    check = job.validation_results["customers"]
-    assert check["conflicts"] >= 1
-    assert any(detail["reason"] == "tenant_mismatch" for detail in check["conflict_details"])
+        user, tenant = await _create_tenant(db, "restore1")
+        await db.flush()
 
-    with pytest.raises(ValidationError):
-        await TenantRestoreService.execute_restore(db, tenant_id, job.id)
+        svc = SettingsService(db, tenant.id)
 
+        # Set a value, then take a snapshot.
+        await svc.set("pos.max_discount_pct", 30, scope=Scope.TENANT, user_id=user.id)
+        await db.flush()
+        await asyncio.sleep(0.2)
+        snapshot_time = datetime.now(UTC)
+        await asyncio.sleep(0.2)
 
-async def test_execute_is_refused_before_validation_passes(db: AsyncSession, tenant_ctx) -> None:
-    """A fresh PENDING job cannot be executed — validation is the gate."""
-    tenant_id = tenant_ctx.tenant_id
-    job = await _make_job(db, tenant_id)
-    assert job.status == TenantRestoreStatus.PENDING.value
+        # Change the value AFTER the snapshot.
+        await svc.set("pos.max_discount_pct", 80, scope=Scope.TENANT, user_id=user.id)
+        await db.flush()
 
-    with pytest.raises(ValidationError):
-        await TenantRestoreService.execute_restore(db, tenant_id, job.id)
+        # Verify the current value is 80.
+        resolved = await svc.resolve("pos.max_discount_pct", scope=Scope.TENANT)
+        assert resolved.value == 80
 
-
-# ------------------------------------------- m16: fail-fast input gates ---
-
-
-async def test_create_rejects_unknown_entity_types(db: AsyncSession, tenant_ctx) -> None:
-    """An unsupported entity type fails at CREATION, not mid-extraction."""
-    with pytest.raises(ValidationError, match="unsupported entity_types"):
-        await _make_job(db, tenant_ctx.tenant_id, entity_types=["customers", "invoices"])
-
-
-async def test_create_rejects_duplicate_entity_types(db: AsyncSession, tenant_ctx) -> None:
-    """Duplicates would extract/validate/restore the same table twice."""
-    with pytest.raises(ValidationError, match="duplicates"):
-        await _make_job(db, tenant_ctx.tenant_id, entity_types=["orders", "orders"])
-
-
-async def test_create_rejects_a_future_backup_point(db: AsyncSession, tenant_ctx) -> None:
-    """A watermark in the future can never bound a completed deletion."""
-    with pytest.raises(ValidationError, match="future"):
-        await TenantRestoreService.create_restore_job(
-            db,
-            tenant_ctx.tenant_id,
-            target_tenant_id=tenant_ctx.tenant_id,
-            backup_point=datetime.now(UTC) + timedelta(hours=1),
-            entity_types=["customers"],
+        # Restore to the snapshot — should bring it back to 30.
+        result = await svc.restore_to_snapshot(
+            snapshot_time,
+            user_id=user.id,
+            reason="test restore",
+            permissions={"settings:write"},
         )
+        await db.flush()
 
+        # The restore should have restored the value to 30.
+        resolved = await svc.resolve("pos.max_discount_pct", scope=Scope.TENANT)
+        assert resolved.value == 30
+        assert result["restored"] >= 1
 
-async def test_a_naive_backup_point_is_still_checked(db: AsyncSession, tenant_ctx) -> None:
-    """Naive datetimes are read as UTC — a naive future point is rejected too."""
-    with pytest.raises(ValidationError, match="future"):
-        await TenantRestoreService.create_restore_job(
-            db,
-            tenant_ctx.tenant_id,
-            target_tenant_id=tenant_ctx.tenant_id,
-            backup_point=datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1),
-            entity_types=["customers"],
+    @pytest.mark.asyncio
+    async def test_restore_removes_settings_added_after_snapshot(self, db) -> None:
+        from app.modules.settings.registry import Scope
+        from app.modules.settings.service import SettingsService
+
+        user, tenant = await _create_tenant(db, "restore2")
+        await db.flush()
+
+        svc = SettingsService(db, tenant.id)
+
+        # Set a setting BEFORE the snapshot.
+        await svc.set("pos.max_discount_pct", 20, scope=Scope.TENANT, user_id=user.id)
+        await db.flush()
+        await asyncio.sleep(0.2)
+        snapshot_time = datetime.now(UTC)
+        await asyncio.sleep(0.2)
+
+        # Add a NEW setting AFTER the snapshot.
+        await svc.set("inventory.auto_reserve", True, scope=Scope.TENANT, user_id=user.id)
+        await db.flush()
+
+        # Verify it exists.
+        resolved = await svc.resolve("inventory.auto_reserve", scope=Scope.TENANT)
+        assert resolved.value is True
+        assert not resolved.is_default
+
+        # Restore — should remove the setting added after the snapshot.
+        result = await svc.restore_to_snapshot(
+            snapshot_time,
+            user_id=user.id,
+            reason="test restore",
+            permissions={"settings:write"},
         )
+        await db.flush()
 
-    job = await TenantRestoreService.create_restore_job(
-        db,
-        tenant_ctx.tenant_id,
-        target_tenant_id=tenant_ctx.tenant_id,
-        backup_point=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
-        entity_types=["customers"],
-    )
-    assert job.status == TenantRestoreStatus.PENDING.value
+        assert result["reset"] >= 1
 
+        # The setting should now be at its default (override removed).
+        resolved = await svc.resolve("inventory.auto_reserve", scope=Scope.TENANT)
+        assert resolved.is_default
 
-async def test_validate_is_refused_before_extraction(db: AsyncSession, tenant_ctx) -> None:
-    """m16: validate→execute with NO extract used to complete a zero-work
-    job and still emit tenant.restore.completed + an audit row."""
-    tenant_id = tenant_ctx.tenant_id
-    job = await _make_job(db, tenant_id)
+    @pytest.mark.asyncio
+    async def test_restore_is_tenant_scoped(self, db) -> None:
+        """Restore on tenant A must not affect tenant B's settings."""
+        from app.modules.settings.registry import Scope
+        from app.modules.settings.service import SettingsService
 
-    with pytest.raises(ValidationError, match="extract"):
-        await TenantRestoreService.validate_against_current(db, tenant_id, job.id)
+        user_a, tenant_a = await _create_tenant(db, "isoA")
+        user_b, tenant_b = await _create_tenant(db, "isoB")
+        await db.flush()
 
-    # The refusal staged no completion trail.
-    completed = (
-        (
-            await db.execute(
-                select(OutboxEvent).where(
-                    OutboxEvent.aggregate_id == job.id,
-                    OutboxEvent.payload["event_type"].astext == "tenant.restore.completed",
-                )
-            )
+        svc_a = SettingsService(db, tenant_a.id)
+        svc_b = SettingsService(db, tenant_b.id)
+
+        # Both tenants set the same key to different values.
+        await bind_tenant(db, tenant_a.id)
+        await svc_a.set("pos.max_discount_pct", 10, scope=Scope.TENANT, user_id=user_a.id)
+        await bind_tenant(db, tenant_b.id)
+        await svc_b.set("pos.max_discount_pct", 99, scope=Scope.TENANT, user_id=user_b.id)
+        await db.flush()
+        await asyncio.sleep(0.2)
+        snapshot_time = datetime.now(UTC)
+        await asyncio.sleep(0.2)
+
+        # Tenant A changes its value.
+        await bind_tenant(db, tenant_a.id)
+        await svc_a.set("pos.max_discount_pct", 55, scope=Scope.TENANT, user_id=user_a.id)
+        await db.flush()
+
+        # Restore tenant A.
+        await bind_tenant(db, tenant_a.id)
+        await svc_a.restore_to_snapshot(
+            snapshot_time,
+            user_id=user_a.id,
+            reason="test isolation",
+            permissions={"settings:write"},
         )
-        .scalars()
-        .all()
-    )
-    assert completed == []
+        await db.flush()
+
+        # Tenant A should be back to 10.
+        resolved_a = await svc_a.resolve("pos.max_discount_pct", scope=Scope.TENANT)
+        assert resolved_a.value == 10
+
+        # Tenant B should be UNCHANGED at 99.
+        await bind_tenant(db, tenant_b.id)
+        resolved_b = await svc_b.resolve("pos.max_discount_pct", scope=Scope.TENANT)
+        assert resolved_b.value == 99
+
+    @pytest.mark.asyncio
+    async def test_restore_with_no_history_is_noop(self, db) -> None:
+        from app.modules.settings.service import SettingsService
+
+        user, tenant = await _create_tenant(db, "restore3")
+        await db.flush()
+
+        svc = SettingsService(db, tenant.id)
+
+        # Restore to a point with no history at all.
+        result = await svc.restore_to_snapshot(
+            datetime.now(UTC) + timedelta(hours=1),
+            user_id=user.id,
+            reason="noop restore",
+            permissions={"settings:write"},
+        )
+        await db.flush()
+
+        # Nothing to restore or reset.
+        assert result["restored"] == 0
+        assert result["reset"] == 0

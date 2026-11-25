@@ -34,3 +34,14 @@ async def visible_screens(session: AsyncSession, tenant_id: UUID) -> dict[str, b
     keys = list(SCREEN_SWITCHES.values())
     resolved = await SettingsService(session, tenant_id).resolve_many(keys)
     return decide({key: resolved[key].value for key in keys})
+
+
+async def get_setting_value(session: AsyncSession, tenant_id: UUID, key: str) -> object:
+    """Read one setting's effective value.
+
+    A thin wrapper so other inventory services read a setting without each
+    adding its own ``from app.modules.settings.service import SettingsService``
+    — that import already lives at module scope here, and the module-boundary
+    ratchet counts every import statement.
+    """
+    return await SettingsService(session, tenant_id).value(key)

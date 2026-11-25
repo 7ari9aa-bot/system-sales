@@ -185,9 +185,21 @@ async def get_current_user(
             sa_text("SELECT set_config('app.is_platform_admin', :v, true)"),
             {"v": "true" if db_platform_admin else "false"},
         )
+        # security.ip_allowlist: a tenant that configured an IP allowlist
+        # rejects requests from unlisted IPs. Reads via app.core.settings_read
+        # to avoid the import cycle (identity → settings). Empty / missing = allow all.
+        tenant_id = uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None
+        if tenant_id is not None:
+            from app.core.settings_read import resolve_setting
+
+            allowlist = await resolve_setting(session, tenant_id, "security.ip_allowlist")
+            if allowlist and request.client:
+                client_ip = request.client.host
+                if client_ip not in allowlist:
+                    raise PermissionDeniedError("this IP address is not allowed for this workspace")
         return AuthedUser(
             id=user_id,
-            tenant_id=uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None,
+            tenant_id=tenant_id,
             role_code=payload.get("role"),
             is_platform_admin=db_platform_admin,
             auth_version=int(auth_state.auth_version or 0),

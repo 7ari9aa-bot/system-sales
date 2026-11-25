@@ -121,6 +121,8 @@ async def create_invitation(
     from app.modules.billing.service import EntitlementService
 
     await EntitlementService.ensure(ctx.session, tenant_id, "CanAddUser")
+    # team.default_role: when the caller omits role_code, the service
+    # resolves the tenant's configured default (registry default "cashier").
     invitation = await service.TenantService.invite(
         ctx.session,
         tenant_id=tenant_id,

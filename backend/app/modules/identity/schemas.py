@@ -166,7 +166,9 @@ class ProfileUpdate(BaseModel):
 
 class InviteRequest(BaseModel):
     email: EmailStr
-    role_code: str = "staff"
+    #: When omitted, the tenant's ``team.default_role`` setting decides
+    #: (falling back to the registry default "cashier").
+    role_code: str | None = None
 
 
 class InvitationOut(BaseModel):

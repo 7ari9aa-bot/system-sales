@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/regional";
 import { useI18n, useT } from "@/lib/i18n";
 import { api, apiCached, invalidateCache, peekCache } from "@/lib/api";
 import DialectCard from "@/components/settings/DialectCard";
+import AnalyticsAgentCard from "@/components/settings/AnalyticsAgentCard";
 
 // A list, or nothing. The screen renders "loading"/"empty" from null; it must never hold a
 // shape it cannot iterate, or one odd response blanks a page the owner can still use.
@@ -430,6 +431,10 @@ export default function AI() {
 
       <div className="mt-5">
         <DialectCard />
+      </div>
+
+      <div className="mt-5">
+        <AnalyticsAgentCard />
       </div>
 
       <div className="mt-5">

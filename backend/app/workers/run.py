@@ -41,6 +41,7 @@ from app.workers.campaign_worker import CampaignWorker
 from app.workers.correlation import install_log_correlation
 from app.workers.job_runner import JobRunner
 from app.workers.message_worker import MessageWorker
+from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
 from app.workers.pos_worker import PosWorker
 from app.workers.scheduler_worker import SchedulerWorker
@@ -63,6 +64,7 @@ logger = logging.getLogger(__name__)
 POOLS: dict[str, type[StreamWorker]] = {
     "messages": MessageWorker,
     "notifications": NotificationWorker,
+    "notification_delivery": NotificationDeliveryWorker,
     "webhooks": WebhookWorker,
     # §144: bulk/campaign tier gets its OWN pool — a 100k-audience campaign
     # churns through campaign workers and can never occupy the message or

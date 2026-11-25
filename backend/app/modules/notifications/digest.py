@@ -96,21 +96,64 @@ class NotificationAggregator:
         *,
         priority: str = "information",
     ) -> bool:
-        """Check if a notification should be sent immediately or digested."""
+        """Check if a notification should be sent immediately or digested.
+
+        Falls back to the tenant-level ``notifications.quiet_hours_*`` and
+        ``notifications.digest_mode`` settings when no user preference exists.
+        """
         # Critical always sends immediately
         if priority == "critical":
             return True
 
-        # Check quiet hours
+        # Check user-level quiet hours first
         pref = await NotificationAggregator._get_preference(session, tenant_id, user_id)
         if pref and NotificationAggregator._in_quiet_hours(pref):
             return False
+
+        # Tenant-level quiet hours fallback (notifications.quiet_hours_start/end)
+        if pref is None or not pref.quiet_start:
+            if await NotificationAggregator._tenant_quiet_hours_active(session, tenant_id):
+                return False
 
         # Non-critical with digest enabled → hold
         if pref and pref.digest_enabled:
             return False
 
+        # Tenant-level digest mode fallback (notifications.digest_mode).
+        # Read via app.core.settings_read (no import cycle with settings).
+        if pref is None:
+            from app.core.settings_read import resolve_setting
+
+            mode = await resolve_setting(session, tenant_id, "notifications.digest_mode")
+            if mode and mode != "realtime":
+                return False
+
         return True
+
+    @staticmethod
+    async def _tenant_quiet_hours_active(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+        """Check tenant-level quiet hours settings as a fallback."""
+        from app.core.settings_read import resolve_settings
+
+        settings = await resolve_settings(
+            session,
+            tenant_id,
+            ["notifications.quiet_hours_start", "notifications.quiet_hours_end"],
+        )
+        start = settings["notifications.quiet_hours_start"]
+        end = settings["notifications.quiet_hours_end"]
+        if not start or not end:
+            return False
+        now_time = datetime.now(UTC).time()
+        from datetime import time as _time
+
+        h1, m1 = int(start[:2]), int(start[3:5])
+        h2, m2 = int(end[:2]), int(end[3:5])
+        t_start = _time(h1, m1)
+        t_end = _time(h2, m2)
+        if t_start <= t_end:
+            return t_start <= now_time <= t_end
+        return now_time >= t_start or now_time <= t_end
 
     @staticmethod
     async def add_to_digest(

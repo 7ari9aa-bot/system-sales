@@ -35,6 +35,7 @@ const NAV_GROUPS = [
     key: "settings.group.store",
     items: [
       { to: "/settings/workspace", icon: Store, labelKey: "settings.nav.workspace" },
+      { to: "/settings/all", icon: Settings2, labelKey: "settings.nav.all" },
       { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
       { to: "/settings/policies", icon: ScrollText, labelKey: "settings.nav.policies" },
     ],

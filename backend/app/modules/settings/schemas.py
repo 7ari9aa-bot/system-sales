@@ -22,6 +22,14 @@ class SettingDefOut(BaseModel):
     max_length: int | None = None
     permission: str
     audit: bool
+    # How a change reaches the runtime (§27): immediate, validated, approval_required.
+    apply_mode: str = "validated"
+    # Data sensitivity (§11, §76): normal, sensitive, secret.
+    sensitivity: str = "normal"
+    # Entitlement this setting belongs to (§72), if any.
+    feature_requirement: str | None = None
+    # Whether rollback to a previous revision is supported (§35).
+    rollback_supported: bool = True
     # False = stored and shown, but nothing reads it yet: changing it changes no behaviour.
     enforced: bool
     # Business segments this applies to; empty = every segment.
@@ -54,6 +62,9 @@ class SetSettingRequest(BaseModel):
     scope: str = Field(default="tenant", pattern=_SCOPE_PATTERN)
     scope_id: uuid.UUID | None = None
     reason: str | None = Field(default=None, max_length=255)
+    # Optimistic concurrency (§81): the history id the caller last saw.
+    # If another write landed in between, the server returns 409.
+    expected_history_id: uuid.UUID | None = None
 
 
 class BulkSetSettingsRequest(BaseModel):
@@ -97,4 +108,72 @@ class SettingHistoryOut(BaseModel):
     action: str
     changed_by: uuid.UUID | None = None
     change_reason: str | None = None
+    # Where the change came from: api | preset | restore | migration | rollback | change_request
+    source: str = "api"
     created_at: str
+
+
+class ChangeRequestOut(BaseModel):
+    """A change request with its lifecycle state (§28)."""
+
+    id: uuid.UUID
+    changes: dict[str, Any]
+    applied_changes: dict[str, Any] | None = None
+    status: str
+    scope: str
+    scope_id: uuid.UUID | None = None
+    submitted_by: uuid.UUID | None = None
+    reviewed_by: uuid.UUID | None = None
+    reason: str | None = None
+    review_note: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CreateChangeRequestInput(BaseModel):
+    """Payload to create a change request for approval-gated settings."""
+
+    changes: dict[str, Any]
+    scope: str = Field(default="tenant", pattern=_SCOPE_PATTERN)
+    scope_id: uuid.UUID | None = None
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class ReviewChangeRequestInput(BaseModel):
+    """Payload to approve or reject a change request."""
+
+    review_note: str | None = Field(default=None, max_length=255)
+
+
+class RollbackInput(BaseModel):
+    """Payload to roll back a setting to a previous revision."""
+
+    history_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class RestoreSnapshotInput(BaseModel):
+    """Payload to restore all tenant settings to a point in time (§164)."""
+
+    snapshot_before: str = Field(
+        ...,
+        description="ISO 8601 timestamp — settings are restored to their state before this moment",
+    )
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class MigrationLogOut(BaseModel):
+    """One applied config migration for this tenant."""
+
+    id: uuid.UUID
+    migration_id: str
+    description: str
+    applied_by: uuid.UUID | None = None
+    created_at: str
+
+
+class RunMigrationsOut(BaseModel):
+    """Result of running pending config migrations."""
+
+    applied: list[str]
+    current_version: str

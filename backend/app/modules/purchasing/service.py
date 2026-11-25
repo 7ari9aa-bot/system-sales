@@ -44,6 +44,7 @@ from app.modules.purchasing.models import (
     VariantCost,
     VariantCostHistory,
 )
+from app.modules.settings.service import SettingsService
 
 
 def exact_money(value: object, field: str = "amount") -> Decimal:
@@ -492,6 +493,36 @@ class PurchaseService:
                 )
             )
         await session.flush()
+
+        # Wire purchasing settings: when approval is not required (and the total
+        # is below the threshold if one is set), auto-approve the PO so it is ready
+        # to send. Otherwise it stays in "draft" for a manager to approve.
+        approval_required = await SettingsService(session, tenant_id).value(
+            "purchasing.approval_required"
+        )
+        threshold = await SettingsService(session, tenant_id).value("purchasing.approval_threshold")
+        centralized = await SettingsService(session, tenant_id).value("purchasing.centralized")
+        if centralized:
+            # Centralized purchasing: branches do not create their own POs.
+            # The PO is marked as centrally managed via the note field.
+            order.note = (order.note or "") + " [centralized]"
+            await session.flush()
+            # §settings: branch.allow_independent_purchasing — even under
+            # centralized purchasing, a branch with this override may create
+            # its own POs. Without it, the PO stays centralized.
+            allow_independent = await SettingsService(session, tenant_id).value(
+                "branch.allow_independent_purchasing"
+            )
+            if not allow_independent:
+                order.note = (order.note or "").replace(
+                    " [centralized]", ""
+                ) + " [requires HQ approval]"
+        if not approval_required and (threshold == 0 or order.total < threshold):
+            order.status = "approved"
+            order.approved_at = datetime.now(UTC)
+            order.approved_by_user_id = created_by
+            await session.flush()
+
         if receive_now:
             await PurchaseService.receive(session, tenant_id, order.id, created_by)
         return order
@@ -558,6 +589,16 @@ class PurchaseService:
             raise ConflictError("a cancelled purchase order cannot be received")
 
         lines = await PurchaseService._lines_in(session, tenant_id, order.id)
+        # When quality check on receipt is enabled, a goods receipt must be
+        # posted through the quality inspection flow, not applied directly here.
+        quality_required = await SettingsService(session, tenant_id).value(
+            "inventory.quality_check_on_receipt"
+        )
+        if quality_required:
+            raise ValidationError(
+                "quality check on receipt is enabled; receive through a goods receipt "
+                "with a quality inspection instead"
+            )
         # Variants in a stable order: two receipts that share variants lock them in the same order,
         # so they queue instead of deadlocking.
         for line in sorted(lines, key=lambda x: str(x.variant_id)):
@@ -1138,7 +1179,6 @@ class GoodsReceiptService:
             ).scalars()
         )
         po_line_map: dict[UUID, PurchaseOrderLine] = {pl.id: pl for pl in po_lines}
-        from app.modules.settings.service import SettingsService
 
         over_receipt_allowed = bool(
             await SettingsService(session, tenant_id).value("purchasing.allow_over_receipt")

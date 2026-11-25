@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -174,6 +174,20 @@ async def _do_auto_reply(
             "auto-reply skipped: plan does not include AI conversation=%s handover_created=%s",
             conversation_id,
             created,
+        )
+        return
+
+    # §settings: customer_agent.enabled is the shop's own switch — a plan that
+    # includes AI but a shop that turned the agent off should NOT reply. Unlike
+    # the entitlement gate, this is a preference, not a plan limitation, so the
+    # conversation simply waits for a human instead of creating a handover row.
+    from app.modules.settings.service import SettingsService
+
+    agent_enabled = await SettingsService(session, tenant_id).value("customer_agent.enabled")
+    if not agent_enabled:
+        logger.info(
+            "auto-reply skipped: customer_agent disabled conversation=%s",
+            conversation_id,
         )
         return
 
@@ -482,6 +496,86 @@ async def _do_auto_reply(
     pre_turn_sent: set[str] = set(pre_turn_state.sent_media or []) if pre_turn_state else set()
 
     try:
+        # §settings: build the style directive from customer_agent settings
+        # (dialect, formality, response_language). These ride after the
+        # persona in the system prompt, colouring the reply's voice.
+        from app.modules.settings.service import SettingsService
+
+        _svc = SettingsService(session, tenant_id)
+        dialect = await _svc.value("customer_agent.dialect")
+        formality = await _svc.value("customer_agent.formality")
+        resp_lang = await _svc.value("customer_agent.response_language")
+        directive_parts: list[str] = []
+        _DIALECT_AR = {
+            "msa": "استخدم الفصحى",
+            "egyptian": "استخدم اللهجة المصرية",
+            "gulf": "استخدم اللهجة الخليجية",
+            "levantine": "استخدم اللهجة الشامية",
+        }
+        _FORMALITY_AR = {
+            "formal": "كن رسمياً",
+            "friendly": "كن ودوداً",
+            "casual": "كن غير رسمي",
+        }
+        if dialect and dialect in _DIALECT_AR:
+            directive_parts.append(_DIALECT_AR[dialect])
+        if formality and formality in _FORMALITY_AR:
+            directive_parts.append(_FORMALITY_AR[formality])
+        if resp_lang == "ar":
+            directive_parts.append("ردّ بالعربية دائماً")
+        elif resp_lang == "en":
+            directive_parts.append("Always reply in English")
+        # "auto" = no directive (model matches the customer's language)
+        style_directive = "، ".join(directive_parts) if directive_parts else None
+
+        # §settings: customer_agent.max_turns_before_handoff — after this many
+        # customer-AI exchanges without resolution, hand off to a human staff
+        # member instead of continuing the loop. Count outbound AI replies as
+        # a proxy for completed exchanges.
+        max_turns = await SettingsService(session, tenant_id).value(
+            "customer_agent.max_turns_before_handoff"
+        )
+        if max_turns and max_turns > 0:
+            from app.modules.conversations.models import Message
+
+            ai_reply_count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.tenant_id == tenant_id,
+                        Message.conversation_id == conversation_id,
+                        Message.direction == "outbound",
+                        Message.sender_type == "ai",
+                    )
+                )
+            ).scalar_one()
+            if ai_reply_count >= max_turns:
+                handoff_enabled = await SettingsService(session, tenant_id).value(
+                    "customer_agent.handoff_enabled"
+                )
+                if handoff_enabled:
+                    created = await handover(
+                        "max_turns",
+                        f"reached {max_turns} turns without resolution",
+                        None,
+                    )
+                    logger.info(
+                        "ai.max_turns_handover conversation=%s turns=%s max=%s handover=%s",
+                        conversation_id,
+                        ai_reply_count,
+                        max_turns,
+                        created,
+                    )
+                    return
+                logger.warning(
+                    "ai.max_turns_reached_no_handover conversation=%s turns=%s max=%s",
+                    conversation_id,
+                    ai_reply_count,
+                    max_turns,
+                )
+                return
+
         outcome = await run_customer_turn(
             session,
             TurnInput(
@@ -501,6 +595,7 @@ async def _do_auto_reply(
                 image_urls=image_urls,
                 audio_rides=audio_rides,
                 knowledge_context=knowledge_context,  # §132: separate from system prompt
+                style_directive=style_directive,
             ),
         )
     except AIBudgetExhaustedError as exc:
@@ -530,6 +625,19 @@ async def _do_auto_reply(
     if outcome.blocked_reason == "empty_turn":
         return
     if outcome.blocked_reason is not None:
+        # §settings: customer_agent.handoff_enabled gates non-critical
+        # handovers (guardrail, low_confidence, no-reply). Critical ones
+        # (budget, policy, no-agent) always proceed.
+        handoff_enabled = await SettingsService(session, tenant_id).value(
+            "customer_agent.handoff_enabled"
+        )
+        if not handoff_enabled:
+            logger.warning(
+                "ai.blocked_no_handover conversation=%s reason=%s — handoff disabled",
+                conversation_id,
+                outcome.blocked_reason,
+            )
+            return
         # §37: a reply withheld by the grounding re-check or the output
         # guardrail is a plain failure only when the run never looked at the
         # shop. A run that DID gather tool evidence (at least one tool call)

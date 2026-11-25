@@ -24,6 +24,7 @@ export function KpiSkeleton() {
 }
 
 export function Delta({ value, className }) {
+  if (!Number.isFinite(value)) return null;
   const positive = value >= 0;
   const Icon = positive ? ArrowUpRight : ArrowDownRight;
   return (
@@ -81,8 +82,8 @@ export function KpiCard({ label, value, sub, delta, to, accent }) {
         }
       </div>
       <div className="mt-2.5 min-w-0">
-        <div className="font-display text-[24px] font-semibold leading-none tabular-nums tracking-tight whitespace-nowrap truncate">
-          {value}
+        <div className="font-display text-[22px] sm:text-[24px] font-semibold leading-none tabular-nums tracking-tight">
+          <span className="block truncate">{value}</span>
         </div>
         <div className="mt-2 h-4 flex items-center justify-between gap-2">
           <span className="text-[12px] text-muted-foreground whitespace-nowrap truncate">{sub}</span>

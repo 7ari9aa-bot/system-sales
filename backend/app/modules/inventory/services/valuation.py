@@ -219,15 +219,33 @@ class ValuationService:
         movement with `cost_value=total_cogs`.
         """
         from app.modules.inventory.service import InventoryService
+        from app.modules.inventory.services.screens import get_setting_value
 
-        consumption = await ValuationService.consume_fifo(
-            session,
-            tenant_id,
-            variant_id=variant_id,
-            warehouse_id=warehouse_id,
-            quantity=quantity,
-        )
-        total_cogs = consumption["total_cogs"]
+        fifo_enabled = await get_setting_value(session, tenant_id, "inventory.fifo_enabled")
+        if fifo_enabled:
+            consumption = await ValuationService.consume_fifo(
+                session,
+                tenant_id,
+                variant_id=variant_id,
+                warehouse_id=warehouse_id,
+                quantity=quantity,
+            )
+            total_cogs = consumption["total_cogs"]
+            consumed_layers = consumption["consumed_layers"]
+        else:
+            # FIFO disabled: use the moving-average cost the receipt already
+            # computed. Queried directly to avoid an inventory→purchasing
+            # import cycle (the VariantCost table lives in the purchasing module).
+            avg_cost_row = await session.execute(
+                text(
+                    "SELECT avg_cost FROM variant_costs"
+                    " WHERE tenant_id = :tid AND variant_id = :vid"
+                ),
+                {"tid": tenant_id, "vid": variant_id},
+            )
+            avg_cost = avg_cost_row.scalar_one_or_none()
+            total_cogs = (Decimal(avg_cost) if avg_cost is not None else Decimal("0")) * quantity
+            consumed_layers = []
 
         movement = await InventoryService.move(
             session,
@@ -246,7 +264,7 @@ class ValuationService:
         return {
             "movement": movement,
             "total_cogs": total_cogs,
-            "consumed_layers": consumption["consumed_layers"],
+            "consumed_layers": consumed_layers,
         }
 
     # --------------------------------------------------- Stock Valuation ---

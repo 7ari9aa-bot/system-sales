@@ -20,7 +20,7 @@ describe("أقسام إعدادات نقاط البيع", () => {
   });
 
   it("المسار بيرجع القسم بتاعه", () => {
-    expect(resolvePosSection("devices").label).toBe("الأجهزة والبروفايلات");
+    expect(resolvePosSection("devices").labelKey).toBe("settings.pos.devices");
     expect(resolvePosSection("receipts").value).toBe("receipts");
   });
 

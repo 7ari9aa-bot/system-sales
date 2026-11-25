@@ -151,6 +151,11 @@ DOMAIN_EVENT_TYPES: tuple[str, ...] = (
     "message.outbound",
     "message.received",
     "notification.queued",
+    # §166: notification dispatch gates email/push delivery.  These events are
+    # staged in the outbox by NotificationService._send_email / _send_push so
+    # a worker can deliver them when a provider is configured.
+    "notification.email",
+    "notification.push",
     "order.cancelled",
     "order.created",
     "order.deposit_policy_changed",

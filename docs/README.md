@@ -37,7 +37,8 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | Customer commerce (deposits, orders, payments) | [COMMERCE_FIT_REPORT.md](COMMERCE_FIT_REPORT.md) — Phase 0: what the commerce spec asks for vs what the code already owns, the real gaps, and the blocking decisions. |
 | Customer AI agent | [design/](design/) (core design, M1 handoff, red team) |
 | Desktop app | [DESKTOP_ARCH_REVIEW.md](DESKTOP_ARCH_REVIEW.md), and `desktop/docs/` in the repo root |
-| Inventory & Supply Chain | [INVENTORY_PROGRAM.md](INVENTORY_PROGRAM.md) |
+| Inventory & Supply Chain | Settings (configuration control plane) | [settings/domain-specification.md](settings/domain-specification.md), [settings/registry-specification.md](settings/registry-specification.md) (auto-generated), [settings/database-api-specification.md](settings/database-api-specification.md), [settings/master-specification.md](settings/master-specification.md) |
+| [INVENTORY_PROGRAM.md](INVENTORY_PROGRAM.md) |
 
 ## 4. Operations and platform
 
@@ -56,6 +57,11 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [PII_DATA_MAP.md](PII_DATA_MAP.md) | Personal-data lifecycle. | live |
 | [RISK_REGISTER.md](RISK_REGISTER.md) | Known risks. | live |
 | [GAP_REGISTER.md](GAP_REGISTER.md) | Full-system critique audit. | live |
+| [SETTINGS_MASTER_SPECIFICATION.md](SETTINGS_MASTER_SPECIFICATION.md) | Every setting in FIHRIST: keys, types, defaults, scopes, enforcement status, and the roadmap from code to UI. | live |
+| [settings/domain-specification.md](settings/domain-specification.md) | Settings domain architecture: scope hierarchy, types, sensitivity, apply modes, storage, read/write paths, change management, events. | live |
+| [settings/registry-specification.md](settings/registry-specification.md) | Settings registry: every key with type, default, scopes, sensitivity, apply mode, bounds, allowed values, segments, and storage. | live |
+| [settings/frontend-specification.md](settings/frontend-specification.md) | Settings frontend: screen map, navigation by P1–P3, `/settings/effective` consumption, per-screen implementation status. | live |
+| [settings/runtime-testing-specification.md](settings/runtime-testing-specification.md) | Settings runtime: workers, outbox, scheduler, settings→runtime wiring map, testing strategy, CI checks, run commands. | live |
 | [CONTRACT_AUDIT.md](CONTRACT_AUDIT.md) | "Defined, then bypassed" audit. | history |
 | [ROADMAP_TO_90.md](ROADMAP_TO_90.md), [PATH_BREAKDOWN.md](PATH_BREAKDOWN.md) | Plan and work-package split. | history |
 

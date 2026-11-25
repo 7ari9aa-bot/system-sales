@@ -16,6 +16,7 @@ Two tables:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     CheckConstraint,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -33,6 +34,60 @@ from app.core.model_kit import (
     IdMixin,
     TenantMixin,
     TimestampMixin,
+)
+
+
+# Change request lifecycle states (§28).
+# DRAFT → SUBMITTED → VALIDATING → PENDING_APPROVAL → APPROVED → APPLYING → APPLIED
+# Alternative terminal states: REJECTED, CANCELLED, FAILED, EXPIRED
+class SettingMigrationLog(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base):
+    """Idempotent log of applied config migrations per tenant.
+
+    Each row records that a named migration (rename a key, transform a value,
+    etc.) has been applied to this tenant's settings. The runner checks this
+    log before applying, so migrations are idempotent: re-running is a no-op.
+
+    The highest ``migration_id`` applied is the tenant's effective settings
+    ``schema_version`` — analogous to Alembic's ``alembic_version`` table,
+    but scoped per tenant because each tenant's settings evolve independently.
+    """
+
+    __tablename__ = "setting_migration_log"
+
+    migration_id: Mapped[str] = mapped_column(String(127), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    applied_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "migration_id",
+            name="uq_setting_migration_log_tenant_migration",
+        ),
+        Index(
+            "ix_setting_migration_log_tenant",
+            "tenant_id",
+            "created_at",
+        ),
+    )
+
+
+CHANGE_REQUEST_STATES: tuple[str, ...] = (
+    "draft",
+    "submitted",
+    "validating",
+    "pending_approval",
+    "approved",
+    "applying",
+    "applied",
+    "rejected",
+    "cancelled",
+    "failed",
+    "expired",
 )
 
 
@@ -106,12 +161,14 @@ class TenantSettingHistory(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base)
     scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # allowed: set | reset | bulk_set
+    # allowed: set | reset | bulk_set | restore
     action: Mapped[str] = mapped_column(String(15), server_default="set")
     changed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     change_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Where the change came from: api | preset | restore | migration | rollback | change_request
+    source: Mapped[str] = mapped_column(String(31), server_default="api", nullable=False)
 
     __table_args__ = (
         Index(
@@ -124,5 +181,63 @@ class TenantSettingHistory(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base)
             "ix_tenant_settings_history_tenant_time",
             "tenant_id",
             "created_at",
+        ),
+    )
+
+
+class SettingChangeRequest(TenantMixin, TimestampMixin, IdMixin, Base):
+    """A proposed batch of setting changes that may need approval (§28).
+
+    For settings whose ``apply_mode`` is ``APPROVAL_REQUIRED``, the change goes
+    through a lifecycle: draft → submitted → validating → pending_approval →
+    approved → applying → applied. The ``changes`` JSONB holds the proposed
+    ``{key: value}`` pairs; ``applied_changes`` records what was actually
+    written when the request is applied, so the audit trail is complete even
+    if the registry default shifted between submission and approval.
+
+    For ``VALIDATED`` settings, the request is created and immediately
+    validated+applied in one step (the lifecycle collapses). For
+    ``IMMEDIATE`` settings, no request is created at all.
+    """
+
+    __tablename__ = "setting_change_requests"
+
+    # The proposed changes: {key: value}
+    changes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # What was actually written when applied (filled at apply time)
+    applied_changes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Lifecycle state (see CHANGE_REQUEST_STATES)
+    status: Mapped[str] = mapped_column(String(31), nullable=False, default="draft")
+    # The scope the changes apply to
+    scope: Mapped[str] = mapped_column(String(31), nullable=False, default="tenant")
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Who submitted the request
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Who approved or rejected it
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Free-text reason from the submitter
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Reviewer's note on approval or rejection
+    review_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # When the review happened (approval or rejection timestamp)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_setting_change_requests_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_setting_change_requests_tenant_submitted",
+            "tenant_id",
+            "submitted_by",
         ),
     )

@@ -1,20 +1,23 @@
 """Settings routes — API endpoints for the FIHRIST Configuration Engine.
 
-Provides CRUD, resolution, domain grouping, preset application, and audit history.
-Gated by settings:read and settings:write permissions.
+Provides CRUD, resolution, domain grouping, preset application, SLO status,
+and audit history. Gated by settings:read and settings:write permissions.
 """
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 
+from app.core.audit import write_audit_row
 from app.modules.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.capabilities import shop_capabilities
-from app.modules.settings.presets import PRESETS
+from app.modules.settings.presets import PRESET_DEFS, PRESETS, preset_chain, resolve_preset
 from app.modules.settings.registry import (
     SEGMENTS,
     Scope,
@@ -27,8 +30,15 @@ from app.modules.settings.registry import (
 )
 from app.modules.settings.schemas import (
     BulkSetSettingsRequest,
+    ChangeRequestOut,
+    CreateChangeRequestInput,
+    MigrationLogOut,
     ResetSettingRequest,
     ResolvedSettingOut,
+    RestoreSnapshotInput,
+    ReviewChangeRequestInput,
+    RollbackInput,
+    RunMigrationsOut,
     SetSettingRequest,
     SettingDefOut,
     SettingHistoryOut,
@@ -75,6 +85,10 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         max_length=d.max_length,
         permission=d.permission,
         audit=d.audit,
+        apply_mode=d.apply_mode.value,
+        sensitivity=d.sensitivity.value,
+        feature_requirement=d.feature_requirement,
+        rollback_supported=d.rollback_supported,
         enforced=d.enforced,
         segments=list(d.segments),
         label_ar=d.label_ar,
@@ -140,6 +154,9 @@ async def resolve_effective_settings(
     keys: Annotated[str | None, Query()] = None,
 ) -> dict[str, ResolvedSettingOut]:
     """Resolve effective settings at the given scope with inheritance."""
+    from app.modules.settings.slo import record_settings_resolve
+
+    t0 = time.monotonic()
     svc = SettingsService(ctx.session, ctx.tenant_id)
     scope_enum = Scope(scope)
 
@@ -153,6 +170,7 @@ async def resolve_effective_settings(
         all_keys = [d.key for d in all_defs]
         resolved = await svc.resolve_many(all_keys, scope=scope_enum, scope_id=scope_id)
 
+    await record_settings_resolve(duration_seconds=time.monotonic() - t0)
     return {k: _resolved_to_out(v) for k, v in resolved.items()}
 
 
@@ -224,6 +242,7 @@ async def set_setting(
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        expected_history_id=body.expected_history_id,
     )
     return TenantSettingOut(
         id=row.id,
@@ -294,8 +313,31 @@ async def reset_setting(
 
 @router.get("/presets")
 async def list_presets(ctx: SettingsReadCtx) -> dict[str, dict[str, object]]:
-    """List available business configuration presets and their default keys."""
-    return PRESETS
+    """List available business configuration presets with composition metadata."""
+    out: dict[str, dict[str, object]] = {}
+    for name, defn in PRESET_DEFS.items():
+        out[name] = {
+            "values": resolve_preset(name),
+            "extends": defn.extends,
+            "chain": preset_chain(name),
+            "label_ar": defn.label_ar,
+            "label_en": defn.label_en,
+            "description_ar": defn.description_ar,
+            "description_en": defn.description_en,
+        }
+    return out
+
+
+@router.post("/presets/{preset_name}/preview")
+async def preview_preset(
+    preset_name: str,
+    ctx: SettingsReadCtx,
+) -> dict[str, object]:
+    """Dry-run: show what would change if the preset were applied, without writing."""
+    if preset_name not in PRESETS:
+        raise NotFoundError(f"preset {preset_name!r} not found")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    return await svc.preview_preset(preset_name)
 
 
 @router.post("/presets/{preset_name}")
@@ -303,7 +345,7 @@ async def apply_preset(
     preset_name: str,
     ctx: SettingsWriteCtx,
 ) -> dict[str, object]:
-    """Apply a business-type preset to the tenant scope."""
+    """Apply a business-type preset to the tenant scope (atomic, with audit)."""
     if preset_name not in PRESETS:
         raise NotFoundError(f"preset {preset_name!r} not found")
     if "settings:write" not in ctx.permission_codes:
@@ -320,6 +362,23 @@ async def apply_preset(
 
 
 # ---------------------------------------------------------------------------
+# SLO Status (§168)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/slo")
+async def get_settings_slo(ctx: SettingsReadCtx) -> dict[str, object]:
+    """Return the current SLO status for the settings control plane.
+
+    Admin-only: requires ``settings:read``. Reads the live metrics counters
+    and outbox gauges, and returns the compliance verdict for each SLO.
+    """
+    from app.modules.settings.slo import get_slo_status
+
+    return await get_slo_status()
+
+
+# ---------------------------------------------------------------------------
 # Change History & Audit
 # ---------------------------------------------------------------------------
 
@@ -328,11 +387,50 @@ async def apply_preset(
 async def get_settings_history(
     ctx: SettingsReadCtx,
     key: Annotated[str | None, Query()] = None,
+    source: Annotated[str | None, Query()] = None,
+    action: Annotated[str | None, Query()] = None,
+    changed_by: Annotated[uuid.UUID | None, Query()] = None,
+    since: Annotated[str | None, Query()] = None,
+    until: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[SettingHistoryOut]:
-    """Return the audit log of settings changes, newest first."""
+    """Return the audit log of settings changes, newest first, with filters (§174).
+
+    Filter by ``key``, ``source`` (api/preset/restore/migration/rollback/change_request),
+    ``action`` (set/reset), ``changed_by`` (user id), and/or a time range
+    (``since`` / ``until`` as ISO 8601 timestamps).
+    """
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    since_dt = None
+    if since:
+        try:
+            since_dt = dt.fromisoformat(since)
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=UTC)
+        except ValueError:
+            raise ValidationError(f"invalid 'since' timestamp: {since!r}") from None
+
+    until_dt = None
+    if until:
+        try:
+            until_dt = dt.fromisoformat(until)
+            if until_dt.tzinfo is None:
+                until_dt = until_dt.replace(tzinfo=UTC)
+        except ValueError:
+            raise ValidationError(f"invalid 'until' timestamp: {until!r}") from None
+
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    rows = await svc.history(key=key, limit=limit)
+    rows = await svc.history(
+        key=key,
+        source=source,
+        action=action,
+        changed_by=changed_by,
+        since=since_dt,
+        until=until_dt,
+        limit=limit,
+    )
     return [
         SettingHistoryOut(
             id=r.id,
@@ -345,7 +443,231 @@ async def get_settings_history(
             action=r.action,
             changed_by=r.changed_by,
             change_reason=r.change_reason,
+            source=r.source,
             created_at=r.created_at.isoformat() if r.created_at else "",
         )
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Change Requests (§27–§30)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/change-requests", response_model=ChangeRequestOut)
+async def create_change_request(
+    body: CreateChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Create a change request for approval-gated settings."""
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.create_change_request(
+        body.changes,
+        scope=Scope(body.scope),
+        scope_id=body.scope_id,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    return _change_request_to_out(req)
+
+
+@router.get("/change-requests", response_model=list[ChangeRequestOut])
+async def list_change_requests(
+    ctx: SettingsReadCtx,
+    status: Annotated[str | None, Query()] = None,
+) -> list[ChangeRequestOut]:
+    """List change requests, optionally filtered by status."""
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    rows = await svc.list_change_requests(status=status)
+    return [_change_request_to_out(r) for r in rows]
+
+
+@router.post("/change-requests/{request_id}/approve", response_model=ChangeRequestOut)
+async def approve_change_request(
+    request_id: uuid.UUID,
+    body: ReviewChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Approve a pending change request and apply it."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("approving a change request requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.approve_change_request(
+        request_id,
+        reviewer_id=ctx.user.id,
+        review_note=body.review_note,
+        permissions=ctx.permission_codes,
+    )
+    return _change_request_to_out(req)
+
+
+@router.post("/change-requests/{request_id}/reject", response_model=ChangeRequestOut)
+async def reject_change_request(
+    request_id: uuid.UUID,
+    body: ReviewChangeRequestInput,
+    ctx: SettingsWriteCtx,
+) -> ChangeRequestOut:
+    """Reject a pending change request."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("rejecting a change request requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    req = await svc.reject_change_request(
+        request_id,
+        reviewer_id=ctx.user.id,
+        review_note=body.review_note,
+    )
+    return _change_request_to_out(req)
+
+
+# ---------------------------------------------------------------------------
+# Rollback (§34)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rollback", response_model=TenantSettingOut | None)
+async def rollback_setting(
+    body: RollbackInput,
+    ctx: SettingsWriteCtx,
+) -> dict | None:
+    """Roll back a setting to a previous revision's value.
+
+    Creates a NEW revision with the restored value — does not delete history.
+    """
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("rollback requires settings:write")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    row = await svc.rollback(
+        body.history_id,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    if row is None:
+        return {"deleted": True, "message": "Setting reverted to inherited value"}
+    return TenantSettingOut(
+        id=row.id,
+        key=row.key,
+        scope=row.scope,
+        scope_id=row.scope_id,
+        value=row.value.get("v"),
+        updated_by=row.updated_by,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Config Migrations (P4)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/migrations", response_model=list[MigrationLogOut])
+async def list_config_migrations(
+    ctx: SettingsReadCtx,
+) -> list[MigrationLogOut]:
+    """List config migrations already applied to this tenant."""
+    from app.modules.settings.models import SettingMigrationLog
+
+    rows = (
+        (
+            await ctx.session.execute(
+                select(SettingMigrationLog)
+                .where(SettingMigrationLog.tenant_id == ctx.tenant_id)
+                .order_by(SettingMigrationLog.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        MigrationLogOut(
+            id=r.id,
+            migration_id=r.migration_id,
+            description=r.description,
+            applied_by=r.applied_by,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        )
+        for r in rows
+    ]
+
+
+@router.post("/migrations/run", response_model=RunMigrationsOut)
+async def run_config_migrations(
+    ctx: SettingsWriteCtx,
+) -> RunMigrationsOut:
+    """Run all pending config migrations for this tenant. Idempotent."""
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("running config migrations requires settings:write")
+    from app.modules.settings.config_migrations import run_pending
+
+    applied = await run_pending(ctx.session, ctx.tenant_id, applied_by=ctx.user.id)
+    from app.modules.settings.config_migrations import latest_version
+
+    return RunMigrationsOut(applied=applied, current_version=latest_version())
+
+
+# ---------------------------------------------------------------------------
+# Tenant-Scoped Restore (§164)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/restore")
+async def restore_snapshot(
+    body: RestoreSnapshotInput,
+    ctx: SettingsWriteCtx,
+) -> dict[str, int]:
+    """Restore all tenant-level settings to their state before a timestamp (§164).
+
+    Requires ``settings:write``. Tenant-scoped by RLS — only touches this
+    tenant's overrides. Each change is recorded in history with a restore
+    reason, and an audit log entry is written.
+    """
+    if "settings:write" not in ctx.permission_codes:
+        raise PermissionDeniedError("restore requires settings:write")
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    try:
+        snapshot_before = dt.fromisoformat(body.snapshot_before)
+        if snapshot_before.tzinfo is None:
+            snapshot_before = snapshot_before.replace(tzinfo=UTC)
+    except ValueError:
+        raise ValidationError(f"invalid ISO timestamp: {body.snapshot_before!r}") from None
+
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    result = await svc.restore_to_snapshot(
+        snapshot_before,
+        user_id=ctx.user.id,
+        reason=body.reason,
+        permissions=ctx.permission_codes,
+    )
+    # Audit the restore operation itself.
+    await write_audit_row(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        "settings.restore",
+        "tenant_settings",
+        str(ctx.tenant_id),
+        before={"snapshot_before": body.snapshot_before},
+        after=result,
+    )
+    return result
+
+
+def _change_request_to_out(r) -> ChangeRequestOut:
+    """Convert a SettingChangeRequest ORM row to the API output schema."""
+    return ChangeRequestOut(
+        id=r.id,
+        changes=r.changes,
+        applied_changes=r.applied_changes,
+        status=r.status,
+        scope=r.scope,
+        scope_id=r.scope_id,
+        submitted_by=r.submitted_by,
+        reviewed_by=r.reviewed_by,
+        reason=r.reason,
+        review_note=r.review_note,
+        created_at=r.created_at.isoformat() if r.created_at else "",
+        updated_at=r.updated_at.isoformat() if r.updated_at else "",
+    )

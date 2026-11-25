@@ -63,6 +63,43 @@ class GoogleMfaRequired(PermissionDeniedError):
     """Google sign-in refused because the account has MFA (use password + code)."""
 
 
+def _validate_password_strength(password: str, *, required: bool) -> None:
+    """Check a password against the tenant's strong-password policy.
+
+    The ``security.require_strong_passwords`` setting (default on) asks for at least
+    8 characters and a mix of letters and digits. A tenant that turns it off gets
+    the original minimal check (any non-empty password).
+    """
+    if not password:
+        raise ValidationError("password is required")
+    if not required:
+        return
+    if len(password) < 8:
+        raise ValidationError("password must be at least 8 characters long")
+    has_letter = any(c.isalpha() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_letter and has_digit):
+        raise ValidationError("password must contain both letters and numbers")
+
+
+async def _tenant_strong_passwords_required(session, tenant_id: uuid.UUID | None) -> bool:
+    """Read ``security.require_strong_passwords`` via the settings resolver.
+
+    Uses ``app.core.settings_read`` (in ``app.core``, not ``app.modules.settings``)
+    to avoid the import cycle: ``settings.router`` already imports
+    ``identity.deps``, so ``identity`` cannot import ``settings.service`` without
+    growing the cyclic SCC.  Returns the registry default (``True``) when no
+    tenant is available (e.g. registration, before the tenant is created).
+    """
+    if tenant_id is None:
+        from app.core.settings_read import get_default
+
+        return bool(get_default("security.require_strong_passwords"))
+    from app.core.settings_read import setting_bool
+
+    return await setting_bool(session, tenant_id, "security.require_strong_passwords")
+
+
 class AuthService:
     @staticmethod
     async def register(
@@ -105,6 +142,14 @@ class AuthService:
         if existing_email is not None:
             await AuthService.queue_email_verification(session, user=existing_email)
             raise EmailAlreadyRegistered("email already registered")
+
+        if password is not None:
+            # security.require_strong_passwords: the tenant does not exist yet
+            # at registration, so the registry default (True) is the policy.
+            _validate_password_strength(
+                password,
+                required=await _tenant_strong_passwords_required(session, None),
+            )
 
         if tenant_slug is None:
             base = re.sub(r"[^a-z0-9]+", "-", local_part.lower()).strip("-")[:40] or "workspace"
@@ -289,12 +334,31 @@ class AuthService:
             await AuthService._assert_tenant_allows_login(session, None, user_id=user.id, ip=ip)
         from app.core.mfa import MfaRequiredError, is_mfa_enabled, start_challenge
 
-        if await is_mfa_enabled(session, user_id=user.id):
+        mfa_enabled = await is_mfa_enabled(session, user_id=user.id)
+        if not mfa_enabled and tenant_id is not None:
+            # team.require_2fa: a tenant that requires 2FA blocks login until the
+            # member enrolls. Reads via app.core.settings_read to avoid the
+            # import cycle (identity → settings would grow the cyclic SCC).
+            from app.core.settings_read import setting_bool
+
+            require_2fa = await setting_bool(session, tenant_id, "team.require_2fa")
+            if require_2fa:
+                raise PermissionDeniedError(
+                    "two-factor authentication is required — please enroll before signing in"
+                )
+        if mfa_enabled:
             challenge_id = await start_challenge(
                 user.id, tenant_id, auth_version=getattr(user, "auth_version", 0)
             )
             raise MfaRequiredError(challenge_id)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         return pair, user, tenant_id
 
     @staticmethod
@@ -385,7 +449,14 @@ class AuthService:
             # `register`; an existing one signs in with only app.user_id bound, so the INSERT
             # was refused by row-level security and every returning Google user got a 500.
             await bind_tenant(session, tenant_id)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         await AuthService._audit(
             session, user.id, "auth.google_login", "user", str(user.id), tenant_id=tenant_id
         )
@@ -410,7 +481,14 @@ class AuthService:
         if user is None or not user.is_active:
             raise PermissionDeniedError("account not available")
         await AuthService._assert_tenant_allows_login(session, tenant_id, user_id=user.id, ip=ip)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         return pair, user, tenant_id
 
     @staticmethod
@@ -455,7 +533,14 @@ class AuthService:
         )
         if row.revoked_at is None:
             row.revoked_at = _now()  # rotation
-        pair = AuthService._issue_pair(session, user, row.tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            row.tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, row.tenant_id),
+        )
         return pair, user, row.tenant_id
 
     @staticmethod
@@ -521,11 +606,14 @@ class AuthService:
     @staticmethod
     async def reset_password(session, *, token: str, password: str) -> None:
         """Consume one valid recovery link and invalidate every old session."""
+        # security.require_strong_passwords: resolve the user's tenant and
+        # read the setting via the resolver (not direct SQL).
+        token_hash = _hash_token(token)
         now = _now()
         row = (
             await session.execute(
                 select(PasswordResetToken)
-                .where(PasswordResetToken.token_hash == _hash_token(token))
+                .where(PasswordResetToken.token_hash == token_hash)
                 .with_for_update()
             )
         ).scalar_one_or_none()
@@ -537,6 +625,19 @@ class AuthService:
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             raise ValidationError("password reset link is invalid or expired")
+
+        # Find the user's tenant so we can read the strong-password setting.
+        user_tenant_id = (
+            await session.execute(
+                select(TenantUser.tenant_id)
+                .where(TenantUser.user_id == user.id, TenantUser.is_default.is_(True))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        _validate_password_strength(
+            password,
+            required=await _tenant_strong_passwords_required(session, user_tenant_id),
+        )
 
         user.password_hash = await hash_password_async(password)
         user.auth_version = int(user.auth_version or 0) + 1
@@ -695,9 +796,31 @@ class AuthService:
         if row is None or row.revoked_at is not None or row.expires_at <= now:
             raise PermissionDeniedError("invalid or expired refresh token")
         row.revoked_at = now
-        return AuthService._issue_pair(session, user, tenant_id)
+        return AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
 
     # -- internals ---------------------------------------------------------
+
+    @staticmethod
+    async def _resolve_access_ttl(session, tenant_id: uuid.UUID | None) -> int | None:
+        """``team.session_timeout_minutes`` → access-token TTL in seconds.
+
+        Returns ``None`` when the setting is absent or zero (no limit).
+        Reads via ``app.core.settings_read`` to avoid the import cycle
+        (identity → settings would grow the cyclic SCC).
+        """
+        if tenant_id is None:
+            return None
+        from app.core.settings_read import resolve_setting
+
+        timeout_minutes = await resolve_setting(session, tenant_id, "team.session_timeout_minutes")
+        if timeout_minutes and timeout_minutes > 0:
+            return timeout_minutes * 60
+        return None
 
     @staticmethod
     def _issue_pair(
@@ -707,13 +830,14 @@ class AuthService:
         *,
         user_agent: str | None = None,
         ip: str | None = None,
+        access_ttl_seconds: int | None = None,
     ) -> TokenPair:
         settings = get_settings()
         claims: dict = {"tenant_id": str(tenant_id)} if tenant_id else {}
         claims["auth_version"] = int(getattr(user, "auth_version", 0) or 0)
         if getattr(user, "is_platform_admin", False):
             claims["is_platform_admin"] = True
-        access = create_access_token(str(user.id), claims)
+        access = create_access_token(str(user.id), claims, ttl_seconds=access_ttl_seconds)
         refresh = create_refresh_token(str(user.id), claims)
         session.add(
             RefreshToken(

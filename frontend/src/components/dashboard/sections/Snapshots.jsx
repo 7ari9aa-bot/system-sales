@@ -4,6 +4,8 @@ import { SectionCard } from "@/components/dashboard/ui";
 import { useT } from "@/lib/i18n";
 import useSalesStats from "@/hooks/useSalesStats";
 
+/** لمحة المخزون — بطاقة مدمجة تناسب عمود واحد. ثلاثة أرقام حقيقية
+ *  من read model السيرفر: منتجات نشطة، مخزون منخفض، نفد المخزون. */
 export function InventorySnapshot() {
   const t = useT();
   const live = useSalesStats();
@@ -27,33 +29,33 @@ export function InventorySnapshot() {
           </button>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-3 mt-2">
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-            <Boxes className="h-3.5 w-3.5 text-muted-foreground" />
+      <div className="space-y-2.5 mt-1">
+        <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-3.5 py-3">
+          <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+            <Boxes className="h-4 w-4 text-muted-foreground" />
             {t("inventory.active")}
           </div>
-          <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-active">
+          <span className="font-display text-[18px] font-semibold tabular-nums" data-testid="inventory-active">
             {live ? (live.activeProducts ?? "—") : "…"}
-          </div>
+          </span>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+        <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-3.5 py-3">
+          <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+            <AlertTriangle className="h-4 w-4 text-warning" />
             {t("inventory.low")}
           </div>
-          <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-low">
+          <span className="font-display text-[18px] font-semibold tabular-nums" data-testid="inventory-low">
             {live ? (live.lowStock ?? "—") : "…"}
-          </div>
+          </span>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-            <PackageX className="h-3.5 w-3.5 text-destructive" />
+        <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-3.5 py-3">
+          <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+            <PackageX className="h-4 w-4 text-destructive" />
             {t("inventory.out")}
           </div>
-          <div className="mt-1 font-display text-[20px] font-semibold tabular-nums" data-testid="inventory-out">
+          <span className="font-display text-[18px] font-semibold tabular-nums" data-testid="inventory-out">
             {live ? (live.outOfStock ?? "—") : "…"}
-          </div>
+          </span>
         </div>
       </div>
     </SectionCard>
