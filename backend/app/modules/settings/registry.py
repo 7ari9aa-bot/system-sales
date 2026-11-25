@@ -282,8 +282,9 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "inventory.show_units_of_measure",  # inventory/services/screens.py::visible_screens
         "inventory.expiry_alert_days",  # inventory/services/expiry.py::expiry_report
         "inventory.dead_stock_days",  # core/dead_stock_report.py::DeadStockReportService.report
-        "business.vertical",  # catalog/services/vertical_setup.py::choose_vertical
+        "business.vertical",  # core/shop_type.py::choose_vertical
         "business.setup_state",  # core/activity_setup.py::read_state
+        "business.type",  # core/shop_type.py::choose_vertical (derived from vertical)
         "reports.managers_see_profit",  # core/profit_report.py::_ProfitGate
         "business.terms_accepted_at",  # identity/services/auth.py::_record_signup_choices (record)
         "business.trade_name",  # pos/receipt_settings.py + pos/eta_adapter.py::_seller

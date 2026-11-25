@@ -16,6 +16,7 @@ Two tables:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     CheckConstraint,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -183,10 +184,10 @@ class SettingChangeRequest(TenantMixin, TimestampMixin, IdMixin, Base):
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Reviewer's note on approval or rejection
     review_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # When the review happened
-    reviewed_at: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,  # stored as a timestamp-like token
+    # When the review happened (approval or rejection timestamp)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
     )
 
     __table_args__ = (

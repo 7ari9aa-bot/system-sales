@@ -33,6 +33,8 @@ _KEYS = (
     "print.footer_text",
     "print.copies",
     "print.show_tax_detail",
+    "print.barcode_format",
+    "print.invoice_prefix",
     "pos.exchange_max_days",
 )
 
@@ -95,6 +97,8 @@ async def receipt_settings(
         "footer_text": _text(v["print.footer_text"]) or None,
         "copies": _whole(v["print.copies"], default=1, low=1, high=5),
         "show_tax_detail": v["print.show_tax_detail"] is True,
+        "barcode_format": _text(v["print.barcode_format"]) or "ean13",
+        "invoice_prefix": _text(v["print.invoice_prefix"]) or None,
         # 0 = "no exchanges": the receipt says nothing about exchange instead of promising 0 days.
         "exchange_days": _whole(v["pos.exchange_max_days"], default=0, low=0, high=365),
     }

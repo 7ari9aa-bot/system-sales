@@ -480,6 +480,7 @@ class SettingsService:
         request.status = "approved"
         request.reviewed_by = reviewer_id
         request.review_note = review_note
+        request.reviewed_at = func.now()
         await self._session.flush()
 
         await self._apply_change_request(request, user_id=reviewer_id, permissions=permissions)
@@ -506,6 +507,7 @@ class SettingsService:
         request.status = "rejected"
         request.reviewed_by = reviewer_id
         request.review_note = review_note
+        request.reviewed_at = func.now()
         await self._session.flush()
         return request
 

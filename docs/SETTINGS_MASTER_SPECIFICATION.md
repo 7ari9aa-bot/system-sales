@@ -28,6 +28,12 @@
 | **P3** — Platform Management | Team · Security · Notifications · Integrations · Billing · Preferences | ✅ منفّذ (الإعدادات موصّلة، الواجهات قيد التطوير) |
 | **P4** — Advanced Governance | Advanced Approvals · Config Migrations · Extended Presets | 🟡 جزئي (Change Requests منفّذ، Migrations غير منفّذ) |
 
+> **تصحيح بعد مطابقة الكود:** `SecretStorePort` (§68-69) **مُنفّذ بالكامل** في
+> `app/core/secrets.py` (Protocol + EnvSecretStore + InMemorySecretStore +
+> DatabaseSecretStore + EnvelopeSecretStore + rotation). كذلك، حدود الوحدات
+> مُفرضة بالفعل عبر `tests/test_module_boundaries.py` بنظام AST baseline ratchet
+> (بديل import-linter). كلا النقطتين لم تكن مفقودتين كما سُجّل أول مرة.
+
 ---
 
 ## 1. البنية المعمارية الحالية (ما هو موجود فعلاً)
@@ -562,7 +568,7 @@ tenant (النطاق الجذري — لا scope_id)
 
 | المفتاح | المجال | الأولوية | الإجراء المقترح |
 |---|---|---|---|
-| `business.type` | business | P1 | توصيله أو إزالته (vertical يغطي وظيفته) |
+| `business.type` | business | ✅ تم توصيله | موصول عبر `core/shop_type.py` (مشتق من vertical) |
 | `print.barcode_format` | print | P2 | توصيله بـcatalog/services/barcode |
 | `print.invoice_prefix` | print | P2 | توصيله بـpos/service.py |
 | `organization.fiscal_year_start_month` | organization | P2 | توصيله بـreports |
@@ -583,12 +589,12 @@ tenant (النطاق الجذري — لا scope_id)
 
 | البند | المرجع | الحالة | الأولوية |
 |---|---|---|---|
-| SecretStorePort | §68-69 | ❌ غير منفّذ | P0 (sensitivity=secret) |
+| SecretStorePort | §68-69 | ✅ مُنفّذ في `app/core/secrets.py` | — |
 | Tenant-scoped restore | §164 | ❌ غير منفّذ | P4 |
 | SLO framework | §168 | ❌ غير منفّذ | P4 |
-| Import-linter للحدود | — | ❌ غير منفّذ | P0 |
+| Import-linter للحدود | — | ✅ مُفرض عبر `test_module_boundaries.py` (AST baseline) | — |
 | Configuration Migrations | — | ❌ غير منفّذ | P4 |
-| `reviewed_at` في change_requests | models.py | 🟡 UUID بدلاً من timestamp — يحتاج إصلاح | P0 |
+| `reviewed_at` في change_requests | models.py | ✅ أُصلح (UUID → TIMESTAMP + migration) | — |
 
 ### 9.3 الـFrontend
 
@@ -603,12 +609,15 @@ tenant (النطاق الجذري — لا scope_id)
 
 ## 10. خطة التنفيذ المرحلية
 
-### P0 — إكمال الأساس (فوري)
+### P0 — إكمال الأساس (تم ✅)
 
-1. **إصلاح `reviewed_at`** في `setting_change_requests` (UUID → timestamp)
-2. **تنفيذ `SecretStorePort`** (§68-69) — لتخزين مفاتيح `sensitivity=secret`
-3. **إضافة import-linter** لفرض حدود الوحدات
-4. **توصيل `business.type`** أو إزالته
+1. ~~**إصلاح `reviewed_at`** في `setting_change_requests` (UUID → timestamp)~~ ✅
+   - Model: `UUID` → `TIMESTAMP(timezone=True)`
+   - Migration: `fe2026112502_add_reviewed_at_to_change_requests.py`
+   - Service: `reviewed_at = func.now()` عند الموافقة والرفض
+2. ~~**تنفيذ `SecretStorePort`** (§68-69)~~ ✅ (كان مُنفّذ بالفعل في `app/core/secrets.py`)
+3. ~~**إضافة import-linter** لفرض حدود الوحدات~~ ✅ (موجود عبر `test_module_boundaries.py`)
+4. ~~**توصيل `business.type`** أو إزالته~~ ✅ (موصّل عبر `core/shop_type.py` — مشتق من vertical)
 
 ### P1 — Business Configuration (التالي)
 

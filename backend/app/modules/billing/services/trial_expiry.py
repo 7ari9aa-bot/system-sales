@@ -89,6 +89,31 @@ async def _should_lock(session, tenant_id: uuid.UUID, lock_start: datetime, now:
     return True
 
 
+async def _tenant_billing_config(session, tenant_id: uuid.UUID) -> dict:
+    """Read billing.currency and billing.notify_before_renewal_days via direct SQL.
+
+    Direct SQL avoids an import cycle (billing -> settings would grow the cyclic SCC).
+    Returns the tenant's billing currency and how many days before renewal to notify.
+    """
+    rows = (
+        await session.execute(
+            sa.text(
+                "SELECT key, value->'v' FROM tenant_settings "
+                "WHERE tenant_id = :t AND key IN ('billing.currency', "
+                "'billing.notify_before_renewal_days') AND scope = 'tenant'"
+            ),
+            {"t": tenant_id},
+        )
+    ).all()
+    result = {"currency": "EGP", "notify_before_renewal_days": 7}
+    for key, value in rows:
+        if key == "billing.currency" and isinstance(value, str):
+            result["currency"] = value
+        elif key == "billing.notify_before_renewal_days" and isinstance(value, (int, float)):
+            result["notify_before_renewal_days"] = int(value)
+    return result
+
+
 async def lock_expired_trials(*, batch_size: int = 100, now: datetime | None = None) -> int:
     """Move every eligible expired trial to ``trial_expired``. Returns how many were locked."""
     from app.modules.identity.services.lifecycle import TenantLifecycleService
