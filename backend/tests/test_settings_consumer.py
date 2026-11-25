@@ -6,6 +6,12 @@ Verifies that the consumer:
   ``security.*`` setting;
 * does NOT stage a security audit event for non-security keys;
 * ignores events that are not ``settings.changed``.
+
+The consumer opens its own short-lived session via ``get_sessionmaker()``.
+In production that resolves to the process-wide engine; in tests we patch it
+through ``app_sessions_on_test_connection`` so the consumer's writes land on
+the **same** connection as the test's ``db`` fixture — otherwise the
+consumer's outbox inserts are invisible to the test (transaction isolation).
 """
 
 from __future__ import annotations
@@ -16,7 +22,7 @@ import uuid
 import pytest
 
 import app.core.model_registry  # noqa: F401 — complete table registration
-from app.core.db import SessionLocal, bind_tenant
+from app.core.db import bind_tenant
 from app.core.events.bus import Event
 from app.core.events.schemas import build_envelope, serialize
 from app.modules.settings import cache
@@ -103,9 +109,12 @@ class TestSettingsConsumer:
         assert cache.get(tenant.id, "pos.max_discount_pct") is None
 
     @pytest.mark.asyncio
-    async def test_security_key_stages_audit_outbox_event(self, db) -> None:
-        from app.modules.platform.models import OutboxEvent
+    async def test_security_key_stages_audit_outbox_event(
+        self, db, app_sessions_on_test_connection
+    ) -> None:
         from sqlalchemy import select
+
+        from app.modules.platform.models import OutboxEvent
 
         cache.clear()
         user, tenant = await _create_tenant(db)
@@ -134,14 +143,19 @@ class TestSettingsConsumer:
         # Cache invalidated.
         assert cache.get(tenant.id, "security.require_strong_passwords") is None
 
-        # A security.setting_changed outbox event was staged.
-        async with SessionLocal() as session:
+        # A security.setting_changed outbox event was staged — query through
+        # the patched session factory so we see the consumer's writes.
+        # Filter on event_type inside the payload so we don't match the
+        # security events that AuthService.register itself emits.
+        factory = app_sessions_on_test_connection
+        async with factory() as session:
             await bind_tenant(session, tenant.id)
             rows = (
                 (
                     await session.execute(
                         select(OutboxEvent).where(
                             OutboxEvent.aggregate_type == "security",
+                            OutboxEvent.payload["event_type"].astext == "security.setting_changed",
                         )
                     )
                 )
@@ -150,15 +164,17 @@ class TestSettingsConsumer:
             )
             assert len(rows) >= 1
             row = rows[-1]
-            assert row.payload["event_type"] == "security.setting_changed"
             assert row.payload["key"] == "security.require_strong_passwords"
             assert row.payload["action"] == "set"
             assert row.payload["changed_by"] == str(user.id)
 
     @pytest.mark.asyncio
-    async def test_non_security_key_does_not_stage_audit(self, db) -> None:
-        from app.modules.platform.models import OutboxEvent
+    async def test_non_security_key_does_not_stage_audit(
+        self, db, app_sessions_on_test_connection
+    ) -> None:
         from sqlalchemy import select
+
+        from app.modules.platform.models import OutboxEvent
 
         cache.clear()
         user, tenant = await _create_tenant(db)
@@ -182,14 +198,18 @@ class TestSettingsConsumer:
         )
         await consumer.handle(event)
 
-        # No security.setting_changed event should exist.
-        async with SessionLocal() as session:
+        # No security.setting_changed event should exist (filter on event_type
+        # in the payload so we don't match AuthService.register's own security
+        # events).
+        factory = app_sessions_on_test_connection
+        async with factory() as session:
             await bind_tenant(session, tenant.id)
             rows = (
                 (
                     await session.execute(
                         select(OutboxEvent).where(
                             OutboxEvent.aggregate_type == "security",
+                            OutboxEvent.payload["event_type"].astext == "security.setting_changed",
                         )
                     )
                 )
@@ -210,8 +230,11 @@ class TestSettingsConsumer:
         consumer._bus = None  # type: ignore[assignment]
         consumer._running = False
 
+        # Use a registered event type that is NOT "settings.changed" —
+        # "test.schema" is a harmless test-only type that build_envelope
+        # accepts and the consumer must ignore.
         event = _make_event(
-            "settings.resolved",
+            "test.schema",
             tenant.id,
             {"key": "pos.max_discount_pct"},
         )

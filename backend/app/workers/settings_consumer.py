@@ -24,7 +24,8 @@ from __future__ import annotations
 import logging
 import uuid
 
-from app.core.db import SessionLocal, bind_tenant
+from app.core import db as _db
+from app.core.db import bind_tenant
 from app.core.errors import ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import deserialize_event
@@ -66,7 +67,11 @@ class SettingsConsumer(StreamWorker):
 
     async def _audit_security_change(self, tenant_id: uuid.UUID, payload: dict) -> None:
         """Stage a ``security.setting_changed`` outbox event for the audit pipeline."""
-        async with SessionLocal() as session:
+        # Access through the module (not a module-level import) so tests can
+        # monkeypatch ``app.core.db.get_sessionmaker`` via the
+        # ``app_sessions_on_test_connection`` fixture.
+        session_factory = _db.get_sessionmaker()
+        async with session_factory() as session:
             async with session.begin():
                 await bind_tenant(session, tenant_id)
                 await add_outbox_event(
