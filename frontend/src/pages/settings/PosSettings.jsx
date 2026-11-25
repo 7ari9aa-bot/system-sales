@@ -74,6 +74,8 @@ export default function PosSettings() {
             <button
               key={item.value}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               aria-current={isActive ? "page" : undefined}
               onClick={() => navigate(`/settings/pos/${item.value}`)}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-colors ${

@@ -8,6 +8,8 @@ its own asset-subscription fields and the fields Meta has actually delivered.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.modules.customers import capability_states as cs
 from app.modules.customers.meta_channel_diagnostics import build_report
 from app.modules.customers.meta_oauth import subscribed_fields
@@ -172,6 +174,9 @@ def _report(**over):
         permissions=None,
         server_webhook_ready=True,
         api_base_url="https://api.example.com",
+        # Pin "now" to the webhook timestamp so the "no event for X days" check
+        # never flips this test to warning purely because the wall clock moved.
+        now=datetime(2026, 11, 22, 11, 0, tzinfo=UTC),
     )
     base.update(over)
     return build_report(**base)

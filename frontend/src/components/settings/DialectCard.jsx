@@ -80,7 +80,9 @@ export default function DialectCard() {
         </div>
         <Select value={choice} onValueChange={setChoice} disabled={!info}>
           <SelectTrigger className="w-[220px]" data-testid="dialect-select">
-            <SelectValue />
+            <SelectValue>
+              {choice === AUTO ? t("dialect.auto") : t(`dialect.name.${choice}`)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {dialectOptions(info).map((option) => (

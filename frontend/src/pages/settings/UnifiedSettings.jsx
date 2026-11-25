@@ -205,7 +205,7 @@ export default function UnifiedSettings() {
               </AccordionTrigger>
               <AccordionContent>
                 <SettingCard>
-                  {domDefs.map((defn, i) => (
+                  {domDefs.map((defn) => (
                     <SettingField
                       key={defn.key}
                       defn={defn}

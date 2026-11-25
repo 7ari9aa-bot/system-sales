@@ -42,7 +42,6 @@ export default function DevicesSection() {
     warehouse_id: "",
     profile_id: "",
   });
-  const [grantByProfile, setGrantByProfile] = React.useState({});
   const [grantUser, setGrantUser] = React.useState({});
 
   const load = React.useCallback(async () => {
@@ -84,7 +83,6 @@ export default function DevicesSection() {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   React.useEffect(() => {

@@ -157,6 +157,9 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "webhook.deliver": EventPriority.CUSTOMER_WEBHOOK,
     # Normal Automation: orchestration and housekeeping events.
     "notification.queued": EventPriority.NORMAL_AUTOMATION,
+    # §166: email/push delivery events are fire-and-forget automation.
+    "notification.email": EventPriority.NORMAL_AUTOMATION,
+    "notification.push": EventPriority.NORMAL_AUTOMATION,
     "customer.merged": EventPriority.NORMAL_AUTOMATION,
     # A public comment or mention changed on a social post: it refreshes the interactions list and
     # nobody is blocked on it, so it is housekeeping, not an interactive reply path.
@@ -173,6 +176,10 @@ DOMAIN_PRIORITIES: dict[str, EventPriority] = {
     "campaign.run.started": EventPriority.BULK_CAMPAIGN,
     "campaign.run.batch": EventPriority.BULK_CAMPAIGN,
     "campaign.run.completed": EventPriority.BULK_CAMPAIGN,
+    # §36–§38: a setting change is a configuration write, not money or interactive.
+    "settings.changed": EventPriority.NORMAL_AUTOMATION,
+    # §5.1: a void reverses a confirmed sale — the same money tier as a return.
+    "pos.sale.voided": EventPriority.CRITICAL_SYSTEM,
 }
 
 

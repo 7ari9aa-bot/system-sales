@@ -131,6 +131,8 @@ class VariantServiceMixin:
             "catalog.barcode_auto_generate"
         )
         if auto_barcode:
+            from app.core.sequences import next_sequence
+            from app.modules.catalog.apparel.barcode import internal_ean13
             from app.modules.catalog.models import ProductIdentifier
 
             existing = (
@@ -143,8 +145,10 @@ class VariantServiceMixin:
                 )
             ).scalar_one_or_none()
             if existing is None:
-                # Use the variant's UUID-based short hash as a barcode value.
-                barcode_val = str(variant.id.int & 0xFFFFFFFFFFFFF)
+                # Generate a proper EAN-13 from the shop's gap-free counter (same
+                # path as POST /products/{id}/barcodes), not a UUID-derived hash.
+                seq = await next_sequence(session, tenant_id, "BC", 0)
+                barcode_val = internal_ean13(seq)
                 session.add(
                     ProductIdentifier(
                         tenant_id=tenant_id,

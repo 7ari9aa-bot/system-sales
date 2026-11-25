@@ -133,6 +133,8 @@ GATED_WRITES: dict[str, str] = {
     "GET /integrations/{integration_id}/reconnect-plan": "settings:read",
     "GET /integrations/{integration_id}/whatsapp-roadmap": "settings:read",
     "POST /integrations/{integration_id}/messenger-reconcile": "settings:read",
+    "GET /integrations/whatsapp/coexistence-status": "settings:read",
+    "POST /integrations/whatsapp/coexistence-reconcile": "settings:write",
     "GET /integrations/meta/oauth/start": "settings:write",
     "POST /integrations/meta/oauth/choose-page": "settings:write",
     "GET /integrations/whatsapp/embedded-signup/start": "settings:write",
