@@ -55,6 +55,23 @@ class TenantService:
         inviter_is_platform_admin: bool = False,
     ) -> Invitation:
         email = email.strip().lower()
+
+        # team.allow_member_invites: a tenant that disabled invites rejects
+        # here, before any row is written. Direct SQL avoids an import cycle
+        # (identity → settings would grow the cyclic SCC). Default is True.
+        allows_invites = (
+            await session.execute(
+                sa.text(
+                    "SELECT (value->>'v')::boolean FROM tenant_settings "
+                    "WHERE tenant_id = :t AND key = 'team.allow_member_invites' "
+                    "AND scope = 'tenant'"
+                ),
+                {"t": tenant_id},
+            )
+        ).scalar_one_or_none()
+        if allows_invites is False:
+            raise PermissionDeniedError("member invitations are disabled for this workspace")
+
         role = (
             await session.execute(select(Role).where(Role.code == role_code))
         ).scalar_one_or_none()

@@ -337,7 +337,14 @@ class AuthService:
                 user.id, tenant_id, auth_version=getattr(user, "auth_version", 0)
             )
             raise MfaRequiredError(challenge_id)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         return pair, user, tenant_id
 
     @staticmethod
@@ -428,7 +435,14 @@ class AuthService:
             # `register`; an existing one signs in with only app.user_id bound, so the INSERT
             # was refused by row-level security and every returning Google user got a 500.
             await bind_tenant(session, tenant_id)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         await AuthService._audit(
             session, user.id, "auth.google_login", "user", str(user.id), tenant_id=tenant_id
         )
@@ -453,7 +467,14 @@ class AuthService:
         if user is None or not user.is_active:
             raise PermissionDeniedError("account not available")
         await AuthService._assert_tenant_allows_login(session, tenant_id, user_id=user.id, ip=ip)
-        pair = AuthService._issue_pair(session, user, tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
         return pair, user, tenant_id
 
     @staticmethod
@@ -498,7 +519,14 @@ class AuthService:
         )
         if row.revoked_at is None:
             row.revoked_at = _now()  # rotation
-        pair = AuthService._issue_pair(session, user, row.tenant_id, user_agent=user_agent, ip=ip)
+        pair = AuthService._issue_pair(
+            session,
+            user,
+            row.tenant_id,
+            user_agent=user_agent,
+            ip=ip,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, row.tenant_id),
+        )
         return pair, user, row.tenant_id
 
     @staticmethod
@@ -742,9 +770,37 @@ class AuthService:
         if row is None or row.revoked_at is not None or row.expires_at <= now:
             raise PermissionDeniedError("invalid or expired refresh token")
         row.revoked_at = now
-        return AuthService._issue_pair(session, user, tenant_id)
+        return AuthService._issue_pair(
+            session,
+            user,
+            tenant_id,
+            access_ttl_seconds=await AuthService._resolve_access_ttl(session, tenant_id),
+        )
 
     # -- internals ---------------------------------------------------------
+
+    @staticmethod
+    async def _resolve_access_ttl(session, tenant_id: uuid.UUID | None) -> int | None:
+        """``team.session_timeout_minutes`` → access-token TTL in seconds.
+
+        Returns ``None`` when the setting is absent or zero (no limit).
+        Direct SQL avoids an import cycle (identity → settings).
+        """
+        if tenant_id is None:
+            return None
+        timeout_minutes = (
+            await session.execute(
+                sa.text(
+                    "SELECT (value->>'v')::int FROM tenant_settings "
+                    "WHERE tenant_id = :t AND key = 'team.session_timeout_minutes' "
+                    "AND scope = 'tenant'"
+                ),
+                {"t": tenant_id},
+            )
+        ).scalar_one_or_none()
+        if timeout_minutes and timeout_minutes > 0:
+            return timeout_minutes * 60
+        return None
 
     @staticmethod
     def _issue_pair(
@@ -754,13 +810,14 @@ class AuthService:
         *,
         user_agent: str | None = None,
         ip: str | None = None,
+        access_ttl_seconds: int | None = None,
     ) -> TokenPair:
         settings = get_settings()
         claims: dict = {"tenant_id": str(tenant_id)} if tenant_id else {}
         claims["auth_version"] = int(getattr(user, "auth_version", 0) or 0)
         if getattr(user, "is_platform_admin", False):
             claims["is_platform_admin"] = True
-        access = create_access_token(str(user.id), claims)
+        access = create_access_token(str(user.id), claims, ttl_seconds=access_ttl_seconds)
         refresh = create_refresh_token(str(user.id), claims)
         session.add(
             RefreshToken(
