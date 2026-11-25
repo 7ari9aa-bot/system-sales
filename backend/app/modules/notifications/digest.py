@@ -121,18 +121,11 @@ class NotificationAggregator:
             return False
 
         # Tenant-level digest mode fallback (notifications.digest_mode).
-        # Direct SQL avoids coupling notifications -> settings.
+        # Read via app.core.settings_read (no import cycle with settings).
         if pref is None:
-            mode = (
-                await session.execute(
-                    sa_text(
-                        "SELECT value->>'v' FROM tenant_settings "
-                        "WHERE tenant_id = :t AND key = 'notifications.digest_mode' "
-                        "AND scope = 'tenant'"
-                    ),
-                    {"t": tenant_id},
-                )
-            ).scalar_one_or_none()
+            from app.core.settings_read import resolve_setting
+
+            mode = await resolve_setting(session, tenant_id, "notifications.digest_mode")
             if mode and mode != "realtime":
                 return False
 
@@ -141,27 +134,22 @@ class NotificationAggregator:
     @staticmethod
     async def _tenant_quiet_hours_active(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
         """Check tenant-level quiet hours settings as a fallback."""
-        row = (
-            await session.execute(
-                sa_text(
-                    "SELECT "
-                    "  (SELECT value->>'v' FROM tenant_settings "
-                    "   WHERE tenant_id = :t AND key = 'notifications.quiet_hours_start' "
-                    "   AND scope = 'tenant') AS start, "
-                    "  (SELECT value->>'v' FROM tenant_settings "
-                    "   WHERE tenant_id = :t AND key = 'notifications.quiet_hours_end' "
-                    "   AND scope = 'tenant') AS end"
-                ),
-                {"t": tenant_id},
-            )
-        ).first()
-        if not row or not row.start or not row.end:
+        from app.core.settings_read import resolve_settings
+
+        settings = await resolve_settings(
+            session,
+            tenant_id,
+            ["notifications.quiet_hours_start", "notifications.quiet_hours_end"],
+        )
+        start = settings["notifications.quiet_hours_start"]
+        end = settings["notifications.quiet_hours_end"]
+        if not start or not end:
             return False
         now_time = datetime.now(UTC).time()
         from datetime import time as _time
 
-        h1, m1 = int(row.start[:2]), int(row.start[3:5])
-        h2, m2 = int(row.end[:2]), int(row.end[3:5])
+        h1, m1 = int(start[:2]), int(start[3:5])
+        h2, m2 = int(end[:2]), int(end[3:5])
         t_start = _time(h1, m1)
         t_end = _time(h2, m2)
         if t_start <= t_end:

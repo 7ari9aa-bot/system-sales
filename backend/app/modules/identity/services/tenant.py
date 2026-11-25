@@ -49,7 +49,7 @@ class TenantService:
         *,
         tenant_id: uuid.UUID,
         email: str,
-        role_code: str,
+        role_code: str | None,
         invited_by: uuid.UUID,
         inviter_role_code: str | None = None,
         inviter_is_platform_admin: bool = False,
@@ -57,20 +57,22 @@ class TenantService:
         email = email.strip().lower()
 
         # team.allow_member_invites: a tenant that disabled invites rejects
-        # here, before any row is written. Direct SQL avoids an import cycle
-        # (identity → settings would grow the cyclic SCC). Default is True.
-        allows_invites = (
-            await session.execute(
-                sa.text(
-                    "SELECT (value->>'v')::boolean FROM tenant_settings "
-                    "WHERE tenant_id = :t AND key = 'team.allow_member_invites' "
-                    "AND scope = 'tenant'"
-                ),
-                {"t": tenant_id},
-            )
-        ).scalar_one_or_none()
-        if allows_invites is False:
+        # here, before any row is written. Reads via app.core.settings_read
+        # to avoid the import cycle (identity → settings would grow the SCC).
+        from app.core.settings_read import resolve_settings
+
+        settings = await resolve_settings(
+            session,
+            tenant_id,
+            ["team.allow_member_invites", "team.default_role"],
+        )
+        if settings["team.allow_member_invites"] is False:
             raise PermissionDeniedError("member invitations are disabled for this workspace")
+
+        # team.default_role: when the caller does not specify a role, fall back
+        # to the tenant's configured default (registry default: "cashier").
+        if not role_code:
+            role_code = settings["team.default_role"]
 
         role = (
             await session.execute(select(Role).where(Role.code == role_code))

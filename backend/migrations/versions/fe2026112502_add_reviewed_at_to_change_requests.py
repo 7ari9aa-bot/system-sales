@@ -13,6 +13,7 @@ Create Date: 2026-11-25 09:15:00.000000
 from collections.abc import Sequence
 
 from alembic import op
+import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 
 revision: str = "fe2026112502"
@@ -24,7 +25,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "setting_change_requests",
-        op.Column("reviewed_at", TIMESTAMP(timezone=True), nullable=True),
+        sa.Column("reviewed_at", TIMESTAMP(timezone=True), nullable=True),
     )
 
 

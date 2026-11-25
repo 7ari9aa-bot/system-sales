@@ -296,6 +296,134 @@ class NotificationService:
         return result or 0
 
     # ------------------------------------------------------------------
+    # §166 — Notification dispatch (email / push gating)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def dispatch(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        kind: str,
+        body: str,
+        title: str | None = None,
+        action_url: str | None = None,
+        payload: dict | None = None,
+        dedup_key: str | None = None,
+    ) -> Notification:
+        """Create an in-app notification and fan out to email/push channels.
+
+        Email delivery is gated by ``notifications.email_enabled`` (default
+        False); push by ``notifications.push_enabled`` (default False).
+        The in-app bell always receives the row — only the external
+        channels are conditional.  The settings are read via
+        ``app.core.settings_read`` (no import cycle with settings).
+        """
+        from app.core.settings_read import resolve_settings
+
+        notif = await NotificationService.create(
+            session,
+            tenant_id,
+            user_id,
+            kind=kind,
+            body=body,
+            title=title,
+            action_url=action_url,
+            payload=payload,
+            dedup_key=dedup_key,
+        )
+
+        channels = await resolve_settings(
+            session,
+            tenant_id,
+            ["notifications.email_enabled", "notifications.push_enabled"],
+        )
+
+        if channels["notifications.email_enabled"]:
+            await NotificationService._send_email(
+                session, tenant_id, user_id, title=title or kind, body=body
+            )
+        if channels["notifications.push_enabled"]:
+            await NotificationService._send_push(
+                session, tenant_id, user_id, title=title or kind, body=body
+            )
+
+        return notif
+
+    @staticmethod
+    async def _send_email(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        title: str,
+        body: str,
+    ) -> None:
+        """Queue an email notification for the user.
+
+        Uses the existing outbox pattern so delivery is durable and retried
+        by the worker.  The email provider (Resend) is configured separately
+        via ``auth_email_delivery_configured``; when it is not configured the
+        email is silently skipped — the in-app notification still lands.
+        """
+        from app.core.events.writer import add_outbox_event
+
+        # Look up the recipient address (RLS-scoped by tenant_id GUC).
+        from app.modules.identity.models import User
+
+        user = (
+            await session.execute(select(User).where(User.id == user_id))
+        ).scalar_one_or_none()
+        if user is None or not user.email:
+            return
+        await add_outbox_event(
+            session,
+            aggregate_type="notification",
+            aggregate_id=user_id,
+            event_type="notification.email",
+            tenant_id=tenant_id,
+            producer="notifications",
+            payload={
+                "to": user.email,
+                "subject": title,
+                "body": body,
+                "user_id": str(user_id),
+            },
+        )
+
+    @staticmethod
+    async def _send_push(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        title: str,
+        body: str,
+    ) -> None:
+        """Queue a push notification for the user.
+
+        Push tokens are stored per-user (future: a device-token table).
+        For now the event is staged in the outbox so a push worker can pick
+        it up when a provider is configured.
+        """
+        from app.core.events.writer import add_outbox_event
+
+        await add_outbox_event(
+            session,
+            aggregate_type="notification",
+            aggregate_id=user_id,
+            event_type="notification.push",
+            tenant_id=tenant_id,
+            producer="notifications",
+            payload={
+                "title": title,
+                "body": body,
+                "user_id": str(user_id),
+            },
+        )
+
+    # ------------------------------------------------------------------
     # §166 — Notification dedupe/digest
     # ------------------------------------------------------------------
     # The dedupe path is already wired (dedup_key above). The DIGEST path

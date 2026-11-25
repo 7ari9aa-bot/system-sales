@@ -68,18 +68,16 @@ class HierarchyService:
         # Read settings via raw SQL to avoid an identity → settings import cycle
         # (settings/router.py already imports identity.deps). Defaults mirror the
         # registry: multi_branch=False, max_branches=0 (unlimited).
+        from app.core.settings_read import resolve_settings
+
+        _resolved = await resolve_settings(
+            session,
+            tenant_id,
+            ["organization.multi_branch", "organization.max_branches"],
+        )
+
         async def _setting_value(key: str, default):
-            row = (
-                await session.execute(
-                    sa.text(
-                        "SELECT value -> 'v' FROM tenant_settings "
-                        "WHERE tenant_id = :tid AND key = :k AND scope = 'tenant' "
-                        "LIMIT 1"
-                    ),
-                    {"tid": tenant_id, "k": key},
-                )
-            ).scalar_one_or_none()
-            return row if row is not None else default
+            return _resolved.get(key, default)
 
         multi_branch = await _setting_value("organization.multi_branch", False)
         existing_count = (

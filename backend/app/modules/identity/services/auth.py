@@ -82,6 +82,24 @@ def _validate_password_strength(password: str, *, required: bool) -> None:
         raise ValidationError("password must contain both letters and numbers")
 
 
+async def _tenant_strong_passwords_required(session, tenant_id: uuid.UUID | None) -> bool:
+    """Read ``security.require_strong_passwords`` via the settings resolver.
+
+    Uses ``app.core.settings_read`` (in ``app.core``, not ``app.modules.settings``)
+    to avoid the import cycle: ``settings.router`` already imports
+    ``identity.deps``, so ``identity`` cannot import ``settings.service`` without
+    growing the cyclic SCC.  Returns the registry default (``True``) when no
+    tenant is available (e.g. registration, before the tenant is created).
+    """
+    if tenant_id is None:
+        from app.modules.settings.registry import get_definition
+
+        return bool(get_definition("security.require_strong_passwords").default)
+    from app.core.settings_read import setting_bool
+
+    return await setting_bool(session, tenant_id, "security.require_strong_passwords")
+
+
 class AuthService:
     @staticmethod
     async def register(
@@ -126,9 +144,12 @@ class AuthService:
             raise EmailAlreadyRegistered("email already registered")
 
         if password is not None:
-            # security.require_strong_passwords defaults to True. We always
-            # enforce the strong policy on registration (the safest default).
-            _validate_password_strength(password, required=True)
+            # security.require_strong_passwords: the tenant does not exist yet
+            # at registration, so the registry default (True) is the policy.
+            _validate_password_strength(
+                password,
+                required=await _tenant_strong_passwords_required(session, None),
+            )
 
         if tenant_slug is None:
             base = re.sub(r"[^a-z0-9]+", "-", local_part.lower()).strip("-")[:40] or "workspace"
@@ -316,18 +337,11 @@ class AuthService:
         mfa_enabled = await is_mfa_enabled(session, user_id=user.id)
         if not mfa_enabled and tenant_id is not None:
             # team.require_2fa: a tenant that requires 2FA blocks login until the
-            # member enrolls. Direct SQL avoids an import cycle (identity ->
-            # settings would grow the cyclic SCC). Default is False.
-            require_2fa = (
-                await session.execute(
-                    sa.text(
-                        "SELECT (value->>'v')::boolean FROM tenant_settings "
-                        "WHERE tenant_id = :t AND key = 'team.require_2fa' "
-                        "AND scope = 'tenant'"
-                    ),
-                    {"t": tenant_id},
-                )
-            ).scalar_one_or_none()
+            # member enrolls. Reads via app.core.settings_read to avoid the
+            # import cycle (identity → settings would grow the cyclic SCC).
+            from app.core.settings_read import setting_bool
+
+            require_2fa = await setting_bool(session, tenant_id, "team.require_2fa")
             if require_2fa:
                 raise PermissionDeniedError(
                     "two-factor authentication is required — please enroll before signing in"
@@ -592,15 +606,14 @@ class AuthService:
     @staticmethod
     async def reset_password(session, *, token: str, password: str) -> None:
         """Consume one valid recovery link and invalidate every old session."""
-        # security.require_strong_passwords defaults to True. Always enforce
-        # the strong policy on password reset (the safest default).
-        _validate_password_strength(password, required=True)
-
+        # security.require_strong_passwords: resolve the user's tenant and
+        # read the setting via the resolver (not direct SQL).
+        token_hash = _hash_token(token)
         now = _now()
         row = (
             await session.execute(
                 select(PasswordResetToken)
-                .where(PasswordResetToken.token_hash == _hash_token(token))
+                .where(PasswordResetToken.token_hash == token_hash)
                 .with_for_update()
             )
         ).scalar_one_or_none()
@@ -612,6 +625,19 @@ class AuthService:
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             raise ValidationError("password reset link is invalid or expired")
+
+        # Find the user's tenant so we can read the strong-password setting.
+        user_tenant_id = (
+            await session.execute(
+                select(TenantUser.tenant_id)
+                .where(TenantUser.user_id == user.id, TenantUser.is_default.is_(True))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        _validate_password_strength(
+            password,
+            required=await _tenant_strong_passwords_required(session, user_tenant_id),
+        )
 
         user.password_hash = await hash_password_async(password)
         user.auth_version = int(user.auth_version or 0) + 1
@@ -784,20 +810,16 @@ class AuthService:
         """``team.session_timeout_minutes`` → access-token TTL in seconds.
 
         Returns ``None`` when the setting is absent or zero (no limit).
-        Direct SQL avoids an import cycle (identity → settings).
+        Reads via ``app.core.settings_read`` to avoid the import cycle
+        (identity → settings would grow the cyclic SCC).
         """
         if tenant_id is None:
             return None
-        timeout_minutes = (
-            await session.execute(
-                sa.text(
-                    "SELECT (value->>'v')::int FROM tenant_settings "
-                    "WHERE tenant_id = :t AND key = 'team.session_timeout_minutes' "
-                    "AND scope = 'tenant'"
-                ),
-                {"t": tenant_id},
-            )
-        ).scalar_one_or_none()
+        from app.core.settings_read import resolve_setting
+
+        timeout_minutes = await resolve_setting(
+            session, tenant_id, "team.session_timeout_minutes"
+        )
         if timeout_minutes and timeout_minutes > 0:
             return timeout_minutes * 60
         return None

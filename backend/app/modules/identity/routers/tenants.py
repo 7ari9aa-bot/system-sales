@@ -121,25 +121,13 @@ async def create_invitation(
     from app.modules.billing.service import EntitlementService
 
     await EntitlementService.ensure(ctx.session, tenant_id, "CanAddUser")
-    # team.default_role: when the caller omits role_code, the tenant's
-    # configured default decides (registry default "cashier").
-    role_code = body.role_code
-    if role_code is None:
-        role_code = (
-            await ctx.session.execute(
-                sa.text(
-                    "SELECT (value->>'v')::text FROM tenant_settings "
-                    "WHERE tenant_id = :t AND key = 'team.default_role' "
-                    "AND scope = 'tenant'"
-                ),
-                {"t": tenant_id},
-            )
-        ).scalar_one_or_none() or "cashier"
+    # team.default_role: when the caller omits role_code, the service
+    # resolves the tenant's configured default (registry default "cashier").
     invitation = await service.TenantService.invite(
         ctx.session,
         tenant_id=tenant_id,
         email=body.email,
-        role_code=role_code,
+        role_code=body.role_code,
         invited_by=ctx.user.id,
         # Privilege-escalation guard (audit finding 7): the service enforces
         # the hierarchy against the CALLER's role — ctx.role_code is the

@@ -186,30 +186,19 @@ async def get_current_user(
             {"v": "true" if db_platform_admin else "false"},
         )
         # security.ip_allowlist: a tenant that configured an IP allowlist
-        # rejects requests from unlisted IPs. Direct SQL avoids an import
-        # cycle (identity → settings). Empty / missing = allow all.
+        # rejects requests from unlisted IPs. Reads via app.core.settings_read
+        # to avoid the import cycle (identity → settings). Empty / missing = allow all.
         tenant_id = uuid.UUID(payload["tenant_id"]) if payload.get("tenant_id") else None
         if tenant_id is not None:
-            allowlist = (
-                await session.execute(
-                    sa_text(
-                        "SELECT (value->>'v')::jsonb FROM tenant_settings "
-                        "WHERE tenant_id = :t AND key = 'security.ip_allowlist' "
-                        "AND scope = 'tenant'"
-                    ),
-                    {"t": tenant_id},
-                )
-            ).scalar_one_or_none()
-            if allowlist:
-                import json
+            from app.core.settings_read import resolve_setting
 
-                ips = json.loads(allowlist) if isinstance(allowlist, str) else allowlist
-                if ips and request.client:
-                    client_ip = request.client.host
-                    if client_ip not in ips:
-                        raise PermissionDeniedError(
-                            "this IP address is not allowed for this workspace"
-                        )
+            allowlist = await resolve_setting(session, tenant_id, "security.ip_allowlist")
+            if allowlist and request.client:
+                client_ip = request.client.host
+                if client_ip not in allowlist:
+                    raise PermissionDeniedError(
+                        "this IP address is not allowed for this workspace"
+                    )
         return AuthedUser(
             id=user_id,
             tenant_id=tenant_id,
