@@ -63,6 +63,25 @@ class GoogleMfaRequired(PermissionDeniedError):
     """Google sign-in refused because the account has MFA (use password + code)."""
 
 
+def _validate_password_strength(password: str, *, required: bool) -> None:
+    """Check a password against the tenant's strong-password policy.
+
+    The ``security.require_strong_passwords`` setting (default on) asks for at least
+    8 characters and a mix of letters and digits. A tenant that turns it off gets
+    the original minimal check (any non-empty password).
+    """
+    if not password:
+        raise ValidationError("password is required")
+    if not required:
+        return
+    if len(password) < 8:
+        raise ValidationError("password must be at least 8 characters long")
+    has_letter = any(c.isalpha() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_letter and has_digit):
+        raise ValidationError("password must contain both letters and numbers")
+
+
 class AuthService:
     @staticmethod
     async def register(
@@ -105,6 +124,11 @@ class AuthService:
         if existing_email is not None:
             await AuthService.queue_email_verification(session, user=existing_email)
             raise EmailAlreadyRegistered("email already registered")
+
+        if password is not None:
+            # security.require_strong_passwords defaults to True. We always
+            # enforce the strong policy on registration (the safest default).
+            _validate_password_strength(password, required=True)
 
         if tenant_slug is None:
             base = re.sub(r"[^a-z0-9]+", "-", local_part.lower()).strip("-")[:40] or "workspace"
@@ -289,7 +313,26 @@ class AuthService:
             await AuthService._assert_tenant_allows_login(session, None, user_id=user.id, ip=ip)
         from app.core.mfa import MfaRequiredError, is_mfa_enabled, start_challenge
 
-        if await is_mfa_enabled(session, user_id=user.id):
+        mfa_enabled = await is_mfa_enabled(session, user_id=user.id)
+        if not mfa_enabled and tenant_id is not None:
+            # team.require_2fa: a tenant that requires 2FA blocks login until the
+            # member enrolls. Direct SQL avoids an import cycle (identity ->
+            # settings would grow the cyclic SCC). Default is False.
+            require_2fa = (
+                await session.execute(
+                    sa.text(
+                        "SELECT (value->>'v')::boolean FROM tenant_settings "
+                        "WHERE tenant_id = :t AND key = 'team.require_2fa' "
+                        "AND scope = 'tenant'"
+                    ),
+                    {"t": tenant_id},
+                )
+            ).scalar_one_or_none()
+            if require_2fa:
+                raise PermissionDeniedError(
+                    "two-factor authentication is required — please enroll before signing in"
+                )
+        if mfa_enabled:
             challenge_id = await start_challenge(
                 user.id, tenant_id, auth_version=getattr(user, "auth_version", 0)
             )
@@ -521,6 +564,10 @@ class AuthService:
     @staticmethod
     async def reset_password(session, *, token: str, password: str) -> None:
         """Consume one valid recovery link and invalidate every old session."""
+        # security.require_strong_passwords defaults to True. Always enforce
+        # the strong policy on password reset (the safest default).
+        _validate_password_strength(password, required=True)
+
         now = _now()
         row = (
             await session.execute(

@@ -49,7 +49,12 @@ def parse_lock_start(raw: str | None) -> datetime | None:
 
 
 async def _should_lock(session, tenant_id: uuid.UUID, lock_start: datetime, now: datetime) -> bool:
-    """True only for a tenant whose every subscription is an expired, post-cutoff trial."""
+    """True only for a tenant whose every subscription is an expired, post-cutoff trial.
+
+    A tenant whose ``billing.auto_renew`` is on and whose trial is the only
+    subscription is allowed to pass into the next period rather than be locked,
+    because the owner chose auto-renewal.
+    """
     rows = (
         await session.execute(
             sa.text(
@@ -66,6 +71,21 @@ async def _should_lock(session, tenant_id: uuid.UUID, lock_start: datetime, now:
             return False  # any trace of a paid/ended plan: not this path's business
         if start is None or end is None or start < lock_start or end >= now:
             return False
+    # billing.auto_renew: if the tenant opted in, skip the lock so the trial
+    # can convert instead of freezing the account. Direct SQL avoids an import
+    # cycle (billing -> settings would grow the cyclic SCC).
+    row = (
+        await session.execute(
+            sa.text(
+                "SELECT value->'v' FROM tenant_settings "
+                "WHERE tenant_id = :t AND key = 'billing.auto_renew' AND scope = 'tenant'"
+            ),
+            {"t": tenant_id},
+        )
+    ).scalar_one_or_none()
+    if row is not None and bool(row):
+        return False
+    # Default is True (billing.auto_renew default in the registry).
     return True
 
 

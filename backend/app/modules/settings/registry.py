@@ -337,6 +337,12 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "catalog.default_tax_rate",  # catalog/products.py
         "catalog.show_out_of_stock",  # ai/tools/catalog
         "catalog.max_variants_per_product",  # catalog/variants.py
+        # Phase 7 wiring — Team, Security, Billing, Notifications.
+        "team.require_2fa",  # identity/services/auth.py login
+        "billing.auto_renew",  # billing/services/trial_expiry.py::_should_lock
+        "notifications.quiet_hours_start",  # notifications/digest.py::should_send_immediately
+        "notifications.quiet_hours_end",  # notifications/digest.py::should_send_immediately
+        "notifications.digest_mode",  # notifications/digest.py::should_send_immediately
     }
 )
 
@@ -2043,6 +2049,263 @@ _reg(
         label_en="Max Variants Per Product",
         description_ar="أقصى عدد متغيرات (مقاس/لون) يمكن إضافتها لمنتج واحد.",
         description_en="The maximum number of variants (size/colour) a single product can have.",
+    )
+)
+
+# ============================== TEAM (§117 Phase 7) ========================
+#
+# Team-level settings controlling how new members join and how sessions behave.
+
+_reg(
+    SettingDef(
+        key="team.default_role",
+        domain="team",
+        type=SettingType.ENUM,
+        default="cashier",
+        scopes=(Scope.TENANT,),
+        allowed_values=("cashier", "manager", "admin"),
+        label_ar="دور العضو الجديد الافتراضي",
+        label_en="Default Role for New Members",
+        description_ar="الدور الذي يُسند تلقائياً لعضو فريق جديد عند دعوته.",
+        description_en="The role assigned automatically to a new team member when invited.",
+    )
+)
+_reg(
+    SettingDef(
+        key="team.require_2fa",
+        domain="team",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        label_ar="إلزام المصادقة الثنائية لكل الأعضاء",
+        label_en="Require 2FA for All Members",
+        description_ar="فرض تفعيل المصادقة الثنائية على كل أعضاء الفريق قبل تسجيل الدخول.",
+        description_en="Force every team member to enable 2FA before signing in.",
+    )
+)
+_reg(
+    SettingDef(
+        key="team.session_timeout_minutes",
+        domain="team",
+        type=SettingType.NUMBER,
+        default=0,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=10080,
+        label_ar="مدة انتهاء الجلسة (دقائق)",
+        label_en="Session Timeout (Minutes)",
+        description_ar="مدة بقاء جلسة الموظف نشطة قبل أن تُسأل لإعادة الدخول. صفر يعني بلا حد.",
+        description_en=(
+            "How many minutes a staff session stays active before a re-login is required. "
+            "Zero means no limit."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="team.allow_member_invites",
+        domain="team",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بدعوة أعضاء",
+        label_en="Allow Member Invites",
+        description_ar="السماح للمدير بدعوة أعضاء جدد للفريق عبر البريد الإلكتروني.",
+        description_en="Allow managers to invite new team members by email.",
+    )
+)
+
+# ============================= SECURITY (§67-69) ===========================
+#
+# Security policies that protect the account: password rules, API key lifecycle,
+# and audit retention. These are tenant-level and sensitive.
+
+_reg(
+    SettingDef(
+        key="security.require_strong_passwords",
+        domain="security",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        label_ar="إلزام كلمات مرور قوية",
+        label_en="Require Strong Passwords",
+        description_ar="فرض كلمات مرور قوية (8 أحرف على الأقل، أرقام وحروف) عند التسجيل والتعيين.",
+        description_en=(
+            "Enforce strong passwords (at least 8 characters, with numbers and letters) on "
+            "registration and password reset."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="security.api_key_rotation_days",
+        domain="security",
+        type=SettingType.NUMBER,
+        default=90,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=365,
+        audit=True,
+        sensitivity=Sensitivity.SENSITIVE,
+        label_ar="مدة تدوير مفاتيح API (أيام)",
+        label_en="API Key Rotation Period (Days)",
+        description_ar=("عدد الأيام قبل أن يطلب النظام تدوير مفتاح API. صفر يعني لا تدوير إلزامي."),
+        description_en=(
+            "Days before the system asks to rotate an API key. Zero means no forced rotation."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="security.audit_retention_days",
+        domain="security",
+        type=SettingType.NUMBER,
+        default=365,
+        scopes=(Scope.TENANT,),
+        min_value=30,
+        max_value=2555,
+        label_ar="مدة الاحتفاظ بسجل التدقيق (أيام)",
+        label_en="Audit Log Retention (Days)",
+        description_ar="كم يوماً تُحفظ فيه سجلات التدقيق قبل أن تُؤرشف أو تُحذف.",
+        description_en="How many days audit logs are kept before they are archived or deleted.",
+    )
+)
+_reg(
+    SettingDef(
+        key="security.ip_allowlist",
+        domain="security",
+        type=SettingType.LIST,
+        default=[],
+        scopes=(Scope.TENANT,),
+        sensitivity=Sensitivity.SENSITIVE,
+        label_ar="قائمة IPs المسموح بها",
+        label_en="IP Allowlist",
+        description_ar="قائمة عناوين IP المسموح لها بالوصول. فارغة تعني السماح للجميع.",
+        description_en="List of IP addresses allowed to access the account. Empty = allow all.",
+    )
+)
+
+# ============================== BILLING (§53-54) ===========================
+#
+# Billing preferences that control subscription renewal, currency, and
+# renewal reminders. The billing service reads these to decide behaviour.
+
+_reg(
+    SettingDef(
+        key="billing.auto_renew",
+        domain="billing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        audit=True,
+        label_ar="التجديد التلقائي للاشتراك",
+        label_en="Auto-Renew Subscription",
+        description_ar="تجديد الاشتراك تلقائياً عند انتهاء الفترة الحالية.",
+        description_en="Automatically renew the subscription when the current period ends.",
+    )
+)
+_reg(
+    SettingDef(
+        key="billing.currency",
+        domain="billing",
+        type=SettingType.ENUM,
+        default="EGP",
+        scopes=(Scope.TENANT,),
+        allowed_values=("EGP", "USD", "SAR", "AED"),
+        label_ar="عملة الفوترة",
+        label_en="Billing Currency",
+        description_ar="العملة المستخدمة في الفواتير والمدفوعات.",
+        description_en="The currency used for invoices and payments.",
+    )
+)
+_reg(
+    SettingDef(
+        key="billing.notify_before_renewal_days",
+        domain="billing",
+        type=SettingType.NUMBER,
+        default=7,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=30,
+        label_ar="تنبيه قبل التجديد (أيام)",
+        label_en="Notify Before Renewal (Days)",
+        description_ar="كم يوماً قبل تجديد الاشتراك يُرسل تنبيه. صفر يعني لا تنبيه.",
+        description_en="Days before subscription renewal to send a reminder. Zero = no reminder.",
+    )
+)
+
+# ==================== NOTIFICATIONS (expanded, §166) =======================
+
+_reg(
+    SettingDef(
+        key="notifications.quiet_hours_start",
+        domain="notifications",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=5,
+        label_ar="بداية ساعات الهدوء",
+        label_en="Quiet Hours Start",
+        description_ar="الوقت الذي يبدأ عنده كتم الإشعارات (بصيغة 24 ساعة HH:MM).",
+        description_en="Time from which notifications are muted (24-hour HH:MM). Empty = none.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.quiet_hours_end",
+        domain="notifications",
+        type=SettingType.STRING,
+        default="",
+        scopes=(Scope.TENANT,),
+        max_length=5,
+        label_ar="نهاية ساعات الهدوء",
+        label_en="Quiet Hours End",
+        description_ar="الوقت الذي ينتهي عنده كتم الإشعارات (بصيغة 24 ساعة HH:MM).",
+        description_en="Time at which notification muting ends (24-hour HH:MM).",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.digest_mode",
+        domain="notifications",
+        type=SettingType.ENUM,
+        default="realtime",
+        scopes=(Scope.TENANT,),
+        allowed_values=("realtime", "hourly", "daily"),
+        label_ar="وضع تجميع الإشعارات",
+        label_en="Notification Digest Mode",
+        description_ar="كيف تُرسل الإشعارات: فورية، مجمّعة كل ساعة، أو يومية.",
+        description_en="How notifications arrive: instantly, hourly, or daily digest.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.email_enabled",
+        domain="notifications",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="إشعارات البريد الإلكتروني",
+        label_en="Email Notifications",
+        description_ar="إرسال الإشعارات عبر البريد الإلكتروني بالإضافة للإشعار داخل التطبيق.",
+        description_en="Send notifications by email in addition to in-app alerts.",
+    )
+)
+_reg(
+    SettingDef(
+        key="notifications.push_enabled",
+        domain="notifications",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="الإشعارات الفورية (Push)",
+        label_en="Push Notifications",
+        description_ar="إرسال إشعارات push للمتصفح والجوال.",
+        description_en="Send push notifications to browser and mobile.",
     )
 )
 
