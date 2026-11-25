@@ -248,3 +248,96 @@ class TestConfigMigrationFramework:
         finally:
             MIGRATIONS.clear()
             MIGRATIONS.extend(original)
+
+    @pytest.mark.asyncio
+    async def test_rename_key_with_multiple_scopes(self, db) -> None:
+        """A key rename migration renames overrides at EVERY scope, not just the first.
+
+        Also proves the runner is idempotent in a crash-recovery scenario:
+        the migration runs, the log row is written, and a second run is a
+        no-op — even when the data had multiple overrides.
+        """
+        from sqlalchemy import select
+
+        user, tenant = await _create_tenant(db)
+        await bind_tenant(db, tenant.id)
+
+        # Insert overrides at two different scopes with the same old key.
+        await _insert_override(db, tenant.id, "inventory.old_reserve_ttl", 10, scope="tenant")
+        await _insert_override(
+            db, tenant.id, "inventory.old_reserve_ttl", 20, scope="branch", scope_id=uuid.uuid4()
+        )
+        await db.flush()
+
+        test_migrations = [
+            ConfigMigration(
+                id="996_test_multi_scope_rename",
+                description="Rename inventory.old_reserve_ttl → inventory.reserve_ttl_minutes",
+                apply=lambda s, t: _rename_key(
+                    s, t, "inventory.old_reserve_ttl", "inventory.reserve_ttl_minutes"
+                ),
+            ),
+        ]
+
+        original = list(MIGRATIONS)
+        MIGRATIONS.clear()
+        MIGRATIONS.extend(test_migrations)
+        try:
+            # First run — applies the migration.
+            applied = await run_pending(db, tenant.id, applied_by=user.id)
+            await db.flush()
+            assert applied == ["996_test_multi_scope_rename"]
+
+            # ALL overrides should have the new key (both tenant and branch scope).
+            rows = (
+                (
+                    await db.execute(
+                        select(TenantSetting).where(
+                            TenantSetting.tenant_id == tenant.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(rows) == 2
+            keys = {r.key for r in rows}
+            assert keys == {"inventory.reserve_ttl_minutes"}
+            # No row should have the old key.
+            assert all(r.key != "inventory.old_reserve_ttl" for r in rows)
+
+            # The migration log should have exactly one row.
+            log_rows = (
+                (
+                    await db.execute(
+                        select(SettingMigrationLog).where(
+                            SettingMigrationLog.tenant_id == tenant.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(log_rows) == 1
+            assert log_rows[0].migration_id == "996_test_multi_scope_rename"
+
+            # Second run — idempotent: no-op, no new log rows, data unchanged.
+            second = await run_pending(db, tenant.id, applied_by=user.id)
+            await db.flush()
+            assert second == []
+
+            log_rows_after = (
+                (
+                    await db.execute(
+                        select(SettingMigrationLog).where(
+                            SettingMigrationLog.tenant_id == tenant.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(log_rows_after) == 1  # still just one
+        finally:
+            MIGRATIONS.clear()
+            MIGRATIONS.extend(original)

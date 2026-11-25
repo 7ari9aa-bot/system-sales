@@ -7,11 +7,19 @@
 ## Setting count
 
 The registry has **127 settings** (`len(REGISTRY)`). The source file contains
-121 `_reg()` call sites — fewer than 127 because one `_reg()` sits inside a
+120 `_reg()` call sites — fewer than 127 because one `_reg()` sits inside a
 `for` loop over `CAPABILITIES` (8 iterations), producing 8 setting definitions
-from a single call. So: 120 non-loop calls + 8 loop iterations = 128 raw
-definitions, minus 1 duplicate key deduped by the `{d.key: d for d in ...}` dict
-comprehension = **127 unique keys**.
+from a single call. So: 119 non-loop calls + 1 loop call × 8 iterations =
+127 definitions. There is no duplicate-key deduping: every `_reg()` call
+produces a unique key, and `len(REGISTRY) == len(_DEFINITIONS) == 127`.
+
+A review that reports **119** is counting only the non-loop `_reg()` call sites
+— the calls that are visible as individual statements outside any `for` body.
+The loop's single `_reg()` call site is not counted by a line-by-line review
+because it appears once in the source but runs 8 times. To count accurately:
+`len(REGISTRY)` is the source of truth; an AST walk that counts `_reg()` call
+nodes (including those inside `For` bodies) gives 120; multiplying by loop
+iterations and adding the non-loop count reproduces 127.
 
 ## Channel scope — open question
 

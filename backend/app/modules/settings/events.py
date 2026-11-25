@@ -56,3 +56,42 @@ class SettingsChangedEvent(EventEnvelope):
             "action": action,
             "changed_by": changed_by,
         }
+
+
+@register_event("security.setting_changed")
+class SecuritySettingChangedEvent(EventEnvelope):
+    """Emitted by the settings consumer when a ``security.*`` setting changes.
+
+    This is a downstream audit event — it is NOT emitted in the same
+    transaction as the setting write. The ``SettingsConsumer`` worker reads
+    ``settings.changed`` from the outbox stream and, when the key starts with
+    ``security.``, stages this event so the platform's security-audit
+    pipeline can record who changed a security setting, when, and from where.
+
+    The payload mirrors :class:`SettingsChangedEvent` so the audit pipeline
+    gets the same fields the consumer saw.
+    """
+
+    def expected_payload_keys(self) -> set[str]:
+        return {"key", "scope", "scope_id", "revision", "action", "changed_by"}
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        key: str,
+        scope: str,
+        scope_id: str | None,
+        revision: str,
+        action: str,
+        changed_by: str | None,
+    ) -> dict[str, Any]:
+        """Return the payload dict for ``add_outbox_event``."""
+        return {
+            "key": key,
+            "scope": scope,
+            "scope_id": scope_id,
+            "revision": revision,
+            "action": action,
+            "changed_by": changed_by,
+        }
