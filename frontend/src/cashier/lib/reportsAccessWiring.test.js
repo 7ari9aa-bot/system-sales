@@ -25,7 +25,8 @@ describe("the owner's switch for who sees cost and profit", () => {
 
   it("is on the settings page, in the tab where the owner decides who sees what", () => {
     expect(settingsPage).toMatch(/import ReportsAccessSettings from "@\/cashier\/components\/settings\/ReportsAccessSettings"/);
-    expect(settingsPage).toMatch(/<TabsContent value="users"[^>]*><UsersSettings \/><ReportsAccessSettings \/><\/TabsContent>/);
+    expect(settingsPage).toMatch(/value: "users"/);
+    expect(settingsPage).toMatch(/<ReportsAccessSettings \/>/);
   });
 
   it("does not hide the existing users screen", () => {

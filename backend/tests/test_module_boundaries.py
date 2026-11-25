@@ -329,7 +329,14 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # work began (pre-existing growth from cashier/stock work on main). The settings
 # architecture changes add NO new cross-module imports (all new imports are from
 # app.core.*). This raise brings the baseline in line with reality.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 322
+# 322 -> 335 on 2026-11-25: the settings wiring work (Phases 4–7) adds 13
+# cross-module imports — each service now reads its governing settings via
+# SettingsService (ai->settings +6, catalog->settings +3, orders->notifications
+# +1, pos->notifications +1, ai->conversations +1, orders->inventory +1).
+# These are service-level reads, not table imports, and the only new cycle
+# (settings joining {billing,identity,platform}) was broken by reading
+# organization settings via raw SQL in identity/services/hierarchy.py.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 335
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

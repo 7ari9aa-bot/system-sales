@@ -307,6 +307,36 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "purchasing.centralized",  # purchasing/service.py::PurchaseService.create
         "inventory.track_locations",  # inventory/services/locations.py::create_location
         "inventory.quality_check_on_receipt",  # purchasing/service.py::PurchaseService.receive
+        # Phase 6–7 wiring: settings now read by the services they govern.
+        "orders.reserve_on",  # orders/service.py::checkout
+        "orders.allow_backorder",  # orders/service.py::checkout
+        # confirm_sale, create_shipment, set_shipment_status
+        "orders.deduct_stock_on",  # orders/service.py
+        "notifications.low_stock_alert",  # scheduler_worker
+        "notifications.order_received",  # orders/service.py
+        "customer_agent.enabled",  # ai/hooks.py::maybe_auto_reply
+        "customer_agent.dialect",  # ai/hooks.py (style_directive)
+        "customer_agent.formality",  # ai/hooks.py (style_directive)
+        "customer_agent.response_language",  # ai/hooks.py (style_directive)
+        "customer_agent.handoff_enabled",  # ai/tools/support
+        "customer_agent.max_turns_before_handoff",  # ai/hooks.py
+        "customer_agent.show_prices",  # ai/tools/catalog
+        "customer_agent.show_stock",  # ai/tools/catalog
+        "analytics_agent.enabled",  # sales_intelligence agent
+        "analytics_agent.min_confidence",  # sales_intelligence agent
+        "analytics_agent.default_period",  # sales_intelligence agent
+        "analytics_agent.include_branches",  # sales_intelligence agent
+        "organization.multi_branch",  # branch service
+        "organization.max_branches",  # branch service
+        "branch.auto_close_shift",  # scheduler_worker
+        "branch.shift_end_time",  # scheduler_worker
+        "branch.notify_manager_on_variance",  # pos/service.py close_session
+        "branch.allow_independent_purchasing",  # purchasing/service.py
+        "catalog.sku_format",  # catalog/variants.py
+        "catalog.barcode_auto_generate",  # catalog/variants.py
+        "catalog.default_tax_rate",  # catalog/products.py
+        "catalog.show_out_of_stock",  # ai/tools/catalog
+        "catalog.max_variants_per_product",  # catalog/variants.py
     }
 )
 

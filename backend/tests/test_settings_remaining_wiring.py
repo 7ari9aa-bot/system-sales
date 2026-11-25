@@ -17,10 +17,7 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
-# Every database test in this file skips when no DB URL is set.
-pytestmark = pytest.mark.asyncio
+# The async tests below use asyncio_mode=auto (pyproject.toml).
 
 
 async def test_handoff_enabled_gate_returns_disabled():

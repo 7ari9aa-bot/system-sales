@@ -65,10 +65,23 @@ class HierarchyService:
             raise ConflictError("a workspace with this slug already exists")
 
         # Gate branch creation on the organization settings (Phase 4).
-        from app.modules.settings.service import SettingsService
+        # Read settings via raw SQL to avoid an identity → settings import cycle
+        # (settings/router.py already imports identity.deps). Defaults mirror the
+        # registry: multi_branch=False, max_branches=0 (unlimited).
+        async def _setting_value(key: str, default):
+            row = (
+                await session.execute(
+                    sa.text(
+                        "SELECT value -> 'v' FROM tenant_settings "
+                        "WHERE tenant_id = :tid AND key = :k AND scope = 'tenant' "
+                        "LIMIT 1"
+                    ),
+                    {"tid": tenant_id, "k": key},
+                )
+            ).scalar_one_or_none()
+            return row if row is not None else default
 
-        settings = SettingsService(session, tenant_id)
-        multi_branch = await settings.value("organization.multi_branch")
+        multi_branch = await _setting_value("organization.multi_branch", False)
         existing_count = (
             await session.execute(
                 sa.select(sa.func.count())
@@ -81,7 +94,7 @@ class HierarchyService:
                 "multi-branch is not enabled for this tenant; "
                 "enable it in settings before adding more workspaces"
             )
-        max_branches = await settings.value("organization.max_branches")
+        max_branches = await _setting_value("organization.max_branches", 0)
         if max_branches and max_branches > 0 and existing_count >= max_branches:
             raise ValidationError(
                 f"this tenant already has the maximum of {max_branches} workspaces"

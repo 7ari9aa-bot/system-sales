@@ -53,14 +53,23 @@ async def test_deduct_stock_on_setting_is_read_by_confirm_sale():
     assert "deduct_stock_on" in source
 
 
-@pytest.mark.asyncio
-async def test_deduct_stock_on_setting_is_read_by_ship_order():
-    """ship_order reads orders.deduct_stock_on to deduct at ship time."""
+def test_deduct_stock_on_setting_is_read_by_create_shipment():
+    """create_shipment reads orders.deduct_stock_on to deduct at ship time."""
     import inspect
 
     from app.modules.orders.service import OrderService
 
-    source = inspect.getsource(OrderService.ship_order)
+    source = inspect.getsource(OrderService.create_shipment)
+    assert "deduct_stock_on" in source
+
+
+def test_deduct_stock_on_setting_is_read_by_set_shipment_status():
+    """set_shipment_status reads orders.deduct_stock_on to deduct at deliver time."""
+    import inspect
+
+    from app.modules.orders.service import OrderService
+
+    source = inspect.getsource(OrderService.set_shipment_status)
     assert "deduct_stock_on" in source
 
 
@@ -117,12 +126,12 @@ def test_show_out_of_stock_setting_is_read_by_catalog_search():
 # customer_agent.max_turns_before_handoff — AI hooks
 # -----------------------------------------------------------------------
 def test_max_turns_before_handoff_is_read_by_ai_hooks():
-    """maybe_auto_reply reads customer_agent.max_turns_before_handoff."""
+    """_do_auto_reply reads customer_agent.max_turns_before_handoff."""
     import inspect
 
-    from app.modules.ai.hooks import maybe_auto_reply
+    from app.modules.ai.hooks import _do_auto_reply
 
-    source = inspect.getsource(maybe_auto_reply)
+    source = inspect.getsource(_do_auto_reply)
     assert "max_turns_before_handoff" in source
 
 
