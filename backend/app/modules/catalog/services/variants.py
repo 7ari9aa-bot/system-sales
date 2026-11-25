@@ -63,6 +63,29 @@ class VariantServiceMixin:
         if not product_checked:
             await CatalogService.get_product(session, tenant_id, product_id)
         unit_price = _positive_decimal(price, "price")
+
+        # Enforce the per-product variant limit (catalog.max_variants_per_product).
+        from app.modules.settings.service import SettingsService
+
+        max_variants = await SettingsService(session, tenant_id).value(
+            "catalog.max_variants_per_product"
+        )
+        if max_variants and max_variants > 0:
+            current = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(ProductVariant)
+                    .where(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.product_id == product_id,
+                    )
+                )
+            ).scalar_one()
+            if current >= max_variants:
+                raise ValidationError(
+                    f"this product already has the maximum of {max_variants} variants"
+                )
+
         sku = sku or None
         if sku is not None and not sku_checked:
             duplicate = (

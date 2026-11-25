@@ -26,6 +26,7 @@ from app.core.security import hash_password
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.identity.models import Tenant, TenantUser, User
+from app.modules.settings.service import SettingsService
 
 ALL_PERMS = {"settings:read", "settings:write"}
 
@@ -149,6 +150,10 @@ async def test_location_crud_under_workspace(db: AsyncSession, tenant_ctx) -> No
             json={"name": "Branch 1b", "code": "B1"},
         )
         assert dup.status_code == 409
+        # Enable multi-branch so the second workspace can be created.
+        await SettingsService(db, tenant_ctx.tenant_id).set(
+            "organization.multi_branch", True, permissions=None
+        )
         ws2 = (
             await client.post(
                 "/api/v1/hierarchy/workspaces", json={"name": "North", "slug": "north"}

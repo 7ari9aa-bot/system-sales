@@ -63,6 +63,30 @@ class HierarchyService:
         ).scalar_one_or_none()
         if dup is not None:
             raise ConflictError("a workspace with this slug already exists")
+
+        # Gate branch creation on the organization settings (Phase 4).
+        from app.modules.settings.service import SettingsService
+
+        settings = SettingsService(session, tenant_id)
+        multi_branch = await settings.value("organization.multi_branch")
+        existing_count = (
+            await session.execute(
+                sa.select(sa.func.count())
+                .select_from(Workspace)
+                .where(Workspace.tenant_id == tenant_id)
+            )
+        ).scalar_one()
+        if not multi_branch and existing_count >= 1:
+            raise ValidationError(
+                "multi-branch is not enabled for this tenant; "
+                "enable it in settings before adding more workspaces"
+            )
+        max_branches = await settings.value("organization.max_branches")
+        if max_branches and max_branches > 0 and existing_count >= max_branches:
+            raise ValidationError(
+                f"this tenant already has the maximum of {max_branches} workspaces"
+            )
+
         ws = Workspace(tenant_id=tenant_id, name=name, slug=slug)
         session.add(ws)
         await session.flush()

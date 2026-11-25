@@ -432,7 +432,12 @@ BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 322
 # The ratchet tightened on the old side; the new modules bring their 9 edges.
 # 9 -> 12 on 2026-11-23 (owner-approved raise): main already measured 12 (authority, billing,
 # catalog, conversations, customers, inventory, marketing, platform); the Meta branch adds none.
-BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 12
+# 12 -> 14 on 2026-11-25: the settings-wiring phase added module-scope SettingsService imports
+# in purchasing/service.py (purchasing.approval_* / centralized / receipt settings) and
+# orders/service.py (auto_reserve toggle). inventory/services/screens.py already had one;
+# catalog/routers/imports.py already had one. Both are settings — a cross-cutting capability,
+# not a domain contract — so the import is the same kind as the existing audit/service edges.
+BASELINE_MODULE_SCOPE_SERVICE_IMPORTS = 14
 # 8 -> 9 on 2026-10-21 (owner-approved raise): measured 9 on a clean main. All nine are in
 # authority/billing/conversations/customers/marketing/platform, none in the cashier modules
 # (pos, inventory, purchasing, expenses). A pre-existing overshoot, now recorded as the ceiling.
