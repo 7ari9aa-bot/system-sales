@@ -592,6 +592,7 @@ export default {
   "profile.link.security": "Login & security",
   "profile.link.security.desc": "Password, two-step verification and sessions.",
   "settings.nav.workspace": "Workspace",
+  "settings.nav.all": "All Settings",
   "settings.brandColor.title": "Brand Color",
   "settings.brandColor.desc": "Primary brand color for the UI and receipts (HEX).",
   "settings.brandColor.invalid": "Invalid format. Use #RRGGBB like #2563EB",

@@ -592,6 +592,7 @@ export default {
   "profile.link.security": "تسجيل الدخول والأمان",
   "profile.link.security.desc": "كلمة المرور والتحقق بخطوتين والجلسات.",
   "settings.nav.workspace": "مساحة العمل",
+  "settings.nav.all": "كل الإعدادات",
   "settings.brandColor.title": "لون العلامة التجارية",
   "settings.brandColor.desc": "اللون الرئيسي للواجهة والإيصالات (كود HEX).",
   "settings.brandColor.invalid": "الصيغة غير صحيحة. استخدم #RRGGBB مثل #2563EB",

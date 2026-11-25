@@ -31,6 +31,7 @@ Settings are mounted under `/settings/*` in `frontend/src/App.jsx`. The routes a
 | `/settings/members` | `MembersSettings` | P3 |
 | `/settings/security` | `SecuritySettings` | P3 |
 | `/settings/danger` | `DataSettings` (DangerZone) | P3 |
+| `/settings/all` | `UnifiedSettings` | P3 |
 
 There is also a legacy `Settings.jsx` at `/settings` (the old overview page) that has been
 superseded by `ProfileSettings` as the default landing screen.
@@ -47,6 +48,11 @@ consumption of AI credits.
 
 **P3 — Platform Management:**
 Billing, Members, Security, Danger Zone. These are admin-level screens for account governance.
+
+**Unified — All Settings:**
+The `/settings/all` route (`UnifiedSettings`) is the single page that consumes the unified
+`/settings/effective` endpoint for ALL domains at once, grouped by domain from the registry.
+It uses the shared `useSettings` hook and replaces the need for per-domain API calls.
 
 ---
 
@@ -70,14 +76,17 @@ A growing number of components consume the unified endpoint directly:
 
 | Component | Call | Keys/Domain |
 |---|---|---|
+| `components/settings/useSettings.js` | `api("/settings/definitions")` + `api("/settings/effective")` | ALL domains (shared hook) |
 | `components/settings/BrandColorCard.jsx` | `api("/settings/effective/organization.brand_color")` | Single key |
 | `components/settings/AnalyticsAgentCard.jsx` | `api("/settings/effective?domain=analytics_agent")` | Domain |
 | `components/settings/OrganizationBranchCard.jsx` | `api("/settings/effective?domain=organization")` + `?domain=branch` | Two domains |
 | `cashier/components/settings/ShopPolicySettings.jsx` | `api("/settings/definitions?domain=...")` + `api("/settings/effective?domain=...")` | Domain (definitions + effective) |
 | `cashier/api/useShifts.js` | `api("/settings/effective?keys=pos.variance_reason_required,pos.variance_approval_threshold")` | Multiple keys |
 
-**Status:** 🟡 partial — 5 components use `/settings/effective`; the majority still use
-per-domain APIs. The P3 goal is to unify all settings screens to consume `/settings/effective`.
+**Status:** 🟡 growing — 6 consumers use `/settings/effective`. The `useSettings` shared hook
+is the canonical way for new screens to consume settings; it fetches all definitions and
+effective values in two calls, groups by domain, and exposes a save function. The P3 goal is
+to unify all settings screens to consume `/settings/effective` via this hook.
 
 ---
 
@@ -222,8 +231,8 @@ manual responsibility (no CI guard yet).
 
 | Gap | Priority | Status |
 |---|---|---|
-| Most screens use per-domain APIs, not `/settings/effective` | P3 | 🟡 partial |
-| Frontend i18n labels not synced with registry labels | P3 | ❌ missing |
+| Most screens use per-domain APIs, not `/settings/effective` | P3 | 🟡 partial — `useSettings` hook + `UnifiedSettings` page now exist |
+| Frontend i18n labels not synced with registry labels | P3 | 🟡 partial — `UnifiedSettings` renders from registry labels |
 | No CI guard for frontend settings API consumption | P3 | ❌ missing |
-| `security.audit_retention_days` has no frontend screen | P3 | ❌ missing |
-| No frontend screen for `notifications.email_enabled` / `push_enabled` toggles | P3 | ❌ missing |
+| `security.audit_retention_days` has no frontend screen | P3 | ✅ resolved — visible on `/settings/all` |
+| No frontend screen for `notifications.email_enabled` / `push_enabled` toggles | P3 | ✅ resolved — visible on `/settings/all` |

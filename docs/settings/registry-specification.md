@@ -224,7 +224,7 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 |---|---|---|---|---|---|---|---|---|---|---|
 | `security.require_strong_passwords` | bool | true | TENANT | sensitive | validated | — | — | ✅ | — | all |
 | `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | validated | 0 | 365 | ✅ | — | all |
-| `security.audit_retention_days` | number | 365 | TENANT | normal | validated | 30 | 2555 | — | — | all |
+| `security.audit_retention_days` | number | 365 | TENANT | normal | validated | 0 | 2555 | ✅ | — | all |
 | `security.ip_allowlist` | list | `[]` | TENANT | sensitive | validated | — | — | ✅ | — | all |
 
 ## Billing (3 settings)

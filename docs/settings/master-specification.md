@@ -118,7 +118,7 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | Security settings (passwords, API rotation, audit retention, IP allowlist) | ✅ registered | `registry.py` — `security.*` (4 keys) |
 | `security.require_strong_passwords` → auth validation | ✅ | `identity/services/auth.py` — direct SQL read; enforced |
 | `security.api_key_rotation_days` → secrets rotation | ✅ | `core/api_key_rotation.py` — reads via `settings_read` resolver; `scheduler_worker._handle_secret_rotation_sweep` calls `due_secret_references` and notifies owners; enforced |
-| `security.audit_retention_days` → retention worker | ❌ | Defined in registry; not read by any worker |
+| `security.audit_retention_days` → audit retention sweep | ✅ | `scheduler_worker._handle_audit_retention_sweep` deletes `audit_logs` older than the window daily; 0 = skip; enforced |
 | `security.ip_allowlist` → middleware gate | ✅ | `identity/deps.py` `get_current_user`; enforced |
 | Notification settings (low stock, order received, quiet hours, digest) | ✅ registered | `registry.py` — `notifications.*` (7 keys) |
 | `notifications.low_stock_alert` → scheduler worker | ✅ | Consumed by `scheduler_worker` |
@@ -130,7 +130,7 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | `billing.auto_renew` → trial expiry lock | ✅ | `billing/services/trial_expiry.py` — direct SQL read; enforced |
 | `billing.notify_before_renewal_days` → renewal reminder | ✅ | `billing/services/trial_expiry.py::_tenant_billing_config`; enforced |
 | `billing.currency` → billing config | ✅ | `billing/services/trial_expiry.py::_tenant_billing_config`; enforced |
-| Frontend unified consumption of `/settings/effective` | ❌ | Most frontend settings screens use per-domain APIs, not the settings registry API |
+| Frontend unified consumption of `/settings/effective` | 🟡 | `useSettings` shared hook + `UnifiedSettings` page (`/settings/all`) consume all settings via `/settings/effective`, grouped by domain; legacy per-domain screens still exist |
 
 ### P4 — Advanced Governance 🟡 (partial)
 
@@ -210,10 +210,10 @@ changes `registry.py` without regenerating the spec fails CI.
 
 | Area | What is left | Priority |
 |---|---|---|
-| Unwired keys | `security.audit_retention_days` | P3 |
+| ~~Unwired keys~~ | `security.audit_retention_days` now wired to `audit_retention_sweep` | ✅ P3 |
 | Notification delivery worker | Consumes `notification.email` / `notification.push` from outbox; Resend email adapter + FCM push adapter + fake providers for tests | P3 |
 | API key rotation | `core/api_key_rotation.py` reads via `settings_read` resolver; `scheduler_worker._handle_secret_rotation_sweep` sweeps per tenant every 24h and notifies owners | ✅ P3 |
-| Frontend | Unified consumption of `/settings/effective` across all settings screens (see [frontend-specification.md](frontend-specification.md)) | P3 |
+| Frontend | `useSettings` shared hook + `UnifiedSettings` page (`/settings/all`) now consume `/settings/effective` for all domains; legacy per-domain screens still migrate incrementally (see [frontend-specification.md](frontend-specification.md)) | 🟡 P3 |
 | Config migrations | Versioned settings schema migration framework | P4 |
 | Tenant restore | §164 tenant-scoped restore from backup | P4 |
 | SLO framework | §168 SLO monitoring for settings | P4 |

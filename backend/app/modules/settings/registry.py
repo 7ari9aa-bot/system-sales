@@ -353,6 +353,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "billing.currency",  # billing/services/trial_expiry.py::_tenant_billing_config
         "billing.notify_before_renewal_days",  # billing/services/trial_expiry.py
         "security.api_key_rotation_days",  # core/api_key_rotation.py
+        "security.audit_retention_days",  # scheduler_worker (audit_retention_sweep)
         "security.ip_allowlist",  # identity/deps.py get_current_user
         "security.require_strong_passwords",  # identity/services/auth.py
         "team.session_timeout_minutes",  # identity/services/auth.py::_resolve_access_ttl
@@ -2183,12 +2184,12 @@ _reg(
         type=SettingType.NUMBER,
         default=365,
         scopes=(Scope.TENANT,),
-        min_value=30,
+        min_value=0,
         max_value=2555,
         label_ar="مدة الاحتفاظ بسجل التدقيق (أيام)",
         label_en="Audit Log Retention (Days)",
-        description_ar="كم يوماً تُحفظ فيه سجلات التدقيق قبل أن تُؤرشف أو تُحذف.",
-        description_en="How many days audit logs are kept before they are archived or deleted.",
+        description_ar="كم يوماً تُحفظ فيه سجلات التدقيق قبل أن تُحذف. صفر يعني عدم الحذف.",
+        description_en="Days audit logs are kept before deletion. Zero means no deletion.",
     )
 )
 _reg(

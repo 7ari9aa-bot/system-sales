@@ -106,6 +106,9 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
     # tenant-scoped and read their gating setting at execution time.
     "inventory.low_stock_alerts": (timedelta(hours=6), {}),
     "pos.auto_close_shifts": (timedelta(hours=1), {}),
+    # §settings: security.audit_retention_days — a daily sweep that deletes
+    # audit_logs older than the retention window. 0 means skip (no deletion).
+    "audit_retention_sweep": (timedelta(hours=24), {}),
 }
 
 
@@ -1075,3 +1078,36 @@ async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
 
 
 register_job_handler("pos.auto_close_shifts", _handle_auto_close_shifts)
+
+
+async def _handle_audit_retention_sweep(session, tenant_id, payload: dict) -> dict:
+    """§settings: security.audit_retention_days — delete audit logs older than the window.
+
+    Reads the tenant-level setting; ``0`` means no deletion (skip). Otherwise
+    deletes ``audit_logs`` rows for THIS tenant whose ``created_at`` is older
+    than ``now - retention_days``. Tenant-scoped by construction: the scheduler
+    binds the tenant GUC before calling this handler, so the DELETE only
+    touches this tenant's rows even without an explicit tenant_id filter (the
+    filter is kept for clarity and for tests that run without RLS).
+    """
+    from app.modules.settings.service import SettingsService
+
+    days = await SettingsService(session, tenant_id).value("security.audit_retention_days")
+    if not days or int(days) <= 0:
+        return {"skipped": True, "reason": "retention disabled (0 days)"}
+
+    from sqlalchemy import delete
+
+    from app.modules.platform.models import AuditLog
+
+    cutoff = datetime.now(UTC) - timedelta(days=int(days))
+    result = await session.execute(
+        delete(AuditLog).where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.created_at < cutoff,
+        )
+    )
+    return {"deleted": result.rowcount, "retention_days": int(days)}
+
+
+register_job_handler("audit_retention_sweep", _handle_audit_retention_sweep)
