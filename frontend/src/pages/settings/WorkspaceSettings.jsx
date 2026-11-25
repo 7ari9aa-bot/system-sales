@@ -1,5 +1,6 @@
 import React from "react";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
@@ -152,8 +153,17 @@ export default function WorkspaceSettings() {
                 {tenant?.slug || "—"}
               </span>
             </SettingRow>
-            <SettingRow label={t("workspace.role")} last>
+            <SettingRow label={t("workspace.role")}>
               <span className="text-[13px] font-medium">{tenant?.role_code || "—"}</span>
+            </SettingRow>
+            <SettingRow label={t("dialect.title")} desc={t("dialect.desc")} last>
+              <Link
+                to="/settings/ai"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t("settings.nav.ai")}
+              </Link>
             </SettingRow>
           </div>
         </SettingCard>
