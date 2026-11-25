@@ -340,14 +340,23 @@ class NotificationService:
             ["notifications.email_enabled", "notifications.push_enabled"],
         )
 
-        if channels["notifications.email_enabled"]:
-            await NotificationService._send_email(
-                session, tenant_id, user_id, title=title or kind, body=body
-            )
-        if channels["notifications.push_enabled"]:
-            await NotificationService._send_push(
-                session, tenant_id, user_id, title=title or kind, body=body
-            )
+        delivery_ok = True
+        try:
+            if channels["notifications.email_enabled"]:
+                await NotificationService._send_email(
+                    session, tenant_id, user_id, title=title or kind, body=body
+                )
+            if channels["notifications.push_enabled"]:
+                await NotificationService._send_push(
+                    session, tenant_id, user_id, title=title or kind, body=body
+                )
+        except Exception:
+            delivery_ok = False
+            raise
+        finally:
+            from app.modules.settings.slo import record_notification_delivery
+
+            await record_notification_delivery(succeeded=delivery_ok)
 
         return notif
 

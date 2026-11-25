@@ -141,7 +141,7 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | `reviewed_at` column in change requests | ✅ | `models.py` — `TIMESTAMP(timezone=True)` column; set by `approve_change_request` and `reject_change_request` |
 | Config migration framework | ✅ | `config_migrations.py` — `ConfigMigration`, `MIGRATIONS`, `run_pending` (idempotent); `models.py` — `SettingMigrationLog`; `router.py` — `GET /settings/migrations`, `POST /settings/migrations/run` |
 | Tenant-scoped restore (§164) | ✅ | `service.py` — `restore_to_snapshot`; `router.py` — `POST /settings/restore` (admin-gated, audit-logged, RLS-isolated) |
-| SLO framework (§168) | ❌ | No SLO monitoring or alerting for settings |
+| SLO framework (§168) | ✅ | SLO framework implemented: `slo.py` defines 3 SLOs (settings latency, notification delivery, outbox lag), records via Redis counters, exposed at `GET /settings/slo` |
 | Extended/dynamic presets | ❌ | Presets are static in `presets.py`; no runtime preset creation |
 | SecretStore integration for `sensitivity=secret` settings | ✅ | `core/secrets.py` — `EnvelopeSecretStore` + rotation; no setting uses `secret` sensitivity yet |
 | Guard test: enforced keys | ✅ | `tests/test_settings_enforced_keys.py` — bidirectional check |
@@ -193,6 +193,53 @@ changes `registry.py` without regenerating the spec fails CI.
 
 ---
 
+## 5b. SLO Framework (§168)
+
+The settings control plane is held to three service-level objectives, defined
+in `backend/app/modules/settings/slo.py`:
+
+| SLO | Target | Measurement | Metric |
+|---|---|---|---|
+| `settings_effective_latency` | p99 < 500 ms | Wall-clock time of `GET /settings/effective` | `settings_effective_requests_total`, `settings_effective_duration_seconds_total`, `settings_effective_slow_total` |
+| `notification_delivery` | ≥ 99% success | `NotificationService.dispatch` outcome (in-app + outbox staging) | `notification_delivery_total{outcome=delivered\|failed}` |
+| `outbox_lag` | < 30 s | Age of oldest unpublished outbox row | `outbox_oldest_pending_seconds` (existing gauge) |
+
+**Recording**: The `resolve_effective_settings` endpoint times itself with
+`time.monotonic()` and calls `record_settings_resolve()`. The notification
+service wraps `dispatch` with `record_notification_delivery()` in a
+`try/finally` block. All writes are fire-and-forget (`strict=False`): a Redis
+outage never breaks a settings read or notification dispatch.
+
+**Reading**: `GET /settings/slo` (admin, `settings:read`) returns the live
+counters and a status verdict (`healthy`, `degraded`, `unknown`) per SLO.
+
+## 5c. Advanced Presets (§170)
+
+Presets are composable: a preset may `extends` another, inheriting the parent's
+values and overriding with its own. The resolution is recursive and
+cycle-detected. The flat `PRESETS` dict holds fully-merged results for
+backward compatibility; `PRESET_DEFS` holds the structured definitions.
+
+**Composition chain** (current):
+
+```
+physical_retail (root)
+├── ecommerce
+├── omnichannel
+│   └── enterprise
+└── apparel_ground_shop
+```
+
+**Dry-run preview**: `POST /settings/presets/{name}/preview` returns the diff
+(per-key current vs target value, changed vs unchanged) without writing.
+
+**Atomic application**: `POST /settings/presets/{name}` applies all keys in one
+transaction via `bulk_set` (all-or-nothing). Each key writes a history row with
+`reason=preset:<name>`. One audit-log row records the preset application as a
+whole (`settings.preset_applied`).
+
+---
+
 ## 6. What is done and what is left
 
 ### Done ✅
@@ -201,7 +248,9 @@ changes `registry.py` without regenerating the spec fails CI.
 - 3 RLS-protected tables with full audit trail
 - 17 HTTP endpoints with hierarchical resolution, optimistic concurrency, and rollback
 - Change request lifecycle for approval-gated settings
-- 5 business-type presets and 8 vertical-based capabilities
+- 5 business-type presets (now composable via `extends`) and 8 vertical-based capabilities
+- SLO framework (§168): 3 SLOs with Redis counters and admin endpoint
+- Advanced presets (§170): composable presets, dry-run preview, atomic apply with audit
 - `settings.changed` outbox event for cache invalidation
 - ~90+ keys actively consumed by services (enforced)
 - Guard tests for enforced keys and registry spec sync
@@ -214,7 +263,8 @@ changes `registry.py` without regenerating the spec fails CI.
 | Notification delivery worker | Consumes `notification.email` / `notification.push` from outbox; Resend email adapter + FCM push adapter + fake providers for tests | P3 |
 | API key rotation | `core/api_key_rotation.py` reads via `settings_read` resolver; `scheduler_worker._handle_secret_rotation_sweep` sweeps per tenant every 24h and notifies owners | ✅ P3 |
 | Frontend | `useSettings` shared hook + `UnifiedSettings` page (`/settings/all`) now consume `/settings/effective` for all domains; legacy per-domain screens still migrate incrementally (see [frontend-specification.md](frontend-specification.md)) | 🟡 P3 |
-| Config migrations | Versioned settings schema migration framework | P4 |
-| Tenant restore | §164 tenant-scoped restore from backup | P4 |
-| SLO framework | §168 SLO monitoring for settings | P4 |
+| Config migrations | Versioned settings schema migration framework | ✅ P4 |
+| Tenant restore | §164 tenant-scoped restore from backup | ✅ P4 |
+| SLO framework | §168 SLO monitoring for settings | ✅ P4 |
+| Advanced presets | Composable presets (extends), dry-run preview, atomic apply with audit | ✅ P4 |
 | Dynamic presets | Runtime preset creation based on vertical | P4 |

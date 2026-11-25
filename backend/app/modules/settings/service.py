@@ -557,6 +557,50 @@ class SettingsService:
     # PRESETS: apply a business-type preset
     # ------------------------------------------------------------------
 
+    async def preview_preset(
+        self,
+        preset_name: str,
+    ) -> dict[str, Any]:
+        """Dry-run: show what would change if the preset were applied, without writing.
+
+        Returns a dict with:
+        * ``preset``: the resolved (merged with parents) preset name.
+        * ``chain``: the inheritance chain (root → child).
+        * ``changes``: per key, the current effective value and the preset's target value.
+        * ``unchanged``: keys whose effective value already matches the preset.
+        * ``total_keys``: count of keys in the resolved preset.
+        """
+        from app.modules.settings.presets import preset_chain, resolve_preset
+
+        merged = resolve_preset(preset_name)
+        chain = preset_chain(preset_name)
+        resolved = await self.resolve_many(list(merged))
+
+        changes: list[dict[str, Any]] = []
+        unchanged: list[str] = []
+        for key, target in merged.items():
+            current = resolved[key].value
+            if current == target:
+                unchanged.append(key)
+            else:
+                changes.append(
+                    {
+                        "key": key,
+                        "current_value": current,
+                        "target_value": target,
+                        "current_scope": resolved[key].scope,
+                        "is_default": resolved[key].is_default,
+                    }
+                )
+        return {
+            "preset": preset_name,
+            "chain": chain,
+            "total_keys": len(merged),
+            "changes": changes,
+            "unchanged_count": len(unchanged),
+            "unchanged": unchanged,
+        }
+
     async def apply_preset(
         self,
         preset_name: str,
@@ -571,22 +615,38 @@ class SettingsService:
         already has an owner row exactly as it is. The first-run setup uses it, so choosing a
         preset can never overwrite a choice the owner made; the preset screen keeps the default
         (replace everything) because there the owner is asking for exactly that.
-        """
-        from app.modules.settings.presets import PRESETS
 
-        preset = PRESETS.get(preset_name)
-        if preset is None:
+        Atomic: ``bulk_set`` validates every key before any write, and the caller's
+        transaction rolls back on failure. Audit: each key writes a history row with
+        ``reason=preset:<name>``, and one audit-log row records the preset application.
+        """
+        from app.modules.settings.presets import PRESETS, resolve_preset
+
+        if preset_name not in PRESETS:
             raise ValidationError(f"unknown preset {preset_name!r}")
+        merged = resolve_preset(preset_name)
         if only_missing:
-            resolved = await self.resolve_many(list(preset))
-            preset = {k: v for k, v in preset.items() if resolved[k].is_default}
-        return await self.bulk_set(
-            preset,
+            resolved = await self.resolve_many(list(merged))
+            merged = {k: v for k, v in merged.items() if resolved[k].is_default}
+        rows = await self.bulk_set(
+            merged,
             scope=Scope.TENANT,
             user_id=user_id,
             reason=f"preset:{preset_name}",
             permissions=permissions,
         )
+        # One audit row for the preset application as a whole (§170).
+        await write_audit_row(
+            self._session,
+            self._tenant_id,
+            user_id,
+            "settings.preset_applied",
+            "tenant_settings",
+            str(self._tenant_id),
+            before={"preset": preset_name, "keys": list(merged.keys())},
+            after={"preset": preset_name, "applied_count": len(rows)},
+        )
+        return rows
 
     # ------------------------------------------------------------------
     # Private helpers

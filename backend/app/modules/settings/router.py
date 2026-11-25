@@ -1,11 +1,12 @@
 """Settings routes — API endpoints for the FIHRIST Configuration Engine.
 
-Provides CRUD, resolution, domain grouping, preset application, and audit history.
-Gated by settings:read and settings:write permissions.
+Provides CRUD, resolution, domain grouping, preset application, SLO status,
+and audit history. Gated by settings:read and settings:write permissions.
 """
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Annotated
 
@@ -16,7 +17,7 @@ from app.core.audit import write_audit_row
 from app.modules.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.capabilities import shop_capabilities
-from app.modules.settings.presets import PRESETS
+from app.modules.settings.presets import PRESET_DEFS, PRESETS, preset_chain, resolve_preset
 from app.modules.settings.registry import (
     SEGMENTS,
     Scope,
@@ -153,6 +154,9 @@ async def resolve_effective_settings(
     keys: Annotated[str | None, Query()] = None,
 ) -> dict[str, ResolvedSettingOut]:
     """Resolve effective settings at the given scope with inheritance."""
+    from app.modules.settings.slo import record_settings_resolve
+
+    t0 = time.monotonic()
     svc = SettingsService(ctx.session, ctx.tenant_id)
     scope_enum = Scope(scope)
 
@@ -166,6 +170,7 @@ async def resolve_effective_settings(
         all_keys = [d.key for d in all_defs]
         resolved = await svc.resolve_many(all_keys, scope=scope_enum, scope_id=scope_id)
 
+    await record_settings_resolve(duration_seconds=time.monotonic() - t0)
     return {k: _resolved_to_out(v) for k, v in resolved.items()}
 
 
@@ -308,8 +313,31 @@ async def reset_setting(
 
 @router.get("/presets")
 async def list_presets(ctx: SettingsReadCtx) -> dict[str, dict[str, object]]:
-    """List available business configuration presets and their default keys."""
-    return PRESETS
+    """List available business configuration presets with composition metadata."""
+    out: dict[str, dict[str, object]] = {}
+    for name, defn in PRESET_DEFS.items():
+        out[name] = {
+            "values": resolve_preset(name),
+            "extends": defn.extends,
+            "chain": preset_chain(name),
+            "label_ar": defn.label_ar,
+            "label_en": defn.label_en,
+            "description_ar": defn.description_ar,
+            "description_en": defn.description_en,
+        }
+    return out
+
+
+@router.post("/presets/{preset_name}/preview")
+async def preview_preset(
+    preset_name: str,
+    ctx: SettingsReadCtx,
+) -> dict[str, object]:
+    """Dry-run: show what would change if the preset were applied, without writing."""
+    if preset_name not in PRESETS:
+        raise NotFoundError(f"preset {preset_name!r} not found")
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    return await svc.preview_preset(preset_name)
 
 
 @router.post("/presets/{preset_name}")
@@ -317,7 +345,7 @@ async def apply_preset(
     preset_name: str,
     ctx: SettingsWriteCtx,
 ) -> dict[str, object]:
-    """Apply a business-type preset to the tenant scope."""
+    """Apply a business-type preset to the tenant scope (atomic, with audit)."""
     if preset_name not in PRESETS:
         raise NotFoundError(f"preset {preset_name!r} not found")
     if "settings:write" not in ctx.permission_codes:
@@ -331,6 +359,23 @@ async def apply_preset(
         "preset": preset_name,
         "applied_count": len(applied),
     }
+
+
+# ---------------------------------------------------------------------------
+# SLO Status (§168)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/slo")
+async def get_settings_slo(ctx: SettingsReadCtx) -> dict[str, object]:
+    """Return the current SLO status for the settings control plane.
+
+    Admin-only: requires ``settings:read``. Reads the live metrics counters
+    and outbox gauges, and returns the compliance verdict for each SLO.
+    """
+    from app.modules.settings.slo import get_slo_status
+
+    return await get_slo_status()
 
 
 # ---------------------------------------------------------------------------

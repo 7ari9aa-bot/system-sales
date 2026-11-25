@@ -223,6 +223,35 @@ CATALOGUE: tuple[MetricDefinition, ...] = (
         help_text="Budget reservation or limit exhaustion failures.",
         type="counter",
     ),
+    # Settings SLO framework — §168
+    MetricDefinition(
+        name="settings_effective_requests_total",
+        help_text="Total requests to the /settings/effective resolution endpoint.",
+        type="counter",
+        label_names=("collector",),
+        allowed_values={"collector": frozenset({"settings_effective"})},
+    ),
+    MetricDefinition(
+        name="settings_effective_duration_seconds_total",
+        help_text="Total wall-clock seconds spent resolving /settings/effective.",
+        type="counter",
+        label_names=("collector",),
+        allowed_values={"collector": frozenset({"settings_effective"})},
+    ),
+    MetricDefinition(
+        name="settings_effective_slow_total",
+        help_text=("Requests to /settings/effective that exceeded the SLO latency target (0.5 s)."),
+        type="counter",
+        label_names=("collector",),
+        allowed_values={"collector": frozenset({"settings_effective"})},
+    ),
+    MetricDefinition(
+        name="notification_delivery_total",
+        help_text="NotificationService.dispatch outcomes (in-app + outbox staging).",
+        type="counter",
+        label_names=("outcome",),
+        allowed_values={"outcome": frozenset({"delivered", "failed"})},
+    ),
 )
 
 _BY_NAME: dict[str, MetricDefinition] = {m.name: m for m in CATALOGUE}
