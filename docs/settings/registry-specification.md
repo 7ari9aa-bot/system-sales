@@ -4,6 +4,37 @@
 > This document is **generated** from the code by `backend/scripts/dev/gen_registry_spec.py`.
 > If the code and this table disagree, the code wins; run the script to regenerate.
 
+## Setting count
+
+The registry has **127 settings** (`len(REGISTRY)`). The source file contains
+121 `_reg()` call sites — fewer than 127 because one `_reg()` sits inside a
+`for` loop over `CAPABILITIES` (8 iterations), producing 8 setting definitions
+from a single call. So: 120 non-loop calls + 8 loop iterations = 128 raw
+definitions, minus 1 duplicate key deduped by the `{d.key: d for d in ...}` dict
+comprehension = **127 unique keys**.
+
+## Channel scope — open question
+
+`Scope.CHANNEL` exists in the `Scope` enum and the inheritance chain
+(`channel → tenant`), and `orders.allow_backorder` declares it as an allowed
+scope. However, **per-channel settings within the same warehouse are not
+fully implemented**:
+
+* `require_scope_entity` redirects `Scope.CHANNEL` to `Scope.WAREHOUSE` for
+  validation, meaning the `scope_id` is checked against the `warehouses`
+  table — not a channels table (no `channels` table exists in the schema).
+* This means the current behaviour does not support different values for
+  individual channels served by the same warehouse; it only validates that
+  the `scope_id` refers to a valid warehouse.
+
+**Open product question:** Should `scope_id` for channel scope be the real
+channel/conversation ID (requiring a new validation path against a channels
+entity), or should channel-level overrides use a composite key (warehouse +
+channel) stored in a `channel` field on the request? This needs a product
+decision before per-channel differentiation can be implemented. Until then,
+channel scope works as a warehouse-level override with channel semantics
+documented but not individually addressable.
+
 ## How to read this table
 
 | Column | Meaning |

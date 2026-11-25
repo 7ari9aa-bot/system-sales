@@ -774,7 +774,8 @@ class SettingsService:
 
         if bypass_approval and needs_approval:
             # Emergency path: requires settings:emergency_bypass and independent audit.
-            if permissions is not None and "settings:emergency_bypass" not in permissions:
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
                 from app.modules.errors import PermissionDeniedError
 
                 raise PermissionDeniedError(
@@ -1022,7 +1023,8 @@ class SettingsService:
 
         if bypass_approval and defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
             # Emergency path: requires settings:emergency_bypass and independent audit.
-            if permissions is not None and "settings:emergency_bypass" not in permissions:
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
                 from app.modules.errors import PermissionDeniedError
 
                 raise PermissionDeniedError(
@@ -1147,7 +1149,8 @@ class SettingsService:
         from sqlalchemy import func as sa_func
 
         if bypass_approval:
-            if permissions is not None and "settings:emergency_bypass" not in permissions:
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
                 from app.modules.errors import PermissionDeniedError
 
                 raise PermissionDeniedError(

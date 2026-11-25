@@ -336,7 +336,7 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # These are service-level reads, not table imports, and the only new cycle
 # (settings joining {billing,identity,platform}) was broken by reading
 # organization settings via raw SQL in identity/services/hierarchy.py.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 335
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 336
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

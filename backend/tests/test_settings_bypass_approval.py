@@ -225,3 +225,71 @@ async def test_apply_change_request_keeps_internal_bypass(db: AsyncSession, tena
     # Verify the value was actually written
     resolved = await svc.resolve("billing.auto_renew")
     assert resolved.value is False
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed: permissions=None + bypass_approval=True must be rejected
+# ---------------------------------------------------------------------------
+
+
+async def test_rollback_bypass_with_none_permissions_rejected(db, tenant_ctx):
+    """rollback with bypass_approval=True but permissions=None must fail-closed."""
+    svc = SettingsService(db, tenant_id=tenant_ctx.tenant_id)
+    # First set a value normally (billing.auto_renew is APPROVAL_REQUIRED,
+    # so we need bypass to set it — use owner perms).
+    await svc.set(
+        "billing.auto_renew",
+        True,
+        scope="tenant",
+        user_id=tenant_ctx.user.id,
+        permissions=OWNER_PERMS,
+        bypass_approval=True,
+    )
+    await db.flush()
+
+    # Get the latest history id
+    history = await svc.history(key="billing.auto_renew", limit=1)
+    assert len(history) == 1
+
+    # Now try rollback with bypass_approval=True but permissions=None
+    with pytest.raises(PermissionDeniedError, match="emergency bypass"):
+        await svc.rollback(
+            history[0].id,
+            user_id=tenant_ctx.user.id,
+            permissions=None,  # no authenticated caller
+            bypass_approval=True,
+        )
+
+
+async def test_restore_bypass_with_none_permissions_rejected(db, tenant_ctx):
+    """restore_to_snapshot with bypass_approval=True but permissions=None must fail-closed."""
+    from datetime import UTC, datetime, timedelta
+
+    svc = SettingsService(db, tenant_id=tenant_ctx.tenant_id)
+    with pytest.raises(PermissionDeniedError, match="emergency bypass"):
+        await svc.restore_to_snapshot(
+            datetime.now(UTC) - timedelta(days=1),
+            user_id=tenant_ctx.user.id,
+            permissions=None,  # no authenticated caller
+            bypass_approval=True,
+        )
+
+
+async def test_preset_bypass_with_none_permissions_rejected():
+    """apply_preset bypass check is fail-closed when permissions=None.
+
+    No current preset has APPROVAL_REQUIRED settings, so the bypass path in
+    ``apply_preset`` is not reachable through any real preset.  We verify the
+    fail-closed logic directly by inspecting the source: the condition must
+    use ``permissions is None or ...`` (not ``permissions is not None and ...``).
+    """
+    import inspect
+
+    source = inspect.getsource(SettingsService.apply_preset)
+    # The fail-closed pattern: "permissions is None or" (not "permissions is not None and")
+    assert "permissions is None or" in source, (
+        "apply_preset bypass must be fail-closed: permissions is None or ..."
+    )
+    assert (
+        "permissions is not None and" not in source.split("bypass_approval")[1].split("bulk_set")[0]
+    ), "apply_preset still uses fail-open pattern"

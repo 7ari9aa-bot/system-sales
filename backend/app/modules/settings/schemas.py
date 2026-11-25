@@ -55,7 +55,7 @@ class ResolvedSettingOut(BaseModel):
     definition: SettingDefOut
 
 
-_SCOPE_PATTERN = "^(tenant|branch|warehouse|pos_profile|register|channel|user)$"
+_SCOPE_PATTERN = "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$"
 
 
 class SetSettingRequest(BaseModel):

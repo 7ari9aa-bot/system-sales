@@ -47,7 +47,11 @@ Redis Streams (`RedisStreamsBus`) is the transport. Each event carries a typed e
 payload. The envelope is serialized to `payload` + `meta` JSON fields.
 
 **Settings-relevant event types:**
-* `settings.changed` — emitted on every settings write (for cache invalidation).
+* `settings.changed` — emitted on every settings write. ⚠ **No consumer exists yet**:
+  the event is staged in the outbox but no worker subscribes to it. There is no
+  settings cache in the current codebase, so the event has nothing to invalidate.
+  Until a consumer is implemented, runtime config is read live from the database
+  on every access (no stale-cache risk, but no event-driven sync either).
 * `notification.email` — staged by `NotificationService._send_email` when `email_enabled` is True.
 * `notification.push` — staged by `NotificationService._send_push` when `push_enabled` is True.
 * `platform.secret_rotated` — emitted on master-key rotation.

@@ -106,7 +106,7 @@ where it should be. Status: ✅ implemented · 🟡 partial · ❌ missing.
 | `print.barcode_format` → receipt barcode format | ✅ | Read by `pos/receipt_settings.py::receipt_settings`; enforced |
 | `print.invoice_prefix` → POS invoice numbering | ✅ | Read by `pos/receipt_settings.py::receipt_settings`; enforced |
 
-### P3 — Platform Management ✅ (settings wired, some consumers missing)
+### P3 — Platform Management ✅ (settings wired, `settings.changed` has no consumer)
 
 | Item | Status | Evidence |
 |---|---|---|
@@ -251,7 +251,7 @@ whole (`settings.preset_applied`).
 - 5 business-type presets (now composable via `extends`) and 8 vertical-based capabilities
 - SLO framework (§168): 3 SLOs with Redis counters and admin endpoint
 - Advanced presets (§170): composable presets, dry-run preview, atomic apply with audit
-- `settings.changed` outbox event for cache invalidation
+- `settings.changed` outbox event staged on every write (⚠ no consumer yet — see §Settings→Runtime wiring)
 - ~90+ keys actively consumed by services (enforced)
 - Guard tests for enforced keys and registry spec sync
 

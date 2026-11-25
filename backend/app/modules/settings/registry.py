@@ -20,6 +20,8 @@ Usage::
 from __future__ import annotations
 
 import enum
+import ipaddress
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -97,6 +99,20 @@ SCOPE_PARENT: dict[Scope, Scope | None] = {
 }
 
 
+def _validate_ip_or_cidr(value: Any) -> Any:
+    """Validate that ``value`` is a valid IP address or CIDR range."""
+    if not isinstance(value, str):
+        raise ValueError(f"expected IP/CIDR string, got {type(value).__name__}")
+    try:
+        if "/" in value:
+            ipaddress.ip_network(value, strict=False)
+        else:
+            ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise ValueError(f"invalid IP/CIDR {value!r}: {exc}") from exc
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class SettingDef:
     """The contract for one configuration key.
@@ -134,6 +150,12 @@ class SettingDef:
     min_value: float | None = None
     max_value: float | None = None
     max_length: int | None = None
+    # For ``list`` type: validate each item. ``item_type`` is a SettingType that
+    # each element must satisfy (STRING, NUMBER, ENUM).  ``item_validator`` is an
+    # optional callable that receives one element and raises ``ValueError`` on
+    # invalid input — e.g. ``_validate_ip_or_cidr`` for ``security.ip_allowlist``.
+    item_type: SettingType | None = None
+    item_validator: Callable[[Any], Any] | None = None
     permission: str = "settings:write"
     # May a holder of settings:branch_write (a manager) set this key below tenant level?
     # Money rules, tax identity and anything that changes how stock is valued stay owner-only.
@@ -213,6 +235,14 @@ class SettingDef:
         if self.type == SettingType.LIST:
             if not isinstance(value, list):
                 raise ValueError(f"{self.key}: expected list, got {type(value).__name__}")
+            if self.item_type is not None or self.item_validator is not None:
+                for i, item in enumerate(value):
+                    if self.item_type is not None and not isinstance(item, str | int | float):
+                        raise ValueError(
+                            f"{self.key}: list item {i} has invalid type {type(item).__name__}"
+                        )
+                    if self.item_validator is not None:
+                        self.item_validator(item)
             return value
 
         raise ValueError(f"{self.key}: unknown type {self.type}")  # pragma: no cover
@@ -2214,6 +2244,8 @@ _reg(
         audit=True,
         sensitivity=Sensitivity.SENSITIVE,
         apply_mode=ApplyMode.APPROVAL_REQUIRED,
+        item_type=SettingType.STRING,
+        item_validator=_validate_ip_or_cidr,
         label_ar="قائمة IPs المسموح بها",
         label_en="IP Allowlist",
         description_ar="قائمة عناوين IP المسموح لها بالوصول. فارغة تعني السماح للجميع.",
