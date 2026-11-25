@@ -55,6 +55,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Ensure @register_event decorators in module event files run in every worker.
+# With pytest-xdist, a worker that only imports app.core.events.schemas never
+# imports app.modules.settings, so "settings.changed" would be missing from
+# the runtime EVENT_TYPES registry — the test_every_literal_event_type_is_registered
+# guard catches it, but only if the import happens before collection.
+import app.modules.settings.events  # noqa: F401
 from app.core.config import get_settings
 from app.core.db import bind_tenant
 from app.core.security import hash_password

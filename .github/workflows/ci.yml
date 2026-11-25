@@ -89,10 +89,12 @@ jobs:
       # which is exactly how a FORCE-RLS production bug went unnoticed.
       # Coverage gate (audit P0): 80% measured on the runner 2026-10-03
       # (21,910 statements, 84%). Lowering this number requires an ADR.
-      # xdist: run tests in parallel (CI runner has 2-4 cores). --dist loadscope groups
-      # tests by module/class so a module's tests run on one worker, reducing DB contention.
       # pytest-timeout: 300s per test — a hang fails instead of stalling the 11k+ suite.
-      - run: pytest -q -rs --durations=30 -n auto --dist loadscope --cov=app --cov-report=term --cov-fail-under=80
+      # (The timeout is set in pyproject.toml addopts so it applies everywhere.)
+      # xdist (-n auto --dist loadscope) was tried but caused worker crashes on the
+      # CI's Python 3.13 runner — coverage dropped to 38% because most workers died.
+      # Re-enable after debugging the 3.13 compatibility issue.
+      - run: pytest -q -rs --durations=30 --cov=app --cov-report=term --cov-fail-under=80
       # Contract drift gate: ensures openapi.lock.json, mobile Dart models, and desktop TS types match
       - run: python scripts/check_contract_drift.py
       # Exercise the built frontend against this job's disposable PostgreSQL +
