@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Bell, CircleHelp, Menu, BookOpen, LifeBuoy, Keyboard, Settings2 } from "lucide-react";
 import { api, apiCached } from "@/lib/api";
@@ -7,38 +7,12 @@ import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import TokenIndicator from "@/components/dashboard/TokenIndicator";
 import GlobalSearch from "@/components/dashboard/GlobalSearch";
-
-function Dropdown({ trigger, children, align = "left", width = "w-52", label }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="outline-hidden" aria-label={label} aria-haspopup="menu" aria-expanded={open}>
-        {trigger(open)}
-      </button>
-      {open && (
-        <div
-          className={cn(
-            "absolute z-50 mt-2 rounded-xl border border-border bg-popover shadow-lg p-1.5 animate-fade-in",
-            width,
-            align === "right" ? "right-0" : "left-0"
-          )}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-}
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const HELP_ITEMS = [
   { id: "docs", to: "/settings", icon: BookOpen },
@@ -60,7 +34,7 @@ export default function Header({ onMenu }) {
   const { user } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // إشعارات حقيقية من /notifications — بدل القائمة الثابتة
+  // إشعارات حقيقية من /notifications
   const [notifications, setNotifications] = useState(null);
   const [unreadCount, setUnreadCount] = useState(null);
   const [notificationError, setNotificationError] = useState("");
@@ -105,9 +79,7 @@ export default function Header({ onMenu }) {
     }
   }
 
-  async function openNotification(notification, close) {
-    close();
-    setNotificationError("");
+  async function openNotification(notification) {
     if (!notification.read_at) {
       try {
         const updated = await api(`/notifications/${notification.id}/read`, { method: "PATCH" });
@@ -152,97 +124,93 @@ export default function Header({ onMenu }) {
           </button>
 
           {/* Notifications */}
-          <Dropdown
-            width="w-72"
-            align="right"
-            label={unreadCount > 0 ? `${t("notifications.title")} (${unreadCount > 99 ? "99+" : unreadCount})` : t("notifications.title")}
-            trigger={() => (
-              <span className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground relative cursor-pointer">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={unreadCount > 0 ? `${t("notifications.title")} (${unreadCount > 99 ? "99+" : unreadCount})` : t("notifications.title")}
+                className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground relative cursor-pointer outline-none"
+              >
                 <Bell className="h-[18px] w-[18px]" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] leading-4 text-center">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
-              </span>
-            )}
-          >
-            {(close) => (
-              <>
-                <div className="px-2.5 py-1.5 flex items-center justify-between">
-                  <span className="text-[13px] font-semibold">{t("notifications.title")}</span>
-                  <button
-                    onClick={markAllNotificationsRead}
-                    disabled={unreadCount == null || !unreadCount || updatingNotifications}
-                    className="text-[11.5px] text-primary font-medium hover:underline disabled:opacity-50 disabled:no-underline"
-                  >
-                    {updatingNotifications ? "…" : t("notifications.markAll")}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72 rounded-xl border border-border bg-popover shadow-lg p-1.5 animate-fade-in">
+              <div className="px-2.5 py-1.5 flex items-center justify-between">
+                <span className="text-[13px] font-semibold">{t("notifications.title")}</span>
+                <button
+                  onClick={markAllNotificationsRead}
+                  disabled={unreadCount == null || !unreadCount || updatingNotifications}
+                  className="text-[11.5px] text-primary font-medium hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {updatingNotifications ? "…" : t("notifications.markAll")}
+                </button>
+              </div>
+              {notificationError && (
+                <div role="alert" className="mx-2.5 mb-1 flex items-center justify-between gap-2 rounded-md bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                  <span className="min-w-0">{notificationError}</span>
+                  <button type="button" onClick={() => void loadNotifications()} className="shrink-0 font-medium underline">
+                    {t("common.retry", "Retry")}
                   </button>
                 </div>
-                {notificationError && (
-                  <div role="alert" className="mx-2.5 mb-1 flex items-center justify-between gap-2 rounded-md bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-                    <span className="min-w-0">{notificationError}</span>
-                    <button type="button" onClick={() => void loadNotifications()} className="shrink-0 font-medium underline">
-                      {t("common.retry", "Retry")}
-                    </button>
+              )}
+              <div className="max-h-80 overflow-y-auto scrollbar-thin">
+                {notifications == null ? (
+                  <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
+                    {notificationError ? t("notifications.loadError", "Could not load notifications.") : t("common.loading", "Loading…")}
                   </div>
+                ) : notifications.length === 0 ? (
+                  <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
+                    {t("notifications.empty")}
+                  </div>
+                ) : (
+                  (notifications || []).map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => openNotification(n)}
+                      className={cn("w-full text-left flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface", n.read_at == null && "bg-primary/5")}
+                    >
+                      <span className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", n.read_at == null ? "bg-primary" : "bg-muted-foreground/40")} />
+                      <div className="min-w-0">
+                        <div className="text-[12.5px] font-medium leading-snug">{n.title || n.kind}</div>
+                        <div className="text-[11.5px] text-muted-foreground leading-snug">{n.body}</div>
+                      </div>
+                    </button>
+                  ))
                 )}
-                <div className="max-h-80 overflow-y-auto scrollbar-thin">
-                  {notifications == null ? (
-                    <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
-                      {notificationError ? t("notifications.loadError", "Could not load notifications.") : t("common.loading", "Loading…")}
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground">
-                      {t("notifications.empty")}
-                    </div>
-                  ) : (
-                    (notifications || []).map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => openNotification(n, close)}
-                        className={cn("w-full text-left flex gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface", n.read_at == null && "bg-primary/5")}
-                      >
-                        <span className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", n.read_at == null ? "bg-primary" : "bg-muted-foreground/40")} />
-                        <div className="min-w-0">
-                          <div className="text-[12.5px] font-medium leading-snug">{n.title || n.kind}</div>
-                          <div className="text-[11.5px] text-muted-foreground leading-snug">{n.body}</div>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-          </Dropdown>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Help */}
-          <Dropdown
-            width="w-56"
-            align="right"
-            label={t("nav.help")}
-            trigger={() => (
-              <span className="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground cursor-pointer hidden sm:grid">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("nav.help")}
+                className="hidden sm:grid h-9 w-9 place-items-center rounded-lg hover:bg-surface text-muted-foreground cursor-pointer outline-none"
+              >
                 <CircleHelp className="h-[18px] w-[18px]" />
-              </span>
-            )}
-          >
-            {(close) => (
-              <>
-                {HELP_ITEMS.map((h) => (
-                  <button
-                    key={h.to}
-                    onClick={() => { close(); navigate(h.to); }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] hover:bg-surface text-left"
-                  >
-                    <h.icon className="h-4 w-4 text-muted-foreground" />
-                    {t(`help.${h.id}`)}
-                  </button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 rounded-xl border border-border bg-popover shadow-lg p-1.5 animate-fade-in">
+              {HELP_ITEMS.map((h) => (
+                <DropdownMenuItem
+                  key={h.to}
+                  onSelect={() => navigate(h.to)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] hover:bg-surface cursor-pointer"
+                >
+                  <h.icon className="h-4 w-4 text-muted-foreground" />
+                  {t(`help.${h.id}`)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Greeting — far right */}

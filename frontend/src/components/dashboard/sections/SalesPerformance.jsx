@@ -50,11 +50,9 @@ export default function SalesPerformance() {
       bodyClassName="pt-2"
     >
       <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="inline-flex p-0.5 rounded-lg bg-surface border border-border">
-          <span className="px-3 py-1 rounded-md text-[12.5px] font-medium bg-card text-foreground shadow-sm">
-            {t("chart.revenue")}
-          </span>
-        </div>
+        <span className="text-[12.5px] font-medium text-muted-foreground">
+          {t("chart.revenue")}
+        </span>
         <div className="flex items-center gap-4 text-right">
           <div>
             <div className="text-[11px] text-muted-foreground">{t("chart.revenue")}</div>

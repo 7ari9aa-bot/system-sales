@@ -1,14 +1,14 @@
-import React from "react";
 import BusinessPulse from "@/components/dashboard/sections/BusinessPulse";
 import NeedsAttention from "@/components/dashboard/sections/NeedsAttention";
 import SalesPerformance from "@/components/dashboard/sections/SalesPerformance";
-import YourAI from "@/components/dashboard/sections/YourAI";
-import BusinessInsights from "@/components/dashboard/sections/BusinessInsights";
 import { InventorySnapshot } from "@/components/dashboard/sections/Snapshots";
 
+/** الداشبورد — صفحة ملخّص نظيفة. كل وظيفة بصفحتها الخاصة:
+ *  الذكاء على /ai، المخزون على /cashier/inventory، التحليلات على /analytics.
+ *  هنا بس: نبض الأعمال، ما يحتاج انتباه، أداء المبيعات، ولمحة المخزون. */
 export default function Home() {
   return (
-    <div className="space-y-3.5 animate-fade-in xl:space-y-5">
+    <div className="space-y-4 animate-fade-in xl:space-y-5">
       <BusinessPulse />
 
       <NeedsAttention />
@@ -18,15 +18,6 @@ export default function Home() {
           <SalesPerformance />
         </div>
         <div className="xl:col-span-1 min-h-0">
-          <YourAI />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-1 min-h-0">
-          <BusinessInsights />
-        </div>
-        <div className="xl:col-span-2 grid grid-cols-1 gap-4">
           <InventorySnapshot />
         </div>
       </div>
