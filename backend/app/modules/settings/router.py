@@ -387,11 +387,50 @@ async def get_settings_slo(ctx: SettingsReadCtx) -> dict[str, object]:
 async def get_settings_history(
     ctx: SettingsReadCtx,
     key: Annotated[str | None, Query()] = None,
+    source: Annotated[str | None, Query()] = None,
+    action: Annotated[str | None, Query()] = None,
+    changed_by: Annotated[uuid.UUID | None, Query()] = None,
+    since: Annotated[str | None, Query()] = None,
+    until: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[SettingHistoryOut]:
-    """Return the audit log of settings changes, newest first."""
+    """Return the audit log of settings changes, newest first, with filters (§174).
+
+    Filter by ``key``, ``source`` (api/preset/restore/migration/rollback/change_request),
+    ``action`` (set/reset), ``changed_by`` (user id), and/or a time range
+    (``since`` / ``until`` as ISO 8601 timestamps).
+    """
+    from datetime import UTC
+    from datetime import datetime as dt
+
+    since_dt = None
+    if since:
+        try:
+            since_dt = dt.fromisoformat(since)
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=UTC)
+        except ValueError:
+            raise ValidationError(f"invalid 'since' timestamp: {since!r}") from None
+
+    until_dt = None
+    if until:
+        try:
+            until_dt = dt.fromisoformat(until)
+            if until_dt.tzinfo is None:
+                until_dt = until_dt.replace(tzinfo=UTC)
+        except ValueError:
+            raise ValidationError(f"invalid 'until' timestamp: {until!r}") from None
+
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    rows = await svc.history(key=key, limit=limit)
+    rows = await svc.history(
+        key=key,
+        source=source,
+        action=action,
+        changed_by=changed_by,
+        since=since_dt,
+        until=until_dt,
+        limit=limit,
+    )
     return [
         SettingHistoryOut(
             id=r.id,
@@ -404,6 +443,7 @@ async def get_settings_history(
             action=r.action,
             changed_by=r.changed_by,
             change_reason=r.change_reason,
+            source=r.source,
             created_at=r.created_at.isoformat() if r.created_at else "",
         )
         for r in rows

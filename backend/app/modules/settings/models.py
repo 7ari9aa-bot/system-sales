@@ -161,12 +161,14 @@ class TenantSettingHistory(TenantMixin, AppendOnlyCreatedAtMixin, IdMixin, Base)
     scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    # allowed: set | reset | bulk_set
+    # allowed: set | reset | bulk_set | restore
     action: Mapped[str] = mapped_column(String(15), server_default="set")
     changed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     change_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Where the change came from: api | preset | restore | migration | rollback | change_request
+    source: Mapped[str] = mapped_column(String(31), server_default="api", nullable=False)
 
     __table_args__ = (
         Index(

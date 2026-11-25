@@ -203,6 +203,8 @@ class SettingsService:
         reason: str | None = None,
         permissions: Collection[str] | None = None,
         expected_history_id: uuid.UUID | None = None,
+        bypass_approval: bool = False,
+        source: str = "api",
     ) -> TenantSetting:
         """Set one setting at the given scope. Creates or updates the override.
 
@@ -213,9 +215,27 @@ class SettingsService:
         passes the history id it last saw. If another write landed in between,
         the history no longer matches and a ``ConflictError`` is raised instead of
         silently overwriting the newer value.
+
+        ``bypass_approval``: when ``False`` (the default for API callers) and the
+        setting's ``apply_mode`` is ``APPROVAL_REQUIRED``, the write is refused —
+        the caller must go through ``create_change_request`` instead. Internal
+        callers (presets, restore, rollback, approved change requests) pass
+        ``True`` because the approval has already been obtained or the operation
+        is an administrative recovery.
+
+        ``source`` records where the change originated (api, preset, restore,
+        migration, rollback, change_request) in the audit history.
         """
         defn = _definition(key)
         scope_enum = _scope(scope)
+
+        # Sensitive settings (APPROVAL_REQUIRED) may not be written directly from
+        # the API — they must go through the change-request approval flow (§172).
+        if not bypass_approval and defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+            raise ValidationError(
+                f"{key}: this setting requires approval. "
+                "Submit a change request via POST /settings/change-requests instead."
+            )
 
         if not defn.scope_allowed(scope_enum):
             raise ValidationError(
@@ -282,6 +302,7 @@ class SettingsService:
             action="set",
             user_id=user_id,
             reason=reason,
+            source=source,
         )
         return row
 
@@ -294,13 +315,24 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
+        bypass_approval: bool = False,
+        source: str = "api",
     ) -> bool:
         """Remove an override, reverting the scope to its inherited value.
 
         Returns True if an override was removed, False if none existed.
+
+        ``bypass_approval`` and ``source`` work the same as for ``set``.
         """
         defn = _definition(key)
         scope_enum = _scope(scope)
+
+        if not bypass_approval and defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+            raise ValidationError(
+                f"{key}: this setting requires approval. "
+                "Submit a change request via POST /settings/change-requests instead."
+            )
+
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
         self._authorize(defn, scope_enum, scope_id, user_id, permissions)
 
@@ -321,6 +353,7 @@ class SettingsService:
             action="reset",
             user_id=user_id,
             reason=reason,
+            source=source,
         )
         await self._session.execute(delete(TenantSetting).where(TenantSetting.id == existing.id))
         await self._session.flush()
@@ -335,6 +368,8 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
+        bypass_approval: bool = False,
+        source: str = "api",
     ) -> list[TenantSetting]:
         """Set several settings. All-or-nothing: every key is checked before any write.
 
@@ -366,6 +401,8 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason,
                     permissions=permissions,
+                    bypass_approval=bypass_approval,
+                    source=source,
                 )
             )
         return results
@@ -396,12 +433,35 @@ class SettingsService:
         self,
         *,
         key: str | None = None,
+        source: str | None = None,
+        action: str | None = None,
+        changed_by: uuid.UUID | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 50,
     ) -> list[TenantSettingHistory]:
-        """Return the change history, newest first."""
+        """Return the change history, newest first, with optional filters (§174).
+
+        Filters:
+        * ``key`` — only changes to this setting key.
+        * ``source`` — only changes from this source (api, preset, restore, …).
+        * ``action`` — only this action (set, reset, bulk_set).
+        * ``changed_by`` — only changes by this user id.
+        * ``since`` / ``until`` — time range (inclusive on both ends).
+        """
         stmt = select(TenantSettingHistory).where(TenantSettingHistory.tenant_id == self._tenant_id)
         if key is not None:
             stmt = stmt.where(TenantSettingHistory.key == key)
+        if source is not None:
+            stmt = stmt.where(TenantSettingHistory.source == source)
+        if action is not None:
+            stmt = stmt.where(TenantSettingHistory.action == action)
+        if changed_by is not None:
+            stmt = stmt.where(TenantSettingHistory.changed_by == changed_by)
+        if since is not None:
+            stmt = stmt.where(TenantSettingHistory.created_at >= since)
+        if until is not None:
+            stmt = stmt.where(TenantSettingHistory.created_at <= until)
         stmt = stmt.order_by(TenantSettingHistory.created_at.desc()).limit(limit)
         return list((await self._session.execute(stmt)).scalars().all())
 
@@ -467,7 +527,11 @@ class SettingsService:
         review_note: str | None = None,
         permissions: Collection[str] | None = None,
     ) -> SettingChangeRequest:
-        """Approve a pending change request and apply it (§28)."""
+        """Approve a pending change request and apply it (§28, §172).
+
+        A reviewer may **not** approve their own request — a second admin must
+        sign off (§172 self-approval guard).
+        """
         stmt = select(SettingChangeRequest).where(
             SettingChangeRequest.tenant_id == self._tenant_id,
             SettingChangeRequest.id == request_id,
@@ -477,12 +541,26 @@ class SettingsService:
             raise ValidationError(f"change request {request_id} not found")
         if request.status != "pending_approval":
             raise ValidationError(f"change request is {request.status}, not pending_approval")
+        if request.submitted_by is not None and request.submitted_by == reviewer_id:
+            raise ValidationError("you cannot approve your own change request (§172)")
 
         request.status = "approved"
         request.reviewed_by = reviewer_id
         request.review_note = review_note
         request.reviewed_at = func.now()
         await self._session.flush()
+
+        # Audit the approval decision itself (§172).
+        await write_audit_row(
+            self._session,
+            self._tenant_id,
+            reviewer_id,
+            "settings.change_request_approved",
+            "setting_change_requests",
+            str(request.id),
+            before={"status": "pending_approval"},
+            after={"status": "approved", "review_note": review_note},
+        )
 
         await self._apply_change_request(request, user_id=reviewer_id, permissions=permissions)
         return request
@@ -494,7 +572,11 @@ class SettingsService:
         reviewer_id: uuid.UUID,
         review_note: str | None = None,
     ) -> SettingChangeRequest:
-        """Reject a pending change request (§28)."""
+        """Reject a pending change request (§28, §172).
+
+        A reviewer may not reject their own request either — the same
+        self-approval guard applies (§172).
+        """
         stmt = select(SettingChangeRequest).where(
             SettingChangeRequest.tenant_id == self._tenant_id,
             SettingChangeRequest.id == request_id,
@@ -504,12 +586,26 @@ class SettingsService:
             raise ValidationError(f"change request {request_id} not found")
         if request.status != "pending_approval":
             raise ValidationError(f"change request is {request.status}, not pending_approval")
+        if request.submitted_by is not None and request.submitted_by == reviewer_id:
+            raise ValidationError("you cannot reject your own change request (§172)")
 
         request.status = "rejected"
         request.reviewed_by = reviewer_id
         request.review_note = review_note
         request.reviewed_at = func.now()
         await self._session.flush()
+
+        # Audit the rejection decision (§172).
+        await write_audit_row(
+            self._session,
+            self._tenant_id,
+            reviewer_id,
+            "settings.change_request_rejected",
+            "setting_change_requests",
+            str(request.id),
+            before={"status": "pending_approval"},
+            after={"status": "rejected", "review_note": review_note},
+        )
         return request
 
     async def list_change_requests(
@@ -543,6 +639,8 @@ class SettingsService:
                 user_id=user_id,
                 reason=f"change_request:{request.id}",
                 permissions=permissions,
+                bypass_approval=True,
+                source="change_request",
             )
             request.applied_changes = {
                 r.key: r.value.get("v") if isinstance(r.value, dict) else r.value for r in rows
@@ -634,6 +732,8 @@ class SettingsService:
             user_id=user_id,
             reason=f"preset:{preset_name}",
             permissions=permissions,
+            bypass_approval=True,
+            source="preset",
         )
         # One audit row for the preset application as a whole (§170).
         await write_audit_row(
@@ -676,6 +776,7 @@ class SettingsService:
         action: str,
         user_id: uuid.UUID | None,
         reason: str | None,
+        source: str = "api",
     ) -> None:
         """Append to the settings history, audit logs, and outbox event.
 
@@ -694,6 +795,7 @@ class SettingsService:
             action=action,
             changed_by=user_id,
             change_reason=reason,
+            source=source,
             created_at=func.clock_timestamp(),
         )
         self._session.add(history_row)
@@ -786,6 +888,7 @@ class SettingsService:
                     action="reset",
                     user_id=user_id,
                     reason=f"rollback:{history_id}",
+                    source="rollback",
                 )
                 await self._session.execute(
                     delete(TenantSetting).where(TenantSetting.id == existing.id)
@@ -803,6 +906,8 @@ class SettingsService:
             user_id=user_id,
             reason=reason or f"rollback:{history_id}",
             permissions=permissions,
+            bypass_approval=True,
+            source="rollback",
         )
 
     async def _latest_history_id(
@@ -965,6 +1070,8 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
+                    bypass_approval=True,
+                    source="restore",
                 )
                 restored += 1
             else:
@@ -978,6 +1085,8 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
+                    bypass_approval=True,
+                    source="restore",
                 )
                 reset += 1
 
@@ -997,6 +1106,8 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
+                    bypass_approval=True,
+                    source="restore",
                 )
                 reset += 1
 

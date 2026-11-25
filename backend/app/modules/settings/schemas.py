@@ -108,6 +108,8 @@ class SettingHistoryOut(BaseModel):
     action: str
     changed_by: uuid.UUID | None = None
     change_reason: str | None = None
+    # Where the change came from: api | preset | restore | migration | rollback | change_request
+    source: str = "api"
     created_at: str
 
 
