@@ -100,6 +100,20 @@ def _validate(defn: SettingDef, value: Any) -> Any:
         raise ValidationError(str(exc)) from None
 
 
+def rollback_restore_value(action: str, old_value: dict | None, new_value: dict | None) -> object:
+    """The value a rollback of ``action`` must write back.
+
+    Rolling back means putting back what the target revision REPLACED. For a "set" that
+    is the value it wrote; for a "reset" it is the value the reset removed (``old_value``).
+    Re-running the reset instead deleted the current override and returned early, so a
+    merchant asking to undo a reset got a second reset — and that branch never reached the
+    APPROVAL_REQUIRED gate, so an approval-only setting could be cleared without a request.
+    """
+    if action == "reset":
+        return (old_value or {}).get("v")
+    return new_value.get("v") if new_value else None
+
+
 class SettingsService:
     """Hierarchical settings resolver, reader, and writer."""
 
@@ -1080,32 +1094,10 @@ class SettingsService:
         if not defn.rollback_supported:
             raise ValidationError(f"{target.key}: rollback not supported for this setting")
 
-        # The target was a reset: delete the current override if any.
-        if target.action == "reset" and target.new_value is None:
-            existing = await self._find_override(
-                target.key, target.scope, target.scope_id, for_update=True
-            )
-            if existing is not None:
-                await self._record(
-                    defn,
-                    row_id=existing.id,
-                    scope=Scope(target.scope),
-                    scope_id=target.scope_id,
-                    old=existing.value,
-                    new=None,
-                    action="reset",
-                    user_id=user_id,
-                    reason=f"rollback:{history_id}",
-                    source="rollback",
-                )
-                await self._session.execute(
-                    delete(TenantSetting).where(TenantSetting.id == existing.id)
-                )
-                await self._session.flush()
+        restore_value = rollback_restore_value(target.action, target.old_value, target.new_value)
+        if target.action == "reset" and restore_value is None:
+            # The reset removed nothing (there was no override): nothing to restore.
             return None
-
-        # The target was a set: restore its value.
-        restore_value = target.new_value.get("v") if target.new_value else None
 
         # APPROVAL_REQUIRED settings go through a change request unless bypass.
         if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
