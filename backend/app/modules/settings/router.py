@@ -19,6 +19,7 @@ from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permi
 from app.modules.settings.capabilities import shop_capabilities
 from app.modules.settings.presets import PRESET_DEFS, PRESETS, preset_chain, resolve_preset
 from app.modules.settings.registry import (
+    REGISTRY,
     SEGMENTS,
     Scope,
     Sensitivity,
@@ -61,9 +62,38 @@ def _can_read_sensitive(ctx: TenantContext) -> bool:
 
 
 def _mask_if_sensitive(defn: SettingDef, value: object, can_read_sensitive: bool) -> object:
-    """Mask the value of a SENSITIVE setting when the caller lacks read_sensitive."""
+    """Mask the value of a SENSITIVE setting when the caller lacks read_sensitive.
+
+    The fall-through ``return value`` is load-bearing: without it every caller that was
+    ALLOWED to read (the owner) got ``None`` instead of the stored value, for sensitive and
+    ordinary settings alike — the read paths answered null across the board.
+    """
     if defn.sensitivity is Sensitivity.SENSITIVE and not can_read_sensitive:
         return MASKED_VALUE
+    return value
+
+
+def _mask_mapping(
+    values: dict[str, object] | None, can_read_sensitive: bool
+) -> dict[str, object] | None:
+    """Mask the SENSITIVE keys of a {key: value} map the caller may not read.
+
+    The change-request and preview payloads carry whole maps of key -> value, so the
+    per-setting mask above never saw them: a caller without settings:read_sensitive got
+    the real secret out of /change-requests and /preview while /effective masked it.
+    One helper, used by every map-returning path, so the rule cannot drift again.
+    """
+    if can_read_sensitive or not values:
+        return values
+    masked: dict[str, object] = {}
+    for key, value in values.items():
+        defn = REGISTRY.get(key)
+        masked[key] = (
+            MASKED_VALUE
+            if defn is not None and defn.sensitivity is Sensitivity.SENSITIVE
+            else value
+        )
+    return masked
     return value
 
 
@@ -329,6 +359,15 @@ async def preview_settings(
         user_id=ctx.user.id,
         permissions=ctx.permission_codes,
     )
+    # The dry run shows the before/after of every key in the batch, so a SENSITIVE key
+    # would leak its stored value here exactly as it did through /effective.
+    can_read = _can_read_sensitive(ctx)
+    if not can_read:
+        for entry in result.get("keys", []):
+            defn = REGISTRY.get(entry.get("key", ""))
+            if defn is not None and defn.sensitivity is Sensitivity.SENSITIVE:
+                entry["current"] = _mask_if_sensitive(defn, entry.get("current"), can_read)
+                entry["proposed"] = _mask_if_sensitive(defn, entry.get("proposed"), can_read)
     return SettingsPreviewOut(**result)
 
 
@@ -387,7 +426,18 @@ async def preview_preset(
     if preset_name not in PRESETS:
         raise NotFoundError(f"preset {preset_name!r} not found")
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    return await svc.preview_preset(preset_name)
+    result = await svc.preview_preset(preset_name)
+    # The preset dry run reports current -> target for every key it would touch, and
+    # ``current_value`` is this tenant's stored value, so it needs the same mask.
+    can_read = _can_read_sensitive(ctx)
+    if not can_read:
+        for row in result.get("changes", []):
+            defn = REGISTRY.get(row.get("key", ""))
+            if defn is not None and defn.sensitivity is Sensitivity.SENSITIVE:
+                for field in ("current_value", "target_value"):
+                    if field in row:
+                        row[field] = _mask_if_sensitive(defn, row[field], can_read)
+    return result
 
 
 @router.post("/presets/{preset_name}")
@@ -536,7 +586,7 @@ async def create_change_request(
         reason=body.reason,
         permissions=ctx.permission_codes,
     )
-    return _change_request_to_out(req)
+    return _change_request_to_out(req, can_read_sensitive=_can_read_sensitive(ctx))
 
 
 @router.get("/change-requests", response_model=list[ChangeRequestOut])
@@ -547,7 +597,8 @@ async def list_change_requests(
     """List change requests, optionally filtered by status."""
     svc = SettingsService(ctx.session, ctx.tenant_id)
     rows = await svc.list_change_requests(status=status)
-    return [_change_request_to_out(r) for r in rows]
+    can_read = _can_read_sensitive(ctx)
+    return [_change_request_to_out(r, can_read_sensitive=can_read) for r in rows]
 
 
 @router.post("/change-requests/{request_id}/approve", response_model=ChangeRequestOut)
@@ -566,7 +617,7 @@ async def approve_change_request(
         review_note=body.review_note,
         permissions=ctx.permission_codes,
     )
-    return _change_request_to_out(req)
+    return _change_request_to_out(req, can_read_sensitive=_can_read_sensitive(ctx))
 
 
 @router.post("/change-requests/{request_id}/reject", response_model=ChangeRequestOut)
@@ -584,7 +635,7 @@ async def reject_change_request(
         reviewer_id=ctx.user.id,
         review_note=body.review_note,
     )
-    return _change_request_to_out(req)
+    return _change_request_to_out(req, can_read_sensitive=_can_read_sensitive(ctx))
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +680,9 @@ async def rollback_setting(
         key=row.key,
         scope=row.scope,
         scope_id=row.scope_id,
-        value=row.value.get("v"),
+        value=_mask_if_sensitive(
+            get_definition(row.key), row.value.get("v"), _can_read_sensitive(ctx)
+        ),
         updated_by=row.updated_by,
     )
 
@@ -734,12 +787,17 @@ async def restore_snapshot(
     return result
 
 
-def _change_request_to_out(r) -> ChangeRequestOut:
-    """Convert a SettingChangeRequest ORM row to the API output schema."""
+def _change_request_to_out(r, *, can_read_sensitive: bool = False) -> ChangeRequestOut:
+    """Convert a SettingChangeRequest ORM row to the API output schema.
+
+    ``changes`` and ``applied_changes`` are whole {key: value} maps, so they go through
+    the same mask as every other value-returning path — a reviewer without
+    settings:read_sensitive sees the key and its status, never the stored secret.
+    """
     return ChangeRequestOut(
         id=r.id,
-        changes=r.changes,
-        applied_changes=r.applied_changes,
+        changes=_mask_mapping(r.changes, can_read_sensitive),
+        applied_changes=_mask_mapping(r.applied_changes, can_read_sensitive),
         status=r.status,
         scope=r.scope,
         scope_id=r.scope_id,
