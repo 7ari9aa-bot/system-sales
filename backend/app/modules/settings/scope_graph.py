@@ -34,6 +34,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.errors import NotFoundError
 from app.modules.settings.registry import Scope
 
+# integrations.kind value a channel scope must carry.
+_CHANNEL_KIND = "channel"
+
 
 class UnknownScopeError(NotFoundError):
     """The scope entity does not exist for this tenant."""
@@ -68,10 +71,25 @@ _ROOT_TABLE: dict[Scope, str] = {
 }
 
 
+async def _channel_kind(
+    session: AsyncSession, tenant_id: uuid.UUID, channel_id: uuid.UUID
+) -> str | None:
+    """The ``kind`` of an integration row, or None when it is not this tenant's."""
+    sql = "SELECT kind FROM integrations WHERE tenant_id = :tid AND id = :sid"  # noqa: S608
+    return (
+        await session.execute(text(sql), {"tid": tenant_id, "sid": channel_id})
+    ).scalar_one_or_none()
+
+
 async def _exists(session: AsyncSession, scope: Scope, scope_id: uuid.UUID, tenant_id) -> bool:
     table = _ROOT_TABLE.get(scope)
     if table is None:
         return False
+    if scope is Scope.CHANNEL:
+        # A channel scope is a *channel* account. Any other integration row — an oauth
+        # grant, an api_key — is not a channel, and accepting its id would create a
+        # settings chain hanging off something that never receives messages.
+        return await _channel_kind(session, tenant_id, scope_id) == _CHANNEL_KIND
     if scope is Scope.USER:
         sql = f"SELECT 1 FROM {table} WHERE tenant_id = :tid AND user_id = :sid"  # noqa: S608
     else:
@@ -104,6 +122,13 @@ async def require_scope_entity(
     if scope_id is None:
         raise UnknownScopeError(f"scope {scope.value!r} requires a scope_id")
     if not await _exists(session, scope, scope_id, tenant_id):
+        if scope is Scope.CHANNEL:
+            kind = await _channel_kind(session, tenant_id, scope_id)
+            if kind is not None:
+                # It exists but it is not a channel: say so instead of "not found".
+                raise UnknownScopeError(
+                    f"integration {scope_id} is a {kind!r} integration, not a channel"
+                )
         raise UnknownScopeError(f"{scope.value} {scope_id} not found for this tenant")
 
 
