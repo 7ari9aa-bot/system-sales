@@ -55,7 +55,8 @@ def _redact_authorization_code(match: re.Match[str]) -> str:
     """Redact ``code=`` only when the value is an OAuth code, not a log code."""
     value = match.group("val")
     looks_like_oauth = (
-        "_" not in value and re.search(r"\d", value) is not None
+        "_" not in value
+        and re.search(r"\d", value) is not None
         and re.search(r"[A-Za-z]", value) is not None
     )
     if looks_like_oauth:
