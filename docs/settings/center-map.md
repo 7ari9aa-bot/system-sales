@@ -55,6 +55,13 @@ warehouse and several registers; they are not the same entity and must not share
 | 11 Reply templates | done | `/settings/customers/reply-templates` — the real templates from `GET /message-templates` with their language and approval state |
 | 11 Support hours | done | `/settings/customers/support-hours` — reads the published `hours` store policy and LINKS to its single editor on `/settings/store/working-hours`; a second editor here would be the duplicate the Center exists to prevent |
 | 11 Escalation to a human | done | `/settings/customers/escalation-to-human` — edits the real `sla_policies` rows through `GET`/`PUT /sla/policies` (first response, resolution, per channel). The agent's own handover behaviour stays in section 13 and is linked |
+| 12 Connected channels | done | `/settings/channels` — the existing channels screen, unchanged: one row per channel, its connect state and the manual actions. A channel's identity is its `integrations` row, never its warehouse |
+| 12 WhatsApp Business | done | `/settings/channels/whatsapp` — the same screen focused on one channel (`/settings/channels/:channel` already existed), with its diagnostics, reconnect plan and the WhatsApp roadmap endpoint behind it |
+| 12 Facebook | done | `/settings/channels/facebook` — one channel, its page permissions (`missing_scopes`) and diagnostics; a non-empty list means "connect again", which the screen says |
+| 12 Instagram | done | `/settings/channels/instagram` — one channel, same diagnostics, plus the Instagram login path the module already implements |
+| 12 Data sync | done | `/settings/channels/data-sync` — what each channel is receiving: webhook state and the timestamp of the last event that really arrived (`GET /integrations`) |
+| 12 External integrations | done | `/settings/channels/external-integrations` — the integrations whose kind is not `channel`, with state and credential verification. Credentials never leave the server: the list returns `credentials_verified`, never the secret |
+| 12 Connection health | done | `/settings/channels/connection-health` — every channel's state, verification and missing scopes in one place, reusing `ChannelDiagnostics` rather than a second check |
 | 12 | **Channels & integrations** | Connected channels · WhatsApp Business · Facebook · Instagram · Data sync · External integrations · Connection health |
 | 13 | **AI & agents** | Agent management · Customer Agent · Analytics Agent · Knowledge sources · Models and routing · Tools and permissions · Policies and safety · Testing and evaluation · Versions and publishing |
 | 14 | **Analytics & reports** | Dashboards · Metrics and indicators · Reports · Scheduled reports · Analysis settings · Report permissions |

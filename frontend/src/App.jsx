@@ -184,6 +184,11 @@ const DashboardRoutes = () => (
           <Route path="/settings/workspace" element={<WorkspaceSettings />} />
           <Route path="/settings/workspace/:section" element={<WorkspaceSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
+          {/* Section 12's cross-channel pages must be registered BEFORE :channel, or the
+              parameter route swallows them and reports "no channel with this name". */}
+          <Route path="/settings/channels/data-sync" element={<ChannelSectionPage page="data-sync" />} />
+          <Route path="/settings/channels/external-integrations" element={<ChannelSectionPage page="external-integrations" />} />
+          <Route path="/settings/channels/connection-health" element={<ChannelSectionPage page="connection-health" />} />
           <Route path="/settings/channels/:channel" element={<ChannelsSettings />} />
           <Route path="/settings/ai" element={<AI />} />
           <Route path="/settings/usage" element={<Usage />} />
