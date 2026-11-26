@@ -27,6 +27,8 @@ import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
+import PriceListsPanel from "@/components/settings/PriceListsPanel";
+import DiscountRulesPanel from "@/components/settings/DiscountRulesPanel";
 import {
   BranchDataPanel,
   BranchHoursPanel,
@@ -102,6 +104,43 @@ const SECTION_PAGES = {
     "branch-settings",
     "branch-staff",
     "operating-scopes",
+  ],
+  // Only pages that are live get a tab: a page the map still marks pending has nothing to edit
+  // yet, and a tab that lands on an empty screen is worse than no tab at all. The pending pages
+  // stay named in the map's Build status table, with the reason.
+  catalog: [
+    "product-settings",
+    "categories",
+    "variants-and-options",
+    "attributes-and-specs",
+    "sku-and-barcode",
+    "product-states",
+  ],
+  sales: ["sales-settings", "taxes-and-fees", "exchange-and-returns"],
+  pos: [
+    "pos-settings",
+    "registers-and-devices",
+    "collection-methods",
+    "shifts",
+    "cash-movement",
+    "invoices-and-receipts",
+  ],
+  inventory: [
+    "inventory-settings",
+    "warehouses",
+    "stock-states",
+    "stock-limits",
+    "counts-and-adjustments",
+    "transfers",
+    "inventory-cost",
+  ],
+  purchasing: [
+    "suppliers",
+    "purchasing-settings",
+    "purchase-orders",
+    "receiving-and-inspection",
+    "supplier-returns",
+    "approval-limits",
   ],
 };
 
@@ -314,6 +353,12 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "catalog/attributes-and-specs" && <ApparelOptionsPanel />}
 
       {`${section}/${page}` === "sales/exchange-and-returns" && <ReturnWindowPanel />}
+
+      {/* A price list and an offer are documents, not switches: the panel lists and edits the
+          rows, and the registry keys above it decide whether they are used at all. */}
+      {`${section}/${page}` === "sales/price-lists" && <PriceListsPanel />}
+
+      {`${section}/${page}` === "sales/discounts-and-offers" && <DiscountRulesPanel />}
 
       {`${section}/${page}` === "inventory/warehouses" && (
         <InventoryRecordsPanel

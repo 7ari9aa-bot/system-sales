@@ -123,6 +123,7 @@ from app.modules.platform.routers.owner import router as owner_console_router
 from app.modules.platform.routers.sites_platform import router as sites_platform_router
 from app.modules.platform.routers.telemetry import router as public_telemetry_router
 from app.modules.pos.router import router as pos_router
+from app.modules.pricing.router import router as pricing_router
 from app.modules.privacy.router import public_router as privacy_public_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
@@ -539,6 +540,7 @@ def create_app() -> FastAPI:
         expenses_router,
         imports_router,
         purchasing_router,
+        pricing_router,
         settings_router,
         taxation_router,
         customer_accounts_router,

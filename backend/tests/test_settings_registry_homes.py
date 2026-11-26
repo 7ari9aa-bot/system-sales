@@ -231,3 +231,28 @@ def test_turning_approval_off_is_as_high_impact_as_the_threshold() -> None:
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["purchasing.approval_required"].impact_level == "high"
     assert by_key["purchasing.approval_threshold"].impact_level == "high"
+
+
+def test_the_three_pricing_pages_each_own_their_keys() -> None:
+    """Section 07's price lists, pricing and offers are no longer empty pages."""
+    homes = {d.key: d.home for d in list_definitions() if d.domain == "pricing"}
+    assert homes["pricing.price_lists_enabled"] == ("sales", "price-lists")
+    assert homes["pricing.quantity_tiers_enabled"] == ("sales", "pricing")
+    assert homes["pricing.round_prices_to"] == ("sales", "pricing")
+    assert homes["pricing.allow_price_below_cost"] == ("sales", "pricing")
+    assert homes["pricing.auto_apply_offers"] == ("sales", "discounts-and-offers")
+    assert homes["pricing.stacked_discounts"] == ("sales", "discounts-and-offers")
+    assert homes["pricing.max_order_discount_pct"] == ("sales", "discounts-and-offers")
+
+
+def test_the_pricing_keys_are_read_by_the_pricing_engine() -> None:
+    """A switch wired to nothing is the defect this flag exists to prevent."""
+    pricing = [d for d in list_definitions() if d.domain == "pricing"]
+    assert pricing, "the pricing domain must declare keys"
+    assert all(d.enforced for d in pricing), [d.key for d in pricing if not d.enforced]
+
+
+def test_the_money_pricing_keys_are_high_impact() -> None:
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["pricing.allow_price_below_cost"].impact_level == "high"
+    assert by_key["pricing.max_order_discount_pct"].impact_level == "high"

@@ -144,6 +144,17 @@ vi.mock("@/pages/settings/pos/DevicesSection", () => ({
   default: (props) => devicesSectionMock(props),
 }));
 
+const priceListsMock = vi.fn(() => null);
+const offersMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/PriceListsPanel", () => ({
+  default: (props) => priceListsMock(props),
+}));
+
+vi.mock("@/components/settings/DiscountRulesPanel", () => ({
+  default: (props) => offersMock(props),
+}));
+
 
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
@@ -201,6 +212,8 @@ describe("SettingsSection", () => {
     returnWindowMock.mockClear();
     inventoryRecordsMock.mockClear();
     devicesSectionMock.mockClear();
+    priceListsMock.mockClear();
+    offersMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
     branchStaffMock.mockClear();
@@ -400,5 +413,18 @@ describe("SettingsSection", () => {
   test("a page with keys does not also pull a document list", () => {
     renderAt("/settings/purchasing/approval-limits");
     expect(inventoryRecordsMock).not.toHaveBeenCalled();
+  });
+
+  test("price lists and offers render the documents they govern", () => {
+    renderAt("/settings/sales/price-lists");
+    expect(priceListsMock).toHaveBeenCalled();
+    renderAt("/settings/sales/discounts-and-offers");
+    expect(offersMock).toHaveBeenCalled();
+  });
+
+  test("the pricing page is keys only, with no document panel", () => {
+    renderAt("/settings/sales/pricing");
+    expect(priceListsMock).not.toHaveBeenCalled();
+    expect(offersMock).not.toHaveBeenCalled();
   });
 });

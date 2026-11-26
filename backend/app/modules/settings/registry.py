@@ -292,6 +292,16 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "business.website",  # pos/receipt_settings.py::receipt_settings
         "business.commercial_register",  # pos/receipt_settings.py::receipt_settings
         "business.address.postal_code",  # pos/receipt_settings.py::receipt_settings
+        # The pricing engine reads these seven on every resolve and every quote
+        # (modules/pricing/service.py::_KEYS): they are the policy behind a price list, a
+        # quantity tier and an offer.
+        "pricing.price_lists_enabled",  # pricing/service.py::resolve
+        "pricing.quantity_tiers_enabled",  # pricing/service.py::resolve
+        "pricing.round_prices_to",  # pricing/service.py::resolve
+        "pricing.allow_price_below_cost",  # pricing/service.py::quote
+        "pricing.auto_apply_offers",  # pricing/service.py::quote
+        "pricing.stacked_discounts",  # pricing/service.py::quote
+        "pricing.max_order_discount_pct",  # pricing/service.py::quote
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
         "pos.cash_movement_limit",  # pos/service.py::add_cash_movement
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
@@ -1573,6 +1583,119 @@ _reg(
 
 # ======================== PRINT & DOCUMENTS ===============================
 
+# ---------------------------------------------------------------------------------------------
+# Pricing (section 07). Read by app/modules/pricing/service.py on every resolve and quote.
+# ---------------------------------------------------------------------------------------------
+_reg(
+    SettingDef(
+        key="pricing.price_lists_enabled",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        label_ar="تفعيل قوائم الأسعار",
+        label_en="Use price lists",
+        description_ar=(
+            "لما يتقفل، السعر بيفضل سعر المنتج نفسه والقوائم بتفضل محفوظة من غير ما تتطبق."
+        ),
+        description_en=(
+            "When off, the product's own price stands and the lists stay saved but unused."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.quantity_tiers_enabled",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل شرائح الكمية",
+        label_en="Use quantity tiers",
+        description_ar="سعر مختلف لما العميل ياخد كمية أكبر.",
+        description_en="A different unit price once the customer takes a larger quantity.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.round_prices_to",
+        domain="pricing",
+        type=SettingType.ENUM,
+        default="none",
+        scopes=(Scope.TENANT,),
+        allowed_values=("none", "0.25", "0.5", "1"),
+        label_ar="تقريب السعر",
+        label_en="Round prices to",
+        description_ar="تقريب سعر الوحدة النهائي: بدون، أو لأقرب ٢٥ قرش أو ٥٠ قرش أو جنيه.",
+        description_en="Round the final unit price: none, or to the nearest 0.25, 0.5 or 1.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.allow_price_below_cost",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بالبيع تحت التكلفة",
+        label_en="Allow selling below cost",
+        description_ar=(
+            "لما يتقفل، العرض اللي بينزّل السعر تحت تكلفة الصنف بيتم رفضه بدل ما يتحسب."
+        ),
+        description_en=(
+            "When off, an offer that takes a price below the item's cost is refused, not applied."
+        ),
+        impact_level="high",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.auto_apply_offers",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="تطبيق العروض تلقائيًا",
+        label_en="Apply offers automatically",
+        description_ar=("لما يتقفل، مفيش عرض بيتطبق غير اللي العميل بيطلبه بكود."),
+        description_en="When off, only an offer the customer asks for by code applies.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.stacked_discounts",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بتراكم الخصومات",
+        label_en="Allow stacked discounts",
+        description_ar="لما يتقفل، بيتطبق أفضل عرض واحد بس على الفاتورة.",
+        description_en="When off, only the single best offer applies to a basket.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.max_order_discount_pct",
+        domain="pricing",
+        type=SettingType.NUMBER,
+        default=50,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=100,
+        label_ar="أقصى خصم على الفاتورة",
+        label_en="Maximum order discount",
+        description_ar=(
+            "أقصى نسبة خصم على إجمالي الفاتورة. الخصم بيتقص عندها بدل ما الفاتورة تترفض."
+        ),
+        description_en=(
+            "The largest share of a basket that offers may take off. The discount is clamped "
+            "to it rather than the sale being refused."
+        ),
+        impact_level="high",
+    )
+)
+
 _reg(
     SettingDef(
         key="print.paper_width",
@@ -2429,6 +2552,8 @@ _DOMAIN_HOME: dict[str, tuple[str, str]] = {
     "inventory": ("inventory", "inventory-settings"),
     "purchasing": ("purchasing", "purchasing-settings"),
     "orders": ("sales", "sales-settings"),
+    # Pricing is a selling rule, so it lives in section 07 beside the sales and tax keys.
+    "pricing": ("sales", "pricing"),
     "notifications": ("notifications", "notification-rules"),
     "customer_agent": ("ai", "customer-agent"),
     "analytics_agent": ("ai", "analytics-agent"),
@@ -2491,6 +2616,17 @@ _PAGE_OVERRIDES: dict[str, str] = {
     "purchasing.allow_over_receipt": "receiving-and-inspection",
     "purchasing.approval_required": "approval-limits",
     "purchasing.approval_threshold": "approval-limits",
+    # Section 07's three pricing pages were empty because nothing was behind them. The pricing
+    # module now is, and these seven keys are what it reads: a price list is a document, but
+    # whether lists are used at all, whether tiers stack, and what an offer may take off the
+    # whole order are policy.
+    "pricing.price_lists_enabled": "price-lists",
+    "pricing.quantity_tiers_enabled": "pricing",
+    "pricing.round_prices_to": "pricing",
+    "pricing.allow_price_below_cost": "pricing",
+    "pricing.auto_apply_offers": "discounts-and-offers",
+    "pricing.stacked_discounts": "discounts-and-offers",
+    "pricing.max_order_discount_pct": "discounts-and-offers",
     # The inventory domain is twelve keys over six pages. "How stock is classified" is not the
     # same question as "how it is costed", so each key names the page that owns it.
     "inventory.auto_reserve": "stock-states",
