@@ -15,6 +15,8 @@ from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import Agent
 from app.modules.ai.owner_memory import OwnerMemoryService
 from app.modules.ai.providers import ChatCompletionResult
+from app.modules.settings.registry import Scope
+from app.modules.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -44,6 +46,10 @@ async def _agent(db, tenant_id) -> Agent:
     )
     db.add(agent)
     await db.flush()
+    # run_sales_analysis answers "disabled" before it ever reaches the model while
+    # analytics_agent.enabled is off (its default). A test that asserts what the model receives
+    # must switch the feature on, exactly as an owner does.
+    await SettingsService(db, tenant_id).set("analytics_agent.enabled", True, scope=Scope.TENANT)
     return agent
 
 

@@ -81,7 +81,7 @@ async def test_register_seeds_calendar_policy_and_subscription(db: AsyncSession,
         tenant_name="Seeded Co",
         tenant_slug=f"seeded-{uuid.uuid4().hex[:8]}",
         email=email,
-        password="secret-password",
+        password="secret-password-1",
         full_name="Seeded Owner",
     )
 
@@ -131,7 +131,7 @@ async def test_the_seeded_subscription_materialises_entitlements(db: AsyncSessio
         tenant_name="Entitled Co",
         tenant_slug=f"entitled-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Entitled Owner",
     )
 
@@ -155,7 +155,7 @@ async def test_registering_a_tenant_that_already_has_defaults_is_safe(db: AsyncS
         tenant_name="Twice Co",
         tenant_slug=f"twice-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Twice Owner",
     )
 
@@ -193,7 +193,7 @@ async def test_register_does_not_fail_when_the_plan_is_absent(
         tenant_name="No Plan Co",
         tenant_slug=f"noplan-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="No Plan Owner",
     )
     # Registration succeeded; the calendar and policy are still seeded.
@@ -225,7 +225,7 @@ async def test_the_seeded_calendar_belongs_to_the_new_tenant_only(db: AsyncSessi
         tenant_name="Isolated Co",
         tenant_slug=f"isolated-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Isolated Owner",
     )
     assert tenant.id != tenant_ctx.tenant_id
@@ -249,7 +249,7 @@ async def test_the_new_tenant_starts_active(db: AsyncSession, tenant_ctx):
         tenant_name="Active Co",
         tenant_slug=f"active-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Active Owner",
     )
 

@@ -22,6 +22,8 @@ from app.modules.inventory.service import (
 )
 from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine
 from app.modules.purchasing.service import PurchaseService, SupplierService
+from app.modules.settings.registry import Scope
+from app.modules.settings.service import SettingsService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
@@ -48,6 +50,11 @@ async def test_reorder_suggestion_arithmetic_and_approval_creates_po(db: AsyncSe
     draft purchase order."""
     tid = tenant_ctx.tenant_id
     uid = tenant_ctx.user.id
+
+    # Approving a suggestion CREATES the PO; whether it starts as a draft is decided by
+    # purchasing.approval_required (under the threshold a PO is auto-approved otherwise).
+    # This test is about the draft that still needs a human, so it asks for that path.
+    await SettingsService(db, tid).set("purchasing.approval_required", True, scope=Scope.TENANT)
 
     wh = await _warehouse(db, tid)
     prod = await CatalogService.create_product(

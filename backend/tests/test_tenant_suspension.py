@@ -439,7 +439,7 @@ async def test_suspended_default_tenant_does_not_lock_out_the_active_ones(
     pair, _user, tenant_id = await AuthService.login(
         db,
         email=tenant_ctx.user.email,
-        password="secret-password",
+        password="secret-password-1",
         user_agent="test",
         ip="127.0.0.1",
     )
