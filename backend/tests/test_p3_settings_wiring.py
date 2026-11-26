@@ -235,7 +235,10 @@ async def test_notification_dispatch_gates_email_and_push(db):
     creates the in-app notification but does not stage email/push outbox
     events. When enabled, it does stage them."""
     from app.modules.identity.service import AuthService
-    from app.modules.notifications.service import NotificationService
+    from app.modules.notifications.service import (
+        NotificationPreferencesService,
+        NotificationService,
+    )
     from app.modules.settings.registry import Scope
     from app.modules.settings.service import SettingsService
 
@@ -293,6 +296,14 @@ async def test_notification_dispatch_gates_email_and_push(db):
     # Enable email + push
     await svc.set("notifications.email_enabled", True, scope=Scope.TENANT)
     await svc.set("notifications.push_enabled", True, scope=Scope.TENANT)
+    # Two gates, and the test has to open both: the WORKSPACE decides whether this
+    # deployment sends the channel at all, and the PERSON decides whether they want
+    # it. Opening only the workspace gate proved nothing once the personal
+    # preference layer landed — push defaults to OFF per person, so the event that
+    # "should" be staged never was and this assertion had been red on main.
+    await NotificationPreferencesService.update(
+        db, tenant.id, user.id, email_enabled=True, push_enabled=True
+    )
     await db.flush()
 
     notif2 = await NotificationService.dispatch(

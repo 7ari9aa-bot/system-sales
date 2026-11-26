@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
@@ -159,7 +160,13 @@ async def test_the_delivery_log_reports_the_attempt_and_never_the_payload(
 
 
 async def test_another_tenants_delivery_is_not_listed(db: AsyncSession, tenant_ctx) -> None:
+    # A REAL second tenant: ``webhooks.tenant_id`` is a foreign key, so a made-up uuid
+    # cannot carry a row and the isolation check would pass by failing to insert at all.
     other = uuid.uuid4()
+    await db.execute(
+        text("INSERT INTO tenants (id, slug, name) VALUES (:id, :slug, 'Other tenant')"),
+        {"id": str(other), "slug": f"other-{other.hex[:8]}"},
+    )
     # webhooks and their deliveries are FORCE-tenant-isolated: each tenant's rows seed
     # under ITS GUC, so the other tenant's row is written while bound to the other tenant.
     await bind_tenant(db, other)

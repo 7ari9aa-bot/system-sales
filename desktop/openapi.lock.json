@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 714,
-    "sha256": "786505d5f229927c50ba40fa8ea94ff66083de28318e98b696fe70dcc84fb077",
+    "sha256": "f4bfa1583ca5ec6cfaca19c33292b96c22c52a67c81d9d6fa3448816fc08663e",
     "typed_operations": 397
   },
   "spec": {
@@ -7943,11 +7943,8 @@
             "max_discount": {
               "anyOf": [
                 {
-                  "minimum": 0.0,
-                  "type": "number"
-                },
-                {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "description": "An amount as a decimal string at the money scale (ADR-001/§47). A percentage for kind=\"percent\" is written the same way.",
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
                   "type": "string"
                 },
                 {
@@ -7959,11 +7956,8 @@
             "min_subtotal": {
               "anyOf": [
                 {
-                  "minimum": 0.0,
-                  "type": "number"
-                },
-                {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "description": "An amount as a decimal string at the money scale (ADR-001/§47). A percentage for kind=\"percent\" is written the same way.",
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
                   "type": "string"
                 },
                 {
@@ -8018,17 +8012,10 @@
               "title": "Target Id"
             },
             "value": {
-              "anyOf": [
-                {
-                  "minimum": 0.0,
-                  "type": "number"
-                },
-                {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                  "type": "string"
-                }
-              ],
-              "title": "Value"
+              "description": "An amount as a decimal string at the money scale (ADR-001/§47). A percentage for kind=\"percent\" is written the same way.",
+              "pattern": "^\\d+(\\.\\d{1,2})?$",
+              "title": "Value",
+              "type": "string"
             }
           },
           "required": [
@@ -8076,7 +8063,8 @@
             "max_discount": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "description": "An amount as a Decimal STRING at the money scale (ADR-001/§47).",
+                  "pattern": "^-?\\d+\\.\\d{2}$",
                   "type": "string"
                 },
                 {
@@ -8088,7 +8076,8 @@
             "min_subtotal": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "description": "An amount as a Decimal STRING at the money scale (ADR-001/§47).",
+                  "pattern": "^-?\\d+\\.\\d{2}$",
                   "type": "string"
                 },
                 {
@@ -8142,7 +8131,8 @@
               "title": "Target Id"
             },
             "value": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "description": "An amount as a Decimal STRING at the money scale (ADR-001/§47).",
+              "pattern": "^-?\\d+\\.\\d{2}$",
               "title": "Value",
               "type": "string"
             }
@@ -18364,6 +18354,52 @@
             "items"
           ],
           "title": "QuoteRequest",
+          "type": "object"
+        },
+        "RateLimitBucketOut": {
+          "description": "One request bucket the middleware enforces, with its ceiling.",
+          "properties": {
+            "bucket": {
+              "title": "Bucket",
+              "type": "string"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "bucket",
+            "limit"
+          ],
+          "title": "RateLimitBucketOut",
+          "type": "object"
+        },
+        "RateLimitLimitsOut": {
+          "description": "The request ceilings this deployment enforces, and whether they are on.",
+          "properties": {
+            "buckets": {
+              "items": {
+                "$ref": "#/components/schemas/RateLimitBucketOut"
+              },
+              "title": "Buckets",
+              "type": "array"
+            },
+            "enforced": {
+              "title": "Enforced",
+              "type": "boolean"
+            },
+            "window_seconds": {
+              "title": "Window Seconds",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "enforced",
+            "window_seconds",
+            "buckets"
+          ],
+          "title": "RateLimitLimitsOut",
           "type": "object"
         },
         "ReactionRequest": {
@@ -75826,9 +75862,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "additionalProperties": true,
-                    "title": "Response Read Rate Limits Api V1 Platform Rate Limits Get",
-                    "type": "object"
+                    "$ref": "#/components/schemas/RateLimitLimitsOut"
                   }
                 }
               },

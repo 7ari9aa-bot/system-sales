@@ -43,13 +43,23 @@ def test_schema_keeps_one_store_tool_with_optional_topic_and_question():
 
 @pytest.mark.parametrize(
     "topic",
-    ["all", "exchange", "return", "shipping", "hours", "ordering", "cancellation", "deposit"],
+    [
+        "all",
+        "exchange",
+        "return",
+        "shipping",
+        "hours",
+        "ordering",
+        "cancellation",
+        "warranty",
+        "deposit",
+    ],
 )
 def test_schema_accepts_only_supported_topics(topic):
     assert GetStoreInfoArgs(topic=topic, question="What is the policy?").topic == topic
 
 
-@pytest.mark.parametrize("topic", ["warranty", "RETURN", "", None, 1, ["deposit"]])
+@pytest.mark.parametrize("topic", ["refunds", "RETURN", "", None, 1, ["deposit"]])
 def test_schema_rejects_unknown_or_non_string_topics(topic):
     with pytest.raises(PydanticValidationError):
         GetStoreInfoArgs(topic=topic)
@@ -116,7 +126,17 @@ async def test_exact_policy_beyond_thirty_rows_ignores_unavailable_search(
 
 
 @pytest.mark.parametrize(
-    "topic", ["exchange", "return", "shipping", "hours", "ordering", "cancellation", "deposit"]
+    "topic",
+    [
+        "exchange",
+        "return",
+        "shipping",
+        "hours",
+        "ordering",
+        "cancellation",
+        "warranty",
+        "deposit",
+    ],
 )
 async def test_missing_topic_never_falls_back_to_unrelated_or_hidden_text(
     db, tenant_ctx, unavailable_embeddings, topic

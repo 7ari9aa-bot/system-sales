@@ -196,14 +196,21 @@ async def test_location_crud_under_workspace(db: AsyncSession, tenant_ctx) -> No
             f"/api/v1/hierarchy/locations/{body['id']}",
             json={"hours": {"sat": {"open": "20:00", "close": "09:00"}}},
         )
-        assert backwards.status_code == 422, backwards.text
+        # 400, not 422: the app's error model puts DOMAIN refusals on
+        # ``DomainError`` (``validation_error``, HTTP 400) and reserves 422 for a
+        # body pydantic could not parse into the schema. A week whose Saturday
+        # closes before it opens parses fine and is refused by the rule below it,
+        # so it is a 400 — the same shape the other 60-odd domain refusals use.
+        assert backwards.status_code == 400, backwards.text
+        assert backwards.json()["error"]["code"] == "validation_error"
 
         # A day that is neither closed nor given times is incomplete, not midnight-to-midnight.
         half = await client.patch(
             f"/api/v1/hierarchy/locations/{body['id']}",
             json={"hours": {"sat": {"open": "09:00"}}},
         )
-        assert half.status_code == 422, half.text
+        assert half.status_code == 400, half.text
+        assert half.json()["error"]["code"] == "validation_error"
 
         # Clearing goes back to following the store, and {} is the same statement as null.
         cleared = await client.patch(

@@ -12,8 +12,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import DomainError, ValidationError
 from app.modules.ai.agents.customer.tools._shared import _money, _StrictArgs
 
+# Kept in step with ``policies.POLICY_TITLES``: a topic the shop can write but the
+# agent cannot name is a policy the customer cannot ask about by name. "deposit" has
+# no stored policy yet (it reads the deposit-policy settings), the rest do.
 _StoreInfoTopic = Literal[
-    "all", "exchange", "return", "shipping", "hours", "ordering", "cancellation", "deposit"
+    "all",
+    "exchange",
+    "return",
+    "shipping",
+    "hours",
+    "ordering",
+    "cancellation",
+    "warranty",
+    "deposit",
 ]
 
 

@@ -66,7 +66,7 @@ async def test_an_override_at_tenant_scope_is_what_the_posture_reports(
     await service.set(
         "security.require_strong_passwords", False, scope="tenant", bypass_approval=True
     )
-    await service.set("security.audit_retention_days", 30, scope="tenant")
+    await service.set("security.audit_retention_days", 30, scope="tenant", bypass_approval=True)
     await db.flush()
 
     async with _client(db, tenant_ctx) as client:

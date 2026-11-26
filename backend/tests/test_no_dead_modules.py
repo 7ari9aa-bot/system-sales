@@ -297,10 +297,17 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     assert "app.modules.identity.deps" in reachable, (
         "detector found no path to a service-layer dependency of a live router"
     )
-    # A file that only its own tests import cannot be reached from a root.
-    assert "app.modules.notifications.digest" not in reachable, (
-        "detector reached a module nothing but its tests imports — the "
-        "transitive closure is over-permissive"
+    # A file that only its own tests import cannot be reached from a root. The
+    # example is taken FROM the allow-list rather than hard-coded: this assertion
+    # used to name ``notifications.digest``, and when the digest route was wired
+    # the detector was right and the example was stale — the guard failed on a
+    # module that had stopped being dead. Reading the list keeps the negative case
+    # honest without pinning a module that may legitimately get its caller.
+    dead_example = next(iter(sorted(KNOWN_DEAD_MODULES)), None)
+    assert dead_example is not None, "the allow-list is empty: nothing pins the dead half"
+    assert dead_example not in reachable, (
+        f"detector reached {dead_example}, recorded as dead — the transitive "
+        "closure is over-permissive"
     )
     assert "app.modules.not_a_real_module" not in reachable, (
         "detector matches a module that does not exist"
