@@ -379,51 +379,63 @@ class OutboxRelay:
             # bottom of the loop), so a single connection is enough.
             await self._reclaim_stranded(session, max_attempts)
             await session.commit()
-            # One row per claim, at most `batch` rows per drain so a sustained
-            # backlog cannot starve the poll loop of its sleep.
-            for _ in range(batch):
-                row = await self._claim_one(session, max_attempts)
-                if row is None:
-                    await session.rollback()
-                    break
-                payload = _loads(row["payload"])
-                meta = _loads(row["meta"])
-                try:
-                    await self._bus.publish(row["stream"], payload, meta)
-                except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
-                    logger.exception("outbox.relay.publish_failed id=%s", row["id"])
-                    await session.execute(
-                        _MARK_FAILED_SQL,
-                        {
-                            "id": row["id"],
-                            "err": str(exc)[:500],
-                            "backoff_base_seconds": backoff_base,
-                            "backoff_max_seconds": backoff_max,
-                        },
-                    )
+            # A relay that DIES mid-drain must not leave its claimed row behind as
+            # 'publishing': the claim and the publish share one transaction, so the
+            # only correct outcome for a process death is a rollback of that claim.
+            # Relying on the session close to do it is not enough: a BaseException
+            # (the relay's own death, a cancellation, a timeout) can tear the async
+            # context down while the connection is still mid-transaction, and the
+            # row then stays 'publishing' with attempts already spent until the
+            # lease expires. This makes the rollback explicit and unconditional.
+            try:
+                # One row per claim, at most `batch` rows per drain so a sustained
+                # backlog cannot starve the poll loop of its sleep.
+                for _ in range(batch):
+                    row = await self._claim_one(session, max_attempts)
+                    if row is None:
+                        await session.rollback()
+                        break
+                    payload = _loads(row["payload"])
+                    meta = _loads(row["meta"])
+                    try:
+                        await self._bus.publish(row["stream"], payload, meta)
+                    except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
+                        logger.exception("outbox.relay.publish_failed id=%s", row["id"])
+                        await session.execute(
+                            _MARK_FAILED_SQL,
+                            {
+                                "id": row["id"],
+                                "err": str(exc)[:500],
+                                "backoff_base_seconds": backoff_base,
+                                "backoff_max_seconds": backoff_max,
+                            },
+                        )
+                        await session.commit()
+                        continue
+                    await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
+                    # §152 history is written with the publish mark; a history
+                    # failure must not flip a published row back to pending.
+                    # The history write runs inside a SAVEPOINT: a failed INSERT aborts
+                    # only that savepoint, so the claim and the 'published' mark still
+                    # commit. Without it the aborted transaction rolled the mark back
+                    # with the claim and the loop re-claimed the SAME row until the
+                    # batch ran out — one bad event_log row became up to `batch`
+                    # duplicate publishes of the same event in a single drain.
+                    try:
+                        async with session.begin_nested():
+                            await self._write_event_log(session, row, payload, meta)
+                    except Exception:  # noqa: BLE001 — relay survives, ops replays
+                        logger.exception("outbox.relay.event_log_failed id=%s", row["id"])
+                    # Claim + publish + mark commit together, per row: this single
+                    # commit is why no relay can see this row as anything but
+                    # 'pending' (locked) while it is being published, and why a
+                    # crash anywhere above rolls the claim back with the publish
+                    # instead of stranding the row in 'publishing'.
                     await session.commit()
-                    continue
-                await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
-                # §152 history is written with the publish mark; a history
-                # failure must not flip a published row back to pending.
-                # The history write runs inside a SAVEPOINT: a failed INSERT aborts
-                # only that savepoint, so the claim and the 'published' mark still
-                # commit. Without it the aborted transaction rolled the mark back
-                # with the claim and the loop re-claimed the SAME row until the
-                # batch ran out — one bad event_log row became up to `batch`
-                # duplicate publishes of the same event in a single drain.
-                try:
-                    async with session.begin_nested():
-                        await self._write_event_log(session, row, payload, meta)
-                except Exception:  # noqa: BLE001 — relay survives, ops replays
-                    logger.exception("outbox.relay.event_log_failed id=%s", row["id"])
-                # Claim + publish + mark commit together, per row: this single
-                # commit is why no relay can see this row as anything but
-                # 'pending' (locked) while it is being published, and why a
-                # crash anywhere above rolls the claim back with the publish
-                # instead of stranding the row in 'publishing'.
-                await session.commit()
-                published += 1
+                    published += 1
+            except BaseException:
+                await session.rollback()
+                raise
         return published
 
     def _envelope_for_log(self, row: Any, payload: dict, meta: dict) -> EventEnvelope | None:
