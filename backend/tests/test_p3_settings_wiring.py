@@ -198,7 +198,14 @@ async def test_require_strong_passwords_off_allows_weak_password_on_reset(db):
 
     # Disable strong passwords
     svc = SettingsService(db, tenant.id)
-    await svc.set("security.require_strong_passwords", False, scope=Scope.TENANT)
+    await svc.set(
+        "security.require_strong_passwords",
+        False,
+        scope=Scope.TENANT,
+        # security.* is APPROVAL_REQUIRED: a plain set() opens a change request and writes
+        # nothing, so the test would read the default. Write it the way an approved change lands.
+        bypass_approval=True,
+    )
     await db.flush()
 
     # Create a reset token
@@ -345,7 +352,7 @@ async def test_ip_allowlist_blocks_unlisted_ip(db):
 
     # Set IP allowlist to a specific IP
     svc = SettingsService(db, tenant.id)
-    await svc.set("security.ip_allowlist", ["10.0.0.1"], scope=Scope.TENANT)
+    await svc.set("security.ip_allowlist", ["10.0.0.1"], scope=Scope.TENANT, bypass_approval=True)
     await db.flush()
 
     # Create a valid access token for the user
@@ -387,7 +394,7 @@ async def test_ip_allowlist_allows_listed_ip(db):
     await db.flush()
 
     svc = SettingsService(db, tenant.id)
-    await svc.set("security.ip_allowlist", ["10.0.0.1"], scope=Scope.TENANT)
+    await svc.set("security.ip_allowlist", ["10.0.0.1"], scope=Scope.TENANT, bypass_approval=True)
     await db.flush()
 
     token = create_access_token(
@@ -477,7 +484,14 @@ async def test_resolve_setting_returns_default_then_override(db):
 
     # Override at tenant level
     svc = SettingsService(db, tenant.id)
-    await svc.set("security.require_strong_passwords", False, scope=Scope.TENANT)
+    await svc.set(
+        "security.require_strong_passwords",
+        False,
+        scope=Scope.TENANT,
+        # security.* is APPROVAL_REQUIRED: a plain set() opens a change request and writes
+        # nothing, so the test would read the default. Write it the way an approved change lands.
+        bypass_approval=True,
+    )
     await db.flush()
 
     val = await resolve_setting(db, tenant.id, "security.require_strong_passwords")
