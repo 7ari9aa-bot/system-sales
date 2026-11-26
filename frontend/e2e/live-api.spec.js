@@ -1415,9 +1415,14 @@ test("sell, return and exchange from the screens with no shift and no payment: t
     page.getByLabel("المبلغ المدفوع"),
     "no payment box: nothing is collected",
   ).toHaveCount(0);
-  await expect(page.getByText(/الفرق لصالح المحل/).first()).toBeVisible({
-    timeout: 10000,
-  });
+  // The till records no payments, so the 50 is not collected: the confirmation has to NAME it as
+  // owed on the invoice. Silently dropping it (or claiming "no difference") is the bug this guards.
+  const confirmation = page.getByText(/الفرق مسجّل على الفاتورة فقط/).first();
+  await expect(
+    confirmation,
+    "the 50 the shop is owed is named on the confirmation",
+  ).toBeVisible({ timeout: 10000 });
+  await expect(confirmation).toContainText("50.00");
   await expect.poll(() => onHand(vB.id), { timeout: 10000 }).toBe(9);
   await expect
     .poll(() => onHand(vA.id), { timeout: 10000 })
@@ -1990,16 +1995,34 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   ).toBeVisible({ timeout: 10000 });
 
   const row = main.locator("tr", { hasText: `ItemA ${sfx}` }).first();
-  await row.getByPlaceholder("لم يُعدّ").fill("7");
+  const countBox = row.getByPlaceholder("لم يُعدّ");
+  await countBox.fill("7");
+  // A typed count is committed when the line is finished, not on every keystroke: Enter blurs.
+  await countBox.press("Enter");
   // The counter counts against the 10 the sheet told them they had: 3 missing.
   await expect(row, "3 missing against the sheet's opening 10").toContainText(
     "-3",
   );
 
-  // The typed count is gathered for 2s before it is saved (one request per scan would fight the
-  // scanner), so the sale below must wait for the SAVE to land: a count saved after the sale would
-  // be compared against a book the sale already moved, which is a different question.
-  await page.waitForTimeout(3000);
+  // Approval compares the count against the book AS IT WAS WHEN THE FIGURE WAS TAKEN, so the sale
+  // below has to land after that figure reached the server, not before it.
+  const sheets = await api("GET", "/pos/stocktakes");
+  const openSheet = (
+    Array.isArray(sheets) ? sheets : (sheets.items ?? [])
+  ).find((s) => s.status === "OPEN");
+  await expect
+    .poll(
+      async () => {
+        const sheet = await api("GET", `/pos/stocktakes/${openSheet.id}`);
+        const line = (sheet.lines ?? []).find((l) => l.variant_id === vA.id);
+        return line?.counted_qty ?? null;
+      },
+      {
+        message: "the count reached the server before the sale",
+        timeout: 15000,
+      },
+    )
+    .toBe(7);
 
   // A customer buys one AFTER the count was taken, while the sheet is still open. Approval must
   // keep that sale: it applies the counted difference (-3) to the balance as it stands (9), so
@@ -2520,9 +2543,7 @@ test("print settings on the screen are saved for real: the prefix the owner type
   // Name the print tab itself. The old alternation included "receipt", which matches
   // "Receipt tracking" — the first tab, so the click opened the receipt list and the prefix field
   // was never on screen (run 45752402206: the snapshot showed Receipt tracking selected).
-  await (
-    await posTab(main, /Print & barcode|الطباعة والباركود/i)
-  ).click();
+  await (await posTab(main, /Print & barcode|الطباعة والباركود/i)).click();
 
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
   // receipt actually reads are offered now (print.invoice_prefix, print.barcode_format), so the
