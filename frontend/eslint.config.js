@@ -65,4 +65,22 @@ export default [
     files: ["src/components/inbox/ChannelChat.jsx", "src/components/inbox/whatsapp/**/*.jsx", "src/pages/Inbox.jsx"],
     rules: { "no-undef": "error" },
   },
+  {
+    // A name used but never defined is a ReferenceError that only fires when the screen is
+    // actually used, so the build, the unit tests and the SSR render tests all stay green:
+    // createCountQueue, setPayError and commitDecision each shipped that way and each blanked a
+    // screen in the live stack. The components tree is clean apart from three browser globals, so
+    // it is held to no-undef from here on.
+    files: ["src/cashier/components/**/*.{js,jsx}", "src/cashier/routes/**/*.{js,jsx}"],
+    languageOptions: {
+      globals: globals.browser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    plugins: { "react-hooks": pluginReactHooks },
+    rules: { "no-undef": "error" },
+  },
 ];
