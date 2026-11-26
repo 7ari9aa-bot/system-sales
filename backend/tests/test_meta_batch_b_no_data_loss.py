@@ -53,9 +53,7 @@ def _subscription_graph(*, already: str, posted: list[dict]):
                 from app.core.config import get_settings
 
                 app_id = str(get_settings().meta_app_id or "")
-                data = (
-                    [{"id": app_id, "subscribed_fields": already.split(",")}] if already else []
-                )
+                data = [{"id": app_id, "subscribed_fields": already.split(",")}] if already else []
                 return httpx.Response(200, json={"data": data})
             posted.append(params)
             return httpx.Response(200, json={"success": True})
