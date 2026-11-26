@@ -393,6 +393,10 @@ class Location(TimestampMixin, IdMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str | None] = mapped_column(String(31))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # The branch's own week: {"mon": {"open": "09:00", "close": "22:00"}, ...} with
+    # "closed": true for a day it does not trade. NULL means the branch follows the
+    # store's published hours, which is what a single-branch shop should keep.
+    hours: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

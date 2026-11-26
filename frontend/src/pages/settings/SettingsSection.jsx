@@ -22,6 +22,12 @@ import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell"
 import { SettingField } from "@/components/settings/SettingField";
 import StorePolicyEditor from "@/components/settings/StorePolicyEditor";
 import BranchesPanel from "@/components/settings/BranchesPanel";
+import {
+  BranchDataPanel,
+  BranchHoursPanel,
+  BranchScopesPanel,
+  BranchStaffPanel,
+} from "@/components/settings/BranchPanels";
 import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
 import { useSettings } from "@/components/settings/useSettings";
 import ScopeSelector from "@/components/settings/ScopeSelector";
@@ -84,7 +90,14 @@ const SECTION_PAGES = {
     "business-policies",
     "legal-data",
   ],
-  locations: ["all-branches", "branch-settings"],
+  locations: [
+    "all-branches",
+    "branch-data",
+    "branch-hours",
+    "branch-settings",
+    "branch-staff",
+    "operating-scopes",
+  ],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -97,6 +110,15 @@ const POLICY_KEYS_BY_PAGE = {
   "store/working-hours": ["hours"],
   "store/business-policies": ["exchange", "return", "warranty", "cancellation", "shipping", "ordering"],
 };
+
+/** Pages whose body is a panel over real records rather than a list of registry keys. */
+const PANEL_PAGES = new Set([
+  "locations/all-branches",
+  "locations/branch-data",
+  "locations/branch-hours",
+  "locations/branch-staff",
+  "locations/operating-scopes",
+]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
 const SCOPED_DOMAINS = new Set(["business", "organization", "branch", "pos", "print", "orders"]);
@@ -258,7 +280,9 @@ export default function SettingsSection({ section }) {
         <PreviewPanel changedEntries={s.changedEntries} scope={scope} isAr={isAr} />
       )}
 
-      {domains.length === 0 && !POLICY_KEYS_BY_PAGE[`${section}/${page}`] && (
+      {domains.length === 0 &&
+        !POLICY_KEYS_BY_PAGE[`${section}/${page}`] &&
+        !PANEL_PAGES.has(`${section}/${page}`) && (
         <div className="py-8 text-center text-[13px] text-muted-foreground">
           {t("settings.store.empty")}
         </div>
@@ -279,6 +303,10 @@ export default function SettingsSection({ section }) {
       ))}
 
       {`${section}/${page}` === "locations/all-branches" && <BranchesPanel />}
+      {`${section}/${page}` === "locations/branch-data" && <BranchDataPanel />}
+      {`${section}/${page}` === "locations/branch-hours" && <BranchHoursPanel />}
+      {`${section}/${page}` === "locations/branch-staff" && <BranchStaffPanel />}
+      {`${section}/${page}` === "locations/operating-scopes" && <BranchScopesPanel />}
 
       {POLICY_KEYS_BY_PAGE[`${section}/${page}`] && (
         <div className="space-y-2 pt-2">

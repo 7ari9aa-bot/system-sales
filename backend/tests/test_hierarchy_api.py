@@ -173,6 +173,51 @@ async def test_location_crud_under_workspace(db: AsyncSession, tenant_ctx) -> No
         )
         assert patched.status_code == 200 and patched.json()["name"] == "Renamed"
 
+        # A new branch follows the store until someone says otherwise.
+        assert patched.json()["hours"] is None
+
+        # The branch's own week: Friday closed, the rest 10:00–23:00.
+        week = {
+            "mon": {"open": "10:00", "close": "23:00"},
+            "fri": {"closed": True},
+        }
+        weeked = await client.patch(
+            f"/api/v1/hierarchy/locations/{body['id']}", json={"hours": week}
+        )
+        assert weeked.status_code == 200, weeked.text
+        assert weeked.json()["hours"] == {
+            "mon": {"open": "10:00", "close": "23:00"},
+            "fri": {"closed": True},
+        }
+
+        # A day that closes before it opens would make every "are you open" answer
+        # wrong, so the boundary refuses it rather than storing a broken week.
+        backwards = await client.patch(
+            f"/api/v1/hierarchy/locations/{body['id']}",
+            json={"hours": {"sat": {"open": "20:00", "close": "09:00"}}},
+        )
+        assert backwards.status_code == 422, backwards.text
+
+        # A day that is neither closed nor given times is incomplete, not midnight-to-midnight.
+        half = await client.patch(
+            f"/api/v1/hierarchy/locations/{body['id']}",
+            json={"hours": {"sat": {"open": "09:00"}}},
+        )
+        assert half.status_code == 422, half.text
+
+        # Clearing goes back to following the store, and {} is the same statement as null.
+        cleared = await client.patch(
+            f"/api/v1/hierarchy/locations/{body['id']}", json={"hours": {}}
+        )
+        assert cleared.status_code == 200 and cleared.json()["hours"] is None
+
+        # Patching something else must not wipe the week.
+        await client.patch(f"/api/v1/hierarchy/locations/{body['id']}", json={"hours": week})
+        renamed_again = await client.patch(
+            f"/api/v1/hierarchy/locations/{body['id']}", json={"code": "B1X"}
+        )
+        assert renamed_again.json()["hours"] == weeked.json()["hours"]
+
 
 async def test_location_grant_revoke_flow(db: AsyncSession, tenant_ctx) -> None:
     member = await _member(db, tenant_ctx)

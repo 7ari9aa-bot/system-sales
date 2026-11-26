@@ -175,10 +175,10 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 04 Business policies | done | `/settings/store/business-policies` — the enforced windows (`pos.return_max_days`, `pos.exchange_max_days`, both high impact) plus the published exchange, return, warranty, cancellation, shipping and ordering policies and the deposit rules |
 | 05 All branches | done | `/settings/locations/all-branches` — the branches that exist, read from the hierarchy (`workspaces` → `locations`) beside the keys that limit how many there may be |
 | 05 Branch settings | done | `/settings/locations/branch-settings` — the four `branch.*` keys at branch scope |
-| 05 Branch data | pending | a `locations` row carries name, code and active only; editing them needs a form over `PATCH /hierarchy/locations/{id}` |
-| 05 Branch hours | pending | no column holds per-branch hours yet; it needs a migration before a page can offer them |
-| 05 Branch staff | pending | the data exists (`user_location_access`) but the grant/revoke UI is not built |
-| 05 Operating scopes | pending | needs a read-only view of the resolved scope chain for one branch |
+| 05 Branch data | done | `/settings/locations/branch-data` — name, code and "this branch trades", written through `PATCH /hierarchy/locations/{id}` |
+| 05 Branch hours | done | `/settings/locations/branch-hours` — the branch's own week in the new `locations.hours` column (migration `fe2026112613`); empty means "follows the store", which is what every existing row says |
+| 05 Branch staff | done | `/settings/locations/branch-staff` — the real grants: list, grant with a per-branch role override, revoke, over `user_location_access` |
+| 05 Operating scopes | done | `/settings/locations/operating-scopes` — read-only: every key that accepts a branch value, its resolved value and whether it was inherited, set for the branch, or is the default |
 | 06–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual

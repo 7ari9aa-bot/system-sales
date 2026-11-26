@@ -388,10 +388,32 @@ class LocationCreate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=31)
 
 
+DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+class BranchDayHours(BaseModel):
+    """One day of a branch's week. `closed` wins over any open/close it carries."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    closed: bool = False
+    open: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    close: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+    @model_validator(mode="after")
+    def _open_needs_close(self):
+        if not self.closed and bool(self.open) != bool(self.close):
+            raise ValueError("a trading day needs both open and close")
+        return self
+
+
 class LocationUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     code: str | None = Field(default=None, min_length=1, max_length=31)
     is_active: bool | None = None
+    # None leaves the hours untouched; an empty object clears them back to
+    # "follows the store", which is a real choice and must stay reachable.
+    hours: dict[str, BranchDayHours] | None = None
 
 
 class LocationOut(BaseModel):
@@ -403,6 +425,7 @@ class LocationOut(BaseModel):
     name: str
     code: str | None
     is_active: bool
+    hours: dict | None = None
 
 
 class LocationListOut(BaseModel):

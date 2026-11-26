@@ -17,6 +17,39 @@ from app.modules.identity.models import (
     Workspace,
 )
 
+DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _normalise_hours(hours: dict) -> dict | None:
+    """A branch week, or None for "follows the store".
+
+    Accepts the pydantic model dump or a plain mapping, keeps only the seven
+    known days in week order, and refuses a day that closes before it opens.
+    """
+    if not hours:
+        return None
+    unknown = [d for d in hours if d not in DAY_KEYS]
+    if unknown:
+        raise ValidationError(f"unknown day(s): {', '.join(sorted(unknown))}")
+    out: dict[str, dict] = {}
+    for day in DAY_KEYS:
+        spec = hours.get(day)
+        if spec is None:
+            continue
+        if hasattr(spec, "model_dump"):
+            spec = spec.model_dump()
+        closed = bool(spec.get("closed"))
+        if closed:
+            out[day] = {"closed": True}
+            continue
+        open_at, close_at = spec.get("open"), spec.get("close")
+        if not open_at or not close_at:
+            raise ValidationError(f"{day}: a trading day needs both open and close")
+        if close_at <= open_at:
+            raise ValidationError(f"{day}: closing time must be after opening time")
+        out[day] = {"open": open_at, "close": close_at}
+    return out or None
+
 
 class HierarchyService:
     """§151 — workspaces, locations, and location access grants.
@@ -189,6 +222,7 @@ class HierarchyService:
         name: str | None = None,
         code: str | None = None,
         is_active: bool | None = None,
+        hours: dict | None = None,
     ) -> Location:
         loc = await HierarchyService._get_location(session, tenant_id, location_id)
         if name is not None:
@@ -209,6 +243,8 @@ class HierarchyService:
             loc.code = code
         if is_active is not None:
             loc.is_active = is_active
+        if hours is not None:
+            loc.hours = _normalise_hours(hours)
         await session.flush()
         return loc
 

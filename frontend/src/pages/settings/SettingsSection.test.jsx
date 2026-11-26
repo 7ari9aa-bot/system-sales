@@ -61,7 +61,11 @@ const DEFS_BY_PAGE = {
   "business-policies": [POLICY_DEF],
   "working-hours": [],
   "all-branches": [],
+  "branch-data": [],
+  "branch-hours": [],
   "branch-settings": [],
+  "branch-staff": [],
+  "operating-scopes": [],
 };
 
 const useSettingsMock = vi.fn(() => ({
@@ -103,9 +107,20 @@ vi.mock("@/components/settings/DepositPolicySettings", () => ({
 }));
 
 const branchesPanelMock = vi.fn(() => null);
+const branchDataMock = vi.fn(() => null);
+const branchHoursMock = vi.fn(() => null);
+const branchStaffMock = vi.fn(() => null);
+const branchScopesMock = vi.fn(() => null);
 
 vi.mock("@/components/settings/BranchesPanel", () => ({
   default: (props) => branchesPanelMock(props),
+}));
+
+vi.mock("@/components/settings/BranchPanels", () => ({
+  BranchDataPanel: (props) => branchDataMock(props),
+  BranchHoursPanel: (props) => branchHoursMock(props),
+  BranchStaffPanel: (props) => branchStaffMock(props),
+  BranchScopesPanel: (props) => branchScopesMock(props),
 }));
 
 vi.mock("@/components/settings/useSettings", () => ({
@@ -147,6 +162,10 @@ describe("SettingsSection", () => {
     useSettingsMock.mockClear();
     policyEditorMock.mockClear();
     branchesPanelMock.mockClear();
+    branchDataMock.mockClear();
+    branchHoursMock.mockClear();
+    branchStaffMock.mockClear();
+    branchScopesMock.mockClear();
   });
 
   test("asks the settings hook for its own section and page", () => {
@@ -224,5 +243,22 @@ describe("SettingsSection", () => {
     expect(opts.page).toBe("branch-settings");
     // The branches list belongs to the page that owns the branch count, not this one.
     expect(branchesPanelMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["branch-data", branchDataMock],
+    ["branch-hours", branchHoursMock],
+    ["branch-staff", branchStaffMock],
+    ["operating-scopes", branchScopesMock],
+  ])("%s renders its own panel and nothing else", (page, panel) => {
+    renderAt(`/settings/locations/${page}`);
+    expect(panel).toHaveBeenCalled();
+    // Only the page's own panel runs; the others are not mounted beside it.
+    const others = [branchDataMock, branchHoursMock, branchStaffMock, branchScopesMock].filter(
+      (m) => m !== panel,
+    );
+    for (const other of others) expect(other).not.toHaveBeenCalled();
+    expect(branchesPanelMock).not.toHaveBeenCalled();
+    expect(policyEditorMock).not.toHaveBeenCalled();
   });
 });
