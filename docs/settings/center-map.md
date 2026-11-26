@@ -192,7 +192,15 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 07 Price lists | pending | no price-list table or endpoint exists; a product's price is append-only rows in `product_prices` per variant, currency and quantity tier |
 | 07 Pricing | pending | no pricing-rule key exists: currency and tiers are per-product data, so a page would edit nothing |
 | 07 Discounts and offers | pending | no offer engine exists; the only discount control is the till cap (`pos.max_discount_pct` at tenant level, `pos_profiles.max_discount_pct` per register), which belongs to section 08 |
-| 08–20 | pending | see the tables above |
+| 08 POS settings | done | `/settings/pos/pos-settings` — customer required, hold cart, restock default, cash-only refunds, return reasons, record-only sales; `pos.max_discount_pct` is here and now high impact |
+| 08 Registers and devices | done | `/settings/pos/registers-and-devices` — reuses the till's existing `DevicesSection` (profiles, registers, warehouses, members) rather than growing a second register editor |
+| 08 Collection methods | done | `/settings/pos/collection-methods` — `take_payments`, `settle_payment_methods` (high impact), `allow_sale_on_account`, `reference_required_methods` |
+| 08 Shifts | done | `/settings/pos/shifts` — `variance_reason_required`, `variance_approval_threshold` (high impact) |
+| 08 Cash movement | done | `/settings/pos/cash-movement` — `cash_movement_limit` (high impact) |
+| 08 Invoices and receipts | done | `/settings/pos/invoices-and-receipts` — the eight `print.*` keys |
+| 08 Peripherals | pending | no peripheral configuration is stored anywhere: the printer and drawer are driven by the print keys and the device's own settings |
+| 08 Offline mode | pending | the till has no offline queue or offline policy in the codebase, so a page would be a switch wired to nothing |
+| 09–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).
