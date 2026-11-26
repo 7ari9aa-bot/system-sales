@@ -612,9 +612,7 @@ async def approve_change_request(
     # Reviewing is not writing: settings:approve, so a manager can sign off a proposal
     # without holding the power to change every key directly.
     if not ({"settings:approve", "settings:write"} & set(ctx.permission_codes)):
-        raise PermissionDeniedError(
-            "approving a change request requires settings:approve"
-        )
+        raise PermissionDeniedError("approving a change request requires settings:approve")
     svc = SettingsService(ctx.session, ctx.tenant_id)
     req = await svc.approve_change_request(
         request_id,
@@ -650,9 +648,7 @@ async def reject_change_request(
 ) -> ChangeRequestOut:
     """Reject a pending change request."""
     if not ({"settings:approve", "settings:write"} & set(ctx.permission_codes)):
-        raise PermissionDeniedError(
-            "rejecting a change request requires settings:approve"
-        )
+        raise PermissionDeniedError("rejecting a change request requires settings:approve")
     svc = SettingsService(ctx.session, ctx.tenant_id)
     req = await svc.reject_change_request(
         request_id,

@@ -507,9 +507,7 @@ class SettingsService:
             }
             if expected:
                 latest = await self._latest_history_ids(list(expected), scope_enum.value, scope_id)
-                stale = sorted(
-                    k for k, h in expected.items() if (latest.get(k) or None) != h
-                )
+                stale = sorted(k for k, h in expected.items() if (latest.get(k) or None) != h)
                 if stale:
                     raise ConflictError(
                         "settings changed by another user: " + ", ".join(stale),

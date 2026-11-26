@@ -283,6 +283,73 @@ class InvitationOut(BaseModel):
     token: str  # shown once to the inviting admin
 
 
+class MemberRoleUpdate(BaseModel):
+    """A role change on an existing membership.
+
+    One field, because that is the whole operation: the person, the workspace and
+    the caller's rank are all server-side facts.
+    """
+
+    role_code: str = Field(min_length=1, max_length=63)
+
+
+class RolePermissionOut(BaseModel):
+    code: str
+    resource: str
+    action: str
+
+
+class RoleOut(BaseModel):
+    """A role and the permission codes it carries, read from role_permissions."""
+
+    code: str
+    name: str
+    description: str | None = None
+    permissions: list[str]
+
+
+class PermissionMatrixOut(BaseModel):
+    """The whole matrix: the roles, every permission, and who holds what.
+
+    Sent as one payload because a matrix split across requests is a matrix that
+    renders half-decided: a column arriving late looks like "no permissions".
+    """
+
+    roles: list[RoleOut]
+    permissions: list[RolePermissionOut]
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class TeamOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    member_count: int = 0
+
+
+class TeamListOut(BaseModel):
+    items: list[TeamOut]
+
+
+class TeamMemberOut(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
+
+
+class TeamMemberListOut(BaseModel):
+    items: list[TeamMemberOut]
+
+
 class AcceptInvitationRequest(BaseModel):
     token: str = Field(min_length=16, max_length=64)
     password: str = Field(min_length=8, max_length=128)

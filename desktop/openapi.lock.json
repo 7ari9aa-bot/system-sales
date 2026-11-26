@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 690,
-    "sha256": "5eba86b46f8a955df01b8c571873784dcce9096c272f95cf78dc92f45b2d091b",
-    "typed_operations": 381
+    "operations": 700,
+    "sha256": "9f94da5b3d853fdeac449189a030eebff99854be8cf8cc23a32b650dfa9496c0",
+    "typed_operations": 386
   },
   "spec": {
     "components": {
@@ -13056,6 +13056,22 @@
           "title": "MaturityStatus",
           "type": "string"
         },
+        "MemberRoleUpdate": {
+          "description": "A role change on an existing membership.\n\nOne field, because that is the whole operation: the person, the workspace and\nthe caller's rank are all server-side facts.",
+          "properties": {
+            "role_code": {
+              "maxLength": 63,
+              "minLength": 1,
+              "title": "Role Code",
+              "type": "string"
+            }
+          },
+          "required": [
+            "role_code"
+          ],
+          "title": "MemberRoleUpdate",
+          "type": "object"
+        },
         "MemoryCreateRequest": {
           "properties": {
             "confidence": {
@@ -16039,6 +16055,31 @@
             "created_by_user_id"
           ],
           "title": "PaymentRowOut",
+          "type": "object"
+        },
+        "PermissionMatrixOut": {
+          "description": "The whole matrix: the roles, every permission, and who holds what.\n\nSent as one payload because a matrix split across requests is a matrix that\nrenders half-decided: a column arriving late looks like \"no permissions\".",
+          "properties": {
+            "permissions": {
+              "items": {
+                "$ref": "#/components/schemas/RolePermissionOut"
+              },
+              "title": "Permissions",
+              "type": "array"
+            },
+            "roles": {
+              "items": {
+                "$ref": "#/components/schemas/RoleOut"
+              },
+              "title": "Roles",
+              "type": "array"
+            }
+          },
+          "required": [
+            "roles",
+            "permissions"
+          ],
+          "title": "PermissionMatrixOut",
           "type": "object"
         },
         "PlanPriceOut": {
@@ -19505,6 +19546,67 @@
             "spend_roas"
           ],
           "title": "RoasRowOut",
+          "type": "object"
+        },
+        "RoleOut": {
+          "description": "A role and the permission codes it carries, read from role_permissions.",
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "permissions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Permissions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "code",
+            "name",
+            "permissions"
+          ],
+          "title": "RoleOut",
+          "type": "object"
+        },
+        "RolePermissionOut": {
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "resource": {
+              "title": "Resource",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "resource",
+            "action"
+          ],
+          "title": "RolePermissionOut",
           "type": "object"
         },
         "RollbackInput": {
@@ -23004,6 +23106,155 @@
             "rate"
           ],
           "title": "TaxClassRequest",
+          "type": "object"
+        },
+        "TeamCreate": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "name": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "TeamCreate",
+          "type": "object"
+        },
+        "TeamListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TeamOut"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "TeamListOut",
+          "type": "object"
+        },
+        "TeamMemberListOut": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TeamMemberOut"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "TeamMemberListOut",
+          "type": "object"
+        },
+        "TeamMemberOut": {
+          "properties": {
+            "email": {
+              "title": "Email",
+              "type": "string"
+            },
+            "full_name": {
+              "title": "Full Name",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "full_name",
+            "email"
+          ],
+          "title": "TeamMemberOut",
+          "type": "object"
+        },
+        "TeamOut": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "member_count": {
+              "default": 0,
+              "title": "Member Count",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "TeamOut",
+          "type": "object"
+        },
+        "TeamUpdate": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          "title": "TeamUpdate",
           "type": "object"
         },
         "TelemetryEventIn": {
@@ -88018,6 +88269,103 @@
           ]
         }
       },
+      "/api/v1/roles/matrix": {
+        "get": {
+          "operationId": "permission_matrix_api_v1_roles_matrix_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PermissionMatrixOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Permission Matrix",
+          "tags": [
+            "roles"
+          ]
+        }
+      },
       "/api/v1/scheduled-jobs/{job_id}/cancel": {
         "post": {
           "description": "§154: cancel a queued/retrying scheduled job.",
@@ -96926,6 +97274,748 @@
           ]
         }
       },
+      "/api/v1/teams": {
+        "get": {
+          "operationId": "list_teams_api_v1_teams_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TeamListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Teams",
+          "tags": [
+            "teams"
+          ]
+        },
+        "post": {
+          "operationId": "create_team_api_v1_teams_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TeamOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Team",
+          "tags": [
+            "teams"
+          ]
+        }
+      },
+      "/api/v1/teams/{team_id}": {
+        "delete": {
+          "operationId": "delete_team_api_v1_teams__team_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "team_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Team Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Delete Team",
+          "tags": [
+            "teams"
+          ]
+        },
+        "patch": {
+          "operationId": "rename_team_api_v1_teams__team_id__patch",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "team_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Team Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TeamOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Rename Team",
+          "tags": [
+            "teams"
+          ]
+        }
+      },
+      "/api/v1/teams/{team_id}/members": {
+        "get": {
+          "operationId": "list_team_members_api_v1_teams__team_id__members_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "team_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Team Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TeamMemberListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Team Members",
+          "tags": [
+            "teams"
+          ]
+        }
+      },
+      "/api/v1/teams/{team_id}/members/{user_id}": {
+        "delete": {
+          "operationId": "remove_team_member_api_v1_teams__team_id__members__user_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "team_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Team Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Remove Team Member",
+          "tags": [
+            "teams"
+          ]
+        },
+        "put": {
+          "operationId": "add_team_member_api_v1_teams__team_id__members__user_id__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "team_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Team Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Add Team Member",
+          "tags": [
+            "teams"
+          ]
+        }
+      },
       "/api/v1/tenants/{tenant_id}/currency": {
         "get": {
           "description": "§47 read: which currency this tenant trades in.\n\nThe PUT has always been here; the money a screen renders has a currency, so\na client must be able to ASK for it rather than assume one. The lifecycle\nservice already loads the same tenant row, so this reuses that read rather\nthan adding a second one.",
@@ -97812,6 +98902,234 @@
             }
           },
           "summary": "Transition Tenant Lifecycle",
+          "tags": [
+            "tenants"
+          ]
+        }
+      },
+      "/api/v1/tenants/{tenant_id}/members/{user_id}": {
+        "delete": {
+          "operationId": "remove_member_api_v1_tenants__tenant_id__members__user_id__delete",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Remove Member",
+          "tags": [
+            "tenants"
+          ]
+        },
+        "put": {
+          "operationId": "set_member_role_api_v1_tenants__tenant_id__members__user_id__put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "tenant_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Tenant Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "user_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRoleUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Member Role",
           "tags": [
             "tenants"
           ]

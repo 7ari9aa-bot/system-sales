@@ -21,6 +21,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -452,3 +453,42 @@ class AccountClosureRequest(TimestampMixin, Base):
     decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (Index("ix_account_closure_requests_user", "user_id", "created_at"),)
+
+
+class Team(TimestampMixin, Base):
+    """A named grouping of teammates inside one tenant.
+
+    A team groups, it never grants: permissions still come from the role and the
+    location grants, so joining "فريق المخزن" changes nothing a person can do.
+    ``uq_teams_tenant_name`` keeps one name per tenant so a picker stays usable.
+    """
+
+    __tablename__ = "teams"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512))
+
+
+class TeamMember(Base):
+    """Membership of a person in a team. Carries no role: a team grants nothing."""
+
+    __tablename__ = "team_members"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Denormalised so the RLS policy is a plain tenant comparison rather than a
+    # reach-through to teams on every row.
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

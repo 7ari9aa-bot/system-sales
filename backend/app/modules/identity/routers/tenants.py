@@ -154,6 +154,45 @@ async def create_invitation(
     )
 
 
+@tenants_router.put("/{tenant_id}/members/{user_id}", status_code=204)
+async def set_member_role(
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    body: schemas.MemberRoleUpdate,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    await service.TenantService.set_member_role(
+        ctx.session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        role_code=body.role_code,
+        actor_role_code=ctx.role_code,
+        actor_is_platform_admin=ctx.user.is_platform_admin,
+    )
+    return Response(status_code=204)
+
+
+@tenants_router.delete("/{tenant_id}/members/{user_id}", status_code=204)
+async def remove_member(
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_permission("settings:write")),
+):
+    if ctx.tenant_id != tenant_id:
+        raise PermissionDeniedError("tenant mismatch")
+    await service.TenantService.remove_member(
+        ctx.session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        actor_user_id=ctx.user.id,
+        actor_role_code=ctx.role_code,
+        actor_is_platform_admin=ctx.user.is_platform_admin,
+    )
+    return Response(status_code=204)
+
+
 @tenants_router.delete(
     "/{tenant_id}/invitations/{invitation_id}",
     status_code=204,

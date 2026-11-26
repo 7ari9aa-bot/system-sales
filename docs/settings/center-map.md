@@ -161,6 +161,12 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 02 Ownership and administration | done | `/settings/workspace/ownership` — owner and administrators from `GET /workspaces/current/admins` (settings read); transfer is explained, not offered, because no transfer endpoint exists behind it |
 | 02 Manage workspaces | done | `/settings/workspace/switch` — every membership from `GET /workspaces`, entering one through `POST /auth/switch-tenant` |
 | 02 Workspace settings | done | `/settings/workspace/defaults` — the inherited values read-only, each with a link to the single page that owns it |
+| 03 Members | done | `/settings/team/members` (and `/settings/members`) — the real roster with a working role change (`PUT /tenants/{id}/members/{user_id}`, rank-guarded) and removal (`DELETE`, refused for the owner and for yourself) |
+| 03 Invitations | done | `/settings/team/invitations` — create through `POST /tenants/{id}/invitations`, copy the one-time link, list and revoke; seat limits still enforced server-side |
+| 03 Roles | done | `/settings/team/roles` — the seeded roles and the permission count each actually carries, from `GET /roles/matrix`; read-only because the guards are written against these codes |
+| 03 Permission matrix | done | `/settings/team/matrix` — every real permission row against every role, read/write/approve shown as distinct actions; ticks come from `role_permissions`, so no cell can promise an unchecked action |
+| 03 Teams and departments | done | `/settings/team/groups` — real teams (migration fe2026112608, tenant RLS on both tables) with add/remove members; a team grants nothing by design and the page says so |
+| 03 Access scope | done | `/settings/team/access` — per-branch grants through `/hierarchy/locations/{id}/access`; warehouses and tills stay on their own pages |
 | 02–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
