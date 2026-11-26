@@ -36,7 +36,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "fe2026112616"
-down_revision: str | None = "fe2026112608"
+down_revision: str | None = "f8a1c2d3e4b5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -89,9 +89,7 @@ def upgrade() -> None:
         ),
         sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("decided_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.CheckConstraint(
-            "mode IN ('close', 'delete')", name="ck_account_closure_requests_mode"
-        ),
+        sa.CheckConstraint("mode IN ('close', 'delete')", name="ck_account_closure_requests_mode"),
         sa.CheckConstraint(
             "status IN ('pending', 'cancelled', 'rejected', 'completed')",
             name="ck_account_closure_requests_status",
@@ -127,9 +125,7 @@ def upgrade() -> None:
             WITH CHECK (user_id = {_USER_GUARD})"""
     )
     op.execute(
-        _grant_sales_app(
-            "GRANT SELECT, INSERT, UPDATE ON account_closure_requests TO sales_app"
-        )
+        _grant_sales_app("GRANT SELECT, INSERT, UPDATE ON account_closure_requests TO sales_app")
     )
 
 
