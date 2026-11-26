@@ -248,6 +248,29 @@ _MARK_FAILED_SQL = sa.text(
     """
 )
 
+# P-03: a claim taken by a drain must never outlive it. The loop marks every
+# row it claims and a BaseException rolls the open claim back — but the rollback
+# only helps if it actually reaches the row, and the lease timer is the only
+# thing left watching a claim that was never marked (up to `outbox_lease_seconds`
+# of silence, and on a connection shared with the caller a claim that was never
+# published reads as work in flight). This releases exactly the ids THIS drain
+# claimed and did not mark, with the publish error it actually saw, so the row
+# is 'failed' and paced by the same cool-down as any other bus failure.
+_RELEASE_CLAIMED_SQL = sa.text(
+    """
+    UPDATE outbox_events
+       SET status = 'failed',
+           last_error = COALESCE(last_error, :err),
+           not_before = now() + make_interval(
+               secs => LEAST(
+                   GREATEST(CAST(:backoff_base_seconds AS double precision), 0)
+                       * power(2, GREATEST(attempts - 1, 0)),
+                   CAST(:backoff_max_seconds AS double precision)))
+     WHERE id = ANY(CAST(:ids AS uuid[]))
+       AND status = 'publishing'
+    """
+)
+
 # §152: durable replay history — written in the same transaction that marks
 # the outbox row published. ON CONFLICT keeps a reclaimed-and-republished row
 # from double-landing in the history.
@@ -364,6 +387,37 @@ class OutboxRelay:
             .first()
         )
 
+    async def _release_unmarked_claims(
+        self,
+        session: AsyncSession,
+        claimed: list[str],
+        error: str | None,
+        *,
+        backoff_base: int,
+        backoff_max: int,
+    ) -> None:
+        """Mark every row this drain claimed but never marked as failed (P-03).
+
+        A drain that ends with a row still 'publishing' has spent one attempt and
+        published nothing, yet nothing looks at the row again until the lease
+        expires. This runs on the drain's own session after a rollback, so the
+        claim it is closing is the one this drain took and the mark lands in the
+        same connection the caller reads.
+        """
+        if not claimed:
+            return
+        await session.rollback()
+        await session.execute(
+            _RELEASE_CLAIMED_SQL,
+            {
+                "ids": claimed,
+                "err": error or "relay drain ended before the row was marked",
+                "backoff_base_seconds": backoff_base,
+                "backoff_max_seconds": backoff_max,
+            },
+        )
+        await session.commit()
+
     async def _drain_once(self, batch: int, max_attempts: int) -> int:
         published = 0
         settings = get_settings()
@@ -387,6 +441,8 @@ class OutboxRelay:
             # context down while the connection is still mid-transaction, and the
             # row then stays 'publishing' with attempts already spent until the
             # lease expires. This makes the rollback explicit and unconditional.
+            claimed: list[str] = []
+            last_error: str | None = None
             try:
                 # One row per claim, at most `batch` rows per drain so a sustained
                 # backlog cannot starve the poll loop of its sleep.
@@ -395,12 +451,17 @@ class OutboxRelay:
                     if row is None:
                         await session.rollback()
                         break
-                    payload = _loads(row["payload"])
-                    meta = _loads(row["meta"])
+                    claimed.append(str(row["id"]))
                     try:
+                        # A row we cannot even decode is a failed row, not an open
+                        # claim: it used to raise straight out of the drain with the
+                        # claim still in the session.
+                        payload = _loads(row["payload"])
+                        meta = _loads(row["meta"])
                         await self._bus.publish(row["stream"], payload, meta)
                     except Exception as exc:  # noqa: BLE001 — one bad event must not stop the relay
                         logger.exception("outbox.relay.publish_failed id=%s", row["id"])
+                        last_error = str(exc)[:500]
                         await session.execute(
                             _MARK_FAILED_SQL,
                             {
@@ -436,6 +497,19 @@ class OutboxRelay:
             except BaseException:
                 await session.rollback()
                 raise
+            finally:
+                # Unconditional: whatever way the drain ended, nothing it claimed
+                # is left 'publishing' (P-03, see _RELEASE_CLAIMED_SQL).
+                try:
+                    await self._release_unmarked_claims(
+                        session,
+                        claimed,
+                        last_error,
+                        backoff_base=backoff_base,
+                        backoff_max=backoff_max,
+                    )
+                except Exception:  # noqa: BLE001 — the drain's result must not be masked
+                    logger.exception("outbox.relay.release_claimed_failed")
         return published
 
     def _envelope_for_log(self, row: Any, payload: dict, meta: dict) -> EventEnvelope | None:

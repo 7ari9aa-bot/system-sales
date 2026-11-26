@@ -38,6 +38,10 @@ from app.modules.platform.models import VisitorEvent  # noqa: E402
 # short enough to beat the customer's next page load.
 WINDOW_MINUTES = 15
 SILENCE_MINUTES = 30
+#: How much real traffic the hours before the silence window must hold before
+#: "nobody is reporting" is a finding rather than a quiet store.
+BASELINE_HOURS = 3
+BASELINE_MIN_PAGE_VIEWS = 10
 PROBE_TIMEOUT_SECONDS = 8.0
 ALERT_COOLDOWN_MINUTES = 60
 
@@ -105,14 +109,28 @@ async def _window_stats(session: AsyncSession, minutes: int) -> dict[str, Any]:
     }
 
 
-async def _had_traffic_recently(session: AsyncSession, hours: int) -> bool:
-    since = datetime.now(UTC) - timedelta(hours=hours)
+async def _traffic_baseline(session: AsyncSession) -> int:
+    """Page views in the hours BEFORE the silence window.
+
+    Silence only means something on a site that was being used. The old check
+    asked whether the site had traffic at all in 24h, so a pre-launch store with
+    a handful of hits went critical every hour, forever — which trains the
+    operator to ignore the one alarm that catches a dead tracker. A baseline
+    makes the question honest: was there steady traffic that suddenly stopped?
+    """
+    now = datetime.now(UTC)
+    end = now - timedelta(minutes=SILENCE_MINUTES)
+    start = end - timedelta(hours=BASELINE_HOURS)
     n = (
         await session.execute(
-            select(func.count(VisitorEvent.id)).where(VisitorEvent.created_at >= since)
+            select(func.count(VisitorEvent.id)).where(
+                VisitorEvent.event_type == "page_view",
+                VisitorEvent.created_at >= start,
+                VisitorEvent.created_at < end,
+            )
         )
     ).scalar_one()
-    return int(n or 0) > 0
+    return int(n or 0)
 
 
 async def _scheduler_health(session: AsyncSession) -> list[Alert]:
@@ -183,9 +201,10 @@ async def evaluate_monitors(session: AsyncSession) -> list[Alert]:
     Monitors (matched to what the major platforms alert on first):
     - ERROR SPIKE: ≥3 errors in the window AND error rate ≥ 10% — one bad
       script flooding errors is noise, a real breakage trips this.
-    - SILENCE: zero page_view events for 30 minutes while the site HAD
-      traffic in the last 24h — the tracker or the site is down (the
-      "below 1" alarm; silence is the outage nobody reports).
+    - SILENCE: zero page_view events for 30 minutes on a site that had at
+      least BASELINE_MIN_PAGE_VIEWS in the BASELINE_HOURS before that window —
+      the tracker or the site is down (the "below 1" alarm; silence is the
+      outage nobody reports). A quiet store is not an outage.
     """
     alerts: list[Alert] = []
     stats = await _window_stats(session, WINDOW_MINUTES)
@@ -206,7 +225,7 @@ async def evaluate_monitors(session: AsyncSession) -> list[Alert]:
                 )
             )
 
-    if stats["total"] == 0 and await _had_traffic_recently(session, 24):
+    if stats["total"] == 0 and await _traffic_baseline(session) >= BASELINE_MIN_PAGE_VIEWS:
         page_views = (
             await session.execute(
                 select(func.count(VisitorEvent.id)).where(
