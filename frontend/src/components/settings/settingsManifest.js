@@ -69,6 +69,7 @@ export const SETTINGS_GROUP_KEYS = [
 export const SETTINGS_SECTIONS = [
   {
     id: "01",
+    slug: "profile",
     labelKey: "settings.nav.profile",
     to: "/settings",
     icon: User,
@@ -77,6 +78,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "02",
+    slug: "workspace",
     labelKey: "settings.nav.workspace",
     to: "/settings/workspace",
     icon: Store,
@@ -84,13 +86,15 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "03",
+    slug: "team",
     labelKey: "settings.nav.team",
     to: "/settings/team/members",
     icon: Users,
-    pages: ["members", "invitations", "roles", "permissions", "groups", "access"],
+    pages: ["members", "invitations", "roles", "matrix", "groups", "access"],
   },
   {
     id: "04",
+    slug: "store",
     labelKey: "settings.nav.store",
     to: "/settings/store/business-profile",
     icon: Building2,
@@ -105,6 +109,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "05",
+    slug: "locations",
     labelKey: "settings.nav.locations",
     to: "/settings/locations/all-branches",
     icon: MapPin,
@@ -119,6 +124,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "06",
+    slug: "catalog",
     labelKey: "settings.nav.catalog",
     to: "/settings/catalog/product-settings",
     icon: Package,
@@ -133,6 +139,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "07",
+    slug: "sales",
     labelKey: "settings.nav.sales",
     to: "/settings/sales/sales-settings",
     icon: Receipt,
@@ -147,6 +154,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "08",
+    slug: "pos",
     labelKey: "settings.nav.pos",
     to: "/settings/pos/pos-settings",
     icon: ScanLine,
@@ -161,6 +169,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "09",
+    slug: "inventory",
     labelKey: "settings.nav.inventory",
     to: "/settings/inventory/inventory-settings",
     icon: Boxes,
@@ -176,6 +185,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "10",
+    slug: "purchasing",
     labelKey: "settings.nav.purchasing",
     to: "/settings/purchasing/suppliers",
     icon: Truck,
@@ -190,13 +200,17 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "11",
+    slug: "customers",
     labelKey: "settings.nav.customers",
     to: "/settings/customers/customer-records",
     icon: UserRound,
     pages: [
+      // The router lands /settings/customers on customer-records, so that page is first: a
+      // section's first page and its landing address are the same thing, and the manifest test
+      // fails when they drift apart.
+      "customer-records",
       "customer-data",
       "customer-segments",
-      "customer-records",
       "inbox",
       "conversation-routing",
       "reply-templates",
@@ -206,34 +220,64 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "12",
+    slug: "channels",
     labelKey: "settings.nav.channels",
     to: "/settings/channels",
     icon: MessageSquare,
-    pages: ["connected-channels", "whatsapp", "facebook", "instagram", "telegram", "webchat"],
+    pages: [
+      "connected-channels",
+      "whatsapp",
+      "facebook",
+      "instagram",
+      "telegram",
+      "webchat",
+      "data-sync",
+      "external-integrations",
+      "connection-health",
+    ],
   },
   {
     id: "13",
+    slug: "ai",
     labelKey: "settings.nav.ai",
     to: "/settings/ai",
     icon: Sparkles,
-    pages: ["agents", "knowledge", "provider-policies", "evaluations"],
+    // The nine pages the section really renders. The old four ("agents", "knowledge",
+    // "provider-policies", "evaluations") were named after the ENDPOINTS, not after the pages,
+    // so no tab could ever match a route: the section had no inner navigation at all.
+    pages: [
+      "agent-management",
+      "customer-agent",
+      "analytics-agent",
+      "knowledge-sources",
+      "models-and-routing",
+      "tools-and-permissions",
+      "policies-and-safety",
+      "testing-and-evaluation",
+      "versions-and-publishing",
+    ],
   },
   {
     id: "14",
+    slug: "analytics",
     labelKey: "settings.nav.analytics",
     to: "/settings/analytics/reports",
     icon: BarChart3,
-    pages: ["dashboards", "metrics-and-indicators", "reports"],
+    // /settings/analytics/reports is the landing the router already redirects to.
+    pages: ["reports", "dashboards", "metrics-and-indicators"],
   },
   {
     id: "15",
+    slug: "automation",
     labelKey: "settings.nav.automation",
     to: "/settings/automation/workflows",
     icon: Workflow,
-    pages: ["rules", "workflows", "triggers-and-events", "execution-attempts"],
+    // /settings/automation/workflows is the landing the router already redirects to.
+    pages: ["workflows", "rules", "triggers-and-events", "execution-attempts"],
   },
   {
     id: "16",
+    slug: "notifications",
     labelKey: "settings.nav.workspaceNotifications",
     to: "/settings/notifications/notification-channels",
     icon: Bell,
@@ -247,15 +291,18 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "17",
+    slug: "data",
     labelKey: "settings.nav.data",
     to: "/settings/data/data-privacy",
     icon: Database,
     // "backups-and-restore" is the offboarding screen (`DataSettings`), served by its own
     // route: the tab leads there, and /settings/danger forwards to it.
-    pages: ["import", "retention", "data-privacy", "data-deletion", "backups-and-restore"],
+    // /settings/data/data-privacy is the landing the router already redirects to.
+    pages: ["data-privacy", "import", "retention", "data-deletion", "backups-and-restore"],
   },
   {
     id: "18",
+    slug: "security",
     labelKey: "settings.nav.governance",
     to: "/settings/security/security-policies",
     icon: ShieldCheck,
@@ -271,6 +318,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "19",
+    slug: "billing",
     labelKey: "settings.nav.billing",
     to: "/settings/billing/current-plan",
     icon: Wallet,
@@ -278,6 +326,7 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: "20",
+    slug: "developers",
     labelKey: "settings.nav.developers",
     to: "/settings/developers/webhooks",
     icon: Code2,
@@ -346,3 +395,101 @@ export const SETTINGS_UNLISTED_SCREENS = [
     why: "The unified editor that lists every key at once. It is a working screen, not a place in the map: the map's twenty sections are how a person is meant to arrive.",
   },
 ];
+
+/**
+ * Where a page's own label comes from, when the page does not follow the section convention.
+ *
+ * The convention is `settings.<section>.pages.<page>.title`. Six groups cannot follow it and
+ * never could, because their labels were written before the Center had sections: the two
+ * hand-built wrappers (workspace, team) name their tabs `workspace.tab.*` / `team.tab.*`, and
+ * the AI, notifications and channel pages were named after their endpoints in camelCase. The
+ * override map is the whole list, so "which pages have a label nobody can find" is answerable
+ * by reading one object instead of grepping four components.
+ */
+const PAGE_LABEL_OVERRIDES = {
+  "workspace/overview": "workspace.tab.overview",
+  "workspace/data": "workspace.tab.data",
+  "workspace/ownership": "workspace.tab.ownership",
+  "workspace/switch": "workspace.tab.switch",
+  "workspace/defaults": "workspace.tab.defaults",
+  "team/members": "team.tab.members",
+  "team/invitations": "team.tab.invitations",
+  "team/roles": "team.tab.roles",
+  "team/matrix": "team.tab.matrix",
+  "team/groups": "team.tab.groups",
+  "team/access": "team.tab.access",
+  "ai/agent-management": "settings.ai.agents.title",
+  "ai/customer-agent": "settings.ai.customerAgent.title",
+  "ai/analytics-agent": "settings.ai.analyticsAgent.title",
+  "ai/knowledge-sources": "settings.ai.knowledge.title",
+  "ai/models-and-routing": "settings.ai.models.title",
+  "ai/tools-and-permissions": "settings.ai.tools.title",
+  "ai/policies-and-safety": "settings.ai.safety.title",
+  "ai/testing-and-evaluation": "settings.ai.evaluations.title",
+  "ai/versions-and-publishing": "settings.ai.versions.title",
+  "customers/customer-data": "settings.customers.customerData.title",
+  "customers/customer-segments": "settings.customers.segments.title",
+  "customers/customer-records": "settings.customers.customerRecords.title",
+  "customers/inbox": "settings.customers.inbox.title",
+  "customers/conversation-routing": "settings.customers.routing.title",
+  "customers/reply-templates": "settings.customers.templates.title",
+  "customers/support-hours": "settings.customers.supportHours.title",
+  "customers/escalation-to-human": "settings.customers.escalation.title",
+  "channels/connected-channels": "settings.channels.pages.connected-channels.title",
+  "channels/whatsapp": "settings.channels.pages.whatsapp.title",
+  "channels/facebook": "settings.channels.pages.facebook.title",
+  "channels/instagram": "settings.channels.pages.instagram.title",
+  "channels/telegram": "settings.channels.pages.telegram.title",
+  "channels/webchat": "settings.channels.pages.webchat.title",
+  "channels/data-sync": "settings.channels.dataSync.title",
+  "channels/external-integrations": "settings.channels.external.title",
+  "channels/connection-health": "settings.channels.health.title",
+  "analytics/dashboards": "settings.analytics.overview.title",
+  "analytics/metrics-and-indicators": "settings.analytics.metrics.title",
+  "analytics/reports": "settings.analytics.reports.title",
+  "automation/rules": "settings.automation.rules.title",
+  "automation/workflows": "settings.automation.workflows.title",
+  "automation/triggers-and-events": "settings.automation.triggers.title",
+  "automation/execution-attempts": "settings.automation.executions.title",
+  "notifications/notification-channels": "settings.notifications.pages.notification-channels.title",
+  "notifications/notification-rules": "settings.notifications.pages.notification-rules.title",
+  "notifications/alerts-and-escalation": "settings.notifications.pages.alerts-and-escalation.title",
+  "notifications/recipients": "settings.notifications.recipients.title",
+  "notifications/message-templates": "settings.notifications.templates.title",
+  "data/import": "settings.data.import.title",
+  "data/retention": "settings.data.retention.title",
+  "data/data-privacy": "settings.data.privacy.title",
+  "data/data-deletion": "settings.data.deletion.title",
+  "data/backups-and-restore": "settings.data.backups.title",
+};
+
+/** The section whose route segment is `slug`, or undefined. */
+export function sectionBySlug(slug) {
+  return SETTINGS_SECTIONS.find((section) => section.slug === slug);
+}
+
+/**
+ * The pages of a section, as navigation entries: `{ slug, labelKey }`.
+ *
+ * This is the ONLY answer to "which tabs does this section have". `SettingsSection` used to
+ * keep its own `SECTION_PAGES` copy, which is how the AI section ended up with four manifest
+ * pages, nine real routes and no tabs at all.
+ */
+export function sectionPages(slug) {
+  const section = sectionBySlug(slug);
+  if (!section) return [];
+  return section.pages.map((page) => ({
+    slug: page,
+    labelKey: PAGE_LABEL_OVERRIDES[`${slug}/${page}`] ?? `settings.${slug}.pages.${page}.title`,
+  }));
+}
+
+/** The route of one page inside a section. */
+export function pagePath(slug, page) {
+  return `/settings/${slug}/${page}`;
+}
+
+/** Every page route the Center can open, section by section — the router's must-serve set. */
+export const SETTINGS_PAGE_ROUTES = SETTINGS_SECTIONS.filter(
+  (section) => section.id !== "01" && section.pages.length > 0
+).flatMap((section) => section.pages.map((page) => pagePath(section.slug, page)));

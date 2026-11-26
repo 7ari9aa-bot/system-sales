@@ -2,11 +2,13 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Building2, Gauge, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { sectionPages } from "@/components/settings/settingsManifest";
 import WorkspaceOverviewSection from "./workspace/WorkspaceOverviewSection";
 import WorkspaceDataSection from "./workspace/WorkspaceDataSection";
 import WorkspaceOwnershipSection from "./workspace/WorkspaceOwnershipSection";
 import WorkspaceSwitchSection from "./workspace/WorkspaceSwitchSection";
 import WorkspaceDefaultsSection from "./workspace/WorkspaceDefaultsSection";
+import MissingPage from "@/components/settings/MissingPage";
 
 /** مساحة العمل — خمس صفحات، كل واحدة بمسارها.
  *
@@ -17,23 +19,23 @@ import WorkspaceDefaultsSection from "./workspace/WorkspaceDefaultsSection";
  * المتجر نفسه. ولازم نفرّقها عن «workspace» الداخلي في الهيكل التنظيمي (tenant → workspace →
  * location) اللي بيتدار من صفحة الفروع، رغم إن الاتنين بنفس الاسم.
  */
-const SECTIONS = [
-  { value: "overview", labelKey: "workspace.tab.overview", icon: Gauge, render: () => <WorkspaceOverviewSection /> },
-  { value: "data", labelKey: "workspace.tab.data", icon: Building2, render: () => <WorkspaceDataSection /> },
-  {
-    value: "ownership",
-    labelKey: "workspace.tab.ownership",
-    icon: ShieldCheck,
-    render: () => <WorkspaceOwnershipSection />,
-  },
-  { value: "switch", labelKey: "workspace.tab.switch", icon: Users, render: () => <WorkspaceSwitchSection /> },
-  {
-    value: "defaults",
-    labelKey: "workspace.tab.defaults",
-    icon: SlidersHorizontal,
-    render: () => <WorkspaceDefaultsSection />,
-  },
-];
+/** Each page's own screen. Icons and bodies are presentation, so they stay here; WHICH pages
+ * exist is the manifest's answer (`sectionPages("workspace")`), never a list of this file's own.
+ * A page the manifest names but nobody has written yet says so instead of rendering blank. */
+const VIEWS = {
+  overview: { icon: Gauge, render: () => <WorkspaceOverviewSection /> },
+  data: { icon: Building2, render: () => <WorkspaceDataSection /> },
+  ownership: { icon: ShieldCheck, render: () => <WorkspaceOwnershipSection /> },
+  switch: { icon: Users, render: () => <WorkspaceSwitchSection /> },
+  defaults: { icon: SlidersHorizontal, render: () => <WorkspaceDefaultsSection /> },
+};
+
+const SECTIONS = sectionPages("workspace").map(({ slug, labelKey }) => ({
+  value: slug,
+  labelKey,
+  icon: VIEWS[slug]?.icon ?? Gauge,
+  render: VIEWS[slug]?.render ?? (() => <MissingPage slug={slug} />),
+}));
 
 export const WORKSPACE_SECTION_SLUGS = SECTIONS.map((section) => section.value);
 

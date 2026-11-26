@@ -305,16 +305,24 @@ async def test_every_change_is_in_history_and_audited_keys_reach_audit_logs(db, 
             {"t": tenant_ctx.tenant_id},
         )
     ).all()
-    assert [r.action for r in rows] == ["settings.set", "settings.set", "settings.reset"]
-    assert rows[0].after == {
+    # Read the rows by CONTENT, not by position. All four calls above run in one transaction and
+    # `audit_logs.created_at` is `now()`, which Postgres fixes at transaction start: the three rows
+    # share a timestamp, so `ORDER BY created_at` cannot order them and asserting rows[0] was a
+    # coin toss (it failed exactly that way on main's CI run 45903956902, shard 4). What matters is
+    # that each change produced one row carrying the value as it stood at that moment.
+    assert sorted(r.action for r in rows) == ["settings.reset", "settings.set", "settings.set"]
+    assert sorted(r.after["value"]["v"] for r in rows if r.action == "settings.set") == [10.0, 12.0]
+    first = next(r for r in rows if r.action == "settings.set" and r.after["value"] == {"v": 10.0})
+    assert first.after == {
         "key": "pos.max_discount_pct",
         "scope": "tenant",
         "scope_id": None,
         "value": {"v": 10.0},
     }
     # a reset keeps what was removed, so the row explains itself after the setting is gone
-    assert rows[2].before["value"] == {"v": 12.0}
-    assert rows[2].after["value"] is None
+    reset = next(r for r in rows if r.action == "settings.reset")
+    assert reset.before["value"] == {"v": 12.0}
+    assert reset.after["value"] is None
 
 
 async def test_an_unaudited_key_stays_out_of_audit_logs(db, tenant_ctx) -> None:

@@ -6,6 +6,7 @@
  */
 import React from "react";
 import { useI18n } from "@/lib/i18n";
+import SectionTabs from "@/components/settings/SectionTabs";
 import SettingsShell from "@/components/settings/SettingsShell";
 import {
   ConnectionHealthPanel,
@@ -46,6 +47,7 @@ export default function ChannelSectionPage({ page }) {
 
   return (
     <SettingsShell title={titles[titleKey]} subtitle={titles[descKey]}>
+      <SectionTabs section="channels" active={page} ariaLabel={isAr ? "صفحات القنوات" : "Channel pages"} />
       <Panel />
     </SettingsShell>
   );

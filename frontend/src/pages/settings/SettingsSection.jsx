@@ -62,6 +62,7 @@ import {
   SettingsRestorePanel,
 } from "@/components/settings/SecurityPanels";
 import { useSettings } from "@/components/settings/useSettings";
+import { sectionPages } from "@/components/settings/settingsManifest";
 import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
 import { Button } from "@/components/ui/button";
@@ -108,112 +109,6 @@ const DOMAIN_LABELS_EN = {
   security: "Security",
   billing: "Billing",
   imports: "Imports",
-};
-
-/** The pages of each section, in the order the map lists them. A section is a navigation group
- * with its own pages, not one long screen: the tab strip below is how a merchant moves inside
- * it without the sidebar growing to twenty siblings. */
-const SECTION_PAGES = {
-  store: [
-    "business-profile",
-    "brand-identity",
-    "contact-details",
-    "working-hours",
-    "business-policies",
-    "legal-data",
-  ],
-  locations: [
-    "all-branches",
-    "branch-data",
-    "branch-hours",
-    "branch-settings",
-    "branch-staff",
-    "operating-scopes",
-  ],
-  // Only pages that are live get a tab: a page the map still marks pending has nothing to edit
-  // yet, and a tab that lands on an empty screen is worse than no tab at all. The pending pages
-  // stay named in the map's Build status table, with the reason.
-  catalog: [
-    "product-settings",
-    "categories",
-    "variants-and-options",
-    "attributes-and-specs",
-    "sku-and-barcode",
-    "product-states",
-  ],
-  sales: [
-    "sales-settings",
-    "price-lists",
-    "pricing",
-    "discounts-and-offers",
-    "taxes-and-fees",
-    "exchange-and-returns",
-  ],
-  pos: [
-    "pos-settings",
-    "registers-and-devices",
-    "collection-methods",
-    "shifts",
-    "cash-movement",
-    "invoices-and-receipts",
-  ],
-  inventory: [
-    "inventory-settings",
-    "warehouses",
-    "stock-states",
-    "stock-limits",
-    "counts-and-adjustments",
-    "transfers",
-    "inventory-cost",
-  ],
-  data: [
-    "import",
-    "export",
-    "retention",
-    "backups-and-restore",
-    "data-privacy",
-    "data-deletion",
-  ],
-  notifications: [
-    "notification-channels",
-    "notification-rules",
-    "recipients",
-    "alerts-and-escalation",
-    "message-templates",
-  ],
-  purchasing: [
-    "suppliers",
-    "purchasing-settings",
-    "purchase-orders",
-    "receiving-and-inspection",
-    "supplier-returns",
-    "approval-limits",
-  ],
-  // Section 18 is where the Settings Engine becomes visible: the security keys the runtime
-  // reads, the posture it enforces, and the trails it already writes.
-  security: [
-    "security-policies",
-    "session-control",
-    "audit-log",
-    "settings-change-log",
-    "approval-requests",
-    "sensitive-settings",
-    "emergency-procedures",
-  ],
-  // Section 19. Payment methods and renewal/upgrade get no tab: there is no stored payment
-  // instrument and no checkout path, so they stay named in the map with the reason instead
-  // of opening a screen of dead buttons.
-  billing: ["current-plan", "usage", "invoices", "billing-details"],
-  // Section 20. API keys get no tab: no API key table exists in the product, so a page of
-  // keys would be a form writing rows nothing authenticates. The rotation policy that DOES
-  // exist is security.api_key_rotation_days, whose home is section 18.
-  developers: [
-    "webhooks",
-    "connected-apps",
-    "rate-limits",
-    "api-logs",
-    "developer-environment",
-  ],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -348,9 +243,15 @@ export default function SettingsSection({ section }) {
   const offeredScopes = useMemo(() => scopesOfferedBy(s.defs), [s.defs]);
   const scoped = offeredScopes.length > 0;
 
-  const pages = SECTION_PAGES[section] || [];
-  const title = t(`settings.${section}.pages.${page}.title`) || t(`settings.${section}.title`);
-  const desc = t(`settings.${section}.pages.${page}.desc`) || t(`settings.${section}.subtitle`);
+  // The tab strip and the page's own title come from the manifest, never from a second list
+  // kept here: a page added to the map appears as a tab in the same commit, and a page the map
+  // marks pending has no tab to land on an empty screen.
+  const pages = sectionPages(section);
+  const currentPage = pages.find((entry) => entry.slug === page);
+  const title = currentPage
+    ? t(currentPage.labelKey)
+    : t(`settings.${section}.pages.${page}.title`, t(`settings.${section}.title`));
+  const desc = t(`settings.${section}.pages.${page}.desc`, t(`settings.${section}.subtitle`));
 
   const hasApprovalChanges = s.approvalRequiredKeys.length > 0;
   const hasDirectChanges = s.changedEntries.some((e) => !e.needsApproval);
@@ -412,19 +313,22 @@ export default function SettingsSection({ section }) {
     >
       {pages.length > 1 && (
         <nav className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
-          {pages.map((p) => {
-            const active = p === page;
+          {pages.map((entry) => {
+            const active = entry.slug === page;
             return (
               <Link
-                key={p}
-                to={`/settings/${section}/${p}`}
+                key={entry.slug}
+                to={`/settings/${section}/${entry.slug}`}
+                role="tab"
+                aria-selected={active}
+                aria-current={active ? "page" : undefined}
                 className={
                   active
                     ? "rounded-md bg-primary/10 px-2.5 py-1.5 text-[12.5px] font-medium text-primary"
                     : "rounded-md px-2.5 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
                 }
               >
-                {t(`settings.${section}.pages.${p}.title`) || p}
+                {t(entry.labelKey, entry.slug)}
               </Link>
             );
           })}

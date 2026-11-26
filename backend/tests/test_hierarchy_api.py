@@ -209,7 +209,12 @@ async def test_location_crud_under_workspace(db: AsyncSession, tenant_ctx) -> No
             f"/api/v1/hierarchy/locations/{body['id']}",
             json={"hours": {"sat": {"open": "09:00"}}},
         )
-        assert half.status_code == 400, half.text
+        # 422, unlike the backwards week above: a day with only `open` cannot be parsed into the
+        # week schema at all (the day model refuses an incomplete day), and 422 is reserved for
+        # exactly that — a body pydantic could not parse. The backwards week parses and is then
+        # refused by the ordering rule, which is the 400 case.
+        assert half.status_code == 422, half.text
+        assert half.json()["detail"][0]["msg"].startswith("Value error, a trading day needs both")
         assert half.json()["error"]["code"] == "validation_error"
 
         # Clearing goes back to following the store, and {} is the same statement as null.

@@ -489,3 +489,34 @@ describe("SettingsSection", () => {
     expect(useSettingsMock).toHaveBeenCalled();
   });
 });
+
+/**
+ * Every section that renders through this component has a tab strip, and the strip is the
+ * manifest's page list. These four sections had ROUTES and panels but no tabs at all: the
+ * component's own `SECTION_PAGES` map simply had no entry for them, so a merchant who opened
+ * /settings/ai/agent-management could not reach the other eight AI pages except by typing.
+ */
+describe("SettingsSection inner navigation", () => {
+  const tabCount = (html) => (html.match(/role="tab"/g) || []).length;
+
+  test.each([
+    ["/settings/ai/agent-management", 9],
+    ["/settings/analytics/reports", 3],
+    ["/settings/automation/workflows", 4],
+    ["/settings/customers/customer-records", 8],
+  ])("%s shows its section's %i pages as tabs", (path, expected) => {
+    expect(tabCount(renderAt(path))).toBe(expected);
+  });
+
+  test("a pending page is not offered as a tab", () => {
+    const html = renderAt("/settings/data/data-privacy");
+    expect(html).toContain("/settings/data/retention");
+    expect(html).not.toContain("/settings/data/export");
+  });
+
+  test("each tab is labelled, never by its raw slug", () => {
+    const html = renderAt("/settings/ai/agent-management");
+    expect(html).toContain("Agent management");
+    expect(html).not.toContain("settings.ai.pages");
+  });
+});

@@ -2,12 +2,14 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { KeyRound, MapPin, Send, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { sectionPages } from "@/components/settings/settingsManifest";
 import TeamMembersSection from "./team/TeamMembersSection";
 import TeamInvitationsSection from "./team/TeamInvitationsSection";
 import TeamRolesSection from "./team/TeamRolesSection";
 import TeamMatrixSection from "./team/TeamMatrixSection";
 import TeamGroupsSection from "./team/TeamGroupsSection";
 import TeamAccessSection from "./team/TeamAccessSection";
+import MissingPage from "@/components/settings/MissingPage";
 
 /** الفريق والصلاحيات — ست صفحات، كل واحدة بمسارها.
  *
@@ -18,14 +20,23 @@ import TeamAccessSection from "./team/TeamAccessSection";
  * الأدوار بتقول إيه المتاح، والمصفوفة بتقول مين بيملكه فعلاً، والمجموعات بتجمّع الناس
  * من غير ما تدّي أي صلاحية. /settings/members القديم بيفتح صفحة الأعضاء.
  */
-const SECTIONS = [
-  { value: "members", labelKey: "team.tab.members", icon: Users, render: () => <TeamMembersSection /> },
-  { value: "invitations", labelKey: "team.tab.invitations", icon: Send, render: () => <TeamInvitationsSection /> },
-  { value: "roles", labelKey: "team.tab.roles", icon: ShieldCheck, render: () => <TeamRolesSection /> },
-  { value: "matrix", labelKey: "team.tab.matrix", icon: KeyRound, render: () => <TeamMatrixSection /> },
-  { value: "groups", labelKey: "team.tab.groups", icon: UsersRound, render: () => <TeamGroupsSection /> },
-  { value: "access", labelKey: "team.tab.access", icon: MapPin, render: () => <TeamAccessSection /> },
-];
+/** Each page's own screen, keyed by the manifest's slug. See WorkspaceSettings for why the page
+ * LIST comes from the manifest and only the icon and the body live here. */
+const VIEWS = {
+  members: { icon: Users, render: () => <TeamMembersSection /> },
+  invitations: { icon: Send, render: () => <TeamInvitationsSection /> },
+  roles: { icon: ShieldCheck, render: () => <TeamRolesSection /> },
+  matrix: { icon: KeyRound, render: () => <TeamMatrixSection /> },
+  groups: { icon: UsersRound, render: () => <TeamGroupsSection /> },
+  access: { icon: MapPin, render: () => <TeamAccessSection /> },
+};
+
+const SECTIONS = sectionPages("team").map(({ slug, labelKey }) => ({
+  value: slug,
+  labelKey,
+  icon: VIEWS[slug]?.icon ?? Users,
+  render: VIEWS[slug]?.render ?? (() => <MissingPage slug={slug} />),
+}));
 
 export const TEAM_SECTION_SLUGS = SECTIONS.map((section) => section.value);
 

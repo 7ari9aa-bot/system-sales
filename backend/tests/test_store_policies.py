@@ -62,6 +62,9 @@ async def _rows(db, tenant_id, key=None):
 async def test_a_new_store_lists_all_policies_unwritten(db, tenant_ctx, no_embeddings):
     listed = await policies.list_policies(db, tenant_ctx.tenant_id)
 
+    # The catalogue is `POLICY_TITLES`, in its own order. "warranty" joined it with section 04
+    # (the shop's promises the customer agent may quote), so a new store lists seven policies,
+    # all unwritten.
     assert [p["key"] for p in listed] == [
         "exchange",
         "return",
@@ -69,6 +72,7 @@ async def test_a_new_store_lists_all_policies_unwritten(db, tenant_ctx, no_embed
         "hours",
         "ordering",
         "cancellation",
+        "warranty",
     ]
     assert all(p["published"] is False and p["content"] == "" for p in listed)
     assert [p["title"] for p in listed][:2] == ["سياسة الاستبدال", "سياسة الاسترجاع"]
@@ -137,8 +141,11 @@ async def test_blank_text_removes_the_policy_so_it_reads_as_unpublished(
 
 
 async def test_an_unknown_key_and_an_oversized_text_are_refused(db, tenant_ctx, no_embeddings):
+    # "deposit" is the key that is deliberately NOT a stored policy: the deposit rules are
+    # settings (`deposit.*`), read by the same agent tool under their own topic. It is the honest
+    # example of a key the catalogue refuses, now that "warranty" is a real policy.
     with pytest.raises(ValidationError, match="unknown policy"):
-        await policies.save_policy(db, tenant_ctx.tenant_id, "warranty", "x")
+        await policies.save_policy(db, tenant_ctx.tenant_id, "deposit", "x")
     with pytest.raises(ValidationError, match="limit is"):
         await policies.save_policy(
             db, tenant_ctx.tenant_id, "return", "x" * (policies.MAX_POLICY_CHARS + 1)
