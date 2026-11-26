@@ -73,6 +73,12 @@ warehouse and several registers; they are not the same entity and must not share
 | 13 Testing and evaluation | done | `/settings/ai/testing-and-evaluation` — the evaluations from `GET /ai/evaluations` with prompt version, status and rollout state (canary/full/rolled back), which is what gates publishing |
 | 13 Versions and publishing | done | `/settings/ai/versions-and-publishing` — each agent's version and state; the version is the concurrency token that stops one edit overwriting another, and publishing runs on the publish path after a passing evaluation |
 | 13 | **AI & agents** | Agent management · Customer Agent · Analytics Agent · Knowledge sources · Models and routing · Tools and permissions · Policies and safety · Testing and evaluation · Versions and publishing |
+| 14 Dashboards | done | `/settings/analytics/dashboards` — the live overview from `GET /analytics/overview`, rendered as the figures the engine returned rather than a hand-written tile list |
+| 14 Metrics and indicators | done | `/settings/analytics/metrics-and-indicators` — the metric definitions the engine actually computes (`GET /analytics/metrics/definitions`), so no indicator is computed twice in two ways |
+| 14 Reports | done | `/settings/analytics/reports` — the revenue summary from `GET /analytics/revenue/summary`, produced from the real order and invoice rows |
+| 14 Scheduled reports | pending | No report scheduler exists: the repo has no scheduler module and no stored report job, so a schedule editor here would write rows nothing reads. Needs a report job table plus a worker before the page is real |
+| 14 Analysis settings | pending | There is no analysis configuration to edit: periods, groupings and thresholds are arguments of the analytics calls, not stored settings. `GET /analytics/retention` and its per-class policies are real but belong to section 17 |
+| 14 Report permissions | pending | Report visibility is not modelled: there is no per-report or per-dashboard grant, so the page would be a second, weaker copy of the team roles in section 02 |
 | 14 | **Analytics & reports** | Dashboards · Metrics and indicators · Reports · Scheduled reports · Analysis settings · Report permissions |
 | 15 | **Automation & workflows** | Rules · Workflows · Triggers and events · Schedules · Approvals · Execution attempts |
 | 16 | **Notifications** — workspace rules, where 01 holds the person's preferences | Notification channels · Notification rules · Message templates · Recipients · Alerts and escalation |

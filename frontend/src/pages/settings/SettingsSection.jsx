@@ -25,6 +25,7 @@ import BranchesPanel from "@/components/settings/BranchesPanel";
 import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
 import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
+import { MetricsPanel, OverviewPanel, ReportsPanel } from "@/components/settings/AnalyticsPanels";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
@@ -196,6 +197,10 @@ const PANEL_PAGES = new Set([
   "ai/policies-and-safety",
   "ai/testing-and-evaluation",
   "ai/versions-and-publishing",
+  // Section 14: dashboards, metrics and reports read the analytics module's own read models.
+  "analytics/dashboards",
+  "analytics/metrics-and-indicators",
+  "analytics/reports",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -654,6 +659,16 @@ export default function SettingsSection({ section }) {
           ]}
         />
       )}
+
+      {/* Section 14: analytics and reports. Every figure below comes from the analytics module's
+          own read model, never from a guess, and none of these pages edits anything — reports are
+          produced by the engine, so a switch here would change nothing. */}
+
+      {`${section}/${page}` === "analytics/dashboards" && <OverviewPanel />}
+
+      {`${section}/${page}` === "analytics/metrics-and-indicators" && <MetricsPanel />}
+
+      {`${section}/${page}` === "analytics/reports" && <ReportsPanel />}
 
       {`${section}/${page}` === "inventory/warehouses" && (
         <InventoryRecordsPanel

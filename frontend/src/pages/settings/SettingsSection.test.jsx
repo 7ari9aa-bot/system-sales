@@ -206,6 +206,7 @@ function renderAt(path) {
           <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
           <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
           <Route path="/settings/ai/:page" element={<SettingsSection section="ai" />} />
+          <Route path="/settings/analytics/:page" element={<SettingsSection section="analytics" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
