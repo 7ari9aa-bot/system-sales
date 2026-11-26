@@ -41,6 +41,10 @@ export function useSettings(opts = {}) {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(null); // { message, keys } | null
+  // The SERVER's verdict on the pending save (/settings/preview): what would change, what is
+  // out of range, and which keys need approval. A client-side diff cannot know any of that.
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
   const [changeRequests, setChangeRequests] = useState([]);
 
   // Build the query strings for definitions and effective.
@@ -170,6 +174,30 @@ export function useSettings(opts = {}) {
     }
     return entries;
   }, [values, original, defMap]);
+
+  /** Ask the server what this save would do, without writing it. */
+  const runPreview = useCallback(async () => {
+    const changed = {};
+    for (const [k, v] of Object.entries(values)) {
+      if (v !== original[k]) changed[k] = v;
+    }
+    if (Object.keys(changed).length === 0) {
+      setPreview(null);
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const result = await api("/settings/preview", {
+        method: "POST",
+        body: { scope, scope_id: scopeId, settings: changed },
+      });
+      setPreview(result);
+    } catch (err) {
+      setPreview({ error: err?.message || "preview failed" });
+    } finally {
+      setPreviewing(false);
+    }
+  }, [values, original, scope, scopeId]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -304,6 +332,9 @@ export function useSettings(opts = {}) {
     saving,
     notice,
     conflict,
+    preview,
+    previewing,
+    runPreview,
     changeRequests,
     approvalRequiredKeys,
     changedEntries,

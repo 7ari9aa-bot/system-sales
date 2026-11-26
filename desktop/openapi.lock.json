@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 674,
-    "sha256": "3d808357d01f83d084983b2118a4b9980a7e1b4fd343aae38164f0b7f5efc3e7",
-    "typed_operations": 368
+    "operations": 675,
+    "sha256": "30632520b7b6c8c79e69e79acc18717615cd619eda4a060812358ee72d30e16f",
+    "typed_operations": 369
   },
   "spec": {
     "components": {
@@ -2797,7 +2797,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -4933,7 +4933,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -18184,7 +18184,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -20699,7 +20699,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -20985,6 +20985,101 @@
             "created_at"
           ],
           "title": "SettingHistoryOut",
+          "type": "object"
+        },
+        "SettingPreviewEntryOut": {
+          "description": "What would happen to one key — the answer a dry run exists to give.",
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "current": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "needs_approval": {
+              "default": false,
+              "title": "Needs Approval",
+              "type": "boolean"
+            },
+            "proposed": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposed"
+            }
+          },
+          "required": [
+            "key",
+            "action"
+          ],
+          "title": "SettingPreviewEntryOut",
+          "type": "object"
+        },
+        "SettingsPreviewOut": {
+          "description": "A whole save, checked and not written.",
+          "properties": {
+            "keys": {
+              "items": {
+                "$ref": "#/components/schemas/SettingPreviewEntryOut"
+              },
+              "title": "Keys",
+              "type": "array"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "summary": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Summary",
+              "type": "object"
+            }
+          },
+          "required": [
+            "scope",
+            "keys",
+            "summary"
+          ],
+          "title": "SettingsPreviewOut",
           "type": "object"
         },
         "ShipmentCreateRequest": {
@@ -89978,6 +90073,114 @@
             }
           },
           "summary": "Preview Preset",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/preview": {
+        "post": {
+          "description": "Dry run of a save: every key checked, nothing written.\n\nThe settings screen shows this diff before the owner commits, so a key that is invalid,\nforbidden at this scope, or needs approval is visible BEFORE the request is sent — not\nas a 400/403 after half the form was filled in.",
+          "operationId": "preview_settings_api_v1_settings_preview_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkSetSettingsRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsPreviewOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Preview Settings",
           "tags": [
             "settings"
           ]

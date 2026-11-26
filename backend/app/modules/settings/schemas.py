@@ -187,3 +187,25 @@ class RunMigrationsOut(BaseModel):
 
     applied: list[str]
     current_version: str
+
+
+class SettingPreviewEntryOut(BaseModel):
+    """What would happen to one key — the answer a dry run exists to give."""
+
+    key: str
+    current: Any | None = None
+    proposed: Any | None = None
+    # change | unchanged | invalid
+    action: str
+    needs_approval: bool = False
+    error: str | None = None
+
+
+class SettingsPreviewOut(BaseModel):
+    """A whole save, checked and not written."""
+
+    scope: str
+    scope_id: uuid.UUID | None = None
+    keys: list[SettingPreviewEntryOut]
+    # changes / unchanged / needs_approval / invalid — the counts the banner reads.
+    summary: dict[str, int]

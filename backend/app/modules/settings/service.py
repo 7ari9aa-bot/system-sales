@@ -436,6 +436,69 @@ class SettingsService:
             )
         return results
 
+    async def preview(
+        self,
+        settings: dict[str, Any],
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> dict[str, Any]:
+        """What ``bulk_set`` would do, with nothing written.
+
+        Same checks in the same order — definition, scope, authorisation, value — but every
+        key is reported instead of the first bad one raising: the point of a dry run is to
+        see the whole diff, including which keys need approval, before anything is saved.
+        Reads the current effective values and writes nothing.
+        """
+        scope_enum = _scope(scope)
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+        current = await self.resolve_many(list(settings), scope=scope_enum, scope_id=scope_id)
+        entries: list[dict[str, Any]] = []
+        summary = {"changes": 0, "unchanged": 0, "needs_approval": 0, "invalid": 0}
+        for key, value in settings.items():
+            resolved = current.get(key)
+            entry: dict[str, Any] = {
+                "key": key,
+                "current": resolved.value if resolved is not None else None,
+                "proposed": value,
+                "action": "change",
+                "needs_approval": False,
+                "error": None,
+            }
+            try:
+                defn = _definition(key)
+                entry["needs_approval"] = defn.apply_mode == ApplyMode.APPROVAL_REQUIRED
+                if not defn.scope_allowed(scope_enum):
+                    raise ValidationError(
+                        f"{key}: scope {scope_enum.value!r} not allowed "
+                        f"(allowed: {[s.value for s in defn.scopes]})"
+                    )
+                self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+                # The coerced value, so the preview shows what would actually be stored.
+                entry["proposed"] = _validate(defn, value)
+            except ValidationError as exc:
+                entry["error"] = str(exc)
+                entry["action"] = "invalid"
+            if entry["action"] == "change" and entry["current"] == entry["proposed"]:
+                entry["action"] = "unchanged"
+            if entry["action"] == "change":
+                summary["changes"] += 1
+            elif entry["action"] == "unchanged":
+                summary["unchanged"] += 1
+            else:
+                summary["invalid"] += 1
+            if entry["needs_approval"] and entry["action"] == "change":
+                summary["needs_approval"] += 1
+            entries.append(entry)
+        return {
+            "scope": scope_enum.value,
+            "scope_id": scope_id,
+            "keys": entries,
+            "summary": summary,
+        }
+
     # ------------------------------------------------------------------
     # LIST: overrides at a scope, history
     # ------------------------------------------------------------------

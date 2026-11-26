@@ -43,6 +43,7 @@ from app.modules.settings.schemas import (
     SetSettingRequest,
     SettingDefOut,
     SettingHistoryOut,
+    SettingsPreviewOut,
     TenantSettingOut,
 )
 from app.modules.settings.service import ResolvedSetting, SettingsService
@@ -307,6 +308,28 @@ async def bulk_set_settings(
         )
         for r in rows
     ]
+
+
+@router.post("/preview", response_model=SettingsPreviewOut)
+async def preview_settings(
+    body: BulkSetSettingsRequest,
+    ctx: SettingsWriteCtx,
+) -> SettingsPreviewOut:
+    """Dry run of a save: every key checked, nothing written.
+
+    The settings screen shows this diff before the owner commits, so a key that is invalid,
+    forbidden at this scope, or needs approval is visible BEFORE the request is sent — not
+    as a 400/403 after half the form was filled in.
+    """
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    result = await svc.preview(
+        body.settings,
+        scope=Scope(body.scope),
+        scope_id=body.scope_id,
+        user_id=ctx.user.id,
+        permissions=ctx.permission_codes,
+    )
+    return SettingsPreviewOut(**result)
 
 
 @router.delete("/{key:path}")

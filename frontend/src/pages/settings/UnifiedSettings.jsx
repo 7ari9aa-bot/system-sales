@@ -210,7 +210,18 @@ export default function UnifiedSettings() {
             </Button>
           )}
           {s.dirty && (
-            <Button variant="outline" size="sm" onClick={() => setShowPreview((v) => !v)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const next = !showPreview;
+                setShowPreview(next);
+                // Opening the preview asks the server: the diff alone cannot say which key is
+                // out of range or which one needs approval.
+                if (next) s.runPreview();
+              }}
+              disabled={s.previewing}
+            >
               {isAr ? "معاينة" : "Preview"}
             </Button>
           )}
@@ -300,6 +311,40 @@ export default function UnifiedSettings() {
             value={crReason}
             onChange={(e) => setCrReason(e.target.value)}
           />
+        </div>
+      )}
+
+      {/* What the server says this save would do — before anything is written */}
+      {showPreview && s.preview && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-[12px]" data-testid="settings-server-preview">
+          {s.preview.error ? (
+            <div role="alert" className="text-destructive">{s.preview.error}</div>
+          ) : (
+            <>
+              <div className="mb-2 text-[11px] text-muted-foreground">
+                {isAr ? "فحص السيرفر قبل الحفظ" : "Server check before saving"}
+              </div>
+              <ul className="space-y-1">
+                {s.preview.keys.map((entry) => (
+                  <li key={entry.key} className="flex flex-wrap items-center gap-2" data-action={entry.action}>
+                    <span className="font-medium">{entry.key}</span>
+                    <span className="text-muted-foreground">
+                      {String(entry.current)} → {String(entry.proposed)}
+                    </span>
+                    {entry.action === "unchanged" && (
+                      <span className="text-muted-foreground">{isAr ? "بدون تغيير" : "unchanged"}</span>
+                    )}
+                    {entry.action === "invalid" && (
+                      <span className="text-destructive">{entry.error}</span>
+                    )}
+                    {entry.needs_approval && entry.action === "change" && (
+                      <span className="text-amber-700">{isAr ? "يحتاج موافقة" : "needs approval"}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
