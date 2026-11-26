@@ -31,6 +31,7 @@ export function receiptShop(raw) {
     copies: whole(s.copies, 1, 1, 5),
     showTaxDetail: s.show_tax_detail === true,
     exchangeDays: whole(s.exchange_days, 0, 0, 365),
+    returnDays: whole(s.return_days, 0, 0, 365),
   };
 }
 
@@ -46,6 +47,14 @@ export function receiptFooterLines(shop) {
       shop.exchangeDays === 1
         ? "الاستبدال خلال يوم واحد بشرط وجود الفاتورة"
         : `الاستبدال خلال ${shop.exchangeDays} يومًا بشرط وجود الفاتورة`,
+    );
+  }
+  // Returns are a separate window the owner sets; a shop that allows none prints no promise.
+  if (shop.returnDays > 0) {
+    out.push(
+      shop.returnDays === 1
+        ? "المرتجع خلال يوم واحد بشرط وجود الفاتورة"
+        : `المرتجع خلال ${shop.returnDays} يومًا بشرط وجود الفاتورة`,
     );
   }
   return out;

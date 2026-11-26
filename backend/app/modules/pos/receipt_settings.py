@@ -36,6 +36,7 @@ _KEYS = (
     "print.barcode_format",
     "print.invoice_prefix",
     "pos.exchange_max_days",
+    "pos.return_max_days",
 )
 
 # Millimetres the printer sees. "a4" is a sheet printer, not a till roll: use the wide roll.
@@ -101,4 +102,6 @@ async def receipt_settings(
         "invoice_prefix": _text(v["print.invoice_prefix"]) or None,
         # 0 = "no exchanges": the receipt says nothing about exchange instead of promising 0 days.
         "exchange_days": _whole(v["pos.exchange_max_days"], default=0, low=0, high=365),
+        # The same window for returns. It was the one policy still written into the printed text.
+        "return_days": _whole(v["pos.return_max_days"], default=0, low=0, high=365),
     }

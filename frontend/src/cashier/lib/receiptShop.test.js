@@ -4,7 +4,7 @@ import { currencyLabel, receiptFooterLines, receiptHeaderLines, receiptShop } fr
 const full = {
   shop_name: "  محل الأمل ", address: "١٢ شارع النيل, القاهرة", phone: "0100", tax_id: "123",
   paper_mm: 58, show_logo: true, header_text: " أهلاً ", footer_text: "الإرجاع بالفاتورة",
-  copies: 2, show_tax_detail: true, exchange_days: 30,
+  copies: 2, show_tax_detail: true, exchange_days: 30, return_days: 14,
 };
 
 describe("receiptShop", () => {
@@ -12,14 +12,14 @@ describe("receiptShop", () => {
     expect(receiptShop(full)).toEqual({
       name: "محل الأمل", address: "١٢ شارع النيل, القاهرة", phone: "0100", taxId: "123",
       paperMm: 58, showLogo: true, headerText: "أهلاً", footerText: "الإرجاع بالفاتورة",
-      copies: 2, showTaxDetail: true, exchangeDays: 30,
+      copies: 2, showTaxDetail: true, exchangeDays: 30, returnDays: 14,
     });
   });
 
   it.each([undefined, null, "x", 5, []])("a reply with no shop block (%s) gives safe defaults", (raw) => {
     expect(receiptShop(raw)).toEqual({
       name: "", address: "", phone: "", taxId: "", paperMm: 80, showLogo: false,
-      headerText: "", footerText: "", copies: 1, showTaxDetail: false, exchangeDays: 0,
+      headerText: "", footerText: "", copies: 1, showTaxDetail: false, exchangeDays: 0, returnDays: 0,
     });
   });
 
@@ -37,6 +37,9 @@ describe("receiptShop", () => {
     expect(receiptShop({ exchange_days: -3 }).exchangeDays).toBe(0);
     expect(receiptShop({ exchange_days: 9999 }).exchangeDays).toBe(365);
     expect(receiptShop({ exchange_days: Infinity }).exchangeDays).toBe(0);
+    expect(receiptShop({ return_days: -1 }).returnDays).toBe(0);
+    expect(receiptShop({ return_days: 14 }).returnDays).toBe(14);
+    expect(receiptShop({ return_days: 4000 }).returnDays).toBe(365);
   });
 
   it("a switch is on only when the server said true", () => {
@@ -61,8 +64,21 @@ describe("receiptFooterLines", () => {
     expect(receiptFooterLines(receiptShop({}))).toEqual([]);
   });
 
-  it("puts the owner's own footer first, then the exchange promise", () => {
-    expect(receiptFooterLines(receiptShop(full))).toEqual(["الإرجاع بالفاتورة", "الاستبدال خلال 30 يومًا بشرط وجود الفاتورة"]);
+  it("puts the owner's own footer first, then the exchange and return promises", () => {
+    expect(receiptFooterLines(receiptShop(full))).toEqual([
+      "الإرجاع بالفاتورة",
+      "الاستبدال خلال 30 يومًا بشرط وجود الفاتورة",
+      "المرتجع خلال 14 يومًا بشرط وجود الفاتورة",
+    ]);
+  });
+
+  it("prints no return promise when the shop allows no returns", () => {
+    expect(receiptFooterLines(receiptShop({ return_days: 0, exchange_days: 7 }))).toEqual([
+      "الاستبدال خلال 7 يومًا بشرط وجود الفاتورة",
+    ]);
+    expect(receiptFooterLines(receiptShop({ return_days: 1 }))).toEqual([
+      "المرتجع خلال يوم واحد بشرط وجود الفاتورة",
+    ]);
   });
 });
 
