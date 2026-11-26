@@ -171,6 +171,10 @@ class SettingDef:
     # Entitlement/feature this setting belongs to (§72). When set, the
     # entitlements service is consulted before the value is accepted.
     feature_requirement: str | None = None
+    # True when the key is stored and displayed but nothing reads it yet. A key that no
+    # code path reads is a lie to the owner unless it is marked here; the guard test in
+    # tests/test_settings_dead_keys.py fails on any unreserved key with no reader.
+    reserved: bool = False
     # Whether this setting supports rollback to a previous revision (§35).
     # Most settings do; a few (channel credentials, SKU generation) do not.
     rollback_supported: bool = True
