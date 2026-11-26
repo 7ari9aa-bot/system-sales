@@ -481,6 +481,11 @@ class _StubResult:
     def __init__(self, rows):
         self._rows = list(rows)
 
+    def __iter__(self):
+        # A ScalarResult is iterable as well as .all()-able: the catalog search iterates the
+        # variants and SettingsService._load_overrides calls .all() on the same object.
+        return iter(self._rows)
+
     def all(self):
         return self._rows
 
