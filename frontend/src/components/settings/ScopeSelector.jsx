@@ -17,7 +17,17 @@ import {
  * UUID box meant the owner had to find an id the settings page never showed, so every
  * setting in practice lived at the tenant level.
  */
-export default function ScopeSelector({ scope, scopeId, onScopeChange, onScopeIdChange, isAr }) {
+export default function ScopeSelector({
+  scope,
+  scopeId,
+  onScopeChange,
+  onScopeIdChange,
+  isAr,
+  // The scopes the page's own definitions allow. Omitted means "offer them all" (the
+  // unified editor, which holds every key at once). A page that passes a list offers the
+  // tenant level plus exactly those: a branch-only page has no business offering a register.
+  allowedScopes = null,
+}) {
   const [options, setOptions] = useState([]);
   const [state, setState] = useState({ loading: false, error: "" });
 
@@ -47,6 +57,13 @@ export default function ScopeSelector({ scope, scopeId, onScopeChange, onScopeId
     };
   }, [scope]);
 
+  const offeredOptions = useMemo(() => {
+    if (!allowedScopes || allowedScopes.length === 0) return SCOPE_OPTIONS;
+    const allowed = new Set(allowedScopes);
+    // The tenant level is always offered: it is where a value lives when it is not overridden.
+    return SCOPE_OPTIONS.filter((opt) => opt.value === "tenant" || allowed.has(opt.value));
+  }, [allowedScopes]);
+
   const selected = useMemo(
     () => options.find((option) => option.id === scopeId) || null,
     [options, scopeId],
@@ -69,7 +86,7 @@ export default function ScopeSelector({ scope, scopeId, onScopeChange, onScopeId
           <SelectValue placeholder={isAr ? "اختر النطاق…" : "Select scope…"} />
         </SelectTrigger>
         <SelectContent>
-          {SCOPE_OPTIONS.map((opt) => (
+          {offeredOptions.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {scopeLabel(opt)}
             </SelectItem>

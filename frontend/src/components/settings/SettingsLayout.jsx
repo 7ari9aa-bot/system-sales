@@ -1,13 +1,11 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, KeyRound, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, Sparkles, Gauge, Store, MapPin, Package, Receipt, Truck, Boxes, SlidersHorizontal, Bell, Code2,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, LogOut, Menu, Settings2, X } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import { activeTenant } from "@/lib/activeTenant";
-import { DEVELOPER_ROLES } from "@/lib/developerAccess";
+import { SETTINGS_NAV_GROUPS } from "@/components/settings/settingsManifest";
 import Logo from "@/components/dashboard/Logo";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import {
@@ -23,76 +21,19 @@ import {
 // replaced by this dedicated sidebar + content area.
 //
 // Two kinds of settings, kept apart: the PERSON signed in (My account) and the SHOP every member
-// works on (Store, Operations, Billing & data). A cashier changes their own password; only an
-// owner changes the shop's name, team or plan.
-const NAV_GROUPS = [
-  {
-    key: "settings.group.account",
-    items: [
-      { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
-      { to: "/settings/login", icon: KeyRound, labelKey: "settings.nav.login" },
-      { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
-      { to: "/settings/preferences", icon: SlidersHorizontal, labelKey: "settings.nav.preferences" },
-      { to: "/settings/notifications", icon: Bell, labelKey: "settings.nav.notifications" },
-    ],
-  },
-  {
-    key: "settings.group.store",
-    items: [
-      { to: "/settings/workspace", icon: Store, labelKey: "settings.nav.workspace" },
-      { to: "/settings/all", icon: Settings2, labelKey: "settings.nav.all" },
-      { to: "/settings/members", icon: Users, labelKey: "settings.nav.members" },
-    ],
-  },
-  {
-    key: "settings.group.business",
-    items: [
-      { to: "/settings/store", icon: Store, labelKey: "settings.nav.store" },
-      { to: "/settings/locations", icon: MapPin, labelKey: "settings.nav.locations" },
-      { to: "/settings/catalog", icon: Package, labelKey: "settings.nav.catalog" },
-      { to: "/settings/sales", icon: Receipt, labelKey: "settings.nav.sales" },
-      { to: "/settings/inventory", icon: Boxes, labelKey: "settings.nav.inventory" },
-    ],
-  },
-  {
-    key: "settings.group.operations",
-    items: [
-      { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },
-      { to: "/settings/ai", icon: Sparkles, labelKey: "settings.nav.ai" },
-      { to: "/settings/pos", icon: ScanLine, labelKey: "settings.nav.pos" },
-      { to: "/settings/purchasing", icon: Truck, labelKey: "settings.nav.purchasing" },
-    ],
-  },
-  {
-    key: "settings.group.billing",
-    items: [
-      { to: "/settings/billing", icon: Wallet, labelKey: "settings.nav.billing" },
-      { to: "/settings/usage", icon: Gauge, labelKey: "settings.nav.usage" },
-      { to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" },
-    ],
-  },
-  // Section 18 onward. Kept in its own group because these are the governance screens: they
-  // describe what the system enforces and who may change it, not what the shop sells.
-  {
-    key: "settings.group.advanced",
-    items: [
-      {
-        to: "/settings/security/security-policies",
-        icon: ShieldCheck,
-        labelKey: "settings.nav.governance",
-      },
-      // Section 20 is the one group entry that is hidden by ROLE. `roles` is read by the
-      // filter below, and the route guard in SettingsSection enforces the same list, so a
-      // typed address cannot open what the sidebar hides.
-      {
-        to: "/settings/developers/webhooks",
-        icon: Code2,
-        labelKey: "settings.nav.developers",
-        roles: DEVELOPER_ROLES,
-      },
-    ],
-  },
-];
+// works on. A cashier changes their own password; only an owner changes the shop's name, team
+// or plan.
+//
+// The sidebar is GENERATED from the manifest, not written here. This file used to hold its own
+// six-group list, which is how sections that existed in the router (team, customers, analytics,
+// automation, workspace notifications, data) never appeared in the navigation: adding a route
+// did not add an entry. `settingsManifest.js` is the one place that says what the Center holds;
+// this component only filters it by role and draws it.
+const visibleGroupsFor = (roleCode) =>
+  SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.roles || item.roles.includes(roleCode)),
+  })).filter((group) => group.items.length > 0);
 
 export default function SettingsLayout() {
   const { pathname } = useLocation();
@@ -106,10 +47,7 @@ export default function SettingsLayout() {
   // The role of the membership this person holds in the ACTIVE workspace decides which nav
   // entries exist at all. An item with no `roles` is shown to everyone.
   const roleCode = activeTenant(user)?.role_code || null;
-  const visibleGroups = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => !item.roles || item.roles.includes(roleCode)),
-  })).filter((group) => group.items.length > 0);
+  const visibleGroups = visibleGroupsFor(roleCode);
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
   async function handleLogout() {

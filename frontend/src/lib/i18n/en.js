@@ -2028,6 +2028,17 @@ export default {
   "settings.data.deletion.empty": "No data requests yet.",
   "settings.data.deletion.whereToEdit": "A request is executed on the execute path after review, not by a click on this page, because deletion cannot be undone.",
 
+  // ── Settings Center navigation (generated from settingsManifest.js) ─────
+  "settings.group.admin": "Account & administration",
+  "settings.group.commerce": "Commerce & operations",
+  "settings.group.intelligence": "Channels & intelligence",
+  "settings.nav.team": "Team & permissions",
+  "settings.nav.customers": "Customers & support",
+  "settings.nav.analytics": "Analytics & reports",
+  "settings.nav.automation": "Automation & workflows",
+  "settings.nav.workspaceNotifications": "Workspace notifications",
+  "settings.nav.data": "Data & privacy",
+
   // ── Section 18 — Security & governance ───────────────────────────────────
   "settings.group.advanced": "Advanced administration",
   "settings.nav.governance": "Security & governance",

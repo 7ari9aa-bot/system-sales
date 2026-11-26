@@ -2028,6 +2028,17 @@ export default {
   "settings.data.deletion.empty": "لسه مفيش طلبات بيانات.",
   "settings.data.deletion.whereToEdit": "الطلب بيتنفّذ من مسار التنفيذ بعد المراجعة، مش بضغطة على الصفحة دي، لأن الحذف إجراء لا رجعة فيه.",
 
+  // ── Settings Center navigation (generated from settingsManifest.js) ─────
+  "settings.group.admin": "الحساب والإدارة",
+  "settings.group.commerce": "التجارة والتشغيل",
+  "settings.group.intelligence": "القنوات والذكاء",
+  "settings.nav.team": "الفريق والصلاحيات",
+  "settings.nav.customers": "العملاء والدعم",
+  "settings.nav.analytics": "التحليلات والتقارير",
+  "settings.nav.automation": "الأتمتة وسير العمل",
+  "settings.nav.workspaceNotifications": "إشعارات مساحة العمل",
+  "settings.nav.data": "البيانات والخصوصية",
+
   // ── Section 18 — Security & governance ───────────────────────────────────
   "settings.group.advanced": "الإدارة المتقدمة",
   "settings.nav.governance": "الأمان والحوكمة",

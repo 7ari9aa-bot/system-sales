@@ -192,6 +192,25 @@ The **registry is the source of truth**: `key`, `section`, `page`, `type`, `defa
 `impact_level`, `status`. A key with no owner, or a control on a screen that changes nothing, is a
 defect. See [registry-specification.md](registry-specification.md) for the keys that exist today.
 
+### The registry owns the keys; the manifest owns the navigation
+
+Two responsibilities, deliberately separate:
+
+| Question | Answered by |
+|---|---|
+| What is this setting, who may change it, how does a change reach the runtime? | the backend registry (`app/modules/settings/registry.py`) |
+| What does the Center contain, in what order, under which heading, and who may see it? | `frontend/src/components/settings/settingsManifest.js` |
+
+The manifest declares the five groups and the twenty sections with their landing route, their
+pages, and the roles that may see them; the sidebar is generated from it. Before the manifest the
+same structure lived in four unrelated places — the sidebar, the section tabs, `App.jsx`, and this
+file — and the drift was real: sections that existed in the router (team, customers, analytics,
+automation, workspace notifications, data) never appeared in the navigation at all, and
+`/settings/members` stayed a second front door to the team rows that `/settings/team/*` already
+owns. `settingsManifest.test.js` pins what a person forgets: five groups, twenty sections, unique
+routes, every route registered in `App.jsx`, every label in both languages, and one role-gated
+section.
+
 ---
 
 ## 6. Build status

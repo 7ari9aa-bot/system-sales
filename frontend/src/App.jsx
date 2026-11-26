@@ -54,7 +54,6 @@ import SettingsLayout from '@/components/settings/SettingsLayout';
 import DeveloperSectionGate from '@/components/settings/DeveloperSectionGate';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const WorkspaceSettings = lazy(() => import('@/pages/settings/WorkspaceSettings'));
-const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
 const TeamSettings = lazy(() => import('@/pages/settings/TeamSettings'));
 const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
 const PosSettings = lazy(() => import('@/pages/settings/PosSettings'));
@@ -232,7 +231,11 @@ const DashboardRoutes = () => (
               </DeveloperSectionGate>
             }
           />
-          <Route path="/settings/members" element={<MembersSettings />} />
+          {/* The old combined members-and-invitations screen is GONE as a destination. Section
+              03 (`/settings/team/*`) holds the six real pages — members, invitations, roles,
+              the permission matrix, teams and access scope — and two editors of the same rows
+              is the duplication the Center exists to prevent. The address still works. */}
+          <Route path="/settings/members" element={<Navigate to="/settings/team/members" replace />} />
           <Route path="/settings/team" element={<TeamSettings />} />
           <Route path="/settings/team/:section" element={<TeamSettings />} />
           <Route path="/settings/all" element={<UnifiedSettings />} />

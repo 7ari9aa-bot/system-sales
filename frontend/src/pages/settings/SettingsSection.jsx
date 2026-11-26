@@ -305,8 +305,28 @@ const PANEL_PAGES = new Set([
   "developers/developer-environment",
 ]);
 
-/** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
-const SCOPED_DOMAINS = new Set(["business", "organization", "branch", "pos", "print", "orders"]);
+/**
+ * The scopes a page may offer, read from the definitions themselves.
+ *
+ * This used to be a hand-written set of DOMAIN names (`business`, `organization`, `branch`,
+ * `pos`, `print`, `orders`) answering "is a scope picker worth showing". Two things were wrong
+ * with it. It went stale the moment the registry gave a key a scope the list did not name — the
+ * inventory keys that may live on a WAREHOUSE and the purchasing keys that may live on a BRANCH
+ * were scoped in the engine and the picker never appeared, so the only reachable home was the
+ * workspace. And a domain is not a scope: the registry's own `SettingDefOut.scopes` is the
+ * answer, so the page now asks the definitions instead of guessing from their domain.
+ */
+const TENANT_ONLY_SCOPES = new Set(["tenant", "user"]);
+
+function scopesOfferedBy(defs) {
+  const offered = new Set();
+  for (const def of defs || []) {
+    for (const scope of def.scopes || []) {
+      if (!TENANT_ONLY_SCOPES.has(scope)) offered.add(scope);
+    }
+  }
+  return [...offered].sort();
+}
 
 export default function SettingsSection({ section }) {
   const { page } = useParams();
@@ -325,10 +345,8 @@ export default function SettingsSection({ section }) {
     () => (s.defs || []).filter((d) => d.impact_level === "high"),
     [s.defs],
   );
-  const scoped = useMemo(
-    () => (s.defs || []).some((d) => SCOPED_DOMAINS.has(d.domain)),
-    [s.defs],
-  );
+  const offeredScopes = useMemo(() => scopesOfferedBy(s.defs), [s.defs]);
+  const scoped = offeredScopes.length > 0;
 
   const pages = SECTION_PAGES[section] || [];
   const title = t(`settings.${section}.pages.${page}.title`) || t(`settings.${section}.title`);
@@ -418,6 +436,7 @@ export default function SettingsSection({ section }) {
           <ScopeSelector
             scope={scope}
             scopeId={scopeId}
+            allowedScopes={offeredScopes}
             onScopeChange={(v) => {
               setScope(v);
               setScopeId(null);
