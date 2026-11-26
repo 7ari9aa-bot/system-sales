@@ -32,11 +32,18 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# The role does not exist in every database this runs against: CI builds a plain
+# postgres cluster, and provision.py creates sales_app itself on the live box. An
+# unconditional GRANT therefore aborted `alembic upgrade head` in CI, which took the
+# six backend shards and live-api down with it. The guard is the same idiom
+# a1b2c3d4e5f6, b2c3d4e5f6a7 and f1a2b3c4d5e6 already use: when the role is absent
+# the statement is a no-op and the migration still records as applied, so a database
+# reaches the same ACL whichever order it was built in.
 _GRANT_SQL = """
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
-        EXECUTE 'GRANT DELETE ON public.audit_logs TO sales_app';
+        GRANT DELETE ON public.audit_logs TO sales_app;
     END IF;
 END
 $$;
@@ -46,7 +53,7 @@ _REVOKE_SQL = """
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
-        EXECUTE 'REVOKE DELETE ON public.audit_logs FROM sales_app';
+        REVOKE DELETE ON public.audit_logs FROM sales_app;
     END IF;
 END
 $$;

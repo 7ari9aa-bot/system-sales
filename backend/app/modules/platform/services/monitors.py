@@ -41,6 +41,15 @@ SILENCE_MINUTES = 30
 PROBE_TIMEOUT_SECONDS = 8.0
 ALERT_COOLDOWN_MINUTES = 60
 
+#: A recurring job that exhausted ``max_attempts`` is NEVER retried by the
+#: drain (it only claims ``queued``/``retrying``), so the work it owns stops
+#: silently: emails, shift close, reservation expiry. One stuck job is news.
+STUCK_JOB_MIN_FAILED = 1
+#: A ``queued``/``retrying`` row whose ``run_at`` is this far in the past means
+#: the drain itself is not running — the exact shape of the 26 Nov outage
+#: (836 rows queued, attempts=0, no error, nobody told).
+STALLED_DRAIN_OVERDUE_HOURS = 2
+
 _PROBE_KEY = "platform:monitors:probe:last"
 _TRIP_KEY = "platform:monitors:trip:{fingerprint}"
 
@@ -106,6 +115,68 @@ async def _had_traffic_recently(session: AsyncSession, hours: int) -> bool:
     return int(n or 0) > 0
 
 
+async def _scheduler_health(session: AsyncSession) -> list[Alert]:
+    """Is the recurring work actually happening?
+
+    Every other monitor watches the STOREFRONT. This one watches the sweeps
+    the storefront depends on, because their failure mode is silence: on
+    26 Nov every recurring job sat in ``scheduled_jobs`` while the drain died
+    on its first handler, and no alarm existed for "nothing is running".
+    """
+    from app.modules.platform.models import ScheduledJob
+
+    alerts: list[Alert] = []
+
+    failed = (
+        await session.execute(
+            select(ScheduledJob.job_type, func.count(ScheduledJob.id))
+            .where(ScheduledJob.status == "failed")
+            .group_by(ScheduledJob.job_type)
+            .order_by(func.count(ScheduledJob.id).desc())
+            .limit(5)
+        )
+    ).all()
+    total_failed = sum(int(count) for _, count in failed)
+    if total_failed >= STUCK_JOB_MIN_FAILED:
+        names = ", ".join(f"{job_type} x{count}" for job_type, count in failed)
+        alerts.append(
+            Alert(
+                severity="critical",
+                code="scheduler_jobs_failed",
+                detail=(
+                    f"{total_failed} recurring job(s) used up their attempts and will "
+                    f"never be retried ({names}) — the work they own (email delivery, "
+                    "shift close, reservation expiry) is silently not happening"
+                ),
+                fingerprint="scheduler_jobs_failed",
+            )
+        )
+
+    overdue_cutoff = datetime.now(UTC) - timedelta(hours=STALLED_DRAIN_OVERDUE_HOURS)
+    overdue = (
+        await session.execute(
+            select(func.count(ScheduledJob.id)).where(
+                ScheduledJob.status.in_(("queued", "retrying")),
+                ScheduledJob.run_at < overdue_cutoff,
+            )
+        )
+    ).scalar_one()
+    if int(overdue or 0) > 0:
+        alerts.append(
+            Alert(
+                severity="critical",
+                code="scheduler_drain_stalled",
+                detail=(
+                    f"{int(overdue)} recurring job(s) were due more than "
+                    f"{STALLED_DRAIN_OVERDUE_HOURS}h ago and still have not run — the "
+                    "drain is dead or blocked, so nothing scheduled is happening"
+                ),
+                fingerprint="scheduler_drain_stalled",
+            )
+        )
+    return alerts
+
+
 async def evaluate_monitors(session: AsyncSession) -> list[Alert]:
     """Evaluate the RUM monitors over the rolling window.
 
@@ -158,6 +229,9 @@ async def evaluate_monitors(session: AsyncSession) -> list[Alert]:
                     fingerprint="telemetry_silence",
                 )
             )
+
+    # The sweeps themselves: silence here is the outage nobody reports.
+    alerts.extend(await _scheduler_health(session))
     return alerts
 
 

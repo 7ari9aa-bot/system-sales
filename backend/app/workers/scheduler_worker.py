@@ -361,7 +361,17 @@ async def _operator_emails(session, tenant_id=None) -> list[str]:
         .scalars()
         .all()
     )
-    return list(rows)
+    # A fresh install has no platform admins at all, so this list used to come
+    # back empty and every alert was dropped before it reached Resend — the
+    # path looked configured and delivered to nobody. The configured inboxes
+    # are the floor: alerts always have somewhere to go.
+    from app.core.config import get_settings as _get_settings
+
+    recipients = [email.strip().lower() for email in rows if email and "@" in email]
+    for address in _get_settings().platform_alert_recipients:
+        if address not in recipients:
+            recipients.append(address)
+    return recipients
 
 
 async def _push_operator_emails(session, alerts: list) -> int:
@@ -388,10 +398,24 @@ async def _push_operator_emails(session, alerts: list) -> int:
         return 0
     recipients = await _operator_emails(session)
     if not recipients:
+        # Never silent: an alert with nowhere to go is an outage, not a no-op.
+        logger.warning(
+            "platform.monitor_alert_no_recipients alerts=%s — no platform admin and "
+            "PLATFORM_ALERT_EMAILS is empty, so nobody is being told",
+            len(alerts),
+        )
         return 0
 
     sender = ResendEmailSender()
     sent = 0
+    # Observable success: without this line a delivered alert and a silently
+    # skipped one (no gate, no operator) look identical in the logs, which is
+    # how "the email path was never actually proven" happens.
+    logger.info(
+        "platform.monitor_alerts_sending alerts=%s recipients=%s",
+        len(alerts),
+        len(recipients),
+    )
     hour_bucket = _dt.now(UTC).strftime("%Y%m%d%H")
     for alert in alerts:
         subject = f"[SalesOS monitor] {alert.severity}: {alert.code}"

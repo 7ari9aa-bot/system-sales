@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # verified a sending domain and configured these server-side values.
     resend_api_key: str = ""
     email_from: str = ""
+    # Where platform-level alerts (monitor trips, stuck sweeps) are emailed.
+    # Comma-separated. Platform admins are always included; this list exists
+    # because a fresh install has NO platform admins, so every alert had a
+    # recipient list of zero and was dropped in silence — the alerting path
+    # looked healthy while delivering to nobody.
+    platform_alert_emails: str = ""
     # Firebase Cloud Messaging (push notifications). Empty = FCM not
     # configured, so push delivery is a no-op (the in-app bell still lands).
     fcm_server_key: str = ""
@@ -412,6 +418,16 @@ class Settings(BaseSettings):
         "test". So an unrecognised value must be treated as secure-required.
         """
         return self.environment not in _DEV_ENVIRONMENTS
+
+    @property
+    def platform_alert_recipients(self) -> list[str]:
+        """The configured alert inboxes, normalised and de-duplicated."""
+        seen: list[str] = []
+        for part in self.platform_alert_emails.split(","):
+            address = part.strip().lower()
+            if "@" in address and address not in seen:
+                seen.append(address)
+        return seen
 
     @property
     def auth_email_delivery_configured(self) -> bool:
