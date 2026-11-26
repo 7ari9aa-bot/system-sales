@@ -52,6 +52,17 @@ export function createVercelConfig({
         source: "/auth/:path*",
         destination: `${apiOrigin}/auth/:path*`,
       },
+      // The backend answers its probes at the root (/healthz, /readyz) so a load
+      // balancer can reach them without the API prefix. Without these two the
+      // frontend owned those paths and every probe got a 404 from index.html.
+      {
+        source: "/healthz",
+        destination: `${apiOrigin}/healthz`,
+      },
+      {
+        source: "/readyz",
+        destination: `${apiOrigin}/readyz`,
+      },
     );
   }
   // Only real SPA screens fall back to index.html (dashboard, cashier, auth...).
