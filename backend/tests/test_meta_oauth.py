@@ -678,6 +678,7 @@ async def test_facebook_connect_records_the_permissions_meta_granted(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ):
     result, _calls = await _facebook_callback(db, tenant_ctx, monkeypatch)
+    assert "connected" in result, f"the link was refused: {result.get('error')}"
     assert result["connected"].startswith("facebook:")
     row = (await db.execute(sa_select_integration())).scalar_one()
     assert set(row.config["_connection"]["granted_scopes"]) == set(ALL_FACEBOOK_PERMISSIONS)

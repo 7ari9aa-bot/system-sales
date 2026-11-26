@@ -124,8 +124,14 @@ async def test_a_first_link_subscribes_exactly_the_channels_own_fields(
 async def test_an_unreadable_existing_subscription_never_blocks_the_link(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ):
-    """Reading what is already there is a courtesy. If that read fails the link still has to
-    work, and it falls back to the channel's own fields."""
+    """A read of what is already there that FAILS refuses the link, and writes nothing.
+
+    The earlier reading of this case called the read "a courtesy" and linked anyway with the
+    channel's own fields. Meta replaces the whole subscribed_fields list on every POST, so
+    linking "anyway" is not a courtesy: a Page Facebook already linked for its comments loses
+    `feed` the moment a guessed list is written, silently, with no error anywhere. The flow now
+    retries the read once and then refuses with a retryable message, so the operator tries again
+    instead of quietly losing the other channel's webhooks."""
     _config_patch(monkeypatch)
     posted: list[dict] = []
     base = _subscription_graph(already="", posted=posted)
@@ -148,8 +154,10 @@ async def test_an_unreadable_existing_subscription_never_blocks_the_link(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert "connected" in _popup_result(response)
-    assert posted, "the subscription must still be written"
+    result = _popup_result(response)
+    assert "connected" not in result, f"a blind write must not be linked: {result}"
+    assert result["error"].startswith("meta_unavailable:")
+    assert not posted, "nothing may be written when the existing fields could not be read"
 
 
 # --------------------------------------------------------------------------- A2 ---------
