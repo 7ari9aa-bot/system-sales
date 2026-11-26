@@ -225,6 +225,9 @@ export default function UnifiedSettings() {
 
   const noticeText = {
     saved: isAr ? "تم الحفظ" : "Saved",
+    saved_with_pending: isAr
+      ? "تم حفظ التعديلات المباشرة، والباقي اتحول لطلب تغيير بانتظار الموافقة"
+      : "Direct edits saved; the rest became a change request awaiting approval",
     change_request_submitted: isAr ? "تم إرسال طلب التغيير" : "Change request submitted",
     change_request_approved: isAr ? "تمت الموافقة على الطلب" : "Change request approved",
     change_request_rejected: isAr ? "تم رفض الطلب" : "Change request rejected",

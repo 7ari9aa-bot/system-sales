@@ -9,10 +9,19 @@ import { Badge } from "@/components/dashboard/ui";
  * Shows the status (pending_approval / approved / rejected) and the
  * submitted-by and reason metadata.
  */
-const STATUS_META = {
+export const STATUS_META = {
   pending_approval: { labelAr: "بانتظار الموافقة", labelEn: "Pending", tone: "warning", Icon: Clock },
   approved: { labelAr: "تمت الموافقة", labelEn: "Approved", tone: "success", Icon: Check },
   rejected: { labelAr: "مرفوض", labelEn: "Rejected", tone: "error", Icon: X },
+  // The backend walks a request through applying -> applied/failed after approval, and
+  // parks it as stale when a key moved while it waited. A request in one of those states
+  // used to render as "pending", which is the one thing it is not.
+  applying: { labelAr: "جارٍ التطبيق", labelEn: "Applying", tone: "warning", Icon: Clock },
+  applied: { labelAr: "اتطبق", labelEn: "Applied", tone: "success", Icon: Check },
+  failed: { labelAr: "فشل التطبيق", labelEn: "Failed", tone: "error", Icon: X },
+  stale: { labelAr: "اتغيّرت القيمة أثناء الانتظار", labelEn: "Stale", tone: "error", Icon: X },
+  cancelled: { labelAr: "ملغي", labelEn: "Cancelled", tone: "error", Icon: X },
+  expired: { labelAr: "منتهي", labelEn: "Expired", tone: "error", Icon: X },
 };
 
 export default function ChangeRequestList({

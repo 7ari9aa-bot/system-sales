@@ -17,6 +17,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
+/**
+ * Split a pending edit into what can be written now and what needs a change request.
+ *
+ * The bulk endpoint refuses an APPROVAL_REQUIRED key outright, so a screen holding both
+ * kinds cannot be saved in one call: the request fails and the direct edits are lost with
+ * it. Pure so the split is testable without a browser.
+ */
+export function splitSaveChanges(changes, approvalRequiredKeys = []) {
+  const direct = {};
+  const needsApproval = {};
+  for (const [key, value] of Object.entries(changes || {})) {
+    if (approvalRequiredKeys.includes(key)) needsApproval[key] = value;
+    else direct[key] = value;
+  }
+  return { direct, needsApproval };
+}
+
 /** Scope options for the selector, matching backend `Scope` enum. */
 export const SCOPE_OPTIONS = [
   { value: "tenant", labelAr: "المستوى العام", labelEn: "Tenant" },
@@ -219,10 +236,16 @@ export function useSettings(opts = {}) {
         if (isMaskedValue(v)) continue;
         if (v !== original[k]) changes[k] = v;
       }
-      if (Object.keys(changes).length > 0) {
+      // A screen can hold both kinds at once. The bulk endpoint refuses an
+      // APPROVAL_REQUIRED key outright, so sending one batch would fail the whole save and
+      // the direct edits would be lost with it. Split: direct edits are written now, the
+      // rest become a change request.
+      const { direct, needsApproval } = splitSaveChanges(changes, approvalRequiredKeys);
+
+      if (Object.keys(direct).length > 0) {
         // Pass expected_history_ids for optimistic-concurrency checks (§81).
         const expectedIds = {};
-        for (const k of Object.keys(changes)) {
+        for (const k of Object.keys(direct)) {
           if (historyIds[k]) expectedIds[k] = historyIds[k];
         }
         await api("/settings/bulk", {
@@ -230,15 +253,44 @@ export function useSettings(opts = {}) {
           body: {
             scope,
             ...(scopeId ? { scope_id: scopeId } : {}),
-            settings: changes,
+            settings: direct,
             ...(Object.keys(expectedIds).length > 0
               ? { expected_history_ids: expectedIds }
               : {}),
           },
         });
       }
-      setOriginal({ ...values });
-      setNotice("saved");
+
+      if (Object.keys(needsApproval).length > 0) {
+        const req = await api("/settings/change-requests", {
+          method: "POST",
+          body: {
+            changes: needsApproval,
+            scope,
+            ...(scopeId ? { scope_id: scopeId } : {}),
+          },
+        });
+        setChangeRequests((prev) => [req, ...prev]);
+        // They are pending, not saved: show the stored value, not the request.
+        setValues((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(needsApproval)) next[k] = original[k];
+          return next;
+        });
+      }
+
+      setOriginal((prev) => {
+        const next = { ...prev };
+        for (const k of Object.keys(direct)) next[k] = values[k];
+        return next;
+      });
+      if (Object.keys(needsApproval).length > 0 && Object.keys(direct).length > 0) {
+        setNotice("saved_with_pending");
+      } else if (Object.keys(needsApproval).length > 0) {
+        setNotice("change_request_submitted");
+      } else {
+        setNotice("saved");
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConflict({
@@ -251,7 +303,7 @@ export function useSettings(opts = {}) {
     } finally {
       setSaving(false);
     }
-  }, [values, original, historyIds, scope, scopeId]);
+  }, [values, original, historyIds, scope, scopeId, approvalRequiredKeys]);
 
   /** Create a change request for APPROVAL_REQUIRED settings. */
   const submitChangeRequest = useCallback(async (reason) => {
