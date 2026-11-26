@@ -32,6 +32,27 @@
     the outbox. No healthcheck (no HTTP server to probe) and no pre-deploy
     (two concurrent alembic runs would race). Restart ON_FAILURE max 5
     (declared; the dashboard default is ON_FAILURE max 10).
+- **Northflank (current production) does NOT migrate.** `infra/Dockerfile.backend`
+  ends in `CMD ["sh","-c","exec uvicorn app.main:app ..."]` — there is no
+  `alembic upgrade` anywhere in the image, and Northflank runs no pre-deploy step
+  for `system-sales`/`system-workers`. The Railway pre-deploy described above is
+  historical. Consequence measured 2026-11-27: main shipped code that queried
+  `teams`, `price_lists` and `discount_rules` while the database still sat on
+  `fe2026112608`, so those screens failed in production for days while every CI
+  job was green (CI migrates its own throwaway Postgres).
+  - Until a deploy hook exists, applying migrations is a RELEASE STEP, run
+    before the new image takes traffic. Offline SQL through the Supabase
+    Management API is the path that works from a sandbox (no 5432/6543 egress):
+    `alembic upgrade <current>:head --sql` with `ENVIRONMENT=local
+    JWT_SECRET=<32+ bytes>` and a dummy `DATABASE_URL`, then POST the script to
+    `https://api.supabase.com/v1/projects/<ref>/database/query` with the
+    `SUPABASE_ACCESS_TOKEN`. Verify afterwards: `select version_num from
+    alembic_version` equals head, and every new table answers
+    `relrowsecurity = relforcerowsecurity = true` with one `tenant_isolation`
+    policy.
+  - Migrations with live-row Python (a `select` inside the migration) cannot be
+    rendered offline; those need a real connection or the project's admin URL.
+
 - Dockerfile-path migration bug: when Railway migrates a service from
   config-as-code to IaC, a CUSTOM dockerfilePath can be IGNORED and the build
   falls back to the repo root — where no Dockerfile exists here. The IaC
