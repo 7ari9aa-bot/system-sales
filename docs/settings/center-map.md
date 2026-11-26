@@ -179,7 +179,14 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 05 Branch hours | done | `/settings/locations/branch-hours` — the branch's own week in the new `locations.hours` column (migration `fe2026112613`); empty means "follows the store", which is what every existing row says |
 | 05 Branch staff | done | `/settings/locations/branch-staff` — the real grants: list, grant with a per-branch role override, revoke, over `user_location_access` |
 | 05 Operating scopes | done | `/settings/locations/operating-scopes` — read-only: every key that accepts a branch value, its resolved value and whether it was inherited, set for the branch, or is the default |
-| 06–20 | pending | see the tables above |
+| 06 Product settings | done | `/settings/catalog/product-settings` — `catalog.default_tax_rate` (high impact: it lands on every new product) |
+| 06 Categories | done | `/settings/catalog/categories` — the real category list from `GET /catalog/categories`, with add; ordering and linking stay in the catalogue screen, which is where shop data belongs |
+| 06 Variants and options | done | `/settings/catalog/variants-and-options` — `catalog.max_variants_per_product` |
+| 06 Attributes and specs | done | `/settings/catalog/attributes-and-specs` — the shop's own size sets and colours (`GET/PUT/DELETE /catalog/apparel/options`), the apparel case: defined once, used by thousands of products |
+| 06 SKU and barcode | done | `/settings/catalog/sku-and-barcode` — `catalog.sku_format` and `catalog.barcode_auto_generate`: the FORMAT, never a product's own barcode |
+| 06 Product states | done | `/settings/catalog/product-states` — `catalog.show_out_of_stock` |
+| 06 Images and media | pending | no media rule exists to edit (limits, ordering, placeholders are per-product data today); a page here would be switches wired to nothing |
+| 07–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

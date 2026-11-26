@@ -116,6 +116,17 @@ vi.mock("@/components/settings/BranchesPanel", () => ({
   default: (props) => branchesPanelMock(props),
 }));
 
+const categoriesPanelMock = vi.fn(() => null);
+const apparelPanelMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/CategoriesPanel", () => ({
+  default: (props) => categoriesPanelMock(props),
+}));
+
+vi.mock("@/components/settings/ApparelOptionsPanel", () => ({
+  default: (props) => apparelPanelMock(props),
+}));
+
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
   BranchHoursPanel: (props) => branchHoursMock(props),
@@ -151,6 +162,7 @@ function renderAt(path) {
         <Routes>
           <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
           <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
+          <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -162,6 +174,8 @@ describe("SettingsSection", () => {
     useSettingsMock.mockClear();
     policyEditorMock.mockClear();
     branchesPanelMock.mockClear();
+    categoriesPanelMock.mockClear();
+    apparelPanelMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
     branchStaffMock.mockClear();
@@ -260,5 +274,24 @@ describe("SettingsSection", () => {
     for (const other of others) expect(other).not.toHaveBeenCalled();
     expect(branchesPanelMock).not.toHaveBeenCalled();
     expect(policyEditorMock).not.toHaveBeenCalled();
+  });
+
+  test("the catalogue section has its own seven pages", () => {
+    renderAt("/settings/catalog/sku-and-barcode");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("catalog");
+    expect(opts.page).toBe("sku-and-barcode");
+  });
+
+  test("categories shows the real catalogue list, not a setting", () => {
+    renderAt("/settings/catalog/categories");
+    expect(categoriesPanelMock).toHaveBeenCalled();
+  });
+
+  test("attributes and specs edits the shop's own sizes and colours", () => {
+    renderAt("/settings/catalog/attributes-and-specs");
+    expect(apparelPanelMock).toHaveBeenCalled();
+    // The two panels belong to their own pages only.
+    expect(categoriesPanelMock).not.toHaveBeenCalled();
   });
 });

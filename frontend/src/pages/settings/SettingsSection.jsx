@@ -22,6 +22,8 @@ import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell"
 import { SettingField } from "@/components/settings/SettingField";
 import StorePolicyEditor from "@/components/settings/StorePolicyEditor";
 import BranchesPanel from "@/components/settings/BranchesPanel";
+import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
+import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import {
   BranchDataPanel,
   BranchHoursPanel,
@@ -303,6 +305,10 @@ export default function SettingsSection({ section }) {
       ))}
 
       {`${section}/${page}` === "locations/all-branches" && <BranchesPanel />}
+
+      {`${section}/${page}` === "catalog/categories" && <CategoriesPanel />}
+
+      {`${section}/${page}` === "catalog/attributes-and-specs" && <ApparelOptionsPanel />}
       {`${section}/${page}` === "locations/branch-data" && <BranchDataPanel />}
       {`${section}/${page}` === "locations/branch-hours" && <BranchHoursPanel />}
       {`${section}/${page}` === "locations/branch-staff" && <BranchStaffPanel />}

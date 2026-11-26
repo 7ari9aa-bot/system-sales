@@ -2098,6 +2098,7 @@ _reg(
         label_en="Default Tax Rate %",
         description_ar="نسبة الضريبة الافتراضية للمنتجات الجديدة (0 يعني لا ضريبة).",
         description_en="The default tax rate for new products (0 means no tax).",
+        impact_level="high",
     )
 )
 _reg(
@@ -2458,6 +2459,13 @@ _PAGE_OVERRIDES: dict[str, str] = {
     # till settings. Section 07 links here rather than offering a second editor for the same rule.
     "pos.return_max_days": "store/business-policies",
     "pos.exchange_max_days": "store/business-policies",
+    # The catalogue domain has five keys but the map gives it seven pages: the ones that are not
+    # about "what a new product defaults to" go to the page that owns them, so product-settings is
+    # not a drawer everything falls into.
+    "catalog.max_variants_per_product": "variants-and-options",
+    "catalog.sku_format": "sku-and-barcode",
+    "catalog.barcode_auto_generate": "sku-and-barcode",
+    "catalog.show_out_of_stock": "product-states",
     # Structure, not identity: the branch limits belong with the branches themselves.
     "organization.multi_branch": "locations/all-branches",
     "organization.max_branches": "locations/all-branches",

@@ -121,3 +121,23 @@ def test_the_high_impact_keys_say_so() -> None:
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["pos.return_max_days"].impact_level == "high"
     assert by_key["pos.exchange_max_days"].impact_level == "high"
+
+
+def test_the_catalogue_keys_are_spread_over_the_pages_that_own_them() -> None:
+    """Five keys, seven pages: the drawer page must not swallow the others.
+
+    ``product-settings`` owns what a NEW product defaults to; the code shape, the variant limit and
+    whether sold-out products show are each a rule of their own page.
+    """
+    homes = {d.key: d.home for d in list_definitions(section="catalog")}
+    assert homes["catalog.sku_format"] == ("catalog", "sku-and-barcode")
+    assert homes["catalog.barcode_auto_generate"] == ("catalog", "sku-and-barcode")
+    assert homes["catalog.max_variants_per_product"] == ("catalog", "variants-and-options")
+    assert homes["catalog.show_out_of_stock"] == ("catalog", "product-states")
+    assert homes["catalog.default_tax_rate"] == ("catalog", "product-settings")
+
+
+def test_the_default_tax_rate_is_high_impact() -> None:
+    """A default rate that lands on every new product is money, so the page warns."""
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["catalog.default_tax_rate"].impact_level == "high"
