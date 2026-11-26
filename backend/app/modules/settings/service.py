@@ -748,7 +748,19 @@ class SettingsService:
         if not needs_approval:
             await self._apply_change_request(request, user_id=user_id, permissions=permissions)
 
+        await self._reload_timestamps(request)
         return request
+
+    async def _reload_timestamps(self, request: SettingChangeRequest) -> None:
+        """Load the server-generated timestamps before the row is serialised.
+
+        ``updated_at`` carries ``onupdate=func.now()``, so any flush leaves it expired.
+        The router then reads it while building the response, which happens outside the
+        greenlet, and asyncpg raised ``MissingGreenlet`` — every submission, approval and
+        rejection answered 500 while the row itself was written. Refreshing only the two
+        timestamp columns keeps the transient ``stale_keys`` the router needs.
+        """
+        await self._session.refresh(request, attribute_names=["created_at", "updated_at"])
 
     async def approve_change_request(
         self,
@@ -805,6 +817,7 @@ class SettingsService:
                 before={"status": "pending_approval"},
                 after={"status": "stale", "conflicting_keys": sorted(moved)},
             )
+            await self._reload_timestamps(request)
             request.stale_keys = sorted(moved)  # transient, read by the router
             return request
 
@@ -827,6 +840,7 @@ class SettingsService:
         )
 
         await self._apply_change_request(request, user_id=reviewer_id, permissions=permissions)
+        await self._reload_timestamps(request)
         return request
 
     async def reject_change_request(
@@ -875,6 +889,7 @@ class SettingsService:
             before={"status": "pending_approval"},
             after={"status": "rejected", "review_note": review_note},
         )
+        await self._reload_timestamps(request)
         return request
 
     async def list_change_requests(
