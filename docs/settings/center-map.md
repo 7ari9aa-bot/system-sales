@@ -200,7 +200,14 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 08 Invoices and receipts | done | `/settings/pos/invoices-and-receipts` — the eight `print.*` keys |
 | 08 Peripherals | pending | no peripheral configuration is stored anywhere: the printer and drawer are driven by the print keys and the device's own settings |
 | 08 Offline mode | pending | the till has no offline queue or offline policy in the codebase, so a page would be a switch wired to nothing |
-| 09–20 | pending | see the tables above |
+| 09 Inventory settings | done | `/settings/inventory/inventory-settings` — `inventory.track_locations`, `inventory.show_channel_allocation`, `inventory.show_units_of_measure` |
+| 09 Warehouses | done | `/settings/inventory/warehouses` — the active warehouses from `GET /inventory/warehouses`, with where they are really created and edited stated on the page |
+| 09 Stock states | done | `/settings/inventory/stock-states` — `auto_reserve`, `reserve_ttl_minutes`, `expiry_alert_days`, `dead_stock_days`: how stock is classified, which is not the same question as how it is costed |
+| 09 Stock limits | done | `/settings/inventory/stock-limits` — `inventory.safety_stock_default`, the rule behind a low-stock warning (the quantities themselves stay operational data) |
+| 09 Counts and adjustments | done | `/settings/inventory/counts-and-adjustments` — `inventory.stocktake_approval_required` (high impact) over the real stocktake list from `GET /inventory/stocktakes` |
+| 09 Transfers | done | `/settings/inventory/transfers` — `show_warehouse_transfers`, `quality_check_on_receipt` over the real transfer list from `GET /inventory/transfers` |
+| 09 Inventory cost | done | `/settings/inventory/inventory-cost` — `inventory.fifo_enabled` (high impact: it decides how the cost of goods sold is worked out) |
+| 10–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

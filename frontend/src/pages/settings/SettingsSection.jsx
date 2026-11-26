@@ -25,6 +25,7 @@ import BranchesPanel from "@/components/settings/BranchesPanel";
 import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
 import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
+import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import {
   BranchDataPanel,
@@ -313,6 +314,58 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "catalog/attributes-and-specs" && <ApparelOptionsPanel />}
 
       {`${section}/${page}` === "sales/exchange-and-returns" && <ReturnWindowPanel />}
+
+      {`${section}/${page}` === "inventory/warehouses" && (
+        <InventoryRecordsPanel
+          endpoint="/inventory/warehouses"
+          titleKey="settings.inventory.warehouses.title"
+          descKey="settings.inventory.warehouses.desc"
+          emptyKey="settings.inventory.warehouses.empty"
+          loadingKey="settings.inventory.warehouses.loading"
+          loadErrorKey="settings.inventory.warehouses.loadError"
+          footerKey="settings.inventory.warehouses.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "code", kind: "num" },
+            { key: "address" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "inventory/transfers" && (
+        <InventoryRecordsPanel
+          endpoint="/inventory/transfers"
+          titleKey="settings.inventory.transfers.title"
+          descKey="settings.inventory.transfers.desc"
+          emptyKey="settings.inventory.transfers.empty"
+          loadingKey="settings.inventory.transfers.loading"
+          loadErrorKey="settings.inventory.transfers.loadError"
+          footerKey="settings.inventory.transfers.whereToEdit"
+          columns={[
+            { key: "from_warehouse_id", kind: "num" },
+            { key: "to_warehouse_id", kind: "num" },
+            { key: "status", kind: "badge" },
+            { key: "created_at", kind: "num" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "inventory/counts-and-adjustments" && (
+        <InventoryRecordsPanel
+          endpoint="/inventory/stocktakes"
+          titleKey="settings.inventory.stocktakes.title"
+          descKey="settings.inventory.stocktakes.desc"
+          emptyKey="settings.inventory.stocktakes.empty"
+          loadingKey="settings.inventory.stocktakes.loading"
+          loadErrorKey="settings.inventory.stocktakes.loadError"
+          footerKey="settings.inventory.stocktakes.whereToEdit"
+          columns={[
+            { key: "warehouse_id", kind: "num" },
+            { key: "status", kind: "badge" },
+            { key: "created_at", kind: "num" },
+          ]}
+        />
+      )}
 
       {/* The till's devices screen is the real implementation; this page reuses it rather than
           growing a second register editor beside it. */}

@@ -1329,6 +1329,7 @@ _reg(
         label_en="Enable FIFO Costing",
         description_ar="تقييم تكلفة البضاعة المباعة بالأقدم دخولاً أولاً (FIFO).",
         description_en="Value cost of goods sold oldest-first (FIFO).",
+        impact_level="high",
     )
 )
 _reg(
@@ -1430,6 +1431,7 @@ _reg(
         label_en="Stocktake Requires Approval",
         description_ar="لا يُطبَّق الجرد على الأرصدة إلا بعد اعتماد مسؤول.",
         description_en="A stocktake changes balances only after a manager approves it.",
+        impact_level="high",
     )
 )
 _reg(
@@ -2481,6 +2483,17 @@ _PAGE_OVERRIDES: dict[str, str] = {
     "pos.variance_reason_required": "shifts",
     "pos.variance_approval_threshold": "shifts",
     "pos.cash_movement_limit": "cash-movement",
+    # The inventory domain is twelve keys over six pages. "How stock is classified" is not the
+    # same question as "how it is costed", so each key names the page that owns it.
+    "inventory.auto_reserve": "stock-states",
+    "inventory.reserve_ttl_minutes": "stock-states",
+    "inventory.expiry_alert_days": "stock-states",
+    "inventory.dead_stock_days": "stock-states",
+    "inventory.safety_stock_default": "stock-limits",
+    "inventory.stocktake_approval_required": "counts-and-adjustments",
+    "inventory.show_warehouse_transfers": "transfers",
+    "inventory.quality_check_on_receipt": "transfers",
+    "inventory.fifo_enabled": "inventory-cost",
     # Structure, not identity: the branch limits belong with the branches themselves.
     "organization.multi_branch": "locations/all-branches",
     "organization.max_branches": "locations/all-branches",

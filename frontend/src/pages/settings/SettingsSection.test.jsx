@@ -128,6 +128,11 @@ vi.mock("@/components/settings/ApparelOptionsPanel", () => ({
 }));
 
 const returnWindowMock = vi.fn(() => null);
+const inventoryRecordsMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/InventoryRecordsPanel", () => ({
+  default: (props) => inventoryRecordsMock(props),
+}));
 
 vi.mock("@/components/settings/ReturnWindowPanel", () => ({
   default: (props) => returnWindowMock(props),
@@ -176,6 +181,7 @@ function renderAt(path) {
           <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
           <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
           <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
+          <Route path="/settings/inventory/:page" element={<SettingsSection section="inventory" />} />
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
         </Routes>
       </MemoryRouter>
@@ -191,6 +197,7 @@ describe("SettingsSection", () => {
     categoriesPanelMock.mockClear();
     apparelPanelMock.mockClear();
     returnWindowMock.mockClear();
+    inventoryRecordsMock.mockClear();
     devicesSectionMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
@@ -343,5 +350,27 @@ describe("SettingsSection", () => {
   test("the devices screen is not drawn on the plain settings page", () => {
     renderAt("/settings/pos/pos-settings");
     expect(devicesSectionMock).not.toHaveBeenCalled();
+  });
+
+  test("the inventory section routes to its own pages", () => {
+    renderAt("/settings/inventory/stock-limits");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("inventory");
+    expect(opts.page).toBe("stock-limits");
+  });
+
+  test.each([
+    ["warehouses", "/inventory/warehouses"],
+    ["transfers", "/inventory/transfers"],
+    ["counts-and-adjustments", "/inventory/stocktakes"],
+  ])("%s shows the real records it governs", (page, endpoint) => {
+    renderAt(`/settings/inventory/${page}`);
+    const props = inventoryRecordsMock.mock.calls.at(-1)[0];
+    expect(props.endpoint).toBe(endpoint);
+  });
+
+  test("a page with no records panel does not grow one", () => {
+    renderAt("/settings/inventory/inventory-cost");
+    expect(inventoryRecordsMock).not.toHaveBeenCalled();
   });
 });

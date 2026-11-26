@@ -185,3 +185,32 @@ def test_the_cash_and_authority_keys_are_high_impact() -> None:
         "pos.settle_payment_methods",
     ):
         assert by_key[key].impact_level == "high", key
+
+
+def test_the_inventory_keys_are_spread_over_the_pages_that_own_them() -> None:
+    """Twelve keys, six pages: the drawer page must not swallow the rest.
+
+    Classifying stock (reserved, expiring, dead) is a different question from how it is costed,
+    and a stocktake needing sign-off is a control, not a display toggle.
+    """
+    homes = {d.key: d.home for d in list_definitions(section="inventory")}
+    assert homes["inventory.auto_reserve"] == ("inventory", "stock-states")
+    assert homes["inventory.reserve_ttl_minutes"] == ("inventory", "stock-states")
+    assert homes["inventory.expiry_alert_days"] == ("inventory", "stock-states")
+    assert homes["inventory.dead_stock_days"] == ("inventory", "stock-states")
+    assert homes["inventory.safety_stock_default"] == ("inventory", "stock-limits")
+    assert homes["inventory.stocktake_approval_required"] == (
+        "inventory",
+        "counts-and-adjustments",
+    )
+    assert homes["inventory.show_warehouse_transfers"] == ("inventory", "transfers")
+    assert homes["inventory.quality_check_on_receipt"] == ("inventory", "transfers")
+    assert homes["inventory.fifo_enabled"] == ("inventory", "inventory-cost")
+    assert homes["inventory.track_locations"] == ("inventory", "inventory-settings")
+
+
+def test_costing_and_stocktake_sign_off_are_high_impact() -> None:
+    """One decides money, the other decides who may move a balance."""
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["inventory.fifo_enabled"].impact_level == "high"
+    assert by_key["inventory.stocktake_approval_required"].impact_level == "high"

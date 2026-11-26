@@ -222,6 +222,8 @@ const DashboardRoutes = () => (
           <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
           <Route path="/settings/sales" element={<Navigate to="/settings/sales/sales-settings" replace />} />
           <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
+          <Route path="/settings/inventory" element={<Navigate to="/settings/inventory/inventory-settings" replace />} />
+          <Route path="/settings/inventory/:page" element={<SettingsSection section="inventory" />} />
         </Route>
       </Route>
     </Route>
