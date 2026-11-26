@@ -586,6 +586,7 @@ async def create_change_request(
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        resets=body.resets,
     )
     return _change_request_to_out(req, can_read_sensitive=_can_read_sensitive(ctx))
 
@@ -817,6 +818,7 @@ def _change_request_to_out(r, *, can_read_sensitive: bool = False) -> ChangeRequ
     return ChangeRequestOut(
         id=r.id,
         changes=_mask_mapping(r.changes, can_read_sensitive),
+        resets=list(getattr(r, "resets", None) or []),
         applied_changes=_mask_mapping(r.applied_changes, can_read_sensitive),
         status=r.status,
         scope=r.scope,

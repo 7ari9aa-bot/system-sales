@@ -65,7 +65,9 @@ def test_the_router_answers_a_stale_decision_with_a_committed_409() -> None:
 
 def test_creation_pins_every_key_even_the_never_written_ones() -> None:
     src = inspect.getsource(SettingsService.create_change_request)
-    assert "for k in changes}" in src, "a key without history must still be pinned (as None)"
+    # Every key in the request is pinned, values and clears alike.
+    assert "for k in pinned_keys" in src, "a key without history must still be pinned (as None)"
+    assert "pinned_keys = list(changes) + reset_keys" in src
 
 
 def test_expected_history_ids_honours_an_explicit_none() -> None:

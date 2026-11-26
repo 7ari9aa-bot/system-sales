@@ -412,6 +412,7 @@ class SettingsService:
         permissions: Collection[str] | None = None,
         bypass_approval: bool = False,
         source: str = "api",
+        trusted_apply: bool = False,
     ) -> bool:
         """Remove an override, reverting the scope to its inherited value.
 
@@ -429,7 +430,8 @@ class SettingsService:
             )
 
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
-        self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+        if not trusted_apply:
+            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
 
         existing = await self._find_override(key, scope_enum.value, scope_id, for_update=True)
         if existing is None:
@@ -679,6 +681,7 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
+        resets: Collection[str] | None = None,
     ) -> SettingChangeRequest:
         """Create a change request for settings that need approval (§28).
 
@@ -691,6 +694,10 @@ class SettingsService:
         scope_enum = _scope(scope)
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
 
+        reset_keys = [k for k in dict.fromkeys(resets or []) if k not in changes]
+        if not changes and not reset_keys:
+            raise ValidationError("a change request needs at least one change or reset")
+
         # Validate all keys and values upfront.
         needs_approval = False
         for key, value in changes.items():
@@ -701,11 +708,21 @@ class SettingsService:
             _validate(defn, value)
             if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
                 needs_approval = True
+        # A clear carries no value to validate — the operation is the proposal. It still
+        # needs the same write permission the submitter would need to reset directly.
+        for key in reset_keys:
+            defn = _definition(key)
+            if not defn.scope_allowed(scope_enum):
+                raise ValidationError(f"{key}: scope {scope_enum.value!r} not allowed")
+            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+            if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+                needs_approval = True
 
         # Pin the revision each key stands at now, so approval can tell whether the
         # value moved while the request waited. Without this an old approval applied
         # over a newer change and silently undid it.
-        base_ids = await self._latest_history_ids(list(changes), scope_enum.value, scope_id)
+        pinned_keys = list(changes) + reset_keys
+        base_ids = await self._latest_history_ids(pinned_keys, scope_enum.value, scope_id)
 
         request = SettingChangeRequest(
             tenant_id=self._tenant_id,
@@ -714,7 +731,10 @@ class SettingsService:
             # only the keys that already had a revision left a never-written setting
             # unprotected: someone could change it while the request waited and the old
             # proposal would still apply over it.
-            base_history_ids={k: (str(base_ids[k]) if base_ids.get(k) else None) for k in changes},
+            base_history_ids={
+                k: (str(base_ids[k]) if base_ids.get(k) else None) for k in pinned_keys
+            },
+            resets=reset_keys,
             status="pending_approval" if needs_approval else "approved",
             scope=scope_enum.value,
             scope_id=scope_id,
@@ -881,6 +901,21 @@ class SettingsService:
         request.status = "applying"
         await self._session.flush()
         try:
+            cleared: dict[str, Any] = {}
+            for key in list(getattr(request, "resets", None) or []):
+                removed = await self.reset(
+                    key,
+                    scope=Scope(request.scope),
+                    scope_id=request.scope_id,
+                    user_id=user_id,
+                    reason=f"change_request:{request.id}",
+                    permissions=permissions,
+                    bypass_approval=True,
+                    source="change_request",
+                    trusted_apply=True,
+                )
+                if removed:
+                    cleared[key] = None
             rows = await self.bulk_set(
                 request.changes,
                 scope=Scope(request.scope),
@@ -897,7 +932,11 @@ class SettingsService:
                 trusted_apply=True,
             )
             request.applied_changes = {
-                r.key: r.value.get("v") if isinstance(r.value, dict) else r.value for r in rows
+                **cleared,
+                **{
+                    r.key: (r.value.get("v") if isinstance(r.value, dict) else r.value)
+                    for r in rows
+                },
             }
             request.status = "applied"
         except Exception:
@@ -1286,9 +1325,8 @@ class SettingsService:
         base = request.base_history_ids or {}
         if not base:
             return set()
-        current = await self._latest_history_ids(
-            list(request.changes.keys()), request.scope, request.scope_id
-        )
+        keys = list(request.changes.keys()) + list(getattr(request, "resets", None) or [])
+        current = await self._latest_history_ids(keys, request.scope, request.scope_id)
         moved: set[str] = set()
         for key, pinned in base.items():
             now = current.get(key)
@@ -1493,6 +1531,20 @@ class SettingsService:
                         permissions=permissions,
                     )
                     pending_approval += 1
+                elif current_map.get((key, scope, scope_id)) is not None:
+                    # The snapshot had no override for this key and there is one now: the
+                    # restore must clear it, and clearing is an operation, so it is proposed
+                    # as a reset rather than as the value None.
+                    await self.create_change_request(
+                        {},
+                        scope=Scope(scope),
+                        scope_id=scope_id,
+                        user_id=user_id,
+                        reason=reason or f"restore:{snapshot_before.isoformat()}",
+                        permissions=permissions,
+                        resets=[key],
+                    )
+                    pending_approval += 1
                 continue
 
             scope_enum = _scope(scope)
@@ -1548,14 +1600,16 @@ class SettingsService:
                     skipped += 1
                     continue
                 if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
-                    # A key added after the snapshot needs approval to clear; propose it.
+                    # A key added after the snapshot needs approval to clear; propose the
+                    # clear as a reset, because None is not a value these types accept.
                     await self.create_change_request(
-                        {key: None},
+                        {},
                         scope=_scope(scope),
                         scope_id=scope_id,
                         user_id=user_id,
                         reason=reason or f"restore:{snapshot_before.isoformat()}",
                         permissions=permissions,
+                        resets=[key],
                     )
                     pending_approval += 1
                     continue

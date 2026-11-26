@@ -24,6 +24,7 @@ from sqlalchemy import (
     Index,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -205,6 +206,12 @@ class SettingChangeRequest(TenantMixin, TimestampMixin, IdMixin, Base):
 
     # The proposed changes: {key: value}
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # The proposed clears: [key, ...]. A clear is an operation, not a value, so it
+    # cannot be expressed as ``{key: None}``: the per-type validator rejects None for
+    # boolean/number/enum settings, which made an approval-gated reset impossible.
+    resets: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     # What was actually written when applied (filled at apply time)
     applied_changes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # The history revision each key stood at when the request was submitted:
