@@ -1,23 +1,26 @@
 import React from "react";
-import { ShieldCheck, KeyRound, CheckCircle2, Mail } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
+import SignedInDevicesCard from "@/components/settings/SignedInDevicesCard";
 import { Badge } from "@/components/dashboard/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// Two questions, both answered by the server: is two-step verification ON, and how do I get back
-// in if I lose the password. The page used to open with three apologies ("cannot read the MFA
-// state", "cannot list sessions", "password change is not available") while every one of those
-// facts was already reachable — `GET /users/me` now carries `mfa_enabled`, and the recovery email
-// is an ordinary endpoint. What genuinely does not exist (a list of signed-in devices) is said
-// once, in one line, instead of standing in for a card of its own.
+// Protecting the account: the second factor, and the devices already inside it.
+//
+// This page used to carry the password too, which made one screen answer two different questions.
+// Changing a password now lives with the rest of "how you get in" (/settings/login); what stays
+// here protects an account someone else may already have a foothold in — two-step verification and
+// the list of signed-in devices, both read from the server rather than assumed.
 export default function SecuritySettings() {
   const t = useT();
   const { lang } = useI18n();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
   const isAr = lang === "ar";
   const [mfaOn, setMfaOn] = React.useState(Boolean(user?.mfa_enabled));
   const [mode, setMode] = React.useState("");
@@ -29,13 +32,29 @@ export default function SecuritySettings() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
-  const [resetBusy, setResetBusy] = React.useState(false);
-  const [resetNotice, setResetNotice] = React.useState("");
-  const [resetError, setResetError] = React.useState("");
+
+  const [devices, setDevices] = React.useState(null);
+  const [devicesBusy, setDevicesBusy] = React.useState(false);
+  const [devicesError, setDevicesError] = React.useState("");
+  const [devicesNotice, setDevicesNotice] = React.useState("");
 
   // the account is the source of truth: after a save the screen reloads it rather than trusting a
   // local guess about a security setting
   React.useEffect(() => { setMfaOn(Boolean(user?.mfa_enabled)); }, [user?.mfa_enabled]);
+
+  const loadDevices = React.useCallback(async () => {
+    try {
+      const list = await api("/auth/sessions");
+      setDevices(Array.isArray(list) ? list : []);
+      setDevicesError("");
+    } catch {
+      // an unreadable list is said out loud: the card must never imply "no other devices"
+      setDevices([]);
+      setDevicesError(t("security.devices.failed"));
+    }
+  }, [t]);
+
+  React.useEffect(() => { void loadDevices(); }, [loadDevices]);
 
   async function startEnrollment(event) {
     event.preventDefault();
@@ -98,22 +117,51 @@ export default function SecuritySettings() {
     }
   }
 
-  async function sendResetLink() {
-    if (!user?.email || resetBusy) return;
-    setResetBusy(true);
-    setResetError("");
-    setResetNotice("");
+  async function revokeDevice(device) {
+    if (devicesBusy) return;
+    setDevicesBusy(true);
+    setDevicesError("");
+    setDevicesNotice("");
     try {
-      await api("/auth/password-reset/request", { method: "POST", body: { email: user.email } });
-      // the endpoint answers the same way for every address, so the screen repeats that promise
-      // and never claims an email was delivered
-      setResetNotice(isAr
-        ? `لو كان ${user.email} حسابًا معروفًا، هيوصله رابط إعادة تعيين خلال دقائق.`
-        : `If ${user.email} is a known account, reset instructions arrive within minutes.`);
-    } catch (err) {
-      setResetError(err?.message || (isAr ? "تعذر إرسال رابط إعادة التعيين" : "Could not send the reset link"));
+      await api(`/auth/sessions/${device.id}/revoke`, { method: "POST", body: {} });
+      await loadDevices();
+      setDevicesNotice(t("security.devices.revoked", { device: device.device }));
+    } catch (failure) {
+      setDevicesError(failure?.message || t("security.devices.failed"));
     } finally {
-      setResetBusy(false);
+      setDevicesBusy(false);
+    }
+  }
+
+  async function revokeOtherDevices() {
+    if (devicesBusy) return;
+    setDevicesBusy(true);
+    setDevicesError("");
+    setDevicesNotice("");
+    try {
+      const result = await api("/auth/sessions/revoke-others", { method: "POST", body: {} });
+      await loadDevices();
+      setDevicesNotice(t("security.devices.othersRevoked", { count: result?.revoked ?? 0 }));
+    } catch (failure) {
+      setDevicesError(failure?.message || t("security.devices.failed"));
+    } finally {
+      setDevicesBusy(false);
+    }
+  }
+
+  async function revokeEveryDevice() {
+    if (devicesBusy) return;
+    setDevicesBusy(true);
+    setDevicesError("");
+    setDevicesNotice("");
+    try {
+      await api("/auth/sessions/revoke-all", { method: "POST", body: {} });
+      // every chain is closed, this one included: the only honest next screen is the login page
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (failure) {
+      setDevicesError(failure?.message || t("security.devices.failed"));
+      setDevicesBusy(false);
     }
   }
 
@@ -217,28 +265,15 @@ export default function SecuritySettings() {
           )}
         </SettingCard>
 
-        <SettingCard title={t("security.password")} desc={t("security.password.desc")}>
-          <SettingRow label={t("ls.password")} desc={user?.email || ""} last>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={sendResetLink}
-              disabled={!user?.email || resetBusy}
-              data-testid="password-reset"
-              className="gap-1.5"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              {resetBusy ? "…" : t("security.password.sendReset")}
-            </Button>
-          </SettingRow>
-          {resetError && <div role="alert" className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{resetError}</div>}
-          {resetNotice && <div role="status" data-testid="password-reset-notice" className="mt-3 rounded-lg bg-success/10 px-3 py-2 text-[12px] leading-relaxed text-foreground">{resetNotice}</div>}
-          <div className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{t("security.sessions.note")}</span>
-          </div>
-        </SettingCard>
+        <SignedInDevicesCard
+          devices={devices}
+          busy={devicesBusy}
+          error={devicesError}
+          notice={devicesNotice}
+          onRevoke={revokeDevice}
+          onRevokeOthers={revokeOtherDevices}
+          onRevokeAll={revokeEveryDevice}
+        />
       </div>
     </SettingsShell>
   );

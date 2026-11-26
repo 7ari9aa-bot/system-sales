@@ -30,6 +30,10 @@ from app.modules.identity.services.lifecycle import (
     TenantCapabilityPolicy,
     TenantLifecycleService,
 )
+from app.modules.identity.services.session import (
+    SignedInDeviceService,
+    describe_device,
+)
 from app.modules.identity.services.settings import (
     TenantSettingsService,
     timezone_refusal,
@@ -54,6 +58,7 @@ __all__ = [
     "TENANT_REQUESTABLE_LIFECYCLE_TARGETS",
     "TenantCapabilityPolicy",
     "TenantLifecycleService",
+    "SignedInDeviceService",
     "TenantService",
     "TenantSettingsService",
     "UserService",
@@ -65,5 +70,6 @@ __all__ = [
     "_record_audit",
     "_record_security_event",
     "_revoke_family_on_reuse",
+    "describe_device",
     "timezone_refusal",
 ]

@@ -58,6 +58,7 @@ const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'))
 const PosSettings = lazy(() => import('@/pages/settings/PosSettings'));
 const PoliciesSettings = lazy(() => import('@/pages/settings/PoliciesSettings'));
 const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'));
+const LoginSettings = lazy(() => import('@/pages/settings/LoginSettings'));
 const UnifiedSettings = lazy(() => import('@/pages/settings/UnifiedSettings'));
 const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
 const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
@@ -189,6 +190,7 @@ const DashboardRoutes = () => (
           <Route path="/settings/members" element={<MembersSettings />} />
           <Route path="/settings/all" element={<UnifiedSettings />} />
           <Route path="/settings/security" element={<SecuritySettings />} />
+          <Route path="/settings/login" element={<LoginSettings />} />
           <Route path="/settings/danger" element={<DataSettings />} />
         </Route>
       </Route>

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 678,
-    "sha256": "e5829ddb63eb9870703eaa0949f949a89d22bb5230b70bb49e759fec37f748ff",
-    "typed_operations": 371
+    "operations": 683,
+    "sha256": "1137befb8faa858c47049938cfb7d6997be03cbb4afc2b4164b332cfb300cc83",
+    "typed_operations": 374
   },
   "spec": {
     "components": {
@@ -3962,6 +3962,29 @@
             "name"
           ],
           "title": "CategoryRequest",
+          "type": "object"
+        },
+        "ChangePasswordRequest": {
+          "description": "Body for POST /auth/password/change — a signed-in account, proven twice.\n\n`current_password` is what makes this safe to expose without a token: an\nunlocked laptop is not enough to change the credential. `new_password` is\nchecked against the tenant's strength policy in the service, not here, so the\nrule has exactly one home.",
+          "properties": {
+            "current_password": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Current Password",
+              "type": "string"
+            },
+            "new_password": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "New Password",
+              "type": "string"
+            }
+          },
+          "required": [
+            "current_password",
+            "new_password"
+          ],
+          "title": "ChangePasswordRequest",
           "type": "object"
         },
         "ChangeRequestOut": {
@@ -19161,6 +19184,20 @@
           "title": "ReviewChangeRequestInput",
           "type": "object"
         },
+        "RevokedSessionsOut": {
+          "description": "How many chains a revoke call closed — never who they were.",
+          "properties": {
+            "revoked": {
+              "title": "Revoked",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "revoked"
+          ],
+          "title": "RevokedSessionsOut",
+          "type": "object"
+        },
         "RoasRowOut": {
           "description": "One ROI row, named for the denominator its ratio actually used.\n\nThe two wire types meet in this one object and the split is the rule:\n``revenue``/``planned_budget``/``actual_spend`` are amounts and are Decimal\nstrings; ``budget_roas``/``spend_roas`` are dimensionless shares a client\nsorts and thresholds, so they are numbers — or ``null``, because no\ndenominator is not 0.0 of return.",
           "properties": {
@@ -21403,6 +21440,71 @@
             }
           },
           "title": "ShippingUpdateRequest",
+          "type": "object"
+        },
+        "SignedInDeviceOut": {
+          "description": "One live refresh-token chain, as the account's own screen shows it.",
+          "properties": {
+            "current": {
+              "title": "Current",
+              "type": "boolean"
+            },
+            "device": {
+              "title": "Device",
+              "type": "string"
+            },
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "ip": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ip"
+            },
+            "last_used_at": {
+              "format": "date-time",
+              "title": "Last Used At",
+              "type": "string"
+            },
+            "signed_in_at": {
+              "format": "date-time",
+              "title": "Signed In At",
+              "type": "string"
+            },
+            "user_agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Agent"
+            }
+          },
+          "required": [
+            "id",
+            "device",
+            "signed_in_at",
+            "last_used_at",
+            "expires_at",
+            "current"
+          ],
+          "title": "SignedInDeviceOut",
           "type": "object"
         },
         "SiteStatusIn": {
@@ -36909,6 +37011,59 @@
           ]
         }
       },
+      "/api/v1/auth/password/change": {
+        "post": {
+          "description": "Change the password of the signed-in account and sign out everywhere else.\n\nDeliberately not a reset: the current password must be presented, so a\nborrowed session cannot lock the owner out. The device that asked stays\nsigned in; every other chain is closed.",
+          "operationId": "change_password_api_v1_auth_password_change_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePasswordRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Change Password",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
       "/api/v1/auth/refresh": {
         "post": {
           "operationId": "refresh_api_v1_auth_refresh_post",
@@ -37025,6 +37180,213 @@
             }
           },
           "summary": "Resend Verification",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/sessions": {
+        "get": {
+          "description": "Every device signed in to this account, with the caller's own one marked.",
+          "operationId": "list_sessions_api_v1_auth_sessions_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SignedInDeviceOut"
+                    },
+                    "title": "Response List Sessions Api V1 Auth Sessions Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Sessions",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/sessions/revoke-all": {
+        "post": {
+          "description": "Sign out everywhere, this device included, and clear the session cookies.",
+          "operationId": "revoke_all_sessions_api_v1_auth_sessions_revoke_all_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RevokedSessionsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke All Sessions",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/sessions/revoke-others": {
+        "post": {
+          "description": "Sign out every device except the one asking.",
+          "operationId": "revoke_other_sessions_api_v1_auth_sessions_revoke_others_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RevokedSessionsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke Other Sessions",
+          "tags": [
+            "auth"
+          ]
+        }
+      },
+      "/api/v1/auth/sessions/{session_id}/revoke": {
+        "post": {
+          "description": "Close one chain. A chain that is not this account's is a 404.",
+          "operationId": "revoke_one_session_api_v1_auth_sessions__session_id__revoke_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Revoke One Session",
           "tags": [
             "auth"
           ]

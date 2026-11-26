@@ -36,6 +36,7 @@ from app.modules.identity.services import (
     EmailAlreadyRegistered,
     GoogleMfaRequired,
     HierarchyService,
+    SignedInDeviceService,
     TenantCapabilityPolicy,
     TenantLifecycleService,
     TenantService,
@@ -54,6 +55,7 @@ from app.modules.identity.services import (
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "AuthService",
+    "SignedInDeviceService",
     "EmailAlreadyRegistered",
     "GoogleMfaRequired",
     "EmailVerificationToken",

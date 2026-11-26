@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
@@ -324,6 +326,82 @@ async def mfa_disable(
     _user_agent, ip = _client_meta(request)
     await disable_mfa(session, user_id=user.id, code=body.code, backup_code=body.backup_code, ip=ip)
     return Response(status_code=204)
+
+
+# ---------- changing the password, and the devices that are signed in -------
+
+
+def _refresh_cookie(request: Request) -> str | None:
+    return request.cookies.get(cookies.REFRESH_COOKIE)
+
+
+def _current_token_hash(request: Request) -> str | None:
+    """The caller's own chain, so a screen can say "this device" and keep it alive."""
+    from app.modules.identity.services._common import _hash_token
+
+    token = _refresh_cookie(request)
+    return _hash_token(token) if token else None
+
+
+@router.post("/auth/password/change", status_code=204)
+async def change_password(
+    body: schemas.ChangePasswordRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: DbSession,
+):
+    """Change the password of the signed-in account and sign out everywhere else.
+
+    Deliberately not a reset: the current password must be presented, so a
+    borrowed session cannot lock the owner out. The device that asked stays
+    signed in; every other chain is closed.
+    """
+    await service.AuthService.change_password(
+        session,
+        user_id=user.id,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        keep_token_hash=_current_token_hash(request),
+        ip=_client_meta(request)[1],
+    )
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/auth/sessions", response_model=list[schemas.SignedInDeviceOut])
+async def list_sessions(request: Request, user: CurrentUserDep, session: DbSession):
+    """Every device signed in to this account, with the caller's own one marked."""
+    devices = await service.SignedInDeviceService.list_devices(
+        session, user.id, current_token_hash=_current_token_hash(request)
+    )
+    return devices
+
+
+@router.post("/auth/sessions/revoke-others", response_model=schemas.RevokedSessionsOut)
+async def revoke_other_sessions(request: Request, user: CurrentUserDep, session: DbSession):
+    """Sign out every device except the one asking."""
+    revoked = await service.SignedInDeviceService.revoke_others(
+        session, user.id, current_token_hash=_current_token_hash(request)
+    )
+    return schemas.RevokedSessionsOut(revoked=revoked)
+
+
+@router.post("/auth/sessions/revoke-all", response_model=schemas.RevokedSessionsOut)
+async def revoke_all_sessions(
+    request: Request, response: Response, user: CurrentUserDep, session: DbSession
+):
+    """Sign out everywhere, this device included, and clear the session cookies."""
+    revoked = await service.SignedInDeviceService.revoke_all(session, user.id)
+    cookies.clear_auth_cookies(response)
+    return schemas.RevokedSessionsOut(revoked=revoked)
+
+
+@router.post("/auth/sessions/{session_id}/revoke", status_code=204)
+async def revoke_one_session(
+    session_id: uuid.UUID, user: CurrentUserDep, session: DbSession
+) -> Response:
+    """Close one chain. A chain that is not this account's is a 404."""
+    await service.SignedInDeviceService.revoke_one(session, user.id, session_id)
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/invitations/accept", response_model=schemas.CurrentUser, status_code=201)

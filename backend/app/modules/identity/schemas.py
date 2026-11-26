@@ -82,6 +82,38 @@ class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
 
 
+class ChangePasswordRequest(BaseModel):
+    """Body for POST /auth/password/change — a signed-in account, proven twice.
+
+    `current_password` is what makes this safe to expose without a token: an
+    unlocked laptop is not enough to change the credential. `new_password` is
+    checked against the tenant's strength policy in the service, not here, so the
+    rule has exactly one home.
+    """
+
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class SignedInDeviceOut(BaseModel):
+    """One live refresh-token chain, as the account's own screen shows it."""
+
+    id: uuid.UUID
+    device: str
+    user_agent: str | None = None
+    ip: str | None = None
+    signed_in_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+class RevokedSessionsOut(BaseModel):
+    """How many chains a revoke call closed — never who they were."""
+
+    revoked: int
+
+
 class ResendVerificationRequest(BaseModel):
     """Body for POST /auth/resend-verification — an address, nothing else.
 
