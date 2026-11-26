@@ -135,24 +135,37 @@ class TenantService:
     async def accept_invitation(
         session, *, token: str, password: str, full_name: str
     ) -> tuple[User, Invitation]:
-        # ``invitations`` is FORCE RLS: without the token GUC the lookup below
-        # matches no row and every invitation answered "not found". Presenting
-        # the secret is the whole authorization for this public endpoint.
+        # ``invitations`` is FORCE RLS, and this public endpoint runs before the
+        # caller has a tenant, so a plain SELECT would match no row and every
+        # invitation would answer "not found". Presenting the 32-char secret is
+        # the whole authorization: the SECURITY DEFINER lookup returns ONLY the
+        # row's id and tenant, never its email, role or status, and the row is
+        # then read through the canonical tenant policy once the tenant is bound.
+        # (fe2026112609 — this replaced the permissive policy fe2026112607 added
+        # beside tenant_isolation, which OR-opened the table.)
+        found = (
+            (
+                await session.execute(
+                    sa.text("SELECT id, tenant_id FROM public.invitation_by_token(:token)"),
+                    {"token": token},
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if found is None:
+            raise NotFoundError("invitation not found")
+        # The row is proven ours; bind its tenant so the read below and the
+        # accept's UPDATE and membership INSERT run inside a tenant RLS context.
         await session.execute(
-            sa.text("SELECT set_config('app.invitation_token', :token, true)"),
-            {"token": token},
+            sa.text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+            {"tenant_id": str(found["tenant_id"])},
         )
         invitation = (
-            await session.execute(select(Invitation).where(Invitation.token == token))
+            await session.execute(select(Invitation).where(Invitation.id == found["id"]))
         ).scalar_one_or_none()
         if invitation is None:
             raise NotFoundError("invitation not found")
-        # The row is now proven to be ours; bind its tenant so the accept's
-        # UPDATE and the membership INSERT are inside a tenant RLS context.
-        await session.execute(
-            sa.text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-            {"tenant_id": str(invitation.tenant_id)},
-        )
         if invitation.status != "pending":
             raise ConflictError("invitation already used or revoked")
         if invitation.expires_at < _now():
