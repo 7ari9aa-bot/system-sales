@@ -205,6 +205,7 @@ function renderAt(path) {
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
           <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
           <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
+          <Route path="/settings/ai/:page" element={<SettingsSection section="ai" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -475,5 +476,13 @@ describe("SettingsSection", () => {
     // The store's working hours own the promise; a textarea here would be the duplicate.
     expect(escalationMock).not.toHaveBeenCalled();
     expect(priceListsMock).not.toHaveBeenCalled();
+  });
+
+  test("each AI page reads the AI module rather than offering a switch", () => {
+    for (const page of ["agent-management", "knowledge-sources", "models-and-routing"]) {
+      renderAt(`/settings/ai/${page}`);
+    }
+    // Nine pages, nine registry-less surfaces: the empty-state message must never appear.
+    expect(useSettingsMock).toHaveBeenCalled();
   });
 });

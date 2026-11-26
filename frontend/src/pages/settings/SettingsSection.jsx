@@ -185,6 +185,17 @@ const PANEL_PAGES = new Set([
   "customers/escalation-to-human",
   "sales/price-lists",
   "sales/discounts-and-offers",
+  // Section 13: every page here reads the AI module's own rows (agents, knowledge, provider
+  // policies, evaluations) rather than inventing a switch the runtime does not read.
+  "ai/agent-management",
+  "ai/customer-agent",
+  "ai/analytics-agent",
+  "ai/knowledge-sources",
+  "ai/models-and-routing",
+  "ai/tools-and-permissions",
+  "ai/policies-and-safety",
+  "ai/testing-and-evaluation",
+  "ai/versions-and-publishing",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -486,6 +497,163 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "customers/support-hours" && <SupportHoursLink />}
 
       {`${section}/${page}` === "customers/escalation-to-human" && <EscalationSection />}
+      {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row
+          below is the AI module's own record — an agent, a knowledge item, a provider policy, an
+          evaluation — so no page here offers a control the runtime does not read. Editing happens
+          in the AI console the pages link to; this is the governance view of it. */}
+      {`${section}/${page}` === "ai/agent-management" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.agents.title"
+          descKey="settings.ai.agents.desc"
+          emptyKey="settings.ai.agents.empty"
+          loadingKey="settings.ai.agents.loading"
+          loadErrorKey="settings.ai.agents.loadError"
+          footerKey="settings.ai.agents.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "kind", kind: "badge" },
+            { key: "model", kind: "num" },
+            { key: "version", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/customer-agent" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.customerAgent.title"
+          descKey="settings.ai.customerAgent.desc"
+          emptyKey="settings.ai.customerAgent.empty"
+          loadingKey="settings.ai.customerAgent.loading"
+          loadErrorKey="settings.ai.customerAgent.loadError"
+          footerKey="settings.ai.customerAgent.whereToEdit"
+          filter={(r) => r.kind === "customer"}
+          columns={[
+            { key: "name" },
+            { key: "model", kind: "num" },
+            { key: "temperature", kind: "num" },
+            { key: "is_active", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/analytics-agent" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.analyticsAgent.title"
+          descKey="settings.ai.analyticsAgent.desc"
+          emptyKey="settings.ai.analyticsAgent.empty"
+          loadingKey="settings.ai.analyticsAgent.loading"
+          loadErrorKey="settings.ai.analyticsAgent.loadError"
+          footerKey="settings.ai.analyticsAgent.whereToEdit"
+          filter={(r) => r.kind === "analytics"}
+          columns={[
+            { key: "name" },
+            { key: "model", kind: "num" },
+            { key: "temperature", kind: "num" },
+            { key: "is_active", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/knowledge-sources" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/knowledge"
+          titleKey="settings.ai.knowledge.title"
+          descKey="settings.ai.knowledge.desc"
+          emptyKey="settings.ai.knowledge.empty"
+          loadingKey="settings.ai.knowledge.loading"
+          loadErrorKey="settings.ai.knowledge.loadError"
+          footerKey="settings.ai.knowledge.whereToEdit"
+          columns={[
+            { key: "title" },
+            { key: "source_type", kind: "badge" },
+            { key: "status", kind: "badge" },
+            { key: "visibility", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/models-and-routing" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/provider-policies"
+          titleKey="settings.ai.models.title"
+          descKey="settings.ai.models.desc"
+          emptyKey="settings.ai.models.empty"
+          loadingKey="settings.ai.models.loading"
+          loadErrorKey="settings.ai.models.loadError"
+          footerKey="settings.ai.models.whereToEdit"
+          columns={[
+            { key: "provider" },
+            { key: "status", kind: "badge" },
+            { key: "data_classification", kind: "badge" },
+            { key: "pii_redaction_required", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/tools-and-permissions" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.tools.title"
+          descKey="settings.ai.tools.desc"
+          emptyKey="settings.ai.tools.empty"
+          loadingKey="settings.ai.tools.loading"
+          loadErrorKey="settings.ai.tools.loadError"
+          footerKey="settings.ai.tools.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "kind", kind: "badge" },
+            { key: "max_output_tokens", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/policies-and-safety" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.safety.title"
+          descKey="settings.ai.safety.desc"
+          emptyKey="settings.ai.safety.empty"
+          loadingKey="settings.ai.safety.loading"
+          loadErrorKey="settings.ai.safety.loadError"
+          footerKey="settings.ai.safety.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "kind", kind: "badge" },
+            { key: "temperature", kind: "num" },
+            { key: "max_output_tokens", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/testing-and-evaluation" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/evaluations"
+          titleKey="settings.ai.evaluations.title"
+          descKey="settings.ai.evaluations.desc"
+          emptyKey="settings.ai.evaluations.empty"
+          loadingKey="settings.ai.evaluations.loading"
+          loadErrorKey="settings.ai.evaluations.loadError"
+          footerKey="settings.ai.evaluations.whereToEdit"
+          columns={[
+            { key: "agent_id", kind: "num" },
+            { key: "prompt_version", kind: "num" },
+            { key: "status", kind: "badge" },
+            { key: "rollout_status", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "ai/versions-and-publishing" && (
+        <InventoryRecordsPanel
+          endpoint="/ai/agents"
+          titleKey="settings.ai.versions.title"
+          descKey="settings.ai.versions.desc"
+          emptyKey="settings.ai.versions.empty"
+          loadingKey="settings.ai.versions.loading"
+          loadErrorKey="settings.ai.versions.loadError"
+          footerKey="settings.ai.versions.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "version", kind: "num" },
+            { key: "is_active", kind: "badge" },
+          ]}
+        />
+      )}
 
       {`${section}/${page}` === "inventory/warehouses" && (
         <InventoryRecordsPanel

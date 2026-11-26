@@ -21,6 +21,7 @@ export default function InventoryRecordsPanel({
   loadErrorKey,
   footerKey,
   columns = [],
+  filter,
 }) {
   const t = useT();
   const [loading, setLoading] = React.useState(true);
@@ -31,13 +32,18 @@ export default function InventoryRecordsPanel({
     let alive = true;
     api(endpoint)
       // Modules answer either a bare list or the {items, count} envelope; both are one page.
-      .then((res) => alive && setRows(Array.isArray(res) ? res : (res?.items ?? [])))
+      .then((res) => {
+        if (!alive) return;
+        const list = Array.isArray(res) ? res : (res?.items ?? []);
+        // A page that governs one agent kind shows that kind, not every row the module has.
+        setRows(filter ? list.filter(filter) : list);
+      })
       .catch((e) => alive && setError(e?.message || t(loadErrorKey)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [endpoint, loadErrorKey, t]);
+  }, [endpoint, loadErrorKey, t, filter]);
 
   if (loading) {
     return (
