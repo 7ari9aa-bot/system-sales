@@ -641,9 +641,15 @@ class SettingsService:
             if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
                 needs_approval = True
 
+        # Pin the revision each key stands at now, so approval can tell whether the
+        # value moved while the request waited. Without this an old approval applied
+        # over a newer change and silently undid it.
+        base_ids = await self._latest_history_ids(list(changes), scope_enum.value, scope_id)
+
         request = SettingChangeRequest(
             tenant_id=self._tenant_id,
             changes=changes,
+            base_history_ids={k: (str(v) if v else None) for k, v in base_ids.items()},
             status="pending_approval" if needs_approval else "approved",
             scope=scope_enum.value,
             scope_id=scope_id,
@@ -672,9 +678,15 @@ class SettingsService:
         A reviewer may **not** approve their own request — a second admin must
         sign off (§172 self-approval guard).
         """
-        stmt = select(SettingChangeRequest).where(
-            SettingChangeRequest.tenant_id == self._tenant_id,
-            SettingChangeRequest.id == request_id,
+        # FOR UPDATE: two reviewers clicking approve (or approve+reject) at the same
+        # moment must not both pass the pending_approval test and both apply.
+        stmt = (
+            select(SettingChangeRequest)
+            .where(
+                SettingChangeRequest.tenant_id == self._tenant_id,
+                SettingChangeRequest.id == request_id,
+            )
+            .with_for_update()
         )
         request = (await self._session.execute(stmt)).scalar_one_or_none()
         if request is None:
@@ -683,6 +695,21 @@ class SettingsService:
             raise ValidationError(f"change request is {request.status}, not pending_approval")
         if request.submitted_by is not None and request.submitted_by == reviewer_id:
             raise ValidationError("you cannot approve your own change request (§172)")
+
+        # The value may have moved while the request waited. Applying the old proposal
+        # would undo the newer change, so the request is closed as stale instead.
+        moved = await self._keys_changed_since(request)
+        if moved:
+            request.status = "stale"
+            request.reviewed_by = reviewer_id
+            request.review_note = review_note
+            request.reviewed_at = func.now()
+            await self._session.flush()
+            raise ValidationError(
+                "change request is stale: "
+                + ", ".join(sorted(moved))
+                + " changed after it was submitted"
+            )
 
         request.status = "approved"
         request.reviewed_by = reviewer_id
@@ -717,9 +744,14 @@ class SettingsService:
         A reviewer may not reject their own request either — the same
         self-approval guard applies (§172).
         """
-        stmt = select(SettingChangeRequest).where(
-            SettingChangeRequest.tenant_id == self._tenant_id,
-            SettingChangeRequest.id == request_id,
+        # FOR UPDATE: a reject racing an approve must not both pass the state check.
+        stmt = (
+            select(SettingChangeRequest)
+            .where(
+                SettingChangeRequest.tenant_id == self._tenant_id,
+                SettingChangeRequest.id == request_id,
+            )
+            .with_for_update()
         )
         request = (await self._session.execute(stmt)).scalar_one_or_none()
         if request is None:
@@ -1161,6 +1193,27 @@ class SettingsService:
         else:
             stmt = stmt.where(TenantSettingHistory.scope_id == scope_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def _keys_changed_since(self, request: SettingChangeRequest) -> set[str]:
+        """Keys whose stored value moved after this request was submitted.
+
+        ``base_history_ids`` records the revision each key stood at on submission;
+        a different revision now means someone else wrote the setting while the
+        request waited, and the proposal no longer applies cleanly.
+        """
+        base = request.base_history_ids or {}
+        if not base:
+            return set()
+        current = await self._latest_history_ids(
+            list(request.changes.keys()), request.scope, request.scope_id
+        )
+        moved: set[str] = set()
+        for key, pinned in base.items():
+            now = current.get(key)
+            now_str = str(now) if now else None
+            if now_str != (str(pinned) if pinned else None):
+                moved.add(key)
+        return moved
 
     async def _latest_history_ids(
         self, keys: list[str], scope: str, scope_id: uuid.UUID | None

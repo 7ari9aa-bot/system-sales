@@ -88,6 +88,7 @@ CHANGE_REQUEST_STATES: tuple[str, ...] = (
     "cancelled",
     "failed",
     "expired",
+    "stale",
 )
 
 
@@ -206,6 +207,10 @@ class SettingChangeRequest(TenantMixin, TimestampMixin, IdMixin, Base):
     changes: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # What was actually written when applied (filled at apply time)
     applied_changes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The history revision each key stood at when the request was submitted:
+    # {key: history_id | None}. Approval re-reads these and refuses to apply a
+    # proposal over a value that moved in the meantime.
+    base_history_ids: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Lifecycle state (see CHANGE_REQUEST_STATES)
     status: Mapped[str] = mapped_column(String(31), nullable=False, default="draft")
     # The scope the changes apply to
