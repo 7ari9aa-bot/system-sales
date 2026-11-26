@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { activeTenantId } from "@/lib/activeTenant";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
+import TeamPolicyCard from "@/components/settings/TeamPolicyCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/dashboard/ui";
@@ -155,6 +156,8 @@ export default function MembersSettings() {
           {!tenantId && <p className="text-[11.5px] text-destructive">{isAr ? "تأكد من اختيار مساحة عمل واحدة قبل إرسال الدعوات." : "Select one active workspace before sending invitations."}</p>}
         </SettingCard>
       )}
+
+      <TeamPolicyCard />
 
       <SettingCard title={t("members.whoHasAccess")} desc={t("members.whoHasAccess.desc")}>
         <div className="overflow-x-auto">

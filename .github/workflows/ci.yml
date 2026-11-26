@@ -264,6 +264,11 @@ jobs:
         run: python scripts/provision.py
       - uses: actions/setup-node@v7
         with:
+          # npm ci installs ~500 MB in each of the three node jobs; without the
+          # cache every run downloads it again. Keyed on the lockfile by the action.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+        with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
@@ -363,6 +368,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
+          # npm ci installs ~500 MB in each of the three node jobs; without the
+          # cache every run downloads it again. Keyed on the lockfile by the action.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+        with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
@@ -390,6 +400,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+        with:
+          # npm ci installs ~500 MB in each of the three node jobs; without the
+          # cache every run downloads it again. Keyed on the lockfile by the action.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
         with:
           node-version: "22"
           cache: npm
