@@ -20,6 +20,7 @@ from app.modules.inventory.service import (
     InventoryService,
     WarehouseLocationService,
 )
+from app.modules.settings.service import SettingsService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
@@ -29,6 +30,10 @@ async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
         code=f"MFH-{uuid.uuid4().hex[:6].upper()}",
     )
     db.add(wh)
+    await db.flush()
+    # Location tracking is a setting now: create_location refuses to run until the
+    # tenant has turned it on, so the fixture turns it on like an owner would.
+    await SettingsService(db, tenant_id).set("inventory.track_locations", True, scope="tenant")
     await db.flush()
     return wh
 

@@ -226,8 +226,9 @@ class TestAtomicApplyWithAudit:
         user, tenant = await _create_tenant(db)
         await bind_tenant(db, tenant.id)
         svc = SettingsService(db, tenant.id)
-        rows = await svc.apply_preset("physical_retail", user_id=user.id, permissions=OWNER)
-        assert len(rows) == len(PRESETS["physical_retail"])
+        result = await svc.apply_preset("physical_retail", user_id=user.id, permissions=OWNER)
+        rows = result["applied"]
+        assert len(rows) + len(result["pending_approval"]) == len(PRESETS["physical_retail"])
         # Every key should now resolve to the preset value.
         for key, expected in PRESETS["physical_retail"].items():
             val = await svc.value(key)
@@ -275,9 +276,10 @@ class TestAtomicApplyWithAudit:
         user, tenant = await _create_tenant(db)
         await bind_tenant(db, tenant.id)
         svc = SettingsService(db, tenant.id)
-        rows = await svc.apply_preset("enterprise", user_id=user.id, permissions=OWNER)
+        result = await svc.apply_preset("enterprise", user_id=user.id, permissions=OWNER)
+        rows = result["applied"]
         # enterprise merges physical_retail + omnichannel + enterprise.
-        assert len(rows) == len(PRESETS["enterprise"])
+        assert len(rows) + len(result["pending_approval"]) == len(PRESETS["enterprise"])
         # A key from the root parent (physical_retail):
         assert await svc.value("business.type") == "retail"
         # A key from the middle (omnichannel):

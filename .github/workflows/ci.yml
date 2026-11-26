@@ -183,6 +183,9 @@ jobs:
         with:
           name: coverage-${{ matrix.shard }}
           path: backend/.coverage.${{ matrix.shard }}
+          # .coverage.N is a dotfile, and upload-artifact skips hidden files by default —
+          # without this the combine job finds nothing and the gate fails blind.
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 3
       # Contract drift gate: ensures openapi.lock.json, mobile Dart models, and desktop TS types match

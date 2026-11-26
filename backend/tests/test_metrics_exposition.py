@@ -121,6 +121,12 @@ def test_the_catalogue_carries_the_five_signals_and_nothing_invented() -> None:
         "budget_fail_total",
         # Backed by RequestLoggingMiddleware, which counts every unhandled request failure.
         "http_requests_failed_total",
+        # Backed by the settings read path (resolve/effective) and the notification
+        # dispatcher: these are measured today, so they belong to the contract.
+        "settings_effective_requests_total",
+        "settings_effective_duration_seconds_total",
+        "settings_effective_slow_total",
+        "notification_delivery_total",
     }, names
 
     # The two series the register names but this tree cannot back must not be
