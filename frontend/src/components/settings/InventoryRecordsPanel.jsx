@@ -30,7 +30,8 @@ export default function InventoryRecordsPanel({
   React.useEffect(() => {
     let alive = true;
     api(endpoint)
-      .then((res) => alive && setRows(Array.isArray(res) ? res : []))
+      // Modules answer either a bare list or the {items, count} envelope; both are one page.
+      .then((res) => alive && setRows(Array.isArray(res) ? res : (res?.items ?? [])))
       .catch((e) => alive && setError(e?.message || t(loadErrorKey)))
       .finally(() => alive && setLoading(false));
     return () => {

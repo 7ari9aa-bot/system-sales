@@ -203,6 +203,8 @@ const DashboardRoutes = () => (
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
           <Route path="/settings/purchasing" element={<Navigate to="/settings/purchasing/suppliers" replace />} />
           <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
+          <Route path="/settings/customers" element={<Navigate to="/settings/customers/customer-records" replace />} />
+          <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
           <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
           <Route path="/settings/billing" element={<BillingSettings />} />
           <Route path="/settings/members" element={<MembersSettings />} />

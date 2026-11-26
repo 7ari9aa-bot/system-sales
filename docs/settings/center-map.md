@@ -47,6 +47,14 @@ warehouse and several registers; they are not the same entity and must not share
 
 | # | Section | Pages |
 |---|---|---|
+| 11 Customer data | done | `/settings/customers/customer-data` — the real contact-quality work queue from `GET /customers/contact-data-issues` (name, phone, phone state); the fix happens on the customer's own record, which the page says |
+| 11 Customer segments | done | `/settings/customers/customer-segments` — the segments in force from `GET /segments`; a segment is its rule set, so the page shows them and points at the screen that creates them |
+| 11 Customer records | done | `/settings/customers/customer-records` — the real customer list from `GET /customers` with state and contact number |
+| 11 Inbox | done | `/settings/customers/inbox` — the live inbox read model (`GET /conversations`: channel, state, unread), so the page answers "what is the load" rather than pretending to configure it |
+| 11 Conversation routing | done | `/settings/customers/conversation-routing` — the response-time policies routing works to (`GET /sla/policies`, optionally per channel); assigning staff stays on `/settings/team/access` |
+| 11 Reply templates | done | `/settings/customers/reply-templates` — the real templates from `GET /message-templates` with their language and approval state |
+| 11 Support hours | done | `/settings/customers/support-hours` — reads the published `hours` store policy and LINKS to its single editor on `/settings/store/working-hours`; a second editor here would be the duplicate the Center exists to prevent |
+| 11 Escalation to a human | done | `/settings/customers/escalation-to-human` — edits the real `sla_policies` rows through `GET`/`PUT /sla/policies` (first response, resolution, per channel). The agent's own handover behaviour stays in section 13 and is linked |
 | 12 | **Channels & integrations** | Connected channels · WhatsApp Business · Facebook · Instagram · Data sync · External integrations · Connection health |
 | 13 | **AI & agents** | Agent management · Customer Agent · Analytics Agent · Knowledge sources · Models and routing · Tools and permissions · Policies and safety · Testing and evaluation · Versions and publishing |
 | 14 | **Analytics & reports** | Dashboards · Metrics and indicators · Reports · Scheduled reports · Analysis settings · Report permissions |

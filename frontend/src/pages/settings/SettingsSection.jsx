@@ -30,6 +30,10 @@ import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
 import DiscountRulesPanel from "@/components/settings/DiscountRulesPanel";
 import {
+  EscalationSection,
+  SupportHoursLink,
+} from "@/components/settings/CustomerSupportPanels";
+import {
   BranchDataPanel,
   BranchHoursPanel,
   BranchScopesPanel,
@@ -116,7 +120,14 @@ const SECTION_PAGES = {
     "sku-and-barcode",
     "product-states",
   ],
-  sales: ["sales-settings", "taxes-and-fees", "exchange-and-returns"],
+  sales: [
+    "sales-settings",
+    "price-lists",
+    "pricing",
+    "discounts-and-offers",
+    "taxes-and-fees",
+    "exchange-and-returns",
+  ],
   pos: [
     "pos-settings",
     "registers-and-devices",
@@ -162,6 +173,18 @@ const PANEL_PAGES = new Set([
   "locations/branch-hours",
   "locations/branch-staff",
   "locations/operating-scopes",
+  // Section 11: the customer relationship. These pages carry records or link to a policy that
+  // already has a home, so none of them may show "this page has no settings yet".
+  "customers/customer-data",
+  "customers/customer-records",
+  "customers/customer-segments",
+  "customers/inbox",
+  "customers/conversation-routing",
+  "customers/reply-templates",
+  "customers/support-hours",
+  "customers/escalation-to-human",
+  "sales/price-lists",
+  "sales/discounts-and-offers",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -359,6 +382,110 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "sales/price-lists" && <PriceListsPanel />}
 
       {`${section}/${page}` === "sales/discounts-and-offers" && <DiscountRulesPanel />}
+
+      {/* Section 11: the customer relationship. These are records the customers, segments and
+          conversations modules already own, so each page shows the real rows and says where they
+          are created. The two things that ARE policy — support hours and escalation clocks —
+          link to their single homes instead of growing a second editor. */}
+      {`${section}/${page}` === "customers/customer-data" && (
+        <InventoryRecordsPanel
+          endpoint="/customers/contact-data-issues"
+          titleKey="settings.customers.customerData.title"
+          descKey="settings.customers.customerData.desc"
+          emptyKey="settings.customers.customerData.empty"
+          loadingKey="settings.customers.customerData.loading"
+          loadErrorKey="settings.customers.customerData.loadError"
+          footerKey="settings.customers.customerData.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "phone", kind: "num" },
+            { key: "phone_state", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "customers/customer-records" && (
+        <InventoryRecordsPanel
+          endpoint="/customers"
+          titleKey="settings.customers.customerRecords.title"
+          descKey="settings.customers.customerRecords.desc"
+          emptyKey="settings.customers.customerRecords.empty"
+          loadingKey="settings.customers.customerRecords.loading"
+          loadErrorKey="settings.customers.customerRecords.loadError"
+          footerKey="settings.customers.customerRecords.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "phone", kind: "num" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "customers/customer-segments" && (
+        <InventoryRecordsPanel
+          endpoint="/segments"
+          titleKey="settings.customers.segments.title"
+          descKey="settings.customers.segments.desc"
+          emptyKey="settings.customers.segments.empty"
+          loadingKey="settings.customers.segments.loading"
+          loadErrorKey="settings.customers.segments.loadError"
+          footerKey="settings.customers.segments.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "customers/inbox" && (
+        <InventoryRecordsPanel
+          endpoint="/conversations"
+          titleKey="settings.customers.inbox.title"
+          descKey="settings.customers.inbox.desc"
+          emptyKey="settings.customers.inbox.empty"
+          loadingKey="settings.customers.inbox.loading"
+          loadErrorKey="settings.customers.inbox.loadError"
+          footerKey="settings.customers.inbox.whereToEdit"
+          columns={[
+            { key: "channel", kind: "badge" },
+            { key: "status", kind: "badge" },
+            { key: "unread_count", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "customers/conversation-routing" && (
+        <InventoryRecordsPanel
+          endpoint="/sla/policies"
+          titleKey="settings.customers.routing.title"
+          descKey="settings.customers.routing.desc"
+          emptyKey="settings.customers.routing.empty"
+          loadingKey="settings.customers.routing.loading"
+          loadErrorKey="settings.customers.routing.loadError"
+          footerKey="settings.customers.routing.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "applies_to_channel", kind: "badge" },
+            { key: "first_response_minutes", kind: "num" },
+          ]}
+        />
+      )}
+      {`${section}/${page}` === "customers/reply-templates" && (
+        <InventoryRecordsPanel
+          endpoint="/message-templates"
+          titleKey="settings.customers.templates.title"
+          descKey="settings.customers.templates.desc"
+          emptyKey="settings.customers.templates.empty"
+          loadingKey="settings.customers.templates.loading"
+          loadErrorKey="settings.customers.templates.loadError"
+          footerKey="settings.customers.templates.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "language", kind: "num" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "customers/support-hours" && <SupportHoursLink />}
+
+      {`${section}/${page}` === "customers/escalation-to-human" && <EscalationSection />}
 
       {`${section}/${page}` === "inventory/warehouses" && (
         <InventoryRecordsPanel

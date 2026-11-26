@@ -155,6 +155,14 @@ vi.mock("@/components/settings/DiscountRulesPanel", () => ({
   default: (props) => offersMock(props),
 }));
 
+const supportHoursMock = vi.fn(() => null);
+const escalationMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/CustomerSupportPanels", () => ({
+  SupportHoursLink: (props) => supportHoursMock(props),
+  EscalationSection: (props) => escalationMock(props),
+}));
+
 
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
@@ -196,6 +204,7 @@ function renderAt(path) {
           <Route path="/settings/inventory/:page" element={<SettingsSection section="inventory" />} />
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
           <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
+          <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -214,6 +223,8 @@ describe("SettingsSection", () => {
     devicesSectionMock.mockClear();
     priceListsMock.mockClear();
     offersMock.mockClear();
+    supportHoursMock.mockClear();
+    escalationMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
     branchStaffMock.mockClear();
@@ -426,5 +437,43 @@ describe("SettingsSection", () => {
     renderAt("/settings/sales/pricing");
     expect(priceListsMock).not.toHaveBeenCalled();
     expect(offersMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["catalog", "sku-and-barcode", ["product-settings", "categories", "attributes-and-specs", "product-states"]],
+    ["sales", "taxes-and-fees", ["sales-settings", "price-lists", "pricing", "exchange-and-returns"]],
+    ["pos", "shifts", ["pos-settings", "collection-methods", "cash-movement", "invoices-and-receipts"]],
+    ["inventory", "transfers", ["inventory-settings", "warehouses", "stock-limits", "inventory-cost"]],
+    ["purchasing", "approval-limits", ["suppliers", "purchase-orders", "receiving-and-inspection"]],
+  ])("the %s tab strip reaches its live pages", (section, page, siblings) => {
+    const html = renderAt(`/settings/${section}/${page}`);
+    for (const sibling of siblings) {
+      expect(html).toContain(`href="/settings/${section}/${sibling}"`);
+    }
+  });
+
+  test("a page the map still marks pending gets no tab", () => {
+    // Images and media and offline mode have nothing to edit yet, so the strip must not offer a
+    // link that lands on an empty screen.
+    expect(renderAt("/settings/catalog/product-states")).not.toContain(
+      'href="/settings/catalog/images-and-media"',
+    );
+    expect(renderAt("/settings/pos/pos-settings")).not.toContain(
+      'href="/settings/pos/offline-mode"',
+    );
+  });
+
+  test("support hours and escalation render the two policy surfaces", () => {
+    renderAt("/settings/customers/support-hours");
+    expect(supportHoursMock).toHaveBeenCalled();
+    renderAt("/settings/customers/escalation-to-human");
+    expect(escalationMock).toHaveBeenCalled();
+  });
+
+  test("the support-hours page is a link, never a second hours editor", () => {
+    renderAt("/settings/customers/support-hours");
+    // The store's working hours own the promise; a textarea here would be the duplicate.
+    expect(escalationMock).not.toHaveBeenCalled();
+    expect(priceListsMock).not.toHaveBeenCalled();
   });
 });
