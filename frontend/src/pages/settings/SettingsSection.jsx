@@ -28,7 +28,12 @@ import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import { MetricsPanel, OverviewPanel, ReportsPanel } from "@/components/settings/AnalyticsPanels";
 import ExecutionsPanel from "@/components/settings/AutomationPanels";
 import ChannelLinkCard from "@/components/settings/NotificationPanels";
-import { GenericListPanel, KeyValuePanel, StaticNotePanel } from "@/components/settings/DataPanels";
+import {
+  DRPanel,
+  GenericListPanel,
+  KeyValuePanel,
+  StaticNotePanel,
+} from "@/components/settings/DataPanels";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
@@ -668,11 +673,21 @@ export default function SettingsSection({ section }) {
       )}
 
       {`${section}/${page}` === "data/backups-and-restore" && (
-        <StaticNotePanel
-          titleKey="settings.data.backups.title"
-          descKey="settings.data.backups.desc"
-          bodyKey="settings.data.backups.body"
-        />
+        <>
+          <DRPanel
+            titleKey="settings.data.backups.title"
+            descKey="settings.data.backups.desc"
+            footerKey="settings.data.backups.footer"
+            noteKey="settings.data.backups.impact"
+          />
+          <GenericListPanel
+            endpoint="/platform/tenant-restores"
+            titleKey="settings.data.backups.jobs"
+            descKey="settings.data.backups.jobsDesc"
+            footerKey="settings.data.backups.jobsWhereToEdit"
+            emptyKey="settings.data.backups.jobsEmpty"
+          />
+        </>
       )}
 
       {`${section}/${page}` === "data/data-privacy" && (

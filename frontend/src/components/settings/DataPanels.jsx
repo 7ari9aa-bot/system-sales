@@ -131,3 +131,72 @@ export function StaticNotePanel({ titleKey, descKey, bodyKey }) {
     </SettingCard>
   );
 }
+
+/** The DR position as pairs: the policy numbers first, then the drill evidence.
+ *
+ * Exported so the formatting is testable without a render: the page's whole claim
+ * is "here is what we can recover", and a formatter that silently dropped the
+ * health flag would turn an overdue drill into a reassuring table.
+ */
+export function drSummary(data) {
+  if (!data || typeof data !== "object") return [];
+  const pick = (k) => data[k] ?? "—";
+  const pairs = [
+    ["RPO (minutes)", pick("rpo_minutes")],
+    ["RTO (minutes)", pick("rto_minutes")],
+    ["Backup retention (days)", pick("backup_retention_days")],
+    ["PITR window (days)", pick("pitr_window_days")],
+    ["Drill schedule", pick("restore_test_cron")],
+    ["Last drill", pick("last_restore_test_at")],
+    ["Last drill result", pick("last_restore_test_status")],
+  ];
+  // The two claims that matter after an incident, stated as words rather than a flag.
+  pairs.push(["Recoverable", data.healthy ? "yes" : "not proven"]);
+  pairs.push(["Drill overdue", data.restore_test_overdue ? "yes" : "no"]);
+  return pairs.map(([label, value]) => [
+    label,
+    value === null || value === "" ? "—" : typeof value === "boolean" ? (value ? "✓" : "✗") : String(value),
+  ]);
+}
+
+export function DRPanel({ titleKey, descKey, footerKey, noteKey }) {
+  const t = useT();
+  const state = useJson("/platform/dr");
+  const pairs = drSummary(state.data);
+  const drills = state.data?.restore_tests ?? [];
+  return (
+    <Frame titleKey={titleKey} descKey={descKey} footerKey={footerKey} state={state} empty={null}>
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {pairs.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-border p-3">
+            <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+            <dd className="mt-1 text-[14px] font-semibold">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <h4 className="mt-5 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {t("settings.data.backups.drills")}
+      </h4>
+      {drills.length === 0 ? (
+        <p className="mt-1 text-[13px] text-muted-foreground">{t("settings.data.backups.noDrills")}</p>
+      ) : (
+        <ul className="mt-1 divide-y divide-border">
+          {drills.map((run) => (
+            <li key={run.id} className="flex flex-wrap gap-x-4 gap-y-1 py-2 text-[12px]">
+              {rowPairs(run).map(([label, value]) => (
+                <span key={label} className="text-muted-foreground">
+                  {label}: <span className="text-foreground">{value}</span>
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      )}
+      {noteKey ? (
+        <p className="mt-4 rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-[12px] text-amber-900">
+          {t(noteKey)}
+        </p>
+      ) : null}
+    </Frame>
+  );
+}

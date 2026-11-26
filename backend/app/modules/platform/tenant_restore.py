@@ -405,6 +405,23 @@ class TenantRestoreService:
         return job
 
     @staticmethod
+    async def list_restore_jobs(
+        session: AsyncSession, tenant_id: uuid.UUID, *, limit: int = 20
+    ) -> list[TenantRestoreJob]:
+        """This tenant's restore jobs, newest first.
+
+        Scoped to the tenant by an explicit predicate as well as by RLS, so a
+        session bound elsewhere still cannot read another tenant's incident.
+        """
+        rows = await session.execute(
+            select(TenantRestoreJob)
+            .where(TenantRestoreJob.tenant_id == tenant_id)
+            .order_by(TenantRestoreJob.created_at.desc())
+            .limit(limit)
+        )
+        return list(rows.scalars().all())
+
+    @staticmethod
     async def get_restore_job(
         session: AsyncSession,
         tenant_id: uuid.UUID,

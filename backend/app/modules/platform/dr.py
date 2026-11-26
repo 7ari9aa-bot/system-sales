@@ -104,6 +104,20 @@ class DRService:
         return policy
 
     @staticmethod
+    async def list_restore_tests(session: AsyncSession, *, limit: int = 10) -> list[RestoreTestRun]:
+        """The most recent restore drills, newest first.
+
+        A drill is the only evidence a backup can be recovered at all, so the
+        settings screen shows the runs themselves rather than a summary: a
+        policy that says "weekly" and a table with no rows is a promise, not a
+        capability.
+        """
+        rows = await session.execute(
+            select(RestoreTestRun).order_by(RestoreTestRun.created_at.desc()).limit(limit)
+        )
+        return list(rows.scalars().all())
+
+    @staticmethod
     async def start_restore_test(session: AsyncSession) -> RestoreTestRun:
         """Start a restore test — proves backups are recoverable.
 

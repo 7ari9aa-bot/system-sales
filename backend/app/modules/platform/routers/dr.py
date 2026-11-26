@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.modules.platform import schemas
+from app.modules.platform.dr import DRService
 from app.modules.platform.routers._deps import (
     TenantContext,
     TenantCtxDep,
@@ -49,6 +50,59 @@ def _restore_job_payload(job: TenantRestoreJob) -> dict:
         "last_error": job.last_error,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
     }
+
+
+@router.get("/dr")
+async def get_dr_position(ctx: TenantCtxDep):
+    """§70: the DR position as the merchant's settings screen must show it.
+
+    Read-only, and deliberately evidence-shaped: the policy numbers (RPO, RTO,
+    retention, PITR window, drill cadence) sit beside the last drill that
+    actually ran, because "configured weekly" and "recoverable" are different
+    claims and only the second one matters after an incident. Health comes from
+    ``DRService.check_dr_health``, which reads recorded drill results, never the
+    configured intent.
+    """
+    policy = await DRService.get_policy(ctx.session)
+    health = await DRService.check_dr_health(ctx.session)
+    runs = await DRService.list_restore_tests(ctx.session, limit=10)
+    return {
+        "rpo_minutes": policy.rpo_minutes,
+        "rto_minutes": policy.rto_minutes,
+        "backup_retention_days": policy.backup_retention_days,
+        "pitr_window_days": policy.pitr_window_days,
+        "restore_test_cron": policy.restore_test_cron,
+        "last_restore_test_at": policy.last_restore_test_at.isoformat()
+        if policy.last_restore_test_at
+        else None,
+        "last_restore_test_status": policy.last_restore_test_status,
+        "restore_test_overdue": health["restore_test_overdue"],
+        "healthy": health["healthy"],
+        "restore_tests": [
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "started_at": run.started_at.isoformat() if run.started_at else None,
+                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "restore_duration_seconds": run.restore_duration_seconds,
+                "data_loss_seconds": run.data_loss_seconds,
+                "errors": run.errors,
+            }
+            for run in runs
+        ],
+    }
+
+
+@router.get("/tenant-restores", response_model=list[schemas.TenantRestoreJobOut])
+async def list_tenant_restore_jobs(ctx: TenantCtxDep):
+    """This tenant's restore jobs, newest first.
+
+    The list exists so a merchant can see an incident it opened and never
+    finished: a job stuck at ``pending`` or ``validated`` is visible evidence
+    that a restore was started and not completed.
+    """
+    jobs = await TenantRestoreService.list_restore_jobs(ctx.session, ctx.tenant_id)
+    return [_restore_job_payload(job) for job in jobs]
 
 
 @router.post("/tenant-restores", response_model=schemas.TenantRestoreJobOut, status_code=201)
