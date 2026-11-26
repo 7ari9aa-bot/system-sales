@@ -406,8 +406,15 @@ class OutboxRelay:
                 await session.execute(_MARK_PUBLISHED_SQL, {"id": row["id"]})
                 # §152 history is written with the publish mark; a history
                 # failure must not flip a published row back to pending.
+                # The history write runs inside a SAVEPOINT: a failed INSERT aborts
+                # only that savepoint, so the claim and the 'published' mark still
+                # commit. Without it the aborted transaction rolled the mark back
+                # with the claim and the loop re-claimed the SAME row until the
+                # batch ran out — one bad event_log row became up to `batch`
+                # duplicate publishes of the same event in a single drain.
                 try:
-                    await self._write_event_log(session, row, payload, meta)
+                    async with session.begin_nested():
+                        await self._write_event_log(session, row, payload, meta)
                 except Exception:  # noqa: BLE001 — relay survives, ops replays
                     logger.exception("outbox.relay.event_log_failed id=%s", row["id"])
                 # Claim + publish + mark commit together, per row: this single
