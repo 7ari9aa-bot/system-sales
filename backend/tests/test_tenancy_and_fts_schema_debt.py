@@ -156,14 +156,20 @@ def test_the_three_new_revisions_exist_and_chain_from_the_head() -> None:
         # are valid, so the guard must read both — a regex that only matches one
         # reports a fork that does not exist.
         rev = re.search(r"^revision(?::[^=\n]+)?\s*=\s*[\"']([^\"']+)[\"']", src, re.M)
+        # Ids are not all twelve characters: fe2026112304a (the page-activity wave) is thirteen,
+        # and a regex pinned to {12} reported "no parseable down_revision" for a chain that is
+        # fine. Any hex run is a revision id here.
         down = re.search(
-            r"^down_revision(?::[^=\n]+)?\s*=\s*(None|\([^)]*\)|[\"'][0-9a-f]{12}[\"'])", src, re.M
+            r"^down_revision(?::[^=\n]+)?\s*=\s*(None|\([^)]*\)|[\"'][0-9a-f]{8,}[\"'])", src, re.M
         )
         assert rev, f"{path.name}: no parseable `revision` assignment"
         assert down, f"{path.name}: no parseable `down_revision` assignment"
         # A MERGE revision names several parents in a tuple; every one of them is "pointed to".
-        parents = re.findall(r"[0-9a-f]{12}", down.group(1))
-        ids[path.name[:12]] = (rev.group(1), parents)
+        parents = re.findall(r"[0-9a-f]{8,}", down.group(1))
+        # Keyed by the REVISION, not by the first twelve characters of the file name: two files
+        # whose ids share a twelve-character prefix (fe2026112304 and fe2026112304a) collided in
+        # the map, and the overwritten one looked like a second head.
+        ids[rev.group(1)] = (rev.group(1), parents)
 
     roots = {r for r, (_, parents) in ids.items() if not parents}
     orphan_roots = roots - {"0b79f7470c1a"}

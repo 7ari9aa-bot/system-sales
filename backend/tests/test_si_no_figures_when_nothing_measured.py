@@ -19,6 +19,7 @@ from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import AgentTool
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.ai.tools import TOOLS
+from app.modules.settings.service import SettingsService
 from tests.test_si_agent import _seed
 
 
@@ -125,6 +126,12 @@ PLAIN_ANSWER = "الكاشير لسه ما اتجهّزش عندك، فمفيش 
 async def _round(db, tenant_ctx, monkeypatch):
     """The model asks for the till, then answers. It writes the figures draft unless the tool
     result it was handed tells it there is nothing to quote, exactly the production failure."""
+    # The analytics agent is gated by analytics_agent.enabled (§settings), default off: a tenant
+    # that never switched it on gets "disabled" before the model is reached. These tests are about
+    # what the model is handed, so the tenant switches the feature on first.
+    await SettingsService(db, tenant_ctx.tenant_id).set(
+        "analytics_agent.enabled", True, scope="tenant"
+    )
     TOOLS.pop("si_shop", None)
     si.register_si_tools()
     agent = await _seed(db, tenant_ctx.tenant_id)

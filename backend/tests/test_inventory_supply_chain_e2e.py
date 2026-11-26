@@ -38,6 +38,7 @@ from app.modules.purchasing.service import (
     PurchaseService,
     SupplierService,
 )
+from app.modules.settings.service import SettingsService
 
 # ───────────────────────────── helpers ──────────────────────────────
 
@@ -87,6 +88,10 @@ async def test_supply_chain_end_to_end(db: AsyncSession, tenant_ctx):
 
     # ─── 2. Create supplier ───
     supplier = await SupplierService.create(db, tid, name=f"Acme-{uuid.uuid4().hex[:6]}")
+
+    # A PO is auto-approved under the threshold when purchasing.approval_required is off; this
+    # walk needs the draft a human still has to approve, so the shop asks for that path.
+    await SettingsService(db, tid).set("purchasing.approval_required", True, scope="tenant")
 
     # ─── 3. Create purchase order with 2 lines ───
     po = await PurchaseService.create(

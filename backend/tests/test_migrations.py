@@ -472,6 +472,17 @@ def _declared_columns() -> dict[str, set[str]]:
                 col = _column_name(node.args[1])
                 if col:
                     _add(table, col)
+            elif func.attr == "execute":
+                # Some migrations add a column with raw DDL (ADD COLUMN IF NOT EXISTS, which
+                # alembic's add_column cannot express). The AST saw no add_column and reported the
+                # model's column as drift: tenant_settings_history.source, added by fe2026112505.
+                for m in re.finditer(
+                    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)"
+                    r"\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)",
+                    table,
+                    re.I,
+                ):
+                    _add(m.group(1), m.group(2))
     return declared
 
 
