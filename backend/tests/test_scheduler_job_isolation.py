@@ -35,9 +35,7 @@ class _NoBus:
         return _noop
 
 
-async def _due_job(
-    db: AsyncSession, tenant_id: uuid.UUID, job_type: str, key: str
-) -> ScheduledJob:
+async def _due_job(db: AsyncSession, tenant_id: uuid.UUID, job_type: str, key: str) -> ScheduledJob:
     job = ScheduledJob(
         tenant_id=tenant_id,
         job_type=job_type,
