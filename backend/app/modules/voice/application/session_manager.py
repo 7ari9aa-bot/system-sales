@@ -65,6 +65,7 @@ class VoiceSessionRecord:
     trace_id: str
     client_key: str | None = None
     provider_session_id: str | None = None
+    provider_name: str | None = None
     created_at: dt.datetime = dt.datetime.min.replace(tzinfo=dt.UTC)
     updated_at: dt.datetime = dt.datetime.min.replace(tzinfo=dt.UTC)
     last_completed_turn: int = 0
