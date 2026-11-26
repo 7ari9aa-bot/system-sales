@@ -261,7 +261,14 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 10 Receiving and inspection | done | `/settings/purchasing/receiving-and-inspection` — `allow_partial_receipt`, `allow_over_receipt` |
 | 10 Supplier returns | done | `/settings/purchasing/supplier-returns` — reads `GET /purchasing/supplier-returns` with number, date, total and status |
 | 10 Approval limits | done | `/settings/purchasing/approval-limits` — `approval_required` and `approval_threshold`, both high impact: one removes approval entirely, the other sets the amount above which it applies |
-| 11–20 | pending | see the tables above |
+| 18 Security policies | done | `/settings/security/security-policies` — the four `security.*` keys at their registry home: strong passwords, API key rotation, audit retention and the IP allowlist. All four are read by real code (`identity/services/auth.py`, `core/api_key_rotation.py`, the audit sweep, `identity/deps.py`), so none of them is a switch wired to nothing |
+| 18 Session control | done | `/settings/security/session-control` — `GET /settings/security-posture`: the resolved `security.*` values plus the access and refresh token lifetimes the running process was started with. Read-only by design: the lifetimes are deployment configuration, and the page says so and links to the page that owns the editable half |
+| 18 Audit log | done | `/settings/security/audit-log` — `GET /platform/audit-logs`, the tenant's audited actions with lineage and a bounded page |
+| 18 Settings change log | done | `/settings/security/settings-change-log` — `GET /settings/history`, every value change with the old value, the new one and who wrote it |
+| 18 Approval requests | done | `/settings/security/approval-requests` — `GET /settings/change-requests` with the engine's own approve/reject paths (`settings:approve`), so a high-impact key is reviewed where it already lives instead of on a second workflow invented here |
+| 18 Sensitive settings | done | `/settings/security/sensitive-settings` — the keys the registry marks `sensitive`, whether each needs approval, and whether any module reads it (`enforced`). Read-only: the value is edited at the key's home, and the allowlist is never echoed |
+| 18 Emergency procedures | done | `/settings/security/emergency-procedures` — `POST /settings/restore`, the tenant-wide snapshot restore that already existed: it writes forward-only history rows and audits itself. Branch and register overrides are deliberately out of scope, which the page states |
+| 19–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

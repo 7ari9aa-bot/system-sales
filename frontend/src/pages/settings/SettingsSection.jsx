@@ -44,6 +44,12 @@ import {
   BranchStaffPanel,
 } from "@/components/settings/BranchPanels";
 import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
+import ChangeRequestList from "@/components/settings/ChangeRequestList";
+import {
+  SecurityPosturePanel,
+  SensitiveSettingsPanel,
+  SettingsRestorePanel,
+} from "@/components/settings/SecurityPanels";
 import { useSettings } from "@/components/settings/useSettings";
 import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
@@ -172,6 +178,17 @@ const SECTION_PAGES = {
     "supplier-returns",
     "approval-limits",
   ],
+  // Section 18 is where the Settings Engine becomes visible: the security keys the runtime
+  // reads, the posture it enforces, and the trails it already writes.
+  security: [
+    "security-policies",
+    "session-control",
+    "audit-log",
+    "settings-change-log",
+    "approval-requests",
+    "sensitive-settings",
+    "emergency-procedures",
+  ],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -239,6 +256,15 @@ const PANEL_PAGES = new Set([
   "data/backups-and-restore",
   "data/data-privacy",
   "data/data-deletion",
+  // Section 18: every page here reads a trail or a posture the backend already keeps
+  // (audit logs, settings history, change requests, the security keys) rather than a new
+  // switch. The restore page drives the tenant-wide snapshot restore that already exists.
+  "security/session-control",
+  "security/audit-log",
+  "security/settings-change-log",
+  "security/approval-requests",
+  "security/sensitive-settings",
+  "security/emergency-procedures",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -618,6 +644,53 @@ export default function SettingsSection({ section }) {
           emptyKey="settings.data.deletion.empty"
         />
       )}
+
+      {/* Section 18: security and governance. The posture and the two trails are reads; the
+          restore page drives the tenant-wide restore that already exists; approving a change
+          request is the Settings Engine's own workflow, not a second one invented here. */}
+      {`${section}/${page}` === "security/session-control" && <SecurityPosturePanel />}
+      {`${section}/${page}` === "security/audit-log" && (
+        <GenericListPanel
+          endpoint="/platform/audit-logs"
+          titleKey="settings.security.auditLog.title"
+          descKey="settings.security.auditLog.desc"
+          emptyKey="settings.security.auditLog.empty"
+          footerKey="settings.security.auditLog.whereToEdit"
+        />
+      )}
+      {`${section}/${page}` === "security/settings-change-log" && (
+        <GenericListPanel
+          endpoint="/settings/history"
+          titleKey="settings.security.changeLog.title"
+          descKey="settings.security.changeLog.desc"
+          emptyKey="settings.security.changeLog.empty"
+          footerKey="settings.security.changeLog.whereToEdit"
+        />
+      )}
+      {`${section}/${page}` === "security/approval-requests" && (
+        <SettingCard
+          title={t("settings.security.approvals.title")}
+          desc={t("settings.security.approvals.desc")}
+        >
+          {s.changeRequests.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">
+              {t("settings.security.approvals.empty")}
+            </p>
+          ) : (
+            <ChangeRequestList
+              changeRequests={s.changeRequests}
+              onApprove={(id) => s.approveChangeRequest(id)}
+              onReject={(id) => s.rejectChangeRequest(id)}
+              isAr={isAr}
+            />
+          )}
+          <p className="mt-3 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+            {t("settings.security.approvals.whereToEdit")}
+          </p>
+        </SettingCard>
+      )}
+      {`${section}/${page}` === "security/sensitive-settings" && <SensitiveSettingsPanel />}
+      {`${section}/${page}` === "security/emergency-procedures" && <SettingsRestorePanel />}
       {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row
           below is the AI module's own record — an agent, a knowledge item, a provider policy, an
           evaluation — so no page here offers a control the runtime does not read. Editing happens

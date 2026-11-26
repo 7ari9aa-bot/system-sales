@@ -220,6 +220,10 @@ const DashboardRoutes = () => (
           <Route path="/settings/team/:section" element={<TeamSettings />} />
           <Route path="/settings/all" element={<UnifiedSettings />} />
           <Route path="/settings/security" element={<SecuritySettings />} />
+          {/* Section 18. The path is longer than the personal-security screen above on purpose:
+              "my password and my devices" and "the shop's security policies" are two different
+              screens, and merging them would put a workspace control on a personal page. */}
+          <Route path="/settings/security/:page" element={<SettingsSection section="security" />} />
           <Route path="/settings/login" element={<LoginSettings />} />
           <Route path="/settings/preferences" element={<PreferencesSettings />} />
           <Route path="/settings/notifications" element={<NotificationPreferences />} />

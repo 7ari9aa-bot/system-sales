@@ -69,6 +69,18 @@ const NAV_GROUPS = [
       { to: "/settings/danger", icon: AlertTriangle, labelKey: "settings.nav.danger" },
     ],
   },
+  // Section 18 onward. Kept in its own group because these are the governance screens: they
+  // describe what the system enforces and who may change it, not what the shop sells.
+  {
+    key: "settings.group.advanced",
+    items: [
+      {
+        to: "/settings/security/security-policies",
+        icon: ShieldCheck,
+        labelKey: "settings.nav.governance",
+      },
+    ],
+  },
 ];
 
 export default function SettingsLayout() {
