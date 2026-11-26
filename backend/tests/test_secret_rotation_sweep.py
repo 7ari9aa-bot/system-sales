@@ -125,9 +125,7 @@ class TestSecretRotationSweep:
         svc = SettingsService(db, tenant.id)
         # security.* is APPROVAL_REQUIRED, so a plain set() opens an approval and writes nothing;
         # this test is about the sweep, so the value is written the way an approved change lands.
-        await svc.set(
-            "security.api_key_rotation_days", 0, scope=Scope.TENANT, bypass_approval=True
-        )
+        await svc.set("security.api_key_rotation_days", 0, scope=Scope.TENANT, bypass_approval=True)
         await db.flush()
 
         # Even an ancient secret should not be flagged.

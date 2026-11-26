@@ -47,10 +47,10 @@ from app.modules.settings.models import (
 )
 from app.modules.settings.policy import authorize_write
 from app.modules.settings.registry import (
+    REGISTRY,
     ApplyMode,
     Scope,
     SettingDef,
-    REGISTRY,
     get_definition,
     list_definitions,
 )
