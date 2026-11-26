@@ -18,6 +18,27 @@ const SALE_INVOICE_NO = /POS-\d{4}-\d{4,}/;
  * in run 45735131391). Esc is one of the documented skip paths, so this walks the flow the way a
  * real owner who wants to configure everything by hand would.
  */
+/** The POS settings tab whose label matches, in either language.
+ *
+ * The page renders (openPosSettings proves the root is there) but the tab click found nothing:
+ * the labels come from i18n, so an English UI offers "Backup" where the Arabic one offers
+ * "النسخ الاحتياطي". The regex now accepts both, and a miss names the tabs that ARE on screen.
+ */
+async function posTab(root, re) {
+  const tabs = root.getByRole("tab");
+  const count = await tabs.count();
+  const names = [];
+  for (let i = 0; i < count; i += 1)
+    names.push((await tabs.nth(i).innerText()).trim());
+  const match = tabs.filter({ hasText: re }).first();
+  if ((await match.count()) === 0) {
+    throw new Error(
+      `no POS settings tab matches ${re}; tabs on screen: ${JSON.stringify(names)}`,
+    );
+  }
+  return match;
+}
+
 /** Open /settings/pos and return the POS settings page root.
  *
  * The bare locator timed out with "waiting for main:has(.cashier-root)" and nothing else, which
@@ -2370,7 +2391,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   });
 
   const main = await openPosSettings(page);
-  await main.getByRole("tab", { name: /النسخ|الاحتياطي/ }).click();
+  await (await posTab(main, /النسخ|الاحتياطي|backup/i)).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     main.getByRole("button", { name: /تصدير الآن/ }).click(),
@@ -2489,7 +2510,9 @@ test("print settings on the screen are saved for real: the prefix the owner type
   ).session;
 
   const main = await openPosSettings(page);
-  await main.getByRole("tab", { name: /الفاتورة|الباركود|الطباعة/ }).click();
+  await (
+    await posTab(main, /الفاتورة|الباركود|الطباعة|print|receipt/i)
+  ).click();
 
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
   // receipt actually reads are offered now (print.invoice_prefix, print.barcode_format), so the
