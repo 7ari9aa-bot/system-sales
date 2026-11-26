@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, KeyRound, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge, Store,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, KeyRound, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, ScrollText, Sparkles, Gauge, Store, SlidersHorizontal,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ const NAV_GROUPS = [
       { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
       { to: "/settings/login", icon: KeyRound, labelKey: "settings.nav.login" },
       { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
+      { to: "/settings/preferences", icon: SlidersHorizontal, labelKey: "settings.nav.preferences" },
     ],
   },
   {

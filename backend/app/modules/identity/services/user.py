@@ -13,6 +13,18 @@ from sqlalchemy import select
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.core.security import decode_token
 from app.modules.identity.models import User
+from app.modules.identity.services.settings import timezone_refusal
+
+#: The closed sets the preferences screen offers. They are duplicated in the
+#: migration's CHECK constraints on purpose: the database refuses a value that a
+#: future code path forgot to validate, and this module refuses it with a message
+#: a person can read instead of a 500 from the constraint.
+LOCALES = ("ar", "en")
+THEMES = ("system", "light", "dark")
+DATE_FORMATS = ("dmy", "mdy", "ymd")
+#: Where "/" may land. A stored route is a redirect target, so the API whitelists
+#: it: an arbitrary path here would be a redirect primitive with a database row.
+DEFAULT_PAGES = ("/dashboard", "/inbox", "/cashier", "/customers", "/settings")
 
 
 class UserService:
@@ -75,6 +87,80 @@ class UserService:
             if cleaned_title != user.job_title:
                 user.job_title = cleaned_title
                 changed = True
+        if changed:
+            await session.flush()
+        return user
+
+    @staticmethod
+    async def update_preferences(
+        session,
+        user_id: uuid.UUID,
+        *,
+        locale: str | None = None,
+        theme: str | None = None,
+        timezone: str | None = None,
+        date_format: str | None = None,
+        default_page: str | None = None,
+    ) -> User:
+        """Rewrite the caller's own presentation preferences.
+
+        Same contract as ``update_profile``: ``None`` means "leave it alone", so the
+        screen can save one control at a time, and an EMPTY string is a real
+        instruction — it clears the field back to the default. Every value is
+        checked against the set the screen offers, and the timezone is resolved with
+        ``zoneinfo`` rather than merely shape-checked: a stored zone that Python
+        cannot resolve would silently bucket a Cairo account in UTC.
+        """
+        user = await UserService.get(session, user_id)
+        changed = False
+
+        def _one_of(value: str, allowed: tuple[str, ...], label: str) -> str | None:
+            cleaned = (value or "").strip().lower()
+            if not cleaned:
+                return None
+            if cleaned not in allowed:
+                raise ValidationError(f"'{cleaned}' is not a valid {label}")
+            return cleaned
+
+        if locale is not None:
+            cleaned = _one_of(locale, LOCALES, "language")
+            if cleaned != user.locale:
+                user.locale = cleaned
+                changed = True
+        if theme is not None:
+            cleaned = _one_of(theme, THEMES, "appearance")
+            if cleaned != user.theme:
+                user.theme = cleaned
+                changed = True
+        if date_format is not None:
+            cleaned = _one_of(date_format, DATE_FORMATS, "date format")
+            if cleaned != user.date_format:
+                user.date_format = cleaned
+                changed = True
+        if timezone is not None:
+            raw = (timezone or "").strip()
+            if not raw:
+                cleaned_tz = None
+            else:
+                refusal = timezone_refusal(raw)
+                if refusal is not None:
+                    raise ValidationError(refusal)
+                cleaned_tz = raw
+            if cleaned_tz != user.timezone:
+                user.timezone = cleaned_tz
+                changed = True
+        if default_page is not None:
+            raw = (default_page or "").strip()
+            if not raw:
+                cleaned_page = None
+            elif raw not in DEFAULT_PAGES:
+                raise ValidationError(f"'{raw}' is not a page this account may land on")
+            else:
+                cleaned_page = raw
+            if cleaned_page != user.default_page:
+                user.default_page = cleaned_page
+                changed = True
+
         if changed:
             await session.flush()
         return user

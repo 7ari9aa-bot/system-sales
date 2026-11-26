@@ -128,6 +128,21 @@ class User(TimestampMixin, Base):
     # filling these in can never move an account or reach another one.
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # The person's own presentation choices (migration fe2026112606). They used to
+    # live in localStorage, which meant they followed the BROWSER rather than the
+    # account: the same person on the till and on a phone could disagree, and
+    # clearing site data reset them. NULL means "follow the default", so a fresh
+    # account behaves exactly as it did before these columns existed.
+    #   locale       'ar' | 'en'
+    #   theme        'system' | 'light' | 'dark'
+    #   timezone     an IANA name — the PERSON's clock, distinct from the tenant's
+    #   date_format  'dmy' | 'mdy' | 'ymd'
+    #   default_page a route the API whitelists, because "/" redirects to it
+    locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    date_format: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    default_page: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PasswordResetToken(TimestampMixin, Base):

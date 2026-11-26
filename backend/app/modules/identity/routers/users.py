@@ -13,7 +13,7 @@ from app.core.mfa import is_mfa_enabled
 from app.core.storage import FetchedMedia, get_storage
 from app.modules.identity import avatar, schemas, service
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.identity.models import Role, TenantUser, User
+from app.modules.identity.models import Role, Tenant, TenantUser, User
 
 users_router = APIRouter(prefix="/users", tags=["users"])
 
@@ -63,6 +63,54 @@ async def update_my_profile(body: schemas.ProfileUpdate, ctx: TenantCtxDep):
         job_title=body.job_title,
     )
     return await _current_user(ctx.session, ctx.user.id)
+
+
+async def _preferences(session, user_id, tenant_id) -> schemas.UserPreferences:
+    """The account's own choices, plus what actually applies when a field is empty.
+
+    ``effective_timezone`` exists because a NULL zone is not "no clock": the shop
+    counts its day in the tenant's zone (§47) and the screen has to say which clock
+    the person is reading, not leave them to infer it.
+    """
+    user = await service.UserService.get(session, user_id)
+    tenant_zone = (
+        await session.execute(select(Tenant.timezone).where(Tenant.id == tenant_id))
+    ).scalar_one_or_none()
+    return schemas.UserPreferences(
+        locale=user.locale,
+        theme=user.theme,
+        timezone=user.timezone,
+        date_format=user.date_format,
+        default_page=user.default_page,
+        effective_timezone=user.timezone or tenant_zone or "UTC",
+        tenant_timezone=tenant_zone,
+    )
+
+
+@users_router.get("/me/preferences", response_model=schemas.UserPreferences)
+async def my_preferences(ctx: TenantCtxDep):
+    """The person's language, appearance, clock, date shape and landing page."""
+    return await _preferences(ctx.session, ctx.user.id, ctx.tenant_id)
+
+
+@users_router.patch("/me/preferences", response_model=schemas.UserPreferences)
+async def update_my_preferences(body: schemas.PreferencesUpdate, ctx: TenantCtxDep):
+    """Rewrite the caller's own preferences, one control at a time.
+
+    Nothing here can reach another account: the id comes from the verified token.
+    The response is the WHOLE preference set, so the screen renders what the server
+    now holds rather than echoing the input back to itself.
+    """
+    await service.UserService.update_preferences(
+        ctx.session,
+        ctx.user.id,
+        locale=body.locale,
+        theme=body.theme,
+        timezone=body.timezone,
+        date_format=body.date_format,
+        default_page=body.default_page,
+    )
+    return await _preferences(ctx.session, ctx.user.id, ctx.tenant_id)
 
 
 @users_router.put("/me/avatar")

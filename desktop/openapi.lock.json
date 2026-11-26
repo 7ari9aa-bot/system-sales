@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 683,
-    "sha256": "1137befb8faa858c47049938cfb7d6997be03cbb4afc2b4164b332cfb300cc83",
-    "typed_operations": 374
+    "operations": 685,
+    "sha256": "be4fe9ba13e7c18fb3a61db2733bc907a54a0cd58be5200c9748b68321252e62",
+    "typed_operations": 376
   },
   "spec": {
     "components": {
@@ -16461,6 +16461,73 @@
           "title": "PostControlRequest",
           "type": "object"
         },
+        "PreferencesUpdate": {
+          "description": "A partial rewrite of the caller's preferences.\n\n``None`` leaves a field alone; an empty string clears it back to the default.\nThat is the same contract ``PATCH /users/me`` uses for the phone and the job\ntitle, so one screen can save one control at a time without resending the rest.",
+          "properties": {
+            "date_format": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Format"
+            },
+            "default_page": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Page"
+            },
+            "locale": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          "title": "PreferencesUpdate",
+          "type": "object"
+        },
         "PrescriptionRef": {
           "additionalProperties": false,
           "description": "The prescription a medicine was sold against: its number and who it is for.",
@@ -25740,6 +25807,86 @@
             "tokens_out"
           ],
           "title": "UsageTotalsOut",
+          "type": "object"
+        },
+        "UserPreferences": {
+          "description": "What the person's own screen reads: their choices, and what applies now.\n\nA NULL field means \"follow the default\", which is why the response also carries\nthe resolved values. Without them the screen would have to guess what a NULL\ntimezone means, and a guess in a clock is a wrong time, not a blank one.",
+          "properties": {
+            "date_format": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Format"
+            },
+            "default_page": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Page"
+            },
+            "effective_timezone": {
+              "title": "Effective Timezone",
+              "type": "string"
+            },
+            "locale": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            },
+            "tenant_timezone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Timezone"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          "required": [
+            "effective_timezone"
+          ],
+          "title": "UserPreferences",
           "type": "object"
         },
         "ValidationError": {
@@ -98667,6 +98814,210 @@
             }
           },
           "summary": "Open My Closure Request",
+          "tags": [
+            "users"
+          ]
+        }
+      },
+      "/api/v1/users/me/preferences": {
+        "get": {
+          "description": "The person's language, appearance, clock, date shape and landing page.",
+          "operationId": "my_preferences_api_v1_users_me_preferences_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserPreferences"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "My Preferences",
+          "tags": [
+            "users"
+          ]
+        },
+        "patch": {
+          "description": "Rewrite the caller's own preferences, one control at a time.\n\nNothing here can reach another account: the id comes from the verified token.\nThe response is the WHOLE preference set, so the screen renders what the server\nnow holds rather than echoing the input back to itself.",
+          "operationId": "update_my_preferences_api_v1_users_me_preferences_patch",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserPreferences"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Update My Preferences",
           "tags": [
             "users"
           ]

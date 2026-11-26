@@ -188,6 +188,55 @@ class CurrentUser(BaseModel):
     tenants: list[CurrentTenant] = []
 
 
+class UserPreferences(BaseModel):
+    """What the person's own screen reads: their choices, and what applies now.
+
+    A NULL field means "follow the default", which is why the response also carries
+    the resolved values. Without them the screen would have to guess what a NULL
+    timezone means, and a guess in a clock is a wrong time, not a blank one.
+    """
+
+    locale: str | None = None
+    theme: str | None = None
+    timezone: str | None = None
+    date_format: str | None = None
+    default_page: str | None = None
+    #: The zone the account actually counts in: the person's own, or the shop's.
+    effective_timezone: str
+    #: The shop's zone, so the screen can say "following the shop" honestly.
+    tenant_timezone: str | None = None
+
+
+class PreferencesUpdate(BaseModel):
+    """A partial rewrite of the caller's preferences.
+
+    ``None`` leaves a field alone; an empty string clears it back to the default.
+    That is the same contract ``PATCH /users/me`` uses for the phone and the job
+    title, so one screen can save one control at a time without resending the rest.
+    """
+
+    locale: str | None = Field(default=None, max_length=8)
+    theme: str | None = Field(default=None, max_length=16)
+    timezone: str | None = Field(default=None, max_length=64)
+    date_format: str | None = Field(default=None, max_length=8)
+    default_page: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> PreferencesUpdate:
+        if all(
+            value is None
+            for value in (
+                self.locale,
+                self.theme,
+                self.timezone,
+                self.date_format,
+                self.default_page,
+            )
+        ):
+            raise ValueError("nothing to update")
+        return self
+
+
 class ProfileUpdate(BaseModel):
     """The parts of an account its owner may rewrite about themselves.
 
