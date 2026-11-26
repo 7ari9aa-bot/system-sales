@@ -23,6 +23,7 @@ from decimal import Decimal
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import bind_tenant
 from app.main import create_app
 from app.modules.billing.models import Invoice
 from app.modules.billing.router import billing_router
@@ -170,6 +171,9 @@ async def test_invoices_are_listed_newest_first_with_their_money_as_strings(
 
 async def test_another_tenants_invoice_is_not_listed(db: AsyncSession, tenant_ctx) -> None:
     other = uuid.uuid4()
+    # invoices are tenant-isolated, so the other tenant's row must be written while bound
+    # to that tenant; writing it under our own GUC is refused by RLS, not by the endpoint.
+    await bind_tenant(db, other)
     await db.execute(
         Invoice.__table__.insert().values(
             id=uuid.uuid4(),
@@ -183,6 +187,7 @@ async def test_another_tenants_invoice_is_not_listed(db: AsyncSession, tenant_ct
             extra={},
         )
     )
+    await bind_tenant(db, tenant_ctx.tenant_id)
     await _invoice(db, tenant_ctx.tenant_id, "INV-OURS")
 
     response = await _get(_app_for(db, tenant_ctx.tenant_id), "/api/v1/billing/invoices")

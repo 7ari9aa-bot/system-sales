@@ -535,3 +535,18 @@ class RemediationResultOut(BaseModel):
     actions_taken: list[str]
     reclaimed_outbox_events: int
     timestamp: str
+
+
+class RateLimitBucketOut(BaseModel):
+    """One request bucket the middleware enforces, with its ceiling."""
+
+    bucket: str
+    limit: int
+
+
+class RateLimitLimitsOut(BaseModel):
+    """The request ceilings this deployment enforces, and whether they are on."""
+
+    enforced: bool
+    window_seconds: int
+    buckets: list[RateLimitBucketOut]

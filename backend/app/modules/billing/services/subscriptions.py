@@ -211,14 +211,49 @@ class BillingService:
             .all()
         )
         rows: list[dict[str, object]] = []
+        listed: set[str] = set()
         for entitlement in entitlements:
             used = await BillingService.used_this_period(session, tenant_id, entitlement.feature)
+            listed.add(entitlement.feature)
             rows.append(
                 {
                     "feature": entitlement.feature,
                     "used": used,
                     "limit": entitlement.limit_value,
                     "is_unlimited": bool(entitlement.is_unlimited),
+                }
+            )
+        # A feature the tenant has consumed this period but has NO entitlement for is
+        # listed too, with no ceiling: the page is a usage report, and hiding real
+        # consumption because the plan does not meter it would make the number the shop
+        # sees disagree with what it was actually charged for. ``limit=None`` plus
+        # ``is_unlimited`` says "no ceiling", which is what an absent entitlement means —
+        # it never means "zero allowed".
+        period_start = subscription.current_period_start
+        metered = (
+            (
+                await session.execute(
+                    select(UsageRecord.feature)
+                    .where(
+                        UsageRecord.tenant_id == tenant_id,
+                        UsageRecord.period_date >= period_start.date(),
+                    )
+                    .group_by(UsageRecord.feature)
+                    .order_by(UsageRecord.feature)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for feature in metered:
+            if feature in listed:
+                continue
+            rows.append(
+                {
+                    "feature": feature,
+                    "used": await BillingService.used_this_period(session, tenant_id, feature),
+                    "limit": None,
+                    "is_unlimited": True,
                 }
             )
         return rows

@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import bind_tenant
 from app.core.middleware import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOW_SECONDS, _bucket_for
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
@@ -159,8 +160,12 @@ async def test_the_delivery_log_reports_the_attempt_and_never_the_payload(
 
 async def test_another_tenants_delivery_is_not_listed(db: AsyncSession, tenant_ctx) -> None:
     other = uuid.uuid4()
+    # webhooks and their deliveries are FORCE-tenant-isolated: each tenant's rows seed
+    # under ITS GUC, so the other tenant's row is written while bound to the other tenant.
+    await bind_tenant(db, other)
     other_endpoint = await _endpoint(db, other, "https://theirs.test/hook")
     await _delivery(db, other, other_endpoint)
+    await bind_tenant(db, tenant_ctx.tenant_id)
     ours = await _endpoint(db, tenant_ctx.tenant_id, "https://ours.test/hook")
     await _delivery(db, tenant_ctx.tenant_id, ours)
 

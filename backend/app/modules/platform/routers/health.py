@@ -2,14 +2,18 @@
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 
 from app.core.redis import get_redis
 from app.modules.platform import schemas
 from app.modules.platform.dr import DRService
 from app.modules.platform.models import Integration, OutboxEvent
-from app.modules.platform.routers._deps import TenantContext, TenantCtxDep
+from app.modules.platform.routers._deps import (
+    TenantContext,
+    TenantCtxDep,
+    require_permission,
+)
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
@@ -311,8 +315,10 @@ async def health(ctx: TenantCtxDep):
     return build_health_response(subsystems)
 
 
-@router.get("/rate-limits")
-async def read_rate_limits(ctx: TenantCtxDep) -> dict[str, object]:
+@router.get("/rate-limits", response_model=schemas.RateLimitLimitsOut)
+async def read_rate_limits(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+) -> schemas.RateLimitLimitsOut:
     """The request limits this deployment enforces, per bucket.
 
     Section 20's "rate limits" page asks a question the code answers in one place: how many
@@ -328,11 +334,14 @@ async def read_rate_limits(ctx: TenantCtxDep) -> dict[str, object]:
     from app.core.config import get_settings
     from app.core.middleware import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOW_SECONDS
 
-    return {
-        "enforced": get_settings().environment != "test",
-        "window_seconds": RATE_LIMIT_WINDOW_SECONDS,
-        "buckets": [{"bucket": bucket, "limit": limit} for bucket, limit in RATE_LIMIT_BUCKETS],
-    }
+    return schemas.RateLimitLimitsOut(
+        enforced=get_settings().environment != "test",
+        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
+        buckets=[
+            schemas.RateLimitBucketOut(bucket=bucket, limit=limit)
+            for bucket, limit in RATE_LIMIT_BUCKETS
+        ],
+    )
 
 
 @router.get("/diagnostics", response_model=schemas.FullDiagnosticsOut)

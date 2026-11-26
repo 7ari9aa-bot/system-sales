@@ -63,7 +63,9 @@ async def test_an_override_at_tenant_scope_is_what_the_posture_reports(
     db: AsyncSession, tenant_ctx
 ) -> None:
     service = SettingsService(db, tenant_ctx.tenant_id)
-    await service.set("security.require_strong_passwords", False, scope="tenant")
+    await service.set(
+        "security.require_strong_passwords", False, scope="tenant", bypass_approval=True
+    )
     await service.set("security.audit_retention_days", 30, scope="tenant")
     await db.flush()
 
@@ -77,7 +79,12 @@ async def test_an_override_at_tenant_scope_is_what_the_posture_reports(
 
 async def test_the_allowlist_is_counted_and_never_echoed(db: AsyncSession, tenant_ctx) -> None:
     service = SettingsService(db, tenant_ctx.tenant_id)
-    await service.set("security.ip_allowlist", ["203.0.113.7", "10.0.0.0/8"], scope="tenant")
+    await service.set(
+        "security.ip_allowlist",
+        ["203.0.113.7", "10.0.0.0/8"],
+        scope="tenant",
+        bypass_approval=True,
+    )
     await db.flush()
 
     async with _client(db, tenant_ctx) as client:
