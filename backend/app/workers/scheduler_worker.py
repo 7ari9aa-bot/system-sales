@@ -474,7 +474,12 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         # Push: operators get an email the moment a monitor trips (contained —
         # an undeliverable alert never kills the job; the System tab still
         # shows it).
-        await monitors.notify_operators(session, fresh)
+        # The glue lives HERE since 338b5dbc ("the monitors glue belongs to
+        # the workers layer"): monitors evaluates, this module delivers. The
+        # old `monitors.notify_operators(...)` call survived the move and
+        # pointed at a function that no longer exists, so every
+        # platform_monitors run died with AttributeError before it reached
+        # _push_operator_emails — no operator email, no tenant alert, ever.
         await _push_operator_emails(session, fresh)
         for alert in fresh:
             logger.warning(
