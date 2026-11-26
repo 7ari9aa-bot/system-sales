@@ -200,23 +200,33 @@ class VoiceSessionManager:
     async def degrade(self, session_id: uuid.UUID) -> VoiceSessionRecord:
         return await self._move(await self.require(session_id), VoiceSessionState.DEGRADED)
 
-    async def interrupt(self, session_id: uuid.UUID) -> VoiceSessionRecord:
-        return await self._move(await self.require(session_id), VoiceSessionState.INTERRUPTED)
+    async def interrupt(
+        self, session_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+    ) -> VoiceSessionRecord:
+        record = await self._authorized(session_id, tenant_id)
+        return await self._move(record, VoiceSessionState.INTERRUPTED)
 
     async def resume(self, session_id: uuid.UUID) -> VoiceSessionRecord:
         return await self._move(await self.require(session_id), VoiceSessionState.ACTIVE)
 
-    async def begin_handoff(self, session_id: uuid.UUID) -> VoiceSessionRecord:
-        return await self._move(await self.require(session_id), VoiceSessionState.HANDOFF_PENDING)
+    async def begin_handoff(
+        self, session_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+    ) -> VoiceSessionRecord:
+        record = await self._authorized(session_id, tenant_id)
+        return await self._move(record, VoiceSessionState.HANDOFF_PENDING)
 
     async def human_takeover(self, session_id: uuid.UUID) -> VoiceSessionRecord:
         """The staff member owns the call now; the agent is silent until it is closed."""
         return await self._move(await self.require(session_id), VoiceSessionState.HUMAN_ACTIVE)
 
     async def close(
-        self, session_id: uuid.UUID, *, reason: str = "caller_hangup"
+        self,
+        session_id: uuid.UUID,
+        *,
+        reason: str = "caller_hangup",
+        tenant_id: uuid.UUID | None = None,
     ) -> VoiceSessionRecord:
-        record = await self.require(session_id)
+        record = await self._authorized(session_id, tenant_id)
         record = await self._move(record, VoiceSessionState.CLOSING)
         record = await self._move(record, VoiceSessionState.CLOSED)
         return await self._save(replace(record, closed_reason=reason))
@@ -231,6 +241,20 @@ class VoiceSessionManager:
         return await self._save(
             replace(record, last_completed_turn=max(record.last_completed_turn, sequence))
         )
+
+    async def _authorized(
+        self, session_id: uuid.UUID, tenant_id: uuid.UUID | None
+    ) -> VoiceSessionRecord:
+        """A session reached from a request that names a tenant is checked against it.
+
+        The SQL store leans on RLS, but the API must not: a by-id read that answers 200 for a
+        foreign id teaches the caller the session exists, and an in-memory store would hand it
+        over. Every router path goes through here.
+        """
+        record = await self.require(session_id)
+        if tenant_id is not None:
+            assert_same_tenant(record.capability, tenant_id)
+        return record
 
     async def require(self, session_id: uuid.UUID) -> VoiceSessionRecord:
         record = await self._store.get(session_id)

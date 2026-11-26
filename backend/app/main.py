@@ -131,6 +131,7 @@ from app.modules.realtime.router import router as realtime_router
 from app.modules.segments.router import router as segments_router
 from app.modules.settings.router import router as settings_router
 from app.modules.taxation.router import router as taxation_router
+from app.modules.voice.routers.sessions import router as voice_sessions_router
 
 
 @asynccontextmanager
@@ -554,6 +555,7 @@ def create_app() -> FastAPI:
         sell_through_router,
         dead_stock_router,
         season_markdown_router,
+        voice_sessions_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)
