@@ -40,9 +40,14 @@ jobs:
   # The suite is 11k+ tests and took 1h53m in one serial job (run 45635012681:
   # "138 failed, 11175 passed … in 6811.16s"). xdist was tried and abandoned: its workers
   # crashed on the runner's Python 3.13 and coverage fell to 38% (see the note this replaces).
-  # Sharding does not share a process, so it sidesteps that failure mode entirely: four jobs,
+  # Sharding does not share a process, so it sidesteps that failure mode entirely: several jobs,
   # each running its own share of the test files against its own disposable Postgres + Redis,
   # and one small job that combines their coverage and keeps the 80% gate.
+  #
+  # Six, not four: run 45733494289 finished shard 4 in 23 minutes while shards 1-3 were still
+  # running at 48 — an even split by test COUNT is not an even split by time, because a
+  # DB-touching test costs far more than a pure one. Six cuts every shard's share by a third
+  # while the fixed cost per shard (install, migrations, provision) stays ~2 minutes.
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
@@ -51,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     defaults:
       run:
         working-directory: backend
@@ -146,7 +151,7 @@ jobs:
       # pass over the suite (~40s) and yields a balanced, deterministic split.
       - name: Choose this shard's test files
         run: |
-          python - "${{ matrix.shard }}" 4 > /tmp/shard_files.txt <<'PY'
+          python - "${{ matrix.shard }}" 6 > /tmp/shard_files.txt <<'PY'
           import pathlib, re, subprocess, sys
 
           shard, total = int(sys.argv[1]), int(sys.argv[2])
@@ -185,7 +190,7 @@ jobs:
       # (set in pyproject.toml addopts so it applies everywhere).
       # Coverage is measured here but gated in the `coverage` job: a shard only
       # sees a quarter of the suite, so its own percentage means nothing.
-      - name: pytest (shard ${{ matrix.shard }}/4)
+      - name: pytest (shard ${{ matrix.shard }}/6)
         run: xargs -a /tmp/shard_files.txt pytest -q -rs --durations=30 --cov=app --cov-report=
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}

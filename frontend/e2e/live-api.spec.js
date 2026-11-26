@@ -8,6 +8,20 @@ test.skip(process.env.E2E_LIVE_API !== "1", "requires the ephemeral API/Postgres
 // receipts are POS-RET-..., which this pattern deliberately does not match.
 const SALE_INVOICE_NO = /POS-\d{4}-\d{4,}/;
 
+/**
+ * A fresh owner now lands under "what kind of shop is this?" — a dialog OVER the app, not a page.
+ * It is asked once per tenant, and until it is answered or skipped the shell behind it is inert:
+ * every live spec after registration timed out on a control the overlay was covering (48 of 49
+ * in run 45735131391). Esc is one of the documented skip paths, so this walks the flow the way a
+ * real owner who wants to configure everything by hand would.
+ */
+async function dismissActivitySetup(page) {
+  const dialog = page.getByTestId("activity-setup");
+  if (!(await dialog.isVisible().catch(() => false))) return;
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
+}
+
 test("real registration, dashboard reads, customers, and logout work end to end", async ({ page }) => {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -45,6 +59,7 @@ test("real registration, dashboard reads, customers, and logout work end to end"
   expect(registerResponse.status(), await registerResponse.text()).toBe(202);
   expect((await loginResponsePromise).status()).toBe(200);
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
 
   const dashboardResponse = await dashboardResponsePromise;
   expect(dashboardResponse.status()).toBe(200);
@@ -114,6 +129,7 @@ test("a real sale: scan -> confirm -> receipt -> two sales get two invoice numbe
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
 
   // Prepare the shop from inside the page, so the app's own auth (token + CSRF) is used.
   const barcode = `620${Date.now().toString().slice(-9)}`;
@@ -207,6 +223,7 @@ test("a real back-office day: supplier stock in -> cash expense -> stocktake app
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(password);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
 
   // Every call goes through the page, so the app's own token + CSRF are what the backend sees.
   const api = (method, path, body) =>
@@ -283,6 +300,7 @@ test("a per-line discount is stored on its line, so returning that one item refu
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -348,6 +366,7 @@ test("a fixed invoice discount can only take what the line discounts left, and t
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -392,6 +411,7 @@ test("a return retried with a different quantity gets a new Idempotency-Key (nev
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -450,6 +470,7 @@ test("an exchange on the screen: one A comes back, one B (price 150) goes out, t
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -515,6 +536,7 @@ test("a cash expense is recorded on the screen with no shift and moves no drawer
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -578,6 +600,7 @@ test("sell, return and exchange from the screens with no shift and no payment: t
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -668,6 +691,7 @@ test("a supplier return on the screen: the goods leave the shelf at once, and a 
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -742,6 +766,7 @@ test("a purchase on the screen: scanned barcode, 5 x 30 received, the shelf grow
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -798,6 +823,7 @@ test("a cash payment to a supplier is recorded on the screen with no shift, owed
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -844,6 +870,7 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -899,6 +926,7 @@ test("the activity log on the screen: a sale, a return and an expense all appear
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -957,6 +985,7 @@ test("labels on the screen: 3 labels for an item show its real barcode and price
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -1000,6 +1029,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
@@ -1048,6 +1078,7 @@ test("print settings on the screen do not pretend to save: no save button, no ed
   await page.getByLabel(/تأكيد كلمة المرور|confirm password/i).fill(pw);
   await page.getByRole("button", { name: /إنشاء الحساب|create account/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  await dismissActivitySetup(page);
   const api = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
     const raw = JSON.parse(localStorage.getItem("fihrist_tokens") || "null");
     const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1];
