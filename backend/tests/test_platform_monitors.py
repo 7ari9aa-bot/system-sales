@@ -66,18 +66,28 @@ async def test_an_error_spike_trips_with_the_worst_path(db, tenant_ctx) -> None:
 
 async def test_silence_trips_only_when_the_site_had_traffic(db, tenant_ctx) -> None:
     """The "below 1" trick: a dead tracker on a DEAD site is fine; a dead
-    tracker on a site that HAD traffic 24h-ago-to-now is the outage nobody
-    reports."""
+    tracker on a site that WAS busy right before the window is the outage
+    nobody reports."""
     # No events at all in the last 24h → silence is EXPECTED, no alarm.
     alerts = await evaluate_monitors(db)
     assert not [a for a in alerts if a.code == "telemetry_silence"]
 
-    # Old traffic (24h+ ago is outside the "had traffic" window, so seed
-    # within it but older than the silence window).
-    await _seed(db, event_type="page_view", path="/", minutes_ago=60)
+    # Steady traffic in the hours before the silence window, then nothing.
+    for i in range(12):
+        await _seed(db, event_type="page_view", path="/", minutes_ago=40 + i)
     alerts = await evaluate_monitors(db)
     silence = next(a for a in alerts if a.code == "telemetry_silence")
     assert silence.severity == "critical"
+
+
+async def test_a_quiet_store_is_not_an_outage(db, tenant_ctx) -> None:
+    """The false alarm this replaced: production had 2 hits at 10:00 and then
+    silence, and the alarm went critical every hour on a pre-launch store.
+    Two visits an hour is a quiet shop, not a dead tracker."""
+    await _seed(db, event_type="page_view", path="/", minutes_ago=45)
+    await _seed(db, event_type="page_view", path="/", minutes_ago=50)
+    alerts = await evaluate_monitors(db)
+    assert not [a for a in alerts if a.code == "telemetry_silence"]
 
 
 async def test_trip_dedupe_alerts_once_per_fingerprint() -> None:
