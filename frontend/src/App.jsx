@@ -62,6 +62,7 @@ const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'))
 const LoginSettings = lazy(() => import('@/pages/settings/LoginSettings'));
 const PreferencesSettings = lazy(() => import('@/pages/settings/PreferencesSettings'));
 const NotificationPreferences = lazy(() => import('@/pages/settings/NotificationPreferences'));
+const SettingsSection = lazy(() => import('@/pages/settings/SettingsSection'));
 const UnifiedSettings = lazy(() => import('@/pages/settings/UnifiedSettings'));
 const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
 const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
@@ -200,6 +201,10 @@ const DashboardRoutes = () => (
           <Route path="/settings/preferences" element={<PreferencesSettings />} />
           <Route path="/settings/notifications" element={<NotificationPreferences />} />
           <Route path="/settings/danger" element={<DataSettings />} />
+          {/* The Settings Center map: a section is a navigation group with its own pages, and
+              each page renders only the keys whose registry home is that section+page. */}
+          <Route path="/settings/store" element={<Navigate to="/settings/store/business-profile" replace />} />
+          <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
         </Route>
       </Route>
     </Route>

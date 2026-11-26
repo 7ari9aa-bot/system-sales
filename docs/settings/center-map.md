@@ -167,7 +167,20 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 03 Permission matrix | done | `/settings/team/matrix` — every real permission row against every role, read/write/approve shown as distinct actions; ticks come from `role_permissions`, so no cell can promise an unchecked action |
 | 03 Teams and departments | done | `/settings/team/groups` — real teams (migration fe2026112612, tenant RLS on both tables) with add/remove members; a team grants nothing by design and the page says so |
 | 03 Access scope | done | `/settings/team/access` — per-branch grants through `/hierarchy/locations/{id}/access`; warehouses and tills stay on their own pages |
-| 02–20 | pending | see the tables above |
+| 04 Business profile | done | `/settings/store/business-profile` — trade name, business type, vertical, setup state, the shop's default language and the capability switches, rendered from the registry |
+| 04 Brand identity | done | `/settings/store/brand-identity` — the brand colour (`organization.brand_color`) |
+| 04 Contact details | done | `/settings/store/contact-details` — phone, email, website and address lines, tenant and branch scoped |
+| 04 Legal data | done | `/settings/store/legal-data` — legal name, tax ID, commercial register, terms acceptance; all four already reach the receipt read model |
+| 04 Working hours | pending | no key exists yet: opening/closing time and closed days need a consumer before they can be offered |
+| 04 Business policies | pending | no key exists yet: exchange, return and warranty policy need the orders/returns path to read them first |
+| 05–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).
+
+**How a page is produced.** Every key declares its home in the registry (`section` + `page`, with
+a domain default in `_DOMAIN_HOME` and per-key overrides where a domain spans pages). A Settings
+Center page asks the server for `GET /settings/definitions?section=…&page=…` and renders exactly
+those keys, so a control can only ever edit a setting whose canonical home is that page — the §4
+"no duplicated setting" rule is enforced by construction rather than by review. `tests/test_settings_registry_homes.py`
+fails if a registered key has no home, names a section outside the twenty, or could appear on two pages.

@@ -138,6 +138,9 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         rollback_supported=d.rollback_supported,
         enforced=d.enforced,
         segments=list(d.segments),
+        section=d.home[0],
+        page=d.home[1],
+        impact_level=d.impact_level,
         label_ar=d.label_ar,
         label_en=d.label_en,
         description_ar=d.description_ar,
@@ -168,11 +171,17 @@ async def list_setting_definitions(
     ctx: SettingsReadCtx,
     domain: str | None = None,
     segment: str | None = None,
+    section: str | None = None,
+    page: str | None = None,
 ) -> list[SettingDefOut]:
-    """List setting metadata, optionally for one domain and/or one business segment."""
+    """List setting metadata, narrowed by domain, segment, section and/or page.
+
+    ``section``/``page`` are the Settings Center home (docs/settings/center-map.md), so a page
+    asks for the keys it owns and receives exactly those.
+    """
     if segment is not None and segment not in SEGMENTS:
         raise ValidationError(f"unknown segment {segment!r}; expected one of {list(SEGMENTS)}")
-    defs = list_definitions(domain=domain, segment=segment)
+    defs = list_definitions(domain=domain, segment=segment, section=section, page=page)
     return [_def_to_out(d) for d in defs]
 
 

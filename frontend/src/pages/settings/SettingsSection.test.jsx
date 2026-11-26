@@ -1,0 +1,132 @@
+/**
+ * A Settings Center page asks for its own home, and only its own home.
+ *
+ * The map gives every key exactly one canonical page. What makes that true in the UI is this
+ * component passing its section+page to the settings hook, so the server returns the keys whose
+ * home is that page — no control on the screen edits a setting that lives somewhere else.
+ *
+ * The unit environment is `node` (see vitest.config.js), so these are static-markup assertions:
+ * the hook is stubbed, which is exactly the boundary worth testing here.
+ */
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { I18nProvider } from "@/lib/i18n";
+
+const PHONE = {
+  key: "business.phone",
+  domain: "business",
+  type: "string",
+  default: "",
+  scopes: ["tenant", "branch"],
+  allowed_values: null,
+  min_value: null,
+  max_value: null,
+  max_length: 32,
+  permission: "settings:write",
+  audit: false,
+  apply_mode: "validated",
+  sensitivity: "normal",
+  feature_requirement: null,
+  rollback_supported: true,
+  enforced: true,
+  segments: [],
+  section: "store",
+  page: "contact-details",
+  impact_level: "low",
+  label_ar: "هاتف النشاط",
+  label_en: "Business phone",
+  description_ar: "",
+  description_en: "The number the customer sees.",
+};
+
+const useSettingsMock = vi.fn(() => ({
+  defs: [PHONE],
+  defMap: { [PHONE.key]: PHONE },
+  grouped: { business: [PHONE] },
+  values: { [PHONE.key]: "0100" },
+  original: { [PHONE.key]: "0100" },
+  dirty: false,
+  loading: false,
+  error: "",
+  saving: false,
+  notice: "",
+  conflict: null,
+  preview: null,
+  previewing: false,
+  runPreview: vi.fn(),
+  changeRequests: [],
+  approvalRequiredKeys: [],
+  changedEntries: [],
+  scope: "tenant",
+  scopeId: null,
+  setValue: vi.fn(),
+  save: vi.fn(),
+  reset: vi.fn(),
+  submitChangeRequest: vi.fn(),
+  approveChangeRequest: vi.fn(),
+  rejectChangeRequest: vi.fn(),
+}));
+
+vi.mock("@/components/settings/useSettings", () => ({
+  useSettings: (opts) => useSettingsMock(opts),
+}));
+
+vi.mock("@/components/settings/ScopeSelector", () => ({
+  default: () => null,
+}));
+
+// Imported after the mocks so the component picks them up.
+const { default: SettingsSection } = await import("./SettingsSection");
+
+function renderAt(path) {
+  return renderToStaticMarkup(
+    <I18nProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
+  );
+}
+
+describe("SettingsSection", () => {
+  beforeEach(() => {
+    useSettingsMock.mockClear();
+  });
+
+  test("asks the settings hook for its own section and page", () => {
+    renderAt("/settings/store/contact-details");
+    expect(useSettingsMock).toHaveBeenCalled();
+    const opts = useSettingsMock.mock.calls[0][0];
+    expect(opts.section).toBe("store");
+    expect(opts.page).toBe("contact-details");
+  });
+
+  test("renders the controls the registry says this page owns", () => {
+    const html = renderAt("/settings/store/contact-details");
+    expect(html).toContain("Business phone");
+  });
+
+  test("the tab strip reaches every page the map lists for the section", () => {
+    const html = renderAt("/settings/store/contact-details");
+    for (const page of ["business-profile", "brand-identity", "contact-details", "legal-data"]) {
+      expect(html).toContain(`href="/settings/store/${page}"`);
+    }
+  });
+
+  test("the heading names the page, not the section", () => {
+    const html = renderAt("/settings/store/contact-details");
+    // The tab strip names every page, so the heading is what must name only this one.
+    expect(html).toContain(">Contact details</h1>");
+    expect(html).not.toContain(">Legal data</h1>");
+  });
+
+  test("a different page of the same section asks for that page instead", () => {
+    renderAt("/settings/store/legal-data");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.page).toBe("legal-data");
+  });
+});

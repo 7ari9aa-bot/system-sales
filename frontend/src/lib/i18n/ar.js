@@ -1523,4 +1523,20 @@ export default {
   "pos.printer.err.connectBluetooth": "تعذّر الاتصال بطابعة البلوتوث. اتأكد إنها شغالة وقريبة وجرّب تاني.",
   "pos.printer.err.testPrint": "تعذّرت الطباعة التجريبية. اتأكد من اتصال الطابعة وإن فيها ورق.",
   "pos.printer.err.kick": "تعذّر فتح درج النقدية. اتأكد إن الدرج موصول بالطابعة.",
+
+  // ---- Settings Center · group 2 (business and structure) ----
+  "settings.group.business": "النشاط التجاري والهيكل",
+  "settings.nav.store": "المتجر والنشاط التجاري",
+  "settings.store.title": "المتجر والنشاط التجاري",
+  "settings.store.subtitle": "هوية النشاط وبياناته وسياساته — ما يراه العميل وما يُطالب به المتجر.",
+  "settings.store.impact.high": "بعض الإعدادات في هذه الصفحة عالية التأثير: تغييرها يؤثر على المستندات أو على ما يراه العميل، وتحتاج موافقة قبل التطبيق.",
+  "settings.store.empty": "لا توجد إعدادات في هذه الصفحة بعد.",
+  "settings.store.pages.business-profile.title": "الملف التجاري",
+  "settings.store.pages.business-profile.desc": "ما هو النشاط: نوعه وقطاعه وما يستطيع فعله.",
+  "settings.store.pages.brand-identity.title": "الهوية التجارية",
+  "settings.store.pages.brand-identity.desc": "الشعار واللون والاسم التجاري كما يظهر أمام العميل.",
+  "settings.store.pages.contact-details.title": "بيانات التواصل",
+  "settings.store.pages.contact-details.desc": "الهاتف والبريد والعنوان والموقع التي يستخدمها النشاط.",
+  "settings.store.pages.legal-data.title": "البيانات القانونية",
+  "settings.store.pages.legal-data.desc": "البيانات القانونية والضريبية التي تظهر على الفواتير والمستندات الرسمية.",
 };

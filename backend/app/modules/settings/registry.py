@@ -22,7 +22,7 @@ from __future__ import annotations
 import enum
 import ipaddress
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any
 
@@ -186,6 +186,22 @@ class SettingDef:
     label_en: str = ""
     description_ar: str = ""
     description_en: str = ""
+    # Where this key lives in the Settings Center (docs/settings/center-map.md). Every key has
+    # exactly ONE canonical home: a domain default from _DOMAIN_HOME, overridden here when the
+    # domain spans several pages (the business domain feeds profile, contact and legal pages).
+    # A page may LINK to a key from elsewhere; it may only EDIT it at its home.
+    section: str | None = None
+    page: str | None = None
+    # How far a wrong value reaches: "low" (a label), "medium" (a rule staff follow),
+    # "high" (money, tax, legal identity, a customer-facing policy). The page shows the
+    # warning for high, and the value is what a reviewer weighs before approving.
+    impact_level: str = "low"
+
+    @property
+    def home(self) -> tuple[str, str]:
+        """The (section, page) that owns this key — its one canonical editing place."""
+        default_section, default_page = _DOMAIN_HOME.get(self.domain, ("", ""))
+        return (self.section or default_section, self.page or default_page)
 
     @property
     def enforced(self) -> bool:
@@ -2385,6 +2401,117 @@ _reg(
 
 # ======================== NOTIFICATIONS (existing, continued) =============
 
+# The Settings Center map (docs/settings/center-map.md) in one table: which section and page a
+# domain's keys belong to when the key itself does not say. Section ids are the map's numbers'
+# slugs; a key overrides this only when its domain genuinely spans pages.
+_DOMAIN_HOME: dict[str, tuple[str, str]] = {
+    "business": ("store", "business-profile"),
+    "organization": ("store", "business-profile"),
+    "branch": ("locations", "branch-settings"),
+    "capability": ("catalog", "product-settings"),
+    "catalog": ("catalog", "product-settings"),
+    "pos": ("pos", "pos-settings"),
+    "print": ("pos", "invoices-and-receipts"),
+    "einvoice": ("sales", "taxes-and-fees"),
+    "inventory": ("inventory", "inventory-settings"),
+    "purchasing": ("purchasing", "purchasing-settings"),
+    "orders": ("sales", "sales-settings"),
+    "notifications": ("notifications", "notification-rules"),
+    "customer_agent": ("ai", "customer-agent"),
+    "analytics_agent": ("ai", "analytics-agent"),
+    "team": ("team", "roles"),
+    "security": ("security", "security-policies"),
+    "billing": ("billing", "current-plan"),
+    "imports": ("data", "import"),
+}
+
+# The business domain spans six pages in the map, but its domain default is one page. These
+# keys name the page that owns them, so each Settings Center screen edits only its own controls.
+# Kept as one table: reading it is how you see, at a glance, where the store's settings live.
+_PAGE_OVERRIDES: dict[str, str] = {
+    # Business profile — what the business IS.
+    "business.trade_name": "business-profile",
+    "business.type": "business-profile",
+    "business.vertical": "business-profile",
+    "business.setup_state": "business-profile",
+    "organization.default_language": "business-profile",
+    # Brand identity — how it looks.
+    "organization.brand_color": "brand-identity",
+    # Contact details — how a customer reaches it.
+    "business.phone": "contact-details",
+    "business.email": "contact-details",
+    "business.website": "contact-details",
+    "business.address.line1": "contact-details",
+    "business.address.city": "contact-details",
+    "business.address.postal_code": "contact-details",
+    # Legal data — what it may be held to.
+    "business.legal_name": "legal-data",
+    "business.tax_id": "legal-data",
+    "business.commercial_register": "legal-data",
+    "business.terms_accepted_at": "legal-data",
+    # Who may see profit is a permission, not a business fact: it belongs on the matrix.
+    "reports.managers_see_profit": "matrix",
+    # Structure, not identity: the branch limits belong with the branches themselves.
+    "organization.multi_branch": "all-branches",
+    "organization.max_branches": "all-branches",
+}
+
+# Keys whose domain default lands them in the wrong section entirely (the branch limits live in
+# "organization" but they describe the branches, and who may see profit is a team right).
+_SECTION_OVERRIDES: dict[str, str] = {
+    "organization.multi_branch": "locations",
+    "organization.max_branches": "locations",
+    "reports.managers_see_profit": "team",
+}
+
+
+def _with_home(d: SettingDef) -> SettingDef:
+    """Apply the page and section overrides. One place decides where a key is edited."""
+    if d.key in _PAGE_OVERRIDES or d.key in _SECTION_OVERRIDES:
+        return replace(
+            d,
+            page=_PAGE_OVERRIDES.get(d.key, d.page),
+            section=_SECTION_OVERRIDES.get(d.key, d.section),
+        )
+    return d
+
+
+_DEFINITIONS = [_with_home(d) for d in _DEFINITIONS]
+
+# Keys whose domain spans several pages, so the domain default above is not where they belong.
+# The business domain is the clearest case: contact facts, brand facts and legal facts are three
+# different pages with three different audiences, and the map keeps them apart on purpose.
+_PAGE_OVERRIDES: dict[str, str] = {
+    # Brand identity: what the customer meets as the shop's face.
+    "business.trade_name": "brand-identity",
+    "organization.brand_color": "brand-identity",
+    # Contact details: how to reach the shop.
+    "business.phone": "contact-details",
+    "business.email": "contact-details",
+    "business.website": "contact-details",
+    "business.address.line1": "contact-details",
+    "business.address.city": "contact-details",
+    "business.address.postal_code": "contact-details",
+    # Legal data: what a tax inspector or a court reads.
+    "business.legal_name": "legal-data",
+    "business.tax_id": "legal-data",
+    "business.commercial_register": "legal-data",
+    "business.terms_accepted_at": "legal-data",
+    # The structure of the business belongs with the branches, not the profile.
+    "organization.multi_branch": "all-branches",
+    "organization.max_branches": "all-branches",
+    # The financial year is a rule of selling.
+    "organization.fiscal_year_start_month": "sales-settings",
+}
+_DEFINITIONS = [
+    replace(d, page=_PAGE_OVERRIDES[d.key]) if d.key in _PAGE_OVERRIDES else d for d in _DEFINITIONS
+]
+# A page override must name a key that exists: a typo here would silently leave the key at its
+# domain default and the page it was meant to fill would render empty.
+_missing_overrides = sorted(set(_PAGE_OVERRIDES) - {d.key for d in _DEFINITIONS})
+if _missing_overrides:
+    raise RuntimeError(f"_PAGE_OVERRIDES names unregistered keys: {_missing_overrides}")
+
 REGISTRY: dict[str, SettingDef] = {d.key: d for d in _DEFINITIONS}
 
 
@@ -2396,16 +2523,28 @@ def get_definition(key: str) -> SettingDef:
         raise KeyError(f"Unknown setting key: {key!r}") from None
 
 
-def list_definitions(*, domain: str | None = None, segment: str | None = None) -> list[SettingDef]:
-    """Return all definitions, optionally for one domain and/or one business segment.
+def list_definitions(
+    *,
+    domain: str | None = None,
+    segment: str | None = None,
+    section: str | None = None,
+    page: str | None = None,
+) -> list[SettingDef]:
+    """Return all definitions, optionally narrowed by domain, segment, section and/or page.
 
     A segment keeps the keys that name it AND every key that names none (those apply to everyone).
+    ``section``/``page`` filter on each key's canonical home, so a Settings Center page asks for
+    its own controls and gets exactly the keys it owns — nothing borrowed from a neighbour.
     """
     result = list(_DEFINITIONS)
     if domain is not None:
         result = [d for d in result if d.domain == domain]
     if segment is not None:
         result = [d for d in result if not d.segments or segment in d.segments]
+    if section is not None:
+        result = [d for d in result if d.home[0] == section]
+    if page is not None:
+        result = [d for d in result if d.home[1] == page]
     return result
 
 

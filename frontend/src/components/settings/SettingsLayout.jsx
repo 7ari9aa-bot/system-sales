@@ -44,6 +44,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    key: "settings.group.business",
+    items: [
+      { to: "/settings/store", icon: Store, labelKey: "settings.nav.store" },
+    ],
+  },
+  {
     key: "settings.group.operations",
     items: [
       { to: "/settings/channels", icon: MessageSquare, labelKey: "settings.nav.channels" },

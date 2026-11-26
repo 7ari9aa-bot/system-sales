@@ -54,7 +54,9 @@ export function isMaskedValue(value) {
 }
 
 export function useSettings(opts = {}) {
-  const { domain, keys, segment, scope = "tenant", scopeId = null } = opts;
+  // `section`/`page` are the key's Settings Center home (docs/settings/center-map.md). A page
+  // passes its own pair and receives exactly the keys it owns — not its neighbours' controls.
+  const { domain, keys, segment, section, page, scope = "tenant", scopeId = null } = opts;
 
   const [defs, setDefs] = useState(null);
   const [values, setValues] = useState({});
@@ -76,9 +78,11 @@ export function useSettings(opts = {}) {
     const params = new URLSearchParams();
     if (domain) params.set("domain", domain);
     if (segment) params.set("segment", segment);
+    if (section) params.set("section", section);
+    if (page) params.set("page", page);
     const s = params.toString();
     return s ? `?${s}` : "";
-  }, [domain, segment]);
+  }, [domain, segment, section, page]);
 
   const effQuery = useMemo(() => {
     const params = new URLSearchParams();

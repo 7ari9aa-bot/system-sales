@@ -1523,4 +1523,20 @@ export default {
   "pos.printer.err.connectBluetooth": "Could not connect to the Bluetooth printer. Check it is on and nearby, then try again.",
   "pos.printer.err.testPrint": "The test print failed. Check the printer is connected and has paper.",
   "pos.printer.err.kick": "Could not open the cash drawer. Check the drawer is plugged into the printer.",
+
+  // ---- Settings Center · group 2 (business and structure) ----
+  "settings.group.business": "Business & structure",
+  "settings.nav.store": "Store & business",
+  "settings.store.title": "Store & business",
+  "settings.store.subtitle": "The business identity, its facts and its policies — what the customer sees and what the shop is held to.",
+  "settings.store.impact.high": "Some settings on this page have high impact: changing them affects documents or what the customer sees, and needs approval before it applies.",
+  "settings.store.empty": "No settings on this page yet.",
+  "settings.store.pages.business-profile.title": "Business profile",
+  "settings.store.pages.business-profile.desc": "What the business is: its type, vertical and what it can do.",
+  "settings.store.pages.brand-identity.title": "Brand identity",
+  "settings.store.pages.brand-identity.desc": "Logo, colour and trade name as the customer meets them.",
+  "settings.store.pages.contact-details.title": "Contact details",
+  "settings.store.pages.contact-details.desc": "The phone, email, address and website the business uses.",
+  "settings.store.pages.legal-data.title": "Legal data",
+  "settings.store.pages.legal-data.desc": "The legal and tax identity shown on invoices and official documents.",
 };
