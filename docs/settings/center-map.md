@@ -107,6 +107,12 @@ Agent boundaries are part of the design, not a prompt detail:
 
 | # | Section | Pages |
 |---|---|---|
+| 17 Import | done | `/settings/data/import` — the real import sessions from `GET /imports/sessions` (state, where each got to), plus `imports.legacy_csv_endpoint`, the one import setting the registry carries |
+| 17 Export | pending | No export engine exists: an export is a job that must be generated and run, and there is no export job table and no worker reading one. The page says so plainly instead of offering a button that does nothing |
+| 17 Retention | done | `/settings/data/retention` — `GET /analytics/retention`, the position the retention worker runs on; the policy is written through `PUT /analytics/retention/policies/{data_class}`, the same endpoint the worker reads |
+| 17 Backups and restore | pending | No backup or restore system exists in the product: backup belongs to the database and host layer, restore is a catastrophic procedure needing approval and a record, and there is no backup table or restore path to drive |
+| 17 Data privacy | done | `/settings/data/data-privacy` — the consents actually recorded (`GET /privacy/consents`); withdrawal is an event on the record, not an erasure of history |
+| 17 Data deletion | done | `/settings/data/data-deletion` — the data requests and their state (`GET /privacy/data-requests`); execution runs on `POST /privacy/data-requests/{id}/execute` after review, never from a click on the settings page |
 | 17 | **Data & privacy** | Import · Export · Retention · Backups and restore · Data privacy · Data deletion |
 | 18 | **Security & governance** | Security policies · Session control · Audit log · Settings change log · Approval requests · Sensitive settings · Emergency procedures |
 | 19 | **Plan & billing** | Current plan · Usage · Invoices · Payment methods · Billing details · Renewal and upgrade |

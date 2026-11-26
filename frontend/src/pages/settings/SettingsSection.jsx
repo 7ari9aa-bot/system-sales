@@ -28,6 +28,7 @@ import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import { MetricsPanel, OverviewPanel, ReportsPanel } from "@/components/settings/AnalyticsPanels";
 import ExecutionsPanel from "@/components/settings/AutomationPanels";
 import ChannelLinkCard from "@/components/settings/NotificationPanels";
+import { GenericListPanel, KeyValuePanel, StaticNotePanel } from "@/components/settings/DataPanels";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
@@ -148,6 +149,14 @@ const SECTION_PAGES = {
     "transfers",
     "inventory-cost",
   ],
+  data: [
+    "import",
+    "export",
+    "retention",
+    "backups-and-restore",
+    "data-privacy",
+    "data-deletion",
+  ],
   notifications: [
     "notification-channels",
     "notification-rules",
@@ -221,6 +230,15 @@ const PANEL_PAGES = new Set([
   // link there rather than growing a second editor.
   "notifications/recipients",
   "notifications/message-templates",
+  // Section 17: every page here reads a module that already owns the record (imports, privacy,
+  // retention), or says plainly which engine does not exist yet rather than showing an editor
+  // that would write rows nothing reads.
+  "data/import",
+  "data/export",
+  "data/retention",
+  "data/backups-and-restore",
+  "data/data-privacy",
+  "data/data-deletion",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -539,6 +557,65 @@ export default function SettingsSection({ section }) {
           descKey="settings.notifications.templates.desc"
           to="/settings/customers/reply-templates"
           linkKey="settings.notifications.templates.link"
+        />
+      )}
+
+      {/* Section 17: data and privacy. Retention is a real setting the retention worker reads;
+          imports, consents and data requests are real records with their own lifecycle. Export and
+          restore have no engine yet and say so instead of offering a button that does nothing. */}
+      {`${section}/${page}` === "data/import" && (
+        <GenericListPanel
+          endpoint="/imports/sessions"
+          titleKey="settings.data.import.title"
+          descKey="settings.data.import.desc"
+          footerKey="settings.data.import.whereToEdit"
+          emptyKey="settings.data.import.empty"
+        />
+      )}
+
+      {`${section}/${page}` === "data/export" && (
+        <StaticNotePanel
+          titleKey="settings.data.export.title"
+          descKey="settings.data.export.desc"
+          bodyKey="settings.data.export.body"
+        />
+      )}
+
+      {`${section}/${page}` === "data/retention" && (
+        <KeyValuePanel
+          endpoint="/analytics/retention"
+          titleKey="settings.data.retention.title"
+          descKey="settings.data.retention.desc"
+          footerKey="settings.data.retention.whereToEdit"
+          emptyKey="settings.data.retention.empty"
+        />
+      )}
+
+      {`${section}/${page}` === "data/backups-and-restore" && (
+        <StaticNotePanel
+          titleKey="settings.data.backups.title"
+          descKey="settings.data.backups.desc"
+          bodyKey="settings.data.backups.body"
+        />
+      )}
+
+      {`${section}/${page}` === "data/data-privacy" && (
+        <GenericListPanel
+          endpoint="/privacy/consents"
+          titleKey="settings.data.privacy.title"
+          descKey="settings.data.privacy.desc"
+          footerKey="settings.data.privacy.whereToEdit"
+          emptyKey="settings.data.privacy.empty"
+        />
+      )}
+
+      {`${section}/${page}` === "data/data-deletion" && (
+        <GenericListPanel
+          endpoint="/privacy/data-requests"
+          titleKey="settings.data.deletion.title"
+          descKey="settings.data.deletion.desc"
+          footerKey="settings.data.deletion.whereToEdit"
+          emptyKey="settings.data.deletion.empty"
         />
       )}
       {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row

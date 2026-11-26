@@ -223,6 +223,8 @@ const DashboardRoutes = () => (
           <Route path="/settings/login" element={<LoginSettings />} />
           <Route path="/settings/preferences" element={<PreferencesSettings />} />
           <Route path="/settings/notifications" element={<NotificationPreferences />} />
+          <Route path="/settings/notifications/:page" element={<SettingsSection section="notifications" />} />
+          <Route path="/settings/data/:page" element={<SettingsSection section="data" />} />
           <Route path="/settings/danger" element={<DataSettings />} />
           {/* The Settings Center map: a section is a navigation group with its own pages, and
               each page renders only the keys whose registry home is that section+page. */}
